@@ -51,11 +51,19 @@ class ApiHandler {
         try {
             // Create parameters for the API call
             const messages = [
-                { role: "system", content: prompt.system },
-                { role: "user", content: prompt.user.replace('{texto}', text) }
+                { 
+                    role: "system", 
+                    content: prompt.system + " Always format your response as valid JSON."
+                },
+                { 
+                    role: "user", 
+                    content: prompt.user.replace('{texto}', text)
+                }
             ];
             
-            // Direct fetch approach without using any client library
+            console.log('Making API request to OpenAI...');
+            
+            // Direct fetch approach without using response_format parameter
             const response = await fetch('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
                 headers: {
@@ -66,8 +74,8 @@ class ApiHandler {
                     model: "gpt-4",
                     messages: messages,
                     temperature: 0.2,
-                    max_tokens: 1000,
-                    response_format: { type: "json_object" }
+                    max_tokens: 1000
+                    // Removed response_format parameter which was causing the error
                 })
             });
 
@@ -83,12 +91,23 @@ class ApiHandler {
                 throw new Error('Empty response from GPT-4');
             }
 
+            // Find JSON in the response - the model might include some text outside the JSON
+            let jsonContent = responseContent;
+            const jsonStartIndex = responseContent.indexOf('{');
+            const jsonEndIndex = responseContent.lastIndexOf('}');
+            
+            if (jsonStartIndex >= 0 && jsonEndIndex > jsonStartIndex) {
+                jsonContent = responseContent.substring(jsonStartIndex, jsonEndIndex + 1);
+            }
+
             // Parse and validate the JSON response
             try {
-                const parsedResponse = JSON.parse(responseContent);
+                const parsedResponse = JSON.parse(jsonContent);
+                console.log('Successfully parsed GPT-4 response:', parsedResponse);
                 return parsedResponse;
             } catch (parseError) {
                 console.error('Error parsing GPT-4 response:', parseError);
+                console.error('Raw response was:', responseContent);
                 throw new Error('Invalid response format from GPT-4');
             }
         } catch (error) {
@@ -119,11 +138,15 @@ Should I:
 Format your response as a JSON object with fields: "decision" (1, 2, or 3), "explanation", "chosen_concept" (if decision is 2), and "suggested_phrasing" (if decision is 3).`;
 
             const messages = [
-                { role: "system", content: prompt.system || "You are an expert in categorizing restaurant concepts with high precision." },
+                { 
+                    role: "system", 
+                    content: (prompt.system || "You are an expert in categorizing restaurant concepts with high precision.") + 
+                             " Always format your response as valid JSON."
+                },
                 { role: "user", content: ambiguityPromptContent }
             ];
             
-            // Direct fetch approach without using any client library
+            // Direct fetch approach without using response_format parameter
             const response = await fetch('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
                 headers: {
@@ -134,8 +157,8 @@ Format your response as a JSON object with fields: "decision" (1, 2, or 3), "exp
                     model: "gpt-4",
                     messages: messages,
                     temperature: 0.2,
-                    max_tokens: 500,
-                    response_format: { type: "json_object" }
+                    max_tokens: 500
+                    // Removed response_format parameter which was causing the error
                 })
             });
 
@@ -151,12 +174,22 @@ Format your response as a JSON object with fields: "decision" (1, 2, or 3), "exp
                 throw new Error('Empty response from GPT-4');
             }
 
+            // Find JSON in the response - the model might include some text outside the JSON
+            let jsonContent = responseContent;
+            const jsonStartIndex = responseContent.indexOf('{');
+            const jsonEndIndex = responseContent.lastIndexOf('}');
+            
+            if (jsonStartIndex >= 0 && jsonEndIndex > jsonStartIndex) {
+                jsonContent = responseContent.substring(jsonStartIndex, jsonEndIndex + 1);
+            }
+
             // Parse and validate the JSON response
             try {
-                const parsedResponse = JSON.parse(responseContent);
+                const parsedResponse = JSON.parse(jsonContent);
                 return parsedResponse;
             } catch (parseError) {
                 console.error('Error parsing GPT-4 response:', parseError);
+                console.error('Raw response was:', responseContent);
                 throw new Error('Invalid response format from GPT-4');
             }
         } catch (error) {

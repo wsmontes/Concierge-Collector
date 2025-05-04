@@ -169,15 +169,340 @@ class UIManager {
     }
 
     setupRecordingEvents() {
-        // ...existing code...
+        console.log('Setting up recording events...');
+        
+        // Start recording button
+        const startRecordingBtn = document.getElementById('start-recording');
+        const stopRecordingBtn = document.getElementById('stop-recording');
+        const discardRecordingBtn = document.getElementById('discard-recording');
+        const transcribeAudioBtn = document.getElementById('transcribe-audio');
+        
+        if (startRecordingBtn) {
+            startRecordingBtn.addEventListener('click', async () => {
+                console.log('Start recording button clicked');
+                try {
+                    this.showLoading('Starting recording...');
+                    await audioRecorder.startRecording();
+                    this.hideLoading();
+                    
+                    // Update UI
+                    startRecordingBtn.classList.add('hidden');
+                    stopRecordingBtn.classList.remove('hidden');
+                    stopRecordingBtn.classList.add('recording');
+                } catch (error) {
+                    this.hideLoading();
+                    console.error('Error starting recording:', error);
+                    this.showNotification(`Error starting recording: ${error.message}`, 'error');
+                }
+            });
+        } else {
+            console.warn('Start recording button not found in DOM');
+        }
+        
+        // Stop recording button
+        if (stopRecordingBtn) {
+            stopRecordingBtn.addEventListener('click', async () => {
+                console.log('Stop recording button clicked');
+                try {
+                    this.showLoading('Processing recording...');
+                    await audioRecorder.stopRecording();
+                    
+                    // Get the recording
+                    const audioPreview = document.getElementById('audio-preview');
+                    const audioElement = document.getElementById('recorded-audio');
+                    
+                    audioElement.src = audioRecorder.audioUrl;
+                    audioPreview.classList.remove('hidden');
+                    
+                    // Update UI
+                    startRecordingBtn.classList.remove('hidden');
+                    stopRecordingBtn.classList.add('hidden');
+                    stopRecordingBtn.classList.remove('recording');
+                    
+                    this.hideLoading();
+                } catch (error) {
+                    this.hideLoading();
+                    console.error('Error stopping recording:', error);
+                    this.showNotification(`Error stopping recording: ${error.message}`, 'error');
+                }
+            });
+        } else {
+            console.warn('Stop recording button not found in DOM');
+        }
+        
+        // Discard recording button
+        if (discardRecordingBtn) {
+            discardRecordingBtn.addEventListener('click', () => {
+                console.log('Discard recording button clicked');
+                const audioPreview = document.getElementById('audio-preview');
+                const audioElement = document.getElementById('recorded-audio');
+                
+                // Clear audio element and hide preview
+                audioElement.src = '';
+                audioPreview.classList.add('hidden');
+                
+                // Reset state
+                if (audioRecorder.audioUrl) {
+                    URL.revokeObjectURL(audioRecorder.audioUrl);
+                    audioRecorder.audioUrl = null;
+                    audioRecorder.audioBlob = null;
+                }
+                
+                this.showNotification('Recording discarded');
+            });
+        }
+        
+        // Transcribe audio button
+        if (transcribeAudioBtn) {
+            transcribeAudioBtn.addEventListener('click', async () => {
+                console.log('Transcribe audio button clicked');
+                if (!audioRecorder.audioBlob) {
+                    this.showNotification('No recording to transcribe', 'error');
+                    return;
+                }
+                
+                try {
+                    this.showLoading('Transcribing audio...');
+                    
+                    // Use the MP3 blob for transcription for better compatibility with Whisper API
+                    const transcription = await apiHandler.transcribeAudio(audioRecorder.audioBlob);
+                    
+                    this.hideLoading();
+                    this.showTranscriptionSection(transcription);
+                } catch (error) {
+                    this.hideLoading();
+                    console.error('Error transcribing audio:', error);
+                    this.showNotification(`Error transcribing audio: ${error.message}`, 'error');
+                }
+            });
+        }
+        
+        console.log('Recording events set up');
     }
 
     setupTranscriptionEvents() {
-        // ...existing code...
+        console.log('Setting up transcription events...');
+        
+        // Discard transcription button
+        const discardBtn = document.getElementById('discard-transcription');
+        if (discardBtn) {
+            discardBtn.addEventListener('click', () => {
+                console.log('Discard transcription button clicked');
+                this.showRecordingSection();
+                this.transcriptionText.textContent = '';
+            });
+        }
+        
+        // Extract concepts button
+        const extractBtn = document.getElementById('extract-concepts');
+        if (extractBtn) {
+            extractBtn.addEventListener('click', async () => {
+                console.log('Extract concepts button clicked');
+                const transcription = this.transcriptionText.textContent.trim();
+                
+                if (!transcription) {
+                    this.showNotification('No transcription to analyze', 'error');
+                    return;
+                }
+                
+                try {
+                    this.showLoading('Extracting concepts...');
+                    
+                    // Use GPT-4 to extract concepts
+                    const extractedConcepts = await apiHandler.extractConcepts(
+                        transcription, 
+                        promptTemplates.conceptExtraction
+                    );
+                    
+                    console.log('Extracted concepts:', extractedConcepts);
+                    
+                    // Convert to our internal format
+                    this.currentConcepts = [];
+                    
+                    for (const category in extractedConcepts) {
+                        if (extractedConcepts[category] && Array.isArray(extractedConcepts[category])) {
+                            for (const value of extractedConcepts[category]) {
+                                this.currentConcepts.push({
+                                    category,
+                                    value
+                                });
+                            }
+                        }
+                    }
+                    
+                    this.hideLoading();
+                    this.showConceptsSection();
+                } catch (error) {
+                    this.hideLoading();
+                    console.error('Error extracting concepts:', error);
+                    this.showNotification(`Error extracting concepts: ${error.message}`, 'error');
+                }
+            });
+        }
+        
+        console.log('Transcription events set up');
     }
 
     setupConceptsEvents() {
-        // ...existing code...
+        console.log('Setting up concepts events...');
+        
+        // Restaurant name input focus
+        const nameInput = document.getElementById('restaurant-name');
+        if (nameInput) {
+            nameInput.addEventListener('focus', () => {
+                console.log('Restaurant name input focused');
+            });
+        }
+        
+        // Get location button
+        const getLocationBtn = document.getElementById('get-location');
+        if (getLocationBtn) {
+            getLocationBtn.addEventListener('click', async () => {
+                console.log('Get location button clicked');
+                try {
+                    this.showLoading('Getting your location...');
+                    const position = await this.getCurrentPosition();
+                    
+                    this.currentLocation = {
+                        latitude: position.coords.latitude,
+                        longitude: position.coords.longitude
+                    };
+                    
+                    this.hideLoading();
+                    this.showNotification('Location saved successfully');
+                    
+                    // Update location display
+                    const locationDisplay = document.getElementById('location-display');
+                    if (locationDisplay) {
+                        locationDisplay.innerHTML = `
+                            <p class="text-green-600">Location saved:</p>
+                            <p>Latitude: ${this.currentLocation.latitude.toFixed(6)}</p>
+                            <p>Longitude: ${this.currentLocation.longitude.toFixed(6)}</p>
+                        `;
+                    }
+                } catch (error) {
+                    this.hideLoading();
+                    console.error('Error getting location:', error);
+                    this.showNotification('Error getting location: ' + error.message, 'error');
+                }
+            });
+        }
+        
+        // Photo input change handler
+        const photoInput = document.getElementById('restaurant-photos');
+        const photosPreview = document.getElementById('photos-preview');
+        
+        if (photoInput) {
+            photoInput.addEventListener('change', event => {
+                console.log('Photo input changed');
+                const files = event.target.files;
+                
+                if (files.length === 0) return;
+                
+                this.currentPhotos = [];
+                photosPreview.innerHTML = '';
+                
+                for (const file of files) {
+                    if (!file.type.startsWith('image/')) continue;
+                    
+                    const reader = new FileReader();
+                    reader.onload = e => {
+                        const photoData = e.target.result;
+                        this.currentPhotos.push(photoData);
+                        
+                        // Add preview
+                        const img = document.createElement('img');
+                        img.src = photoData;
+                        img.className = 'w-full h-32 object-cover rounded';
+                        photosPreview.appendChild(img);
+                    };
+                    reader.readAsDataURL(file);
+                }
+            });
+        }
+        
+        // Discard restaurant button
+        const discardBtn = document.getElementById('discard-restaurant');
+        if (discardBtn) {
+            discardBtn.addEventListener('click', () => {
+                console.log('Discard restaurant button clicked');
+                this.currentConcepts = [];
+                this.currentLocation = null;
+                this.currentPhotos = [];
+                
+                // Clear fields
+                const nameInput = document.getElementById('restaurant-name');
+                if (nameInput) nameInput.value = '';
+                
+                const locationDisplay = document.getElementById('location-display');
+                if (locationDisplay) locationDisplay.innerHTML = '';
+                
+                const photosPreview = document.getElementById('photos-preview');
+                if (photosPreview) photosPreview.innerHTML = '';
+                
+                this.showRecordingSection();
+            });
+        }
+        
+        // Save restaurant button
+        const saveBtn = document.getElementById('save-restaurant');
+        if (saveBtn) {
+            saveBtn.addEventListener('click', async () => {
+                console.log('Save restaurant button clicked');
+                
+                const nameInput = document.getElementById('restaurant-name');
+                const name = nameInput ? nameInput.value.trim() : '';
+                
+                if (!name) {
+                    this.showNotification('Please enter a restaurant name', 'error');
+                    return;
+                }
+                
+                if (!this.currentConcepts || this.currentConcepts.length === 0) {
+                    this.showNotification('Please add at least one concept', 'error');
+                    return;
+                }
+                
+                try {
+                    this.showLoading('Saving restaurant...');
+                    
+                    const restaurantId = await dataStorage.saveRestaurant(
+                        name,
+                        this.currentCurator.id,
+                        this.currentConcepts,
+                        this.currentLocation,
+                        this.currentPhotos
+                    );
+                    
+                    this.hideLoading();
+                    this.showNotification('Restaurant saved successfully');
+                    
+                    // Reset state
+                    this.currentConcepts = [];
+                    this.currentLocation = null;
+                    this.currentPhotos = [];
+                    
+                    // Clear fields
+                    nameInput.value = '';
+                    
+                    const locationDisplay = document.getElementById('location-display');
+                    if (locationDisplay) locationDisplay.innerHTML = '';
+                    
+                    const photosPreview = document.getElementById('photos-preview');
+                    if (photosPreview) photosPreview.innerHTML = '';
+                    
+                    // Show restaurant list and reload it
+                    this.showRestaurantListSection();
+                    this.loadRestaurantList(this.currentCurator.id);
+                } catch (error) {
+                    this.hideLoading();
+                    console.error('Error saving restaurant:', error);
+                    this.showNotification(`Error saving restaurant: ${error.message}`, 'error');
+                }
+            });
+        }
+        
+        console.log('Concepts events set up');
     }
 
     setupRestaurantListEvents() {
@@ -196,7 +521,88 @@ class UIManager {
     }
 
     setupExportImportEvents() {
-        // ...existing code...
+        console.log('Setting up export/import events...');
+        
+        // Export data button
+        const exportBtn = document.getElementById('export-data');
+        if (exportBtn) {
+            exportBtn.addEventListener('click', async () => {
+                console.log('Export data button clicked');
+                try {
+                    this.showLoading('Exporting data...');
+                    
+                    // Get all data from storage
+                    const exportData = await dataStorage.exportData();
+                    
+                    // Create JSON file
+                    const dataStr = JSON.stringify(exportData, null, 2);
+                    const dataBlob = new Blob([dataStr], { type: 'application/json' });
+                    
+                    // Create download link
+                    const downloadLink = document.createElement('a');
+                    downloadLink.href = URL.createObjectURL(dataBlob);
+                    downloadLink.download = `restaurant-curator-export-${new Date().toISOString().slice(0, 10)}.json`;
+                    
+                    // Trigger download
+                    document.body.appendChild(downloadLink);
+                    downloadLink.click();
+                    document.body.removeChild(downloadLink);
+                    
+                    this.hideLoading();
+                    this.showNotification('Data exported successfully');
+                } catch (error) {
+                    this.hideLoading();
+                    console.error('Error exporting data:', error);
+                    this.showNotification(`Error exporting data: ${error.message}`, 'error');
+                }
+            });
+        }
+        
+        // Import data button
+        const importBtn = document.getElementById('import-data');
+        const importFile = document.getElementById('import-file');
+        
+        if (importBtn && importFile) {
+            importBtn.addEventListener('click', async () => {
+                console.log('Import data button clicked');
+                const file = importFile.files[0];
+                
+                if (!file) {
+                    this.showNotification('Please select a file to import', 'error');
+                    return;
+                }
+                
+                try {
+                    this.showLoading('Importing data...');
+                    
+                    // Read the file
+                    const fileContents = await new Promise((resolve, reject) => {
+                        const reader = new FileReader();
+                        reader.onload = e => resolve(e.target.result);
+                        reader.onerror = reject;
+                        reader.readAsText(file);
+                    });
+                    
+                    // Parse JSON
+                    const importData = JSON.parse(fileContents);
+                    
+                    // Import into database
+                    await dataStorage.importData(importData);
+                    
+                    // Reload curator info
+                    await this.loadCuratorInfo();
+                    
+                    this.hideLoading();
+                    this.showNotification('Data imported successfully');
+                } catch (error) {
+                    this.hideLoading();
+                    console.error('Error importing data:', error);
+                    this.showNotification(`Error importing data: ${error.message}`, 'error');
+                }
+            });
+        }
+        
+        console.log('Export/import events set up');
     }
 
     async loadRestaurantList(curatorId) {
