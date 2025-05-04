@@ -173,6 +173,16 @@ select {
   transition: border-color var(--transition-base), box-shadow var(--transition-base);
 }
 
+/* Required field styling */
+.required-field {
+  border-left: 3px solid var(--error);
+}
+
+.required-field:focus {
+  border-color: var(--error);
+  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2);
+}
+
 input[type="text"]:focus,
 input[type="password"]:focus,
 textarea:focus,
@@ -379,7 +389,7 @@ audio {
   line-height: 1.7;
   color: var(--neutral-700);
   background-color: var(--neutral-50);
-  border: 1px solid var(--neutral-300);
+  border: 1px solid var (--neutral-300);
   border-radius: var(--radius);
   padding: 1rem;
   height: auto;

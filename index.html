@@ -21,10 +21,10 @@
 <body class="bg-white">
     <div id="app" class="container mx-auto px-4">
         <header class="mb-6 text-center bg-white py-3">
-            <!-- Logo and Title in horizontal layout -->
-            <div class="flex items-center justify-center space-x-4">
-                <img src="images/Lotier_Logo.webp" alt="Lotier Logo" class="h-16 w-auto">
+            <!-- Logo and Title with logo right, title left -->
+            <div class="flex items-center justify-between">
                 <h1 class="text-3xl font-bold text-gray-800">Collector</h1>
+                <img src="images/Lotier_Logo.webp" alt="Lotier Logo" class="h-16 w-auto">
             </div>
         </header>
 
@@ -139,16 +139,19 @@
                 <span class="material-icons">category</span>
                 Restaurant Concepts
             </h2>
-            <div id="concepts-container" class="mb-6"></div>
             
-            <div class="mt-8 border-t pt-6 border-gray-100">
+            <!-- Restaurant Details moved to top -->
+            <div class="mb-8 pb-6 border-b border-gray-100">
                 <h3 class="text-lg font-semibold mb-4 flex items-center">
                     <span class="material-icons mr-2 text-blue-500">restaurant</span>
                     Restaurant Details
                 </h3>
                 <div class="mb-6">
-                    <label class="block mb-2 font-medium">Restaurant Name:</label>
-                    <input type="text" id="restaurant-name" class="border p-2 w-full rounded" placeholder="Enter restaurant name">
+                    <label class="block mb-2 font-medium">
+                        Restaurant Name: <span class="text-red-500">*</span>
+                    </label>
+                    <input type="text" id="restaurant-name" class="border p-2 w-full rounded required-field" placeholder="Enter restaurant name" required>
+                    <p class="text-xs text-red-500 mt-1">This field is required</p>
                 </div>
                 
                 <div class="mb-6">
@@ -176,17 +179,19 @@
                     </div>
                     <div id="photos-preview" class="grid grid-cols-2 gap-2 mt-3"></div>
                 </div>
-                
-                <div class="flex justify-between mt-8">
-                    <button id="discard-restaurant" class="bg-gray-500 text-white px-4 py-2 rounded flex items-center">
-                        <span class="material-icons mr-1">clear</span>
-                        Discard
-                    </button>
-                    <button id="save-restaurant" class="bg-green-500 text-white px-4 py-2 rounded flex items-center">
-                        <span class="material-icons mr-1">check</span>
-                        Save Restaurant
-                    </button>
-                </div>
+            </div>
+            
+            <div id="concepts-container" class="mb-6"></div>
+            
+            <div class="flex justify-between mt-8">
+                <button id="discard-restaurant" class="bg-gray-500 text-white px-4 py-2 rounded flex items-center">
+                    <span class="material-icons mr-1">clear</span>
+                    Discard
+                </button>
+                <button id="save-restaurant" class="bg-green-500 text-white px-4 py-2 rounded flex items-center">
+                    <span class="material-icons mr-1">check</span>
+                    Save Restaurant
+                </button>
             </div>
         </section>
 
