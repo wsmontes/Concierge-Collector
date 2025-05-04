@@ -30,10 +30,10 @@
   --font-mono: 'JetBrains Mono', 'SF Mono', SFMono-Regular, ui-monospace, Menlo, Consolas, monospace;
   
   /* Shadows */
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  --shadow-md: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-  --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.1), 0 10px 10px -5px rgba(0, 0, 0, 0.04);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
+  --shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -1px rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -2px rgba(0, 0, 0, 0.03);
+  --shadow-lg: 0 20px 25px -5px rgba(0, 0, 0, 0.08), 0 10px 10px -5px rgba(0, 0, 0, 0.03);
   
   /* Borders */
   --radius-sm: 0.25rem;
@@ -72,6 +72,7 @@ body {
   margin: 0 auto;
   padding: 0;
   max-width: 100%;
+  background: linear-gradient(to bottom, rgba(248, 250, 252, 0.8), rgba(255, 255, 255, 1));
 }
 
 header {
@@ -79,10 +80,10 @@ header {
   position: sticky;
   top: 0;
   z-index: 30;
-  background: var(--neutral-50);
+  background: white;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  border-bottom: 1px solid var(--neutral-200);
+  border-bottom: 1px solid var(--neutral-100);
   margin-bottom: 1.25rem;
 }
 
@@ -109,10 +110,12 @@ section {
   box-shadow: var(--shadow-sm);
   transition: transform var(--transition-smooth), box-shadow var(--transition-smooth);
   animation: fade-slide-up 400ms ease-out;
+  border: 1px solid rgba(240, 240, 245, 0.8);
 }
 
 section:not(.hidden):hover {
   box-shadow: var(--shadow-md);
+  border-color: rgba(230, 230, 240, 1);
 }
 
 @keyframes fade-slide-up {
@@ -134,6 +137,8 @@ section h2 {
   display: flex;
   align-items: center;
   gap: 0.5rem;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--neutral-100);
 }
 
 section h2::before {
@@ -503,7 +508,7 @@ audio {
   padding: 1.25rem;
   background-color: white;
   border-radius: var(--radius-md);
-  border: 1px solid var(--neutral-200);
+  border: 1px solid var(--neutral-100);
   box-shadow: var(--shadow-sm);
   transition: all var(--transition-smooth);
   overflow: hidden;
@@ -524,7 +529,7 @@ audio {
 .restaurant-card:hover {
   transform: translateY(-4px);
   box-shadow: var(--shadow-md);
-  border-color: var(--neutral-300);
+  border-color: var(--neutral-200);
 }
 
 .restaurant-card h3 {
