@@ -784,15 +784,17 @@ class UIManager {
             // Create a modal for displaying restaurant details
             const modalContainer = document.createElement('div');
             modalContainer.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+            modalContainer.style.overflow = 'hidden'; // Prevent body scrolling
             
             let modalHTML = `
-                <div class="bg-white rounded-lg p-6 max-w-lg w-full max-h-[85vh] overflow-y-auto">
-                    <div class="flex justify-between items-center mb-4 sticky top-0 bg-white pt-1 pb-3 border-b z-10">
+                <div class="bg-white rounded-lg w-full max-w-lg mx-2 flex flex-col" style="max-height: 90vh;">
+                    <div class="flex justify-between items-center p-6 border-b sticky top-0 bg-white z-10">
                         <h2 class="text-2xl font-bold">${restaurant.name}</h2>
                         <button class="close-modal text-gray-500 hover:text-gray-800 text-xl">&times;</button>
                     </div>
                     
-                    <p class="text-sm text-gray-500 mb-4">Added: ${new Date(restaurant.timestamp).toLocaleDateString()}</p>
+                    <div class="overflow-y-auto p-6 flex-1" style="overscroll-behavior: contain;">
+                        <p class="text-sm text-gray-500 mb-4">Added: ${new Date(restaurant.timestamp).toLocaleDateString()}</p>
             `;
             
             // Add location if available
@@ -885,7 +887,8 @@ class UIManager {
             // Add action buttons at the bottom
             modalHTML += `
                     </div>
-                    <div class="mt-6 pt-4 border-t flex justify-between">
+                    
+                    <div class="p-6 border-t flex justify-between sticky bottom-0 bg-white">
                         <button class="delete-restaurant bg-red-500 text-white px-4 py-2 rounded-lg flex items-center">
                             <span class="material-icons mr-2">delete</span>
                             Delete
