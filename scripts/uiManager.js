@@ -10,6 +10,7 @@ class UIManager {
         this.curatorNameInput = document.getElementById('curator-name');
         this.apiKeyInput = document.getElementById('api-key');
         this.saveCuratorButton = document.getElementById('save-curator');
+        this.cancelCuratorButton = document.getElementById('cancel-curator');
         this.curatorNameDisplay = document.getElementById('curator-name-display');
         this.editCuratorButton = document.getElementById('edit-curator');
         this.curatorDisplay = document.getElementById('curator-display');
@@ -37,6 +38,10 @@ class UIManager {
         this.currentConcepts = [];
         this.currentLocation = null;
         this.currentPhotos = [];
+        
+        // For restaurant editing
+        this.isEditingRestaurant = false;
+        this.editingRestaurantId = null;
     }
 
     init() {
@@ -152,6 +157,21 @@ class UIManager {
                 this.hideLoading();
                 console.error('Error saving curator:', error);
                 this.showNotification(`Error saving curator: ${error.message}`, 'error');
+            }
+        });
+        
+        // Cancel curator button
+        this.cancelCuratorButton.addEventListener('click', () => {
+            console.log('Cancel curator button clicked');
+            
+            if (this.currentCurator) {
+                // If we have curator data, hide form and show info
+                this.curatorForm.classList.add('hidden');
+                this.curatorInfo.classList.remove('hidden');
+            } else {
+                // Otherwise just reset the form
+                this.curatorNameInput.value = '';
+                this.apiKeyInput.value = '';
             }
         });
         
@@ -429,6 +449,17 @@ class UIManager {
                 this.currentConcepts = [];
                 this.currentLocation = null;
                 this.currentPhotos = [];
+                this.isEditingRestaurant = false;
+                this.editingRestaurantId = null;
+                
+                // Reset save button text
+                const saveBtn = document.getElementById('save-restaurant');
+                if (saveBtn) {
+                    saveBtn.innerHTML = `
+                        <span class="material-icons mr-1">check</span>
+                        Save Restaurant
+                    `;
+                }
                 
                 // Clear fields
                 const nameInput = document.getElementById('restaurant-name');
@@ -448,7 +479,7 @@ class UIManager {
         const saveBtn = document.getElementById('save-restaurant');
         if (saveBtn) {
             saveBtn.addEventListener('click', async () => {
-                console.log('Save restaurant button clicked');
+                console.log('Save/update restaurant button clicked');
                 
                 const nameInput = document.getElementById('restaurant-name');
                 const name = nameInput ? nameInput.value.trim() : '';
@@ -464,18 +495,47 @@ class UIManager {
                 }
                 
                 try {
-                    this.showLoading('Saving restaurant...');
+                    this.showLoading(this.isEditingRestaurant ? 'Updating restaurant...' : 'Saving restaurant...');
                     
-                    const restaurantId = await dataStorage.saveRestaurant(
-                        name,
-                        this.currentCurator.id,
-                        this.currentConcepts,
-                        this.currentLocation,
-                        this.currentPhotos
-                    );
+                    let restaurantId;
+                    
+                    if (this.isEditingRestaurant) {
+                        // Update existing restaurant
+                        restaurantId = await dataStorage.updateRestaurant(
+                            this.editingRestaurantId,
+                            name,
+                            this.currentCurator.id,
+                            this.currentConcepts,
+                            this.currentLocation,
+                            this.currentPhotos
+                        );
+                    } else {
+                        // Save new restaurant
+                        restaurantId = await dataStorage.saveRestaurant(
+                            name,
+                            this.currentCurator.id,
+                            this.currentConcepts,
+                            this.currentLocation,
+                            this.currentPhotos
+                        );
+                    }
                     
                     this.hideLoading();
-                    this.showNotification('Restaurant saved successfully');
+                    this.showNotification(
+                        this.isEditingRestaurant ? 
+                        'Restaurant updated successfully' : 
+                        'Restaurant saved successfully'
+                    );
+                    
+                    // Reset editing state
+                    this.isEditingRestaurant = false;
+                    this.editingRestaurantId = null;
+                    
+                    // Reset button text
+                    saveBtn.innerHTML = `
+                        <span class="material-icons mr-1">check</span>
+                        Save Restaurant
+                    `;
                     
                     // Reset state
                     this.currentConcepts = [];
@@ -497,7 +557,7 @@ class UIManager {
                 } catch (error) {
                     this.hideLoading();
                     console.error('Error saving restaurant:', error);
-                    this.showNotification(`Error saving restaurant: ${error.message}`, 'error');
+                    this.showNotification(`Error ${this.isEditingRestaurant ? 'updating' : 'saving'} restaurant: ${error.message}`, 'error');
                 }
             });
         }
@@ -726,8 +786,8 @@ class UIManager {
             modalContainer.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
             
             let modalHTML = `
-                <div class="bg-white rounded-lg p-6 max-w-lg w-full max-h-90vh overflow-y-auto">
-                    <div class="flex justify-between items-center mb-4">
+                <div class="bg-white rounded-lg p-6 max-w-lg w-full max-h-[85vh] overflow-y-auto">
+                    <div class="flex justify-between items-center mb-4 sticky top-0 bg-white pt-1 pb-3 border-b z-10">
                         <h2 class="text-2xl font-bold">${restaurant.name}</h2>
                         <button class="close-modal text-gray-500 hover:text-gray-800 text-xl">&times;</button>
                     </div>
@@ -738,8 +798,11 @@ class UIManager {
             // Add location if available
             if (restaurant.location) {
                 modalHTML += `
-                    <div class="mb-4">
-                        <h3 class="text-lg font-semibold mb-2">Location</h3>
+                    <div class="mb-6">
+                        <h3 class="text-lg font-semibold mb-2 flex items-center">
+                            <span class="material-icons mr-2 text-blue-500">location_on</span>
+                            Location
+                        </h3>
                         <p>
                             Latitude: ${restaurant.location.latitude.toFixed(5)}<br>
                             Longitude: ${restaurant.location.longitude.toFixed(5)}
@@ -751,14 +814,19 @@ class UIManager {
             // Add photos if available
             if (restaurant.photos && restaurant.photos.length) {
                 modalHTML += `
-                    <div class="mb-4">
-                        <h3 class="text-lg font-semibold mb-2">Photos</h3>
-                        <div class="grid grid-cols-2 gap-2">
+                    <div class="mb-6">
+                        <h3 class="text-lg font-semibold mb-2 flex items-center">
+                            <span class="material-icons mr-2 text-green-500">photo_library</span>
+                            Photos
+                        </h3>
+                        <div class="grid grid-cols-2 gap-3">
                 `;
                 
                 restaurant.photos.forEach(photo => {
                     modalHTML += `
-                        <img src="${photo.photoData}" alt="Restaurant photo" class="w-full h-32 object-cover rounded">
+                        <div class="photo-container">
+                            <img src="${photo.photoData}" alt="Restaurant photo" class="w-full h-32 object-cover rounded shadow-sm hover:shadow-md transition-all">
+                        </div>
                     `;
                 });
                 
@@ -771,7 +839,10 @@ class UIManager {
             // Add concepts
             modalHTML += `
                 <div class="mb-4">
-                    <h3 class="text-lg font-semibold mb-2">Details</h3>
+                    <h3 class="text-lg font-semibold mb-3 flex items-center">
+                        <span class="material-icons mr-2 text-purple-500">category</span>
+                        Details
+                    </h3>
             `;
             
             // Group concepts by category
@@ -793,14 +864,14 @@ class UIManager {
                     const cssClass = category.toLowerCase().replace(' ', '-');
                     
                     modalHTML += `
-                        <div class="mb-3">
-                            <h4 class="font-medium text-gray-700">${category}</h4>
-                            <div class="flex flex-wrap">
+                        <div class="mb-4">
+                            <h4 class="font-medium text-gray-700 mb-2">${category}</h4>
+                            <div class="flex flex-wrap gap-1">
                     `;
                     
                     conceptsByCategory[category].forEach(concept => {
                         modalHTML += `
-                            <span class="concept-tag ${cssClass} mr-1 mb-1">${concept}</span>
+                            <span class="concept-tag ${cssClass}">${concept}</span>
                         `;
                     });
                     
@@ -811,7 +882,18 @@ class UIManager {
                 }
             }
             
+            // Add action buttons at the bottom
             modalHTML += `
+                    </div>
+                    <div class="mt-6 pt-4 border-t flex justify-between">
+                        <button class="delete-restaurant bg-red-500 text-white px-4 py-2 rounded-lg flex items-center">
+                            <span class="material-icons mr-2">delete</span>
+                            Delete
+                        </button>
+                        <button class="edit-restaurant bg-blue-500 text-white px-4 py-2 rounded-lg flex items-center">
+                            <span class="material-icons mr-2">edit</span>
+                            Edit Restaurant
+                        </button>
                     </div>
                 </div>
             `;
@@ -825,6 +907,32 @@ class UIManager {
             modalContainer.querySelector('.close-modal').addEventListener('click', () => {
                 document.body.removeChild(modalContainer);
                 document.body.style.overflow = '';
+            });
+            
+            // Edit restaurant functionality
+            modalContainer.querySelector('.edit-restaurant').addEventListener('click', () => {
+                this.editRestaurant(restaurant);
+                document.body.removeChild(modalContainer);
+                document.body.style.overflow = '';
+            });
+            
+            // Delete restaurant functionality
+            modalContainer.querySelector('.delete-restaurant').addEventListener('click', async () => {
+                if (confirm(`Are you sure you want to delete "${restaurant.name}"?`)) {
+                    try {
+                        this.showLoading('Deleting restaurant...');
+                        await dataStorage.deleteRestaurant(restaurant.id);
+                        this.hideLoading();
+                        this.showNotification('Restaurant deleted successfully');
+                        document.body.removeChild(modalContainer);
+                        document.body.style.overflow = '';
+                        this.loadRestaurantList(this.currentCurator.id);
+                    } catch (error) {
+                        this.hideLoading();
+                        console.error('Error deleting restaurant:', error);
+                        this.showNotification('Error deleting restaurant', 'error');
+                    }
+                }
             });
             
             // Also close when clicking outside the modal
@@ -842,38 +950,66 @@ class UIManager {
             this.showNotification('Error loading restaurant details', 'error');
         }
     }
-
-    showRecordingSection() {
-        this.hideAllSections();
-        this.curatorSection.classList.remove('hidden');
-        this.recordingSection.classList.remove('hidden');
-        this.restaurantListSection.classList.remove('hidden');
-        this.exportImportSection.classList.remove('hidden');
-    }
-
-    showTranscriptionSection(transcription) {
-        this.hideAllSections();
-        this.curatorSection.classList.remove('hidden');
-        this.transcriptionSection.classList.remove('hidden');
+    
+    // New method for editing a restaurant
+    editRestaurant(restaurant) {
+        console.log('Editing restaurant:', restaurant);
         
-        // Display the transcription
-        this.transcriptionText.textContent = transcription;
-    }
-
-    showConceptsSection() {
-        this.hideAllSections();
-        this.curatorSection.classList.remove('hidden');
-        this.conceptsSection.classList.remove('hidden');
+        // Set editing flag and restaurant ID
+        this.isEditingRestaurant = true;
+        this.editingRestaurantId = restaurant.id;
         
-        // Render the extracted concepts
-        this.renderConcepts();
-    }
-
-    showRestaurantListSection() {
-        this.hideAllSections();
-        this.curatorSection.classList.remove('hidden');
-        this.restaurantListSection.classList.remove('hidden');
-        this.exportImportSection.classList.remove('hidden');
+        // Set restaurant name
+        const nameInput = document.getElementById('restaurant-name');
+        if (nameInput) nameInput.value = restaurant.name;
+        
+        // Set location if available
+        this.currentLocation = restaurant.location;
+        const locationDisplay = document.getElementById('location-display');
+        if (locationDisplay && restaurant.location) {
+            locationDisplay.innerHTML = `
+                <p class="text-green-600">Location saved:</p>
+                <p>Latitude: ${restaurant.location.latitude.toFixed(6)}</p>
+                <p>Longitude: ${restaurant.location.longitude.toFixed(6)}</p>
+            `;
+        }
+        
+        // Set photos if available
+        this.currentPhotos = [];
+        const photosPreview = document.getElementById('photos-preview');
+        if (photosPreview) {
+            photosPreview.innerHTML = '';
+            if (restaurant.photos && restaurant.photos.length) {
+                restaurant.photos.forEach(photo => {
+                    const photoData = photo.photoData;
+                    this.currentPhotos.push(photoData);
+                    
+                    // Add preview
+                    const img = document.createElement('img');
+                    img.src = photoData;
+                    img.className = 'w-full h-32 object-cover rounded';
+                    photosPreview.appendChild(img);
+                });
+            }
+        }
+        
+        // Set concepts
+        this.currentConcepts = restaurant.concepts.map(concept => ({
+            category: concept.category,
+            value: concept.value
+        }));
+        
+        // Show the concepts section
+        this.showConceptsSection();
+        
+        // Update save button text to indicate editing
+        const saveBtn = document.getElementById('save-restaurant');
+        if (saveBtn) {
+            saveBtn.innerHTML = `
+                <span class="material-icons mr-1">check</span>
+                Update Restaurant
+            `;
+        }
     }
 
     async renderConcepts() {
@@ -1378,6 +1514,39 @@ class UIManager {
             // Add blank concept container for manual entry
             this.renderConcepts();
         }
+    }
+
+    showRecordingSection() {
+        this.hideAllSections();
+        this.curatorSection.classList.remove('hidden');
+        this.recordingSection.classList.remove('hidden');
+        this.restaurantListSection.classList.remove('hidden');
+        this.exportImportSection.classList.remove('hidden');
+    }
+
+    showTranscriptionSection(transcription) {
+        this.hideAllSections();
+        this.curatorSection.classList.remove('hidden');
+        this.transcriptionSection.classList.remove('hidden');
+        
+        // Display the transcription
+        this.transcriptionText.textContent = transcription;
+    }
+
+    showConceptsSection() {
+        this.hideAllSections();
+        this.curatorSection.classList.remove('hidden');
+        this.conceptsSection.classList.remove('hidden');
+        
+        // Render the extracted concepts
+        this.renderConcepts();
+    }
+
+    showRestaurantListSection() {
+        this.hideAllSections();
+        this.curatorSection.classList.remove('hidden');
+        this.restaurantListSection.classList.remove('hidden');
+        this.exportImportSection.classList.remove('hidden');
     }
 }
 

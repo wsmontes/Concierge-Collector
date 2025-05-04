@@ -401,6 +401,85 @@ class DataStorage {
         }
     }
 
+    async deleteRestaurant(restaurantId) {
+        try {
+            // First delete all related data
+            await this.db.restaurantConcepts.where('restaurantId').equals(restaurantId).delete();
+            await this.db.restaurantLocations.where('restaurantId').equals(restaurantId).delete();
+            await this.db.restaurantPhotos.where('restaurantId').equals(restaurantId).delete();
+            
+            // Then delete the restaurant itself
+            await this.db.restaurants.delete(restaurantId);
+            
+            return true;
+        } catch (error) {
+            console.error('Error deleting restaurant:', error);
+            throw error;
+        }
+    }
+
+    async updateRestaurant(restaurantId, name, curatorId, concepts, location, photos) {
+        console.log(`Updating restaurant: ${name} with ID: ${restaurantId}`);
+        console.log(`Concepts count: ${concepts.length}, Has location: ${!!location}, Photos count: ${photos ? photos.length : 0}`);
+        
+        try {
+            // Transaction to ensure all related data is updated together
+            return await this.db.transaction('rw', 
+                [this.db.restaurants, this.db.restaurantConcepts, 
+                 this.db.restaurantLocations, this.db.restaurantPhotos], 
+            async () => {
+                // Update restaurant basic info
+                await this.db.restaurants.update(restaurantId, {
+                    name,
+                    curatorId,
+                    // Don't update timestamp to preserve original creation date
+                });
+                
+                // Delete all existing concept relationships
+                await this.db.restaurantConcepts.where('restaurantId').equals(restaurantId).delete();
+                
+                // Add new concepts
+                for (const concept of concepts) {
+                    // Find or create the concept
+                    let conceptId = await this.saveConcept(concept.category, concept.value);
+                    
+                    // Add relationship
+                    await this.db.restaurantConcepts.put({
+                        restaurantId,
+                        conceptId
+                    });
+                }
+                
+                // Update location
+                await this.db.restaurantLocations.where('restaurantId').equals(restaurantId).delete();
+                if (location) {
+                    await this.db.restaurantLocations.put({
+                        restaurantId,
+                        latitude: location.latitude,
+                        longitude: location.longitude,
+                        address: location.address || null
+                    });
+                }
+                
+                // Update photos
+                await this.db.restaurantPhotos.where('restaurantId').equals(restaurantId).delete();
+                if (photos && photos.length) {
+                    for (const photoData of photos) {
+                        await this.db.restaurantPhotos.put({
+                            restaurantId,
+                            photoData
+                        });
+                    }
+                }
+                
+                return restaurantId;
+            });
+        } catch (error) {
+            console.error('Error updating restaurant:', error);
+            throw error;
+        }
+    }
+
     async getAllConcepts() {
         return await this.db.concepts.toArray();
     }
