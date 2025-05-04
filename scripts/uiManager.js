@@ -43,6 +43,10 @@ class UIManager {
         // For restaurant editing
         this.isEditingRestaurant = false;
         this.editingRestaurantId = null;
+
+        // Add new properties to store both versions of the transcription
+        this.originalTranscription = null;
+        this.translatedTranscription = null;
     }
 
     init() {
@@ -311,6 +315,8 @@ class UIManager {
                 console.log('Discard transcription button clicked');
                 this.showRecordingSection();
                 this.transcriptionText.textContent = '';
+                this.originalTranscription = null;
+                this.translatedTranscription = null;
             });
         }
         
@@ -327,11 +333,23 @@ class UIManager {
                 }
                 
                 try {
-                    this.showLoading('Extracting concepts...');
+                    // Save original transcription
+                    this.originalTranscription = transcription;
                     
-                    // Use GPT-4 to extract concepts
+                    // First translate the text to English for concept extraction
+                    this.showLoading('Translating text to English...');
+                    const translatedText = await apiHandler.translateText(transcription);
+                    this.translatedTranscription = translatedText;
+                    
+                    console.log('Original text:', transcription);
+                    console.log('Translated text:', translatedText);
+                    
+                    // Then extract concepts using the translated text
+                    this.showLoading('Extracting concepts from translated text...');
+                    
+                    // Use GPT-4 to extract concepts from the translated text
                     const extractedConcepts = await apiHandler.extractConcepts(
-                        transcription, 
+                        translatedText, 
                         promptTemplates.conceptExtraction
                     );
                     
@@ -1535,6 +1553,8 @@ class UIManager {
         
         // Display the transcription
         this.transcriptionText.textContent = transcription;
+        this.originalTranscription = transcription;
+        this.translatedTranscription = null; // Reset translated text
     }
 
     showConceptsSection() {

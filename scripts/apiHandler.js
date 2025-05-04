@@ -43,6 +43,59 @@ class ApiHandler {
         }
     }
 
+    async translateText(text, targetLanguage = 'English') {
+        if (!this.apiKey) {
+            throw new Error('OpenAI API key not set');
+        }
+
+        try {
+            // Create parameters for the API call
+            const messages = [
+                { 
+                    role: "system", 
+                    content: `You are a translator. Translate the following text to ${targetLanguage}. Maintain restaurant names and specific culinary terms in their original form. Focus only on accurate translation.`
+                },
+                { 
+                    role: "user", 
+                    content: text
+                }
+            ];
+            
+            console.log(`Translating text to ${targetLanguage}...`);
+            
+            const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${this.apiKey}`
+                },
+                body: JSON.stringify({
+                    model: "gpt-4",
+                    messages: messages,
+                    temperature: 0.3,
+                    max_tokens: 1500
+                })
+            });
+
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(`Translation API error: ${errorData.error?.message || 'Unknown error'}`);
+            }
+
+            const data = await response.json();
+            const translatedContent = data.choices[0]?.message?.content;
+            
+            if (!translatedContent) {
+                throw new Error('Empty response from translation API');
+            }
+
+            return translatedContent;
+        } catch (error) {
+            console.error('Translation API error:', error);
+            throw error;
+        }
+    }
+
     async extractConcepts(text, prompt) {
         if (!this.apiKey) {
             throw new Error('OpenAI API key not set');
