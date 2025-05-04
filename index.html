@@ -5,7 +5,16 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Concierge Collector</title>
     <!-- Favicon -->
-    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHZpZXdCb3g9IjAgMCAyNCAyNCIgZmlsbD0ibm9uZSIgc3Ryb2tlPSIjN2MzYWVkIiBzdHJva2Utd2lkdGg9IjIiIHN0cm9rZS1saW5lY2FwPSJyb3VuZCIgc3Ryb2tlLWxpbmVqb2luPSJyb3VuZCIgY2xhc3M9Imx1Y2lkZSBsdWNpZGUtdXRlbnNpbHMiPjxwYXRoIGQ9Ik0zIDJoMTh2NGMwIDEtMS41IDItMiAycy0yLTEtMi0yVjJNMyAyYzEgMy42NyA0IDE4IDQgMThNMyAyYzAgNCAyLjk1IDEwIDggMTAiLz48cGF0aCBkPSJNMTUgMjJoNmMuNiAwIDEtLjQgMS0xdi0xLjVjMC0uOC0uNy0xLjUtMS41LTEuNWgtOS43TTcgMjJoM20tNi0yaDlNNyA4aDdNNyAxMmg3Ii8+PC9zdmc+">
+    <link rel="icon" href="images/favicon.ico" sizes="any">
+    <link rel="icon" type="image/png" sizes="48x48" href="images/icon48.png">
+    <link rel="icon" type="image/png" sizes="16x16" href="images/icon16.png">
+    <link rel="apple-touch-icon" href="images/icon512.png">
+    <!-- Social Sharing Meta Tags -->
+    <meta property="og:title" content="Concierge Collector">
+    <meta property="og:description" content="Restaurant curation and collection tool for concierges">
+    <meta property="og:image" content="images/og-image.png">
+    <meta property="og:url" content="">
+    <meta name="twitter:card" content="summary_large_image">
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -222,8 +231,8 @@
                 <div class="flex-1">
                     <div class="file-input-container mb-3">
                         <span class="material-icons text-2xl mb-2 text-gray-400">upload_file</span>
-                        <p class="mb-1">Select JSON file to import</p>
-                        <input type="file" id="import-file" accept=".json" class="mb-2">
+                        <p class="mb-1">Select JSON or ZIP file to import</p>
+                        <input type="file" id="import-file" accept=".json,.zip" class="mb-2">
                     </div>
                     <button id="import-data" class="bg-blue-500 text-white px-4 py-2 rounded flex items-center justify-center w-full">
                         <span class="material-icons mr-1">file_upload</span>

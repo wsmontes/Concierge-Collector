@@ -565,15 +565,32 @@ class DataStorage {
             restaurants: await this.db.restaurants.toArray(),
             restaurantConcepts: await this.db.restaurantConcepts.toArray(),
             restaurantLocations: await this.db.restaurantLocations.toArray(),
-            restaurantPhotos: await this.db.restaurantPhotos.toArray()
+            restaurantPhotos: await this.db.restaurantPhotos
+                .toArray()
+                .then(photos => {
+                    // Create a copy without the binary data for the JSON
+                    return photos.map(photo => {
+                        // Create a reference to the image file instead of including the binary data
+                        const photoRef = { ...photo };
+                        photoRef.photoDataRef = `images/photo_${photo.id}.jpg`;
+                        delete photoRef.photoData;
+                        return photoRef;
+                    });
+                })
         };
         
-        return exportData;
+        return {
+            jsonData: exportData,
+            photos: await this.db.restaurantPhotos.toArray() // Return full photos for ZIP
+        };
     }
-
-    async importData(data) {
+    
+    async importData(data, photoFiles = null) {
+        // If data contains jsonData, it came from a ZIP import
+        const importData = data.jsonData || data;
+        
         // Basic validation
-        if (!data.curators || !data.concepts || !data.restaurants) {
+        if (!importData.curators || !importData.concepts || !importData.restaurants) {
             throw new Error("Invalid import data format");
         }
         
@@ -588,7 +605,7 @@ class DataStorage {
             const restaurantMap = new Map();
             
             // Import curators
-            for (const curator of data.curators) {
+            for (const curator of importData.curators) {
                 const oldId = curator.id;
                 delete curator.id; // Let Dexie assign a new ID
                 const newId = await this.db.curators.put(curator);
@@ -596,7 +613,7 @@ class DataStorage {
             }
             
             // Import concepts
-            for (const concept of data.concepts) {
+            for (const concept of importData.concepts) {
                 // Check for existing concept first
                 const existingConcept = await this.db.concepts
                     .where('[category+value]')
@@ -614,7 +631,7 @@ class DataStorage {
             }
             
             // Import restaurants
-            for (const restaurant of data.restaurants) {
+            for (const restaurant of importData.restaurants) {
                 const oldId = restaurant.id;
                 delete restaurant.id;
                 // Update curator ID reference
@@ -624,7 +641,7 @@ class DataStorage {
             }
             
             // Import restaurant concepts
-            for (const rc of data.restaurantConcepts) {
+            for (const rc of importData.restaurantConcepts) {
                 delete rc.id;
                 // Update references
                 rc.restaurantId = restaurantMap.get(rc.restaurantId) || rc.restaurantId;
@@ -633,8 +650,8 @@ class DataStorage {
             }
             
             // Import restaurant locations
-            if (data.restaurantLocations) {
-                for (const rl of data.restaurantLocations) {
+            if (importData.restaurantLocations) {
+                for (const rl of importData.restaurantLocations) {
                     delete rl.id;
                     rl.restaurantId = restaurantMap.get(rl.restaurantId) || rl.restaurantId;
                     await this.db.restaurantLocations.put(rl);
@@ -642,11 +659,25 @@ class DataStorage {
             }
             
             // Import restaurant photos
-            if (data.restaurantPhotos) {
-                for (const rp of data.restaurantPhotos) {
+            if (importData.restaurantPhotos) {
+                for (const rp of importData.restaurantPhotos) {
                     delete rp.id;
                     rp.restaurantId = restaurantMap.get(rp.restaurantId) || rp.restaurantId;
-                    await this.db.restaurantPhotos.put(rp);
+                    
+                    // Handle photos from ZIP vs JSON
+                    if (photoFiles && rp.photoDataRef) {
+                        // Get photo data from the extracted files
+                        const photoFile = photoFiles[rp.photoDataRef];
+                        if (photoFile) {
+                            rp.photoData = photoFile;
+                            delete rp.photoDataRef;
+                        }
+                    }
+                    
+                    // Only add if we have photo data
+                    if (rp.photoData) {
+                        await this.db.restaurantPhotos.put(rp);
+                    }
                 }
             }
         });
