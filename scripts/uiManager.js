@@ -13,7 +13,8 @@ class UIManager {
         this.cancelCuratorButton = document.getElementById('cancel-curator');
         this.curatorNameDisplay = document.getElementById('curator-name-display');
         this.editCuratorButton = document.getElementById('edit-curator');
-        this.curatorDisplay = document.getElementById('curator-display');
+        // Remove reference to the curator display element
+        this.curatorDisplay = null; // Era document.getElementById('curator-display')
         
         this.recordingSection = document.getElementById('recording-section');
         this.transcriptionSection = document.getElementById('transcription-section');
@@ -79,7 +80,7 @@ class UIManager {
             if (curator) {
                 this.currentCurator = curator;
                 this.curatorNameDisplay.textContent = curator.name;
-                this.curatorDisplay.textContent = `Curator: ${curator.name}`;
+                // Remove update to curator display text
                 
                 // Show curator info and hide the form
                 this.curatorForm.classList.add('hidden');
@@ -142,7 +143,7 @@ class UIManager {
                 // Update UI
                 this.currentCurator = { id: curatorId, name };
                 this.curatorNameDisplay.textContent = name;
-                this.curatorDisplay.textContent = `Curator: ${name}`;
+                // Remove update to curator display text
                 
                 // Hide form and show curator info
                 this.curatorForm.classList.add('hidden');
