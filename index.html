@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Restaurant Curator</title>
+    <!-- CSS Libraries -->
+    <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css" rel="stylesheet">
+    <!-- Custom CSS -->
+    <link href="style/style.css" rel="stylesheet">
+</head>
+<body class="bg-gray-100">
+    <div id="app" class="container mx-auto px-4 py-8">
+        <header class="mb-8 text-center">
+            <h1 class="text-3xl font-bold text-gray-800">Restaurant Curator</h1>
+            <p class="text-gray-600" id="curator-display">Welcome</p>
+        </header>
+
+        <!-- Curator Identification Section -->
+        <section id="curator-section" class="mb-8 p-4 bg-white rounded-lg shadow">
+            <h2 class="text-xl font-semibold mb-4">Curator Information</h2>
+            <div id="curator-form">
+                <label class="block mb-2">Your Name:</label>
+                <input type="text" id="curator-name" class="border p-2 w-full rounded mb-4">
+                <label class="block mb-2">OpenAI API Key:</label>
+                <input type="password" id="api-key" class="border p-2 w-full rounded mb-4">
+                <button id="save-curator" class="bg-blue-500 text-white px-4 py-2 rounded">Save Information</button>
+            </div>
+            <div id="curator-info" class="hidden">
+                <p>Logged in as: <span id="curator-name-display"></span></p>
+                <button id="edit-curator" class="text-blue-500 underline">Edit</button>
+            </div>
+        </section>
+
+        <!-- Audio Recording Section -->
+        <section id="recording-section" class="mb-8 p-4 bg-white rounded-lg shadow hidden">
+            <h2 class="text-xl font-semibold mb-4">Record Your Restaurant Review</h2>
+            <p class="text-sm text-gray-600 mb-4">Maximum recording time: 5 minutes</p>
+            
+            <div class="flex flex-col items-center">
+                <div id="timer" class="text-2xl font-mono mb-4">00:00</div>
+                <div class="flex space-x-4">
+                    <button id="start-recording" class="bg-red-500 text-white px-4 py-2 rounded">Start Recording</button>
+                    <button id="stop-recording" class="bg-gray-500 text-white px-4 py-2 rounded hidden">Stop Recording</button>
+                </div>
+                <div id="audio-preview" class="mt-4 w-full hidden">
+                    <audio id="recorded-audio" controls class="w-full"></audio>
+                    <div class="mt-4 flex justify-between">
+                        <button id="discard-recording" class="bg-gray-500 text-white px-4 py-2 rounded">Discard</button>
+                        <button id="transcribe-audio" class="bg-green-500 text-white px-4 py-2 rounded">Transcribe</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Transcription Section -->
+        <section id="transcription-section" class="mb-8 p-4 bg-white rounded-lg shadow hidden">
+            <h2 class="text-xl font-semibold mb-4">Transcription</h2>
+            <div id="transcription-text" class="border p-4 rounded h-40 overflow-y-auto mb-4"></div>
+            <div class="flex justify-between">
+                <button id="discard-transcription" class="bg-gray-500 text-white px-4 py-2 rounded">Discard</button>
+                <button id="extract-concepts" class="bg-green-500 text-white px-4 py-2 rounded">Extract Concepts</button>
+            </div>
+        </section>
+
+        <!-- Concepts Section -->
+        <section id="concepts-section" class="mb-8 p-4 bg-white rounded-lg shadow hidden">
+            <h2 class="text-xl font-semibold mb-4">Restaurant Concepts</h2>
+            <div id="concepts-container" class="mb-4"></div>
+            
+            <div class="mt-8">
+                <h3 class="text-lg font-semibold mb-2">Restaurant Details</h3>
+                <div class="mb-4">
+                    <label class="block mb-2">Restaurant Name:</label>
+                    <input type="text" id="restaurant-name" class="border p-2 w-full rounded">
+                </div>
+                
+                <div class="mb-4">
+                    <label class="block mb-2">Location:</label>
+                    <button id="get-location" class="bg-blue-500 text-white px-4 py-2 rounded mb-2">Get Current Location</button>
+                    <div id="location-display" class="text-sm"></div>
+                </div>
+                
+                <div class="mb-4">
+                    <label class="block mb-2">Photos:</label>
+                    <input type="file" id="restaurant-photos" accept="image/*" capture="environment" multiple class="mb-2">
+                    <div id="photos-preview" class="grid grid-cols-2 gap-2"></div>
+                </div>
+                
+                <div class="flex justify-between mt-8">
+                    <button id="discard-restaurant" class="bg-gray-500 text-white px-4 py-2 rounded">Discard</button>
+                    <button id="save-restaurant" class="bg-green-500 text-white px-4 py-2 rounded">Save Restaurant</button>
+                </div>
+            </div>
+        </section>
+
+        <!-- Restaurant List Section -->
+        <section id="restaurant-list-section" class="mb-8 p-4 bg-white rounded-lg shadow hidden">
+            <h2 class="text-xl font-semibold mb-4">Your Curated Restaurants</h2>
+            <button id="add-restaurant" class="bg-blue-500 text-white px-4 py-2 rounded mb-4">Add New Restaurant</button>
+            <div id="restaurants-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+        </section>
+
+        <!-- Export/Import Section -->
+        <section id="export-import-section" class="mb-8 p-4 bg-white rounded-lg shadow hidden">
+            <h2 class="text-xl font-semibold mb-4">Export/Import Data</h2>
+            <div class="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
+                <button id="export-data" class="bg-blue-500 text-white px-4 py-2 rounded">Export Data</button>
+                <div>
+                    <label class="block mb-2">Import Data:</label>
+                    <input type="file" id="import-file" accept=".json" class="mb-2">
+                    <button id="import-data" class="bg-blue-500 text-white px-4 py-2 rounded">Import</button>
+                </div>
+            </div>
+        </section>
+        
+        <!-- Quick Action Modal -->
+        <div id="quick-action-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+            <div class="bg-white rounded-lg p-6 max-w-sm w-full">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-xl font-bold">Add New Restaurant</h2>
+                    <button id="close-quick-modal" class="text-gray-500 hover:text-gray-800 text-xl">&times;</button>
+                </div>
+                
+                <div class="grid grid-cols-1 gap-4">
+                    <button id="quick-record" class="bg-red-500 text-white px-4 py-4 rounded flex items-center justify-center">
+                        <span class="material-icons mr-2">mic</span>
+                        Record Review
+                    </button>
+                    
+                    <button id="quick-location" class="bg-blue-500 text-white px-4 py-4 rounded flex items-center justify-center">
+                        <span class="material-icons mr-2">location_on</span>
+                        Get Location
+                    </button>
+                    
+                    <button id="quick-photo" class="bg-green-500 text-white px-4 py-4 rounded flex items-center justify-center">
+                        <span class="material-icons mr-2">photo_camera</span>
+                        Take Photos
+                    </button>
+                    
+                    <button id="quick-manual" class="bg-purple-500 text-white px-4 py-4 rounded flex items-center justify-center">
+                        <span class="material-icons mr-2">edit</span>
+                        Manual Entry
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Floating Action Button -->
+        <div id="fab" class="fixed bottom-6 right-6 bg-blue-600 text-white rounded-full w-16 h-16 flex items-center justify-center shadow-lg cursor-pointer">
+            <span class="text-3xl">+</span>
+        </div>
+    </div>
+
+    <!-- Libraries -->
+    <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.2/dist/dexie.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
+    <!-- Material Icons -->
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
+
+    <!-- Application Scripts - change order to ensure proper initialization -->
+    <script src="scripts/promptTemplate.js"></script>
+    <script src="scripts/dataStorage.js"></script>
+    <script src="scripts/conceptMatcher.js"></script>
+    <script src="scripts/apiHandler.js"></script>
+    <script src="scripts/audioRecorder.js"></script>
+    <script src="scripts/uiManager.js"></script>
+    <!-- Load main.js last to ensure all other scripts are loaded -->
+    <script src="scripts/main.js"></script>
+</body>
+</html>

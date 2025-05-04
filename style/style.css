@@ -1,0 +1,92 @@
+/* Custom styles for Restaurant Curator */
+
+.recording {
+    animation: pulse 2s infinite;
+}
+
+@keyframes pulse {
+    0% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0.4); }
+    70% { box-shadow: 0 0 0 10px rgba(255, 0, 0, 0); }
+    100% { box-shadow: 0 0 0 0 rgba(255, 0, 0, 0); }
+}
+
+.concept-card {
+    border-left: 4px solid transparent;
+    transition: all 0.3s ease;
+}
+
+.concept-card:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+}
+
+.concept-card.cuisine { border-left-color: #f87171; }
+.concept-card.menu { border-left-color: #60a5fa; }
+.concept-card.price { border-left-color: #34d399; }
+.concept-card.mood { border-left-color: #a78bfa; }
+.concept-card.setting { border-left-color: #fbbf24; }
+.concept-card.crowd { border-left-color: #f472b6; }
+.concept-card.suitable { border-left-color: #2dd4bf; }
+.concept-card.food-style { border-left-color: #fb923c; }
+.concept-card.drinks { border-left-color: #4ade80; }
+
+.restaurant-card {
+    transition: all 0.3s ease;
+}
+
+.restaurant-card:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 10px 15px rgba(0, 0, 0, 0.1);
+}
+
+.concept-tag {
+    font-size: 0.75rem;
+    padding: 2px 8px;
+    border-radius: 999px;
+    display: inline-block;
+    margin: 2px;
+    color: white;
+}
+
+.concept-tag.cuisine { background-color: #f87171; }
+.concept-tag.menu { background-color: #60a5fa; }
+.concept-tag.price { background-color: #34d399; }
+.concept-tag.mood { background-color: #a78bfa; }
+.concept-tag.setting { background-color: #fbbf24; }
+.concept-tag.crowd { background-color: #f472b6; }
+.concept-tag.suitable { background-color: #2dd4bf; }
+.concept-tag.food-style { background-color: #fb923c; }
+.concept-tag.drinks { background-color: #4ade80; }
+
+/* Floating Action Button */
+#fab {
+    transition: all 0.3s ease;
+    z-index: 40;
+}
+
+#fab:hover {
+    transform: scale(1.1);
+    box-shadow: 0 10px 15px rgba(0, 0, 0, 0.2);
+}
+
+/* Quick Action Modal */
+#quick-action-modal button {
+    transition: all 0.2s ease;
+}
+
+#quick-action-modal button:hover {
+    transform: translateY(-2px);
+    filter: brightness(1.1);
+}
+
+/* Mobile Optimizations */
+@media (max-width: 640px) {
+    #fab {
+        bottom: 16px;
+        right: 16px;
+    }
+    
+    .restaurant-card {
+        padding: 12px;
+    }
+}

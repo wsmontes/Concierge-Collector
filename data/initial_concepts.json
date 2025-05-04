@@ -1,0 +1,90 @@
+{
+  "Cuisine": [
+    "Italiana", 
+    "Japonesa", 
+    "Brasileira", 
+    "Francesa", 
+    "Mediterrânea", 
+    "Tailandesa", 
+    "Indiana", 
+    "Mexicana", 
+    "Peruana", 
+    "Chinesa"
+  ],
+  "Menu": [
+    "Pizzas", 
+    "Sushi", 
+    "Massas", 
+    "Frutos do mar", 
+    "Grelhados", 
+    "Sopas", 
+    "Tapas", 
+    "Sobremesas artesanais", 
+    "Pratos vegetarianos", 
+    "Pratos veganos"
+  ],
+  "Price Range": [
+    "Barato", 
+    "Moderado", 
+    "Caro", 
+    "Premium", 
+    "Custo-benefício"
+  ],
+  "Mood": [
+    "Romântico", 
+    "Casual", 
+    "Animado", 
+    "Tranquilo", 
+    "Elegante", 
+    "Aconchegante", 
+    "Descontraído", 
+    "Festivo"
+  ],
+  "Setting": [
+    "Rústico", 
+    "Moderno", 
+    "Ao ar livre", 
+    "Terraço", 
+    "Vista panorâmica", 
+    "Jardim", 
+    "Rooftop", 
+    "Contemporâneo"
+  ],
+  "Crowd": [
+    "Família", 
+    "Executivos", 
+    "Turistas", 
+    "Jovens", 
+    "Casais", 
+    "Grupos de amigos", 
+    "Celebridades"
+  ],
+  "Suitable For": [
+    "Encontros românticos", 
+    "Reuniões de negócios", 
+    "Aniversários", 
+    "Jantares em grupo", 
+    "Refeições rápidas", 
+    "Eventos especiais", 
+    "Almoços executivos"
+  ],
+  "Food Style": [
+    "Comfort food", 
+    "Gourmet", 
+    "Street food", 
+    "Fine dining", 
+    "Contemporânea", 
+    "Tradicional", 
+    "Fusion", 
+    "Orgânica"
+  ],
+  "Drinks": [
+    "Carta de vinhos", 
+    "Coquetéis autorais", 
+    "Cervejas artesanais", 
+    "Carta de cafés", 
+    "Sucos naturais", 
+    "Drinks sem álcool", 
+    "Cachaças"
+  ]
+}
