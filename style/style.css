@@ -92,7 +92,11 @@ header h1 {
   font-weight: 800;
   background: linear-gradient(135deg, var(--primary), var(--secondary));
   -webkit-background-clip: text;
+  background-clip: text;
   -webkit-text-fill-color: transparent;
+  -moz-text-fill-color: transparent;
+  text-fill-color: transparent;
+  color: var(--primary); /* Fallback for browsers without gradient text support */
   margin-bottom: 0.25rem;
   letter-spacing: -0.025em;
 }
@@ -131,14 +135,14 @@ section:not(.hidden):hover {
 
 section h2 {
   font-size: 1.25rem;
-  font-weight: 700;
-  color: var(--neutral-800);
+  font-weight: 800; /* Increased from 700 for better visibility */
+  color: var(--neutral-900); /* Darker color for better contrast (was neutral-800) */
   margin-bottom: 1rem;
   display: flex;
   align-items: center;
   gap: 0.5rem;
   padding-bottom: 0.5rem;
-  border-bottom: 1px solid var(--neutral-100);
+  border-bottom: 1px solid var(--neutral-200); /* Slightly darker border */
 }
 
 section h2::before {
