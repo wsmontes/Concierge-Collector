@@ -640,26 +640,24 @@ audio {
 .restaurant-card .view-details {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  width: 100%;
   color: var(--primary);
   font-weight: 600;
   font-size: 0.875rem;
   margin-top: 0.75rem;
   text-decoration: none;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--primary-light);
+  border-radius: var(--radius);
+  transition: all var(--transition-base);
+  background-color: rgba(124, 58, 237, 0.05);
 }
 
 .restaurant-card .view-details:hover {
-  text-decoration: underline;
-}
-
-.restaurant-card .view-details::after {
-  content: '→';
-  display: inline-block;
-  margin-left: 0.25rem;
-  transition: transform var(--transition-base);
-}
-
-.restaurant-card .view-details:hover::after {
-  transform: translateX(3px);
+  background-color: rgba(124, 58, 237, 0.1);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
 }
 
 /* ===== Location Display ===== */

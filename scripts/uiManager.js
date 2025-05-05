@@ -230,13 +230,14 @@ class UIManager {
                 console.log('Stop recording button clicked');
                 try {
                     this.showLoading('Processing recording...');
-                    await audioRecorder.stopRecording();
+                    const audioData = await audioRecorder.stopRecording();
                     
                     // Get the recording
                     const audioPreview = document.getElementById('audio-preview');
                     const audioElement = document.getElementById('recorded-audio');
                     
-                    audioElement.src = audioRecorder.audioUrl;
+                    // Use MP3 URL for better browser compatibility
+                    audioElement.src = audioData.mp3Url || audioData.webmUrl;
                     audioPreview.classList.remove('hidden');
                     
                     // Update UI
@@ -999,7 +1000,7 @@ class UIManager {
                 
                 // Add view details button
                 cardHTML += `
-                    <button class="view-details mt-4 text-blue-500 underline" data-id="${restaurant.id}">
+                    <button class="view-details" data-id="${restaurant.id}">
                         View Details
                     </button>
                 `;

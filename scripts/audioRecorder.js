@@ -26,6 +26,14 @@ class AudioRecorder {
     startRecording() {
         return new Promise(async (resolve, reject) => {
             try {
+                // Release previous MediaRecorder if exists
+                if (this.mediaRecorder) {
+                    if (this.mediaRecorder.state === 'recording') {
+                        await this.stopRecording();
+                    }
+                    this.mediaRecorder = null;
+                }
+                
                 const stream = await this.requestPermission();
                 this.audioChunks = [];
                 
@@ -86,8 +94,35 @@ class AudioRecorder {
             }
             
             this.stopTimer();
+            
+            // Create a one-time event handler that will resolve the promise
+            // after the MediaRecorder's 'stop' event completes
+            const stopHandler = async () => {
+                try {
+                    this.mediaRecorder.removeEventListener('stop', stopHandler);
+                    
+                    this.audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
+                    this.audioUrl = URL.createObjectURL(this.audioBlob);
+                    
+                    // Convert to MP3 for better compatibility
+                    const mp3Blob = await this.convertToMp3(this.audioBlob);
+                    this.mp3Blob = mp3Blob;
+                    this.mp3Url = URL.createObjectURL(mp3Blob);
+                    
+                    resolve({
+                        webmBlob: this.audioBlob,
+                        webmUrl: this.audioUrl,
+                        mp3Blob: mp3Blob,
+                        mp3Url: this.mp3Url,
+                        duration: this.startTime ? Date.now() - this.startTime : 0
+                    });
+                } catch (err) {
+                    reject(err);
+                }
+            };
+            
+            this.mediaRecorder.addEventListener('stop', stopHandler);
             this.mediaRecorder.stop();
-            resolve(true);
         });
     }
 
