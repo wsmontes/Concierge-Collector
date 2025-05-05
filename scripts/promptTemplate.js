@@ -4,42 +4,42 @@
 const promptTemplates = {
     // Main prompt for restaurant concept extraction
     conceptExtraction: {
-        system: "Você é um assistente especializado em categorizar curadorias de restaurantes com extrema precisão. Sua tarefa é extrair informações detalhadas e estruturadas do texto fornecido, organizando-as dentro das categorias específicas solicitadas.",
+        system: "You are an assistant specialized in categorizing restaurant curations with extreme precision. Your task is to extract detailed and structured information from the provided text, organizing it within the specific requested categories.",
         
-        user: `Analise o texto a seguir sobre um restaurante e extraia todas as características e conceitos relevantes, organizados pelas categorias abaixo:
+        user: `Analyze the following text about a restaurant and extract all relevant characteristics and concepts, organized by the categories below:
 
 {texto}
 
-Categorias para classificação:
-- Cuisine: tipos de culinária/gastronomia (ex: italiana, japonesa, fusion)
-- Menu: pratos ou ingredientes específicos mencionados
-- Price Range: faixa de preço (ex: barato, moderado, caro)
-- Mood: atmosfera/clima do lugar (ex: romântico, casual, animado)
-- Setting: ambiente físico (ex: rústico, moderno, ao ar livre)
-- Crowd: tipo de público predominante (ex: família, executivos, turistas)
-- Suitable For: adequado para quais ocasiões (ex: encontros, reuniões de negócios)
-- Food Style: estilo da comida (ex: comfort food, gourmet, street food)
-- Drinks: bebidas de destaque (ex: carta de vinhos, coquetéis autorais)
+Categories for classification:
+- Cuisine: types of cuisine/gastronomy (e.g.: Italian, Japanese, fusion)
+- Menu: specific dishes or ingredients mentioned
+- Price Range: price range (e.g.: inexpensive, moderate, expensive)
+- Mood: atmosphere/vibe of the place (e.g.: romantic, casual, lively)
+- Setting: physical environment (e.g.: rustic, modern, outdoor)
+- Crowd: predominant type of audience (e.g.: family, executives, tourists)
+- Suitable For: suitable for which occasions (e.g.: dates, business meetings)
+- Food Style: food style (e.g.: comfort food, gourmet, street food)
+- Drinks: featured beverages (e.g.: wine list, signature cocktails)
 
-Formate sua resposta como um objeto JSON com as categorias acima como chaves e arrays de valores encontrados no texto. Se não houver informações sobre uma categoria, retorne um array vazio. Seja extremamente preciso e considere o contexto brasileiro/português.`
+Format your response as a JSON object with the above categories as keys and arrays of values found in the text. If there is no information about a category, return an empty array. Be extremely precise and consider the Brazilian/Portuguese context.`
     },
     
     // Prompt for disambiguation of similar concepts
     disambiguation: {
-        system: "Você é um especialista em análise semântica e categorização de restaurantes, capaz de identificar diferenças sutis entre conceitos similares.",
+        system: "You are an expert in semantic analysis and restaurant categorization, capable of identifying subtle differences between similar concepts.",
         
-        user: `Preciso determinar se um novo conceito de restaurante é realmente único ou se corresponde a um conceito existente.
+        user: `I need to determine if a new restaurant concept is truly unique or corresponds to an existing concept.
 
-Conceito novo: "{newConcept}" (Categoria: {newCategory})
+New concept: "{newConcept}" (Category: {newCategory})
 
-Conceitos similares existentes:
+Similar existing concepts:
 {similarConcepts}
 
-Eu devo:
-1. Adicionar como um novo conceito porque é realmente único
-2. Usar um conceito existente similar (especifique qual)
-3. Mesclar em uma melhor formulação (sugira a melhor redação)
+I should:
+1. Add as a new concept because it is truly unique
+2. Use a similar existing concept (specify which one)
+3. Merge into a better formulation (suggest the best wording)
 
-Responda como objeto JSON com os campos: "decision" (1, 2, ou 3), "explanation", "chosen_concept" (se decision for 2), e "suggested_phrasing" (se decision for 3).`
+Answer as a JSON object with the fields: "decision" (1, 2, or 3), "explanation", "chosen_concept" (if decision is 2), and "suggested_phrasing" (if decision is 3).`
     }
 };
