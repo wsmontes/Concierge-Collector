@@ -9,23 +9,26 @@ class TranscriptionModule {
     setupEvents() {
         console.log('Setting up transcription events...');
         
-        // Discard transcription button
-        const discardBtn = document.getElementById('discard-transcription');
-        if (discardBtn) {
-            discardBtn.addEventListener('click', () => {
-                console.log('Discard transcription button clicked');
-                this.uiManager.showRecordingSection();
-                this.uiManager.transcriptionText.textContent = '';
-                this.uiManager.originalTranscription = null;
-                this.uiManager.translatedTranscription = null;
+        // Extract concepts button
+        const extractConceptsBtn = document.getElementById('extract-concepts');
+        if (extractConceptsBtn) {
+            extractConceptsBtn.addEventListener('click', () => {
+                const transcriptionText = this.uiManager.transcriptionText.innerHTML;
+                if (!transcriptionText || transcriptionText.trim().length === 0) {
+                    this.uiManager.showNotification('No transcription text to process', 'error');
+                    return;
+                }
+                
+                // Call the new processConcepts method that handles both name and concepts extraction
+                this.uiManager.conceptModule.processConcepts(transcriptionText);
             });
         }
         
-        // Extract concepts button
-        const extractBtn = document.getElementById('extract-concepts');
-        if (extractBtn) {
-            extractBtn.addEventListener('click', async () => {
-                await this.extractConcepts();
+        // Discard transcription button
+        const discardTranscriptionBtn = document.getElementById('discard-transcription');
+        if (discardTranscriptionBtn) {
+            discardTranscriptionBtn.addEventListener('click', () => {
+                this.discardTranscription();
             });
         }
         

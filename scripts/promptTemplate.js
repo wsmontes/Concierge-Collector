@@ -54,5 +54,16 @@ Transcription:
 {texto}
 
 Output just the description with no additional text, explanations, or quotation marks.`
+    },
+    
+    // New prompt for restaurant name extraction
+    restaurantNameExtraction: {
+        system: "You are an assistant specialized in identifying restaurant names from review texts.",
+        
+        user: `Extract the restaurant name from the following text. If multiple restaurant names are mentioned, identify the main one being reviewed. If no restaurant name is clearly mentioned, respond with "Unknown".
+
+Text: {texto}
+
+Provide only the restaurant name without any additional text or explanation.`
     }
 };

@@ -808,4 +808,185 @@ class ConceptModule {
     
     // Continue with more concept-related methods like loadConceptSuggestions, showConceptDisambiguationDialog, etc.
     // ... (code for loadConceptSuggestions and showConceptDisambiguationDialog would go here)
+
+    /**
+     * Extract restaurant name from transcription text
+     * @param {string} transcriptionText - The transcription text
+     * @returns {Promise<string>} - The extracted restaurant name
+     */
+    async extractRestaurantName(transcriptionText) {
+        try {
+            console.log('Extracting restaurant name from transcription...');
+            
+            if (!transcriptionText || transcriptionText.trim().length < 10) {
+                return null;
+            }
+            
+            const response = await apiHandler.extractConcepts(transcriptionText, promptTemplates.restaurantNameExtraction);
+            console.log('Restaurant name extracted:', response);
+            
+            // Handle different response formats
+            if (response) {
+                if (typeof response === 'string' && response !== 'Unknown') {
+                    // If response is directly a string
+                    return response.trim();
+                } else if (response.restaurant_name) {
+                    // If response is an object with restaurant_name property
+                    return response.restaurant_name.trim();
+                } else {
+                    // Check for any property that might contain the name
+                    const possibleKeys = Object.keys(response);
+                    for (const key of possibleKeys) {
+                        if (typeof response[key] === 'string' && response[key] !== 'Unknown') {
+                            return response[key].trim();
+                        }
+                    }
+                }
+            }
+            
+            return null;
+        } catch (error) {
+            console.error('Error extracting restaurant name:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Process concepts extraction including restaurant name
+     */
+    async processConcepts(transcriptionText) {
+        try {
+            this.uiManager.showLoading('Analyzing restaurant concepts...');
+            
+            // Extract restaurant name first
+            const restaurantName = await this.extractRestaurantName(transcriptionText);
+            
+            // Extract concepts in the original JSON format expected by the app
+            const extractedConcepts = await apiHandler.extractConcepts(
+                transcriptionText, 
+                promptTemplates.conceptExtraction
+            );
+            
+            // Show concepts section
+            this.uiManager.showConceptsSection();
+            
+            // Use the existing method to handle concepts that does proper validation
+            // and renders the UI correctly
+            if (extractedConcepts) {
+                this.handleExtractedConceptsWithValidation(extractedConcepts);
+            }
+            
+            // Populate restaurant name field if available
+            if (restaurantName) {
+                const nameInput = document.getElementById('restaurant-name');
+                if (nameInput) {
+                    nameInput.value = restaurantName;
+                    
+                    // Add AI badge to show it was auto-detected
+                    const nameInputContainer = nameInput.parentElement;
+                    const existingBadge = nameInputContainer.querySelector('.ai-generated-badge');
+                    
+                    if (!existingBadge) {
+                        const badge = document.createElement('div');
+                        badge.className = 'ai-generated-badge';
+                        badge.innerHTML = '<span class="material-icons">smart_toy</span> AI detected';
+                        nameInputContainer.insertBefore(badge, nameInput.nextSibling);
+                    }
+                }
+            }
+            
+            // Also generate description while we're at it
+            await this.generateDescription(transcriptionText);
+            
+            this.uiManager.hideLoading();
+        } catch (error) {
+            this.uiManager.hideLoading();
+            console.error('Error processing concepts:', error);
+            this.uiManager.showNotification('Error processing concepts: ' + error.message, 'error');
+        }
+    }
+
+    // Modify the existing extractConcepts method to handle only the concepts part
+    async extractConcepts(transcriptionText) {
+        console.log('Extracting concepts from transcription...');
+        
+        try {
+            const template = promptTemplates.conceptExtraction;
+            const userPrompt = template.user.replace('{texto}', transcriptionText);
+            
+            // Get API key from localStorage for proper authentication
+            const apiKey = localStorage.getItem('openai_api_key');
+            if (!apiKey) {
+                throw new Error('OpenAI API key not found. Please set it in the curator section.');
+            }
+            
+            const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`
+                },
+                body: JSON.stringify({
+                    model: 'gpt-4',
+                    messages: [
+                        {role: 'system', content: template.system},
+                        {role: 'user', content: userPrompt}
+                    ],
+                    temperature: 0.7,
+                    max_tokens: 1000
+                })
+            });
+            
+            if (!response.ok) {
+                throw new Error(`API error: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            const conceptsText = data.choices[0].message.content;
+            
+            try {
+                // Try to parse as JSON
+                const conceptsJson = JSON.parse(conceptsText);
+                
+                // Convert to array of objects
+                const conceptsArray = [];
+                for (const category in conceptsJson) {
+                    for (const value of conceptsJson[category]) {
+                        conceptsArray.push({
+                            category,
+                            value
+                        });
+                    }
+                }
+                
+                // Here we also run generateDescription explicitly to ensure it happens
+                console.log("Concepts extracted successfully, generating description...");
+                await this.generateDescription(transcriptionText);
+                
+                return conceptsArray;
+            } catch (parseError) {
+                console.error('Error parsing concepts JSON:', parseError);
+                console.log('Raw concepts text:', conceptsText);
+                throw new Error('Failed to parse concepts from AI response');
+            }
+        } catch (error) {
+            console.error('Error extracting concepts:', error);
+            throw error;
+        }
+    }
+
+    // ...existing code...
+
+    conceptAlreadyExists(category, value) {
+        if (!this.uiManager.currentConcepts || this.uiManager.currentConcepts.length === 0) {
+            return false;
+        }
+        
+        return this.uiManager.currentConcepts.some(concept => 
+            concept.category === category && 
+            concept.value.toLowerCase() === value.toLowerCase()
+        );
+    }
+    
+    // ...existing code...
 }
