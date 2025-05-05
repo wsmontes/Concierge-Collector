@@ -571,44 +571,71 @@ class UIManager {
             });
         }
         
-        // Photo input change handler
-        const photoInput = document.getElementById('restaurant-photos');
+        // Replace photo input handler with new camera and gallery handlers
         const photosPreview = document.getElementById('photos-preview');
+        const takePhotoBtn = document.getElementById('take-photo');
+        const galleryPhotoBtn = document.getElementById('gallery-photo');
+        const cameraInput = document.getElementById('camera-input');
+        const galleryInput = document.getElementById('gallery-input');
         
-        if (photoInput) {
-            photoInput.addEventListener('change', event => {
-                console.log('Photo input changed');
-                const files = event.target.files;
+        // Handler function for processing photos (reused for both inputs)
+        const processPhotoFiles = (files) => {
+            if (files.length === 0) return;
+            
+            for (const file of files) {
+                if (!file.type.startsWith('image/')) continue;
                 
-                if (files.length === 0) return;
-                
-                for (const file of files) {
-                    if (!file.type.startsWith('image/')) continue;
+                const reader = new FileReader();
+                reader.onload = e => {
+                    const photoData = e.target.result;
+                    this.currentPhotos.push(photoData);
                     
-                    const reader = new FileReader();
-                    reader.onload = e => {
-                        const photoData = e.target.result;
-                        this.currentPhotos.push(photoData);
-                        
-                        // Add preview with delete button
-                        const photoContainer = document.createElement('div');
-                        photoContainer.className = 'photo-container';
-                        
-                        const img = document.createElement('img');
-                        img.src = photoData;
-                        img.className = 'w-full h-32 object-cover rounded';
-                        
-                        const deleteBtn = document.createElement('button');
-                        deleteBtn.className = 'photo-delete-btn';
-                        deleteBtn.innerHTML = '<span class="material-icons">close</span>';
-                        deleteBtn.addEventListener('click', () => this.removePhoto(photoData, photoContainer));
-                        
-                        photoContainer.appendChild(img);
-                        photoContainer.appendChild(deleteBtn);
-                        photosPreview.appendChild(photoContainer);
-                    };
-                    reader.readAsDataURL(file);
-                }
+                    // Add preview with delete button
+                    const photoContainer = document.createElement('div');
+                    photoContainer.className = 'photo-container';
+                    
+                    const img = document.createElement('img');
+                    img.src = photoData;
+                    img.className = 'w-full h-32 object-cover rounded';
+                    
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.className = 'photo-delete-btn';
+                    deleteBtn.innerHTML = '<span class="material-icons">close</span>';
+                    deleteBtn.addEventListener('click', () => this.removePhoto(photoData, photoContainer));
+                    
+                    photoContainer.appendChild(img);
+                    photoContainer.appendChild(deleteBtn);
+                    photosPreview.appendChild(photoContainer);
+                };
+                reader.readAsDataURL(file);
+            }
+        };
+        
+        // Camera button handler
+        if (takePhotoBtn) {
+            takePhotoBtn.addEventListener('click', () => {
+                cameraInput.click();
+            });
+        }
+        
+        // Gallery button handler
+        if (galleryPhotoBtn) {
+            galleryPhotoBtn.addEventListener('click', () => {
+                galleryInput.click();
+            });
+        }
+        
+        // Camera input change handler
+        if (cameraInput) {
+            cameraInput.addEventListener('change', event => {
+                processPhotoFiles(event.target.files);
+            });
+        }
+        
+        // Gallery input change handler
+        if (galleryInput) {
+            galleryInput.addEventListener('change', event => {
+                processPhotoFiles(event.target.files);
             });
         }
         
@@ -734,73 +761,6 @@ class UIManager {
         }
         
         console.log('Concepts events set up');
-        
-        // Photo handling
-        const takePhotoBtn = document.getElementById('take-photo');
-        const galleryPhotoBtn = document.getElementById('gallery-photo');
-        const cameraInput = document.getElementById('camera-input');
-        const galleryInput = document.getElementById('gallery-input');
-        
-        // Process photos function (reused for both inputs)
-        const processPhotoFiles = (files) => {
-            if (files.length === 0) return;
-            
-            for (const file of files) {
-                if (!file.type.startsWith('image/')) continue;
-                
-                const reader = new FileReader();
-                reader.onload = e => {
-                    const photoData = e.target.result;
-                    this.currentPhotos.push(photoData);
-                    
-                    // Add preview with delete button
-                    const photoContainer = document.createElement('div');
-                    photoContainer.className = 'photo-container';
-                    
-                    const img = document.createElement('img');
-                    img.src = photoData;
-                    img.className = 'w-full h-32 object-cover rounded';
-                    
-                    const deleteBtn = document.createElement('button');
-                    deleteBtn.className = 'photo-delete-btn';
-                    deleteBtn.innerHTML = '<span class="material-icons">close</span>';
-                    deleteBtn.addEventListener('click', () => this.removePhoto(photoData, photoContainer));
-                    
-                    photoContainer.appendChild(img);
-                    photoContainer.appendChild(deleteBtn);
-                    photosPreview.appendChild(photoContainer);
-                };
-                reader.readAsDataURL(file);
-            }
-        };
-        
-        // Camera button
-        if (takePhotoBtn) {
-            takePhotoBtn.addEventListener('click', () => {
-                cameraInput.click();
-            });
-        }
-        
-        // Gallery button
-        if (galleryPhotoBtn) {
-            galleryPhotoBtn.addEventListener('click', () => {
-                galleryInput.click();
-            });
-        }
-        
-        // Camera input handler
-        if (cameraInput) {
-            cameraInput.addEventListener('change', event => {
-                processPhotoFiles(event.target.files);
-            });
-        }
-        
-        // Gallery input handler
-        if (galleryInput) {
-            galleryInput.addEventListener('change', event => {
-                processPhotoFiles(event.target.files);
-            });
-        }
     }
 
     setupRestaurantListEvents() {
@@ -1964,66 +1924,52 @@ class UIManager {
             }
         });
         
-        // Quick photo button
+        // Quick photo button - update to show options
         this.quickPhoto.addEventListener('click', () => {
-            // Create and show photo options
-            let optionsMenu = document.getElementById('quick-photo-options');
+            this.quickActionModal.classList.add('hidden');
+            this.showRestaurantFormSection();
             
-            if (!optionsMenu) {
-                optionsMenu = document.createElement('div');
-                optionsMenu.id = 'quick-photo-options';
-                optionsMenu.innerHTML = `
-                    <div class="quick-photo-option" id="quick-camera">
-                        <span class="material-icons mr-2">photo_camera</span>
-                        Take Photo
-                    </div>
-                    <div class="quick-photo-option" id="quick-gallery">
-                        <span class="material-icons mr-2">collections</span>
-                        Choose from Gallery
-                    </div>
-                `;
-                document.body.appendChild(optionsMenu);
-                
-                document.getElementById('quick-camera').addEventListener('click', () => {
-                    this.quickActionModal.classList.add('hidden');
-                    optionsMenu.classList.remove('active');
-                    this.showRestaurantFormSection();
-                    
-                    setTimeout(() => {
-                        document.getElementById('camera-input').click();
-                    }, 100);
-                });
-                
-                document.getElementById('quick-gallery').addEventListener('click', () => {
-                    this.quickActionModal.classList.add('hidden');
-                    optionsMenu.classList.remove('active');
-                    this.showRestaurantFormSection();
-                    
-                    setTimeout(() => {
-                        document.getElementById('gallery-input').click();
-                    }, 100);
-                });
-            }
+            // Show a small popup asking whether to use camera or gallery
+            const options = document.createElement('div');
+            options.className = 'fixed bg-white shadow-lg rounded-lg z-50 p-2';
+            options.style.top = '50%';
+            options.style.left = '50%';
+            options.style.transform = 'translate(-50%, -50%)';
             
-            // Position the menu relative to the FAB
-            const fabRect = this.quickPhoto.getBoundingClientRect();
-            optionsMenu.style.bottom = `${window.innerHeight - fabRect.top + 10}px`;
-            optionsMenu.style.right = `${window.innerWidth - fabRect.right + fabRect.width / 2}px`;
+            options.innerHTML = `
+                <div class="p-2 text-center font-medium">Choose option:</div>
+                <div class="flex flex-col">
+                    <button id="quick-camera-btn" class="py-2 px-4 flex items-center hover:bg-gray-100 rounded">
+                        <span class="material-icons mr-2">photo_camera</span> Camera
+                    </button>
+                    <button id="quick-gallery-btn" class="py-2 px-4 flex items-center hover:bg-gray-100 rounded">
+                        <span class="material-icons mr-2">photo_library</span> Gallery
+                    </button>
+                </div>
+            `;
             
-            // Show the menu
-            optionsMenu.classList.add('active');
+            document.body.appendChild(options);
+            
+            // Add event listeners
+            document.getElementById('quick-camera-btn').addEventListener('click', () => {
+                document.getElementById('camera-input').click();
+                document.body.removeChild(options);
+            });
+            
+            document.getElementById('quick-gallery-btn').addEventListener('click', () => {
+                document.getElementById('gallery-input').click();
+                document.body.removeChild(options);
+            });
             
             // Close when clicking outside
-            const closePhotoOptions = (e) => {
-                if (!optionsMenu.contains(e.target) && e.target !== this.quickPhoto) {
-                    optionsMenu.classList.remove('active');
-                    document.removeEventListener('click', closePhotoOptions);
+            document.addEventListener('click', (e) => {
+                if (e.target !== options && !options.contains(e.target) && 
+                    e.target !== this.quickPhoto) {
+                    if (document.body.contains(options)) {
+                        document.body.removeChild(options);
+                    }
                 }
-            };
-            
-            setTimeout(() => {
-                document.addEventListener('click', closePhotoOptions);
-            }, 100);
+            });
         });
         
         // Quick manual entry button

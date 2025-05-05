@@ -740,64 +740,6 @@ audio {
   margin: 0;
 }
 
-/* Add new styles for photo buttons */
-.photo-buttons-container {
-  display: flex;
-  margin: 8px 0;
-  width: 100%;
-  justify-content: center;
-}
-
-#take-photo, #gallery-photo {
-  transition: all var(--transition-smooth);
-}
-
-#take-photo:hover, #gallery-photo:hover {
-  transform: translateY(-2px);
-  box-shadow: var(--shadow);
-}
-
-#quick-photo-options {
-  position: absolute;
-  bottom: 100%;
-  right: 0;
-  margin-bottom: 10px;
-  display: flex;
-  flex-direction: column;
-  background: white;
-  border-radius: 8px;
-  box-shadow: var(--shadow-lg);
-  overflow: hidden;
-  transition: all var(--transition-base);
-  opacity: 0;
-  transform: translateY(10px);
-  pointer-events: none;
-  z-index: 50;
-}
-
-#quick-photo-options.active {
-  opacity: 1;
-  transform: translateY(0);
-  pointer-events: auto;
-}
-
-.quick-photo-option {
-  padding: 12px 16px;
-  display: flex;
-  align-items: center;
-  border-bottom: 1px solid #f0f0f0;
-  transition: background var(--transition-base);
-  white-space: nowrap;
-}
-
-.quick-photo-option:last-child {
-  border-bottom: none;
-}
-
-.quick-photo-option:hover {
-  background: #f5f5f5;
-}
-
 /* ===== Floating Action Button ===== */
 #fab {
   position: fixed;
@@ -1097,4 +1039,37 @@ button .material-icons {
   .file-input-container {
     background-color: var(--neutral-50);
   }
+}
+
+/* ===== Photo Buttons ===== */
+.photo-buttons-container {
+  display: flex;
+  margin: 8px 0 16px 0;
+}
+
+/* On small screens make buttons stack */
+@media (max-width: 480px) {
+  .photo-buttons-container {
+    flex-direction: column;
+  }
+  
+  .photo-buttons-container button {
+    width: 100%;
+    margin-right: 0 !important;
+    margin-bottom: 8px;
+  }
+}
+
+/* Button hover effects */
+#take-photo, #gallery-photo {
+  transition: all 0.2s ease;
+}
+
+#take-photo:hover, #gallery-photo:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+}
+
+#take-photo:active, #gallery-photo:active {
+  transform: translateY(0);
 }
