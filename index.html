@@ -305,14 +305,23 @@
     <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.1/lame.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
 
-    <!-- Application Scripts - change order to ensure proper initialization -->
+    <!-- Application modules -->
     <script src="scripts/promptTemplate.js"></script>
+    <script src="scripts/modules/uiUtilsModule.js"></script>
+    <script src="scripts/modules/curatorModule.js"></script>
+    <script src="scripts/modules/recordingModule.js"></script>
+    <script src="scripts/modules/transcriptionModule.js"></script>
+    <script src="scripts/modules/conceptModule.js"></script>
+    <script src="scripts/modules/restaurantModule.js"></script>
+    <script src="scripts/modules/exportImportModule.js"></script>
+    <script src="scripts/modules/quickActionModule.js"></script>
+
+    <!-- Main application scripts -->
+    <script src="scripts/apiHandler.js"></script>
     <script src="scripts/dataStorage.js"></script>
     <script src="scripts/conceptMatcher.js"></script>
-    <script src="scripts/apiHandler.js"></script>
     <script src="scripts/audioRecorder.js"></script>
     <script src="scripts/uiManager.js"></script>
-    <!-- Load main.js last to ensure all other scripts are loaded -->
     <script src="scripts/main.js"></script>
 </body>
 </html>
