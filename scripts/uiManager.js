@@ -382,6 +382,149 @@ class UIManager {
         console.log('Transcription events set up');
     }
 
+    /**
+     * Check if a concept already exists in the current concepts list
+     * @param {string} category - The concept category
+     * @param {string} value - The concept value
+     * @returns {boolean} - True if the concept is a duplicate
+     */
+    isDuplicateConcept(category, value) {
+        if (!this.currentConcepts) return false;
+        
+        return this.currentConcepts.some(concept => 
+            concept.category === category && 
+            concept.value.toLowerCase() === value.toLowerCase()
+        );
+    }
+    
+    /**
+     * Shows a warning about duplicate concepts
+     * @param {string} category - The concept category
+     * @param {string} value - The concept value
+     */
+    showDuplicateConceptWarning(category, value) {
+        const warningElement = document.getElementById('duplicate-concept-warning');
+        const messageElement = document.getElementById('duplicate-concept-message');
+        
+        messageElement.textContent = `"${value}" already exists in the "${category}" category.`;
+        warningElement.classList.remove('hidden');
+        
+        // Auto-hide after 5 seconds
+        setTimeout(() => {
+            warningElement.classList.add('hidden');
+        }, 5000);
+    }
+    
+    /**
+     * Add a concept with duplicate validation
+     * @param {string} category - The concept category
+     * @param {string} value - The concept value
+     * @returns {boolean} - True if concept was added, false if duplicate
+     */
+    addConceptWithValidation(category, value) {
+        // Validate concept is not empty
+        if (!value || value.trim() === '') return false;
+        
+        // Check for duplicates
+        if (this.isDuplicateConcept(category, value)) {
+            this.showDuplicateConceptWarning(category, value);
+            return false;
+        }
+        
+        // Add the concept
+        this.currentConcepts.push({
+            category,
+            value: value.trim()
+        });
+        
+        return true;
+    }
+    
+    /**
+     * Handle extracted concepts with duplicate validation
+     * @param {object} extractedConcepts - The concepts extracted from AI
+     */
+    handleExtractedConceptsWithValidation(extractedConcepts) {
+        // Filter out concepts that the restaurant already has
+        const filteredConcepts = {};
+        let addedCount = 0;
+        let duplicateCount = 0;
+        
+        for (const category in extractedConcepts) {
+            if (extractedConcepts[category] && extractedConcepts[category].length > 0) {
+                // Check each value in this category
+                filteredConcepts[category] = [];
+                
+                for (const value of extractedConcepts[category]) {
+                    if (!this.conceptAlreadyExists(category, value)) {
+                        filteredConcepts[category].push(value);
+                        addedCount++;
+                    } else {
+                        duplicateCount++;
+                    }
+                }
+            }
+        }
+        
+        // Update the UI with the filtered concepts
+        for (const category in filteredConcepts) {
+            for (const value of filteredConcepts[category]) {
+                this.addConceptWithValidation(category, value);
+            }
+        }
+        
+        // Render the concepts UI
+        this.renderConcepts();
+        
+        // Notify user about the results
+        if (duplicateCount > 0) {
+            this.showNotification(
+                `Added ${addedCount} concepts. Skipped ${duplicateCount} duplicate concepts.`,
+                'warning'
+            );
+        } else {
+            this.showNotification(
+                `Successfully added ${addedCount} concepts.`,
+                'success'
+            );
+        }
+    }
+
+    /**
+     * Filter out concepts that already exist in the current restaurant
+     * @param {Array} conceptsToFilter - Array of concepts to filter
+     * @returns {Array} - Filtered concepts array
+     */
+    filterExistingConcepts(conceptsToFilter) {
+        if (!this.currentConcepts || this.currentConcepts.length === 0) {
+            return conceptsToFilter;
+        }
+        
+        return conceptsToFilter.filter(newConcept => 
+            !this.currentConcepts.some(existing => 
+                existing.category === newConcept.category && 
+                existing.value.toLowerCase() === newConcept.value.toLowerCase()
+            )
+        );
+    }
+    
+    /**
+     * Check if a concept already exists in current restaurant concepts
+     * @param {string} category - The concept category
+     * @param {string} value - The concept value
+     * @returns {boolean} - True if concept already exists
+     */
+    conceptAlreadyExists(category, value) {
+        if (!this.currentConcepts || this.currentConcepts.length === 0) {
+            return false;
+        }
+        
+        return this.currentConcepts.some(concept => 
+            concept.category === category && 
+            concept.value.toLowerCase() === value.toLowerCase()
+        );
+    }
+
     setupConceptsEvents() {
         console.log('Setting up concepts events...');
         
@@ -1370,6 +1513,19 @@ class UIManager {
             // Get the concepts for the selected category
             const categoryConcepts = conceptsData[category] || [];
             
+            // Also fetch user-created concepts from database
+            const userConcepts = await dataStorage.getConceptsByCategory(category);
+            const userConceptValues = userConcepts.map(concept => ({
+                value: concept.value,
+                isUserCreated: true
+            }));
+            
+            // Combine initial concepts and user concepts, marking user concepts
+            const allConcepts = [
+                ...categoryConcepts.map(concept => ({ value: concept, isUserCreated: false })),
+                ...userConceptValues
+            ];
+            
             // Input event handler for filtering suggestions
             inputField.addEventListener('input', () => {
                 const inputValue = inputField.value.trim().toLowerCase();
@@ -1380,8 +1536,8 @@ class UIManager {
                 }
                 
                 // Filter concepts based on input
-                let filteredConcepts = categoryConcepts.filter(concept => 
-                    concept.toLowerCase().includes(inputValue)
+                let filteredConcepts = allConcepts.filter(concept => 
+                    concept.value.toLowerCase().includes(inputValue)
                 );
                 
                 // Limit to maximum 5 suggestions
@@ -1392,14 +1548,47 @@ class UIManager {
                     suggestionsContainer.innerHTML = '';
                     filteredConcepts.forEach(concept => {
                         const suggestionItem = document.createElement('div');
-                        suggestionItem.className = 'p-2 hover:bg-gray-100 cursor-pointer';
-                        suggestionItem.textContent = concept;
+                        
+                        // Check if concept already exists in current restaurant
+                        const alreadyExists = this.conceptAlreadyExists(category, concept.value);
+                        
+                        suggestionItem.className = 'p-2 cursor-pointer';
+                        
+                        if (alreadyExists) {
+                            // Mark concept as already added and make non-selectable
+                            suggestionItem.classList.add('concept-already-exists');
+                            suggestionItem.classList.remove('hover:bg-gray-100');
+                            suggestionItem.style.opacity = '0.6';
+                            suggestionItem.style.pointerEvents = 'none';
+                        } else {
+                            // Normal selectable concept
+                            suggestionItem.classList.add('hover:bg-gray-100');
+                        }
+                        
+                        if (concept.isUserCreated) {
+                            suggestionItem.classList.add('user-created-concept');
+                            
+                            if (alreadyExists) {
+                                suggestionItem.innerHTML = `${concept.value} <span class="user-concept-badge">custom</span> <span class="already-added-badge">already added</span>`;
+                            } else {
+                                suggestionItem.innerHTML = `${concept.value} <span class="user-concept-badge">custom</span>`;
+                            }
+                        } else {
+                            if (alreadyExists) {
+                                suggestionItem.innerHTML = `${concept.value} <span class="already-added-badge">already added</span>`;
+                            } else {
+                                suggestionItem.textContent = concept.value;
+                            }
+                        }
                         
                         // When suggestion is clicked, update input and hide suggestions
-                        suggestionItem.addEventListener('click', () => {
-                            inputField.value = concept;
-                            suggestionsContainer.classList.add('hidden');
-                        });
+                        // Only add click handler for concepts that don't already exist
+                        if (!alreadyExists) {
+                            suggestionItem.addEventListener('click', () => {
+                                inputField.value = concept.value;
+                                suggestionsContainer.classList.add('hidden');
+                            });
+                        }
                         
                         suggestionsContainer.appendChild(suggestionItem);
                     });

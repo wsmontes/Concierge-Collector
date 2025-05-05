@@ -561,6 +561,39 @@ audio {
   border-bottom: none;
 }
 
+/* User-created concept styling */
+.user-created-concept {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  border-left: 3px solid var(--primary-400);
+}
+
+.user-concept-badge {
+  font-size: 0.7rem;
+  background-color: var(--primary-100);
+  color: var(--primary-700);
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-weight: 500;
+}
+
+/* Already added concept styling */
+.already-added-badge {
+  font-size: 0.7rem;
+  background-color: var(--neutral-200);
+  color: var(--neutral-600);
+  padding: 1px 6px;
+  border-radius: 10px;
+  font-weight: 500;
+  margin-left: 4px;
+}
+
+.concept-already-exists {
+  border-left: 3px solid var(--neutral-400);
+  background-color: var(--neutral-50);
+}
+
 /* ===== Restaurant Cards ===== */
 .restaurant-card {
   position: relative;
