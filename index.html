@@ -182,9 +182,20 @@
                     </label>
                     <div class="file-input-container">
                         <span class="material-icons text-2xl mb-2 text-gray-400">file_upload</span>
-                        <p class="mb-1">Drop photos here or click to upload</p>
-                        <p class="text-xs text-gray-500">Support for multiple photos</p>
-                        <input type="file" id="restaurant-photos" accept="image/*" capture="environment" multiple class="mb-2">
+                        <p class="mb-1">Choose photo option:</p>
+                        <div class="photo-buttons-container">
+                            <button type="button" id="take-photo" class="bg-green-500 text-white px-3 py-2 rounded-lg mr-2 flex items-center">
+                                <span class="material-icons mr-1">photo_camera</span>
+                                Camera
+                            </button>
+                            <button type="button" id="gallery-photo" class="bg-blue-500 text-white px-3 py-2 rounded-lg flex items-center">
+                                <span class="material-icons mr-1">collections</span>
+                                Gallery
+                            </button>
+                        </div>
+                        <!-- Hidden file inputs -->
+                        <input type="file" id="camera-input" accept="image/*" capture="environment" multiple class="hidden">
+                        <input type="file" id="gallery-input" accept="image/*" multiple class="hidden">
                     </div>
                     <div id="photos-preview" class="grid grid-cols-2 gap-2 mt-3"></div>
                 </div>

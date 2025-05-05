@@ -734,6 +734,73 @@ class UIManager {
         }
         
         console.log('Concepts events set up');
+        
+        // Photo handling
+        const takePhotoBtn = document.getElementById('take-photo');
+        const galleryPhotoBtn = document.getElementById('gallery-photo');
+        const cameraInput = document.getElementById('camera-input');
+        const galleryInput = document.getElementById('gallery-input');
+        
+        // Process photos function (reused for both inputs)
+        const processPhotoFiles = (files) => {
+            if (files.length === 0) return;
+            
+            for (const file of files) {
+                if (!file.type.startsWith('image/')) continue;
+                
+                const reader = new FileReader();
+                reader.onload = e => {
+                    const photoData = e.target.result;
+                    this.currentPhotos.push(photoData);
+                    
+                    // Add preview with delete button
+                    const photoContainer = document.createElement('div');
+                    photoContainer.className = 'photo-container';
+                    
+                    const img = document.createElement('img');
+                    img.src = photoData;
+                    img.className = 'w-full h-32 object-cover rounded';
+                    
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.className = 'photo-delete-btn';
+                    deleteBtn.innerHTML = '<span class="material-icons">close</span>';
+                    deleteBtn.addEventListener('click', () => this.removePhoto(photoData, photoContainer));
+                    
+                    photoContainer.appendChild(img);
+                    photoContainer.appendChild(deleteBtn);
+                    photosPreview.appendChild(photoContainer);
+                };
+                reader.readAsDataURL(file);
+            }
+        };
+        
+        // Camera button
+        if (takePhotoBtn) {
+            takePhotoBtn.addEventListener('click', () => {
+                cameraInput.click();
+            });
+        }
+        
+        // Gallery button
+        if (galleryPhotoBtn) {
+            galleryPhotoBtn.addEventListener('click', () => {
+                galleryInput.click();
+            });
+        }
+        
+        // Camera input handler
+        if (cameraInput) {
+            cameraInput.addEventListener('change', event => {
+                processPhotoFiles(event.target.files);
+            });
+        }
+        
+        // Gallery input handler
+        if (galleryInput) {
+            galleryInput.addEventListener('change', event => {
+                processPhotoFiles(event.target.files);
+            });
+        }
     }
 
     setupRestaurantListEvents() {
@@ -1899,16 +1966,64 @@ class UIManager {
         
         // Quick photo button
         this.quickPhoto.addEventListener('click', () => {
-            this.quickActionModal.classList.add('hidden');
+            // Create and show photo options
+            let optionsMenu = document.getElementById('quick-photo-options');
             
-            // Show the concepts section for manual entry
-            this.showRestaurantFormSection();
-            
-            // Trigger the photo input
-            const photoInput = document.getElementById('restaurant-photos');
-            if (photoInput) {
-                photoInput.click();
+            if (!optionsMenu) {
+                optionsMenu = document.createElement('div');
+                optionsMenu.id = 'quick-photo-options';
+                optionsMenu.innerHTML = `
+                    <div class="quick-photo-option" id="quick-camera">
+                        <span class="material-icons mr-2">photo_camera</span>
+                        Take Photo
+                    </div>
+                    <div class="quick-photo-option" id="quick-gallery">
+                        <span class="material-icons mr-2">collections</span>
+                        Choose from Gallery
+                    </div>
+                `;
+                document.body.appendChild(optionsMenu);
+                
+                document.getElementById('quick-camera').addEventListener('click', () => {
+                    this.quickActionModal.classList.add('hidden');
+                    optionsMenu.classList.remove('active');
+                    this.showRestaurantFormSection();
+                    
+                    setTimeout(() => {
+                        document.getElementById('camera-input').click();
+                    }, 100);
+                });
+                
+                document.getElementById('quick-gallery').addEventListener('click', () => {
+                    this.quickActionModal.classList.add('hidden');
+                    optionsMenu.classList.remove('active');
+                    this.showRestaurantFormSection();
+                    
+                    setTimeout(() => {
+                        document.getElementById('gallery-input').click();
+                    }, 100);
+                });
             }
+            
+            // Position the menu relative to the FAB
+            const fabRect = this.quickPhoto.getBoundingClientRect();
+            optionsMenu.style.bottom = `${window.innerHeight - fabRect.top + 10}px`;
+            optionsMenu.style.right = `${window.innerWidth - fabRect.right + fabRect.width / 2}px`;
+            
+            // Show the menu
+            optionsMenu.classList.add('active');
+            
+            // Close when clicking outside
+            const closePhotoOptions = (e) => {
+                if (!optionsMenu.contains(e.target) && e.target !== this.quickPhoto) {
+                    optionsMenu.classList.remove('active');
+                    document.removeEventListener('click', closePhotoOptions);
+                }
+            };
+            
+            setTimeout(() => {
+                document.addEventListener('click', closePhotoOptions);
+            }, 100);
         });
         
         // Quick manual entry button
