@@ -582,9 +582,6 @@ class UIManager {
                 
                 if (files.length === 0) return;
                 
-                this.currentPhotos = [];
-                photosPreview.innerHTML = '';
-                
                 for (const file of files) {
                     if (!file.type.startsWith('image/')) continue;
                     
