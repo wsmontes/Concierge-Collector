@@ -125,6 +125,14 @@ class UIManager {
         this.curatorSection.classList.remove('hidden');
         this.conceptsSection.classList.remove('hidden');
         
+        // Set transcription if we're coming from transcription screen
+        if (this.originalTranscription) {
+            const transcriptionTextarea = document.getElementById('restaurant-transcription');
+            if (transcriptionTextarea && !transcriptionTextarea.value) {
+                transcriptionTextarea.value = this.originalTranscription;
+            }
+        }
+        
         // Render the extracted concepts
         this.renderConcepts();
     }

@@ -19,11 +19,11 @@ class DataStorage {
             
             this.db = new Dexie('RestaurantCurator');
             
-            // Increase version number to force schema update
-            this.db.version(2).stores({
+            // Increase version number to force schema update and add transcription field
+            this.db.version(3).stores({
                 curators: '++id, name, lastActive',
                 concepts: '++id, category, value, timestamp, [category+value]',
-                restaurants: '++id, name, curatorId, timestamp',
+                restaurants: '++id, name, curatorId, timestamp, transcription',
                 restaurantConcepts: '++id, restaurantId, conceptId',
                 restaurantPhotos: '++id, restaurantId, photoData',
                 restaurantLocations: '++id, restaurantId, latitude, longitude, address'
@@ -77,10 +77,10 @@ class DataStorage {
             
             // Reinitialize with fresh schema
             this.db = new Dexie('RestaurantCurator');
-            this.db.version(2).stores({
+            this.db.version(3).stores({
                 curators: '++id, name, lastActive',
                 concepts: '++id, category, value, timestamp, [category+value]',
-                restaurants: '++id, name, curatorId, timestamp',
+                restaurants: '++id, name, curatorId, timestamp, transcription',
                 restaurantConcepts: '++id, restaurantId, conceptId',
                 restaurantPhotos: '++id, restaurantId, photoData',
                 restaurantLocations: '++id, restaurantId, latitude, longitude, address'
@@ -225,9 +225,9 @@ class DataStorage {
         }
     }
 
-    async saveRestaurant(name, curatorId, concepts, location, photos) {
+    async saveRestaurant(name, curatorId, concepts, location, photos, transcription) {
         console.log(`Saving restaurant: ${name} with curator ID: ${curatorId}`);
-        console.log(`Concepts count: ${concepts.length}, Has location: ${!!location}, Photos count: ${photos ? photos.length : 0}`);
+        console.log(`Concepts count: ${concepts.length}, Has location: ${!!location}, Photos count: ${photos ? photos.length : 0}, Has transcription: ${!!transcription}`);
         
         // Try to save without a transaction first to preload the concepts
         // This helps avoid issues with the transaction
@@ -245,7 +245,7 @@ class DataStorage {
             }
 
             // Now proceed with the main transaction
-            return await this.saveRestaurantWithTransaction(name, curatorId, conceptIds, location, photos);
+            return await this.saveRestaurantWithTransaction(name, curatorId, conceptIds, location, photos, transcription);
         } catch (error) {
             console.error('Error in pre-save phase:', error);
             
@@ -257,14 +257,14 @@ class DataStorage {
                 await this.resetDatabase();
                 
                 // Try again after reset, but without the pre-save step
-                return await this.saveRestaurantWithTransaction(name, curatorId, concepts, location, photos);
+                return await this.saveRestaurantWithTransaction(name, curatorId, concepts, location, photos, transcription);
             }
             
             throw error;
         }
     }
     
-    async saveRestaurantWithTransaction(name, curatorId, conceptsOrIds, location, photos) {
+    async saveRestaurantWithTransaction(name, curatorId, conceptsOrIds, location, photos, transcription) {
         // Determine if we're working with pre-saved concept IDs or raw concepts
         const areConceptIds = conceptsOrIds.length > 0 && conceptsOrIds[0].conceptId !== undefined;
         
@@ -278,7 +278,8 @@ class DataStorage {
                 const restaurantId = await this.db.restaurants.put({
                     name,
                     curatorId,
-                    timestamp: new Date()
+                    timestamp: new Date(),
+                    transcription: transcription || null
                 });
                 console.log(`Restaurant saved with ID: ${restaurantId}`);
                 
@@ -352,7 +353,8 @@ class DataStorage {
                     const restaurantId = await this.db.restaurants.put({
                         name,
                         curatorId,
-                        timestamp: new Date()
+                        timestamp: new Date(),
+                        transcription: transcription || null
                     });
                     
                     // Handle raw concepts only in retry
@@ -418,9 +420,9 @@ class DataStorage {
         }
     }
 
-    async updateRestaurant(restaurantId, name, curatorId, concepts, location, photos) {
+    async updateRestaurant(restaurantId, name, curatorId, concepts, location, photos, transcription) {
         console.log(`Updating restaurant: ${name} with ID: ${restaurantId}`);
-        console.log(`Concepts count: ${concepts.length}, Has location: ${!!location}, Photos count: ${photos ? photos.length : 0}`);
+        console.log(`Concepts count: ${concepts.length}, Has location: ${!!location}, Photos count: ${photos ? photos.length : 0}, Has transcription: ${!!transcription}`);
         
         try {
             // Pre-save all concepts outside any transaction
@@ -444,6 +446,7 @@ class DataStorage {
                 await this.db.restaurants.update(restaurantId, {
                     name,
                     curatorId,
+                    transcription: transcription || null
                     // Don't update timestamp to preserve original creation date
                 });
                 
@@ -504,7 +507,8 @@ class DataStorage {
                         // Update restaurant basic info
                         await this.db.restaurants.update(restaurantId, {
                             name,
-                            curatorId
+                            curatorId,
+                            transcription: transcription || null
                         });
                         
                         // Re-save concepts directly in the recovery transaction

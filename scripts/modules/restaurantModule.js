@@ -169,6 +169,21 @@ class RestaurantModule {
                 `;
             }
             
+            // Add transcription if available
+            if (restaurant.transcription) {
+                modalHTML += `
+                    <div class="mb-6">
+                        <h3 class="text-lg font-semibold mb-2 flex items-center">
+                            <span class="material-icons mr-2 text-purple-500">description</span>
+                            Transcription
+                        </h3>
+                        <div class="p-3 bg-gray-50 rounded border text-sm overflow-auto max-h-48">
+                            ${restaurant.transcription.replace(/\n/g, '<br>')}
+                        </div>
+                    </div>
+                `;
+            }
+            
             // Add photos if available
             if (restaurant.photos && restaurant.photos.length) {
                 modalHTML += `
@@ -320,6 +335,12 @@ class RestaurantModule {
         // Set restaurant name
         const nameInput = document.getElementById('restaurant-name');
         if (nameInput) nameInput.value = restaurant.name;
+        
+        // Set transcription if available
+        const transcriptionTextarea = document.getElementById('restaurant-transcription');
+        if (transcriptionTextarea) {
+            transcriptionTextarea.value = restaurant.transcription || '';
+        }
         
         // Set location if available
         this.uiManager.currentLocation = restaurant.location;

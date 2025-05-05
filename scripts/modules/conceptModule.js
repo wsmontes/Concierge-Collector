@@ -70,6 +70,14 @@ class ConceptModule {
             });
         }
         
+        // Reprocess concepts button
+        const reprocessBtn = document.getElementById('reprocess-concepts');
+        if (reprocessBtn) {
+            reprocessBtn.addEventListener('click', async () => {
+                await this.reprocessConcepts();
+            });
+        }
+        
         console.log('Concepts events set up');
     }
     
@@ -156,6 +164,9 @@ class ConceptModule {
         const nameInput = document.getElementById('restaurant-name');
         if (nameInput) nameInput.value = '';
         
+        const transcriptionTextarea = document.getElementById('restaurant-transcription');
+        if (transcriptionTextarea) transcriptionTextarea.value = '';
+        
         const locationDisplay = document.getElementById('location-display');
         if (locationDisplay) locationDisplay.innerHTML = '';
         
@@ -181,6 +192,10 @@ class ConceptModule {
             return;
         }
         
+        // Get transcription text
+        const transcriptionTextarea = document.getElementById('restaurant-transcription');
+        const transcription = transcriptionTextarea ? transcriptionTextarea.value.trim() : '';
+        
         try {
             this.uiManager.showLoading(this.uiManager.isEditingRestaurant ? 'Updating restaurant...' : 'Saving restaurant...');
             
@@ -194,7 +209,8 @@ class ConceptModule {
                     this.uiManager.currentCurator.id,
                     this.uiManager.currentConcepts,
                     this.uiManager.currentLocation,
-                    this.uiManager.currentPhotos
+                    this.uiManager.currentPhotos,
+                    transcription
                 );
             } else {
                 // Save new restaurant
@@ -203,7 +219,8 @@ class ConceptModule {
                     this.uiManager.currentCurator.id,
                     this.uiManager.currentConcepts,
                     this.uiManager.currentLocation,
-                    this.uiManager.currentPhotos
+                    this.uiManager.currentPhotos,
+                    transcription
                 );
             }
             
@@ -609,6 +626,61 @@ class ConceptModule {
             concept.category === category && 
             concept.value.toLowerCase() === value.toLowerCase()
         );
+    }
+
+    // New function to reprocess concepts from edited transcription
+    async reprocessConcepts() {
+        console.log('Reprocess concepts button clicked');
+        
+        const transcriptionTextarea = document.getElementById('restaurant-transcription');
+        const transcription = transcriptionTextarea ? transcriptionTextarea.value.trim() : '';
+        
+        if (!transcription) {
+            this.uiManager.showNotification('No transcription text to process', 'error');
+            return;
+        }
+        
+        try {
+            // First translate the text to English for concept extraction
+            this.uiManager.showLoading('Translating text to English...');
+            const translatedText = await apiHandler.translateText(transcription);
+            
+            // Extract concepts using the translated text
+            this.uiManager.showLoading('Extracting concepts from text...');
+            
+            // Use GPT-4 to extract concepts from the translated text
+            const extractedConcepts = await apiHandler.extractConcepts(
+                translatedText, 
+                promptTemplates.conceptExtraction
+            );
+            
+            console.log('Extracted concepts:', extractedConcepts);
+            
+            // Convert to our internal format
+            this.uiManager.currentConcepts = [];
+            
+            for (const category in extractedConcepts) {
+                if (extractedConcepts[category] && Array.isArray(extractedConcepts[category])) {
+                    for (const value of extractedConcepts[category]) {
+                        this.uiManager.currentConcepts.push({
+                            category,
+                            value
+                        });
+                    }
+                }
+            }
+            
+            this.uiManager.hideLoading();
+            
+            // Render the updated concepts
+            this.uiManager.renderConcepts();
+            
+            this.uiManager.showNotification('Concepts reprocessed successfully');
+        } catch (error) {
+            this.uiManager.hideLoading();
+            console.error('Error reprocessing concepts:', error);
+            this.uiManager.showNotification(`Error reprocessing concepts: ${error.message}`, 'error');
+        }
     }
 
     // Continue with more concept-related methods like loadConceptSuggestions, showConceptDisambiguationDialog, etc.
