@@ -27,6 +27,15 @@ class ExportImportModule {
             });
         }
         
+        // New Concierge import button event handler
+        const importConciergeBtn = document.getElementById('import-concierge-data');
+        const importConciergeFile = document.getElementById('import-concierge-file');
+        if (importConciergeBtn && importConciergeFile) {
+            importConciergeBtn.addEventListener('click', () => {
+                this.importConciergeData(importConciergeFile);
+            });
+        }
+        
         console.log('Export/import events set up');
     }
     
@@ -174,5 +183,151 @@ class ExportImportModule {
             console.error('Error importing data:', error);
             this.uiManager.showNotification(`Error importing data: ${error.message}`, 'error');
         }
+    }
+
+    /**
+     * Imports restaurant data from Concierge JSON format
+     */
+    async importConciergeData(importFile) {
+        console.log('Import Concierge data button clicked');
+        const file = importFile.files[0];
+        
+        if (!file) {
+            this.uiManager.showNotification('Please select a file to import', 'error');
+            return;
+        }
+        
+        try {
+            this.uiManager.showLoading('Importing Concierge data...');
+            
+            // Read the file content
+            const fileContents = await new Promise((resolve, reject) => {
+                const reader = new FileReader();
+                reader.onload = e => resolve(e.target.result);
+                reader.onerror = reject;
+                reader.readAsText(file);
+            });
+            
+            // Parse JSON
+            const conciergeData = JSON.parse(fileContents);
+            
+            // Convert Concierge format to our internal format
+            const importData = this.convertConciergeFormat(conciergeData);
+            
+            // Import into database
+            await dataStorage.importData(importData);
+            
+            // Reload curator info
+            await this.uiManager.curatorModule.loadCuratorInfo();
+            
+            this.uiManager.hideLoading();
+            this.uiManager.showNotification('Concierge data imported successfully');
+        } catch (error) {
+            this.uiManager.hideLoading();
+            console.error('Error importing Concierge data:', error);
+            this.uiManager.showNotification('Error importing Concierge data: ' + error.message, 'error');
+        }
+    }
+    
+    /**
+     * Converts Concierge format to our internal format
+     */
+    convertConciergeFormat(conciergeData) {
+        // Get current curator ID
+        const curatorId = this.uiManager.currentCurator.id;
+        
+        // Prepare import data structure
+        const importData = {
+            restaurants: [],
+            concepts: [],
+            restaurantConcepts: [],
+            restaurantLocations: [], // Empty as Concierge data doesn't have location
+            restaurantPhotos: [], // Empty as Concierge data doesn't have photos
+            curators: [] // We'll use existing curator
+        };
+        
+        // Track concept IDs to avoid duplicates
+        const conceptMap = new Map();
+        let conceptIdCounter = -1; // Negative IDs for temporary concepts
+        
+        // Process each restaurant
+        conciergeData.forEach((restaurant, index) => {
+            // Create restaurant record
+            const restaurantId = -(index + 1); // Negative IDs for temporary restaurants
+            importData.restaurants.push({
+                id: restaurantId,
+                name: restaurant.name,
+                curatorId: curatorId,
+                timestamp: new Date()
+            });
+            
+            // Process concepts from various categories
+            const processCategory = (category, values) => {
+                if (Array.isArray(values)) {
+                    values.forEach(value => {
+                        // Skip empty values
+                        if (value && value.trim() !== '') {
+                            // Clean up value - remove asterisks used in Concierge data
+                            let cleanValue = value.replace(/\s*\*\s*$/, '').trim();
+                            if (cleanValue) {
+                                // Check if we already have this concept
+                                const conceptKey = `${category}:${cleanValue}`;
+                                let conceptId;
+                                
+                                if (conceptMap.has(conceptKey)) {
+                                    conceptId = conceptMap.get(conceptKey);
+                                } else {
+                                    // Create new concept
+                                    conceptId = conceptIdCounter--;
+                                    conceptMap.set(conceptKey, conceptId);
+                                    importData.concepts.push({
+                                        id: conceptId,
+                                        category: category,
+                                        value: cleanValue,
+                                        timestamp: new Date()
+                                    });
+                                }
+                                
+                                // Add restaurant-concept relationship
+                                importData.restaurantConcepts.push({
+                                    restaurantId: restaurantId,
+                                    conceptId: conceptId
+                                });
+                            }
+                        }
+                    });
+                }
+            };
+            
+            // Process all concept categories
+            if (restaurant.cuisine) processCategory('Cuisine', restaurant.cuisine);
+            if (restaurant.menu) processCategory('Menu', restaurant.menu);
+            if (restaurant.price_range) processCategory('Price Range', restaurant.price_range);
+            if (restaurant.mood) processCategory('Mood', restaurant.mood);
+            if (restaurant.setting) processCategory('Setting', restaurant.setting);
+            if (restaurant.crowd) processCategory('Crowd', restaurant.crowd);
+            if (restaurant.suitable_for) processCategory('Suitable For', restaurant.suitable_for);
+            if (restaurant.food_style) processCategory('Food Style', restaurant.food_style);
+            if (restaurant.drinks) processCategory('Drinks', restaurant.drinks);
+            if (restaurant.special_features) processCategory('Special Features', restaurant.special_features);
+            
+            // If there's a review, add it as a special concept
+            if (restaurant.review && restaurant.review.trim()) {
+                const reviewConceptId = conceptIdCounter--;
+                importData.concepts.push({
+                    id: reviewConceptId,
+                    category: 'Review',
+                    value: restaurant.review.trim(),
+                    timestamp: new Date()
+                });
+                
+                importData.restaurantConcepts.push({
+                    restaurantId: restaurantId,
+                    conceptId: reviewConceptId
+                });
+            }
+        });
+        
+        return importData;
     }
 }
