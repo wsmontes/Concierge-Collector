@@ -78,6 +78,25 @@ class ConceptModule {
             });
         }
         
+        // Generate description button
+        const generateDescriptionBtn = document.getElementById('generate-description');
+        if (generateDescriptionBtn) {
+            generateDescriptionBtn.addEventListener('click', async () => {
+                const transcriptionTextarea = document.getElementById('restaurant-transcription');
+                const transcription = transcriptionTextarea ? transcriptionTextarea.value.trim() : '';
+                
+                if (!transcription) {
+                    this.uiManager.showNotification('Please provide a transcription first', 'error');
+                    return;
+                }
+                
+                this.uiManager.showLoading('Generating description...');
+                await this.generateDescription(transcription);
+                this.uiManager.hideLoading();
+                this.uiManager.showNotification('Description generated successfully');
+            });
+        }
+        
         console.log('Concepts events set up');
     }
     
@@ -196,6 +215,10 @@ class ConceptModule {
         const transcriptionTextarea = document.getElementById('restaurant-transcription');
         const transcription = transcriptionTextarea ? transcriptionTextarea.value.trim() : '';
         
+        // Get description text
+        const descriptionInput = document.getElementById('restaurant-description');
+        const description = descriptionInput ? descriptionInput.value.trim() : '';
+        
         try {
             this.uiManager.showLoading(this.uiManager.isEditingRestaurant ? 'Updating restaurant...' : 'Saving restaurant...');
             
@@ -210,7 +233,8 @@ class ConceptModule {
                     this.uiManager.currentConcepts,
                     this.uiManager.currentLocation,
                     this.uiManager.currentPhotos,
-                    transcription
+                    transcription,
+                    description
                 );
             } else {
                 // Save new restaurant
@@ -220,7 +244,8 @@ class ConceptModule {
                     this.uiManager.currentConcepts,
                     this.uiManager.currentLocation,
                     this.uiManager.currentPhotos,
-                    transcription
+                    transcription,
+                    description
                 );
             }
             
@@ -630,59 +655,157 @@ class ConceptModule {
 
     // New function to reprocess concepts from edited transcription
     async reprocessConcepts() {
-        console.log('Reprocess concepts button clicked');
-        
+        console.log('Reprocessing concepts...');
         const transcriptionTextarea = document.getElementById('restaurant-transcription');
         const transcription = transcriptionTextarea ? transcriptionTextarea.value.trim() : '';
         
         if (!transcription) {
-            this.uiManager.showNotification('No transcription text to process', 'error');
+            this.uiManager.showNotification('Please provide a transcription first', 'error');
             return;
         }
         
         try {
-            // First translate the text to English for concept extraction
-            this.uiManager.showLoading('Translating text to English...');
-            const translatedText = await apiHandler.translateText(transcription);
+            this.uiManager.showLoading('Analyzing restaurant details...');
             
-            // Extract concepts using the translated text
-            this.uiManager.showLoading('Extracting concepts from text...');
+            // First extract concepts
+            const concepts = await this.extractConcepts(transcription);
+            this.uiManager.currentConcepts = concepts;
+            this.renderConcepts();
             
-            // Use GPT-4 to extract concepts from the translated text
-            const extractedConcepts = await apiHandler.extractConcepts(
-                translatedText, 
-                promptTemplates.conceptExtraction
-            );
+            // Explicitly generate description after extracting concepts
+            // This step was missing or not working properly
+            await this.generateDescription(transcription);
             
-            console.log('Extracted concepts:', extractedConcepts);
+            this.uiManager.hideLoading();
+            this.uiManager.showNotification('Concepts and description updated successfully');
+        } catch (error) {
+            this.uiManager.hideLoading();
+            console.error('Error processing concepts:', error);
+            this.uiManager.showNotification('Error processing restaurant details', 'error');
+        }
+    }
+    
+    async generateDescription(transcription) {
+        if (!transcription) return null;
+        
+        try {
+            console.log('Generating description from transcription...');
+            const template = promptTemplates.restaurantDescription;
+            const userPrompt = template.user.replace('{texto}', transcription);
             
-            // Convert to our internal format
-            this.uiManager.currentConcepts = [];
+            // Get API key from localStorage for proper authentication
+            const apiKey = localStorage.getItem('openai_api_key');
+            if (!apiKey) {
+                throw new Error('OpenAI API key not found. Please set it in the curator section.');
+            }
             
-            for (const category in extractedConcepts) {
-                if (extractedConcepts[category] && Array.isArray(extractedConcepts[category])) {
-                    for (const value of extractedConcepts[category]) {
-                        this.uiManager.currentConcepts.push({
+            const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`
+                },
+                body: JSON.stringify({
+                    model: 'gpt-4',
+                    messages: [
+                        {role: 'system', content: template.system},
+                        {role: 'user', content: userPrompt}
+                    ],
+                    temperature: 0.7,
+                    max_tokens: 100
+                })
+            });
+            
+            if (!response.ok) {
+                throw new Error(`API error: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            const description = data.choices[0].message.content.trim();
+            
+            // Update the description field
+            const descriptionInput = document.getElementById('restaurant-description');
+            if (descriptionInput) {
+                descriptionInput.value = description;
+                console.log("Description field auto-populated:", description);
+            }
+            
+            return description;
+        } catch (error) {
+            console.error('Error generating description:', error);
+            this.uiManager.showNotification('Error generating description: ' + error.message, 'error');
+            return null;
+        }
+    }
+
+    async extractConcepts(transcription) {
+        console.log('Extracting concepts from transcription...');
+        
+        try {
+            const template = promptTemplates.conceptExtraction;
+            const userPrompt = template.user.replace('{texto}', transcription);
+            
+            // Get API key from localStorage for proper authentication
+            const apiKey = localStorage.getItem('openai_api_key');
+            if (!apiKey) {
+                throw new Error('OpenAI API key not found. Please set it in the curator section.');
+            }
+            
+            const response = await fetch('https://api.openai.com/v1/chat/completions', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${apiKey}`
+                },
+                body: JSON.stringify({
+                    model: 'gpt-4',
+                    messages: [
+                        {role: 'system', content: template.system},
+                        {role: 'user', content: userPrompt}
+                    ],
+                    temperature: 0.7,
+                    max_tokens: 1000
+                })
+            });
+            
+            if (!response.ok) {
+                throw new Error(`API error: ${response.status}`);
+            }
+            
+            const data = await response.json();
+            const conceptsText = data.choices[0].message.content;
+            
+            try {
+                // Try to parse as JSON
+                const conceptsJson = JSON.parse(conceptsText);
+                
+                // Convert to array of objects
+                const conceptsArray = [];
+                for (const category in conceptsJson) {
+                    for (const value of conceptsJson[category]) {
+                        conceptsArray.push({
                             category,
                             value
                         });
                     }
                 }
+                
+                // Here we also run generateDescription explicitly to ensure it happens
+                console.log("Concepts extracted successfully, generating description...");
+                await this.generateDescription(transcription);
+                
+                return conceptsArray;
+            } catch (parseError) {
+                console.error('Error parsing concepts JSON:', parseError);
+                console.log('Raw concepts text:', conceptsText);
+                throw new Error('Failed to parse concepts from AI response');
             }
-            
-            this.uiManager.hideLoading();
-            
-            // Render the updated concepts
-            this.uiManager.renderConcepts();
-            
-            this.uiManager.showNotification('Concepts reprocessed successfully');
         } catch (error) {
-            this.uiManager.hideLoading();
-            console.error('Error reprocessing concepts:', error);
-            this.uiManager.showNotification(`Error reprocessing concepts: ${error.message}`, 'error');
+            console.error('Error extracting concepts:', error);
+            throw error;
         }
     }
-
+    
     // Continue with more concept-related methods like loadConceptSuggestions, showConceptDisambiguationDialog, etc.
     // ... (code for loadConceptSuggestions and showConceptDisambiguationDialog would go here)
 }

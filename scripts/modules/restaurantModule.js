@@ -51,6 +51,16 @@ class RestaurantModule {
                     <p class="text-sm text-gray-500 mb-2">Added: ${new Date(restaurant.timestamp).toLocaleDateString()}</p>
                 `;
                 
+                // Add description if available (show only first 15 words)
+                if (restaurant.description) {
+                    const shortDescription = restaurant.description.split(' ').slice(0, 15).join(' ');
+                    const ellipsis = restaurant.description.split(' ').length > 15 ? '...' : '';
+                    
+                    cardHTML += `
+                        <p class="text-sm mb-3 italic text-gray-600">"${shortDescription}${ellipsis}"</p>
+                    `;
+                }
+                
                 // Add location if available
                 if (restaurant.location) {
                     cardHTML += `
@@ -153,6 +163,21 @@ class RestaurantModule {
                         <p class="text-sm text-gray-500 mb-4">Added: ${new Date(restaurant.timestamp).toLocaleDateString()}</p>
             `;
             
+            // Add description if available - ALWAYS show in view mode
+            if (restaurant.description) {
+                modalHTML += `
+                    <div class="mb-6">
+                        <h3 class="text-lg font-semibold mb-2 flex items-center">
+                            <span class="material-icons mr-2 text-yellow-500">description</span>
+                            Description
+                        </h3>
+                        <div class="p-3 bg-yellow-50 rounded border text-sm italic">
+                            "${restaurant.description}"
+                        </div>
+                    </div>
+                `;
+            }
+            
             // Add location if available
             if (restaurant.location) {
                 modalHTML += `
@@ -169,20 +194,7 @@ class RestaurantModule {
                 `;
             }
             
-            // Add transcription if available
-            if (restaurant.transcription) {
-                modalHTML += `
-                    <div class="mb-6">
-                        <h3 class="text-lg font-semibold mb-2 flex items-center">
-                            <span class="material-icons mr-2 text-purple-500">description</span>
-                            Transcription
-                        </h3>
-                        <div class="p-3 bg-gray-50 rounded border text-sm overflow-auto max-h-48">
-                            ${restaurant.transcription.replace(/\n/g, '<br>')}
-                        </div>
-                    </div>
-                `;
-            }
+            // DO NOT show transcription in view mode - REMOVED
             
             // Add photos if available
             if (restaurant.photos && restaurant.photos.length) {
@@ -335,6 +347,12 @@ class RestaurantModule {
         // Set restaurant name
         const nameInput = document.getElementById('restaurant-name');
         if (nameInput) nameInput.value = restaurant.name;
+        
+        // Set description if available
+        const descriptionInput = document.getElementById('restaurant-description');
+        if (descriptionInput) {
+            descriptionInput.value = restaurant.description || '';
+        }
         
         // Set transcription if available
         const transcriptionTextarea = document.getElementById('restaurant-transcription');

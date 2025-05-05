@@ -41,5 +41,18 @@ I should:
 3. Merge into a better formulation (suggest the best wording)
 
 Answer as a JSON object with the fields: "decision" (1, 2, or 3), "explanation", "chosen_concept" (if decision is 2), and "suggested_phrasing" (if decision is 3).`
+    },
+    
+    // Prompt for generating short restaurant descriptions
+    restaurantDescription: {
+        system: "You are a concise restaurant critic able to create compelling short descriptions.",
+        
+        user: `Create a brief, engaging description of this restaurant based on the following transcription. 
+The description must be 30 words or fewer and highlight the most distinctive aspects of the restaurant.
+
+Transcription:
+{texto}
+
+Output just the description with no additional text, explanations, or quotation marks.`
     }
 };
