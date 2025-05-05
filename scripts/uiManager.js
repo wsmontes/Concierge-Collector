@@ -1401,109 +1401,317 @@ class UIManager {
         this.renderConcepts();
     }
 
-    showAddConceptDialog(category) {
-        // Create a simple modal for adding a concept
-        const modalContainer = document.createElement('div');
-        modalContainer.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+    /**
+     * Detects if the current device is a mobile device
+     * @returns {boolean} True if the device is mobile
+     */
+    isMobileDevice() {
+        return (window.innerWidth <= 768) || 
+               ('ontouchstart' in window) ||
+               (navigator.maxTouchPoints > 0) ||
+               (navigator.msMaxTouchPoints > 0);
+    }
+    
+    /**
+     * Shows a mobile-friendly concept selector
+     * @param {string} category - The concept category
+     * @param {function} onSelect - Callback when a concept is selected
+     */
+    showMobileConceptSelector(category, allConcepts, onSelect) {
+        // Create mobile overlay
+        const mobileOverlay = document.createElement('div');
+        mobileOverlay.className = 'mobile-concept-overlay';
         
-        modalContainer.innerHTML = `
-            <div class="bg-white rounded-lg p-6 max-w-md w-full">
-                <h2 class="text-xl font-bold mb-4">Add ${category} Concept</h2>
-                
-                <div class="mb-4 relative">
-                    <label class="block mb-2">Concept:</label>
-                    <input type="text" id="new-concept-value" class="border p-2 w-full rounded" autocomplete="off">
-                    <div id="concept-suggestions" class="absolute z-10 bg-white w-full border border-gray-300 rounded-b max-h-60 overflow-y-auto hidden"></div>
+        mobileOverlay.innerHTML = `
+            <div class="mobile-concept-container">
+                <div class="mobile-concept-header">
+                    <h3>Select ${category}</h3>
+                    <button class="mobile-close-button">
+                        <span class="material-icons">close</span>
+                    </button>
                 </div>
-                
-                <div class="flex justify-end space-x-2">
-                    <button class="cancel-add-concept bg-gray-500 text-white px-4 py-2 rounded">Cancel</button>
-                    <button class="confirm-add-concept bg-blue-500 text-white px-4 py-2 rounded">Add</button>
+                <div class="mobile-search-container">
+                    <div class="mobile-search-input-container">
+                        <span class="material-icons">search</span>
+                        <input type="text" class="mobile-search-input" placeholder="Search or enter new ${category}...">
+                    </div>
                 </div>
+                <div class="mobile-concept-list"></div>
             </div>
         `;
         
-        document.body.appendChild(modalContainer);
+        document.body.appendChild(mobileOverlay);
         document.body.style.overflow = 'hidden';
         
-        const inputField = modalContainer.querySelector('#new-concept-value');
-        const suggestionsContainer = modalContainer.querySelector('#concept-suggestions');
+        const searchInput = mobileOverlay.querySelector('.mobile-search-input');
+        const conceptList = mobileOverlay.querySelector('.mobile-concept-list');
+        const closeButton = mobileOverlay.querySelector('.mobile-close-button');
         
-        // Load the suggestions from the initial concepts for the current category
-        this.loadConceptSuggestions(category, inputField, suggestionsContainer);
-        
-        // Focus the input
-        setTimeout(() => {
-            inputField.focus();
-        }, 100);
-        
-        // Cancel button
-        modalContainer.querySelector('.cancel-add-concept').addEventListener('click', () => {
-            document.body.removeChild(modalContainer);
+        // Close button event
+        closeButton.addEventListener('click', () => {
+            document.body.removeChild(mobileOverlay);
             document.body.style.overflow = '';
         });
         
-        // Add button
-        modalContainer.querySelector('.confirm-add-concept').addEventListener('click', async () => {
-            const value = inputField.value.trim();
-            
-            if (!value) {
-                this.showNotification('Please enter a concept value', 'error');
-                return;
-            }
-            
-            // Check for existing concepts to find similar ones
-            try {
-                this.showLoading('Checking for similar concepts...');
-                
-                // Get all existing concepts from storage
-                const existingConcepts = await dataStorage.getAllConcepts();
-                
-                // Create new concept object
-                const newConcept = { category, value };
-                
-                // Find similar concepts using the concept matcher
-                const similarConcepts = await conceptMatcher.findSimilarConcepts(
-                    newConcept, 
-                    existingConcepts
-                );
-                
-                this.hideLoading();
-                
-                if (similarConcepts.length > 0) {
-                    // Show disambiguation dialog
-                    this.showConceptDisambiguationDialog(newConcept, similarConcepts);
-                    document.body.removeChild(modalContainer);
-                    document.body.style.overflow = '';
-                } else {
-                    // No similar concepts, add the new one directly
-                    this.currentConcepts.push(newConcept);
-                    this.renderConcepts();
-                    document.body.removeChild(modalContainer);
-                    document.body.style.overflow = '';
-                }
-            } catch (error) {
-                this.hideLoading();
-                console.error('Error checking for similar concepts:', error);
-                this.showNotification('Error checking for similar concepts', 'error');
-                
-                // Fallback: add directly
-                this.currentConcepts.push({ category, value });
-                this.renderConcepts();
-                document.body.removeChild(modalContainer);
+        // Focus the search input (with delay for iOS)
+        setTimeout(() => searchInput.focus(), 300);
+        
+        // Display all concepts initially
+        this.displayMobileConcepts(conceptList, allConcepts, searchInput.value.toLowerCase(), category, onSelect);
+        
+        // Search input event
+        searchInput.addEventListener('input', () => {
+            this.displayMobileConcepts(conceptList, allConcepts, searchInput.value.toLowerCase(), category, onSelect);
+        });
+        
+        // Add button for adding custom concept
+        searchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter' && searchInput.value.trim()) {
+                onSelect(searchInput.value.trim());
+                document.body.removeChild(mobileOverlay);
                 document.body.style.overflow = '';
             }
         });
         
-        // Close when clicking outside
-        modalContainer.addEventListener('click', event => {
-            if (event.target === modalContainer) {
-                document.body.removeChild(modalContainer);
+        // Close when clicking outside the container
+        mobileOverlay.addEventListener('click', (e) => {
+            if (e.target === mobileOverlay) {
+                document.body.removeChild(mobileOverlay);
                 document.body.style.overflow = '';
             }
         });
     }
     
+    /**
+     * Display filtered concepts in the mobile UI
+     */
+    displayMobileConcepts(container, allConcepts, searchTerm, category, onSelect) {
+        // Filter concepts based on search term
+        let filteredConcepts = allConcepts.filter(concept => 
+            concept.value.toLowerCase().includes(searchTerm)
+        );
+        
+        container.innerHTML = '';
+        
+        if (searchTerm && !filteredConcepts.some(c => c.value.toLowerCase() === searchTerm.toLowerCase())) {
+            // Add option to create new concept
+            const addNewItem = document.createElement('div');
+            addNewItem.className = 'mobile-concept-item mobile-add-new';
+            addNewItem.innerHTML = `
+                <span class="material-icons">add</span>
+                <span>Add "${searchTerm}" as new ${category}</span>
+            `;
+            addNewItem.addEventListener('click', () => {
+                onSelect(searchTerm);
+                document.querySelector('.mobile-concept-overlay').remove();
+                document.body.style.overflow = '';
+            });
+            container.appendChild(addNewItem);
+        }
+        
+        // Add filtered concepts
+        filteredConcepts.forEach(concept => {
+            const conceptItem = document.createElement('div');
+            const alreadyExists = this.conceptAlreadyExists(category, concept.value);
+            
+            conceptItem.className = 'mobile-concept-item';
+            if (alreadyExists) {
+                conceptItem.classList.add('mobile-concept-exists');
+            }
+            
+            let conceptText = concept.value;
+            if (concept.isUserCreated) {
+                conceptText += ' <span class="mobile-custom-badge">custom</span>';
+            }
+            if (alreadyExists) {
+                conceptText += ' <span class="mobile-exists-badge">already added</span>';
+            }
+            
+            conceptItem.innerHTML = conceptText;
+            
+            if (!alreadyExists) {
+                conceptItem.addEventListener('click', () => {
+                    onSelect(concept.value);
+                    document.querySelector('.mobile-concept-overlay').remove();
+                    document.body.style.overflow = '';
+                });
+            }
+            
+            container.appendChild(conceptItem);
+        });
+        
+        if (filteredConcepts.length === 0 && !searchTerm) {
+            container.innerHTML = '<div class="mobile-no-results">No suggestions found. Type to add a new concept.</div>';
+        }
+    }
+
+    showAddConceptDialog(category) {
+        // If on mobile, use the mobile-friendly version
+        if (this.isMobileDevice()) {
+            // First fetch all concepts
+            Promise.all([
+                fetch('/data/initial_concepts.json').then(res => res.json()),
+                dataStorage.getConceptsByCategory(category)
+            ]).then(([initialConceptsData, userConcepts]) => {
+                const categoryConcepts = initialConceptsData[category] || [];
+                const userConceptValues = userConcepts.map(concept => ({
+                    value: concept.value,
+                    isUserCreated: true
+                }));
+                
+                // Combine initial concepts and user concepts
+                const allConcepts = [
+                    ...categoryConcepts.map(concept => ({ value: concept, isUserCreated: false })),
+                    ...userConceptValues
+                ];
+                
+                // Show the mobile selector
+                this.showMobileConceptSelector(category, allConcepts, async (selectedValue) => {
+                    if (!selectedValue) return;
+                    
+                    try {
+                        this.showLoading('Checking for similar concepts...');
+                        
+                        // Get all existing concepts from storage
+                        const existingConcepts = await dataStorage.getAllConcepts();
+                        
+                        // Create new concept object
+                        const newConcept = { category, value: selectedValue };
+                        
+                        // Find similar concepts
+                        const similarConcepts = await conceptMatcher.findSimilarConcepts(
+                            newConcept, 
+                            existingConcepts
+                        );
+                        
+                        this.hideLoading();
+                        
+                        if (similarConcepts.length > 0) {
+                            // Show disambiguation dialog
+                            this.showConceptDisambiguationDialog(newConcept, similarConcepts);
+                        } else {
+                            // No similar concepts, add the new one directly
+                            this.currentConcepts.push(newConcept);
+                            this.renderConcepts();
+                        }
+                    } catch (error) {
+                        this.hideLoading();
+                        console.error('Error checking for similar concepts:', error);
+                        this.showNotification('Error checking for similar concepts', 'error');
+                        
+                        // Fallback: add directly
+                        this.currentConcepts.push({ category, value: selectedValue });
+                        this.renderConcepts();
+                    }
+                });
+            }).catch(error => {
+                console.error('Error loading concept suggestions:', error);
+                this.showNotification('Error loading suggestions', 'error');
+            });
+        } else {
+            // Use the desktop modal version (existing code)
+            const modalContainer = document.createElement('div');
+            modalContainer.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+            
+            modalContainer.innerHTML = `
+                <div class="bg-white rounded-lg p-6 max-w-md w-full">
+                    <h2 class="text-xl font-bold mb-4">Add ${category} Concept</h2>
+                    
+                    <div class="mb-4 relative">
+                        <label class="block mb-2">Concept:</label>
+                        <input type="text" id="new-concept-value" class="border p-2 w-full rounded" autocomplete="off">
+                        <div id="concept-suggestions" class="absolute z-10 bg-white w-full border border-gray-300 rounded-b max-h-60 overflow-y-auto hidden"></div>
+                    </div>
+                    
+                    <div class="flex justify-end space-x-2">
+                        <button class="cancel-add-concept bg-gray-500 text-white px-4 py-2 rounded">Cancel</button>
+                        <button class="confirm-add-concept bg-blue-500 text-white px-4 py-2 rounded">Add</button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modalContainer);
+            document.body.style.overflow = 'hidden';
+            
+            const inputField = modalContainer.querySelector('#new-concept-value');
+            const suggestionsContainer = modalContainer.querySelector('#concept-suggestions');
+            
+            // Load the suggestions from the initial concepts for the current category
+            this.loadConceptSuggestions(category, inputField, suggestionsContainer);
+            
+            // Focus the input
+            setTimeout(() => {
+                inputField.focus();
+            }, 100);
+            
+            // Cancel button
+            modalContainer.querySelector('.cancel-add-concept').addEventListener('click', () => {
+                document.body.removeChild(modalContainer);
+                document.body.style.overflow = '';
+            });
+            
+            // Add button
+            modalContainer.querySelector('.confirm-add-concept').addEventListener('click', async () => {
+                const value = inputField.value.trim();
+                
+                if (!value) {
+                    this.showNotification('Please enter a concept value', 'error');
+                    return;
+                }
+                
+                // Check for existing concepts to find similar ones
+                try {
+                    this.showLoading('Checking for similar concepts...');
+                    
+                    // Get all existing concepts from storage
+                    const existingConcepts = await dataStorage.getAllConcepts();
+                    
+                    // Create new concept object
+                    const newConcept = { category, value };
+                    
+                    // Find similar concepts using the concept matcher
+                    const similarConcepts = await conceptMatcher.findSimilarConcepts(
+                        newConcept, 
+                        existingConcepts
+                    );
+                    
+                    this.hideLoading();
+                    
+                    if (similarConcepts.length > 0) {
+                        // Show disambiguation dialog
+                        this.showConceptDisambiguationDialog(newConcept, similarConcepts);
+                        document.body.removeChild(modalContainer);
+                        document.body.style.overflow = '';
+                    } else {
+                        // No similar concepts, add the new one directly
+                        this.currentConcepts.push(newConcept);
+                        this.renderConcepts();
+                        document.body.removeChild(modalContainer);
+                        document.body.style.overflow = '';
+                    }
+                } catch (error) {
+                    this.hideLoading();
+                    console.error('Error checking for similar concepts:', error);
+                    this.showNotification('Error checking for similar concepts', 'error');
+                    
+                    // Fallback: add directly
+                    this.currentConcepts.push({ category, value });
+                    this.renderConcepts();
+                    document.body.removeChild(modalContainer);
+                    document.body.style.overflow = '';
+                }
+            });
+            
+            // Close when clicking outside
+            modalContainer.addEventListener('click', event => {
+                if (event.target === modalContainer) {
+                    document.body.removeChild(modalContainer);
+                    document.body.style.overflow = '';
+                }
+            });
+        }
+    }
+
     // New method to load and handle concept suggestions
     async loadConceptSuggestions(category, inputField, suggestionsContainer) {
         try {
