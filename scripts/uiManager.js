@@ -449,11 +449,22 @@ class UIManager {
                         const photoData = e.target.result;
                         this.currentPhotos.push(photoData);
                         
-                        // Add preview
+                        // Add preview with delete button
+                        const photoContainer = document.createElement('div');
+                        photoContainer.className = 'photo-container';
+                        
                         const img = document.createElement('img');
                         img.src = photoData;
                         img.className = 'w-full h-32 object-cover rounded';
-                        photosPreview.appendChild(img);
+                        
+                        const deleteBtn = document.createElement('button');
+                        deleteBtn.className = 'photo-delete-btn';
+                        deleteBtn.innerHTML = '<span class="material-icons">close</span>';
+                        deleteBtn.addEventListener('click', () => this.removePhoto(photoData, photoContainer));
+                        
+                        photoContainer.appendChild(img);
+                        photoContainer.appendChild(deleteBtn);
+                        photosPreview.appendChild(photoContainer);
                     };
                     reader.readAsDataURL(file);
                 }
@@ -1083,11 +1094,22 @@ class UIManager {
                     const photoData = photo.photoData;
                     this.currentPhotos.push(photoData);
                     
-                    // Add preview
+                    // Add preview with delete button
+                    const photoContainer = document.createElement('div');
+                    photoContainer.className = 'photo-container';
+                    
                     const img = document.createElement('img');
                     img.src = photoData;
                     img.className = 'w-full h-32 object-cover rounded';
-                    photosPreview.appendChild(img);
+                    
+                    const deleteBtn = document.createElement('button');
+                    deleteBtn.className = 'photo-delete-btn';
+                    deleteBtn.innerHTML = '<span class="material-icons">close</span>';
+                    deleteBtn.addEventListener('click', () => this.removePhoto(photoData, photoContainer));
+                    
+                    photoContainer.appendChild(img);
+                    photoContainer.appendChild(deleteBtn);
+                    photosPreview.appendChild(photoContainer);
                 });
             }
         }
@@ -1111,42 +1133,64 @@ class UIManager {
         }
     }
 
+    // Add missing removePhoto method
+    removePhoto(photoData, photoContainer) {
+        // Remove from the currentPhotos array
+        const index = this.currentPhotos.indexOf(photoData);
+        if (index > -1) {
+            this.currentPhotos.splice(index, 1);
+        }
+        
+        // Remove from the UI
+        if (photoContainer && photoContainer.parentNode) {
+            photoContainer.parentNode.removeChild(photoContainer);
+        }
+        
+        console.log('Photo removed, remaining:', this.currentPhotos.length);
+    }
+
     async renderConcepts() {
         // Clear the container
         this.conceptsContainer.innerHTML = '';
         
-        if (!this.currentConcepts || this.currentConcepts.length === 0) {
+        // Group concepts by category if they exist
+        const conceptsByCategory = {};
+        if (this.currentConcepts && this.currentConcepts.length > 0) {
+            for (const concept of this.currentConcepts) {
+                if (!conceptsByCategory[concept.category]) {
+                    conceptsByCategory[concept.category] = [];
+                }
+                conceptsByCategory[concept.category].push(concept);
+            }
+        }
+        
+        // Add section for each category, regardless if there are concepts or not
+        const categories = [
+            'Cuisine', 'Menu', 'Price Range', 'Mood', 'Setting', 
+            'Crowd', 'Suitable For', 'Food Style', 'Drinks', 'Special Features'
+        ];
+        
+        // Check if we have any concepts at all
+        let hasAnyConcepts = this.currentConcepts && this.currentConcepts.length > 0;
+        
+        // If no concepts and not in manual entry mode, show the message
+        if (!hasAnyConcepts && this.conceptsSection.classList.contains('hidden')) {
             this.conceptsContainer.innerHTML = '<p class="text-gray-500">No concepts extracted.</p>';
             return;
         }
         
-        // Group concepts by category
-        const conceptsByCategory = {};
-        for (const concept of this.currentConcepts) {
-            if (!conceptsByCategory[concept.category]) {
-                conceptsByCategory[concept.category] = [];
-            }
-            conceptsByCategory[concept.category].push(concept);
-        }
-        
-        // Add section for each category
-        const categories = [
-            'Cuisine', 'Menu', 'Price Range', 'Mood', 'Setting', 
-            'Crowd', 'Suitable For', 'Food Style', 'Drinks'
-        ];
-        
         for (const category of categories) {
+            const categorySection = document.createElement('div');
+            categorySection.className = 'mb-4';
+            
+            // Create category header
+            const categoryHeader = document.createElement('h3');
+            categoryHeader.className = 'text-lg font-semibold mb-2';
+            categoryHeader.textContent = category;
+            categorySection.appendChild(categoryHeader);
+            
             if (conceptsByCategory[category] && conceptsByCategory[category].length > 0) {
-                const categorySection = document.createElement('div');
-                categorySection.className = 'mb-4';
-                
-                // Create category header
-                const categoryHeader = document.createElement('h3');
-                categoryHeader.className = 'text-lg font-semibold mb-2';
-                categoryHeader.textContent = category;
-                categorySection.appendChild(categoryHeader);
-                
-                // Create concepts grid
+                // Create concepts grid for existing concepts
                 const conceptsGrid = document.createElement('div');
                 conceptsGrid.className = 'grid grid-cols-1 md:grid-cols-2 gap-2';
                 
@@ -1171,7 +1215,7 @@ class UIManager {
                     conceptsGrid.appendChild(conceptCard);
                 }
                 
-                // Add "Add concept" button
+                // Add "Add concept" button to grid
                 const addConceptButton = document.createElement('button');
                 addConceptButton.className = 'p-3 border border-dashed rounded text-center text-gray-500 hover:bg-gray-50';
                 addConceptButton.textContent = '+ Add ' + category;
@@ -1183,21 +1227,9 @@ class UIManager {
                 });
                 
                 conceptsGrid.appendChild(addConceptButton);
-                
-                // Add the grid to the category section
                 categorySection.appendChild(conceptsGrid);
-                
-                // Add the category section to the container
-                this.conceptsContainer.appendChild(categorySection);
             } else {
                 // Category has no concepts, just show add button
-                const categorySection = document.createElement('div');
-                categorySection.className = 'mb-4';
-                
-                const categoryHeader = document.createElement('h3');
-                categoryHeader.className = 'text-lg font-semibold mb-2';
-                categoryHeader.textContent = category;
-                
                 const addButton = document.createElement('button');
                 addButton.className = 'p-3 border border-dashed rounded text-center text-gray-500 hover:bg-gray-50 w-full';
                 addButton.textContent = '+ Add ' + category;
@@ -1208,11 +1240,10 @@ class UIManager {
                     this.showAddConceptDialog(category);
                 });
                 
-                categorySection.appendChild(categoryHeader);
                 categorySection.appendChild(addButton);
-                
-                this.conceptsContainer.appendChild(categorySection);
             }
+            
+            this.conceptsContainer.appendChild(categorySection);
         }
     }
 
@@ -1235,9 +1266,10 @@ class UIManager {
             <div class="bg-white rounded-lg p-6 max-w-md w-full">
                 <h2 class="text-xl font-bold mb-4">Add ${category} Concept</h2>
                 
-                <div class="mb-4">
+                <div class="mb-4 relative">
                     <label class="block mb-2">Concept:</label>
-                    <input type="text" id="new-concept-value" class="border p-2 w-full rounded">
+                    <input type="text" id="new-concept-value" class="border p-2 w-full rounded" autocomplete="off">
+                    <div id="concept-suggestions" class="absolute z-10 bg-white w-full border border-gray-300 rounded-b max-h-60 overflow-y-auto hidden"></div>
                 </div>
                 
                 <div class="flex justify-end space-x-2">
@@ -1250,9 +1282,15 @@ class UIManager {
         document.body.appendChild(modalContainer);
         document.body.style.overflow = 'hidden';
         
+        const inputField = modalContainer.querySelector('#new-concept-value');
+        const suggestionsContainer = modalContainer.querySelector('#concept-suggestions');
+        
+        // Load the suggestions from the initial concepts for the current category
+        this.loadConceptSuggestions(category, inputField, suggestionsContainer);
+        
         // Focus the input
         setTimeout(() => {
-            modalContainer.querySelector('#new-concept-value').focus();
+            inputField.focus();
         }, 100);
         
         // Cancel button
@@ -1263,7 +1301,7 @@ class UIManager {
         
         // Add button
         modalContainer.querySelector('.confirm-add-concept').addEventListener('click', async () => {
-            const value = modalContainer.querySelector('#new-concept-value').value.trim();
+            const value = inputField.value.trim();
             
             if (!value) {
                 this.showNotification('Please enter a concept value', 'error');
@@ -1320,6 +1358,114 @@ class UIManager {
                 document.body.style.overflow = '';
             }
         });
+    }
+    
+    // New method to load and handle concept suggestions
+    async loadConceptSuggestions(category, inputField, suggestionsContainer) {
+        try {
+            // Fetch initial concepts from dataStorage
+            const conceptsResponse = await fetch('/data/initial_concepts.json');
+            const conceptsData = await conceptsResponse.json();
+            
+            // Get the concepts for the selected category
+            const categoryConcepts = conceptsData[category] || [];
+            
+            // Input event handler for filtering suggestions
+            inputField.addEventListener('input', () => {
+                const inputValue = inputField.value.trim().toLowerCase();
+                
+                if (!inputValue) {
+                    suggestionsContainer.classList.add('hidden');
+                    return;
+                }
+                
+                // Filter concepts based on input
+                let filteredConcepts = categoryConcepts.filter(concept => 
+                    concept.toLowerCase().includes(inputValue)
+                );
+                
+                // Limit to maximum 5 suggestions
+                filteredConcepts = filteredConcepts.slice(0, 5);
+                
+                // Display suggestions
+                if (filteredConcepts.length > 0) {
+                    suggestionsContainer.innerHTML = '';
+                    filteredConcepts.forEach(concept => {
+                        const suggestionItem = document.createElement('div');
+                        suggestionItem.className = 'p-2 hover:bg-gray-100 cursor-pointer';
+                        suggestionItem.textContent = concept;
+                        
+                        // When suggestion is clicked, update input and hide suggestions
+                        suggestionItem.addEventListener('click', () => {
+                            inputField.value = concept;
+                            suggestionsContainer.classList.add('hidden');
+                        });
+                        
+                        suggestionsContainer.appendChild(suggestionItem);
+                    });
+                    suggestionsContainer.classList.remove('hidden');
+                } else {
+                    suggestionsContainer.classList.add('hidden');
+                }
+            });
+            
+            // Add keyboard navigation for the dropdown
+            inputField.addEventListener('keydown', (e) => {
+                if (suggestionsContainer.classList.contains('hidden')) return;
+                
+                const items = suggestionsContainer.querySelectorAll('div');
+                let focusedItem = suggestionsContainer.querySelector('.bg-gray-200');
+                let focusedIndex = Array.from(items).indexOf(focusedItem);
+                
+                switch (e.key) {
+                    case 'ArrowDown':
+                        e.preventDefault();
+                        if (focusedItem) {
+                            focusedItem.classList.remove('bg-gray-200');
+                            focusedIndex = (focusedIndex + 1) % items.length;
+                        } else {
+                            focusedIndex = 0;
+                        }
+                        items[focusedIndex].classList.add('bg-gray-200');
+                        items[focusedIndex].scrollIntoView({ block: 'nearest' });
+                        break;
+                        
+                    case 'ArrowUp':
+                        e.preventDefault();
+                        if (focusedItem) {
+                            focusedItem.classList.remove('bg-gray-200');
+                            focusedIndex = (focusedIndex - 1 + items.length) % items.length;
+                        } else {
+                            focusedIndex = items.length - 1;
+                        }
+                        items[focusedIndex].classList.add('bg-gray-200');
+                        items[focusedIndex].scrollIntoView({ block: 'nearest' });
+                        break;
+                        
+                    case 'Enter':
+                        if (focusedItem) {
+                            e.preventDefault();
+                            inputField.value = focusedItem.textContent;
+                            suggestionsContainer.classList.add('hidden');
+                        }
+                        break;
+                        
+                    case 'Escape':
+                        suggestionsContainer.classList.add('hidden');
+                        break;
+                }
+            });
+            
+            // Hide suggestions when clicking outside
+            document.addEventListener('click', (e) => {
+                if (e.target !== inputField && e.target !== suggestionsContainer) {
+                    suggestionsContainer.classList.add('hidden');
+                }
+            });
+            
+        } catch (error) {
+            console.error('Error loading concept suggestions:', error);
+        }
     }
 
     async showConceptDisambiguationDialog(newConcept, similarConcepts) {

@@ -423,7 +423,19 @@ class DataStorage {
         console.log(`Concepts count: ${concepts.length}, Has location: ${!!location}, Photos count: ${photos ? photos.length : 0}`);
         
         try {
-            // Transaction to ensure all related data is updated together
+            // Pre-save all concepts outside any transaction
+            const conceptIds = [];
+            for (const concept of concepts) {
+                try {
+                    const conceptId = await this.saveConcept(concept.category, concept.value);
+                    conceptIds.push(conceptId);
+                } catch (error) {
+                    console.warn(`Failed to pre-save concept: ${concept.category} - ${concept.value}`, error);
+                    // Continue with other concepts
+                }
+            }
+            
+            // Now proceed with the main transaction
             return await this.db.transaction('rw', 
                 [this.db.restaurants, this.db.restaurantConcepts, 
                  this.db.restaurantLocations, this.db.restaurantPhotos], 
@@ -438,11 +450,8 @@ class DataStorage {
                 // Delete all existing concept relationships
                 await this.db.restaurantConcepts.where('restaurantId').equals(restaurantId).delete();
                 
-                // Add new concepts
-                for (const concept of concepts) {
-                    // Find or create the concept
-                    let conceptId = await this.saveConcept(concept.category, concept.value);
-                    
+                // Add new concepts using the pre-saved concept IDs
+                for (const conceptId of conceptIds) {
                     // Add relationship
                     await this.db.restaurantConcepts.put({
                         restaurantId,
@@ -476,6 +485,74 @@ class DataStorage {
             });
         } catch (error) {
             console.error('Error updating restaurant:', error);
+            
+            // If this is a database structure issue and we haven't just reset
+            if (!this.isResetting && (
+                error.name === 'NotFoundError' || 
+                error.message.includes('object store was not found') ||
+                error.name === 'PrematureCommitError')) {
+                
+                try {
+                    // Reset database outside of transaction
+                    await this.resetDatabase();
+                    
+                    // Try a simplified update after reset
+                    return await this.db.transaction('rw', 
+                        [this.db.restaurants, this.db.restaurantConcepts, 
+                        this.db.restaurantLocations, this.db.restaurantPhotos], 
+                    async () => {
+                        // Update restaurant basic info
+                        await this.db.restaurants.update(restaurantId, {
+                            name,
+                            curatorId
+                        });
+                        
+                        // Re-save concepts directly in the recovery transaction
+                        await this.db.restaurantConcepts.where('restaurantId').equals(restaurantId).delete();
+                        
+                        for (const concept of concepts) {
+                            const conceptId = await this.db.concepts.put({
+                                category: concept.category,
+                                value: concept.value,
+                                timestamp: new Date()
+                            });
+                            
+                            await this.db.restaurantConcepts.put({
+                                restaurantId,
+                                conceptId
+                            });
+                        }
+                        
+                        // Update location
+                        await this.db.restaurantLocations.where('restaurantId').equals(restaurantId).delete();
+                        if (location) {
+                            await this.db.restaurantLocations.put({
+                                restaurantId,
+                                latitude: location.latitude,
+                                longitude: location.longitude,
+                                address: location.address || null
+                            });
+                        }
+                        
+                        // Update photos (limit to 5 in recovery to reduce chance of error)
+                        await this.db.restaurantPhotos.where('restaurantId').equals(restaurantId).delete();
+                        if (photos && photos.length) {
+                            for (let i = 0; i < Math.min(photos.length, 5); i++) {
+                                await this.db.restaurantPhotos.put({
+                                    restaurantId,
+                                    photoData: photos[i]
+                                });
+                            }
+                        }
+                        
+                        return restaurantId;
+                    });
+                } catch (retryError) {
+                    console.error('Error in restaurant update retry:', retryError);
+                    throw retryError;
+                }
+            }
+            
             throw error;
         }
     }
