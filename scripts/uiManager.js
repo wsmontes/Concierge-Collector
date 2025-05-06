@@ -125,8 +125,9 @@ class UIManager {
         this.curatorSection.classList.remove('hidden');
         this.conceptsSection.classList.remove('hidden');
         
-        // Set transcription if we're coming from transcription screen
-        if (this.originalTranscription) {
+        // Only set transcription if we're coming from transcription screen
+        // AND we're not editing an existing restaurant
+        if (this.originalTranscription && !this.isEditingRestaurant) {
             const transcriptionTextarea = document.getElementById('restaurant-transcription');
             if (transcriptionTextarea && !transcriptionTextarea.value) {
                 transcriptionTextarea.value = this.originalTranscription;
@@ -202,7 +203,67 @@ class UIManager {
     
     // Restaurant module delegations
     editRestaurant(restaurant) {
+        // Clear transcription data when editing a different restaurant
+        this.clearTranscriptionData();
+        
         this.restaurantModule.editRestaurant(restaurant);
+    }
+
+    /**
+     * Clears transcription data when switching between restaurants
+     */
+    clearTranscriptionData() {
+        this.originalTranscription = null;
+        this.translatedTranscription = null;
+        if (this.transcriptionText) {
+            this.transcriptionText.textContent = '';
+        }
+        
+        // Also clear the transcription textarea in the restaurant form
+        const transcriptionTextarea = document.getElementById('restaurant-transcription');
+        if (transcriptionTextarea) {
+            transcriptionTextarea.value = '';
+        }
+        
+        console.log('Transcription data cleared');
+    }
+    
+    /**
+     * Loads restaurant profile data
+     */
+    loadRestaurantProfile(restaurantData) {
+        // Clear transcription data to prevent leakage between restaurants
+        this.clearTranscriptionData();
+        
+        // If this restaurant has a transcription, set it properly
+        if (restaurantData && restaurantData.transcription) {
+            const transcriptionTextarea = document.getElementById('restaurant-transcription');
+            if (transcriptionTextarea) {
+                transcriptionTextarea.value = restaurantData.transcription;
+            }
+        }
+        
+        // ...existing code to load restaurant profile...
+    }
+    
+    // Add clearTranscriptionData to any place where new restaurants are created
+    newRestaurant() {
+        // Clear any existing transcription data
+        this.clearTranscriptionData();
+        
+        // Reset editing state
+        this.isEditingRestaurant = false;
+        this.editingRestaurantId = null;
+        
+        // ...existing code for creating new restaurant...
+    }
+    
+    // Also ensure it's called after saving a restaurant
+    saveRestaurant() {
+        // ...existing code for saving restaurant...
+        
+        // Clear transcription data after saving
+        this.clearTranscriptionData();
     }
 }
 
