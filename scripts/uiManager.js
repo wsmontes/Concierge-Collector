@@ -265,6 +265,91 @@ class UIManager {
         // Clear transcription data after saving
         this.clearTranscriptionData();
     }
+
+    /**
+     * Updates the processing status indicators in the UI
+     * @param {string} step - The processing step ('transcription' or 'analysis')
+     * @param {string} status - The status ('pending', 'in-progress', 'completed', 'error')
+     * @param {string} message - Optional custom message to display
+     */
+    updateProcessingStatus(step, status, message = null) {
+        const stepElement = document.getElementById(`${step}-status`);
+        if (!stepElement) return;
+        
+        // Remove existing status classes
+        stepElement.classList.remove('in-progress', 'completed', 'error');
+        
+        // Set icon and message based on status
+        const iconElement = stepElement.querySelector('.material-icons');
+        const textElement = stepElement.querySelector('span:not(.material-icons)');
+        
+        if (iconElement && textElement) {
+            let icon = 'pending';
+            let statusClass = '';
+            let defaultMessage = step === 'transcription' 
+                ? 'Transcribing your audio...'
+                : 'Analyzing restaurant details...';
+            
+            switch (status) {
+                case 'in-progress':
+                    icon = 'hourglass_top';
+                    statusClass = 'in-progress';
+                    break;
+                case 'completed':
+                    icon = 'check_circle';
+                    statusClass = 'completed';
+                    defaultMessage = step === 'transcription'
+                        ? 'Transcription completed'
+                        : 'Analysis completed';
+                    break;
+                case 'error':
+                    icon = 'error';
+                    statusClass = 'error';
+                    defaultMessage = `Error during ${step}`;
+                    break;
+                default: // pending
+                    icon = 'pending';
+                    break;
+            }
+            
+            iconElement.textContent = icon;
+            textElement.textContent = message || defaultMessage;
+            
+            if (statusClass) {
+                stepElement.classList.add(statusClass);
+            }
+        }
+    }
+
+    /**
+     * Shows the transcription section with the given text and updates the processing status
+     * @param {string} transcriptionText - The transcription text
+     * @override - This overrides the original method to update processing status
+     */
+    showTranscriptionSection(transcriptionText) {
+        // Update processing status
+        this.updateProcessingStatus('transcription', 'completed');
+        this.updateProcessingStatus('analysis', 'in-progress');
+        
+        // Proceed with original implementation
+        console.log('Showing transcription section');
+        this.hideAllSections(); // Changed from resetSections() to hideAllSections()
+        
+        this.curatorSection.classList.remove('hidden');
+        const transcriptionSection = document.getElementById('transcription-section');
+        if (transcriptionSection) {
+            transcriptionSection.classList.remove('hidden');
+        }
+        
+        const transcriptionTextElement = document.getElementById('transcription-text');
+        if (transcriptionTextElement) {
+            transcriptionTextElement.textContent = transcriptionText || 'No transcription available';
+            this.transcriptionText = transcriptionTextElement;
+            
+            // Store the original transcription for potential reuse
+            this.originalTranscription = transcriptionText;
+        }
+    }
 }
 
 // Create a global instance

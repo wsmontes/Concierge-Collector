@@ -58,7 +58,40 @@ class RecordingModule {
                     stopRecordingBtn.classList.add('hidden');
                     stopRecordingBtn.classList.remove('recording');
                     
-                    this.uiManager.hideLoading();
+                    // Show status for automatic processing
+                    const transcriptionStatus = document.getElementById('transcription-status');
+                    if (transcriptionStatus) {
+                        this.uiManager.updateProcessingStatus('transcription', 'in-progress', 'Transcribing audio...');
+                    }
+                    
+                    try {
+                        // Automatically start transcription
+                        this.uiManager.showLoading('Transcribing audio...');
+                        const transcription = await apiHandler.transcribeAudio(audioRecorder.audioBlob);
+                        
+                        // Update UI to show transcription
+                        this.uiManager.showTranscriptionSection(transcription);
+                        
+                        // Automatically start concept extraction
+                        try {
+                            await this.uiManager.conceptModule.processConcepts(transcription);
+                        } catch (conceptError) {
+                            console.error('Error extracting concepts:', conceptError);
+                            this.uiManager.showNotification(`Error analyzing restaurant details: ${conceptError.message}`, 'error');
+                        }
+                        
+                        this.uiManager.hideLoading();
+                    } catch (processError) {
+                        this.uiManager.hideLoading();
+                        console.error('Error in automatic processing:', processError);
+                        this.uiManager.showNotification(`Processing error: ${processError.message}. You can try manual transcription.`, 'error');
+                        
+                        // Show manual transcribe button as fallback
+                        const transcribeAudioBtn = document.getElementById('transcribe-audio');
+                        if (transcribeAudioBtn) {
+                            transcribeAudioBtn.classList.remove('hidden');
+                        }
+                    }
                 } catch (error) {
                     this.uiManager.hideLoading();
                     console.error('Error stopping recording:', error);
@@ -80,11 +113,21 @@ class RecordingModule {
                 audioElement.src = '';
                 audioPreview.classList.add('hidden');
                 
+                // Reset processing status indicators
+                this.uiManager.updateProcessingStatus('transcription', 'pending', 'Transcribing your audio...');
+                this.uiManager.updateProcessingStatus('analysis', 'pending', 'Analyzing restaurant details...');
+                
                 // Reset state
                 if (audioRecorder.audioUrl) {
                     URL.revokeObjectURL(audioRecorder.audioUrl);
                     audioRecorder.audioUrl = null;
                     audioRecorder.audioBlob = null;
+                }
+                
+                // Hide manual transcribe button
+                const transcribeAudioBtn = document.getElementById('transcribe-audio');
+                if (transcribeAudioBtn) {
+                    transcribeAudioBtn.classList.add('hidden');
                 }
                 
                 this.uiManager.showNotification('Recording discarded');
