@@ -69,10 +69,10 @@ Text: {texto}
 Provide only the restaurant name without any additional text or explanation.`
     },
     
-    // New prompt for extracting restaurant name from images
+    // Updated prompt for extracting restaurant name from images
     imageRestaurantNameExtraction: {
-        system: "You are a restaurant name detector. If you can identify a restaurant name in the image, respond ONLY with that name, nothing else. If you cannot identify a restaurant name with reasonable confidence, respond with 'UNKNOWN'.",
-        user: "What is the name of this restaurant? Respond only with the name. If you cannot determine the name, respond with 'UNKNOWN'."
+        system: "You are a restaurant name detector. Your only task is to identify the name of a restaurant from images. If you can identify a restaurant name in the image, respond ONLY with that name, nothing else. If you cannot identify a restaurant name with reasonable confidence, respond with 'UNKNOWN'.",
+        user: "What is the name of this restaurant? Respond only with the name, with no additional explanations. If you cannot determine the name with reasonable confidence, respond with 'UNKNOWN'."
     },
     
     // New prompt for extracting concepts from restaurant images

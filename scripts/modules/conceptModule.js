@@ -847,7 +847,7 @@ class ConceptModule {
      * @param {string} transcriptionText - The transcription text
      * @returns {Promise<string>} - The extracted restaurant name
      */
-    async extractRestaurantName(transcriptionText) {
+    async extractRestaurantNameFromTranscription(transcriptionText) {
         try {
             console.log('Extracting restaurant name from transcription...');
             
@@ -879,7 +879,7 @@ class ConceptModule {
             
             return null;
         } catch (error) {
-            console.error('Error extracting restaurant name:', error);
+            console.error('Error extracting restaurant name from transcription:', error);
             return null;
         }
     }
@@ -891,8 +891,14 @@ class ConceptModule {
         try {
             this.uiManager.showLoading('Analyzing restaurant concepts...');
             
-            // Extract restaurant name first
-            const restaurantName = await this.extractRestaurantName(transcriptionText);
+            // Extract restaurant name first - WRAP WITH TRY/CATCH TO HANDLE FAILURES GRACEFULLY
+            let restaurantName = null;
+            try {
+                restaurantName = await this.extractRestaurantNameFromTranscription(transcriptionText);
+            } catch (nameError) {
+                console.warn('Restaurant name extraction failed, continuing with concept extraction:', nameError);
+                // Continue execution - don't let name extraction failure stop concept extraction
+            }
             
             // Extract concepts in the original JSON format expected by the app
             const extractedConcepts = await apiHandler.extractConcepts(
@@ -914,269 +920,21 @@ class ConceptModule {
                 const nameInput = document.getElementById('restaurant-name');
                 if (nameInput) {
                     nameInput.value = restaurantName;
-                    
-                    // Add AI badge to show it was auto-detected
-                    const nameInputContainer = nameInput.parentElement;
-                    const existingBadge = nameInputContainer.querySelector('.ai-generated-badge');
-                    
-                    if (!existingBadge) {
-                        const badge = document.createElement('div');
-                        badge.className = 'ai-generated-badge';
-                        badge.innerHTML = '<span class="material-icons">smart_toy</span> AI detected';
-                        nameInputContainer.insertBefore(badge, nameInput.nextSibling);
-                    }
                 }
             }
             
-            // Also generate description while we're at it
+            // Generate description based on transcription
             await this.generateDescription(transcriptionText);
             
             this.uiManager.hideLoading();
+            
         } catch (error) {
             this.uiManager.hideLoading();
             console.error('Error processing concepts:', error);
-            this.uiManager.showNotification('Error processing concepts: ' + error.message, 'error');
+            this.uiManager.showNotification('Error processing concepts', 'error');
         }
     }
 
-    // Modify the existing extractConcepts method to handle only the concepts part
-    async extractConcepts(transcriptionText) {
-        console.log('Extracting concepts from transcription...');
-        
-        try {
-            const template = promptTemplates.conceptExtraction;
-            const userPrompt = template.user.replace('{texto}', transcriptionText);
-            
-            // Get API key from localStorage for proper authentication
-            const apiKey = localStorage.getItem('openai_api_key');
-            if (!apiKey) {
-                throw new Error('OpenAI API key not found. Please set it in the curator section.');
-            }
-            
-            const response = await fetch('https://api.openai.com/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${apiKey}`
-                },
-                body: JSON.stringify({
-                    model: 'gpt-4',
-                    messages: [
-                        {role: 'system', content: template.system},
-                        {role: 'user', content: userPrompt}
-                    ],
-                    temperature: 0.7,
-                    max_tokens: 1000
-                })
-            });
-            
-            if (!response.ok) {
-                throw new Error(`API error: ${response.status}`);
-            }
-            
-            const data = await response.json();
-            const conceptsText = data.choices[0].message.content;
-            
-            try {
-                // Try to parse as JSON
-                const conceptsJson = JSON.parse(conceptsText);
-                
-                // Convert to array of objects
-                const conceptsArray = [];
-                for (const category in conceptsJson) {
-                    for (const value of conceptsJson[category]) {
-                        conceptsArray.push({
-                            category,
-                            value
-                        });
-                    }
-                }
-                
-                // Here we also run generateDescription explicitly to ensure it happens
-                console.log("Concepts extracted successfully, generating description...");
-                await this.generateDescription(transcriptionText);
-                
-                return conceptsArray;
-            } catch (parseError) {
-                console.error('Error parsing concepts JSON:', parseError);
-                console.log('Raw concepts text:', conceptsText);
-                throw new Error('Failed to parse concepts from AI response');
-            }
-        } catch (error) {
-            console.error('Error extracting concepts:', error);
-            throw error;
-        }
-    }
-    
-    // Continue with more concept-related methods like loadConceptSuggestions, showConceptDisambiguationDialog, etc.
-    // ... (code for loadConceptSuggestions and showConceptDisambiguationDialog would go here)
-
-    /**
-     * Extract restaurant name from transcription text
-     * @param {string} transcriptionText - The transcription text
-     * @returns {Promise<string>} - The extracted restaurant name
-     */
-    async extractRestaurantName(transcriptionText) {
-        try {
-            console.log('Extracting restaurant name from transcription...');
-            
-            if (!transcriptionText || transcriptionText.trim().length < 10) {
-                return null;
-            }
-            
-            const response = await apiHandler.extractConcepts(transcriptionText, promptTemplates.restaurantNameExtraction);
-            console.log('Restaurant name extracted:', response);
-            
-            // Handle different response formats
-            if (response) {
-                if (typeof response === 'string' && response !== 'Unknown') {
-                    // If response is directly a string
-                    return response.trim();
-                } else if (response.restaurant_name) {
-                    // If response is an object with restaurant_name property
-                    return response.restaurant_name.trim();
-                } else {
-                    // Check for any property that might contain the name
-                    const possibleKeys = Object.keys(response);
-                    for (const key of possibleKeys) {
-                        if (typeof response[key] === 'string' && response[key] !== 'Unknown') {
-                            return response[key].trim();
-                        }
-                    }
-                }
-            }
-            
-            return null;
-        } catch (error) {
-            console.error('Error extracting restaurant name:', error);
-            return null;
-        }
-    }
-
-    /**
-     * Process concepts extraction including restaurant name
-     */
-    async processConcepts(transcriptionText) {
-        try {
-            this.uiManager.showLoading('Analyzing restaurant concepts...');
-            
-            // Extract restaurant name first
-            const restaurantName = await this.extractRestaurantName(transcriptionText);
-            
-            // Extract concepts in the original JSON format expected by the app
-            const extractedConcepts = await apiHandler.extractConcepts(
-                transcriptionText, 
-                promptTemplates.conceptExtraction
-            );
-            
-            // Show concepts section
-            this.uiManager.showConceptsSection();
-            
-            // Use the existing method to handle concepts that does proper validation
-            // and renders the UI correctly
-            if (extractedConcepts) {
-                this.handleExtractedConceptsWithValidation(extractedConcepts);
-            }
-            
-            // Populate restaurant name field if available
-            if (restaurantName) {
-                const nameInput = document.getElementById('restaurant-name');
-                if (nameInput) {
-                    nameInput.value = restaurantName;
-                    
-                    // Add AI badge to show it was auto-detected
-                    const nameInputContainer = nameInput.parentElement;
-                    const existingBadge = nameInputContainer.querySelector('.ai-generated-badge');
-                    
-                    if (!existingBadge) {
-                        const badge = document.createElement('div');
-                        badge.className = 'ai-generated-badge';
-                        badge.innerHTML = '<span class="material-icons">smart_toy</span> AI detected';
-                        nameInputContainer.insertBefore(badge, nameInput.nextSibling);
-                    }
-                }
-            }
-            
-            // Also generate description while we're at it
-            await this.generateDescription(transcriptionText);
-            
-            this.uiManager.hideLoading();
-        } catch (error) {
-            this.uiManager.hideLoading();
-            console.error('Error processing concepts:', error);
-            this.uiManager.showNotification('Error processing concepts: ' + error.message, 'error');
-        }
-    }
-
-    // Modify the existing extractConcepts method to handle only the concepts part
-    async extractConcepts(transcriptionText) {
-        console.log('Extracting concepts from transcription...');
-        
-        try {
-            const template = promptTemplates.conceptExtraction;
-            const userPrompt = template.user.replace('{texto}', transcriptionText);
-            
-            // Get API key from localStorage for proper authentication
-            const apiKey = localStorage.getItem('openai_api_key');
-            if (!apiKey) {
-                throw new Error('OpenAI API key not found. Please set it in the curator section.');
-            }
-            
-            const response = await fetch('https://api.openai.com/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${apiKey}`
-                },
-                body: JSON.stringify({
-                    model: 'gpt-4',
-                    messages: [
-                        {role: 'system', content: template.system},
-                        {role: 'user', content: userPrompt}
-                    ],
-                    temperature: 0.7,
-                    max_tokens: 1000
-                })
-            });
-            
-            if (!response.ok) {
-                throw new Error(`API error: ${response.status}`);
-            }
-            
-            const data = await response.json();
-            const conceptsText = data.choices[0].message.content;
-            
-            try {
-                // Try to parse as JSON
-                const conceptsJson = JSON.parse(conceptsText);
-                
-                // Convert to array of objects
-                const conceptsArray = [];
-                for (const category in conceptsJson) {
-                    for (const value of conceptsJson[category]) {
-                        conceptsArray.push({
-                            category,
-                            value
-                        });
-                    }
-                }
-                
-                // Here we also run generateDescription explicitly to ensure it happens
-                console.log("Concepts extracted successfully, generating description...");
-                await this.generateDescription(transcriptionText);
-                
-                return conceptsArray;
-            } catch (parseError) {
-                console.error('Error parsing concepts JSON:', parseError);
-                console.log('Raw concepts text:', conceptsText);
-                throw new Error('Failed to parse concepts from AI response');
-            }
-        } catch (error) {
-            console.error('Error extracting concepts:', error);
-            throw error;
-        }
-    }
-    
     // Continue with more concept-related methods like loadConceptSuggestions, showConceptDisambiguationDialog, etc.
     // ... (code for loadConceptSuggestions and showConceptDisambiguationDialog would go here)
 
@@ -1517,33 +1275,141 @@ class ConceptModule {
      * @param {string} photoData - Base64 image data
      */
     async processImageWithAI(photoData) {
-        // Resize image for faster API processing
-        const resizedImageData = await this.resizeImageForAPI(photoData);
-        
-        // Get restaurant name from AI if the field is blank
-        const nameInput = document.getElementById('restaurant-name');
-        if (nameInput && !nameInput.value.trim()) {
-            await this.extractRestaurantName(resizedImageData);
+        try {
+            // Resize image for faster API processing and to stay under size limits
+            const resizedImageData = await this.resizeImageForAPI(photoData);
+            
+            // Get restaurant name from AI if the field is blank
+            const nameInput = document.getElementById('restaurant-name');
+            if (nameInput && !nameInput.value.trim()) {
+                await this.extractRestaurantNameFromImage(resizedImageData);
+            }
+            
+            // Extract concepts from the image
+            await this.extractConceptsFromImage(resizedImageData);
+        } catch (error) {
+            console.error('Error processing image with AI:', error);
+            this.uiManager.showNotification('Error analyzing image', 'error');
         }
-        
-        // Extract concepts from the image
-        await this.extractConceptsFromImage(resizedImageData);
     }
     
     /**
+     * Resizes an image for more efficient API processing and to stay under size limits
+     * @param {string} imageData - Base64 image data
+     * @returns {Promise<string>} Resized image data
+     */
+    async resizeImageForAPI(imageData) {
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => {
+                // Target dimensions - max 800px in either dimension
+                const MAX_SIZE = 800;
+                let width = img.width;
+                let height = img.height;
+                
+                // Calculate new dimensions while maintaining aspect ratio
+                if (width > height && width > MAX_SIZE) {
+                    height = Math.round((height * MAX_SIZE) / width);
+                    width = MAX_SIZE;
+                } else if (height > MAX_SIZE) {
+                    width = Math.round((width * MAX_SIZE) / height);
+                    height = MAX_SIZE;
+                }
+                
+                // Create canvas for resizing
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                
+                // Draw resized image on canvas
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                
+                // Get resized image data with compression to reduce size
+                // Lowering quality to 0.7 (70%) to help keep image under API size limits
+                const resizedImageData = canvas.toDataURL('image/jpeg', 0.7);
+                resolve(resizedImageData);
+            };
+            
+            img.onerror = () => {
+                reject(new Error('Failed to load image for resizing'));
+            };
+            
+            img.src = imageData;
+        });
+    }
+
+    /**
      * Extracts restaurant name from image using AI
      * @param {string} imageData - Base64 image data
+     * @returns {Promise<string|null>} - The extracted restaurant name or null
      */
-    async extractRestaurantName(imageData) {
+    async extractRestaurantNameFromImage(imageData) {
         // Only execute if API handler exists
         if (!apiHandler || !apiHandler.apiKey) {
             console.warn('API handler not available or API key not set');
-            return;
+            return null;
         }
         
         try {
-            const baseImage = imageData.split(',')[1]; // Remove data URL prefix
+            // Validate the image data format
+            if (!imageData || typeof imageData !== 'string') {
+                console.warn('Invalid image data provided');
+                return null;
+            }
+            
+            // Extract base64 content correctly, handling different possible formats
+            let baseImage;
+            if (imageData.includes(',')) {
+                baseImage = imageData.split(',')[1]; // Remove data URL prefix
+            } else if (imageData.match(/^[A-Za-z0-9+/=]+$/)) {
+                baseImage = imageData; // Already a base64 string without prefix
+            } else {
+                console.warn('Image data is not in a valid base64 format');
+                return null;
+            }
+            
             const template = promptTemplates.imageRestaurantNameExtraction;
+            
+            // Updated model name to current version with vision capabilities
+            const model = "gpt-4o";
+            
+            console.log('Sending image to OpenAI API for restaurant name extraction...');
+            
+            // Important: Ensure the structure follows OpenAI's API requirements for image content
+            const payload = {
+                model: model,
+                messages: [
+                    {
+                        role: "system",
+                        content: template.system
+                    },
+                    {
+                        role: "user",
+                        content: [
+                            { 
+                                type: "text", 
+                                text: template.user
+                            },
+                            {
+                                type: "image_url",
+                                image_url: {
+                                    url: `data:image/jpeg;base64,${baseImage}`
+                                }
+                            }
+                        ]
+                    }
+                ],
+                max_tokens: 50
+            };
+            
+            // For debugging, log a truncated version of the payload (remove the actual base64 data)
+            const debugPayload = JSON.parse(JSON.stringify(payload));
+            if (debugPayload.messages[1].content[1].image_url.url.length > 50) {
+                debugPayload.messages[1].content[1].image_url.url = 
+                    debugPayload.messages[1].content[1].image_url.url.substring(0, 30) + '... [truncated]';
+            }
+            console.log('API request payload structure:', debugPayload);
             
             const response = await fetch('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
@@ -1551,35 +1417,13 @@ class ConceptModule {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${apiHandler.apiKey}`
                 },
-                body: JSON.stringify({
-                    model: "gpt-4o",
-                    messages: [
-                        {
-                            role: "system",
-                            content: template.system
-                        },
-                        {
-                            role: "user",
-                            content: [
-                                { 
-                                    type: "text", 
-                                    text: template.user
-                                },
-                                {
-                                    type: "image_url",
-                                    image_url: {
-                                        url: `data:image/jpeg;base64,${baseImage}`
-                                    }
-                                }
-                            ]
-                        }
-                    ],
-                    max_tokens: 50
-                })
+                body: JSON.stringify(payload)
             });
             
             if (!response.ok) {
-                throw new Error(`API error: ${response.status}`);
+                const errorData = await response.json().catch(() => ({}));
+                console.error('OpenAI API error details:', errorData);
+                throw new Error(`API error: ${response.status} - ${errorData.error?.message || 'Unknown error'}`);
             }
             
             const data = await response.json();
@@ -1592,7 +1436,7 @@ class ConceptModule {
                 responseText.toLowerCase().includes("sorry") ||
                 responseText.toLowerCase().includes("unable to")) {
                 console.log('AI could not determine restaurant name from image');
-                return;
+                return null;
             }
             
             const restaurantName = responseText;
@@ -1615,12 +1459,14 @@ class ConceptModule {
                 
                 this.uiManager.showNotification('Restaurant name detected from image', 'success');
             }
+            return restaurantName;
         } catch (error) {
-            console.error('Error extracting restaurant name:', error);
-            throw error;
+            console.error('Error extracting restaurant name from image:', error);
+            this.uiManager.showNotification('Failed to extract restaurant name from image', 'error');
+            return null;
         }
     }
-    
+
     /**
      * Extracts concepts from image using AI
      * @param {string} imageData - Base64 image data
@@ -1633,8 +1479,23 @@ class ConceptModule {
         }
         
         try {
-            const baseImage = imageData.split(',')[1]; // Remove data URL prefix
+            // Validate and prepare the image data properly
+            let baseImage;
+            if (imageData.includes(',')) {
+                baseImage = imageData.split(',')[1]; // Remove data URL prefix
+            } else if (imageData.match(/^[A-Za-z0-9+/=]+$/)) {
+                baseImage = imageData; // Already a base64 string without prefix
+            } else {
+                console.warn('Image data is not in a valid base64 format');
+                return;
+            }
+            
             const template = promptTemplates.imageConceptExtraction;
+            
+            // Updated model name to current version with vision capabilities
+            const model = "gpt-4o";
+            
+            console.log('Sending image to OpenAI API for concept extraction...');
             
             const response = await fetch('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
@@ -1643,7 +1504,7 @@ class ConceptModule {
                     'Authorization': `Bearer ${apiHandler.apiKey}`
                 },
                 body: JSON.stringify({
-                    model: "gpt-4o",
+                    model: model,
                     messages: [
                         {
                             role: "system",
@@ -1670,7 +1531,9 @@ class ConceptModule {
             });
             
             if (!response.ok) {
-                throw new Error(`API error: ${response.status}`);
+                const errorData = await response.json().catch(() => ({}));
+                console.error('OpenAI API error details:', errorData);
+                throw new Error(`API error: ${response.status} - ${errorData.error?.message || 'Unknown error'}`);
             }
             
             const data = await response.json();
@@ -1704,7 +1567,7 @@ class ConceptModule {
             }
         } catch (error) {
             console.error('Error extracting concepts from image:', error);
-            throw error;
+            this.uiManager.showNotification('Failed to extract concepts from image: ' + (error.message || 'Unknown error'), 'error');
         }
     }
     
@@ -1738,308 +1601,5 @@ class ConceptModule {
         });
         
         return result;
-    }
-    
-    /**
-     * Resizes an image for more efficient API processing
-     * @param {string} imageData - Base64 image data
-     * @returns {Promise<string>} Resized image data
-     */
-    async resizeImageForAPI(imageData) {
-        return new Promise((resolve, reject) => {
-            const img = new Image();
-            img.onload = () => {
-                // Target dimensions - max 800px in either dimension
-                const MAX_SIZE = 800;
-                let width = img.width;
-                let height = img.height;
-                
-                // Calculate new dimensions while maintaining aspect ratio
-                if (width > height && width > MAX_SIZE) {
-                    height = Math.round((height * MAX_SIZE) / width);
-                    width = MAX_SIZE;
-                } else if (height > MAX_SIZE) {
-                    width = Math.round((width * MAX_SIZE) / height);
-                    height = MAX_SIZE;
-                }
-                
-                // Create canvas for resizing
-                const canvas = document.createElement('canvas');
-                canvas.width = width;
-                canvas.height = height;
-                
-                // Draw resized image on canvas
-                const ctx = canvas.getContext('2d');
-                ctx.drawImage(img, 0, 0, width, height);
-                
-                // Get resized image data
-                const resizedImageData = canvas.toDataURL('image/jpeg', 0.8);
-                resolve(resizedImageData);
-            };
-            
-            img.onerror = () => {
-                reject(new Error('Failed to load image for resizing'));
-            };
-            
-            img.src = imageData;
-        });
-    }
-
-    /**
-     * Shows a dialog to resolve concept ambiguity when similar concepts are found
-     * @param {Object} newConcept - The new concept the user wants to add
-     * @param {Array} similarConcepts - Array of similar existing concepts
-     */
-    async showConceptDisambiguationDialog(newConcept, similarConcepts) {
-        // Create modal container
-        const modalContainer = document.createElement('div');
-        modalContainer.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
-        
-        // Sort similar concepts by similarity score (highest first)
-        similarConcepts.sort((a, b) => b.similarity - a.similarity);
-        
-        // Create the modal content
-        modalContainer.innerHTML = `
-            <div class="bg-white rounded-lg p-6 max-w-md w-full">
-                <h2 class="text-xl font-bold mb-4">Similar Concepts Found</h2>
-                
-                <p class="mb-4">Your new concept "<strong>${newConcept.value}</strong>" (${newConcept.category}) is similar to existing concepts:</p>
-                
-                <div class="max-h-60 overflow-y-auto mb-4 border rounded">
-                    ${similarConcepts.map((concept, index) => `
-                        <div class="similar-concept p-2 hover:bg-gray-100 cursor-pointer flex justify-between items-center ${index === 0 ? 'bg-blue-50' : ''}" 
-                             data-index="${index}" data-value="${concept.value.replace(/"/g, '&quot;')}">
-                            <div>
-                                <div class="font-medium">${concept.value}</div>
-                                <div class="text-xs text-gray-500">${concept.category}</div>
-                            </div>
-                            <div class="text-sm text-gray-700">${Math.round(concept.similarity * 100)}% match</div>
-                        </div>
-                    `).join('')}
-                </div>
-                
-                <div class="mb-4">
-                    <p class="text-sm text-gray-600">What would you like to do?</p>
-                </div>
-                
-                <div class="flex flex-col space-y-2">
-                    <button id="use-similar-concept" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
-                        Use similar concept
-                    </button>
-                    <button id="add-anyway" class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600">
-                        Add my concept anyway
-                    </button>
-                    <button id="cancel-concept" class="text-gray-500 px-4 py-2 rounded hover:bg-gray-100">
-                        Cancel
-                    </button>
-                </div>
-            </div>
-        `;
-        
-        document.body.appendChild(modalContainer);
-        document.body.style.overflow = 'hidden';
-        
-        // Track the currently selected similar concept
-        let selectedConceptIndex = 0;
-        
-        // Add event listeners to the similar concept items
-        const similarConceptItems = modalContainer.querySelectorAll('.similar-concept');
-        similarConceptItems.forEach(item => {
-            item.addEventListener('click', () => {
-                // Remove highlighting from all items
-                similarConceptItems.forEach(i => i.classList.remove('bg-blue-50'));
-                // Add highlighting to clicked item
-                item.classList.add('bg-blue-50');
-                // Update selected index
-                selectedConceptIndex = parseInt(item.dataset.index);
-            });
-        });
-        
-        // Add event listener for the use similar concept button
-        const useSimilarBtn = modalContainer.querySelector('#use-similar-concept');
-        useSimilarBtn.addEventListener('click', () => {
-            const selectedConcept = similarConcepts[selectedConceptIndex];
-            
-            // Add the selected concept instead of the new one
-            this.uiManager.currentConcepts.push({
-                category: selectedConcept.category,
-                value: selectedConcept.value
-            });
-            
-            this.renderConcepts();
-            this.uiManager.showNotification(`Using existing concept: "${selectedConcept.value}"`, 'success');
-            
-            document.body.removeChild(modalContainer);
-            document.body.style.overflow = '';
-        });
-        
-        // Add event listener for the add anyway button
-        const addAnywayBtn = modalContainer.querySelector('#add-anyway');
-        addAnywayBtn.addEventListener('click', () => {
-            // Add the original new concept
-            this.uiManager.currentConcepts.push(newConcept);
-            this.renderConcepts();
-            this.uiManager.showNotification(`Added new concept: "${newConcept.value}"`, 'success');
-            
-            document.body.removeChild(modalContainer);
-            document.body.style.overflow = '';
-        });
-        
-        // Add event listener for the cancel button
-        const cancelBtn = modalContainer.querySelector('#cancel-concept');
-        cancelBtn.addEventListener('click', () => {
-            document.body.removeChild(modalContainer);
-            document.body.style.overflow = '';
-        });
-        
-        // Close when clicking outside
-        modalContainer.addEventListener('click', event => {
-            if (event.target === modalContainer) {
-                document.body.removeChild(modalContainer);
-                document.body.style.overflow = '';
-            }
-        });
-    }
-
-    /**
-     * Loads concept suggestions for autocomplete functionality
-     * @param {string} category - The concept category
-     * @param {HTMLInputElement} inputField - The input field element
-     * @param {HTMLElement} suggestionsContainer - The container for displaying suggestions
-     */
-    async loadConceptSuggestions(category, inputField, suggestionsContainer) {
-        try {
-            // Fetch concepts for this category from the database
-            const concepts = await dataStorage.getConceptsByCategory(category);
-            
-            // Set up input event for showing filtered suggestions
-            inputField.addEventListener('input', () => {
-                const query = inputField.value.trim().toLowerCase();
-                
-                if (query.length < 1) {
-                    suggestionsContainer.classList.add('hidden');
-                    return;
-                }
-                
-                // Filter concepts based on query
-                const filteredConcepts = concepts.filter(
-                    concept => concept.value.toLowerCase().includes(query)
-                );
-                
-                // Display suggestions
-                if (filteredConcepts.length > 0) {
-                    suggestionsContainer.innerHTML = filteredConcepts
-                        .map(concept => `
-                            <div class="suggestion-item px-3 py-2 hover:bg-gray-100 cursor-pointer">
-                                ${concept.value}
-                            </div>
-                        `)
-                        .join('');
-                    
-                    // Add events to suggestions for both click and touch
-                    const suggestionItems = suggestionsContainer.querySelectorAll('.suggestion-item');
-                    suggestionItems.forEach(item => {
-                        // Handle both click and touch events
-                        const selectSuggestion = () => {
-                            inputField.value = item.textContent.trim();
-                            suggestionsContainer.classList.add('hidden');
-                            // Focus back on input and position cursor at the end
-                            inputField.focus();
-                            setTimeout(() => {
-                                const length = inputField.value.length;
-                                inputField.setSelectionRange(length, length);
-                            }, 10);
-                        };
-                        
-                        item.addEventListener('click', selectSuggestion);
-                        item.addEventListener('touchend', (e) => {
-                            e.preventDefault(); // Prevent additional mouse events
-                            selectSuggestion();
-                        });
-                    });
-                    
-                    suggestionsContainer.classList.remove('hidden');
-                } else {
-                    suggestionsContainer.classList.add('hidden');
-                }
-            });
-            
-            // Handle keyboard navigation
-            inputField.addEventListener('keydown', (e) => {
-                const items = suggestionsContainer.querySelectorAll('.suggestion-item');
-                if (items.length === 0) return;
-                
-                // Get current focused item index
-                let focusedIndex = Array.from(items).findIndex(
-                    item => item.classList.contains('bg-blue-100')
-                );
-                
-                switch (e.key) {
-                    case 'ArrowDown':
-                        e.preventDefault();
-                        if (focusedIndex < 0) {
-                            // No item is focused yet, focus the first one
-                            items[0].classList.add('bg-blue-100');
-                        } else {
-                            // Move focus to next item
-                            items[focusedIndex].classList.remove('bg-blue-100');
-                            focusedIndex = (focusedIndex + 1) % items.length;
-                            items[focusedIndex].classList.add('bg-blue-100');
-                        }
-                        break;
-                    case 'ArrowUp':
-                        e.preventDefault();
-                        if (focusedIndex < 0) {
-                            // No item is focused yet, focus the last one
-                            items[items.length - 1].classList.add('bg-blue-100');
-                        } else {
-                            // Move focus to previous item
-                            items[focusedIndex].classList.remove('bg-blue-100');
-                            focusedIndex = (focusedIndex - 1 + items.length) % items.length;
-                            items[focusedIndex].classList.add('bg-blue-100');
-                        }
-                        break;
-                    case 'Enter':
-                        if (focusedIndex >= 0) {
-                            e.preventDefault();
-                            inputField.value = items[focusedIndex].textContent.trim();
-                            suggestionsContainer.classList.add('hidden');
-                        }
-                        break;
-                    case 'Escape':
-                        suggestionsContainer.classList.add('hidden');
-                        break;
-                }
-            });
-            
-            // Fix for iOS virtual keyboard issues - make input field re-gain focus
-            inputField.addEventListener('touchstart', () => {
-                setTimeout(() => {
-                    if (document.activeElement !== inputField) {
-                        inputField.focus();
-                    }
-                }, 100);
-            });
-            
-            // Enhanced handling for mobile touch events outside
-            const handleOutsideTouch = (event) => {
-                if (!inputField.contains(event.target) && !suggestionsContainer.contains(event.target)) {
-                    suggestionsContainer.classList.add('hidden');
-                }
-            };
-            
-            document.addEventListener('click', handleOutsideTouch);
-            document.addEventListener('touchend', handleOutsideTouch);
-            
-            // Show all suggestions on focus if input is not empty
-            inputField.addEventListener('focus', () => {
-                const query = inputField.value.trim().toLowerCase();
-                if (query.length > 0) {
-                    inputField.dispatchEvent(new Event('input'));
-                }
-            });
-        } catch (error) {
-            console.error('Error loading concept suggestions:', error);
-        }
     }
 }
