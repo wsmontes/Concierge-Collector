@@ -419,18 +419,18 @@ class ConceptModule {
         modalContainer.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
         
         modalContainer.innerHTML = `
-            <div class="bg-white rounded-lg p-6 max-w-md w-full">
+            <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
                 <h2 class="text-xl font-bold mb-4">Add ${category} Concept</h2>
                 
                 <div class="mb-4 relative">
                     <label class="block mb-2">Concept:</label>
-                    <input type="text" id="new-concept-value" class="border p-2 w-full rounded" autocomplete="off">
+                    <input type="text" id="new-concept-value" class="border p-3 w-full rounded" autocomplete="off">
                     <div id="concept-suggestions" class="absolute z-10 bg-white w-full border border-gray-300 rounded-b max-h-60 overflow-y-auto hidden"></div>
                 </div>
                 
                 <div class="flex justify-end space-x-2">
-                    <button class="cancel-add-concept bg-gray-500 text-white px-4 py-2 rounded">Cancel</button>
-                    <button class="confirm-add-concept bg-blue-500 text-white px-4 py-2 rounded">Add</button>
+                    <button class="cancel-add-concept bg-gray-500 text-white px-4 py-3 rounded">Cancel</button>
+                    <button class="confirm-add-concept bg-blue-500 text-white px-4 py-3 rounded">Add</button>
                 </div>
             </div>
         `;
@@ -444,7 +444,7 @@ class ConceptModule {
         // Load the suggestions from the initial concepts for the current category
         this.loadConceptSuggestions(category, inputField, suggestionsContainer);
         
-        // Focus the input
+        // Focus the input after a short delay to ensure the input is rendered
         setTimeout(() => {
             inputField.focus();
         }, 100);
@@ -484,6 +484,7 @@ class ConceptModule {
                 );
                 
                 // Add special handling for potential plurals/singulars that might be missed by similarity calculation
+                // A threshold of 0.7 (70%) will be more sensitive to small differences like adding an 's'
                 const potentialPluralOrSingular = similarConcepts.filter(concept => {
                     // Check for plural/singular variations that might have lower similarity scores
                     const newValue = newConcept.value.toLowerCase();
@@ -1935,12 +1936,25 @@ class ConceptModule {
                         `)
                         .join('');
                     
-                    // Add click event to suggestions
+                    // Add events to suggestions for both click and touch
                     const suggestionItems = suggestionsContainer.querySelectorAll('.suggestion-item');
                     suggestionItems.forEach(item => {
-                        item.addEventListener('click', () => {
+                        // Handle both click and touch events
+                        const selectSuggestion = () => {
                             inputField.value = item.textContent.trim();
                             suggestionsContainer.classList.add('hidden');
+                            // Focus back on input and position cursor at the end
+                            inputField.focus();
+                            setTimeout(() => {
+                                const length = inputField.value.length;
+                                inputField.setSelectionRange(length, length);
+                            }, 10);
+                        };
+                        
+                        item.addEventListener('click', selectSuggestion);
+                        item.addEventListener('touchend', (e) => {
+                            e.preventDefault(); // Prevent additional mouse events
+                            selectSuggestion();
                         });
                     });
                     
@@ -1998,12 +2012,24 @@ class ConceptModule {
                 }
             });
             
-            // Hide suggestions when clicking outside
-            document.addEventListener('click', (event) => {
+            // Fix for iOS virtual keyboard issues - make input field re-gain focus
+            inputField.addEventListener('touchstart', () => {
+                setTimeout(() => {
+                    if (document.activeElement !== inputField) {
+                        inputField.focus();
+                    }
+                }, 100);
+            });
+            
+            // Enhanced handling for mobile touch events outside
+            const handleOutsideTouch = (event) => {
                 if (!inputField.contains(event.target) && !suggestionsContainer.contains(event.target)) {
                     suggestionsContainer.classList.add('hidden');
                 }
-            });
+            };
+            
+            document.addEventListener('click', handleOutsideTouch);
+            document.addEventListener('touchend', handleOutsideTouch);
             
             // Show all suggestions on focus if input is not empty
             inputField.addEventListener('focus', () => {
