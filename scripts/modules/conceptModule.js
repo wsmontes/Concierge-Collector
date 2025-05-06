@@ -476,8 +476,40 @@ class ConceptModule {
                 
                 this.uiManager.hideLoading();
                 
-                if (similarConcepts.length > 0) {
-                    this.showConceptDisambiguationDialog(newConcept, similarConcepts);
+                // Lower the similarity threshold to catch plurals, minor typos, and other small variations
+                // A threshold of 0.7 (70%) will be more sensitive to small differences like adding an 's'
+                const SIMILARITY_THRESHOLD = 0.7; // Lower threshold to catch pluralization and minor typos
+                const highSimilarityConcepts = similarConcepts.filter(
+                    concept => concept.similarity >= SIMILARITY_THRESHOLD
+                );
+                
+                // Add special handling for potential plurals/singulars that might be missed by similarity calculation
+                const potentialPluralOrSingular = similarConcepts.filter(concept => {
+                    // Check for plural/singular variations that might have lower similarity scores
+                    const newValue = newConcept.value.toLowerCase();
+                    const existingValue = concept.value.toLowerCase();
+                    
+                    // Common plural variations: adding 's', 'es', changing 'y' to 'ies'
+                    return (
+                        (newValue + 's' === existingValue) || 
+                        (existingValue + 's' === newValue) ||
+                        (newValue + 'es' === existingValue) || 
+                        (existingValue + 'es' === newValue) ||
+                        (newValue.endsWith('y') && existingValue === newValue.slice(0, -1) + 'ies') ||
+                        (existingValue.endsWith('y') && newValue === existingValue.slice(0, -1) + 'ies')
+                    );
+                });
+                
+                // Combine both high similarity concepts and potential plurals without duplicates
+                const combinedConcepts = [...highSimilarityConcepts];
+                potentialPluralOrSingular.forEach(concept => {
+                    if (!combinedConcepts.some(c => c.value === concept.value)) {
+                        combinedConcepts.push(concept);
+                    }
+                });
+                
+                if (combinedConcepts.length > 0) {
+                    this.showConceptDisambiguationDialog(newConcept, combinedConcepts);
                     document.body.removeChild(modalContainer);
                     document.body.style.overflow = '';
                 } else {
@@ -1377,15 +1409,15 @@ class ConceptModule {
         overlay.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
         
         overlay.innerHTML = `
-            <div class="bg-white p-6 rounded-lg flex flex-col items-center max-w-md">
+            <div class="bg-white p-4 sm:p-6 rounded-lg flex flex-col items-center max-w-xs sm:max-w-md w-[90%]">
                 <div class="flex items-center justify-center mb-4">
-                    <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500 mr-3"></div>
-                    <p class="text-gray-700 font-medium">Analyzing images with AI...</p>
+                    <div class="animate-spin rounded-full h-8 w-8 sm:h-10 sm:w-10 border-b-2 border-blue-500 mr-3"></div>
+                    <p class="text-gray-700 font-medium text-sm sm:text-base">Analyzing images with AI...</p>
                 </div>
-                <div class="image-preview-container w-64 h-48 rounded-md border border-gray-300 overflow-hidden mb-3">
+                <div class="image-preview-container w-full h-36 sm:h-48 rounded-md border border-gray-300 overflow-hidden mb-3">
                     <img id="analysis-preview-image" class="w-full h-full object-cover opacity-0 transition-opacity duration-500" src="" alt="Processing">
                 </div>
-                <p class="text-sm text-gray-500">Extracting restaurant information from images</p>
+                <p class="text-xs sm:text-sm text-gray-500">Extracting restaurant information from images</p>
             </div>
         `;
         
@@ -1750,5 +1782,238 @@ class ConceptModule {
             
             img.src = imageData;
         });
+    }
+
+    /**
+     * Shows a dialog to resolve concept ambiguity when similar concepts are found
+     * @param {Object} newConcept - The new concept the user wants to add
+     * @param {Array} similarConcepts - Array of similar existing concepts
+     */
+    async showConceptDisambiguationDialog(newConcept, similarConcepts) {
+        // Create modal container
+        const modalContainer = document.createElement('div');
+        modalContainer.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+        
+        // Sort similar concepts by similarity score (highest first)
+        similarConcepts.sort((a, b) => b.similarity - a.similarity);
+        
+        // Create the modal content
+        modalContainer.innerHTML = `
+            <div class="bg-white rounded-lg p-6 max-w-md w-full">
+                <h2 class="text-xl font-bold mb-4">Similar Concepts Found</h2>
+                
+                <p class="mb-4">Your new concept "<strong>${newConcept.value}</strong>" (${newConcept.category}) is similar to existing concepts:</p>
+                
+                <div class="max-h-60 overflow-y-auto mb-4 border rounded">
+                    ${similarConcepts.map((concept, index) => `
+                        <div class="similar-concept p-2 hover:bg-gray-100 cursor-pointer flex justify-between items-center ${index === 0 ? 'bg-blue-50' : ''}" 
+                             data-index="${index}" data-value="${concept.value.replace(/"/g, '&quot;')}">
+                            <div>
+                                <div class="font-medium">${concept.value}</div>
+                                <div class="text-xs text-gray-500">${concept.category}</div>
+                            </div>
+                            <div class="text-sm text-gray-700">${Math.round(concept.similarity * 100)}% match</div>
+                        </div>
+                    `).join('')}
+                </div>
+                
+                <div class="mb-4">
+                    <p class="text-sm text-gray-600">What would you like to do?</p>
+                </div>
+                
+                <div class="flex flex-col space-y-2">
+                    <button id="use-similar-concept" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                        Use similar concept
+                    </button>
+                    <button id="add-anyway" class="bg-gray-500 text-white px-4 py-2 rounded hover:bg-gray-600">
+                        Add my concept anyway
+                    </button>
+                    <button id="cancel-concept" class="text-gray-500 px-4 py-2 rounded hover:bg-gray-100">
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(modalContainer);
+        document.body.style.overflow = 'hidden';
+        
+        // Track the currently selected similar concept
+        let selectedConceptIndex = 0;
+        
+        // Add event listeners to the similar concept items
+        const similarConceptItems = modalContainer.querySelectorAll('.similar-concept');
+        similarConceptItems.forEach(item => {
+            item.addEventListener('click', () => {
+                // Remove highlighting from all items
+                similarConceptItems.forEach(i => i.classList.remove('bg-blue-50'));
+                // Add highlighting to clicked item
+                item.classList.add('bg-blue-50');
+                // Update selected index
+                selectedConceptIndex = parseInt(item.dataset.index);
+            });
+        });
+        
+        // Add event listener for the use similar concept button
+        const useSimilarBtn = modalContainer.querySelector('#use-similar-concept');
+        useSimilarBtn.addEventListener('click', () => {
+            const selectedConcept = similarConcepts[selectedConceptIndex];
+            
+            // Add the selected concept instead of the new one
+            this.uiManager.currentConcepts.push({
+                category: selectedConcept.category,
+                value: selectedConcept.value
+            });
+            
+            this.renderConcepts();
+            this.uiManager.showNotification(`Using existing concept: "${selectedConcept.value}"`, 'success');
+            
+            document.body.removeChild(modalContainer);
+            document.body.style.overflow = '';
+        });
+        
+        // Add event listener for the add anyway button
+        const addAnywayBtn = modalContainer.querySelector('#add-anyway');
+        addAnywayBtn.addEventListener('click', () => {
+            // Add the original new concept
+            this.uiManager.currentConcepts.push(newConcept);
+            this.renderConcepts();
+            this.uiManager.showNotification(`Added new concept: "${newConcept.value}"`, 'success');
+            
+            document.body.removeChild(modalContainer);
+            document.body.style.overflow = '';
+        });
+        
+        // Add event listener for the cancel button
+        const cancelBtn = modalContainer.querySelector('#cancel-concept');
+        cancelBtn.addEventListener('click', () => {
+            document.body.removeChild(modalContainer);
+            document.body.style.overflow = '';
+        });
+        
+        // Close when clicking outside
+        modalContainer.addEventListener('click', event => {
+            if (event.target === modalContainer) {
+                document.body.removeChild(modalContainer);
+                document.body.style.overflow = '';
+            }
+        });
+    }
+
+    /**
+     * Loads concept suggestions for autocomplete functionality
+     * @param {string} category - The concept category
+     * @param {HTMLInputElement} inputField - The input field element
+     * @param {HTMLElement} suggestionsContainer - The container for displaying suggestions
+     */
+    async loadConceptSuggestions(category, inputField, suggestionsContainer) {
+        try {
+            // Fetch concepts for this category from the database
+            const concepts = await dataStorage.getConceptsByCategory(category);
+            
+            // Set up input event for showing filtered suggestions
+            inputField.addEventListener('input', () => {
+                const query = inputField.value.trim().toLowerCase();
+                
+                if (query.length < 1) {
+                    suggestionsContainer.classList.add('hidden');
+                    return;
+                }
+                
+                // Filter concepts based on query
+                const filteredConcepts = concepts.filter(
+                    concept => concept.value.toLowerCase().includes(query)
+                );
+                
+                // Display suggestions
+                if (filteredConcepts.length > 0) {
+                    suggestionsContainer.innerHTML = filteredConcepts
+                        .map(concept => `
+                            <div class="suggestion-item px-3 py-2 hover:bg-gray-100 cursor-pointer">
+                                ${concept.value}
+                            </div>
+                        `)
+                        .join('');
+                    
+                    // Add click event to suggestions
+                    const suggestionItems = suggestionsContainer.querySelectorAll('.suggestion-item');
+                    suggestionItems.forEach(item => {
+                        item.addEventListener('click', () => {
+                            inputField.value = item.textContent.trim();
+                            suggestionsContainer.classList.add('hidden');
+                        });
+                    });
+                    
+                    suggestionsContainer.classList.remove('hidden');
+                } else {
+                    suggestionsContainer.classList.add('hidden');
+                }
+            });
+            
+            // Handle keyboard navigation
+            inputField.addEventListener('keydown', (e) => {
+                const items = suggestionsContainer.querySelectorAll('.suggestion-item');
+                if (items.length === 0) return;
+                
+                // Get current focused item index
+                let focusedIndex = Array.from(items).findIndex(
+                    item => item.classList.contains('bg-blue-100')
+                );
+                
+                switch (e.key) {
+                    case 'ArrowDown':
+                        e.preventDefault();
+                        if (focusedIndex < 0) {
+                            // No item is focused yet, focus the first one
+                            items[0].classList.add('bg-blue-100');
+                        } else {
+                            // Move focus to next item
+                            items[focusedIndex].classList.remove('bg-blue-100');
+                            focusedIndex = (focusedIndex + 1) % items.length;
+                            items[focusedIndex].classList.add('bg-blue-100');
+                        }
+                        break;
+                    case 'ArrowUp':
+                        e.preventDefault();
+                        if (focusedIndex < 0) {
+                            // No item is focused yet, focus the last one
+                            items[items.length - 1].classList.add('bg-blue-100');
+                        } else {
+                            // Move focus to previous item
+                            items[focusedIndex].classList.remove('bg-blue-100');
+                            focusedIndex = (focusedIndex - 1 + items.length) % items.length;
+                            items[focusedIndex].classList.add('bg-blue-100');
+                        }
+                        break;
+                    case 'Enter':
+                        if (focusedIndex >= 0) {
+                            e.preventDefault();
+                            inputField.value = items[focusedIndex].textContent.trim();
+                            suggestionsContainer.classList.add('hidden');
+                        }
+                        break;
+                    case 'Escape':
+                        suggestionsContainer.classList.add('hidden');
+                        break;
+                }
+            });
+            
+            // Hide suggestions when clicking outside
+            document.addEventListener('click', (event) => {
+                if (!inputField.contains(event.target) && !suggestionsContainer.contains(event.target)) {
+                    suggestionsContainer.classList.add('hidden');
+                }
+            });
+            
+            // Show all suggestions on focus if input is not empty
+            inputField.addEventListener('focus', () => {
+                const query = inputField.value.trim().toLowerCase();
+                if (query.length > 0) {
+                    inputField.dispatchEvent(new Event('input'));
+                }
+            });
+        } catch (error) {
+            console.error('Error loading concept suggestions:', error);
+        }
     }
 }
