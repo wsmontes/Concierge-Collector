@@ -65,6 +65,10 @@ body {
   overflow-x: hidden;
   min-height: 100%;
   padding-bottom: 6rem; /* Space for FAB */
+  
+  /* Android-specific optimizations */
+  touch-action: manipulation; /* Prevents delay on click */
+  -webkit-overflow-scrolling: touch; /* For older Android WebView */
 }
 
 /* ===== Layout & Container ===== */
@@ -115,6 +119,34 @@ section {
   transition: transform var(--transition-smooth), box-shadow var(--transition-smooth);
   animation: fade-slide-up 400ms ease-out;
   border: 1px solid rgba(240, 240, 245, 0.8);
+  
+  /* Android-specific improvements */
+  position: relative;
+  overflow: hidden; /* For ripple effect containment */
+}
+
+/* Android ripple effect for sections */
+section::after {
+  content: '';
+  display: block;
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  background-image: radial-gradient(circle, rgba(0, 0, 0, 0.1) 10%, transparent 10.01%);
+  background-repeat: no-repeat;
+  background-position: 50%;
+  transform: scale(10, 10);
+  opacity: 0;
+  transition: transform 0.4s, opacity 0.8s;
+}
+
+section:active::after {
+  transform: scale(0, 0);
+  opacity: 0.3;
+  transition: 0s;
 }
 
 section:not(.hidden):hover {
@@ -122,14 +154,15 @@ section:not(.hidden):hover {
   border-color: rgba(230, 230, 240, 1);
 }
 
+/* Optimize animation performance for Android */
 @keyframes fade-slide-up {
   from {
     opacity: 0;
-    transform: translateY(10px);
+    transform: translateY(10px) translateZ(0); /* Hardware acceleration */
   }
   to {
     opacity: 1;
-    transform: translateY(0);
+    transform: translateY(0) translateZ(0); /* Hardware acceleration */
   }
 }
 
@@ -143,6 +176,7 @@ section h2 {
   gap: 0.5rem;
   padding-bottom: 0.5rem;
   border-bottom: 1px solid var(--neutral-200); /* Slightly darker border */
+  will-change: transform; /* Hint to browser for optimized rendering on Android */
 }
 
 section h2::before {
@@ -159,6 +193,22 @@ section h3 {
   font-weight: 600;
   color: var(--neutral-700);
   margin-bottom: 0.875rem;
+}
+
+/* Android-specific media query for better touch targets */
+@media screen and (hover: none) and (pointer: coarse) {
+  section {
+    padding: 1.625rem; /* Slightly larger padding for touch */
+  }
+  
+  section h2 {
+    padding-bottom: 0.675rem; /* Slightly larger touch area */
+  }
+  
+  /* Improve button touch targets for Android */
+  button {
+    min-height: 48px; /* Google's material design touch target recommendation */
+  }
 }
 
 /* ===== Forms & Inputs ===== */
