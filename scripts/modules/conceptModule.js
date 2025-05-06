@@ -1350,7 +1350,8 @@ class ConceptModule {
                 
                 // Update loading message for each new image
                 if (processedCount > 1 && this.imageProcessingQueue.length > 0) {
-                    this.uiManager.updateLoadingMessage(`Analyzing images with AI (${processedCount}/${totalImages})...`);
+                    // Use our safe method instead of calling directly
+                    this.updateLoadingMessage(`Analyzing images with AI (${processedCount}/${totalImages})...`);
                 }
                 
                 // Process the current image
@@ -1366,6 +1367,23 @@ class ConceptModule {
             this.uiManager.showNotification('Error during AI analysis', 'error');
         } finally {
             this.isProcessingQueue = false;
+        }
+    }
+
+    /**
+     * Safely updates the loading message, with fallback if method is not available
+     * @param {string} message - The message to display
+     */
+    updateLoadingMessage(message) {
+        // Check if uiManager has this method
+        if (typeof this.uiManager.updateLoadingMessage === 'function') {
+            this.uiManager.updateLoadingMessage(message);
+        } else {
+            // Fallback: Look for loading message element directly
+            const loadingMessageElement = document.querySelector('#loading-overlay .loading-message');
+            if (loadingMessageElement) {
+                loadingMessageElement.textContent = message;
+            }
         }
     }
 

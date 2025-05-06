@@ -101,6 +101,20 @@ class QuickActionModule {
         }
     }
 
+    /**
+     * Safely removes a DOM element if it exists in the document
+     * @param {HTMLElement} element - The element to remove
+     * @param {HTMLElement} parent - The parent element (defaults to document.body)
+     * @returns {boolean} - Whether the element was successfully removed
+     */
+    safelyRemoveElement(element, parent = document.body) {
+        if (element && parent.contains(element)) {
+            parent.removeChild(element);
+            return true;
+        }
+        return false;
+    }
+
     quickPhoto() {
         this.uiManager.quickActionModal.classList.add('hidden');
         this.uiManager.showRestaurantFormSection();
@@ -126,26 +140,34 @@ class QuickActionModule {
         
         document.body.appendChild(options);
         
+        // Reference to the click event handler for proper removal
+        const outsideClickHandler = (e) => {
+            if (e.target !== options && !options.contains(e.target) && 
+                e.target !== this.uiManager.quickPhoto) {
+                if (this.safelyRemoveElement(options)) {
+                    // Remove the event listener once the element is removed
+                    document.removeEventListener('click', outsideClickHandler);
+                }
+            }
+        };
+        
         // Add event listeners
         document.getElementById('quick-camera-btn').addEventListener('click', () => {
             document.getElementById('camera-input').click();
-            document.body.removeChild(options);
+            if (this.safelyRemoveElement(options)) {
+                document.removeEventListener('click', outsideClickHandler);
+            }
         });
         
         document.getElementById('quick-gallery-btn').addEventListener('click', () => {
             document.getElementById('gallery-input').click();
-            document.body.removeChild(options);
+            if (this.safelyRemoveElement(options)) {
+                document.removeEventListener('click', outsideClickHandler);
+            }
         });
         
         // Close when clicking outside
-        document.addEventListener('click', (e) => {
-            if (e.target !== options && !options.contains(e.target) && 
-                e.target !== this.uiManager.quickPhoto) {
-                if (document.body.contains(options)) {
-                    document.body.removeChild(options);
-                }
-            }
-        });
+        document.addEventListener('click', outsideClickHandler);
     }
 
     quickManual() {
