@@ -127,11 +127,11 @@ class UIManager {
         
         // Only set transcription if we're coming from transcription screen
         // AND we're not editing an existing restaurant
-        if (this.originalTranscription && !this.isEditingRestaurant) {
-            const transcriptionTextarea = document.getElementById('restaurant-transcription');
-            if (transcriptionTextarea && !transcriptionTextarea.value) {
-                transcriptionTextarea.value = this.originalTranscription;
-            }
+        const transcriptionTextarea = document.getElementById('restaurant-transcription');
+        
+        if (this.originalTranscription && !this.editingRestaurantId && transcriptionTextarea && !transcriptionTextarea.value) {
+            // Only update if the textarea is empty and we have a new transcription
+            transcriptionTextarea.value = this.originalTranscription;
         }
         
         // Render the extracted concepts
@@ -213,16 +213,19 @@ class UIManager {
      * Clears transcription data when switching between restaurants
      */
     clearTranscriptionData() {
+        console.log('Clearing transcription data');
         this.originalTranscription = null;
         this.translatedTranscription = null;
-        if (this.transcriptionText) {
-            this.transcriptionText.textContent = '';
-        }
         
         // Also clear the transcription textarea in the restaurant form
         const transcriptionTextarea = document.getElementById('restaurant-transcription');
         if (transcriptionTextarea) {
             transcriptionTextarea.value = '';
+        }
+        
+        // Clear the transcription text element if it exists
+        if (this.transcriptionText) {
+            this.transcriptionText.textContent = '';
         }
         
         console.log('Transcription data cleared');

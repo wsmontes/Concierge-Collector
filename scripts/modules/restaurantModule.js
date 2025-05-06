@@ -1,5 +1,5 @@
 /**
- * Manages restaurant functionality
+ * Manages restaurant data and operations
  */
 class RestaurantModule {
     constructor(uiManager) {
@@ -417,6 +417,77 @@ class RestaurantModule {
                 <span class="material-icons mr-1">check</span>
                 Update Restaurant
             `;
+        }
+    }
+
+    /**
+     * Loads restaurant data for editing
+     * @param {string} restaurantId - ID of the restaurant to edit
+     */
+    async loadRestaurantForEdit(restaurantId) {
+        try {
+            console.log(`Loading restaurant ${restaurantId} for editing`);
+            this.uiManager.showLoading('Loading restaurant details...');
+            
+            const restaurant = await db.restaurants.get(restaurantId);
+            if (!restaurant) {
+                throw new Error('Restaurant not found');
+            }
+            
+            this.uiManager.editingRestaurantId = restaurantId;
+            
+            // Clear previous transcription data before loading new restaurant
+            this.uiManager.clearTranscriptionData();
+            
+            // Populate form fields with restaurant data
+            document.getElementById('restaurant-name').value = restaurant.name || '';
+            document.getElementById('restaurant-description').value = restaurant.description || '';
+            // ...existing code...
+            
+            // Update the transcription with this specific restaurant's transcription
+            const transcriptionTextarea = document.getElementById('restaurant-transcription');
+            if (transcriptionTextarea) {
+                transcriptionTextarea.value = restaurant.transcription || '';
+                // Update the originalTranscription property with this restaurant's transcription
+                this.uiManager.originalTranscription = restaurant.transcription || '';
+            }
+            
+            // ...existing code...
+            
+            this.uiManager.hideLoading();
+            this.uiManager.showConceptsSection();
+        } catch (error) {
+            this.uiManager.hideLoading();
+            console.error('Error loading restaurant for edit:', error);
+            this.uiManager.showNotification(`Error loading restaurant: ${error.message}`, 'error');
+        }
+    }
+
+    /**
+     * Saves a new or updated restaurant
+     */
+    async saveRestaurant() {
+        try {
+            // ...existing code...
+            
+            // Get transcription from textarea
+            const transcription = document.getElementById('restaurant-transcription').value.trim();
+            
+            // Create restaurant object with transcription
+            const restaurant = {
+                // ...existing code...
+                transcription: transcription,
+                // ...existing code...
+            };
+            
+            // ...existing code...
+            
+            // Clear transcription data after successful save
+            this.uiManager.clearTranscriptionData();
+            
+            // ...existing code...
+        } catch (error) {
+            // ...existing code...
         }
     }
 }
