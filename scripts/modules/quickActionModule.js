@@ -9,16 +9,7 @@ class QuickActionModule {
     setupEvents() {
         console.log('Setting up quick action events...');
         
-        // FAB button to open quick action modal
-        this.uiManager.fab.addEventListener('click', () => {
-            // Only show quick actions if a curator is logged in
-            if (!this.uiManager.currentCurator) {
-                this.uiManager.showNotification('Please set up curator information first', 'error');
-                return;
-            }
-            
-            this.uiManager.quickActionModal.classList.remove('hidden');
-        });
+        // FAB button event listener removed
         
         // Close modal
         this.uiManager.closeQuickModal.addEventListener('click', () => {

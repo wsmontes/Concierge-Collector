@@ -386,7 +386,7 @@ button .material-icons {
 
 .processing-step.completed {
   background-color: rgba(16, 185, 129, 0.1);
-  color: var(--success);
+  color: var (--success);
 }
 
 .processing-step.in-progress {
@@ -791,31 +791,6 @@ audio {
   margin: 0;
 }
 
-/* ===== Floating Action Button ===== */
-#fab {
-  position: fixed;
-  bottom: 1.5rem;
-  right: 1.5rem;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 3.5rem;
-  height: 3.5rem;
-  background: linear-gradient(135deg, var(--primary), var(--primary-dark));
-  color: white;
-  border-radius: 50%;
-  font-size: 1.875rem;
-  box-shadow: var(--shadow-lg);
-  cursor: pointer;
-  transition: transform var(--transition-bounce), box-shadow var(--transition-base);
-  z-index: 40;
-}
-
-#fab:hover {
-  transform: scale(1.1) rotate(45deg);
-  box-shadow: 0 15px 20px rgba(0, 0, 0, 0.2);
-}
-
 /* ===== Quick Action Modal ===== */
 #quick-action-modal {
   backdrop-filter: blur(4px);
@@ -1036,13 +1011,6 @@ button .material-icons {
   
   .restaurant-card {
     padding: 1rem;
-  }
-  
-  #fab {
-    bottom: 1rem;
-    right: 1rem;
-    width: 3rem;
-    height: 3rem;
   }
 }
 
