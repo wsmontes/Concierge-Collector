@@ -4,6 +4,9 @@
 class ConceptModule {
     constructor(uiManager) {
         this.uiManager = uiManager;
+        // New property to handle the queue of images for AI processing
+        this.imageProcessingQueue = [];
+        this.isProcessingQueue = false;
     }
 
     setupEvents() {
@@ -111,17 +114,30 @@ class ConceptModule {
         const processPhotoFiles = (files) => {
             if (files.length === 0) return;
             
-            for (const file of files) {
-                if (!file.type.startsWith('image/')) continue;
+            // Create an array of photo data from files
+            const photoDataPromises = Array.from(files).map(file => {
+                if (!file.type.startsWith('image/')) return null;
                 
-                const reader = new FileReader();
-                reader.onload = e => {
-                    const photoData = e.target.result;
-                    // Instead of immediately adding the photo, show the preview modal
-                    this.showImagePreviewModal(photoData, file);
-                };
-                reader.readAsDataURL(file);
-            }
+                return new Promise((resolve) => {
+                    const reader = new FileReader();
+                    reader.onload = e => {
+                        resolve({
+                            photoData: e.target.result,
+                            fileName: file.name
+                        });
+                    };
+                    reader.readAsDataURL(file);
+                });
+            });
+            
+            // When all files are read, show the multi-image preview modal
+            Promise.all(photoDataPromises)
+                .then(photoDataArray => {
+                    const validPhotoData = photoDataArray.filter(item => item !== null);
+                    if (validPhotoData.length > 0) {
+                        this.showMultiImagePreviewModal(validPhotoData);
+                    }
+                });
         };
         
         // Setup event handlers
@@ -1132,95 +1148,171 @@ class ConceptModule {
     // ... (code for loadConceptSuggestions and showConceptDisambiguationDialog would go here)
 
     /**
-     * Shows image preview modal with options to retake, accept, or analyze with AI
-     * @param {string} photoData - Base64 image data
-     * @param {File} file - Original file object
+     * Shows image preview modal with options to retake, accept, or analyze with AI - for multiple images
+     * @param {Array} photoDataArray - Array of photo data objects {photoData, fileName}
      */
-    showImagePreviewModal(photoData, file) {
+    showMultiImagePreviewModal(photoDataArray) {
         // Create modal container
         const modalContainer = document.createElement('div');
         modalContainer.id = 'image-preview-modal';
         modalContainer.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
         
-        modalContainer.innerHTML = `
-            <div class="bg-white rounded-lg p-6 max-w-md w-full">
-                <h2 class="text-xl font-bold mb-4 flex items-center">
-                    <span class="material-icons mr-2 text-green-500">photo</span>
-                    Image Preview
-                </h2>
-                
-                <div class="mb-4 relative">
-                    <img src="${photoData}" alt="Preview" class="w-full h-64 object-contain rounded border border-gray-300">
-                </div>
-                
-                <div class="mb-4">
-                    <label class="flex items-center">
-                        <input type="checkbox" id="use-ai-analysis" class="mr-2" checked>
-                        <span>Use AI to extract restaurant data</span>
-                        <span class="material-icons ml-1 text-sm text-purple-500">smart_toy</span>
-                    </label>
-                    <p class="text-xs text-gray-500 mt-1">
-                        AI will attempt to identify restaurant name and concepts from the image
-                    </p>
-                </div>
-                
-                <div class="flex justify-between">
-                    <button id="retake-photo" class="bg-gray-500 text-white px-4 py-2 rounded flex items-center">
-                        <span class="material-icons mr-1">replay</span>
-                        Retake
-                    </button>
-                    <button id="accept-photo" class="bg-green-500 text-white px-4 py-2 rounded flex items-center">
-                        <span class="material-icons mr-1">check</span>
-                        Accept
-                    </button>
-                </div>
-            </div>
-        `;
+        // Track the current image index
+        const state = {
+            currentIndex: 0,
+            totalImages: photoDataArray.length
+        };
         
+        // Generate the modal content
+        const updateModalContent = () => {
+            const current = photoDataArray[state.currentIndex];
+            const isLastImage = state.currentIndex === state.totalImages - 1;
+            
+            modalContainer.innerHTML = `
+                <div class="bg-white rounded-lg p-6 max-w-md w-full">
+                    <div class="flex justify-between items-center mb-4">
+                        <h2 class="text-xl font-bold flex items-center">
+                            <span class="material-icons mr-2 text-green-500">photo</span>
+                            Image Preview (${state.currentIndex + 1}/${state.totalImages})
+                        </h2>
+                        <button id="close-preview-modal" class="text-gray-500 hover:text-gray-800 text-xl">&times;</button>
+                    </div>
+                    
+                    <div class="mb-4 relative">
+                        <img src="${current.photoData}" alt="Preview" class="w-full h-64 object-contain rounded border border-gray-300">
+                        
+                        <div class="absolute bottom-2 left-0 right-0 flex justify-center space-x-1">
+                            ${photoDataArray.map((_, idx) => 
+                                `<div class="h-2 w-2 rounded-full ${idx === state.currentIndex ? 'bg-blue-500' : 'bg-gray-300'}"></div>`
+                            ).join('')}
+                        </div>
+                        
+                        ${state.totalImages > 1 ? `
+                            <button id="prev-image" class="absolute left-2 top-1/2 transform -translate-y-1/2 bg-white rounded-full p-1 shadow ${state.currentIndex === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'}" ${state.currentIndex === 0 ? 'disabled' : ''}>
+                                <span class="material-icons">chevron_left</span>
+                            </button>
+                            <button id="next-image" class="absolute right-2 top-1/2 transform -translate-y-1/2 bg-white rounded-full p-1 shadow ${isLastImage ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'}" ${isLastImage ? 'disabled' : ''}>
+                                <span class="material-icons">chevron_right</span>
+                            </button>
+                        ` : ''}
+                    </div>
+                    
+                    <div class="mb-4">
+                        <label class="flex items-center">
+                            <input type="checkbox" id="use-ai-analysis" class="mr-2" checked>
+                            <span>Use AI to extract restaurant data</span>
+                            <span class="material-icons ml-1 text-sm text-purple-500">smart_toy</span>
+                        </label>
+                        <p class="text-xs text-gray-500 mt-1">
+                            AI will attempt to identify restaurant name and concepts from the ${state.totalImages > 1 ? 'images' : 'image'}
+                        </p>
+                    </div>
+                    
+                    <div class="flex justify-between">
+                        <button id="retake-photos" class="bg-gray-500 text-white px-4 py-2 rounded flex items-center">
+                            <span class="material-icons mr-1">replay</span>
+                            Retake
+                        </button>
+                        <button id="accept-photos" class="bg-green-500 text-white px-4 py-2 rounded flex items-center">
+                            <span class="material-icons mr-1">check</span>
+                            Accept All ${state.totalImages > 1 ? `(${state.totalImages})` : ''}
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            // Setup event handlers after updating the content
+            setupEventHandlers();
+        };
+        
+        // Setup the event handlers for the modal
+        const setupEventHandlers = () => {
+            const closeBtn = document.getElementById('close-preview-modal');
+            const retakeBtn = document.getElementById('retake-photos');
+            const acceptBtn = document.getElementById('accept-photos');
+            const prevBtn = document.getElementById('prev-image');
+            const nextBtn = document.getElementById('next-image');
+            
+            if (closeBtn) {
+                closeBtn.addEventListener('click', () => {
+                    document.body.removeChild(modalContainer);
+                    document.body.style.overflow = '';
+                });
+            }
+            
+            if (retakeBtn) {
+                retakeBtn.addEventListener('click', () => {
+                    document.body.removeChild(modalContainer);
+                    document.body.style.overflow = '';
+                    
+                    // Determine which input to trigger based on the file name
+                    const isCamera = photoDataArray.some(item => 
+                        item.fileName && item.fileName.includes('camera'));
+                    
+                    if (isCamera) {
+                        document.getElementById('camera-input').click();
+                    } else {
+                        document.getElementById('gallery-input').click();
+                    }
+                });
+            }
+            
+            if (acceptBtn) {
+                acceptBtn.addEventListener('click', async () => {
+                    const useAI = document.getElementById('use-ai-analysis').checked;
+                    
+                    // Add all photos to the collection
+                    photoDataArray.forEach(item => {
+                        this.addPhotoToCollection(item.photoData);
+                    });
+                    
+                    // Close the modal
+                    document.body.removeChild(modalContainer);
+                    document.body.style.overflow = '';
+                    
+                    // If AI analysis is enabled, process all images
+                    if (useAI) {
+                        try {
+                            // Add all images to the processing queue
+                            photoDataArray.forEach(item => {
+                                this.imageProcessingQueue.push(item.photoData);
+                            });
+                            
+                            // Start processing queue if not already running
+                            if (!this.isProcessingQueue) {
+                                await this.processImageQueue();
+                            }
+                        } catch (error) {
+                            console.error('Error adding images to AI processing queue:', error);
+                            this.uiManager.showNotification('Error setting up AI analysis', 'error');
+                        }
+                    }
+                });
+            }
+            
+            if (prevBtn) {
+                prevBtn.addEventListener('click', () => {
+                    if (state.currentIndex > 0) {
+                        state.currentIndex--;
+                        updateModalContent();
+                    }
+                });
+            }
+            
+            if (nextBtn) {
+                nextBtn.addEventListener('click', () => {
+                    if (state.currentIndex < state.totalImages - 1) {
+                        state.currentIndex++;
+                        updateModalContent();
+                    }
+                });
+            }
+        };
+        
+        // Initial render of the modal content
         document.body.appendChild(modalContainer);
         document.body.style.overflow = 'hidden';
-        
-        // Setup event handlers
-        const retakeBtn = document.getElementById('retake-photo');
-        const acceptBtn = document.getElementById('accept-photo');
-        const useAiAnalysis = document.getElementById('use-ai-analysis');
-        
-        retakeBtn.addEventListener('click', () => {
-            // Close modal and trigger respective input
-            document.body.removeChild(modalContainer);
-            document.body.style.overflow = '';
-            
-            if (file.name.includes('camera')) {
-                document.getElementById('camera-input').click();
-            } else {
-                document.getElementById('gallery-input').click();
-            }
-        });
-        
-        acceptBtn.addEventListener('click', async () => {
-            const useAI = useAiAnalysis.checked;
-            
-            // Always add the photo to the collection
-            this.addPhotoToCollection(photoData);
-            
-            // Close the modal
-            document.body.removeChild(modalContainer);
-            document.body.style.overflow = '';
-            
-            // If AI analysis is enabled, process the image
-            if (useAI) {
-                try {
-                    this.uiManager.showLoading('Analyzing image with AI...');
-                    await this.processImageWithAI(photoData);
-                    this.uiManager.hideLoading();
-                    this.uiManager.showNotification('AI analysis complete', 'success');
-                } catch (error) {
-                    this.uiManager.hideLoading();
-                    console.error('Error analyzing image with AI:', error);
-                    this.uiManager.showNotification('Error analyzing image with AI', 'error');
-                }
-            }
-        });
+        updateModalContent();
         
         // Close when clicking outside
         modalContainer.addEventListener('click', event => {
@@ -1231,6 +1323,57 @@ class ConceptModule {
         });
     }
     
+    /**
+     * Process the queue of images for AI analysis one by one
+     */
+    async processImageQueue() {
+        if (this.imageProcessingQueue.length === 0) {
+            this.isProcessingQueue = false;
+            return;
+        }
+        
+        this.isProcessingQueue = true;
+        
+        try {
+            const totalImages = this.imageProcessingQueue.length;
+            let processedCount = 0;
+            
+            // Only show loading for the first image to avoid too many notifications
+            if (totalImages > 0) {
+                this.uiManager.showLoading(`Analyzing images with AI (1/${totalImages})...`);
+            }
+            
+            // Process each image in the queue sequentially
+            while (this.imageProcessingQueue.length > 0) {
+                const photoData = this.imageProcessingQueue.shift();
+                processedCount++;
+                
+                // Update loading message for each new image
+                if (processedCount > 1 && this.imageProcessingQueue.length > 0) {
+                    this.uiManager.updateLoadingMessage(`Analyzing images with AI (${processedCount}/${totalImages})...`);
+                }
+                
+                // Process the current image
+                await this.processImageWithAI(photoData);
+            }
+            
+            this.uiManager.hideLoading();
+            this.uiManager.showNotification(`AI analysis complete for ${totalImages} image${totalImages > 1 ? 's' : ''}`, 'success');
+            
+        } catch (error) {
+            this.uiManager.hideLoading();
+            console.error('Error processing image queue:', error);
+            this.uiManager.showNotification('Error during AI analysis', 'error');
+        } finally {
+            this.isProcessingQueue = false;
+        }
+    }
+
+    // Keep the existing showImagePreviewModal for compatibility
+    showImagePreviewModal(photoData, file) {
+        this.showMultiImagePreviewModal([{photoData, fileName: file.name}]);
+    }
+
     /**
      * Adds a photo to the collection and UI
      * @param {string} photoData - Base64 image data

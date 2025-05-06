@@ -1154,3 +1154,38 @@ button .material-icons {
   width: 16px;
   height: 16px;
 }
+
+/* Navigation buttons in image preview */
+#image-preview-modal button[id^="prev-image"],
+#image-preview-modal button[id^="next-image"] {
+  opacity: 0.8;
+  transition: opacity 0.2s, background-color 0.2s;
+}
+
+#image-preview-modal button[id^="prev-image"]:hover:not([disabled]),
+#image-preview-modal button[id^="next-image"]:hover:not([disabled]) {
+  opacity: 1;
+  background-color: rgba(255, 255, 255, 0.9);
+}
+
+#image-preview-modal #close-preview-modal {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background-color: var(--neutral-100);
+  transition: background-color var(--transition-base);
+}
+
+#image-preview-modal #close-preview-modal:hover {
+  background-color: var(--neutral-200);
+}
+
+/* Pagination indicators */
+#image-preview-modal .bottom-2 {
+  padding: 5px;
+  background-color: rgba(255, 255, 255, 0.7);
+  border-radius: 12px;
+}
