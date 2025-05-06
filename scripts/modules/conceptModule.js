@@ -1336,38 +1336,96 @@ class ConceptModule {
         
         try {
             const totalImages = this.imageProcessingQueue.length;
-            let processedCount = 0;
             
-            // Only show loading for the first image to avoid too many notifications
-            if (totalImages > 0) {
-                this.uiManager.showLoading(`Analyzing images with AI (1/${totalImages})...`);
-            }
+            // Create custom loading overlay with image preview
+            this.createImageAnalysisOverlay();
             
             // Process each image in the queue sequentially
             while (this.imageProcessingQueue.length > 0) {
                 const photoData = this.imageProcessingQueue.shift();
-                processedCount++;
                 
-                // Update loading message for each new image
-                if (processedCount > 1 && this.imageProcessingQueue.length > 0) {
-                    // Use our safe method instead of calling directly
-                    this.updateLoadingMessage(`Analyzing images with AI (${processedCount}/${totalImages})...`);
-                }
+                // Update the preview image with animation
+                this.updatePreviewImage(photoData);
                 
                 // Process the current image
                 await this.processImageWithAI(photoData);
             }
             
-            this.uiManager.hideLoading();
+            // Remove our custom overlay when done
+            this.removeImageAnalysisOverlay();
             this.uiManager.showNotification(`AI analysis complete for ${totalImages} image${totalImages > 1 ? 's' : ''}`, 'success');
             
         } catch (error) {
-            this.uiManager.hideLoading();
+            this.removeImageAnalysisOverlay();
             console.error('Error processing image queue:', error);
             this.uiManager.showNotification('Error during AI analysis', 'error');
         } finally {
             this.isProcessingQueue = false;
         }
+    }
+    
+    /**
+     * Creates a custom loading overlay with image preview for AI analysis
+     */
+    createImageAnalysisOverlay() {
+        // Remove any existing overlay first
+        this.removeImageAnalysisOverlay();
+        
+        // Create new overlay
+        const overlay = document.createElement('div');
+        overlay.id = 'image-analysis-overlay';
+        overlay.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+        
+        overlay.innerHTML = `
+            <div class="bg-white p-6 rounded-lg flex flex-col items-center max-w-md">
+                <div class="flex items-center justify-center mb-4">
+                    <div class="animate-spin rounded-full h-10 w-10 border-b-2 border-blue-500 mr-3"></div>
+                    <p class="text-gray-700 font-medium">Analyzing images with AI...</p>
+                </div>
+                <div class="image-preview-container w-64 h-48 rounded-md border border-gray-300 overflow-hidden mb-3">
+                    <img id="analysis-preview-image" class="w-full h-full object-cover opacity-0 transition-opacity duration-500" src="" alt="Processing">
+                </div>
+                <p class="text-sm text-gray-500">Extracting restaurant information from images</p>
+            </div>
+        `;
+        
+        document.body.appendChild(overlay);
+        document.body.style.overflow = 'hidden';
+    }
+    
+    /**
+     * Removes the custom image analysis overlay
+     */
+    removeImageAnalysisOverlay() {
+        const overlay = document.getElementById('image-analysis-overlay');
+        if (overlay) {
+            document.body.removeChild(overlay);
+            document.body.style.overflow = '';
+        }
+    }
+    
+    /**
+     * Updates the preview image with a fade animation
+     * @param {string} photoData - Base64 image data
+     */
+    updatePreviewImage(photoData) {
+        const previewImage = document.getElementById('analysis-preview-image');
+        if (!previewImage) return;
+        
+        // Fade out
+        previewImage.classList.remove('opacity-100');
+        previewImage.classList.add('opacity-0');
+        
+        // After fade out completes, update image and fade in
+        setTimeout(() => {
+            previewImage.src = photoData;
+            
+            // Force browser to recognize the new image before fading in
+            setTimeout(() => {
+                previewImage.classList.remove('opacity-0');
+                previewImage.classList.add('opacity-100');
+            }, 50);
+        }, 500); // Match the duration in the CSS transition (500ms)
     }
 
     /**
