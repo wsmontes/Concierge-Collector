@@ -67,5 +67,17 @@ Output just the description with no additional text, explanations, or quotation 
 Text: {texto}
 
 Provide only the restaurant name without any additional text or explanation.`
+    },
+    
+    // New prompt for extracting restaurant name from images
+    imageRestaurantNameExtraction: {
+        system: "You are a restaurant name detector. If you can identify a restaurant name in the image, respond ONLY with that name, nothing else. If you cannot identify a restaurant name with reasonable confidence, respond with 'UNKNOWN'.",
+        user: "What is the name of this restaurant? Respond only with the name. If you cannot determine the name, respond with 'UNKNOWN'."
+    },
+    
+    // New prompt for extracting concepts from restaurant images
+    imageConceptExtraction: {
+        system: "You are a restaurant concept analyzer. For menu items, list each distinct food or drink as a separate object. Don't combine multiple menu items with commas. For example, use [{\"category\": \"Menu\", \"value\": \"Fruit Salad\"}, {\"category\": \"Menu\", \"value\": \"Cocktails\"}] instead of [{\"category\": \"Menu\", \"value\": \"Fruit Salad, Cocktails\"}].",
+        user: "Extract restaurant concepts from this image. Return a JSON array with objects containing 'category' and 'value'. Valid categories are: 'Cuisine', 'Menu', 'Price Range', 'Mood', 'Setting', 'Crowd', 'Suitable For', 'Food Style', 'Drinks', 'Special Features'. For menu items, create a separate object for each distinct item. Example: [{\"category\": \"Cuisine\", \"value\": \"Italian\"}, {\"category\": \"Menu\", \"value\": \"Pizza\"}]. Only return valid JSON with no additional text."
     }
 };
