@@ -217,7 +217,7 @@ class ConceptModule {
         
         // Get description text
         const descriptionInput = document.getElementById('restaurant-description');
-        const description = descriptionInput ? descriptionInput.value.trim() : '';
+        const description = descriptionInput ? description.value.trim() : '';
         
         try {
             this.uiManager.showLoading(this.uiManager.isEditingRestaurant ? 'Updating restaurant...' : 'Saving restaurant...');
