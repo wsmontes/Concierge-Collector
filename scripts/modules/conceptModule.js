@@ -217,7 +217,7 @@ class ConceptModule {
         
         // Get description text
         const descriptionInput = document.getElementById('restaurant-description');
-        const description = descriptionInput ? descriptionInput.value.trim() : '';
+        const description = descriptionInput ? description.value.trim() : '';
         
         try {
             this.uiManager.showLoading(this.uiManager.isEditingRestaurant ? 'Updating restaurant...' : 'Saving restaurant...');
@@ -464,72 +464,12 @@ class ConceptModule {
                 return;
             }
             
-            try {
-                this.uiManager.showLoading('Checking for similar concepts...');
-                
-                const existingConcepts = await dataStorage.getAllConcepts();
-                const newConcept = { category, value };
-                const similarConcepts = await conceptMatcher.findSimilarConcepts(
-                    newConcept, 
-                    existingConcepts
-                );
-                
-                this.uiManager.hideLoading();
-                
-                // Lower the similarity threshold to catch plurals, minor typos, and other small variations
-                // A threshold of 0.7 (70%) will be more sensitive to small differences like adding an 's'
-                const SIMILARITY_THRESHOLD = 0.7; // Lower threshold to catch pluralization and minor typos
-                const highSimilarityConcepts = similarConcepts.filter(
-                    concept => concept.similarity >= SIMILARITY_THRESHOLD
-                );
-                
-                // Add special handling for potential plurals/singulars that might be missed by similarity calculation
-                // A threshold of 0.7 (70%) will be more sensitive to small differences like adding an 's'
-                const potentialPluralOrSingular = similarConcepts.filter(concept => {
-                    // Check for plural/singular variations that might have lower similarity scores
-                    const newValue = newConcept.value.toLowerCase();
-                    const existingValue = concept.value.toLowerCase();
-                    
-                    // Common plural variations: adding 's', 'es', changing 'y' to 'ies'
-                    return (
-                        (newValue + 's' === existingValue) || 
-                        (existingValue + 's' === newValue) ||
-                        (newValue + 'es' === existingValue) || 
-                        (existingValue + 'es' === newValue) ||
-                        (newValue.endsWith('y') && existingValue === newValue.slice(0, -1) + 'ies') ||
-                        (existingValue.endsWith('y') && newValue === existingValue.slice(0, -1) + 'ies')
-                    );
-                });
-                
-                // Combine both high similarity concepts and potential plurals without duplicates
-                const combinedConcepts = [...highSimilarityConcepts];
-                potentialPluralOrSingular.forEach(concept => {
-                    if (!combinedConcepts.some(c => c.value === concept.value)) {
-                        combinedConcepts.push(concept);
-                    }
-                });
-                
-                if (combinedConcepts.length > 0) {
-                    this.showConceptDisambiguationDialog(newConcept, combinedConcepts);
-                    document.body.removeChild(modalContainer);
-                    document.body.style.overflow = '';
-                } else {
-                    this.uiManager.currentConcepts.push(newConcept);
-                    this.renderConcepts();
-                    document.body.removeChild(modalContainer);
-                    document.body.style.overflow = '';
-                }
-            } catch (error) {
-                this.uiManager.hideLoading();
-                console.error('Error checking for similar concepts:', error);
-                this.uiManager.showNotification('Error checking for similar concepts', 'error');
-                
-                // Fallback: add directly
-                this.uiManager.currentConcepts.push({ category, value });
-                this.renderConcepts();
-                document.body.removeChild(modalContainer);
-                document.body.style.overflow = '';
-            }
+            // INACTIVATED: Skip similarity check and disambiguation modal
+            // Add concept directly without checking for similar concepts
+            this.uiManager.currentConcepts.push({ category, value });
+            this.renderConcepts();
+            document.body.removeChild(modalContainer);
+            document.body.style.overflow = '';
         });
         
         // Close when clicking outside
