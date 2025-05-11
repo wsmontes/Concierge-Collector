@@ -351,33 +351,50 @@ class ExportImportModule {
      * @returns {Promise<void>}
      */
     async importFromRemote() {
+        console.log('Starting remote data import operation...');
         try {
             this.uiManager.showLoading('Importing data from remote server...');
+            console.log('Remote import: Sending GET request to https://wsmontes.pythonanywhere.com/api/restaurants');
             
             // Fetch data from remote API
             const response = await fetch('https://wsmontes.pythonanywhere.com/api/restaurants');
             
             if (!response.ok) {
+                console.error(`Remote import: Server responded with error ${response.status}: ${response.statusText}`);
                 throw new Error(`Server error: ${response.status} ${response.statusText}`);
             }
             
             const remoteData = await response.json();
-            console.log('Received remote data:', remoteData);
+            console.log(`Remote import: Received ${remoteData.length} restaurants from server`);
+            console.log('Remote import: Sample data:', remoteData.slice(0, 1));
             
             if (!Array.isArray(remoteData) || remoteData.length === 0) {
+                console.warn('Remote import: No data or invalid format received');
                 this.uiManager.hideLoading();
                 alert('No data received from remote server or invalid format.');
                 return;
             }
             
             // Convert the remote data format to our local format
+            console.log('Remote import: Converting remote data to local format...');
             const importData = this.convertRemoteDataToLocal(remoteData);
+            console.log('Remote import: Conversion complete', {
+                curators: importData.curators.length,
+                concepts: importData.concepts.length,
+                restaurants: importData.restaurants.length,
+                restaurantConcepts: importData.restaurantConcepts.length,
+                restaurantLocations: importData.restaurantLocations.length
+            });
             
             // Import into database
+            console.log('Remote import: Starting database import operation...');
             await dataStorage.importData(importData);
+            console.log('Remote import: Database import completed successfully');
             
             // Reload curator info
+            console.log('Remote import: Reloading curator information...');
             await this.uiManager.curatorModule.loadCuratorInfo();
+            console.log('Remote import: Curator information reloaded');
             
             this.uiManager.hideLoading();
             this.uiManager.showNotification('Remote data imported successfully');
@@ -395,17 +412,32 @@ class ExportImportModule {
      * @returns {Promise<void>}
      */
     async exportToRemote() {
+        console.log('Starting remote data export operation...');
         try {
             this.uiManager.showLoading('Exporting data to remote server...');
             
             // Get all data from local storage (without photos)
+            console.log('Remote export: Retrieving data from local database...');
             const exportResult = await dataStorage.exportData();
+            console.log('Remote export: Local data retrieved', {
+                curators: exportResult.jsonData.curators.length,
+                concepts: exportResult.jsonData.concepts.length,
+                restaurants: exportResult.jsonData.restaurants.length,
+                restaurantConcepts: exportResult.jsonData.restaurantConcepts.length,
+                restaurantLocations: exportResult.jsonData.restaurantLocations.length
+            });
+            
             const localData = exportResult.jsonData;
             
             // Convert local data to the remote server format
+            console.log('Remote export: Converting local data to remote format...');
             const remoteData = this.convertLocalDataToRemote(localData);
+            console.log(`Remote export: Conversion complete, ${remoteData.length} restaurants ready for export`);
             
             // Send data to remote server
+            console.log('Remote export: Sending POST request to https://wsmontes.pythonanywhere.com/api/restaurants/batch');
+            console.log(`Remote export: Payload size: ${JSON.stringify(remoteData).length} bytes`);
+            
             const response = await fetch('https://wsmontes.pythonanywhere.com/api/restaurants/batch', {
                 method: 'POST',
                 headers: {
@@ -416,10 +448,12 @@ class ExportImportModule {
             
             if (!response.ok) {
                 const errorText = await response.text();
+                console.error(`Remote export: Server error ${response.status}: ${response.statusText}`, errorText);
                 throw new Error(`Server error: ${response.status} ${response.statusText} - ${errorText}`);
             }
             
             const result = await response.json();
+            console.log('Remote export: Server response:', result);
             
             this.uiManager.hideLoading();
             this.uiManager.showNotification('Data exported to remote server successfully');
@@ -438,6 +472,8 @@ class ExportImportModule {
      * @returns {Object} - Data structure compatible with dataStorage.importData()
      */
     convertRemoteDataToLocal(remoteData) {
+        console.log('Converting remote data format to local format...');
+        
         // Initialize the import data structure
         const importData = {
             curators: [],
@@ -457,8 +493,14 @@ class ExportImportModule {
         let conceptIdCounter = -1;
         let restaurantIdCounter = -1;
         
+        console.log(`Processing ${remoteData.length} restaurants from remote data`);
+        
         // Process each restaurant
-        remoteData.forEach(remoteRestaurant => {
+        remoteData.forEach((remoteRestaurant, index) => {
+            if (index % 10 === 0) {
+                console.log(`Converting remote restaurant ${index + 1}/${remoteData.length}`);
+            }
+            
             // 1. Process curator
             const curatorName = remoteRestaurant.curator?.name || 'Unknown Curator';
             let curatorId;
@@ -473,6 +515,7 @@ class ExportImportModule {
                     name: curatorName,
                     lastActive: new Date().toISOString()
                 });
+                console.log(`Created new curator: ${curatorName} with ID: ${curatorId}`);
             }
             
             // 2. Process restaurant
@@ -485,9 +528,12 @@ class ExportImportModule {
                 description: remoteRestaurant.description || null,
                 transcription: remoteRestaurant.transcription || null
             });
+            console.log(`Created restaurant: ${remoteRestaurant.name} with ID: ${restaurantId}`);
             
             // 3. Process concepts
             if (Array.isArray(remoteRestaurant.concepts)) {
+                console.log(`Processing ${remoteRestaurant.concepts.length} concepts for restaurant: ${remoteRestaurant.name}`);
+                
                 remoteRestaurant.concepts.forEach(concept => {
                     if (concept.category && concept.value) {
                         const conceptKey = `${concept.category}:${concept.value}`;
@@ -504,14 +550,17 @@ class ExportImportModule {
                                 value: concept.value,
                                 timestamp: new Date().toISOString()
                             });
+                            console.log(`Created new concept: ${concept.category}:${concept.value} with ID: ${conceptId}`);
                         }
                         
                         // Add relationship between restaurant and concept
+                        const relationId = conceptIdCounter--;
                         importData.restaurantConcepts.push({
-                            id: conceptIdCounter--,
+                            id: relationId,
                             restaurantId: restaurantId,
                             conceptId: conceptId
                         });
+                        console.log(`Created restaurant-concept relation with ID: ${relationId}`);
                     }
                 });
             }
@@ -520,15 +569,25 @@ class ExportImportModule {
             if (remoteRestaurant.location) {
                 const location = remoteRestaurant.location;
                 if (location.latitude && location.longitude) {
+                    const locationId = conceptIdCounter--;
                     importData.restaurantLocations.push({
-                        id: conceptIdCounter--,
+                        id: locationId,
                         restaurantId: restaurantId,
                         latitude: location.latitude,
                         longitude: location.longitude,
                         address: location.address || null
                     });
+                    console.log(`Created location for restaurant ${remoteRestaurant.name} with ID: ${locationId}`);
                 }
             }
+        });
+        
+        console.log('Conversion complete. Summary:', {
+            curators: importData.curators.length,
+            concepts: importData.concepts.length,
+            restaurants: importData.restaurants.length,
+            restaurantConcepts: importData.restaurantConcepts.length,
+            restaurantLocations: importData.restaurantLocations.length
         });
         
         return importData;
@@ -540,16 +599,20 @@ class ExportImportModule {
      * @returns {Array} - Array of restaurant objects for remote API
      */
     convertLocalDataToRemote(localData) {
+        console.log('Converting local data format to remote format...');
+        
         // Create lookup maps for efficient access
         const curatorsById = new Map();
         localData.curators.forEach(curator => {
             curatorsById.set(curator.id, curator);
         });
+        console.log(`Created lookup map for ${localData.curators.length} curators`);
         
         const conceptsById = new Map();
         localData.concepts.forEach(concept => {
             conceptsById.set(concept.id, concept);
         });
+        console.log(`Created lookup map for ${localData.concepts.length} concepts`);
         
         const conceptsByRestaurant = new Map();
         localData.restaurantConcepts.forEach(rc => {
@@ -561,6 +624,7 @@ class ExportImportModule {
                 conceptsByRestaurant.get(rc.restaurantId).push(concept);
             }
         });
+        console.log(`Created concept relationships map for ${conceptsByRestaurant.size} restaurants`);
         
         const locationsByRestaurant = new Map();
         localData.restaurantLocations.forEach(rl => {
@@ -570,16 +634,24 @@ class ExportImportModule {
                 address: rl.address || ""
             });
         });
+        console.log(`Created location map for ${locationsByRestaurant.size} restaurants`);
         
         // Convert restaurants to remote format
-        return localData.restaurants.map(restaurant => {
+        console.log(`Converting ${localData.restaurants.length} restaurants to remote format`);
+        const remoteData = localData.restaurants.map((restaurant, index) => {
+            if (index % 10 === 0) {
+                console.log(`Converting local restaurant ${index + 1}/${localData.restaurants.length}`);
+            }
+            
             const curator = curatorsById.get(restaurant.curatorId);
             const concepts = conceptsByRestaurant.get(restaurant.id) || [];
             const location = locationsByRestaurant.get(restaurant.id) || null;
             
             return {
                 name: restaurant.name,
-                curator: curator?.name || "Unknown Curator",
+                curator: {
+                    name: curator?.name || "Unknown Curator"
+                },
                 timestamp: restaurant.timestamp,
                 description: restaurant.description || "",
                 transcription: restaurant.transcription || "",
@@ -590,5 +662,8 @@ class ExportImportModule {
                 location: location
             };
         });
+        
+        console.log(`Conversion complete. Generated ${remoteData.length} restaurant objects for remote API`);
+        return remoteData;
     }
 }
