@@ -36,6 +36,21 @@ class ExportImportModule {
             });
         }
         
+        // Setup remote sync buttons
+        const importRemoteBtn = document.getElementById('import-remote-data');
+        if (importRemoteBtn) {
+            importRemoteBtn.addEventListener('click', async () => {
+                await this.importFromRemote();
+            });
+        }
+        
+        const exportRemoteBtn = document.getElementById('export-remote-data');
+        if (exportRemoteBtn) {
+            exportRemoteBtn.addEventListener('click', async () => {
+                await this.exportToRemote();
+            });
+        }
+        
         console.log('Export/import events set up');
     }
     
@@ -329,5 +344,251 @@ class ExportImportModule {
         });
         
         return importData;
+    }
+
+    /**
+     * Import restaurant data from remote PostgreSQL server
+     * @returns {Promise<void>}
+     */
+    async importFromRemote() {
+        try {
+            this.uiManager.showLoading('Importing data from remote server...');
+            
+            // Fetch data from remote API
+            const response = await fetch('https://wsmontes.pythonanywhere.com/api/restaurants');
+            
+            if (!response.ok) {
+                throw new Error(`Server error: ${response.status} ${response.statusText}`);
+            }
+            
+            const remoteData = await response.json();
+            console.log('Received remote data:', remoteData);
+            
+            if (!Array.isArray(remoteData) || remoteData.length === 0) {
+                this.uiManager.hideLoading();
+                alert('No data received from remote server or invalid format.');
+                return;
+            }
+            
+            // Convert the remote data format to our local format
+            const importData = this.convertRemoteDataToLocal(remoteData);
+            
+            // Import into database
+            await dataStorage.importData(importData);
+            
+            // Reload curator info
+            await this.uiManager.curatorModule.loadCuratorInfo();
+            
+            this.uiManager.hideLoading();
+            this.uiManager.showNotification('Remote data imported successfully');
+            alert(`Successfully imported ${remoteData.length} restaurants from remote server.`);
+        } catch (error) {
+            this.uiManager.hideLoading();
+            console.error('Error importing remote data:', error);
+            this.uiManager.showNotification('Error importing remote data: ' + error.message, 'error');
+            alert(`Failed to import from remote server: ${error.message}`);
+        }
+    }
+    
+    /**
+     * Export restaurant data to remote PostgreSQL server
+     * @returns {Promise<void>}
+     */
+    async exportToRemote() {
+        try {
+            this.uiManager.showLoading('Exporting data to remote server...');
+            
+            // Get all data from local storage (without photos)
+            const exportResult = await dataStorage.exportData();
+            const localData = exportResult.jsonData;
+            
+            // Convert local data to the remote server format
+            const remoteData = this.convertLocalDataToRemote(localData);
+            
+            // Send data to remote server
+            const response = await fetch('https://wsmontes.pythonanywhere.com/api/restaurants/batch', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(remoteData)
+            });
+            
+            if (!response.ok) {
+                const errorText = await response.text();
+                throw new Error(`Server error: ${response.status} ${response.statusText} - ${errorText}`);
+            }
+            
+            const result = await response.json();
+            
+            this.uiManager.hideLoading();
+            this.uiManager.showNotification('Data exported to remote server successfully');
+            alert(`Successfully exported ${remoteData.length} restaurants to remote server.`);
+        } catch (error) {
+            this.uiManager.hideLoading();
+            console.error('Error exporting data to remote server:', error);
+            this.uiManager.showNotification('Error exporting to remote server: ' + error.message, 'error');
+            alert(`Failed to export to remote server: ${error.message}`);
+        }
+    }
+    
+    /**
+     * Converts remote data format to local import format
+     * @param {Array} remoteData - Data from remote API
+     * @returns {Object} - Data structure compatible with dataStorage.importData()
+     */
+    convertRemoteDataToLocal(remoteData) {
+        // Initialize the import data structure
+        const importData = {
+            curators: [],
+            concepts: [],
+            restaurants: [],
+            restaurantConcepts: [],
+            restaurantLocations: [],
+            restaurantPhotos: []
+        };
+        
+        // Maps to keep track of entities and avoid duplicates
+        const curatorMap = new Map(); // curator name -> id
+        const conceptMap = new Map(); // category+value -> id
+        
+        // Generate temporary IDs (negative to avoid conflicts)
+        let curatorIdCounter = -1;
+        let conceptIdCounter = -1;
+        let restaurantIdCounter = -1;
+        
+        // Process each restaurant
+        remoteData.forEach(remoteRestaurant => {
+            // 1. Process curator
+            const curatorName = remoteRestaurant.curator?.name || 'Unknown Curator';
+            let curatorId;
+            
+            if (curatorMap.has(curatorName)) {
+                curatorId = curatorMap.get(curatorName);
+            } else {
+                curatorId = curatorIdCounter--;
+                curatorMap.set(curatorName, curatorId);
+                importData.curators.push({
+                    id: curatorId,
+                    name: curatorName,
+                    lastActive: new Date().toISOString()
+                });
+            }
+            
+            // 2. Process restaurant
+            const restaurantId = restaurantIdCounter--;
+            importData.restaurants.push({
+                id: restaurantId,
+                name: remoteRestaurant.name,
+                curatorId: curatorId,
+                timestamp: remoteRestaurant.timestamp ? new Date(remoteRestaurant.timestamp).toISOString() : new Date().toISOString(),
+                description: remoteRestaurant.description || null,
+                transcription: remoteRestaurant.transcription || null
+            });
+            
+            // 3. Process concepts
+            if (Array.isArray(remoteRestaurant.concepts)) {
+                remoteRestaurant.concepts.forEach(concept => {
+                    if (concept.category && concept.value) {
+                        const conceptKey = `${concept.category}:${concept.value}`;
+                        let conceptId;
+                        
+                        if (conceptMap.has(conceptKey)) {
+                            conceptId = conceptMap.get(conceptKey);
+                        } else {
+                            conceptId = conceptIdCounter--;
+                            conceptMap.set(conceptKey, conceptId);
+                            importData.concepts.push({
+                                id: conceptId,
+                                category: concept.category,
+                                value: concept.value,
+                                timestamp: new Date().toISOString()
+                            });
+                        }
+                        
+                        // Add relationship between restaurant and concept
+                        importData.restaurantConcepts.push({
+                            id: conceptIdCounter--,
+                            restaurantId: restaurantId,
+                            conceptId: conceptId
+                        });
+                    }
+                });
+            }
+            
+            // 4. Process location
+            if (remoteRestaurant.location) {
+                const location = remoteRestaurant.location;
+                if (location.latitude && location.longitude) {
+                    importData.restaurantLocations.push({
+                        id: conceptIdCounter--,
+                        restaurantId: restaurantId,
+                        latitude: location.latitude,
+                        longitude: location.longitude,
+                        address: location.address || null
+                    });
+                }
+            }
+        });
+        
+        return importData;
+    }
+    
+    /**
+     * Converts local data format to remote export format
+     * @param {Object} localData - Data from dataStorage.exportData()
+     * @returns {Array} - Array of restaurant objects for remote API
+     */
+    convertLocalDataToRemote(localData) {
+        // Create lookup maps for efficient access
+        const curatorsById = new Map();
+        localData.curators.forEach(curator => {
+            curatorsById.set(curator.id, curator);
+        });
+        
+        const conceptsById = new Map();
+        localData.concepts.forEach(concept => {
+            conceptsById.set(concept.id, concept);
+        });
+        
+        const conceptsByRestaurant = new Map();
+        localData.restaurantConcepts.forEach(rc => {
+            if (!conceptsByRestaurant.has(rc.restaurantId)) {
+                conceptsByRestaurant.set(rc.restaurantId, []);
+            }
+            const concept = conceptsById.get(rc.conceptId);
+            if (concept) {
+                conceptsByRestaurant.get(rc.restaurantId).push(concept);
+            }
+        });
+        
+        const locationsByRestaurant = new Map();
+        localData.restaurantLocations.forEach(rl => {
+            locationsByRestaurant.set(rl.restaurantId, {
+                latitude: rl.latitude,
+                longitude: rl.longitude,
+                address: rl.address || ""
+            });
+        });
+        
+        // Convert restaurants to remote format
+        return localData.restaurants.map(restaurant => {
+            const curator = curatorsById.get(restaurant.curatorId);
+            const concepts = conceptsByRestaurant.get(restaurant.id) || [];
+            const location = locationsByRestaurant.get(restaurant.id) || null;
+            
+            return {
+                name: restaurant.name,
+                curator: curator?.name || "Unknown Curator",
+                timestamp: restaurant.timestamp,
+                description: restaurant.description || "",
+                transcription: restaurant.transcription || "",
+                concepts: concepts.map(c => ({
+                    category: c.category,
+                    value: c.value
+                })),
+                location: location
+            };
+        });
     }
 }

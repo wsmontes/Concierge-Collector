@@ -302,6 +302,27 @@
                     </button>
                 </div>
             </div>
+            
+            <!-- New Remote Sync Section -->
+            <div class="mt-8 pt-6 border-t border-gray-200">
+                <h3 class="text-lg font-semibold mb-4 flex items-center">
+                    <span class="material-icons mr-2 text-purple-500">cloud_sync</span>
+                    Remote Database Sync
+                </h3>
+                <div class="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
+                    <button id="import-remote-data" class="bg-purple-500 text-white px-4 py-2 rounded flex items-center justify-center">
+                        <span class="material-icons mr-1">cloud_download</span>
+                        Import from Server
+                    </button>
+                    <button id="export-remote-data" class="bg-purple-500 text-white px-4 py-2 rounded flex items-center justify-center">
+                        <span class="material-icons mr-1">cloud_upload</span>
+                        Export to Server
+                    </button>
+                </div>
+                <p class="text-xs text-gray-500 mt-2">
+                    Sync data with PostgreSQL database at wsmontes.pythonanywhere.com
+                </p>
+            </div>
         </section>
         
         <!-- Quick Action Modal -->
