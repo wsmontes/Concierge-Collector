@@ -61,7 +61,7 @@ class ExportImportModule {
             
             // Get all data from storage
             const exportResult = await dataStorage.exportData();
-            
+            console.log("🔥 Export raw localData:", JSON.stringify(exportResult.jsonData, null, 2));
             // Check if there are any photos to include
             const hasPhotos = exportResult.photos && exportResult.photos.length > 0;
             
