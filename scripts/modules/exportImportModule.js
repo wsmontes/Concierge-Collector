@@ -667,74 +667,92 @@ class ExportImportModule {
      * @param {Object} localData - Data from dataStorage.exportData()
      * @returns {Array} - Array of restaurant objects for remote API
      */
- convertLocalDataToRemote(localData) {
-    console.log('Converting local data format to remote format...');
+    convertLocalDataToRemote(localData) {
+        console.log('Converting local data format to remote format...');
 
-    // Create lookup maps
-    const curatorsById = new Map();
-    localData.curators.forEach(curator => {
-        curatorsById.set(String(curator.id), curator);
-    });
-    console.log(`Created lookup map for ${localData.curators.length} curators`);
-
-    const conceptsById = new Map();
-    localData.concepts.forEach(concept => {
-        conceptsById.set(String(concept.id), concept);
-    });
-    console.log(`Created lookup map for ${localData.concepts.length} concepts`);
-
-    const conceptsByRestaurant = new Map();
-    localData.restaurantConcepts.forEach(rc => {
-        const restId = String(rc.restaurantId);
-        if (!conceptsByRestaurant.has(restId)) {
-            conceptsByRestaurant.set(restId, []);
-        }
-        const concept = conceptsById.get(String(rc.conceptId));
-        if (concept) {
-            conceptsByRestaurant.get(restId).push(concept);
-        }
-    });
-    console.log(`Created concept relationships map for ${conceptsByRestaurant.size} restaurants`);
-
-    const locationsByRestaurant = new Map();
-    localData.restaurantLocations.forEach(rl => {
-        locationsByRestaurant.set(String(rl.restaurantId), {
-            latitude: rl.latitude,
-            longitude: rl.longitude,
-            address: rl.address || ""
+        // Create lookup maps - ISSUE: The type conversion is needed for ID comparison
+        // String conversion is required because IDs may come as different types (number vs string)
+        const curatorsById = new Map();
+        localData.curators.forEach(curator => {
+            curatorsById.set(String(curator.id), curator);
         });
-    });
-    console.log(`Created location map for ${locationsByRestaurant.size} restaurants`);
+        console.log(`Created lookup map for ${localData.curators.length} curators`);
 
-    console.log(`Converting ${localData.restaurants.length} restaurants to remote format`);
-    const remoteData = localData.restaurants.map((restaurant, index) => {
-        if (index % 10 === 0) {
-            console.log(`Converting local restaurant ${index + 1}/${localData.restaurants.length}`);
+        const conceptsById = new Map();
+        localData.concepts.forEach(concept => {
+            conceptsById.set(String(concept.id), concept);
+        });
+        console.log(`Created lookup map for ${localData.concepts.length} concepts`);
+
+        const conceptsByRestaurant = new Map();
+        localData.restaurantConcepts.forEach(rc => {
+            const restId = String(rc.restaurantId);
+            if (!conceptsByRestaurant.has(restId)) {
+                conceptsByRestaurant.set(restId, []);
+            }
+            const concept = conceptsById.get(String(rc.conceptId));
+            if (concept) {
+                conceptsByRestaurant.get(restId).push(concept);
+            } else {
+                console.warn(`Concept ID ${rc.conceptId} not found for restaurant ID ${rc.restaurantId}`);
+            }
+        });
+        console.log(`Created concept relationships map for ${conceptsByRestaurant.size} restaurants`);
+        
+        // Log the first restaurant's concepts to help debug
+        if (conceptsByRestaurant.size > 0) {
+            const firstRestId = conceptsByRestaurant.keys().next().value;
+            const firstRestConcepts = conceptsByRestaurant.get(firstRestId);
+            console.log(`Sample - Restaurant ID ${firstRestId} has ${firstRestConcepts?.length || 0} concepts:`);
+            if (firstRestConcepts && firstRestConcepts.length > 0) {
+                console.log(firstRestConcepts.map(c => `${c.category}: ${c.value}`).slice(0, 5));
+            }
         }
 
-        const restId = String(restaurant.id);
-        const curator = curatorsById.get(String(restaurant.curatorId));
-        const concepts = conceptsByRestaurant.get(restId) || [];
-        const location = locationsByRestaurant.get(restId) || null;
+        const locationsByRestaurant = new Map();
+        localData.restaurantLocations.forEach(rl => {
+            locationsByRestaurant.set(String(rl.restaurantId), {
+                latitude: rl.latitude,
+                longitude: rl.longitude,
+                address: rl.address || ""
+            });
+        });
+        console.log(`Created location map for ${locationsByRestaurant.size} restaurants`);
 
-        return {
-            name: restaurant.name,
-            curator: {
-                name: curator?.name || "Unknown Curator"
-            },
-            timestamp: restaurant.timestamp,
-            description: restaurant.description || "",
-            transcription: restaurant.transcription || "",
-            concepts: concepts.map(c => ({
-                category: c.category,
-                value: c.value
-            })),
-            location: location
-        };
-    });
+        console.log(`Converting ${localData.restaurants.length} restaurants to remote format`);
+        const remoteData = localData.restaurants.map((restaurant, index) => {
+            if (index % 10 === 0) {
+                console.log(`Converting local restaurant ${index + 1}/${localData.restaurants.length}`);
+            }
 
-    console.log(`Conversion complete. Generated ${remoteData.length} restaurant objects for remote API`);
-    return remoteData;
-}
+            const restId = String(restaurant.id);
+            const curator = curatorsById.get(String(restaurant.curatorId));
+            const concepts = conceptsByRestaurant.get(restId) || [];
+            const location = locationsByRestaurant.get(restId) || null;
+
+            // Check if this restaurant has concepts and log for debugging
+            if (concepts.length === 0) {
+                console.log(`Restaurant "${restaurant.name}" (ID: ${restaurant.id}) has no concepts`);
+            }
+
+            return {
+                name: restaurant.name,
+                curator: {
+                    name: curator?.name || "Unknown Curator"
+                },
+                timestamp: restaurant.timestamp,
+                description: restaurant.description || "",
+                transcription: restaurant.transcription || "",
+                concepts: concepts.map(c => ({
+                    category: c.category,
+                    value: c.value
+                })),
+                location: location
+            };
+        });
+
+        console.log(`Conversion complete. Generated ${remoteData.length} restaurant objects for remote API`);
+        return remoteData;
+    }
 
 }
