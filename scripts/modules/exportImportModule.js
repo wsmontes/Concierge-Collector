@@ -356,6 +356,17 @@ class ExportImportModule {
             this.uiManager.showLoading('Importing data from remote server...');
             console.log('Remote import: Sending GET request to https://wsmontes.pythonanywhere.com/api/restaurants');
             
+            // Log request details
+            console.log('Remote import: Request headers:', {
+                method: 'GET',
+                headers: {
+                    'Accept': 'application/json',
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            const startTime = performance.now();
+            
             // Fetch data from remote API
             const response = await fetch('https://wsmontes.pythonanywhere.com/api/restaurants');
             
@@ -364,11 +375,28 @@ class ExportImportModule {
                 throw new Error(`Server error: ${response.status} ${response.statusText}`);
             }
             
-            const remoteData = await response.json();
-            console.log(`Remote import: Received ${remoteData.length} restaurants from server`);
-            console.log('Remote import: Sample data:', remoteData.slice(0, 1));
+            // Log response headers
+            console.log('Remote import: Response headers:', {
+                status: response.status,
+                statusText: response.statusText,
+                contentType: response.headers.get('content-type'),
+                contentLength: response.headers.get('content-length')
+            });
             
-            if (!Array.isArray(remoteData) || remoteData.length === 0) {
+            const responseData = await response.json();
+            const endTime = performance.now();
+            
+            // Log timing and size information
+            const dataSize = JSON.stringify(responseData).length;
+            console.log(`Remote import: Received ${dataSize} bytes in ${(endTime - startTime).toFixed(2)}ms (${(dataSize/(endTime - startTime)*1000/1024).toFixed(2)} KB/s)`);
+            console.log(`Remote import: Received ${responseData.length} restaurants from server`);
+            
+            // Log a sample of the data (just the first restaurant)
+            if (responseData.length > 0) {
+                console.log('Remote import: First restaurant data sample:', responseData[0]);
+            }
+            
+            if (!Array.isArray(responseData) || responseData.length === 0) {
                 console.warn('Remote import: No data or invalid format received');
                 this.uiManager.hideLoading();
                 alert('No data received from remote server or invalid format.');
@@ -377,7 +405,7 @@ class ExportImportModule {
             
             // Convert the remote data format to our local format
             console.log('Remote import: Converting remote data to local format...');
-            const importData = this.convertRemoteDataToLocal(remoteData);
+            const importData = this.convertRemoteDataToLocal(responseData);
             console.log('Remote import: Conversion complete', {
                 curators: importData.curators.length,
                 concepts: importData.concepts.length,
@@ -398,7 +426,7 @@ class ExportImportModule {
             
             this.uiManager.hideLoading();
             this.uiManager.showNotification('Remote data imported successfully');
-            alert(`Successfully imported ${remoteData.length} restaurants from remote server.`);
+            alert(`Successfully imported ${responseData.length} restaurants from remote server.`);
         } catch (error) {
             this.uiManager.hideLoading();
             console.error('Error importing remote data:', error);
@@ -434,26 +462,67 @@ class ExportImportModule {
             const remoteData = this.convertLocalDataToRemote(localData);
             console.log(`Remote export: Conversion complete, ${remoteData.length} restaurants ready for export`);
             
-            // Send data to remote server
-            console.log('Remote export: Sending POST request to https://wsmontes.pythonanywhere.com/api/restaurants/batch');
-            console.log(`Remote export: Payload size: ${JSON.stringify(remoteData).length} bytes`);
+            // Prepare data for sending and log details
+            const payloadJson = JSON.stringify(remoteData);
+            const payloadSize = payloadJson.length;
             
+            console.log('Remote export: Sending POST request to https://wsmontes.pythonanywhere.com/api/restaurants/batch');
+            console.log(`Remote export: Payload size: ${payloadSize} bytes (${(payloadSize/1024).toFixed(2)} KB)`);
+            
+            // Log request details with a small sample of the data
+            console.log('Remote export: Request details:', {
+                method: 'POST',
+                url: 'https://wsmontes.pythonanywhere.com/api/restaurants/batch',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Content-Length': payloadSize
+                },
+                restaurantCount: remoteData.length,
+                dataSample: remoteData.length > 0 ? {
+                    firstRestaurant: {
+                        name: remoteData[0].name,
+                        curator: remoteData[0].curator,
+                        conceptCount: remoteData[0].concepts ? remoteData[0].concepts.length : 0,
+                        hasLocation: !!remoteData[0].location
+                    }
+                } : 'No restaurants to export'
+            });
+            
+            const startTime = performance.now();
+            
+            // Send data to remote server
             const response = await fetch('https://wsmontes.pythonanywhere.com/api/restaurants/batch', {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                body: JSON.stringify(remoteData)
+                body: payloadJson
             });
             
+            const endTime = performance.now();
+            console.log(`Remote export: Request sent in ${(endTime - startTime).toFixed(2)}ms (${(payloadSize/(endTime - startTime)*1000/1024).toFixed(2)} KB/s)`);
+            
             if (!response.ok) {
+                // Log detailed error information
                 const errorText = await response.text();
                 console.error(`Remote export: Server error ${response.status}: ${response.statusText}`, errorText);
+                console.error('Remote export: Response headers:', {
+                    status: response.status,
+                    statusText: response.statusText,
+                    contentType: response.headers.get('content-type')
+                });
                 throw new Error(`Server error: ${response.status} ${response.statusText} - ${errorText}`);
             }
             
+            // Log response details
+            console.log('Remote export: Response headers:', {
+                status: response.status,
+                statusText: response.statusText,
+                contentType: response.headers.get('content-type')
+            });
+            
             const result = await response.json();
-            console.log('Remote export: Server response:', result);
+            console.log('Remote export: Server response data:', result);
             
             this.uiManager.hideLoading();
             this.uiManager.showNotification('Data exported to remote server successfully');

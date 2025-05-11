@@ -17,7 +17,7 @@ class UIUtilsModule {
         loadingOverlay.innerHTML = `
             <div class="bg-white p-4 rounded-lg shadow-lg flex flex-col items-center">
                 <div class="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-2"></div>
-                <p class="text-gray-800">${message}</p>
+                <p class="text-gray-800 loading-message">${message}</p>
             </div>
         `;
         
@@ -30,6 +30,18 @@ class UIUtilsModule {
         if (loadingOverlay) {
             document.body.removeChild(loadingOverlay);
             document.body.style.overflow = '';
+        }
+    }
+    
+    /**
+     * Updates the loading message while the loading overlay is visible
+     * @param {string} message - The new message to display
+     */
+    updateLoadingMessage(message) {
+        const loadingMessage = document.querySelector('#loading-overlay .loading-message');
+        if (loadingMessage) {
+            loadingMessage.textContent = message;
+            console.log(`Loading status updated: ${message}`);
         }
     }
 
