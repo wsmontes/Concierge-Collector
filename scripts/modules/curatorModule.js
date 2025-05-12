@@ -41,6 +41,10 @@ class CuratorModule {
                 const curatorId = await dataStorage.saveCurator(name, apiKey);
                 console.log(`Curator saved with ID: ${curatorId}`);
                 
+                // Store API key in localStorage with curator-specific key
+                localStorage.setItem(`api_key_${curatorId}`, apiKey);
+                localStorage.setItem('openai_api_key', apiKey); // Also keep the global one for compatibility
+                
                 // Set API key in apiHandler
                 if (apiHandler) {
                     apiHandler.setApiKey(apiKey);
@@ -195,9 +199,11 @@ class CuratorModule {
             // Skip if selector doesn't exist
             if (!this.uiManager.curatorSelector) return;
             
-            // Get all curators
+            // Get all unique curators
             const curators = await dataStorage.getAllCurators();
             this.uiManager.allCurators = curators;
+            
+            console.log(`Loaded ${curators.length} unique curators for selector`);
             
             // Clear the selector
             this.uiManager.curatorSelector.innerHTML = '';
@@ -208,19 +214,32 @@ class CuratorModule {
             newOption.textContent = '-- Create New Curator --';
             this.uiManager.curatorSelector.appendChild(newOption);
             
+            // Track curators we've already added to prevent duplicates in the UI
+            const addedCuratorIds = new Set();
+            
             // Add each curator as an option
-            for (const curator of curators) {
+            curators.forEach(curator => {
+                // Skip if we've already added this curator ID
+                if (addedCuratorIds.has(curator.id)) {
+                    console.log(`Skipping duplicate curator ID: ${curator.id} (${curator.name})`);
+                    return;
+                }
+                
+                // Add to our tracking set
+                addedCuratorIds.add(curator.id);
+                
                 const option = document.createElement('option');
                 option.value = curator.id;
                 option.textContent = curator.name;
                 
                 // Select current curator if we have one
-                if (this.uiManager.currentCurator && this.uiManager.currentCurator.id === curator.id) {
+                if (this.uiManager.currentCurator && 
+                    this.uiManager.currentCurator.id === curator.id) {
                     option.selected = true;
                 }
                 
                 this.uiManager.curatorSelector.appendChild(option);
-            }
+            });
             
             // Show the selector
             this.uiManager.curatorSelector.classList.remove('hidden');
@@ -239,8 +258,11 @@ class CuratorModule {
         try {
             this.uiManager.showLoading('Switching curator...');
             
+            // Handle the case where the ID might be a string
+            const numericId = typeof curatorId === 'string' ? parseInt(curatorId, 10) : curatorId;
+            
             // Fetch the curator details
-            const curator = await dataStorage.getCuratorById(curatorId);
+            const curator = await dataStorage.getCuratorById(numericId);
             
             if (!curator) {
                 throw new Error('Curator not found');
@@ -251,7 +273,9 @@ class CuratorModule {
             this.uiManager.curatorNameDisplay.textContent = curator.name;
             
             // Load the API key from localStorage if available
-            const apiKey = localStorage.getItem(`api_key_${curatorId}`);
+            const apiKey = localStorage.getItem(`api_key_${curatorId}`) || 
+                            localStorage.getItem('openai_api_key'); // Fall back to global key
+            
             if (apiKey) {
                 this.uiManager.apiKeyInput.value = apiKey;
                 
@@ -268,7 +292,7 @@ class CuratorModule {
             this.uiManager.curatorNameInput.value = curator.name;
             
             // Update activity timestamp for this curator
-            await dataStorage.updateCuratorActivity(curatorId);
+            await dataStorage.updateCuratorActivity(numericId);
             
             // Load restaurants for this curator
             await this.uiManager.restaurantModule.loadRestaurantList(curator.id, !this.uiManager.filterByActiveCurator);

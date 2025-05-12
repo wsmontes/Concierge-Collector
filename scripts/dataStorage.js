@@ -771,14 +771,43 @@ class DataStorage {
     }
 
     /**
-     * Get all curators from the database
-     * @returns {Promise<Array>} Array of curator objects
+     * Get all unique curators from the database
+     * @returns {Promise<Array>} Array of unique curator objects
      */
     async getAllCurators() {
         try {
-            return await this.db.curators.toArray();
+            // Get all curators from the database
+            const allCurators = await this.db.curators.toArray();
+            
+            // Create a map using curator IDs to ensure uniqueness
+            const uniqueCurators = new Map();
+            
+            // Process curators to keep only the most recently active entry for each unique name
+            allCurators.forEach(curator => {
+                const existingCurator = uniqueCurators.get(curator.name);
+                
+                // If this curator name isn't in our map yet, or this one is more recent, use it
+                if (!existingCurator || 
+                    (curator.lastActive && existingCurator.lastActive && 
+                     new Date(curator.lastActive) > new Date(existingCurator.lastActive))) {
+                    uniqueCurators.set(curator.name, curator);
+                }
+            });
+            
+            // Convert map values back to array
+            const uniqueCuratorsList = Array.from(uniqueCurators.values());
+            
+            // Sort by most recently active first
+            uniqueCuratorsList.sort((a, b) => {
+                if (!a.lastActive) return 1;
+                if (!b.lastActive) return -1;
+                return new Date(b.lastActive) - new Date(a.lastActive);
+            });
+            
+            console.log(`Retrieved ${uniqueCuratorsList.length} unique curators from ${allCurators.length} total entries`);
+            return uniqueCuratorsList;
         } catch (error) {
-            console.error('Error getting all curators:', error);
+            console.error('Error getting unique curators:', error);
             if (error.name === 'NotFoundError' || error.message.includes('object store was not found')) {
                 await this.resetDatabase();
                 return [];
@@ -794,7 +823,9 @@ class DataStorage {
      */
     async getCuratorById(id) {
         try {
-            return await this.db.curators.get(Number(id));
+            // Ensure we're looking up by numeric ID
+            const numericId = typeof id === 'string' ? parseInt(id, 10) : id;
+            return await this.db.curators.get(numericId);
         } catch (error) {
             console.error(`Error getting curator with ID ${id}:`, error);
             if (error.name === 'NotFoundError' || error.message.includes('object store was not found')) {

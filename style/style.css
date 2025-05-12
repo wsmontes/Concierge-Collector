@@ -477,7 +477,7 @@ button .material-icons {
 
 .processing-step.error {
   background-color: rgba(239, 68, 68, 0.1);
-  color: var(--error);
+  color: var (--error);
 }
 
 /* Custom Audio Player */
@@ -1351,6 +1351,43 @@ button .material-icons {
   border: 1px solid #e2e8f0;
   margin-bottom: 16px;
   background-color: #f9fafb;
+}
+
+/* Enhance the curator selector styles */
+.curator-selector {
+  width: 100%;
+  padding: 8px;
+  border-radius: 4px;
+  border: 1px solid #e2e8f0;
+  margin-bottom: 16px;
+  background-color: #f9fafb;
+  font-weight: medium;
+  cursor: pointer;
+}
+
+.curator-selector option {
+  padding: 8px;
+}
+
+.curator-selector option:first-child {
+  font-weight: bold;
+  color: #4338ca;
+}
+
+/* Add a clear indicator for the curator filter */
+.curator-filter-container {
+  display: flex;
+  align-items: center;
+  margin-bottom: 16px;
+  padding: 8px 12px;
+  background-color: #f9fafb;
+  border-radius: 4px;
+  border: 1px solid #e2e8f0;
+}
+
+.curator-filter-container span {
+  font-size: 0.875rem;
+  color: #4b5563;
 }
 
 /* Style for non-editable restaurants */

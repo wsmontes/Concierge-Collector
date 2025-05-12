@@ -61,7 +61,21 @@ class ExportImportModule {
             
             // Get all data from storage
             const exportResult = await dataStorage.exportData();
+            
+            // Add curator API keys to the export
+            const curatorApiKeys = {};
+            exportResult.jsonData.curators.forEach(curator => {
+                const apiKey = localStorage.getItem(`api_key_${curator.id}`);
+                if (apiKey) {
+                    curatorApiKeys[curator.id] = apiKey;
+                }
+            });
+            
+            // Add the API keys to the export data
+            exportResult.jsonData.curatorApiKeys = curatorApiKeys;
+            
             console.log("🔥 Export raw localData:", JSON.stringify(exportResult.jsonData, null, 2));
+            
             // Check if there are any photos to include
             const hasPhotos = exportResult.photos && exportResult.photos.length > 0;
             
@@ -160,6 +174,11 @@ class ExportImportModule {
                 const jsonContent = await jsonFile.async('text');
                 const importData = JSON.parse(jsonContent);
                 
+                // Extract curator API keys if present
+                if (importData.curatorApiKeys) {
+                    this.saveCuratorApiKeys(importData.curatorApiKeys);
+                }
+                
                 // Extract photos
                 const photoFiles = {};
                 const imageFiles = zipData.filter(path => path.startsWith('images/'));
@@ -183,6 +202,11 @@ class ExportImportModule {
                 
                 // Parse JSON
                 const importData = JSON.parse(fileContents);
+                
+                // Extract curator API keys if present
+                if (importData.curatorApiKeys) {
+                    this.saveCuratorApiKeys(importData.curatorApiKeys);
+                }
                 
                 // Import into database
                 await dataStorage.importData(importData);
@@ -753,6 +777,18 @@ class ExportImportModule {
 
         console.log(`Conversion complete. Generated ${remoteData.length} restaurant objects for remote API`);
         return remoteData;
+    }
+
+    // Helper method to store curator API keys
+    saveCuratorApiKeys(apiKeys) {
+        if (!apiKeys || typeof apiKeys !== 'object') return;
+        
+        Object.entries(apiKeys).forEach(([curatorId, apiKey]) => {
+            if (apiKey && typeof apiKey === 'string') {
+                localStorage.setItem(`api_key_${curatorId}`, apiKey);
+                console.log(`Restored API key for curator ID: ${curatorId}`);
+            }
+        });
     }
 
 }
