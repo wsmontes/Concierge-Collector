@@ -44,6 +44,13 @@
                 Curator Information
             </h2>
             <div id="curator-form">
+                <div id="curator-selector-container" class="mb-4">
+                    <label class="block mb-2 font-medium">Select Curator:</label>
+                    <select id="curator-selector" class="curator-selector">
+                        <option value="new">-- Create New Curator --</option>
+                    </select>
+                    <p class="text-xs text-gray-500">Select an existing curator or create a new one.</p>
+                </div>
                 <div class="mb-4">
                     <label class="block mb-2 font-medium">Your Name:</label>
                     <input type="text" id="curator-name" class="border p-2 w-full rounded mb-4" placeholder="Enter your name">
@@ -259,6 +266,13 @@
                 <span class="material-icons">restaurant_menu</span>
                 Your Curated Restaurants
             </h2>
+            <div id="curator-filter-container" class="curator-filter-container mb-4">
+                <label class="curator-filter-toggle">
+                    <input type="checkbox" id="curator-filter-toggle" checked>
+                    <span class="slider"></span>
+                </label>
+                <span class="text-sm">Show only my restaurants</span>
+            </div>
             <button id="add-restaurant" class="bg-blue-500 text-white px-4 py-2 rounded mb-6 flex items-center w-full sm:w-auto justify-center">
                 <span class="material-icons mr-1">add</span>
                 Add New Restaurant

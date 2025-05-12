@@ -769,6 +769,134 @@ class DataStorage {
         
         return true;
     }
+
+    /**
+     * Get all curators from the database
+     * @returns {Promise<Array>} Array of curator objects
+     */
+    async getAllCurators() {
+        try {
+            return await this.db.curators.toArray();
+        } catch (error) {
+            console.error('Error getting all curators:', error);
+            if (error.name === 'NotFoundError' || error.message.includes('object store was not found')) {
+                await this.resetDatabase();
+                return [];
+            }
+            throw error;
+        }
+    }
+
+    /**
+     * Get a specific curator by ID
+     * @param {string|number} id - Curator ID
+     * @returns {Promise<Object|null>} Curator object or null if not found
+     */
+    async getCuratorById(id) {
+        try {
+            return await this.db.curators.get(Number(id));
+        } catch (error) {
+            console.error(`Error getting curator with ID ${id}:`, error);
+            if (error.name === 'NotFoundError' || error.message.includes('object store was not found')) {
+                await this.resetDatabase();
+                return null;
+            }
+            throw error;
+        }
+    }
+
+    /**
+     * Get all restaurants from all curators
+     * @returns {Promise<Array>} Array of restaurant objects
+     */
+    async getAllRestaurants() {
+        try {
+            const restaurants = await this.db.restaurants.toArray();
+            const curatorIds = [...new Set(restaurants.map(r => r.curatorId))];
+            
+            // Create a map of curator IDs to names
+            const curatorsMap = new Map();
+            const curators = await this.db.curators.where('id').anyOf(curatorIds).toArray();
+            curators.forEach(c => curatorsMap.set(c.id, c.name));
+            
+            // Enhance restaurants with concepts, location, and curator names
+            for (const restaurant of restaurants) {
+                // Add curator name
+                restaurant.curatorName = curatorsMap.get(restaurant.curatorId) || 'Unknown Curator';
+                
+                // Get concept IDs for this restaurant
+                const restaurantConcepts = await this.db.restaurantConcepts
+                    .where('restaurantId')
+                    .equals(restaurant.id)
+                    .toArray();
+                    
+                // Get full concept data
+                const conceptIds = restaurantConcepts.map(rc => rc.conceptId);
+                restaurant.concepts = await this.db.concepts
+                    .where('id')
+                    .anyOf(conceptIds)
+                    .toArray();
+                    
+                // Get location data
+                const locations = await this.db.restaurantLocations
+                    .where('restaurantId')
+                    .equals(restaurant.id)
+                    .toArray();
+                restaurant.location = locations.length > 0 ? locations[0] : null;
+                
+                // Get photo references
+                const photos = await this.db.restaurantPhotos
+                    .where('restaurantId')
+                    .equals(restaurant.id)
+                    .toArray();
+                restaurant.photoCount = photos.length;
+            }
+            
+            return restaurants;
+            
+        } catch (error) {
+            console.error('Error getting all restaurants:', error);
+            if (error.name === 'NotFoundError' || error.message.includes('object store was not found')) {
+                await this.resetDatabase();
+                return [];
+            }
+            throw error;
+        }
+    }
+
+    /**
+     * Copy a restaurant to be owned by a different curator
+     * @param {string|number} restaurantId - Source restaurant ID
+     * @param {string|number} targetCuratorId - Target curator ID
+     * @returns {Promise<number>} New restaurant ID
+     */
+    async copyRestaurantToCurator(restaurantId, targetCuratorId) {
+        try {
+            // Get the source restaurant with all details
+            const sourceRestaurant = await this.getRestaurantDetails(restaurantId);
+            
+            if (!sourceRestaurant) {
+                throw new Error('Source restaurant not found');
+            }
+            
+            // Create a new restaurant with the target curator ID
+            const newRestaurantId = await this.saveRestaurant(
+                `${sourceRestaurant.name} (Copy)`,
+                targetCuratorId,
+                sourceRestaurant.concepts,
+                sourceRestaurant.location,
+                sourceRestaurant.photos ? sourceRestaurant.photos.map(p => p.photoData) : [],
+                sourceRestaurant.transcription,
+                sourceRestaurant.description
+            );
+            
+            return newRestaurantId;
+            
+        } catch (error) {
+            console.error('Error copying restaurant:', error);
+            throw error;
+        }
+    }
 }
 
 // Create a global instance

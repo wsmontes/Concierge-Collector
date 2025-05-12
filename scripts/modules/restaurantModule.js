@@ -21,9 +21,17 @@ class RestaurantModule {
         console.log('Restaurant list events set up');
     }
 
-    async loadRestaurantList(curatorId) {
+    async loadRestaurantList(curatorId, showAllCurators = false) {
         try {
-            const restaurants = await dataStorage.getRestaurantsByCurator(curatorId);
+            let restaurants;
+            
+            if (showAllCurators) {
+                // Get restaurants from all curators
+                restaurants = await dataStorage.getAllRestaurants();
+            } else {
+                // Get restaurants only from the specified curator
+                restaurants = await dataStorage.getRestaurantsByCurator(curatorId);
+            }
             
             this.uiManager.restaurantsContainer.innerHTML = '';
             
@@ -35,6 +43,12 @@ class RestaurantModule {
             for (const restaurant of restaurants) {
                 const card = document.createElement('div');
                 card.className = 'restaurant-card bg-white p-4 rounded-lg shadow hover:shadow-md transition-all';
+                
+                // Add a visual indicator if this restaurant belongs to another curator
+                const isEditable = this.uiManager.isRestaurantEditable(restaurant);
+                if (!isEditable) {
+                    card.classList.add('non-editable-restaurant');
+                }
                 
                 // Get concepts by category
                 const conceptsByCategory = {};
@@ -48,6 +62,22 @@ class RestaurantModule {
                 // Create card content
                 let cardHTML = `
                     <h3 class="text-lg font-bold mb-2">${restaurant.name}</h3>
+                `;
+                
+                // Add curator name if showing all curators
+                if (showAllCurators) {
+                    const curatorName = restaurant.curatorName || 'Unknown Curator';
+                    cardHTML += `
+                        <p class="text-sm text-${isEditable ? 'blue' : 'purple'}-500 mb-2">
+                            <span class="material-icons text-sm align-middle">
+                                ${isEditable ? 'person' : 'person_outline'}
+                            </span>
+                            ${curatorName}
+                        </p>
+                    `;
+                }
+                
+                cardHTML += `
                     <p class="text-sm text-gray-500 mb-2">Added: ${new Date(restaurant.timestamp).toLocaleDateString()}</p>
                 `;
                 
@@ -147,6 +177,9 @@ class RestaurantModule {
                 return;
             }
             
+            // Check if current curator can edit this restaurant
+            const isEditable = this.uiManager.isRestaurantEditable(restaurant);
+            
             // Create a modal for displaying restaurant details
             const modalContainer = document.createElement('div');
             modalContainer.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
@@ -160,6 +193,22 @@ class RestaurantModule {
                     </div>
                     
                     <div class="overflow-y-auto p-6 flex-1" style="overscroll-behavior: contain;">
+            `;
+            
+            // Add curator info if different from current curator
+            if (!isEditable) {
+                modalHTML += `
+                    <div class="mb-4 p-2 bg-purple-50 rounded-lg border border-purple-200">
+                        <p class="flex items-center text-purple-700">
+                            <span class="material-icons mr-2">person_outline</span>
+                            Added by: ${restaurant.curatorName || 'Another Curator'}
+                            <span class="ml-auto text-xs bg-purple-200 text-purple-800 px-2 py-1 rounded">Read Only</span>
+                        </p>
+                    </div>
+                `;
+            }
+            
+            modalHTML += `
                         <p class="text-sm text-gray-500 mb-4">Added: ${new Date(restaurant.timestamp).toLocaleDateString()}</p>
             `;
             
@@ -267,11 +316,15 @@ class RestaurantModule {
                 }
             }
             
-            // Add action buttons at the bottom
+            // Add action buttons at the bottom only if editable
             modalHTML += `
                     </div>
                     
                     <div class="p-6 border-t flex justify-between sticky bottom-0 bg-white">
+            `;
+            
+            if (isEditable) {
+                modalHTML += `
                         <button class="delete-restaurant bg-red-500 text-white px-4 py-2 rounded-lg flex items-center">
                             <span class="material-icons mr-2">delete</span>
                             Delete
@@ -280,6 +333,21 @@ class RestaurantModule {
                             <span class="material-icons mr-2">edit</span>
                             Edit Restaurant
                         </button>
+                `;
+            } else {
+                modalHTML += `
+                        <span class="text-purple-600 italic flex items-center">
+                            <span class="material-icons mr-2 text-sm">info</span>
+                            This restaurant was added by another curator and cannot be edited
+                        </span>
+                        <button class="copy-restaurant bg-green-500 text-white px-4 py-2 rounded-lg flex items-center">
+                            <span class="material-icons mr-2">content_copy</span>
+                            Copy to My Collection
+                        </button>
+                `;
+            }
+            
+            modalHTML += `
                     </div>
                 </div>
             `;
@@ -295,31 +363,58 @@ class RestaurantModule {
                 document.body.style.overflow = '';
             });
             
-            // Edit restaurant functionality
-            modalContainer.querySelector('.edit-restaurant').addEventListener('click', () => {
-                this.editRestaurant(restaurant);
-                document.body.removeChild(modalContainer);
-                document.body.style.overflow = '';
-            });
-            
-            // Delete restaurant functionality
-            modalContainer.querySelector('.delete-restaurant').addEventListener('click', async () => {
-                if (confirm(`Are you sure you want to delete "${restaurant.name}"?`)) {
+            // Edit restaurant functionality (only if editable)
+            if (isEditable) {
+                modalContainer.querySelector('.edit-restaurant').addEventListener('click', () => {
+                    this.editRestaurant(restaurant);
+                    document.body.removeChild(modalContainer);
+                    document.body.style.overflow = '';
+                });
+                
+                // Delete restaurant functionality
+                modalContainer.querySelector('.delete-restaurant').addEventListener('click', async () => {
+                    if (confirm(`Are you sure you want to delete "${restaurant.name}"?`)) {
+                        try {
+                            this.uiManager.showLoading('Deleting restaurant...');
+                            await dataStorage.deleteRestaurant(restaurant.id);
+                            this.uiManager.hideLoading();
+                            this.uiManager.showNotification('Restaurant deleted successfully');
+                            document.body.removeChild(modalContainer);
+                            document.body.style.overflow = '';
+                            this.loadRestaurantList(this.uiManager.currentCurator.id, !this.uiManager.filterByActiveCurator);
+                        } catch (error) {
+                            this.uiManager.hideLoading();
+                            console.error('Error deleting restaurant:', error);
+                            this.uiManager.showNotification('Error deleting restaurant', 'error');
+                        }
+                    }
+                });
+            } else {
+                // Copy restaurant functionality for non-editable restaurants
+                modalContainer.querySelector('.copy-restaurant').addEventListener('click', async () => {
                     try {
-                        this.uiManager.showLoading('Deleting restaurant...');
-                        await dataStorage.deleteRestaurant(restaurant.id);
+                        this.uiManager.showLoading('Copying restaurant to your collection...');
+                        
+                        // Create a copy of the restaurant for the current curator
+                        const newRestaurantId = await dataStorage.copyRestaurantToCurator(
+                            restaurant.id, 
+                            this.uiManager.currentCurator.id
+                        );
+                        
                         this.uiManager.hideLoading();
-                        this.uiManager.showNotification('Restaurant deleted successfully');
+                        this.uiManager.showNotification('Restaurant copied to your collection');
                         document.body.removeChild(modalContainer);
                         document.body.style.overflow = '';
-                        this.loadRestaurantList(this.uiManager.currentCurator.id);
+                        
+                        // Reload restaurant list to show the newly copied restaurant
+                        await this.loadRestaurantList(this.uiManager.currentCurator.id, !this.uiManager.filterByActiveCurator);
                     } catch (error) {
                         this.uiManager.hideLoading();
-                        console.error('Error deleting restaurant:', error);
-                        this.uiManager.showNotification('Error deleting restaurant', 'error');
+                        console.error('Error copying restaurant:', error);
+                        this.uiManager.showNotification('Error copying restaurant: ' + error.message, 'error');
                     }
-                }
-            });
+                });
+            }
             
             // Also close when clicking outside the modal
             modalContainer.addEventListener('click', event => {
