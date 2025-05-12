@@ -16,11 +16,6 @@ class UIManager {
         // Remove reference to the curator display element
         this.curatorDisplay = null; // Era document.getElementById('curator-display')
         
-        // New curator selection elements
-        this.curatorSelector = document.getElementById('curator-selector');
-        this.curatorFilterToggle = document.getElementById('curator-filter-toggle');
-        this.newCuratorButton = document.getElementById('new-curator-button');
-        
         this.recordingSection = document.getElementById('recording-section');
         this.transcriptionSection = document.getElementById('transcription-section');
         this.conceptsSection = document.getElementById('concepts-section');
@@ -41,7 +36,6 @@ class UIManager {
         this.quickManual = document.getElementById('quick-manual');
         
         this.currentCurator = null;
-        this.allCurators = [];
         this.currentConcepts = [];
         this.currentLocation = null;
         this.currentPhotos = [];
@@ -53,9 +47,6 @@ class UIManager {
         // Add new properties to store both versions of the transcription
         this.originalTranscription = null;
         this.translatedTranscription = null;
-        
-        // Filter state - true = show only active curator's restaurants, false = show all
-        this.filterByActiveCurator = true;
 
         // Initialize module managers
         this.curatorModule = new CuratorModule(this);
@@ -360,79 +351,6 @@ class UIManager {
             
             // Store the original transcription for potential reuse
             this.originalTranscription = transcriptionText;
-        }
-    }
-
-    /**
-     * Toggle curator filter state and reload restaurants
-     * @param {boolean} filterState - True to filter by active curator, false to show all
-     */
-    toggleCuratorFilter(filterState) {
-        this.filterByActiveCurator = filterState;
-        
-        // Update UI to reflect filter state
-        if (this.curatorFilterToggle) {
-            this.curatorFilterToggle.checked = filterState;
-        }
-        
-        // Reload restaurant list with new filter state
-        if (this.currentCurator) {
-            this.restaurantModule.loadRestaurantList(this.currentCurator.id, !this.filterByActiveCurator);
-        }
-    }
-    
-    /**
-     * Check if a restaurant is editable by the current curator
-     * @param {Object} restaurant - Restaurant object
-     * @returns {boolean} - True if editable, false otherwise
-     */
-    isRestaurantEditable(restaurant) {
-        if (!this.currentCurator || !restaurant) return false;
-        return this.currentCurator.id === restaurant.curatorId;
-    }
-
-    /**
-     * Initialize UI manager and setup events
-     */
-    init() {
-        console.log('Initializing UI Manager...');
-        
-        // Set up events for each module
-        this.curatorModule.setupEvents();
-        this.recordingModule.setupEvents();
-        this.transcriptionModule.setupEvents();
-        this.conceptModule.setupEvents();
-        this.restaurantModule.setupEvents();
-        this.exportImportModule.setupEvents();
-        this.quickActionModule.setupEvents();
-        
-        // Load curator info
-        this.curatorModule.loadCuratorInfo();
-        
-        // Set up tab navigation
-        this.setupTabNavigation();
-        
-        console.log('UI Manager initialized');
-    }
-    
-    /**
-     * Set up tab navigation
-     */
-    setupTabNavigation() {
-        // Add event listeners for tab buttons - only if they exist
-        const recordingTabButton = document.getElementById('recording-tab');
-        if (recordingTabButton) {
-            recordingTabButton.addEventListener('click', () => this.showRecordingSection());
-        }
-        
-        const restaurantListTabButton = document.getElementById('restaurant-list-tab');
-        if (restaurantListTabButton) {
-            restaurantListTabButton.addEventListener('click', () => this.showRestaurantListSection());
-        }
-        
-        const exportImportTabButton = document.getElementById('export-import-tab');
-        if (exportImportTabButton) {
-            exportImportTabButton.addEventListener('click', () => this.showExportImportSection());
         }
     }
 }
