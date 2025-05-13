@@ -18,15 +18,16 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             // Delete any existing instance
             if (this.db) {
                 this.db.close();
+                this.db = null;
             }
             
             this.db = new Dexie('RestaurantCurator');
             
-            // Increase version number to 5 to add sync fields
-            this.db.version(5).stores({
+            // Increase version number to 6 to add source index for restaurant sync
+            this.db.version(6).stores({
                 curators: '++id, name, lastActive, serverId, origin',
                 concepts: '++id, category, value, timestamp, [category+value]',
-                restaurants: '++id, name, curatorId, timestamp, transcription, description, origin, serverId',
+                restaurants: '++id, name, curatorId, timestamp, transcription, description, origin, source, serverId',
                 restaurantConcepts: '++id, restaurantId, conceptId',
                 restaurantPhotos: '++id, restaurantId, photoData',
                 restaurantLocations: '++id, restaurantId, latitude, longitude, address',
@@ -63,6 +64,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             // Close current connection if exists
             if (this.db) {
                 this.db.close();
+                this.db = null;
             }
             
             // Delete the database
@@ -81,10 +83,10 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             
             // Reinitialize with fresh schema
             this.db = new Dexie('RestaurantCurator');
-            this.db.version(5).stores({
+            this.db.version(6).stores({
                 curators: '++id, name, lastActive, serverId, origin',
                 concepts: '++id, category, value, timestamp, [category+value]',
-                restaurants: '++id, name, curatorId, timestamp, transcription, description, origin, serverId',
+                restaurants: '++id, name, curatorId, timestamp, transcription, description, origin, source, serverId',
                 restaurantConcepts: '++id, restaurantId, conceptId',
                 restaurantPhotos: '++id, restaurantId, photoData',
                 restaurantLocations: '++id, restaurantId, latitude, longitude, address',
@@ -642,18 +644,18 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 [this.db.restaurants, this.db.restaurantConcepts, 
                 this.db.restaurantLocations, this.db.restaurantPhotos], 
             async () => {
-                // Save the restaurant with source tracking
+                // FIXED: Explicitly set the source field when saving
                 const restaurantId = await this.db.restaurants.add({
                     name,
                     curatorId,
                     timestamp: new Date(),
                     transcription,
                     description,
-                    source,      // Add source tracking ('local' or 'remote')
-                    serverId     // Store server ID if available
+                    source: source,      // Ensure source is explicitly set
+                    serverId: serverId   // Store server ID if available
                 });
                 
-                console.log(`Restaurant saved with ID: ${restaurantId}, source: ${source}`);
+                console.log(`Restaurant saved with ID: ${restaurantId}, source: ${source}, serverId: ${serverId || 'none'}`);
                 
                 // Save concept relationships
                 if (conceptsOrIds && conceptsOrIds.length > 0) {
@@ -695,7 +697,6 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                     }
                 }
                 
-                console.log(`Restaurant data saved successfully. ID: ${restaurantId}`);
                 return restaurantId;
             });
         } catch (error) {
@@ -723,10 +724,46 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
      */
     async getUnsyncedRestaurants() {
         try {
-            return await this.db.restaurants
-                .where('source').equals('local')
-                .and(restaurant => !restaurant.serverId)
+            // Use the now-indexed 'source' field
+            const unsyncedRestaurants = await this.db.restaurants
+                .where('source')
+                .equals('local')
+                .filter(restaurant => !restaurant.serverId)
                 .toArray();
+                
+            console.log(`Found ${unsyncedRestaurants.length} unsynced restaurants`);
+            
+            // Return restaurants with enhanced data including concepts and locations
+            const enhancedRestaurants = [];
+            for (const restaurant of unsyncedRestaurants) {
+                // Get concepts
+                const restaurantConcepts = await this.db.restaurantConcepts
+                    .where('restaurantId')
+                    .equals(restaurant.id)
+                    .toArray();
+                    
+                const conceptIds = restaurantConcepts.map(rc => rc.conceptId);
+                restaurant.concepts = await this.db.concepts
+                    .where('id')
+                    .anyOf(conceptIds)
+                    .toArray();
+                    
+                // Get location
+                const locations = await this.db.restaurantLocations
+                    .where('restaurantId')
+                    .equals(restaurant.id)
+                    .toArray();
+                restaurant.location = locations.length > 0 ? locations[0] : null;
+                
+                // Get curator
+                if (restaurant.curatorId) {
+                    restaurant.curator = await this.db.curators.get(restaurant.curatorId);
+                }
+                
+                enhancedRestaurants.push(restaurant);
+            }
+            
+            return enhancedRestaurants;
         } catch (error) {
             console.error('Error getting unsynced restaurants:', error);
             throw error;
@@ -741,9 +778,9 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
      */
     async updateRestaurantSyncStatus(restaurantId, serverId) {
         try {
-            // Update only the source and serverId fields
+            // FIXED: Explicitly update source field when syncing to server
             await this.db.restaurants.update(restaurantId, {
-                source: 'remote', // Mark as remote since it's now synced
+                source: 'remote', // Mark as remote since it's now synced with the server
                 serverId: serverId // Store the server ID
             });
             

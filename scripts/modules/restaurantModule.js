@@ -6,6 +6,97 @@ class RestaurantModule {
         this.uiManager = uiManager;
     }
 
+    /**
+     * Safety wrapper for showing loading - uses global uiUtils as primary fallback
+     * @param {string} message - Loading message
+     */
+    safeShowLoading(message) {
+        try {
+            // First try global utils (most reliable)
+            if (window.uiUtils && typeof window.uiUtils.showLoading === 'function') {
+                console.log('RestaurantModule: Using window.uiUtils.showLoading()');
+                window.uiUtils.showLoading(message);
+                return;
+            }
+            
+            // Then try with uiManager as fallback
+            if (this.uiManager && typeof this.uiManager.showLoading === 'function') {
+                console.log('RestaurantModule: Using this.uiManager.showLoading()');
+                this.uiManager.showLoading(message);
+                return;
+            }
+            
+            // Last resort fallback
+            console.log('RestaurantModule: Using alert as fallback for loading');
+            alert(message);
+        } catch (error) {
+            console.error('Error in safeShowLoading:', error);
+            // Last resort
+            alert(message);
+        }
+    }
+    
+    /**
+     * Safety wrapper for hiding loading - uses global uiUtils as primary fallback
+     */
+    safeHideLoading() {
+        try {
+            // First try global utils (most reliable)
+            if (window.uiUtils && typeof window.uiUtils.hideLoading === 'function') {
+                console.log('RestaurantModule: Using window.uiUtils.hideLoading()');
+                window.uiUtils.hideLoading();
+                return;
+            }
+            
+            // Then try with uiManager as fallback
+            if (this.uiManager && typeof this.uiManager.hideLoading === 'function') {
+                console.log('RestaurantModule: Using this.uiManager.hideLoading()');
+                this.uiManager.hideLoading();
+                return;
+            }
+            
+            // Last resort - just log since there's no visual to clear
+            console.log('RestaurantModule: Hiding loading indicator (fallback)');
+        } catch (error) {
+            console.error('Error in safeHideLoading:', error);
+        }
+    }
+    
+    /**
+     * Safety wrapper for showing notification - uses global uiUtils as primary fallback
+     * @param {string} message - Notification message
+     * @param {string} type - Notification type
+     */
+    safeShowNotification(message, type = 'success') {
+        try {
+            // First try global utils (most reliable)
+            if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
+                console.log('RestaurantModule: Using window.uiUtils.showNotification()');
+                window.uiUtils.showNotification(message, type);
+                return;
+            }
+            
+            // Then try with uiManager as fallback
+            if (this.uiManager && typeof this.uiManager.showNotification === 'function') {
+                console.log('RestaurantModule: Using this.uiManager.showNotification()');
+                this.uiManager.showNotification(message, type);
+                return;
+            }
+            
+            // Last resort fallback
+            console.log(`RestaurantModule: Notification (${type}):`, message);
+            if (type === 'error') {
+                alert(`Error: ${message}`);
+            } else {
+                alert(message);
+            }
+        } catch (error) {
+            console.error('Error in safeShowNotification:', error);
+            // Last resort
+            alert(message);
+        }
+    }
+    
     setupEvents() {
         console.log('Setting up restaurant list events...');
         
@@ -22,19 +113,13 @@ class RestaurantModule {
     }
 
     /**
-     * Loads restaurant list with enhanced source indicators
+     * Loads restaurant list with enhanced source indicators and debugging
      * @param {number} curatorId - Current curator's ID
      * @param {boolean} filterEnabled - Whether to filter by curator
      */
     async loadRestaurantList(curatorId, filterEnabled) {
         try {
             console.log(`Loading restaurant list for curatorId: ${curatorId}, filterEnabled: ${filterEnabled}`);
-            
-            // Validate inputs and log any issues
-            if (!curatorId) {
-                console.warn('No curator ID provided, using unfiltered view');
-                filterEnabled = false;
-            }
             
             // Get restaurants with filter options
             const options = {
@@ -46,11 +131,14 @@ class RestaurantModule {
             const restaurants = await dataStorage.getRestaurants(options);
             console.log(`Retrieved ${restaurants.length} unique restaurants from database`);
             
-            if (filterEnabled) {
-                console.log(`Filtering to show only restaurants for curator ID: ${curatorId}`);
-            } else {
-                console.log('Showing all restaurants (filter disabled)');
-            }
+            // Debug: Log source distribution
+            const sourceCount = {local: 0, remote: 0, undefined: 0};
+            restaurants.forEach(r => {
+                if (r.source === 'local') sourceCount.local++;
+                else if (r.source === 'remote') sourceCount.remote++;
+                else sourceCount.undefined++;
+            });
+            console.log(`Source distribution - Local: ${sourceCount.local}, Remote: ${sourceCount.remote}, Undefined: ${sourceCount.undefined}`);
             
             this.uiManager.restaurantsContainer.innerHTML = '';
             
@@ -63,6 +151,9 @@ class RestaurantModule {
             restaurants.sort((a, b) => a.name.localeCompare(b.name));
             
             for (const restaurant of restaurants) {
+                // Add this debug line to check each restaurant's source
+                console.log(`Restaurant "${restaurant.name}" (ID: ${restaurant.id}) - source: ${restaurant.source}, serverId: ${restaurant.serverId || 'none'}`);
+                
                 const card = document.createElement('div');
                 card.className = 'restaurant-card bg-white p-4 rounded-lg shadow hover:shadow-md transition-all';
                 
@@ -199,7 +290,7 @@ class RestaurantModule {
             }
         } catch (error) {
             console.error('Error loading restaurant list:', error);
-            this.uiManager.showNotification('Error loading restaurants', 'error');
+            this.safeShowNotification('Error loading restaurants', 'error');
         }
     }
 
@@ -209,13 +300,15 @@ class RestaurantModule {
      */
     async syncRestaurant(restaurantId) {
         try {
-            this.uiManager.showLoading('Syncing restaurant to server...');
+            this.safeShowLoading('Syncing restaurant to server...');
             
             // Get the restaurant details
             const restaurant = await dataStorage.getRestaurantDetails(restaurantId);
             if (!restaurant) {
                 throw new Error('Restaurant not found');
             }
+            
+            console.log('Syncing restaurant:', restaurant);
             
             // Get curator
             const curator = await dataStorage.db.curators.get(restaurant.curatorId);
@@ -267,8 +360,8 @@ class RestaurantModule {
             // Update last sync time
             await dataStorage.updateLastSyncTime();
             
-            this.uiManager.hideLoading();
-            this.uiManager.showNotification('Restaurant synced to server successfully');
+            this.safeHideLoading();
+            this.safeShowNotification('Restaurant synced to server successfully');
             
             // Refresh restaurant list
             await this.loadRestaurantList(
@@ -276,21 +369,26 @@ class RestaurantModule {
                 await dataStorage.getSetting('filterByActiveCurator', true)
             );
         } catch (error) {
-            this.uiManager.hideLoading();
+            this.safeHideLoading();
             console.error('Error syncing restaurant:', error);
-            this.uiManager.showNotification(`Error syncing restaurant: ${error.message}`, 'error');
+            this.safeShowNotification(`Error syncing restaurant: ${error.message}`, 'error');
         }
     }
 
+    /**
+     * View restaurant details with proper error handling
+     * @param {number} restaurantId - ID of the restaurant to view
+     */
     async viewRestaurantDetails(restaurantId) {
         try {
-            this.uiManager.showLoading('Loading restaurant details...');
+            // Use our safe method instead of direct call
+            this.safeShowLoading('Loading restaurant details...');
             
             const restaurant = await dataStorage.getRestaurantDetails(restaurantId);
             
             if (!restaurant) {
-                this.uiManager.hideLoading();
-                this.uiManager.showNotification('Restaurant not found', 'error');
+                this.safeHideLoading();
+                this.safeShowNotification('Restaurant not found', 'error');
                 return;
             }
             
@@ -453,17 +551,17 @@ class RestaurantModule {
             modalContainer.querySelector('.delete-restaurant').addEventListener('click', async () => {
                 if (confirm(`Are you sure you want to delete "${restaurant.name}"?`)) {
                     try {
-                        this.uiManager.showLoading('Deleting restaurant...');
+                        this.safeShowLoading('Deleting restaurant...');
                         await dataStorage.deleteRestaurant(restaurant.id);
-                        this.uiManager.hideLoading();
-                        this.uiManager.showNotification('Restaurant deleted successfully');
+                        this.safeHideLoading();
+                        this.safeShowNotification('Restaurant deleted successfully');
                         document.body.removeChild(modalContainer);
                         document.body.style.overflow = '';
                         this.loadRestaurantList(this.uiManager.currentCurator.id);
                     } catch (error) {
-                        this.uiManager.hideLoading();
+                        this.safeHideLoading();
                         console.error('Error deleting restaurant:', error);
-                        this.uiManager.showNotification('Error deleting restaurant', 'error');
+                        this.safeShowNotification('Error deleting restaurant', 'error');
                     }
                 }
             });
@@ -476,11 +574,13 @@ class RestaurantModule {
                 }
             });
             
-            this.uiManager.hideLoading();
+            // Use our safe method instead of direct call
+            this.safeHideLoading();
         } catch (error) {
-            this.uiManager.hideLoading();
+            // Use our safe methods instead of direct calls
+            this.safeHideLoading();
             console.error('Error viewing restaurant details:', error);
-            this.uiManager.showNotification('Error loading restaurant details', 'error');
+            this.safeShowNotification('Error loading restaurant details', 'error');
         }
     }
     
@@ -568,13 +668,13 @@ class RestaurantModule {
     }
 
     /**
-     * Loads restaurant data for editing
+     * Loads restaurant data for editing with proper error handling
      * @param {string} restaurantId - ID of the restaurant to edit
      */
     async loadRestaurantForEdit(restaurantId) {
         try {
             console.log(`Loading restaurant ${restaurantId} for editing`);
-            this.uiManager.showLoading('Loading restaurant details...');
+            this.safeShowLoading('Loading restaurant details...');
             
             const restaurant = await db.restaurants.get(restaurantId);
             if (!restaurant) {
@@ -601,20 +701,22 @@ class RestaurantModule {
             
             // ...existing code...
             
-            this.uiManager.hideLoading();
+            this.safeHideLoading();
             this.uiManager.showConceptsSection();
         } catch (error) {
-            this.uiManager.hideLoading();
+            this.safeHideLoading();
             console.error('Error loading restaurant for edit:', error);
-            this.uiManager.showNotification(`Error loading restaurant: ${error.message}`, 'error');
+            this.safeShowNotification(`Error loading restaurant: ${error.message}`, 'error');
         }
     }
 
     /**
-     * Saves a new or updated restaurant
+     * Saves a new or updated restaurant with proper error handling
      */
     async saveRestaurant() {
         try {
+            this.safeShowLoading('Saving restaurant...');
+            
             // ...existing code...
             
             // Get transcription from textarea
@@ -629,12 +731,17 @@ class RestaurantModule {
             
             // ...existing code...
             
+            this.safeHideLoading();
+            this.safeShowNotification('Restaurant saved successfully');
+            
             // Clear transcription data after successful save
             this.uiManager.clearTranscriptionData();
             
             // ...existing code...
         } catch (error) {
-            // ...existing code...
+            this.safeHideLoading();
+            console.error('Error saving restaurant:', error);
+            this.safeShowNotification(`Error saving restaurant: ${error.message}`, 'error');
         }
     }
 }

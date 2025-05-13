@@ -329,7 +329,7 @@ if (!window.SyncService) {
                         
                         // Create or update the restaurant
                         if (existingRestaurant) {
-                            // Only update if it's marked as remote or if it's a new import
+                            // IMPORTANT FIX: Only update if it's NOT marked as local
                             // This avoids overwriting local changes
                             if (existingRestaurant.source !== 'local') {
                                 await dataStorage.updateRestaurant(
@@ -343,9 +343,9 @@ if (!window.SyncService) {
                                     remoteRestaurant.description || ''
                                 );
                                 
-                                // Update source and serverId after other updates
+                                // FIXED: Update source and serverId after other updates
                                 await dataStorage.db.restaurants.update(existingRestaurant.id, {
-                                    source: 'remote',
+                                    source: 'remote', // Explicitly set to 'remote'
                                     serverId: remoteRestaurant.id
                                 });
                                 
@@ -365,7 +365,7 @@ if (!window.SyncService) {
                                 [], // No photos from server import
                                 remoteRestaurant.transcription || '',
                                 remoteRestaurant.description || '',
-                                'remote', // Mark as remote source
+                                'remote', // FIXED: Explicitly mark as remote source
                                 remoteRestaurant.id // Store server ID
                             );
                             
@@ -376,7 +376,7 @@ if (!window.SyncService) {
                             existingByServerId.set(remoteRestaurant.id.toString(), {
                                 id: restaurantId,
                                 name: remoteRestaurant.name,
-                                source: 'remote',
+                                source: 'remote', // FIXED: Explicitly mark as remote source
                                 serverId: remoteRestaurant.id
                             });
                         }
