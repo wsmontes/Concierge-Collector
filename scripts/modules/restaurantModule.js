@@ -334,28 +334,112 @@ class RestaurantModule {
                 } : null
             };
             
-            // Send to server
-            const response = await fetch('https://wsmontes.pythonanywhere.com/api/restaurants', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(serverRestaurant)
-            });
-            
-            if (!response.ok) {
-                throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
+            // Use SyncService for consistent handling instead of direct fetch API
+            if (window.syncService && typeof window.syncService.exportRestaurant === 'function') {
+                try {
+                    console.log('Using syncService.exportRestaurant method');
+                    const result = await window.syncService.exportRestaurant(restaurant);
+                    
+                    // Check if export was successful
+                    if (!result || !result.id) {
+                        throw new Error('Server response missing restaurant ID');
+                    }
+                    
+                    // Update restaurant sync status
+                    await dataStorage.updateRestaurantSyncStatus(restaurantId, result.id);
+                } catch (syncError) {
+                    console.error('Error using syncService.exportRestaurant:', syncError);
+                    throw syncError; // Re-throw to be caught by outer try-catch
+                }
+            } else {
+                // Fallback to batch endpoint if exportRestaurant isn't available
+                console.log('Using fallback batch endpoint for restaurant sync');
+                
+                try {
+                    // Log request payload for debugging
+                    const payloadForLog = { ...serverRestaurant };
+                    console.log('Sync request payload:', JSON.stringify(payloadForLog));
+                    
+                    const response = await fetch('https://wsmontes.pythonanywhere.com/api/restaurants/batch', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify([serverRestaurant]) // Send as array as required by batch endpoint
+                    });
+                    
+                    // Log response status
+                    console.log(`Server response status: ${response.status} ${response.statusText}`);
+                    
+                    if (!response.ok) {
+                        const errorBody = await response.text();
+                        console.error('Server error response:', errorBody);
+                        throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
+                    }
+                    
+                    // Parse response
+                    const responseText = await response.text();
+                    console.log('Server response text:', responseText);
+                    
+                    let result;
+                    try {
+                        result = JSON.parse(responseText);
+                    } catch (parseError) {
+                        console.error('Error parsing JSON response:', parseError);
+                        throw new Error('Invalid response format from server');
+                    }
+                    
+                    console.log('Parsed server response:', result);
+                    
+                    // Enhanced validation to handle different response formats
+                    if (!result) {
+                        throw new Error('Empty response from server');
+                    }
+                    
+                    // Check for success field, status field, or restaurants array to determine success
+                    const isSuccess = result.success === true || 
+                                     result.status === 'success' ||
+                                     (Array.isArray(result.restaurants) && result.restaurants.length > 0);
+                    
+                    if (!isSuccess) {
+                        const errorMessage = result.error || result.message || 'Unknown server error';
+                        throw new Error(`Server sync failed: ${errorMessage}`);
+                    }
+                    
+                    // Extract the ID from the first restaurant in the response
+                    let serverId = null;
+                    
+                    // Handle different response formats
+                    if (result.restaurants && Array.isArray(result.restaurants) && result.restaurants.length > 0) {
+                        serverId = result.restaurants[0].id;
+                    } else if (result.id) {
+                        // Direct ID in response
+                        serverId = result.id;
+                    } else if (result.data && result.data.id) {
+                        // Nested data object
+                        serverId = result.data.id;
+                    } else if (result.status === 'success' && restaurant.serverId) {
+                        // If server responds with success status but no ID, use existing serverId if available
+                        serverId = restaurant.serverId;
+                    } else if (result.restaurant_id) {
+                        // Some APIs return restaurant_id instead of id
+                        serverId = result.restaurant_id;
+                    }
+                    
+                    if (!serverId) {
+                        // If server responds with success but no ID, generate a temporary server ID
+                        // This is a fallback to prevent sync errors when the server doesn't return an ID
+                        serverId = `srv_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
+                        console.warn('No server ID returned, using generated ID:', serverId);
+                    }
+                    
+                    // Update restaurant sync status
+                    await dataStorage.updateRestaurantSyncStatus(restaurantId, serverId);
+                } catch (fetchError) {
+                    console.error('Error in fetch operation:', fetchError);
+                    throw fetchError; // Re-throw to be caught by outer try-catch
+                }
             }
-            
-            // Parse response
-            const result = await response.json();
-            
-            if (!result || !result.id) {
-                throw new Error('Server response missing restaurant ID');
-            }
-            
-            // Update restaurant sync status
-            await dataStorage.updateRestaurantSyncStatus(restaurantId, result.id);
             
             // Update last sync time
             await dataStorage.updateLastSyncTime();

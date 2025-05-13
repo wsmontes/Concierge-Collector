@@ -6,6 +6,97 @@ class RecordingModule {
         this.uiManager = uiManager;
     }
 
+    /**
+     * Safety wrapper for showing loading - uses global uiUtils as primary fallback
+     * @param {string} message - Loading message
+     */
+    safeShowLoading(message) {
+        try {
+            // First try global utils (most reliable)
+            if (window.uiUtils && typeof window.uiUtils.showLoading === 'function') {
+                console.log('RecordingModule: Using window.uiUtils.showLoading()');
+                window.uiUtils.showLoading(message);
+                return;
+            }
+            
+            // Then try with uiManager as fallback
+            if (this.uiManager && typeof this.uiManager.showLoading === 'function') {
+                console.log('RecordingModule: Using this.uiManager.showLoading()');
+                this.uiManager.showLoading(message);
+                return;
+            }
+            
+            // Last resort fallback
+            console.log('RecordingModule: Using alert as fallback for loading');
+            alert(message);
+        } catch (error) {
+            console.error('Error in safeShowLoading:', error);
+            // Last resort
+            alert(message);
+        }
+    }
+    
+    /**
+     * Safety wrapper for hiding loading - uses global uiUtils as primary fallback
+     */
+    safeHideLoading() {
+        try {
+            // First try global utils (most reliable)
+            if (window.uiUtils && typeof window.uiUtils.hideLoading === 'function') {
+                console.log('RecordingModule: Using window.uiUtils.hideLoading()');
+                window.uiUtils.hideLoading();
+                return;
+            }
+            
+            // Then try with uiManager as fallback
+            if (this.uiManager && typeof this.uiManager.hideLoading === 'function') {
+                console.log('RecordingModule: Using this.uiManager.hideLoading()');
+                this.uiManager.hideLoading();
+                return;
+            }
+            
+            // Last resort - just log since there's no visual to clear
+            console.log('RecordingModule: Hiding loading indicator (fallback)');
+        } catch (error) {
+            console.error('Error in safeHideLoading:', error);
+        }
+    }
+    
+    /**
+     * Safety wrapper for showing notification - uses global uiUtils as primary fallback
+     * @param {string} message - Notification message
+     * @param {string} type - Notification type
+     */
+    safeShowNotification(message, type = 'success') {
+        try {
+            // First try global utils (most reliable)
+            if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
+                console.log('RecordingModule: Using window.uiUtils.showNotification()');
+                window.uiUtils.showNotification(message, type);
+                return;
+            }
+            
+            // Then try with uiManager as fallback
+            if (this.uiManager && typeof this.uiManager.showNotification === 'function') {
+                console.log('RecordingModule: Using this.uiManager.showNotification()');
+                this.uiManager.showNotification(message, type);
+                return;
+            }
+            
+            // Last resort fallback
+            console.log(`RecordingModule: Notification (${type}):`, message);
+            if (type === 'error') {
+                alert(`Error: ${message}`);
+            } else {
+                alert(message);
+            }
+        } catch (error) {
+            console.error('Error in safeShowNotification:', error);
+            // Last resort
+            alert(message);
+        }
+    }
+
     setupEvents() {
         console.log('Setting up recording events...');
         
@@ -19,18 +110,18 @@ class RecordingModule {
             startRecordingBtn.addEventListener('click', async () => {
                 console.log('Start recording button clicked');
                 try {
-                    this.uiManager.showLoading('Starting recording...');
+                    this.safeShowLoading('Starting recording...');
                     await audioRecorder.startRecording();
-                    this.uiManager.hideLoading();
+                    this.safeHideLoading();
                     
                     // Update UI
                     startRecordingBtn.classList.add('hidden');
                     stopRecordingBtn.classList.remove('hidden');
                     stopRecordingBtn.classList.add('recording');
                 } catch (error) {
-                    this.uiManager.hideLoading();
+                    this.safeHideLoading();
                     console.error('Error starting recording:', error);
-                    this.uiManager.showNotification(`Error starting recording: ${error.message}`, 'error');
+                    this.safeShowNotification(`Error starting recording: ${error.message}`, 'error');
                 }
             });
         } else {
@@ -42,7 +133,7 @@ class RecordingModule {
             stopRecordingBtn.addEventListener('click', async () => {
                 console.log('Stop recording button clicked');
                 try {
-                    this.uiManager.showLoading('Processing recording...');
+                    this.safeShowLoading('Processing recording...');
                     const audioData = await audioRecorder.stopRecording();
                     
                     // Get the recording
@@ -66,7 +157,7 @@ class RecordingModule {
                     
                     try {
                         // Automatically start transcription
-                        this.uiManager.showLoading('Transcribing audio...');
+                        this.safeShowLoading('Transcribing audio...');
                         const transcription = await apiHandler.transcribeAudio(audioRecorder.audioBlob);
                         
                         // Update UI to show transcription
@@ -77,14 +168,14 @@ class RecordingModule {
                             await this.uiManager.conceptModule.processConcepts(transcription);
                         } catch (conceptError) {
                             console.error('Error extracting concepts:', conceptError);
-                            this.uiManager.showNotification(`Error analyzing restaurant details: ${conceptError.message}`, 'error');
+                            this.safeShowNotification(`Error analyzing restaurant details: ${conceptError.message}`, 'error');
                         }
                         
-                        this.uiManager.hideLoading();
+                        this.safeHideLoading();
                     } catch (processError) {
-                        this.uiManager.hideLoading();
+                        this.safeHideLoading();
                         console.error('Error in automatic processing:', processError);
-                        this.uiManager.showNotification(`Processing error: ${processError.message}. You can try manual transcription.`, 'error');
+                        this.safeShowNotification(`Processing error: ${processError.message}. You can try manual transcription.`, 'error');
                         
                         // Show manual transcribe button as fallback
                         const transcribeAudioBtn = document.getElementById('transcribe-audio');
@@ -93,9 +184,9 @@ class RecordingModule {
                         }
                     }
                 } catch (error) {
-                    this.uiManager.hideLoading();
+                    this.safeHideLoading();
                     console.error('Error stopping recording:', error);
-                    this.uiManager.showNotification(`Error stopping recording: ${error.message}`, 'error');
+                    this.safeShowNotification(`Error stopping recording: ${error.message}`, 'error');
                 }
             });
         } else {
@@ -130,7 +221,7 @@ class RecordingModule {
                     transcribeAudioBtn.classList.add('hidden');
                 }
                 
-                this.uiManager.showNotification('Recording discarded');
+                this.safeShowNotification('Recording discarded');
             });
         }
         
@@ -139,22 +230,22 @@ class RecordingModule {
             transcribeAudioBtn.addEventListener('click', async () => {
                 console.log('Transcribe audio button clicked');
                 if (!audioRecorder.audioBlob) {
-                    this.uiManager.showNotification('No recording to transcribe', 'error');
+                    this.safeShowNotification('No recording to transcribe', 'error');
                     return;
                 }
                 
                 try {
-                    this.uiManager.showLoading('Transcribing audio...');
+                    this.safeShowLoading('Transcribing audio...');
                     
                     // Use the MP3 blob for transcription for better compatibility with Whisper API
                     const transcription = await apiHandler.transcribeAudio(audioRecorder.audioBlob);
                     
-                    this.uiManager.hideLoading();
+                    this.safeHideLoading();
                     this.uiManager.showTranscriptionSection(transcription);
                 } catch (error) {
-                    this.uiManager.hideLoading();
+                    this.safeHideLoading();
                     console.error('Error transcribing audio:', error);
-                    this.uiManager.showNotification(`Error transcribing audio: ${error.message}`, 'error');
+                    this.safeShowNotification(`Error transcribing audio: ${error.message}`, 'error');
                 }
             });
         }

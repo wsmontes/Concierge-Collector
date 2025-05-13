@@ -31,6 +31,23 @@ function setupSyncSettings() {
         return;
     }
     
+    // Create and add the button to the navbar if it doesn't exist
+    if (!openSettingsBtn) {
+        createSyncSettingsButton();
+    }
+    
+    // Create and add the modal if it doesn't exist
+    if (!syncSettingsModal) {
+        createSyncSettingsModal();
+        
+        // Re-get the elements after creating them
+        closeSettingsBtn = document.getElementById('close-sync-settings');
+        saveSettingsBtn = document.getElementById('save-sync-settings');
+        syncSettingsModal = document.getElementById('sync-settings-modal');
+        syncIntervalInput = document.getElementById('sync-interval');
+        syncOnStartupCheckbox = document.getElementById('sync-on-startup');
+    }
+    
     // Load settings when opening the modal
     openSettingsBtn.addEventListener('click', async () => {
         try {
@@ -107,15 +124,143 @@ function setupSyncSettings() {
 }
 
 /**
+ * Creates the sync settings button in the navbar
+ */
+function createSyncSettingsButton() {
+    // Find the navbar or appropriate container
+    const navbar = document.querySelector('nav') || document.querySelector('header');
+    if (!navbar) return;
+    
+    const syncButtonContainer = document.createElement('div');
+    syncButtonContainer.className = 'ml-auto flex items-center';
+    
+    // Create the sync settings button
+    const syncButton = document.createElement('button');
+    syncButton.id = 'open-sync-settings';
+    syncButton.className = 'flex items-center px-3 py-2 bg-blue-100 text-blue-800 rounded ml-2 hover:bg-blue-200 transition-colors';
+    syncButton.innerHTML = '<span class="material-icons mr-1">sync</span><span>Sync</span>';
+    syncButton.title = 'Sync Settings';
+    
+    // Add button to navbar
+    syncButtonContainer.appendChild(syncButton);
+    navbar.appendChild(syncButtonContainer);
+    
+    return syncButton;
+}
+
+/**
+ * Creates the sync settings modal
+ */
+function createSyncSettingsModal() {
+    // Create the modal container
+    const modal = document.createElement('div');
+    modal.id = 'sync-settings-modal';
+    modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden';
+    
+    // Modal content
+    modal.innerHTML = `
+        <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold">Sync Settings</h2>
+                <button id="close-sync-settings" class="text-gray-500 hover:text-gray-800 text-xl">&times;</button>
+            </div>
+            
+            <div class="mb-6">
+                <h3 class="text-lg font-medium mb-4">Auto-Sync Configuration</h3>
+                
+                <div class="mb-4">
+                    <label for="sync-interval" class="block mb-2">Sync Interval (minutes)</label>
+                    <input type="number" id="sync-interval" min="5" value="30" class="border rounded p-2 w-full">
+                    <p class="text-xs text-gray-500 mt-1">Minimum: 5 minutes</p>
+                </div>
+                
+                <div class="flex items-center mb-4">
+                    <input type="checkbox" id="sync-on-startup" class="mr-2" checked>
+                    <label for="sync-on-startup">Sync on application startup</label>
+                </div>
+            </div>
+            
+            <div class="mb-6">
+                <h3 class="text-lg font-medium mb-2">Sync History</h3>
+                <div id="sync-history" class="text-sm border rounded p-3 max-h-40 overflow-y-auto">
+                    <p class="text-gray-400 italic">Loading sync history...</p>
+                </div>
+                
+                <div id="sync-status" class="text-sm text-gray-600 mt-2">
+                    Last sync: Never
+                </div>
+            </div>
+            
+            <div class="flex justify-between">
+                <button id="save-sync-settings" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                    Save Settings
+                </button>
+                
+                <button id="manual-sync" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 flex items-center">
+                    <span class="material-icons mr-1">sync</span>
+                    Sync Now
+                </button>
+            </div>
+        </div>
+    `;
+    
+    // Add to document
+    document.body.appendChild(modal);
+    
+    // Add event listener for manual sync button
+    const manualSyncBtn = document.getElementById('manual-sync');
+    if (manualSyncBtn) {
+        manualSyncBtn.addEventListener('click', async () => {
+            try {
+                // Close modal
+                modal.classList.add('hidden');
+                document.body.style.overflow = '';
+                
+                // Trigger sync
+                if (window.AutoSync && typeof window.AutoSync.performManualSync === 'function') {
+                    await window.AutoSync.performManualSync();
+                } else {
+                    showError('Sync functionality not available');
+                }
+            } catch (error) {
+                console.error('SyncSettingsManager: Error during manual sync:', error);
+                showError('Error performing sync');
+            }
+        });
+    }
+    
+    return modal;
+}
+
+/**
  * Loads and displays sync history
  */
 async function loadSyncHistory() {
     const syncHistoryElement = document.getElementById('sync-history');
+    const syncStatusElement = document.getElementById('sync-status');
     if (!syncHistoryElement) return;
     
     try {
         // Get sync history from storage
         const syncHistory = await dataStorage.getSetting('syncHistory', []);
+        
+        // Update last sync time display
+        if (syncStatusElement) {
+            const lastSyncTime = await dataStorage.getLastSyncTime();
+            if (lastSyncTime) {
+                const date = new Date(lastSyncTime);
+                const formattedTime = date.toLocaleString(undefined, {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                syncStatusElement.textContent = `Last sync: ${formattedTime}`;
+            } else {
+                syncStatusElement.textContent = 'Last sync: Never';
+            }
+        }
         
         if (!syncHistory || syncHistory.length === 0) {
             syncHistoryElement.innerHTML = '<p class="text-gray-400 italic">No sync history available</p>';

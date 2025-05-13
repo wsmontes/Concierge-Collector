@@ -433,14 +433,6 @@
             </div>
         </div>
 
-        <!-- Add this inside the app menu navigation -->
-        <div class="mb-4">
-            <button id="sync-button" class="w-full mb-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded flex items-center justify-center">
-                <span class="material-icons mr-2">sync</span>
-                Sync Data
-            </button>
-            <div id="sync-status" class="text-xs text-center text-gray-500">Last sync: Never</div>
-        </div>
     </div>
 
     <!-- Update the loading overlay to include a message element -->
@@ -489,6 +481,53 @@
         </div>
     </div>
 
+    <!-- Add the sync settings modal elements -->
+    <div id="sync-settings-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <div class="flex justify-between items-center mb-4">
+                <h2 class="text-xl font-bold">Sync Settings</h2>
+                <button id="close-sync-settings" class="text-gray-500 hover:text-gray-800 text-xl">&times;</button>
+            </div>
+            
+            <div class="mb-6">
+                <h3 class="text-lg font-medium mb-4">Auto-Sync Configuration</h3>
+                
+                <div class="mb-4">
+                    <label for="sync-interval" class="block mb-2">Sync Interval (minutes)</label>
+                    <input type="number" id="sync-interval" min="5" value="30" class="border rounded p-2 w-full">
+                    <p class="text-xs text-gray-500 mt-1">Minimum: 5 minutes</p>
+                </div>
+                
+                <div class="flex items-center mb-4">
+                    <input type="checkbox" id="sync-on-startup" class="mr-2" checked>
+                    <label for="sync-on-startup">Sync on application startup</label>
+                </div>
+            </div>
+            
+            <div class="mb-6">
+                <h3 class="text-lg font-medium mb-2">Sync History</h3>
+                <div id="sync-history" class="text-sm border rounded p-3 max-h-40 overflow-y-auto">
+                    <p class="text-gray-400 italic">Loading sync history...</p>
+                </div>
+                
+                <div id="sync-status" class="text-sm text-gray-600 mt-2">
+                    Last sync: Never
+                </div>
+            </div>
+            
+            <div class="flex justify-between">
+                <button id="save-sync-settings" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                    Save Settings
+                </button>
+                
+                <button id="manual-sync" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 flex items-center">
+                    <span class="material-icons mr-1">sync</span>
+                    Sync Now
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Libraries -->
     <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.2/dist/dexie.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
@@ -520,5 +559,7 @@
     
     <!-- Main application script loaded last -->
     <script src="scripts/main.js"></script>
+    <script src="scripts/syncSettingsManager.js"></script>
+    <script src="scripts/autoSync.js"></script>
 </body>
 </html>

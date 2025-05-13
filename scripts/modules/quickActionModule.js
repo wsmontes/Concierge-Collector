@@ -8,6 +8,135 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
         this.uiManager = uiManager;
     }
 
+    /**
+     * Safety wrapper for showing loading - uses global uiUtils as primary fallback
+     * @param {string} message - Loading message
+     */
+    safeShowLoading(message) {
+        try {
+            // First try global utils (most reliable)
+            if (window.uiUtils && typeof window.uiUtils.showLoading === 'function') {
+                console.log('QuickActionModule: Using window.uiUtils.showLoading()');
+                window.uiUtils.showLoading(message);
+                return;
+            }
+            
+            // Then try with uiManager as fallback
+            if (this.uiManager && typeof this.uiManager.showLoading === 'function') {
+                console.log('QuickActionModule: Using this.uiManager.showLoading()');
+                this.uiManager.showLoading(message);
+                return;
+            }
+            
+            // Last resort fallback
+            console.log('QuickActionModule: Using alert as fallback for loading');
+            alert(message);
+        } catch (error) {
+            console.error('Error in safeShowLoading:', error);
+            // Last resort
+            alert(message);
+        }
+    }
+    
+    /**
+     * Safety wrapper for hiding loading - uses global uiUtils as primary fallback
+     */
+    safeHideLoading() {
+        try {
+            // First try global utils (most reliable)
+            if (window.uiUtils && typeof window.uiUtils.hideLoading === 'function') {
+                console.log('QuickActionModule: Using window.uiUtils.hideLoading()');
+                window.uiUtils.hideLoading();
+                return;
+            }
+            
+            // Then try with uiManager as fallback
+            if (this.uiManager && typeof this.uiManager.hideLoading === 'function') {
+                console.log('QuickActionModule: Using this.uiManager.hideLoading()');
+                this.uiManager.hideLoading();
+                return;
+            }
+            
+            // Last resort - just log since there's no visual to clear
+            console.log('QuickActionModule: Hiding loading indicator (fallback)');
+        } catch (error) {
+            console.error('Error in safeHideLoading:', error);
+        }
+    }
+    
+    /**
+     * Safety wrapper for showing notification - uses global uiUtils as primary fallback
+     * @param {string} message - Notification message
+     * @param {string} type - Notification type
+     */
+    safeShowNotification(message, type = 'success') {
+        try {
+            // First try global utils (most reliable)
+            if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
+                console.log('QuickActionModule: Using window.uiUtils.showNotification()');
+                window.uiUtils.showNotification(message, type);
+                return;
+            }
+            
+            // Then try with uiManager as fallback
+            if (this.uiManager && typeof this.uiManager.showNotification === 'function') {
+                console.log('QuickActionModule: Using this.uiManager.showNotification()');
+                this.uiManager.showNotification(message, type);
+                return;
+            }
+            
+            // Last resort fallback
+            console.log(`QuickActionModule: Notification (${type}):`, message);
+            if (type === 'error') {
+                alert(`Error: ${message}`);
+            } else {
+                alert(message);
+            }
+        } catch (error) {
+            console.error('Error in safeShowNotification:', error);
+            // Last resort
+            alert(message);
+        }
+    }
+    
+    /**
+     * Safety wrapper for getting current position - uses global uiUtils as primary fallback
+     * @returns {Promise<GeolocationPosition>} - The position object
+     */
+    async safeGetCurrentPosition() {
+        try {
+            // First try global utils (most reliable)
+            if (window.uiUtils && typeof window.uiUtils.getCurrentPosition === 'function') {
+                console.log('QuickActionModule: Using window.uiUtils.getCurrentPosition()');
+                return await window.uiUtils.getCurrentPosition();
+            }
+            
+            // Then try with uiManager as fallback
+            if (this.uiManager && typeof this.uiManager.getCurrentPosition === 'function') {
+                console.log('QuickActionModule: Using this.uiManager.getCurrentPosition()');
+                return await this.uiManager.getCurrentPosition();
+            }
+            
+            // Last resort fallback - use browser API directly
+            console.log('QuickActionModule: Using browser geolocation API directly');
+            return await new Promise((resolve, reject) => {
+                if (!navigator.geolocation) {
+                    reject(new Error('Geolocation is not supported by your browser'));
+                    return;
+                }
+                
+                navigator.geolocation.getCurrentPosition(resolve, reject, {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 0
+                });
+            });
+        } catch (error) {
+            console.error('Error in safeGetCurrentPosition:', error);
+            throw error; // Re-throw to be handled by caller
+        }
+    }
+
     setupEvents() {
         console.log('Setting up quick action events...');
         
@@ -17,7 +146,7 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
             this.uiManager.fab.addEventListener('click', () => {
                 // Only show quick actions if a curator is logged in
                 if (!this.uiManager.currentCurator) {
-                    this.uiManager.showNotification('Please set up curator information first', 'error');
+                    this.safeShowNotification('Please set up curator information first', 'error');
                     return;
                 }
                 
@@ -94,7 +223,13 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
         if (this.uiManager.quickActionModal) {
             this.uiManager.quickActionModal.classList.add('hidden');
         }
-        this.uiManager.showRecordingSection();
+        
+        // Safely show recording section
+        if (this.uiManager && typeof this.uiManager.showRecordingSection === 'function') {
+            this.uiManager.showRecordingSection();
+        } else {
+            console.warn('QuickActionModule: showRecordingSection not available');
+        }
         
         // Auto-click the start recording button if available
         const startRecordingBtn = document.getElementById('start-recording');
@@ -109,24 +244,32 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
         }
         
         // Get current location
-        this.uiManager.showLoading('Getting your location...');
+        this.safeShowLoading('Getting your location...');
         
         try {
-            const position = await this.uiManager.getCurrentPosition();
-            this.uiManager.currentLocation = {
-                latitude: position.coords.latitude,
-                longitude: position.coords.longitude
-            };
+            const position = await this.safeGetCurrentPosition();
             
-            this.uiManager.hideLoading();
-            this.uiManager.showNotification('Location saved successfully');
+            // Safely update location in uiManager
+            if (this.uiManager) {
+                this.uiManager.currentLocation = {
+                    latitude: position.coords.latitude,
+                    longitude: position.coords.longitude
+                };
+            }
             
-            // Show the concepts section with manual entry
-            this.uiManager.showRestaurantFormSection();
+            this.safeHideLoading();
+            this.safeShowNotification('Location saved successfully');
+            
+            // Safely show restaurant form section
+            if (this.uiManager && typeof this.uiManager.showRestaurantFormSection === 'function') {
+                this.uiManager.showRestaurantFormSection();
+            } else {
+                console.warn('QuickActionModule: showRestaurantFormSection not available');
+            }
             
             // Update location display
             const locationDisplay = document.getElementById('location-display');
-            if (locationDisplay) {
+            if (locationDisplay && this.uiManager && this.uiManager.currentLocation) {
                 locationDisplay.innerHTML = `
                     <p class="text-green-600">Location saved:</p>
                     <p>Latitude: ${this.uiManager.currentLocation.latitude.toFixed(6)}</p>
@@ -134,9 +277,9 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
                 `;
             }
         } catch (error) {
-            this.uiManager.hideLoading();
+            this.safeHideLoading();
             console.error('Error getting location:', error);
-            this.uiManager.showNotification('Error getting location: ' + error.message, 'error');
+            this.safeShowNotification('Error getting location: ' + error.message, 'error');
         }
     }
 
@@ -158,7 +301,13 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
         if (this.uiManager.quickActionModal) {
             this.uiManager.quickActionModal.classList.add('hidden');
         }
-        this.uiManager.showRestaurantFormSection();
+        
+        // Safely show restaurant form section
+        if (this.uiManager && typeof this.uiManager.showRestaurantFormSection === 'function') {
+            this.uiManager.showRestaurantFormSection();
+        } else {
+            console.warn('QuickActionModule: showRestaurantFormSection not available');
+        }
         
         // Show a small popup asking whether to use camera or gallery
         const options = document.createElement('div');
@@ -215,7 +364,13 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
         if (this.uiManager.quickActionModal) {
             this.uiManager.quickActionModal.classList.add('hidden');
         }
-        this.uiManager.showRestaurantFormSection();
+        
+        // Safely show restaurant form section
+        if (this.uiManager && typeof this.uiManager.showRestaurantFormSection === 'function') {
+            this.uiManager.showRestaurantFormSection();
+        } else {
+            console.warn('QuickActionModule: showRestaurantFormSection not available');
+        }
     }
 });
 

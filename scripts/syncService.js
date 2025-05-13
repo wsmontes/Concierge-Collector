@@ -1,14 +1,412 @@
 /**
  * Handles synchronization with remote server API
- * Dependencies: dataStorage
+ * Dependencies: dataStorage, ModuleWrapper
  */
 
-// Define SyncService class if it doesn't already exist
+// Check if SyncService is already defined by ModuleWrapper before defining it
 if (!window.SyncService) {
-    window.SyncService = class SyncService {
+    // Define SyncService using ModuleWrapper to follow project patterns
+    window.SyncService = ModuleWrapper.defineClass('SyncService', class {
         constructor() {
             this.apiBase = 'https://wsmontes.pythonanywhere.com/api';
+            this.isInitialized = false;
+            this.isSyncing = false;
+            
             console.log('SyncService: Instance created');
+        }
+
+        /**
+         * Import restaurants from server to local database with improved deduplication
+         * @returns {Promise<Object>} - Import results
+         */
+        async importRestaurants() {
+            try {
+                console.log('SyncService: Importing restaurants from server...');
+                
+                // Fetch restaurants from server
+                const response = await fetch(`${this.apiBase}/restaurants`);
+                
+                if (!response.ok) {
+                    throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
+                }
+                
+                const remoteRestaurants = await response.json();
+                console.log(`SyncService: Fetched ${remoteRestaurants.length} restaurants from server`);
+                
+                // Process each restaurant and add/update in local database
+                const results = {
+                    added: 0,
+                    updated: 0,
+                    skipped: 0,
+                    errors: 0
+                };
+                
+                // Create map of existing restaurants by serverId for deduplication
+                const existingByServerId = new Map();
+                
+                // Get all restaurants with serverId set
+                const existingServerRestaurants = await dataStorage.db.restaurants
+                    .where('serverId')
+                    .above(0)
+                    .toArray();
+                    
+                existingServerRestaurants.forEach(restaurant => {
+                    if (restaurant.serverId) {
+                        existingByServerId.set(restaurant.serverId.toString(), restaurant);
+                    }
+                });
+                
+                console.log(`SyncService: Found ${existingServerRestaurants.length} existing restaurants with server IDs`);
+                
+                // Track restaurants by normalized name for potential matching
+                const existingByName = new Map();
+                const allRestaurants = await dataStorage.db.restaurants.toArray();
+                
+                allRestaurants.forEach(restaurant => {
+                    const normalizedName = this.normalizeText(restaurant.name);
+                    if (!existingByName.has(normalizedName)) {
+                        existingByName.set(normalizedName, []);
+                    }
+                    existingByName.get(normalizedName).push(restaurant);
+                });
+                
+                // Create a map of processed restaurants to avoid duplicates within the same import batch
+                const processedNames = new Map();
+                
+                // Process each remote restaurant
+                for (const remoteRestaurant of remoteRestaurants) {
+                    try {
+                        // Skip restaurants without essential data
+                        if (!remoteRestaurant.name || !remoteRestaurant.id) {
+                            console.warn('SyncService: Skipping restaurant with missing name or ID');
+                            results.skipped++;
+                            continue;
+                        }
+                        
+                        const normalizedName = this.normalizeText(remoteRestaurant.name);
+                        
+                        // Skip if we've already processed a restaurant with this normalized name in this batch
+                        if (processedNames.has(normalizedName)) {
+                            console.log(`SyncService: Skipping duplicate restaurant "${remoteRestaurant.name}" in current import batch`);
+                            results.skipped++;
+                            continue;
+                        }
+                        
+                        // Mark this name as processed for this batch
+                        processedNames.set(normalizedName, true);
+                        
+                        // Check if we already have this restaurant by server ID
+                        const existingRestaurant = existingByServerId.get(remoteRestaurant.id.toString());
+                        
+                        // If exists with serverId, update it unless it's marked as local
+                        if (existingRestaurant) {
+                            // Don't overwrite local changes - only update if it's marked as remote
+                            if (existingRestaurant.source === 'remote') {
+                                // Find or create curator
+                                const curatorId = await this.findOrCreateCurator(remoteRestaurant.curator);
+                                
+                                // Process concepts
+                                const concepts = this.processRemoteConcepts(remoteRestaurant.concepts);
+                                
+                                // Process location
+                                const location = this.processRemoteLocation(remoteRestaurant.location);
+                                
+                                // Update the restaurant
+                                await dataStorage.updateRestaurant(
+                                    existingRestaurant.id,
+                                    remoteRestaurant.name,
+                                    curatorId,
+                                    concepts,
+                                    location,
+                                    [], // No photos from server import
+                                    remoteRestaurant.transcription || '',
+                                    remoteRestaurant.description || ''
+                                );
+                                
+                                // Explicitly update source and serverId to ensure they're set correctly
+                                await dataStorage.db.restaurants.update(existingRestaurant.id, {
+                                    source: 'remote',
+                                    serverId: remoteRestaurant.id,
+                                    lastSynced: new Date()
+                                });
+                                
+                                results.updated++;
+                                console.log(`SyncService: Updated restaurant ${remoteRestaurant.name} (Server ID: ${remoteRestaurant.id}, Local ID: ${existingRestaurant.id})`);
+                            } else {
+                                results.skipped++;
+                                console.log(`SyncService: Skipping update for ${remoteRestaurant.name} because it has local changes`);
+                            }
+                            
+                            continue;
+                        }
+                        
+                        // Check for restaurants with same name (normalized)
+                        const matchingRestaurants = existingByName.get(normalizedName);
+                        if (matchingRestaurants && matchingRestaurants.length > 0) {
+                            // Check if any of the matching restaurants has the 'local' source
+                            const localMatch = matchingRestaurants.find(r => r.source === 'local');
+                            
+                            if (localMatch) {
+                                // Update existing local restaurant with server ID if it doesn't have one
+                                if (!localMatch.serverId) {
+                                    await dataStorage.db.restaurants.update(localMatch.id, {
+                                        serverId: remoteRestaurant.id,
+                                        // Don't change source to 'remote' to keep local changes
+                                        lastSynced: new Date()
+                                    });
+                                    
+                                    console.log(`SyncService: Linked local restaurant ${localMatch.name} (ID: ${localMatch.id}) with server ID ${remoteRestaurant.id}`);
+                                }
+                                
+                                results.skipped++;
+                                continue;
+                            }
+                            
+                            // If we have a remote match, check if it's the same restaurant
+                            const remoteMatch = matchingRestaurants.find(r => r.source === 'remote');
+                            if (remoteMatch) {
+                                if (remoteMatch.serverId !== remoteRestaurant.id) {
+                                    // Different server IDs - two remote restaurants with same normalized name
+                                    // Skip to avoid duplication
+                                    console.log(`SyncService: Skipping duplicate remote restaurant "${remoteRestaurant.name}" (Server ID: ${remoteRestaurant.id}, Existing ID: ${remoteMatch.serverId})`);
+                                    results.skipped++;
+                                    continue;
+                                }
+                                // Otherwise this is a duplicate that should be caught by serverId check
+                            }
+                        }
+                        
+                        // Find or create curator
+                        const curatorId = await this.findOrCreateCurator(remoteRestaurant.curator);
+                        
+                        // Process concepts
+                        const concepts = this.processRemoteConcepts(remoteRestaurant.concepts);
+                        
+                        // Process location
+                        const location = this.processRemoteLocation(remoteRestaurant.location);
+                        
+                        // Create new restaurant
+                        const restaurantId = await dataStorage.saveRestaurant(
+                            remoteRestaurant.name,
+                            curatorId,
+                            concepts,
+                            location,
+                            [], // No photos from server import
+                            remoteRestaurant.transcription || '',
+                            remoteRestaurant.description || '',
+                            'remote', // Explicitly mark as remote source
+                            remoteRestaurant.id // Store server ID
+                        );
+                        
+                        results.added++;
+                        console.log(`SyncService: Added restaurant ${remoteRestaurant.name} (Server ID: ${remoteRestaurant.id}, Local ID: ${restaurantId})`);
+                        
+                        // Add to our tracking maps to avoid duplicates in this import batch
+                        existingByServerId.set(remoteRestaurant.id.toString(), {
+                            id: restaurantId,
+                            name: remoteRestaurant.name,
+                            source: 'remote',
+                            serverId: remoteRestaurant.id
+                        });
+                        
+                        if (!existingByName.has(normalizedName)) {
+                            existingByName.set(normalizedName, []);
+                        }
+                        existingByName.get(normalizedName).push({
+                            id: restaurantId,
+                            name: remoteRestaurant.name,
+                            source: 'remote',
+                            serverId: remoteRestaurant.id
+                        });
+                    } catch (error) {
+                        console.error(`SyncService: Error processing restaurant ${remoteRestaurant.name}:`, error);
+                        results.errors++;
+                    }
+                }
+                
+                // Update last sync time
+                await dataStorage.updateLastSyncTime();
+                
+                console.log('SyncService: Restaurant import completed with results:', results);
+                return results;
+            } catch (error) {
+                console.error('SyncService: Error importing restaurants:', error);
+                throw error;
+            }
+        }
+        
+        /**
+         * Normalizes text for comparison (removes spaces, converts to lowercase)
+         * @param {string} text - The text to normalize
+         * @returns {string} - Normalized text
+         */
+        normalizeText(text) {
+            if (!text) return '';
+            return text.toLowerCase().trim()
+                .normalize("NFD").replace(/[\u0300-\u036f]/g, "") // Remove accents
+                .replace(/[^\w\s]/g, '') // Remove punctuation
+                .replace(/\s+/g, ''); // Remove spaces
+        }
+        
+        /**
+         * Processes remote concepts into the local format
+         * @param {Array} remoteConcepts - Concepts from remote restaurant
+         * @returns {Array} - Concepts in local format
+         */
+        processRemoteConcepts(remoteConcepts) {
+            if (!remoteConcepts || !Array.isArray(remoteConcepts)) {
+                return [];
+            }
+            
+            return remoteConcepts.map(concept => {
+                return {
+                    category: concept.category,
+                    value: concept.value
+                };
+            });
+        }
+        
+        /**
+         * Processes remote location into the local format
+         * @param {Object} remoteLocation - Location from remote restaurant
+         * @returns {Object|null} - Location in local format
+         */
+        processRemoteLocation(remoteLocation) {
+            if (!remoteLocation || !remoteLocation.latitude || !remoteLocation.longitude) {
+                return null;
+            }
+            
+            return {
+                latitude: parseFloat(remoteLocation.latitude),
+                longitude: parseFloat(remoteLocation.longitude),
+                address: remoteLocation.address || ''
+            };
+        }
+        
+        /**
+         * Finds a curator by name or creates a new one
+         * @param {Object} curatorInfo - Curator info from remote restaurant
+         * @returns {Promise<number>} - Curator ID
+         */
+        async findOrCreateCurator(curatorInfo) {
+            if (!curatorInfo || !curatorInfo.name) {
+                // Get default curator
+                const defaultCurator = await dataStorage.getCurrentCurator();
+                return defaultCurator ? defaultCurator.id : null;
+            }
+            
+            try {
+                // Try to find curator by name
+                const existingCurators = await dataStorage.db.curators
+                    .where('name')
+                    .equalsIgnoreCase(curatorInfo.name)
+                    .toArray();
+                    
+                if (existingCurators.length > 0) {
+                    // Use the first matching curator
+                    return existingCurators[0].id;
+                }
+                
+                // Create new curator
+                const curatorId = await dataStorage.db.curators.add({
+                    name: curatorInfo.name,
+                    lastActive: new Date(),
+                    origin: 'remote',
+                    serverId: curatorInfo.id || null
+                });
+                
+                return curatorId;
+            } catch (error) {
+                console.error('SyncService: Error finding/creating curator:', error);
+                
+                // Get default curator as fallback
+                const defaultCurator = await dataStorage.getCurrentCurator();
+                return defaultCurator ? defaultCurator.id : null;
+            }
+        }
+        
+        /**
+         * Syncs unsynced local restaurants to server with improved deduplication
+         * @returns {Promise<Object>} - Sync results
+         */
+        async syncUnsyncedRestaurants() {
+            try {
+                console.log('SyncService: Syncing unsynced restaurants...');
+                
+                // Get restaurants that need to be synced
+                const unsyncedRestaurants = await dataStorage.getUnsyncedRestaurants();
+                console.log(`SyncService: Found ${unsyncedRestaurants.length} unsynced restaurants`);
+                
+                const results = {
+                    success: 0,
+                    failed: 0
+                };
+                
+                // Process each restaurant
+                for (const restaurant of unsyncedRestaurants) {
+                    try {
+                        console.log(`SyncService: Syncing restaurant ${restaurant.name} (ID: ${restaurant.id})`);
+                        
+                        // Prepare data for server
+                        const serverRestaurant = {
+                            name: restaurant.name,
+                            description: restaurant.description || '',
+                            transcription: restaurant.transcription || '',
+                            curator: restaurant.curator ? {
+                                name: restaurant.curator.name,
+                                id: restaurant.curator.serverId
+                            } : { name: 'Unknown' },
+                            concepts: restaurant.concepts ? restaurant.concepts.map(concept => ({
+                                category: concept.category,
+                                value: concept.value
+                            })) : [],
+                            location: restaurant.location ? {
+                                latitude: restaurant.location.latitude,
+                                longitude: restaurant.location.longitude,
+                                address: restaurant.location.address || ''
+                            } : null
+                        };
+                        
+                        // Send to server
+                        const response = await fetch(`${this.apiBase}/restaurants`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify(serverRestaurant)
+                        });
+                        
+                        if (!response.ok) {
+                            throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
+                        }
+                        
+                        // Get server ID from response
+                        const responseData = await response.json();
+                        
+                        if (!responseData || !responseData.id) {
+                            throw new Error('Server response missing restaurant ID');
+                        }
+                        
+                        // Update restaurant sync status
+                        await dataStorage.updateRestaurantSyncStatus(restaurant.id, responseData.id);
+                        
+                        results.success++;
+                        console.log(`SyncService: Restaurant ${restaurant.name} synced successfully with server ID ${responseData.id}`);
+                    } catch (error) {
+                        console.error(`SyncService: Error syncing restaurant ${restaurant.name}:`, error);
+                        results.failed++;
+                    }
+                }
+                
+                // Update last sync time
+                await dataStorage.updateLastSyncTime();
+                
+                console.log('SyncService: Unsynced restaurants sync completed with results:', results);
+                return results;
+            } catch (error) {
+                console.error('SyncService: Error syncing unsynced restaurants:', error);
+                throw error;
+            }
         }
 
         /**
@@ -208,434 +606,6 @@ if (!window.SyncService) {
                 return importedIds;
             } catch (error) {
                 console.error('SyncService: Error importing curators:', error);
-                throw error;
-            }
-        }
-
-        /**
-         * Import restaurants from server to local database with deduplication
-         * @returns {Promise<Object>} - Import results
-         */
-        async importRestaurants() {
-            try {
-                console.log('SyncService: Importing restaurants from server...');
-                
-                // Fetch restaurants from server
-                const response = await fetch(`${this.apiBase}/restaurants`);
-                
-                if (!response.ok) {
-                    throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
-                }
-                
-                const remoteRestaurants = await response.json();
-                console.log(`SyncService: Fetched ${remoteRestaurants.length} restaurants from server`);
-                
-                // Process each restaurant and add/update in local database
-                const results = {
-                    added: 0,
-                    updated: 0,
-                    skipped: 0,
-                    errors: 0
-                };
-                
-                // Create map of existing restaurants by serverId for deduplication
-                const existingByServerId = new Map();
-                
-                // Get all restaurants with serverId set
-                const existingServerRestaurants = await dataStorage.db.restaurants
-                    .where('serverId')
-                    .above(0)
-                    .toArray();
-                    
-                existingServerRestaurants.forEach(restaurant => {
-                    if (restaurant.serverId) {
-                        existingByServerId.set(restaurant.serverId.toString(), restaurant);
-                    }
-                });
-                
-                console.log(`SyncService: Found ${existingServerRestaurants.length} existing restaurants with server IDs`);
-                
-                // Track restaurants by normalized name for potential matching
-                const existingByName = new Map();
-                const allRestaurants = await dataStorage.db.restaurants.toArray();
-                
-                allRestaurants.forEach(restaurant => {
-                    const normalizedName = restaurant.name.toLowerCase().trim();
-                    if (!existingByName.has(normalizedName)) {
-                        existingByName.set(normalizedName, []);
-                    }
-                    existingByName.get(normalizedName).push(restaurant);
-                });
-                
-                // Process each remote restaurant
-                for (const remoteRestaurant of remoteRestaurants) {
-                    try {
-                        // Skip restaurants without essential data
-                        if (!remoteRestaurant.name || !remoteRestaurant.id) {
-                            console.warn('SyncService: Skipping restaurant with missing name or ID');
-                            results.skipped++;
-                            continue;
-                        }
-                        
-                        // Check if we already have this restaurant by server ID
-                        const existingRestaurant = existingByServerId.get(remoteRestaurant.id.toString());
-                        
-                        // If exists and is marked as local, don't overwrite local changes
-                        if (existingRestaurant && existingRestaurant.source === 'local') {
-                            console.log(`SyncService: Skipping server restaurant ${remoteRestaurant.name} (ID: ${remoteRestaurant.id}) because local changes exist`);
-                            results.skipped++;
-                            continue;
-                        }
-                        
-                        // Find or create curator
-                        let curatorId = null;
-                        if (remoteRestaurant.curator && remoteRestaurant.curator.name) {
-                            // Try to find curator by name
-                            const normalizedName = remoteRestaurant.curator.name.toLowerCase().trim();
-                            const existingCurators = await dataStorage.db.curators
-                                .where('name')
-                                .equalsIgnoreCase(remoteRestaurant.curator.name)
-                                .toArray();
-                                
-                            if (existingCurators.length > 0) {
-                                // Use the first matching curator
-                                curatorId = existingCurators[0].id;
-                            } else {
-                                // Create new curator
-                                curatorId = await dataStorage.db.curators.add({
-                                    name: remoteRestaurant.curator.name,
-                                    lastActive: new Date(),
-                                    origin: 'remote',
-                                    serverId: remoteRestaurant.curator.id || null
-                                });
-                            }
-                        }
-                        
-                        // Process concepts
-                        const concepts = [];
-                        if (remoteRestaurant.concepts && Array.isArray(remoteRestaurant.concepts)) {
-                            concepts.push(...remoteRestaurant.concepts);
-                        }
-                        
-                        // Process location
-                        let location = null;
-                        if (remoteRestaurant.location) {
-                            location = {
-                                latitude: remoteRestaurant.location.latitude,
-                                longitude: remoteRestaurant.location.longitude,
-                                address: remoteRestaurant.location.address || ''
-                            };
-                        }
-                        
-                        // Create or update the restaurant
-                        if (existingRestaurant) {
-                            // IMPORTANT FIX: Only update if it's NOT marked as local
-                            // This avoids overwriting local changes
-                            if (existingRestaurant.source !== 'local') {
-                                await dataStorage.updateRestaurant(
-                                    existingRestaurant.id,
-                                    remoteRestaurant.name,
-                                    curatorId,
-                                    concepts,
-                                    location,
-                                    [], // No photos from server import
-                                    remoteRestaurant.transcription || '',
-                                    remoteRestaurant.description || ''
-                                );
-                                
-                                // FIXED: Update source and serverId after other updates
-                                await dataStorage.db.restaurants.update(existingRestaurant.id, {
-                                    source: 'remote', // Explicitly set to 'remote'
-                                    serverId: remoteRestaurant.id
-                                });
-                                
-                                results.updated++;
-                                console.log(`SyncService: Updated restaurant ${remoteRestaurant.name} (Server ID: ${remoteRestaurant.id}, Local ID: ${existingRestaurant.id})`);
-                            } else {
-                                results.skipped++;
-                                console.log(`SyncService: Skipped updating ${remoteRestaurant.name} because it has local changes`);
-                            }
-                        } else {
-                            // Create new restaurant
-                            const restaurantId = await dataStorage.saveRestaurant(
-                                remoteRestaurant.name,
-                                curatorId,
-                                concepts,
-                                location,
-                                [], // No photos from server import
-                                remoteRestaurant.transcription || '',
-                                remoteRestaurant.description || '',
-                                'remote', // FIXED: Explicitly mark as remote source
-                                remoteRestaurant.id // Store server ID
-                            );
-                            
-                            results.added++;
-                            console.log(`SyncService: Added restaurant ${remoteRestaurant.name} (Server ID: ${remoteRestaurant.id}, Local ID: ${restaurantId})`);
-                            
-                            // Add to our tracking maps to avoid duplicates in this import batch
-                            existingByServerId.set(remoteRestaurant.id.toString(), {
-                                id: restaurantId,
-                                name: remoteRestaurant.name,
-                                source: 'remote', // FIXED: Explicitly mark as remote source
-                                serverId: remoteRestaurant.id
-                            });
-                        }
-                    } catch (error) {
-                        console.error(`SyncService: Error processing restaurant ${remoteRestaurant.name}:`, error);
-                        results.errors++;
-                    }
-                }
-                
-                // Update last sync time
-                await dataStorage.updateLastSyncTime();
-                
-                console.log('SyncService: Restaurant import completed with results:', results);
-                return results;
-            } catch (error) {
-                console.error('SyncService: Error importing restaurants:', error);
-                throw error;
-            }
-        }
-
-        /**
-         * Fetch restaurants from server
-         * @param {Object} options - Filter options
-         * @returns {Promise<Array>} - Array of restaurant objects
-         */
-        async fetchRestaurants(options = {}) {
-            try {
-                console.log('SyncService: Fetching restaurants from server...');
-                
-                // Build query string from options
-                const queryParams = new URLSearchParams();
-                if (options.curatorId) {
-                    queryParams.append('curatorId', options.curatorId);
-                }
-                if (options.since) {
-                    queryParams.append('since', options.since);
-                }
-                
-                const queryString = queryParams.toString();
-                const url = `${this.apiBase}/restaurants${queryString ? '?' + queryString : ''}`;
-                
-                console.log(`SyncService: Requesting ${url}`);
-                const response = await fetch(url);
-                
-                if (!response.ok) {
-                    throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
-                }
-                
-                const data = await response.json();
-                console.log(`SyncService: Successfully fetched ${data.restaurants?.length || 0} restaurants`);
-                
-                return data.restaurants || [];
-            } catch (error) {
-                console.error('SyncService: Error fetching restaurants:', error);
-                throw error;
-            }
-        }
-
-        /**
-         * Import restaurants from server to local database
-         * @param {Object} options - Filter options
-         * @returns {Promise<Array>} - Array of imported restaurant IDs
-         */
-        async importRestaurants(options = {}) {
-            try {
-                console.log('SyncService: Importing restaurants to local database...');
-                
-                // Fetch restaurants from server
-                const remoteRestaurants = await this.fetchRestaurants(options);
-                
-                // Save each restaurant to local database
-                const importedIds = [];
-                for (const restaurant of remoteRestaurants) {
-                    try {
-                        // Find or create curator
-                        let curatorId = null;
-                        if (restaurant.curator && restaurant.curator.id) {
-                            // Find by server ID
-                            const existingCurator = await dataStorage.db.curators
-                                .where('serverId')
-                                .equals(restaurant.curator.id)
-                                .first();
-                                
-                            if (existingCurator) {
-                                curatorId = existingCurator.id;
-                            } else {
-                                // Create new curator entry
-                                curatorId = await dataStorage.saveServerCurator({
-                                    id: restaurant.curator.id,
-                                    name: restaurant.curator.name
-                                });
-                            }
-                        }
-                        
-                        // Convert concepts to our format
-                        const concepts = (restaurant.concepts || []).map(concept => ({
-                            category: concept.category,
-                            value: concept.value
-                        }));
-                        
-                        // Save restaurant
-                        const localId = await dataStorage.saveRestaurant(
-                            restaurant.name,
-                            curatorId,
-                            concepts,
-                            restaurant.location,
-                            [], // No photos from server yet
-                            restaurant.transcription || '',
-                            restaurant.description || '',
-                            'remote',
-                            restaurant.id
-                        );
-                        
-                        importedIds.push(localId);
-                    } catch (error) {
-                        console.error(`SyncService: Error importing restaurant ${restaurant.name}:`, error);
-                        // Continue with next restaurant
-                    }
-                }
-                
-                console.log(`SyncService: Successfully imported ${importedIds.length} restaurants`);
-                return importedIds;
-            } catch (error) {
-                console.error('SyncService: Error importing restaurants:', error);
-                throw error;
-            }
-        }
-
-        /**
-         * Export restaurants to server
-         * @param {Array} restaurants - Array of restaurant objects
-         * @returns {Promise<Array>} - Array of server response objects
-         */
-        async exportRestaurants(restaurants) {
-            try {
-                console.log(`SyncService: Exporting ${restaurants.length} restaurants to server...`);
-                
-                const response = await fetch(`${this.apiBase}/restaurants/batch`, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                    body: JSON.stringify(restaurants)
-                });
-                
-                if (!response.ok) {
-                    throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
-                }
-                
-                const result = await response.json();
-                console.log('SyncService: Export successful, server response:', result);
-                return result;
-                
-            } catch (error) {
-                console.error('SyncService: Error exporting restaurants:', error);
-                throw error;
-            }
-        }
-
-        /**
-         * Export a restaurant to server
-         * @param {Object} restaurant - Restaurant object
-         * @returns {Promise<Object>} - Server response
-         */
-        async exportRestaurant(restaurant) {
-            try {
-                console.log(`SyncService: Exporting restaurant ${restaurant.name}...`);
-                
-                // Ensure restaurant has a curator assigned
-                if (!restaurant.curatorId) {
-                    const currentCurator = await dataStorage.getCurrentCurator();
-                    if (!currentCurator) {
-                        throw new Error('No curator available to assign to restaurant');
-                    }
-                    restaurant.curatorId = currentCurator.id;
-                    
-                    // Update local record with curator
-                    await dataStorage.db.restaurants.update(restaurant.id, {
-                        curatorId: currentCurator.id
-                    });
-                }
-                
-                // Get curator information
-                const curator = await dataStorage.db.curators.get(restaurant.curatorId);
-                if (!curator) {
-                    throw new Error(`Curator not found with ID ${restaurant.curatorId}`);
-                }
-                
-                // Get concepts for this restaurant
-                const restaurantConcepts = await dataStorage.db.restaurantConcepts
-                    .where('restaurantId')
-                    .equals(restaurant.id)
-                    .toArray();
-                    
-                const conceptIds = restaurantConcepts.map(rc => rc.conceptId);
-                const concepts = await dataStorage.db.concepts
-                    .where('id')
-                    .anyOf(conceptIds)
-                    .toArray();
-                    
-                // Get location data
-                const locations = await dataStorage.db.restaurantLocations
-                    .where('restaurantId')
-                    .equals(restaurant.id)
-                    .toArray();
-                const location = locations.length > 0 ? locations[0] : null;
-                
-                // Prepare data for server
-                const serverData = {
-                    name: restaurant.name,
-                    description: restaurant.description || '',
-                    transcription: restaurant.transcription || '',
-                    curator: {
-                        id: curator.serverId,
-                        name: curator.name
-                    },
-                    concepts: concepts.map(concept => ({
-                        category: concept.category,
-                        value: concept.value
-                    })),
-                    location: location ? {
-                        latitude: location.latitude,
-                        longitude: location.longitude,
-                        address: location.address || ''
-                    } : null
-                };
-                
-                // Determine if this is an update or new restaurant
-                let url = `${this.apiBase}/restaurants`;
-                let method = 'POST';
-                
-                if (restaurant.serverId) {
-                    url = `${this.apiBase}/restaurants/${restaurant.serverId}`;
-                    method = 'PUT';
-                }
-                
-                console.log(`SyncService: ${method} request to ${url}`);
-                const response = await fetch(url, {
-                    method,
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify(serverData)
-                });
-                
-                if (!response.ok) {
-                    const errorData = await response.json().catch(() => ({}));
-                    throw new Error(`Server error: ${response.status} - ${errorData.message || 'Unknown error'}`);
-                }
-                
-                const responseData = await response.json();
-                
-                // Update local record with server ID
-                await dataStorage.updateRestaurantSyncStatus(restaurant.id, responseData.id);
-                
-                console.log(`SyncService: Successfully exported restaurant ${restaurant.name}`);
-                return responseData;
-            } catch (error) {
-                console.error(`SyncService: Error exporting restaurant ${restaurant.name}:`, error);
                 throw error;
             }
         }
@@ -894,10 +864,10 @@ if (!window.SyncService) {
                 };
             }
         }
-    };
+    });
 }
 
-// Create a global instance if it doesn't exist
+// Create the global syncService instance only if it doesn't exist yet
 if (!window.syncService) {
-    window.syncService = new window.SyncService();
+    window.syncService = ModuleWrapper.createInstance('syncService', 'SyncService');
 }
