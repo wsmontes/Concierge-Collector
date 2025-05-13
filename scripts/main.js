@@ -11,52 +11,60 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
     }
     
-    // Initialize the application components in the correct order
+    // Check if our module wrapper is loaded
+    if (typeof ModuleWrapper === 'undefined') {
+        console.error('ModuleWrapper not loaded! This is required for proper initialization');
+        alert('Required module wrapper not loaded. Please check if all script files are properly included.');
+        return;
+    }
+    
+    // Initialize the application components in the correct order using our wrapper
     try {
-        // Check and log if global instances exist
-        if (typeof dataStorage === 'undefined') {
-            console.error('dataStorage not available. Creating a new instance...');
-            window.dataStorage = new DataStorage();
-        }
+        // Initialize core components
+        ModuleWrapper.createInstance('dataStorage', 'DataStorage');
+        ModuleWrapper.createInstance('apiHandler', 'ApiHandler');
+        ModuleWrapper.createInstance('conceptMatcher', 'ConceptMatcher');
+        ModuleWrapper.createInstance('syncService', 'SyncService');
         
-        if (typeof apiHandler === 'undefined') {
-            console.error('apiHandler not available. Creating a new instance...');
-            window.apiHandler = new ApiHandler();
-        }
-        
-        if (typeof conceptMatcher === 'undefined') {
-            console.error('conceptMatcher not available. Creating a new instance...');
-            window.conceptMatcher = new ConceptMatcher();
-        }
-        
-        if (typeof uiManager === 'undefined') {
-            console.error('uiManager not available. Creating a new instance...');
-            window.uiManager = new UIManager();
-        }
+        // Initialize UI last, as it depends on other components
+        ModuleWrapper.createInstance('uiManager', 'UIManager');
         
         // Initialize UI Manager (which will set up all the event handlers)
         console.log('Initializing UI Manager...');
-        uiManager.init();
+        if (window.uiManager) {
+            window.uiManager.init();
+        } else {
+            throw new Error('UIManager instance was not properly created');
+        }
         
-        // Add a test click handler to the save button to verify it works
-        const saveButton = document.getElementById('save-curator');
-        if (saveButton) {
-            console.log('Adding test click handler to save button');
-            saveButton.addEventListener('click', function() {
-                console.log('Save button clicked!');
-            });
+        // Initialize uiUtils for shared UI functionality
+        if (!window.uiUtils && window.uiManager) {
+            window.uiUtils = new window.UIUtilsModule(window.uiManager);
+            console.log('UIUtils module initialized');
         }
         
         // Preload the concept matching model in the background
         setTimeout(() => {
-            conceptMatcher.loadModel().catch(error => {
-                console.error('Error preloading model:', error);
-            });
+            if (window.conceptMatcher) {
+                window.conceptMatcher.loadModel().catch(error => {
+                    console.error('Error preloading model:', error);
+                });
+            }
         }, 2000);
+        
+        // Initialize AutoSync module after a short delay
+        setTimeout(() => {
+            if (window.AutoSync && typeof window.AutoSync.init === 'function') {
+                window.AutoSync.init().catch(error => {
+                    console.error('Error initializing AutoSync:', error);
+                });
+            }
+        }, 3000);
         
         console.log('Restaurant Curator application initialized');
     } catch (error) {
         console.error('Error during application initialization:', error);
+        console.error('Stack trace:', error.stack);
         alert('There was an error initializing the application. Please check the console for details.');
     }
 });

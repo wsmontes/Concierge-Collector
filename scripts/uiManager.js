@@ -1,9 +1,11 @@
 /**
  * Handles UI interactions and updates by orchestrating specialized modules
  */
-class UIManager {
+
+// Only define the class if it doesn't already exist
+const UIManager = ModuleWrapper.defineClass('UIManager', class {
     constructor() {
-        // Cache DOM elements
+        // Cache DOM elements with null checks
         this.curatorSection = document.getElementById('curator-section');
         this.curatorForm = document.getElementById('curator-form');
         this.curatorInfo = document.getElementById('curator-info');
@@ -13,68 +15,87 @@ class UIManager {
         this.cancelCuratorButton = document.getElementById('cancel-curator');
         this.curatorNameDisplay = document.getElementById('curator-name-display');
         this.editCuratorButton = document.getElementById('edit-curator');
-        // Remove reference to the curator display element
-        this.curatorDisplay = null; // Era document.getElementById('curator-display')
         
+        // Add FAB and Quick Action elements references with null checks
+        this.fab = document.getElementById('fab');
+        this.quickActionModal = document.getElementById('quick-action-modal');
+        this.closeQuickModal = document.getElementById('close-quick-modal');
+        this.quickRecord = document.getElementById('quick-record');
+        this.quickLocation = document.getElementById('quick-location');
+        this.quickPhoto = document.getElementById('quick-photo');
+        this.quickManual = document.getElementById('quick-manual');
+        
+        // Get restaurant list container
+        this.restaurantsContainer = document.getElementById('restaurants-container');
+        this.conceptsContainer = document.getElementById('concepts-container');
+
+        // Editor sections
         this.recordingSection = document.getElementById('recording-section');
         this.transcriptionSection = document.getElementById('transcription-section');
         this.conceptsSection = document.getElementById('concepts-section');
         this.restaurantListSection = document.getElementById('restaurant-list-section');
         this.exportImportSection = document.getElementById('export-import-section');
         
-        this.restaurantsContainer = document.getElementById('restaurants-container');
+        // Form elements
         this.transcriptionText = document.getElementById('transcription-text');
-        this.conceptsContainer = document.getElementById('concepts-container');
+    }
+
+    /**
+     * Initialize UI and all modules
+     */
+    init() {
+        console.log('UIManager initializing...');
         
-        // Quick action elements
-        this.quickActionModal = document.getElementById('quick-action-modal');
-        this.closeQuickModal = document.getElementById('close-quick-modal');
-        this.fab = document.getElementById('fab');
-        this.quickRecord = document.getElementById('quick-record');
-        this.quickLocation = document.getElementById('quick-location');
-        this.quickPhoto = document.getElementById('quick-photo');
-        this.quickManual = document.getElementById('quick-manual');
-        
+        // State variables
         this.currentCurator = null;
+        this.isEditingCurator = false;
+        this.isEditingRestaurant = false;
+        this.editingRestaurantId = null;
         this.currentConcepts = [];
         this.currentLocation = null;
         this.currentPhotos = [];
         
-        // For restaurant editing
-        this.isEditingRestaurant = false;
-        this.editingRestaurantId = null;
-
-        // Add new properties to store both versions of the transcription
-        this.originalTranscription = null;
-        this.translatedTranscription = null;
-
-        // Initialize module managers
-        this.curatorModule = new CuratorModule(this);
-        this.recordingModule = new RecordingModule(this);
-        this.transcriptionModule = new TranscriptionModule(this);
-        this.conceptModule = new ConceptModule(this);
-        this.restaurantModule = new RestaurantModule(this);
-        this.exportImportModule = new ExportImportModule(this);
-        this.uiUtilsModule = new UIUtilsModule(this);
-        this.quickActionModule = new QuickActionModule(this);
-    }
-
-    init() {
-        console.log('UIManager initializing...');
+        // Initialize modules conditionally (only if not already initialized)
+        if (!this.curatorModule && typeof CuratorModule !== 'undefined') 
+            this.curatorModule = new CuratorModule(this);
         
-        // Setup event listeners for all sections through modules
-        this.curatorModule.setupEvents();
-        this.recordingModule.setupEvents();
-        this.transcriptionModule.setupEvents();
-        this.conceptModule.setupEvents();
-        this.restaurantModule.setupEvents();
-        this.exportImportModule.setupEvents();
-        this.quickActionModule.setupEvents();
+        if (!this.recordingModule && typeof RecordingModule !== 'undefined') 
+            this.recordingModule = new RecordingModule(this);
         
-        // Load curator info if available
-        this.curatorModule.loadCuratorInfo().catch(error => {
-            console.error('Error loading curator info:', error);
-        });
+        if (!this.transcriptionModule && typeof TranscriptionModule !== 'undefined') 
+            this.transcriptionModule = new TranscriptionModule(this);
+        
+        if (!this.conceptModule && typeof ConceptModule !== 'undefined') 
+            this.conceptModule = new ConceptModule(this);
+        
+        if (!this.restaurantModule && typeof RestaurantModule !== 'undefined') 
+            this.restaurantModule = new RestaurantModule(this);
+        
+        if (!this.exportImportModule && typeof ExportImportModule !== 'undefined') 
+            this.exportImportModule = new ExportImportModule(this);
+        
+        // Initialize the quick action module safely
+        if (!this.quickActionModule && typeof QuickActionModule !== 'undefined') {
+            this.quickActionModule = new QuickActionModule(this);
+        }
+        
+        // Setup events for each module if they exist
+        if (this.curatorModule) this.curatorModule.setupEvents();
+        if (this.recordingModule) this.recordingModule.setupEvents();
+        if (this.transcriptionModule) this.transcriptionModule.setupEvents();
+        if (this.conceptModule) this.conceptModule.setupEvents();
+        if (this.restaurantModule) this.restaurantModule.setupEvents();
+        if (this.exportImportModule) this.exportImportModule.setupEvents();
+        
+        // Only set up quick action events if all required elements exist
+        if (this.quickActionModule && this.fab && this.quickActionModal && this.closeQuickModal) {
+            this.quickActionModule.setupEvents();
+        } else {
+            console.warn('Some quick action elements not found, skipping initialization');
+        }
+        
+        // Load curator info
+        if (this.curatorModule) this.curatorModule.loadCuratorInfo();
         
         console.log('UIManager initialized');
     }
@@ -353,7 +374,7 @@ class UIManager {
             this.originalTranscription = transcriptionText;
         }
     }
-}
+});
 
-// Create a global instance
-const uiManager = new UIManager();
+// Create a global instance only once
+window.uiManager = ModuleWrapper.createInstance('uiManager', 'UIManager');

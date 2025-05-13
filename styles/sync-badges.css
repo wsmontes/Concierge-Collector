@@ -1,0 +1,92 @@
+/**
+ * Styles for sync status badges and enhanced curator UI
+ */
+
+/* Data origin badges */
+.data-badge {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.75rem;
+    padding: 0.125rem 0.5rem;
+    border-radius: 9999px;
+    font-weight: 500;
+}
+
+.data-badge .material-icons {
+    font-size: 0.875rem;
+    margin-right: 0.25rem;
+}
+
+.data-badge.local {
+    background-color: #FEF3C7;
+    color: #92400E;
+}
+
+.data-badge.remote {
+    background-color: #D1FAE5;
+    color: #065F46;
+}
+
+/* Restaurant cards with sync status */
+.restaurant-card {
+    position: relative;
+    transition: all 0.2s ease-in-out;
+}
+
+.restaurant-card.restaurant-local {
+    border-left: 3px solid #F59E0B;
+}
+
+.restaurant-card.restaurant-remote {
+    border-left: 3px solid #10B981;
+}
+
+/* Curator selector styles */
+#curator-selector-container {
+    margin-bottom: 1rem;
+}
+
+.curator-selector-wrapper {
+    display: flex;
+    gap: 0.5rem;
+    align-items: stretch;
+}
+
+#curator-selector {
+    flex-grow: 1;
+}
+
+/* Sync controls */
+.sync-controls {
+    margin-top: 1rem;
+    display: flex;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+}
+
+/* Restaurant sync button */
+.sync-restaurant {
+    padding: 0.25rem 0.5rem;
+    border-radius: 0.25rem;
+    transition: all 0.2s;
+}
+
+.sync-restaurant:hover {
+    background-color: rgba(16, 185, 129, 0.1);
+}
+
+/* Curator filter toggle */
+.curator-filter-toggle {
+    display: flex;
+    align-items: center;
+    margin-top: 0.5rem;
+    font-size: 0.875rem;
+    color: #4B5563;
+}
+
+.curator-filter-toggle input[type="checkbox"] {
+    width: 1rem;
+    height: 1rem;
+    margin-right: 0.5rem;
+    accent-color: #2563EB;
+}

@@ -1,7 +1,9 @@
 /**
  * Audio recording functionality with MP3 conversion
  */
-class AudioRecorder {
+
+// Only define the class if it doesn't already exist
+const AudioRecorder = ModuleWrapper.defineClass('AudioRecorder', class {
     constructor(maxDurationSec = 300) { // 300 seconds = 5 minutes
         this.mediaRecorder = null;
         this.audioChunks = [];
@@ -237,7 +239,7 @@ class AudioRecorder {
             fileReader.readAsArrayBuffer(webmBlob);
         });
     }
-}
+});
 
-// Create a global instance
-const audioRecorder = new AudioRecorder();
+// Create a global instance only once
+window.audioRecorder = ModuleWrapper.createInstance('audioRecorder', 'AudioRecorder');

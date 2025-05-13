@@ -21,9 +21,36 @@ class RestaurantModule {
         console.log('Restaurant list events set up');
     }
 
-    async loadRestaurantList(curatorId) {
+    /**
+     * Loads restaurant list with enhanced source indicators
+     * @param {number} curatorId - Current curator's ID
+     * @param {boolean} filterEnabled - Whether to filter by curator
+     */
+    async loadRestaurantList(curatorId, filterEnabled) {
         try {
-            const restaurants = await dataStorage.getRestaurantsByCurator(curatorId);
+            console.log(`Loading restaurant list for curatorId: ${curatorId}, filterEnabled: ${filterEnabled}`);
+            
+            // Validate inputs and log any issues
+            if (!curatorId) {
+                console.warn('No curator ID provided, using unfiltered view');
+                filterEnabled = false;
+            }
+            
+            // Get restaurants with filter options
+            const options = {
+                curatorId: curatorId,
+                onlyCuratorRestaurants: filterEnabled,
+                deduplicate: true // Enable deduplication by name
+            };
+            
+            const restaurants = await dataStorage.getRestaurants(options);
+            console.log(`Retrieved ${restaurants.length} unique restaurants from database`);
+            
+            if (filterEnabled) {
+                console.log(`Filtering to show only restaurants for curator ID: ${curatorId}`);
+            } else {
+                console.log('Showing all restaurants (filter disabled)');
+            }
             
             this.uiManager.restaurantsContainer.innerHTML = '';
             
@@ -32,24 +59,47 @@ class RestaurantModule {
                 return;
             }
             
+            // Sort restaurants by name for consistent display
+            restaurants.sort((a, b) => a.name.localeCompare(b.name));
+            
             for (const restaurant of restaurants) {
                 const card = document.createElement('div');
                 card.className = 'restaurant-card bg-white p-4 rounded-lg shadow hover:shadow-md transition-all';
                 
                 // Get concepts by category
                 const conceptsByCategory = {};
-                for (const concept of restaurant.concepts) {
-                    if (!conceptsByCategory[concept.category]) {
-                        conceptsByCategory[concept.category] = [];
+                if (restaurant.concepts) {
+                    for (const concept of restaurant.concepts) {
+                        if (!conceptsByCategory[concept.category]) {
+                            conceptsByCategory[concept.category] = [];
+                        }
+                        conceptsByCategory[concept.category].push(concept.value);
                     }
-                    conceptsByCategory[concept.category].push(concept.value);
                 }
                 
                 // Create card content
                 let cardHTML = `
-                    <h3 class="text-lg font-bold mb-2">${restaurant.name}</h3>
-                    <p class="text-sm text-gray-500 mb-2">Added: ${new Date(restaurant.timestamp).toLocaleDateString()}</p>
+                    <h3 class="text-lg font-bold mb-2 flex items-center">
+                        ${restaurant.name}
+                        ${restaurant.source === 'local' ? 
+                            '<span class="ml-2 text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full">Local</span>' : 
+                            '<span class="ml-2 text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">Server</span>'}
+                    </h3>
+                    <p class="text-sm text-gray-500 mb-2 flex justify-between">
+                        <span>Added: ${new Date(restaurant.timestamp).toLocaleDateString()}</span>
+                        <span>ID: ${restaurant.id}${restaurant.serverId ? ` | Server: ${restaurant.serverId}` : ''}</span>
+                    </p>
                 `;
+                
+                // Add curator badge if showing all restaurants
+                if (!filterEnabled && restaurant.curatorId !== curatorId) {
+                    const curatorName = restaurant.curatorName || "Unknown Curator";
+                    cardHTML += `
+                        <p class="text-xs bg-purple-100 text-purple-800 inline-block px-2 py-1 rounded mb-2">
+                            Added by: ${curatorName} (ID: ${restaurant.curatorId})
+                        </p>
+                    `;
+                }
                 
                 // Add description if available (show only first 15 words)
                 if (restaurant.description) {
@@ -120,6 +170,15 @@ class RestaurantModule {
                     </button>
                 `;
                 
+                // Add sync icon for local restaurants that need syncing
+                if (restaurant.source === 'local' && !restaurant.serverId) {
+                    cardHTML += `
+                        <button class="sync-restaurant absolute top-4 right-4" data-id="${restaurant.id}" title="Sync to server">
+                            <span class="material-icons text-yellow-500">sync</span>
+                        </button>
+                    `;
+                }
+                
                 card.innerHTML = cardHTML;
                 
                 // Add click event for the view details button
@@ -127,11 +186,99 @@ class RestaurantModule {
                     this.viewRestaurantDetails(restaurant.id);
                 });
                 
+                // Add click event for the sync button if it exists
+                const syncButton = card.querySelector('.sync-restaurant');
+                if (syncButton) {
+                    syncButton.addEventListener('click', async (event) => {
+                        event.stopPropagation();
+                        await this.syncRestaurant(restaurant.id);
+                    });
+                }
+                
                 this.uiManager.restaurantsContainer.appendChild(card);
             }
         } catch (error) {
             console.error('Error loading restaurant list:', error);
             this.uiManager.showNotification('Error loading restaurants', 'error');
+        }
+    }
+
+    /**
+     * Sync a single restaurant to the server
+     * @param {number} restaurantId - ID of the restaurant to sync
+     */
+    async syncRestaurant(restaurantId) {
+        try {
+            this.uiManager.showLoading('Syncing restaurant to server...');
+            
+            // Get the restaurant details
+            const restaurant = await dataStorage.getRestaurantDetails(restaurantId);
+            if (!restaurant) {
+                throw new Error('Restaurant not found');
+            }
+            
+            // Get curator
+            const curator = await dataStorage.db.curators.get(restaurant.curatorId);
+            
+            // Prepare server format
+            const serverRestaurant = {
+                name: restaurant.name,
+                curator: {
+                    name: curator ? curator.name : 'Unknown',
+                    id: curator && curator.serverId ? curator.serverId : null
+                },
+                description: restaurant.description || '',
+                transcription: restaurant.transcription || '',
+                timestamp: restaurant.timestamp,
+                concepts: restaurant.concepts.map(concept => ({
+                    category: concept.category,
+                    value: concept.value
+                })),
+                location: restaurant.location ? {
+                    latitude: restaurant.location.latitude,
+                    longitude: restaurant.location.longitude,
+                    address: restaurant.location.address || ''
+                } : null
+            };
+            
+            // Send to server
+            const response = await fetch('https://wsmontes.pythonanywhere.com/api/restaurants', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(serverRestaurant)
+            });
+            
+            if (!response.ok) {
+                throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
+            }
+            
+            // Parse response
+            const result = await response.json();
+            
+            if (!result || !result.id) {
+                throw new Error('Server response missing restaurant ID');
+            }
+            
+            // Update restaurant sync status
+            await dataStorage.updateRestaurantSyncStatus(restaurantId, result.id);
+            
+            // Update last sync time
+            await dataStorage.updateLastSyncTime();
+            
+            this.uiManager.hideLoading();
+            this.uiManager.showNotification('Restaurant synced to server successfully');
+            
+            // Refresh restaurant list
+            await this.loadRestaurantList(
+                this.uiManager.currentCurator.id,
+                await dataStorage.getSetting('filterByActiveCurator', true)
+            );
+        } catch (error) {
+            this.uiManager.hideLoading();
+            console.error('Error syncing restaurant:', error);
+            this.uiManager.showNotification(`Error syncing restaurant: ${error.message}`, 'error');
         }
     }
 

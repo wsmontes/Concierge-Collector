@@ -9,6 +9,97 @@ class ConceptModule {
         this.isProcessingQueue = false;
     }
 
+    /**
+     * Safety wrapper for showing loading - uses global uiUtils as primary fallback
+     * @param {string} message - Loading message
+     */
+    safeShowLoading(message) {
+        try {
+            // First try global utils (most reliable)
+            if (window.uiUtils && typeof window.uiUtils.showLoading === 'function') {
+                console.log('ConceptModule: Using window.uiUtils.showLoading()');
+                window.uiUtils.showLoading(message);
+                return;
+            }
+            
+            // Then try with uiManager as fallback
+            if (this.uiManager && typeof this.uiManager.showLoading === 'function') {
+                console.log('ConceptModule: Using this.uiManager.showLoading()');
+                this.uiManager.showLoading(message);
+                return;
+            }
+            
+            // Last resort fallback
+            console.log('ConceptModule: Using alert as fallback for loading');
+            alert(message);
+        } catch (error) {
+            console.error('Error in safeShowLoading:', error);
+            // Last resort
+            alert(message);
+        }
+    }
+    
+    /**
+     * Safety wrapper for hiding loading - uses global uiUtils as primary fallback
+     */
+    safeHideLoading() {
+        try {
+            // First try global utils (most reliable)
+            if (window.uiUtils && typeof window.uiUtils.hideLoading === 'function') {
+                console.log('ConceptModule: Using window.uiUtils.hideLoading()');
+                window.uiUtils.hideLoading();
+                return;
+            }
+            
+            // Then try with uiManager as fallback
+            if (this.uiManager && typeof this.uiManager.hideLoading === 'function') {
+                console.log('ConceptModule: Using this.uiManager.hideLoading()');
+                this.uiManager.hideLoading();
+                return;
+            }
+            
+            // Last resort - just log since there's no visual to clear
+            console.log('ConceptModule: Hiding loading indicator (fallback)');
+        } catch (error) {
+            console.error('Error in safeHideLoading:', error);
+        }
+    }
+    
+    /**
+     * Safety wrapper for showing notification - uses global uiUtils as primary fallback
+     * @param {string} message - Notification message
+     * @param {string} type - Notification type
+     */
+    safeShowNotification(message, type = 'success') {
+        try {
+            // First try global utils (most reliable)
+            if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
+                console.log('ConceptModule: Using window.uiUtils.showNotification()');
+                window.uiUtils.showNotification(message, type);
+                return;
+            }
+            
+            // Then try with uiManager as fallback
+            if (this.uiManager && typeof this.uiManager.showNotification === 'function') {
+                console.log('ConceptModule: Using this.uiManager.showNotification()');
+                this.uiManager.showNotification(message, type);
+                return;
+            }
+            
+            // Last resort fallback
+            console.log(`ConceptModule: Notification (${type}):`, message);
+            if (type === 'error') {
+                alert(`Error: ${message}`);
+            } else {
+                alert(message);
+            }
+        } catch (error) {
+            console.error('Error in safeShowNotification:', error);
+            // Last resort
+            alert(message);
+        }
+    }
+
     setupEvents() {
         console.log('Setting up concepts events...');
         
@@ -26,20 +117,33 @@ class ConceptModule {
             getLocationBtn.addEventListener('click', async () => {
                 console.log('Get location button clicked');
                 try {
-                    this.uiManager.showLoading('Getting your location...');
-                    const position = await this.uiManager.getCurrentPosition();
+                    // Use our safe wrapper method instead of direct call
+                    this.safeShowLoading('Getting your location...');
                     
-                    this.uiManager.currentLocation = {
-                        latitude: position.coords.latitude,
-                        longitude: position.coords.longitude
-                    };
+                    // Use safe method to get position
+                    let position;
+                    if (this.uiManager && typeof this.uiManager.getCurrentPosition === 'function') {
+                        position = await this.uiManager.getCurrentPosition();
+                    } else if (window.uiUtils && typeof window.uiUtils.getCurrentPosition === 'function') {
+                        position = await window.uiUtils.getCurrentPosition();
+                    } else {
+                        position = await this.getCurrentPositionFallback();
+                    }
                     
-                    this.uiManager.hideLoading();
-                    this.uiManager.showNotification('Location saved successfully');
+                    if (this.uiManager) {
+                        this.uiManager.currentLocation = {
+                            latitude: position.coords.latitude,
+                            longitude: position.coords.longitude
+                        };
+                    }
+                    
+                    // Use our safe wrapper method instead of direct call
+                    this.safeHideLoading();
+                    this.safeShowNotification('Location saved successfully');
                     
                     // Update location display
                     const locationDisplay = document.getElementById('location-display');
-                    if (locationDisplay) {
+                    if (locationDisplay && this.uiManager && this.uiManager.currentLocation) {
                         locationDisplay.innerHTML = `
                             <p class="text-green-600">Location saved:</p>
                             <p>Latitude: ${this.uiManager.currentLocation.latitude.toFixed(6)}</p>
@@ -47,9 +151,9 @@ class ConceptModule {
                         `;
                     }
                 } catch (error) {
-                    this.uiManager.hideLoading();
+                    this.safeHideLoading();
                     console.error('Error getting location:', error);
-                    this.uiManager.showNotification('Error getting location: ' + error.message, 'error');
+                    this.safeShowNotification('Error getting location: ' + error.message, 'error');
                 }
             });
         }
@@ -89,14 +193,14 @@ class ConceptModule {
                 const transcription = transcriptionTextarea ? transcriptionTextarea.value.trim() : '';
                 
                 if (!transcription) {
-                    this.uiManager.showNotification('Please provide a transcription first', 'error');
+                    this.safeShowNotification('Please provide a transcription first', 'error');
                     return;
                 }
                 
-                this.uiManager.showLoading('Generating description...');
+                this.safeShowLoading('Generating description...');
                 await this.generateDescription(transcription);
-                this.uiManager.hideLoading();
-                this.uiManager.showNotification('Description generated successfully');
+                this.safeHideLoading();
+                this.safeShowNotification('Description generated successfully');
             });
         }
         
@@ -202,12 +306,12 @@ class ConceptModule {
         const name = nameInput ? nameInput.value.trim() : '';
         
         if (!name) {
-            this.uiManager.showNotification('Please enter a restaurant name', 'error');
+            this.safeShowNotification('Please enter a restaurant name', 'error');
             return;
         }
         
         if (!this.uiManager.currentConcepts || this.uiManager.currentConcepts.length === 0) {
-            this.uiManager.showNotification('Please add at least one concept', 'error');
+            this.safeShowNotification('Please add at least one concept', 'error');
             return;
         }
         
@@ -220,7 +324,7 @@ class ConceptModule {
         const description = descriptionInput ? descriptionInput.value.trim() : '';
         
         try {
-            this.uiManager.showLoading(this.uiManager.isEditingRestaurant ? 'Updating restaurant...' : 'Saving restaurant...');
+            this.safeShowLoading(this.uiManager.isEditingRestaurant ? 'Updating restaurant...' : 'Saving restaurant...');
             
             let restaurantId;
             
@@ -249,8 +353,8 @@ class ConceptModule {
                 );
             }
             
-            this.uiManager.hideLoading();
-            this.uiManager.showNotification(
+            this.safeHideLoading();
+            this.safeShowNotification(
                 this.uiManager.isEditingRestaurant ? 
                 'Restaurant updated successfully' : 
                 'Restaurant saved successfully'
@@ -284,9 +388,9 @@ class ConceptModule {
             this.uiManager.showRestaurantListSection();
             this.uiManager.restaurantModule.loadRestaurantList(this.uiManager.currentCurator.id);
         } catch (error) {
-            this.uiManager.hideLoading();
+            this.safeHideLoading();
             console.error('Error saving restaurant:', error);
-            this.uiManager.showNotification(`Error ${this.uiManager.isEditingRestaurant ? 'updating' : 'saving'} restaurant: ${error.message}`, 'error');
+            this.safeShowNotification(`Error ${this.uiManager.isEditingRestaurant ? 'updating' : 'saving'} restaurant: ${error.message}`, 'error');
         }
     }
 
@@ -460,12 +564,12 @@ class ConceptModule {
             const value = inputField.value.trim();
             
             if (!value) {
-                this.uiManager.showNotification('Please enter a concept value', 'error');
+                this.safeShowNotification('Please enter a concept value', 'error');
                 return;
             }
             
             try {
-                this.uiManager.showLoading('Checking for similar concepts...');
+                this.safeShowLoading('Checking for similar concepts...');
                 
                 const existingConcepts = await dataStorage.getAllConcepts();
                 const newConcept = { category, value };
@@ -474,7 +578,7 @@ class ConceptModule {
                     existingConcepts
                 );
                 
-                this.uiManager.hideLoading();
+                this.safeHideLoading();
                 
                 // Lower the similarity threshold to catch plurals, minor typos, and other small variations
                 // A threshold of 0.7 (70%) will be more sensitive to small differences like adding an 's'
@@ -520,9 +624,9 @@ class ConceptModule {
                     document.body.style.overflow = '';
                 }
             } catch (error) {
-                this.uiManager.hideLoading();
+                this.safeHideLoading();
                 console.error('Error checking for similar concepts:', error);
-                this.uiManager.showNotification('Error checking for similar concepts', 'error');
+                this.safeShowNotification('Error checking for similar concepts', 'error');
                 
                 // Fallback: add directly
                 this.uiManager.currentConcepts.push({ category, value });
@@ -541,8 +645,180 @@ class ConceptModule {
         });
     }
     
-    // Additional concept-related methods
+    /**
+     * Loads concept suggestions based on category
+     * @param {string} category - The concept category
+     * @param {HTMLElement} inputField - The input field element
+     * @param {HTMLElement} suggestionsContainer - The suggestions container element
+     */
+    async loadConceptSuggestions(category, inputField, suggestionsContainer) {
+        try {
+            // Try to fetch concepts for this category from the database
+            let concepts = [];
+            
+            if (dataStorage && typeof dataStorage.getConceptsByCategory === 'function') {
+                concepts = await dataStorage.getConceptsByCategory(category);
+            } else {
+                console.warn('DataStorage not available or missing getConceptsByCategory method');
+            }
+            
+            // Set up input event to show/filter suggestions
+            inputField.addEventListener('input', () => {
+                const value = inputField.value.trim().toLowerCase();
+                
+                // If empty input, hide suggestions
+                if (!value) {
+                    suggestionsContainer.classList.add('hidden');
+                    return;
+                }
+                
+                // Filter concepts by input value
+                const matches = concepts.filter(concept => 
+                    concept.value.toLowerCase().includes(value)
+                );
+                
+                // Show suggestions if we have matches
+                if (matches.length > 0) {
+                    suggestionsContainer.innerHTML = '';
+                    
+                    matches.slice(0, 10).forEach(concept => {
+                        const item = document.createElement('div');
+                        item.className = 'p-2 hover:bg-gray-100 cursor-pointer';
+                        item.textContent = concept.value;
+                        
+                        item.addEventListener('click', () => {
+                            inputField.value = concept.value;
+                            suggestionsContainer.classList.add('hidden');
+                        });
+                        
+                        suggestionsContainer.appendChild(item);
+                    });
+                    
+                    suggestionsContainer.classList.remove('hidden');
+                } else {
+                    suggestionsContainer.classList.add('hidden');
+                }
+            });
+            
+            // Hide suggestions when clicking outside
+            document.addEventListener('click', event => {
+                if (!inputField.contains(event.target) && !suggestionsContainer.contains(event.target)) {
+                    suggestionsContainer.classList.add('hidden');
+                }
+            });
+            
+        } catch (error) {
+            console.error('Error loading concept suggestions:', error);
+        }
+    }
     
+    /**
+     * Shows the concept disambiguation dialog
+     * @param {Object} newConcept - The new concept being added
+     * @param {Array} similarConcepts - Array of similar concepts
+     */
+    showConceptDisambiguationDialog(newConcept, similarConcepts) {
+        // Create disambiguation modal
+        const modalContainer = document.createElement('div');
+        modalContainer.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+        
+        // HTML for the modal content
+        let modalHTML = `
+            <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+                <h2 class="text-xl font-bold mb-4 flex items-center">
+                    <span class="material-icons text-yellow-500 mr-2">warning</span>
+                    Similar Concepts Found
+                </h2>
+                
+                <p class="mb-4">Your new concept <strong>"${newConcept.value}"</strong> is similar to existing concepts:</p>
+                
+                <div class="mb-6 max-h-60 overflow-y-auto border rounded p-2">
+        `;
+        
+        // Add similar concepts
+        similarConcepts.forEach(concept => {
+            const similarity = (concept.similarity * 100).toFixed(0);
+            modalHTML += `
+                <div class="p-2 border-b last:border-b-0">
+                    <div class="flex justify-between items-center">
+                        <span class="font-medium">"${concept.value}"</span>
+                        <span class="text-sm text-gray-500">${similarity}% match</span>
+                    </div>
+                    <div class="text-xs text-gray-500">${concept.category}</div>
+                </div>
+            `;
+        });
+        
+        modalHTML += `
+                </div>
+                
+                <div class="space-y-2">
+                    <button id="use-existing" class="w-full p-2 bg-blue-500 text-white rounded flex items-center justify-center">
+                        <span class="material-icons mr-1">check_circle</span>
+                        Use existing: "${similarConcepts[0].value}"
+                    </button>
+                    <button id="use-new" class="w-full p-2 bg-green-500 text-white rounded flex items-center justify-center">
+                        <span class="material-icons mr-1">add_circle</span>
+                        Add new: "${newConcept.value}"
+                    </button>
+                    <button id="cancel-concept" class="w-full p-2 bg-gray-300 text-gray-700 rounded flex items-center justify-center">
+                        <span class="material-icons mr-1">cancel</span>
+                        Cancel
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        modalContainer.innerHTML = modalHTML;
+        document.body.appendChild(modalContainer);
+        document.body.style.overflow = 'hidden';
+        
+        // Set up event handlers
+        modalContainer.querySelector('#use-existing').addEventListener('click', () => {
+            // Use the most similar concept (first one in the array)
+            const mostSimilar = similarConcepts[0];
+            
+            // Check if it's already in the current concepts
+            const isDuplicate = this.isDuplicateConcept(mostSimilar.category, mostSimilar.value);
+            
+            if (!isDuplicate) {
+                this.uiManager.currentConcepts.push({
+                    category: mostSimilar.category,
+                    value: mostSimilar.value
+                });
+                this.renderConcepts();
+                this.safeShowNotification(`Added existing concept: ${mostSimilar.value}`);
+            } else {
+                this.safeShowNotification(`Concept already exists: ${mostSimilar.value}`, 'warning');
+            }
+            
+            document.body.removeChild(modalContainer);
+            document.body.style.overflow = '';
+        });
+        
+        modalContainer.querySelector('#use-new').addEventListener('click', () => {
+            // Add the new concept anyway
+            this.uiManager.currentConcepts.push(newConcept);
+            this.renderConcepts();
+            
+            document.body.removeChild(modalContainer);
+            document.body.style.overflow = '';
+        });
+        
+        modalContainer.querySelector('#cancel-concept').addEventListener('click', () => {
+            document.body.removeChild(modalContainer);
+            document.body.style.overflow = '';
+        });
+        
+        // Close when clicking outside
+        modalContainer.addEventListener('click', event => {
+            if (event.target === modalContainer) {
+                document.body.removeChild(modalContainer);
+                document.body.style.overflow = '';
+            }
+        });
+    }
+
     /**
      * Check if a concept already exists in the current concepts list
      * @param {string} category - The concept category
@@ -639,12 +915,12 @@ class ConceptModule {
         
         // Notify user about the results
         if (duplicateCount > 0) {
-            this.uiManager.showNotification(
+            this.safeShowNotification(
                 `Added ${addedCount} concepts. Skipped ${duplicateCount} duplicate concepts.`,
                 'warning'
             );
         } else {
-            this.uiManager.showNotification(
+            this.safeShowNotification(
                 `Successfully added ${addedCount} concepts.`,
                 'success'
             );
@@ -693,12 +969,12 @@ class ConceptModule {
         const transcription = transcriptionTextarea ? transcriptionTextarea.value.trim() : '';
         
         if (!transcription) {
-            this.uiManager.showNotification('Please provide a transcription first', 'error');
+            this.safeShowNotification('Please provide a transcription first', 'error');
             return;
         }
         
         try {
-            this.uiManager.showLoading('Analyzing restaurant details...');
+            this.safeShowLoading('Analyzing restaurant details...');
             
             // First extract concepts
             const concepts = await this.extractConcepts(transcription);
@@ -709,12 +985,12 @@ class ConceptModule {
             // This step was missing or not working properly
             await this.generateDescription(transcription);
             
-            this.uiManager.hideLoading();
-            this.uiManager.showNotification('Concepts and description updated successfully');
+            this.safeHideLoading();
+            this.safeShowNotification('Concepts and description updated successfully');
         } catch (error) {
-            this.uiManager.hideLoading();
+            this.safeHideLoading();
             console.error('Error processing concepts:', error);
-            this.uiManager.showNotification('Error processing restaurant details', 'error');
+            this.safeShowNotification('Error processing restaurant details', 'error');
         }
     }
     
@@ -766,7 +1042,7 @@ class ConceptModule {
             return description;
         } catch (error) {
             console.error('Error generating description:', error);
-            this.uiManager.showNotification('Error generating description: ' + error.message, 'error');
+            this.safeShowNotification('Error generating description: ' + error.message, 'error');
             return null;
         }
     }
@@ -889,7 +1165,7 @@ class ConceptModule {
      */
     async processConcepts(transcriptionText) {
         try {
-            this.uiManager.showLoading('Analyzing restaurant concepts...');
+            this.safeShowLoading('Analyzing restaurant concepts...');
             
             // Extract restaurant name first - WRAP WITH TRY/CATCH TO HANDLE FAILURES GRACEFULLY
             let restaurantName = null;
@@ -926,12 +1202,12 @@ class ConceptModule {
             // Generate description based on transcription
             await this.generateDescription(transcriptionText);
             
-            this.uiManager.hideLoading();
+            this.safeHideLoading();
             
         } catch (error) {
-            this.uiManager.hideLoading();
+            this.safeHideLoading();
             console.error('Error processing concepts:', error);
-            this.uiManager.showNotification('Error processing concepts', 'error');
+            this.safeShowNotification('Error processing concepts', 'error');
         }
     }
 
@@ -1075,7 +1351,7 @@ class ConceptModule {
                             }
                         } catch (error) {
                             console.error('Error adding images to AI processing queue:', error);
-                            this.uiManager.showNotification('Error setting up AI analysis', 'error');
+                            this.safeShowNotification('Error setting up AI analysis', 'error');
                         }
                     }
                 });
@@ -1144,12 +1420,12 @@ class ConceptModule {
             
             // Remove our custom overlay when done
             this.removeImageAnalysisOverlay();
-            this.uiManager.showNotification(`AI analysis complete for ${totalImages} image${totalImages > 1 ? 's' : ''}`, 'success');
+            this.safeShowNotification(`AI analysis complete for ${totalImages} image${totalImages > 1 ? 's' : ''}`, 'success');
             
         } catch (error) {
             this.removeImageAnalysisOverlay();
             console.error('Error processing image queue:', error);
-            this.uiManager.showNotification('Error during AI analysis', 'error');
+            this.safeShowNotification('Error during AI analysis', 'error');
         } finally {
             this.isProcessingQueue = false;
         }
@@ -1289,7 +1565,7 @@ class ConceptModule {
             await this.extractConceptsFromImage(resizedImageData);
         } catch (error) {
             console.error('Error processing image with AI:', error);
-            this.uiManager.showNotification('Error analyzing image', 'error');
+            this.safeShowNotification('Error analyzing image', 'error');
         }
     }
     
@@ -1457,12 +1733,12 @@ class ConceptModule {
                     nameInputContainer.insertBefore(badge, nameInput.nextSibling);
                 }
                 
-                this.uiManager.showNotification('Restaurant name detected from image', 'success');
+                this.safeShowNotification('Restaurant name detected from image', 'success');
             }
             return restaurantName;
         } catch (error) {
             console.error('Error extracting restaurant name from image:', error);
-            this.uiManager.showNotification('Failed to extract restaurant name from image', 'error');
+            this.safeShowNotification('Failed to extract restaurant name from image', 'error');
             return null;
         }
     }
@@ -1561,13 +1837,13 @@ class ConceptModule {
                         this.renderConcepts();
                         
                         // Show notification about added concepts
-                        this.uiManager.showNotification(`Added ${newConcepts.length} concepts from image`, 'success');
+                        this.safeShowNotification(`Added ${newConcepts.length} concepts from image`, 'success');
                     }
                 }
             }
         } catch (error) {
             console.error('Error extracting concepts from image:', error);
-            this.uiManager.showNotification('Failed to extract concepts from image: ' + (error.message || 'Unknown error'), 'error');
+            this.safeShowNotification('Failed to extract concepts from image: ' + (error.message || 'Unknown error'), 'error');
         }
     }
     

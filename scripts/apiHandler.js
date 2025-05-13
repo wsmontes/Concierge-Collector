@@ -1,7 +1,9 @@
 /**
  * Handles API requests to OpenAI (Whisper and GPT-4)
  */
-class ApiHandler {
+
+// Only define the class if it doesn't already exist
+const ApiHandler = ModuleWrapper.defineClass('ApiHandler', class {
     constructor() {
         this.apiKey = localStorage.getItem('openai_api_key') || null;
     }
@@ -250,7 +252,7 @@ Format your response as a JSON object with fields: "decision" (1, 2, or 3), "exp
             throw error;
         }
     }
-}
+});
 
-// Create a global instance
-const apiHandler = new ApiHandler();
+// Create a global instance only once
+window.apiHandler = ModuleWrapper.createInstance('apiHandler', 'ApiHandler');

@@ -1,7 +1,9 @@
 /**
  * Manages quick action functionality
  */
-class QuickActionModule {
+
+// Only define the class if it doesn't already exist
+const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
     constructor(uiManager) {
         this.uiManager = uiManager;
     }
@@ -9,54 +11,89 @@ class QuickActionModule {
     setupEvents() {
         console.log('Setting up quick action events...');
         
+        // Safely check if elements exist before adding event listeners
         // FAB button to open quick action modal
-        this.uiManager.fab.addEventListener('click', () => {
-            // Only show quick actions if a curator is logged in
-            if (!this.uiManager.currentCurator) {
-                this.uiManager.showNotification('Please set up curator information first', 'error');
-                return;
-            }
-            
-            this.uiManager.quickActionModal.classList.remove('hidden');
-        });
+        if (this.uiManager.fab) {
+            this.uiManager.fab.addEventListener('click', () => {
+                // Only show quick actions if a curator is logged in
+                if (!this.uiManager.currentCurator) {
+                    this.uiManager.showNotification('Please set up curator information first', 'error');
+                    return;
+                }
+                
+                if (this.uiManager.quickActionModal) {
+                    this.uiManager.quickActionModal.classList.remove('hidden');
+                }
+            });
+        } else {
+            console.warn('FAB button element not found');
+        }
         
-        // Close modal
-        this.uiManager.closeQuickModal.addEventListener('click', () => {
-            this.uiManager.quickActionModal.classList.add('hidden');
-        });
+        // Close modal button
+        if (this.uiManager.closeQuickModal) {
+            this.uiManager.closeQuickModal.addEventListener('click', () => {
+                if (this.uiManager.quickActionModal) {
+                    this.uiManager.quickActionModal.classList.add('hidden');
+                }
+            });
+        } else {
+            console.warn('Close modal button element not found');
+        }
         
         // Close modal when clicking outside
-        this.uiManager.quickActionModal.addEventListener('click', (event) => {
-            if (event.target === this.uiManager.quickActionModal) {
-                this.uiManager.quickActionModal.classList.add('hidden');
-            }
-        });
+        if (this.uiManager.quickActionModal) {
+            this.uiManager.quickActionModal.addEventListener('click', (event) => {
+                if (event.target === this.uiManager.quickActionModal) {
+                    this.uiManager.quickActionModal.classList.add('hidden');
+                }
+            });
+        } else {
+            console.warn('Quick action modal element not found');
+        }
         
         // Quick record button
-        this.uiManager.quickRecord.addEventListener('click', () => {
-            this.quickRecord();
-        });
+        if (this.uiManager.quickRecord) {
+            this.uiManager.quickRecord.addEventListener('click', () => {
+                this.quickRecord();
+            });
+        } else {
+            console.warn('Quick record button element not found');
+        }
         
         // Quick location button
-        this.uiManager.quickLocation.addEventListener('click', async () => {
-            await this.quickLocation();
-        });
+        if (this.uiManager.quickLocation) {
+            this.uiManager.quickLocation.addEventListener('click', async () => {
+                await this.quickLocation();
+            });
+        } else {
+            console.warn('Quick location button element not found');
+        }
         
         // Quick photo button
-        this.uiManager.quickPhoto.addEventListener('click', () => {
-            this.quickPhoto();
-        });
+        if (this.uiManager.quickPhoto) {
+            this.uiManager.quickPhoto.addEventListener('click', () => {
+                this.quickPhoto();
+            });
+        } else {
+            console.warn('Quick photo button element not found');
+        }
         
         // Quick manual entry button
-        this.uiManager.quickManual.addEventListener('click', () => {
-            this.quickManual();
-        });
+        if (this.uiManager.quickManual) {
+            this.uiManager.quickManual.addEventListener('click', () => {
+                this.quickManual();
+            });
+        } else {
+            console.warn('Quick manual entry button element not found');
+        }
         
         console.log('Quick action events set up');
     }
 
     quickRecord() {
-        this.uiManager.quickActionModal.classList.add('hidden');
+        if (this.uiManager.quickActionModal) {
+            this.uiManager.quickActionModal.classList.add('hidden');
+        }
         this.uiManager.showRecordingSection();
         
         // Auto-click the start recording button if available
@@ -67,7 +104,9 @@ class QuickActionModule {
     }
 
     async quickLocation() {
-        this.uiManager.quickActionModal.classList.add('hidden');
+        if (this.uiManager.quickActionModal) {
+            this.uiManager.quickActionModal.classList.add('hidden');
+        }
         
         // Get current location
         this.uiManager.showLoading('Getting your location...');
@@ -116,7 +155,9 @@ class QuickActionModule {
     }
 
     quickPhoto() {
-        this.uiManager.quickActionModal.classList.add('hidden');
+        if (this.uiManager.quickActionModal) {
+            this.uiManager.quickActionModal.classList.add('hidden');
+        }
         this.uiManager.showRestaurantFormSection();
         
         // Show a small popup asking whether to use camera or gallery
@@ -171,7 +212,14 @@ class QuickActionModule {
     }
 
     quickManual() {
-        this.uiManager.quickActionModal.classList.add('hidden');
+        if (this.uiManager.quickActionModal) {
+            this.uiManager.quickActionModal.classList.add('hidden');
+        }
         this.uiManager.showRestaurantFormSection();
     }
+});
+
+// Don't recreate if it already exists
+if (!window.QuickActionModule) {
+    window.QuickActionModule = QuickActionModule;
 }

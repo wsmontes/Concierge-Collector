@@ -1,7 +1,9 @@
 /**
  * Handles concept matching using text similarity (fallback approach)
  */
-class ConceptMatcher {
+
+// Only define the class if it doesn't already exist
+const ConceptMatcher = ModuleWrapper.defineClass('ConceptMatcher', class {
     constructor() {
         this.similarityThreshold = 0.7; // Default similarity threshold
         this.modelLoaded = true; // Always "loaded" with our fallback
@@ -96,7 +98,7 @@ class ConceptMatcher {
         // Not used in the fallback approach
         return 0.5; // Default value
     }
-}
+});
 
-// Create a global instance
-const conceptMatcher = new ConceptMatcher();
+// Create a global instance only once
+window.conceptMatcher = ModuleWrapper.createInstance('conceptMatcher', 'ConceptMatcher');
