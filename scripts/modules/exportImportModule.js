@@ -656,83 +656,224 @@ class ExportImportModule {
     async exportToRemote() {
         console.log('Starting remote data export operation...');
         
+        // Track loading state to ensure we always hide it
+        let loadingShown = false;
+        
         try {
             this.safeShowLoading('Exporting data to remote server...');
+            loadingShown = true;
             
             // Get all data from local storage (without photos)
             console.log('Remote export: Retrieving data from local database...');
-            const exportResult = await dataStorage.exportData();
+            const exportResult = await dataStorage.exportData({ includePhotos: false });
+            
+            if (!exportResult || !exportResult.jsonData) {
+                throw new Error('Failed to retrieve data from local database');
+            }
+            
             console.log('Remote export: Local data retrieved', {
-                curators: exportResult.jsonData.curators.length,
-                concepts: exportResult.jsonData.concepts.length,
-                restaurants: exportResult.jsonData.restaurants.length,
-                restaurantConcepts: exportResult.jsonData.restaurantConcepts.length,
-                restaurantLocations: exportResult.jsonData.restaurantLocations.length
+                curators: exportResult.jsonData.curators?.length || 0,
+                concepts: exportResult.jsonData.concepts?.length || 0,
+                restaurants: exportResult.jsonData.restaurants?.length || 0,
+                restaurantConcepts: exportResult.jsonData.restaurantConcepts?.length || 0,
+                restaurantLocations: exportResult.jsonData.restaurantLocations?.length || 0
             });
             
             const localData = exportResult.jsonData;
             
-            // Convert local data to the remote server format
-            console.log('Remote export: Converting local data to remote format...');
-            const remoteData = this.convertLocalDataToRemote(localData);
-            console.log(`Remote export: Conversion complete, ${remoteData.length} restaurants ready for export`);
-            
-            // Prepare data for sending and log details
-            const payloadJson = JSON.stringify(remoteData);
-            const payloadSize = payloadJson.length;
-            
-            console.log('Remote export: Sending POST request to https://wsmontes.pythonanywhere.com/api/restaurants/batch');
-            console.log(`Remote export: Payload size: ${payloadSize} bytes (${(payloadSize/1024).toFixed(2)} KB)`);
-            
-            const startTime = performance.now();
-            
-            // Send data to remote server
-            const response = await fetch('https://wsmontes.pythonanywhere.com/api/restaurants/batch', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: payloadJson
-            });
-            
-            const endTime = performance.now();
-            console.log(`Remote export: Request sent in ${(endTime - startTime).toFixed(2)}ms (${(payloadSize/(endTime - startTime)*1000/1024).toFixed(2)} KB/s)`);
-            
-            if (!response.ok) {
-                // Log detailed error information
-                const errorText = await response.text();
-                console.error(`Remote export: Server error ${response.status}: ${response.statusText}`, errorText);
-                console.error('Remote export: Response headers:', {
-                    status: response.status,
-                    statusText: response.statusText,
-                    contentType: response.headers.get('content-type')
-                });
-                throw new Error(`Server error: ${response.status} ${response.statusText} - ${errorText}`);
+            // Verify we have restaurant data to export
+            if (!localData.restaurants || localData.restaurants.length === 0) {
+                throw new Error('No restaurant data to export');
             }
             
-            // Log response details
-            console.log('Remote export: Response headers:', {
-                status: response.status,
-                statusText: response.statusText,
-                contentType: response.headers.get('content-type')
-            });
+            // Convert local data to the remote server format with extra validation
+            console.log('Remote export: Converting local data to remote format...');
+            const remoteData = this.convertLocalDataToRemote(localData);
             
-            const result = await response.json();
-            console.log('Remote export: Server response data:', result);
+            if (!remoteData || !Array.isArray(remoteData) || remoteData.length === 0) {
+                throw new Error('Failed to convert local data to remote format');
+            }
             
-            this.safeShowNotification('Data exported to remote server successfully');
+            console.log(`Remote export: Conversion complete, ${remoteData.length} restaurants ready for export`);
             
-            // Show alert as fallback notification
-            alert(`Successfully exported ${remoteData.length} restaurants to remote server.`);
+            // Split into batches if necessary to avoid payload size issues
+            const BATCH_SIZE = 25; // Adjust based on testing
+            const batches = [];
+            for (let i = 0; i < remoteData.length; i += BATCH_SIZE) {
+                batches.push(remoteData.slice(i, i + BATCH_SIZE));
+            }
+            
+            console.log(`Remote export: Split data into ${batches.length} batches for processing`);
+            
+            // Process each batch
+            let successCount = 0;
+            let failedCount = 0;
+            
+            for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
+                const batch = batches[batchIndex];
+                
+                // Update loading message to show progress
+                this.updateLoadingMessage(`Exporting batch ${batchIndex + 1} of ${batches.length}...`);
+                
+                // Prepare data for sending and log details
+                const payloadJson = JSON.stringify(batch);
+                const payloadSize = payloadJson.length;
+                
+                console.log(`Remote export: Processing batch ${batchIndex + 1}/${batches.length} - ${batch.length} restaurants, payload size: ${(payloadSize/1024).toFixed(2)} KB`);
+                
+                // Create a controller for timeout management
+                const controller = new AbortController();
+                const signal = controller.signal;
+                
+                // Set a timeout to abort the fetch after 30 seconds
+                const timeoutId = setTimeout(() => {
+                    controller.abort();
+                    console.error(`Remote export: Batch ${batchIndex + 1} request timed out after 30 seconds`);
+                }, 30000);
+                
+                try {
+                    // Send data to remote server with timeout handling
+                    const startTime = performance.now();
+                    
+                    const response = await fetch('https://wsmontes.pythonanywhere.com/api/restaurants/batch', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: payloadJson,
+                        signal: signal
+                    });
+                    
+                    // Clear timeout since request completed
+                    clearTimeout(timeoutId);
+                    
+                    const endTime = performance.now();
+                    console.log(`Remote export: Batch ${batchIndex + 1} request completed in ${(endTime - startTime).toFixed(2)}ms`);
+                    
+                    if (!response.ok) {
+                        // Log detailed error information
+                        let errorText = '';
+                        try {
+                            errorText = await response.text();
+                        } catch (e) {
+                            errorText = 'Could not read error response';
+                        }
+                        
+                        console.error(`Remote export: Server error for batch ${batchIndex + 1}: ${response.status}: ${response.statusText}`, errorText);
+                        failedCount += batch.length;
+                        continue; // Skip to next batch
+                    }
+                    
+                    // Try to parse response
+                    let responseData;
+                    try {
+                        const responseText = await response.text();
+                        responseData = responseText ? JSON.parse(responseText) : {};
+                        console.log(`Remote export: Batch ${batchIndex + 1} response:`, responseData);
+                    } catch (parseError) {
+                        console.warn(`Remote export: Could not parse response for batch ${batchIndex + 1}:`, parseError);
+                        // If we can't parse the response but the request was successful, count it as a success
+                        if (response.ok) {
+                            responseData = { status: 'success' };
+                        }
+                    }
+                    
+                    // Empty response with 200 OK is considered success
+                    if (response.ok && (!responseData || Object.keys(responseData).length === 0)) {
+                        responseData = { status: 'success' };
+                    }
+                    
+                    // Count success based on response
+                    const isSuccess = response.ok && 
+                                    (responseData?.success === true || 
+                                     responseData?.status === 'success' ||
+                                     (Array.isArray(responseData?.restaurants) && responseData.restaurants.length > 0));
+                    
+                    if (isSuccess) {
+                        successCount += batch.length;
+                    } else {
+                        failedCount += batch.length;
+                    }
+                    
+                } catch (fetchError) {
+                    // Clear timeout in case of error
+                    clearTimeout(timeoutId);
+                    
+                    if (fetchError.name === 'AbortError') {
+                        console.error(`Remote export: Batch ${batchIndex + 1} timed out`);
+                    } else {
+                        console.error(`Remote export: Error in batch ${batchIndex + 1}:`, fetchError);
+                    }
+                    
+                    failedCount += batch.length;
+                }
+            }
+            
+            // Update last sync time
+            try {
+                if (window.dataStorage && typeof window.dataStorage.updateLastSyncTime === 'function') {
+                    await window.dataStorage.updateLastSyncTime();
+                    console.log('Remote export: Updated last sync time');
+                }
+            } catch (syncTimeError) {
+                console.warn('Remote export: Could not update last sync time:', syncTimeError);
+            }
+            
+            // Final message for user
+            const resultMessage = `Export complete. ${successCount} restaurants successfully exported${failedCount > 0 ? `, ${failedCount} failed` : ''}.`;
+            console.log(`Remote export: ${resultMessage}`);
+            this.safeShowNotification(resultMessage, failedCount > 0 ? 'warning' : 'success');
             
         } catch (error) {
             console.error('Error exporting data to remote server:', error);
             this.safeShowNotification('Error exporting to remote server: ' + error.message, 'error');
-            throw error; // Re-throw to be caught by the caller
+        } finally {
+            // Always hide loading indicator
+            if (loadingShown) {
+                this.safeHideLoading();
+                console.log('Remote export: Hiding loading indicator');
+            }
         }
-        // Note: We don't hide loading here because that's handled in the finally block of the caller
     }
-    
+
+    /**
+     * Safety wrapper for updating loading message
+     * @param {string} message - New message to display
+     */
+    updateLoadingMessage(message) {
+        try {
+            // Try multiple approaches to update the loading message
+            
+            // First try window.uiUtils
+            if (window.uiUtils && typeof window.uiUtils.updateLoadingMessage === 'function') {
+                window.uiUtils.updateLoadingMessage(message);
+                return;
+            }
+            
+            // Then try uiManager
+            if (this.uiManager && typeof this.uiManager.updateLoadingMessage === 'function') {
+                this.uiManager.updateLoadingMessage(message);
+                return;
+            }
+            
+            // Then try standalone method
+            if (typeof this.updateStandaloneLoadingMessage === 'function') {
+                this.updateStandaloneLoadingMessage(message);
+                return;
+            }
+            
+            // Direct DOM approach as final fallback
+            const messageElement = document.querySelector('#loading-overlay .loading-message, #standalone-loading-overlay .loading-message');
+            if (messageElement) {
+                messageElement.textContent = message;
+            }
+            
+            console.log(`Loading message updated: ${message}`);
+        } catch (error) {
+            console.warn('Error updating loading message:', error);
+        }
+    }
+
     /**
      * Converts remote data format to local import format
      * @param {Array} remoteData - Data from remote API
@@ -951,6 +1092,129 @@ class ExportImportModule {
 
         console.log(`Conversion complete. Generated ${remoteData.length} restaurant objects for remote API`);
         return remoteData;
+    }
+
+    /**
+     * Converts local data format to remote export format with additional validation
+     * @param {Object} localData - Data from dataStorage.exportData()
+     * @returns {Array} - Array of restaurant objects for remote API
+     */
+    convertLocalDataToRemote(localData) {
+        console.log('Converting local data format to remote format...');
+        
+        // Validate input
+        if (!localData || !localData.restaurants || !Array.isArray(localData.restaurants)) {
+            console.error('Invalid local data format:', localData);
+            throw new Error('Invalid local data structure');
+        }
+
+        try {
+            // Create lookup maps - ISSUE: The type conversion is needed for ID comparison
+            // String conversion is required because IDs may come as different types (number vs string)
+            const curatorsById = new Map();
+            if (localData.curators && Array.isArray(localData.curators)) {
+                localData.curators.forEach(curator => {
+                    if (curator && curator.id !== undefined) {
+                        curatorsById.set(String(curator.id), curator);
+                    }
+                });
+            }
+            console.log(`Created lookup map for ${curatorsById.size} curators`);
+
+            const conceptsById = new Map();
+            if (localData.concepts && Array.isArray(localData.concepts)) {
+                localData.concepts.forEach(concept => {
+                    if (concept && concept.id !== undefined) {
+                        conceptsById.set(String(concept.id), concept);
+                    }
+                });
+            }
+            console.log(`Created lookup map for ${conceptsById.size} concepts`);
+
+            const conceptsByRestaurant = new Map();
+            if (localData.restaurantConcepts && Array.isArray(localData.restaurantConcepts)) {
+                localData.restaurantConcepts.forEach(rc => {
+                    if (!rc || rc.restaurantId === undefined || rc.conceptId === undefined) return;
+                    
+                    const restId = String(rc.restaurantId);
+                    if (!conceptsByRestaurant.has(restId)) {
+                        conceptsByRestaurant.set(restId, []);
+                    }
+                    
+                    const concept = conceptsById.get(String(rc.conceptId));
+                    if (concept) {
+                        conceptsByRestaurant.get(restId).push(concept);
+                    }
+                });
+            }
+            console.log(`Created concept relationships map for ${conceptsByRestaurant.size} restaurants`);
+
+            const locationsByRestaurant = new Map();
+            if (localData.restaurantLocations && Array.isArray(localData.restaurantLocations)) {
+                localData.restaurantLocations.forEach(rl => {
+                    if (!rl || rl.restaurantId === undefined) return;
+                    
+                    locationsByRestaurant.set(String(rl.restaurantId), {
+                        latitude: rl.latitude,
+                        longitude: rl.longitude,
+                        address: rl.address || ""
+                    });
+                });
+            }
+            console.log(`Created location map for ${locationsByRestaurant.size} restaurants`);
+
+            console.log(`Converting ${localData.restaurants.length} restaurants to remote format`);
+            const remoteData = [];
+            
+            // Process each restaurant
+            for (let i = 0; i < localData.restaurants.length; i++) {
+                const restaurant = localData.restaurants[i];
+                if (!restaurant || restaurant.id === undefined) continue;
+                
+                if (i % 10 === 0) {
+                    console.log(`Converting local restaurant ${i + 1}/${localData.restaurants.length}`);
+                }
+
+                const restId = String(restaurant.id);
+                const curator = restaurant.curatorId !== undefined ? curatorsById.get(String(restaurant.curatorId)) : null;
+                const concepts = conceptsByRestaurant.get(restId) || [];
+                const location = locationsByRestaurant.get(restId) || null;
+
+                // Create remote restaurant object
+                const remoteRestaurant = {
+                    name: restaurant.name || "Unknown Restaurant",
+                    curator: {
+                        name: curator?.name || "Unknown Curator"
+                    }
+                };
+                
+                // Only include fields that have values to reduce payload size
+                if (restaurant.timestamp) remoteRestaurant.timestamp = restaurant.timestamp;
+                if (restaurant.description) remoteRestaurant.description = restaurant.description;
+                if (restaurant.transcription) remoteRestaurant.transcription = restaurant.transcription;
+                
+                // Add concepts if we have any
+                if (concepts.length > 0) {
+                    remoteRestaurant.concepts = concepts.map(c => ({
+                        category: c.category,
+                        value: c.value
+                    }));
+                }
+                
+                // Add location if we have it
+                if (location && location.latitude && location.longitude) {
+                    remoteRestaurant.location = location;
+                }
+                
+                remoteData.push(remoteRestaurant);
+            }
+
+            console.log(`Conversion complete. Generated ${remoteData.length} restaurant objects for remote API`);
+            return remoteData;
+        } catch (error) {
+            console.error('Error converting local data to remote format:', error);
+            throw new Error(`Data conversion failed: ${error.message}`);
+        }
     }
 
 }
