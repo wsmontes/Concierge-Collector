@@ -55,6 +55,9 @@ const UIManager = ModuleWrapper.defineClass('UIManager', class {
         this.currentLocation = null;
         this.currentPhotos = [];
         
+        // Initialize UI Utils module first to ensure availability of UI utility functions
+        this.initializeUIUtilsModule();
+        
         // Initialize modules conditionally (only if not already initialized)
         if (!this.curatorModule && typeof CuratorModule !== 'undefined') 
             this.curatorModule = new CuratorModule(this);
@@ -98,6 +101,26 @@ const UIManager = ModuleWrapper.defineClass('UIManager', class {
         if (this.curatorModule) this.curatorModule.loadCuratorInfo();
         
         console.log('UIManager initialized');
+    }
+
+    /**
+     * Initialize UI Utils module with proper reference to this manager
+     */
+    initializeUIUtilsModule() {
+        // Check if uiUtilsModule is already available globally
+        if (window.uiUtils) {
+            // Update the reference to this manager
+            window.uiUtils.uiManager = this;
+            this.uiUtilsModule = window.uiUtils;
+            console.log('Using global uiUtils instance with updated uiManager reference');
+        } else if (typeof UIUtilsModule !== 'undefined') {
+            // Create a new instance with reference to this manager
+            this.uiUtilsModule = new UIUtilsModule(this);
+            window.uiUtils = this.uiUtilsModule; // Also set it globally
+            console.log('Created new uiUtils instance with uiManager reference');
+        } else {
+            console.warn('UIUtilsModule not found, UI utility functions may be unavailable');
+        }
     }
 
     hideAllSections() {
@@ -166,21 +189,77 @@ const UIManager = ModuleWrapper.defineClass('UIManager', class {
         this.exportImportSection.classList.remove('hidden');
     }
 
-    // Delegate to appropriate modules
+    // Delegate to appropriate modules via uiUtilsModule
     showLoading(message) {
-        this.uiUtilsModule.showLoading(message);
+        if (this.uiUtilsModule && typeof this.uiUtilsModule.showLoading === 'function') {
+            this.uiUtilsModule.showLoading(message);
+        } else if (window.uiUtils && typeof window.uiUtils.showLoading === 'function') {
+            window.uiUtils.showLoading(message);
+        } else {
+            console.warn('showLoading not available');
+            alert(message || 'Loading...');
+        }
     }
     
     hideLoading() {
-        this.uiUtilsModule.hideLoading();
+        if (this.uiUtilsModule && typeof this.uiUtilsModule.hideLoading === 'function') {
+            this.uiUtilsModule.hideLoading();
+        } else if (window.uiUtils && typeof window.uiUtils.hideLoading === 'function') {
+            window.uiUtils.hideLoading();
+        } else {
+            console.warn('hideLoading not available');
+        }
+    }
+    
+    updateLoadingMessage(message) {
+        if (this.uiUtilsModule && typeof this.uiUtilsModule.updateLoadingMessage === 'function') {
+            this.uiUtilsModule.updateLoadingMessage(message);
+        } else if (window.uiUtils && typeof window.uiUtils.updateLoadingMessage === 'function') {
+            window.uiUtils.updateLoadingMessage(message);
+        } else {
+            console.warn('updateLoadingMessage not available');
+        }
     }
     
     showNotification(message, type) {
-        this.uiUtilsModule.showNotification(message, type);
+        if (this.uiUtilsModule && typeof this.uiUtilsModule.showNotification === 'function') {
+            this.uiUtilsModule.showNotification(message, type);
+        } else if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
+            window.uiUtils.showNotification(message, type);
+        } else {
+            console.warn('showNotification not available');
+            alert(message);
+        }
     }
 
     getCurrentPosition() {
-        return this.uiUtilsModule.getCurrentPosition();
+        if (this.uiUtilsModule && typeof this.uiUtilsModule.getCurrentPosition === 'function') {
+            return this.uiUtilsModule.getCurrentPosition();
+        } else if (window.uiUtils && typeof window.uiUtils.getCurrentPosition === 'function') {
+            return window.uiUtils.getCurrentPosition();
+        } else {
+            console.warn('getCurrentPosition not available, using fallback');
+            return this.getFallbackPosition();
+        }
+    }
+    
+    /**
+     * Fallback position getter when uiUtils is unavailable
+     * @returns {Promise<GeolocationPosition>}
+     */
+    getFallbackPosition() {
+        return new Promise((resolve, reject) => {
+            if (!navigator.geolocation) {
+                reject(new Error('Geolocation is not supported by your browser'));
+                return;
+            }
+            
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 0
+            });
+        });
     }
 
     // Additional delegation methods for core functionality

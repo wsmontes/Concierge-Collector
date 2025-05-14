@@ -538,9 +538,12 @@ class CuratorModule {
             
             // Reload restaurant list with filter
             if (this.uiManager && this.uiManager.currentCurator) {
-                console.log(`Filter toggled to ${enabled ? 'ON' : 'OFF'} for curator: ${this.uiManager.currentCurator.name} (ID: ${this.uiManager.currentCurator.id})`);
+                const curatorId = this.uiManager.currentCurator.id;
+                console.log(`Filter toggled to ${enabled ? 'ON' : 'OFF'} for curator: ${this.uiManager.currentCurator.name} (ID: ${curatorId}, type: ${typeof curatorId})`);
+                
+                // Always pass curatorId as string for consistent handling
                 await this.safeLoadRestaurantList(
-                    this.uiManager.currentCurator.id,
+                    String(curatorId),
                     enabled
                 );
             } else {

@@ -658,26 +658,65 @@ class ExportImportModule {
         
         // Track loading state to ensure we always hide it
         let loadingShown = false;
+        const totalStartTime = performance.now();
         
         try {
             this.safeShowLoading('Exporting data to remote server...');
             loadingShown = true;
             
+            // Check internet connectivity first
+            try {
+                this.updateLoadingMessage('Checking server connectivity...');
+                const pingStartTime = performance.now();
+                
+                // Try to fetch a small amount of data first to verify connectivity
+                const testResponse = await fetch('https://wsmontes.pythonanywhere.com/api/restaurants?limit=1', {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json'
+                    },
+                    cache: 'no-cache',
+                    signal: AbortSignal.timeout(10000) // 10 second timeout
+                });
+                
+                const pingEndTime = performance.now();
+                const pingTime = pingEndTime - pingStartTime;
+                
+                if (!testResponse.ok) {
+                    console.warn(`Remote export: Server connectivity check failed with status ${testResponse.status}`);
+                    this.updateLoadingMessage('Server connectivity issues detected - will try anyway');
+                    await new Promise(resolve => setTimeout(resolve, 2000)); // Pause for user to read message
+                } else {
+                    console.log(`Remote export: Server is responsive (ping: ${pingTime.toFixed(0)}ms)`);
+                }
+            } catch (pingError) {
+                console.warn(`Remote export: Initial connectivity check failed: ${pingError.message}`);
+                this.updateLoadingMessage('Warning: Server may be unreachable');
+                await new Promise(resolve => setTimeout(resolve, 2000)); // Pause for user to read message
+            }
+            
+            // Get last sync time to determine what needs to be exported
+            let lastSyncTime = null;
+            try {
+                if (window.dataStorage && typeof window.dataStorage.getLastSyncTime === 'function') {
+                    lastSyncTime = await window.dataStorage.getLastSyncTime();
+                    console.log(`Remote export: Last sync time: ${lastSyncTime || 'never'}`);
+                }
+            } catch (syncTimeError) {
+                console.warn('Remote export: Could not get last sync time:', syncTimeError);
+            }
+            
             // Get all data from local storage (without photos)
+            this.updateLoadingMessage('Retrieving local data...');
             console.log('Remote export: Retrieving data from local database...');
+            const dataStartTime = performance.now();
             const exportResult = await dataStorage.exportData({ includePhotos: false });
+            const dataEndTime = performance.now();
+            console.log(`Remote export: Local data retrieved in ${(dataEndTime - dataStartTime).toFixed(2)}ms`);
             
             if (!exportResult || !exportResult.jsonData) {
                 throw new Error('Failed to retrieve data from local database');
             }
-            
-            console.log('Remote export: Local data retrieved', {
-                curators: exportResult.jsonData.curators?.length || 0,
-                concepts: exportResult.jsonData.concepts?.length || 0,
-                restaurants: exportResult.jsonData.restaurants?.length || 0,
-                restaurantConcepts: exportResult.jsonData.restaurantConcepts?.length || 0,
-                restaurantLocations: exportResult.jsonData.restaurantLocations?.length || 0
-            });
             
             const localData = exportResult.jsonData;
             
@@ -686,18 +725,29 @@ class ExportImportModule {
                 throw new Error('No restaurant data to export');
             }
             
-            // Convert local data to the remote server format with extra validation
-            console.log('Remote export: Converting local data to remote format...');
-            const remoteData = this.convertLocalDataToRemote(localData);
+            // Convert and filter local data to the remote server format
+            this.updateLoadingMessage('Processing and filtering data...');
+            console.log('Remote export: Converting and filtering data for export...');
+            const conversionStartTime = performance.now();
             
-            if (!remoteData || !Array.isArray(remoteData) || remoteData.length === 0) {
-                throw new Error('Failed to convert local data to remote format');
+            // Convert and filter in one step for efficiency
+            const remoteData = this.prepareRestaurantsForExport(localData, lastSyncTime);
+            
+            const conversionEndTime = performance.now();
+            console.log(`Remote export: Data conversion completed in ${(conversionEndTime - conversionStartTime).toFixed(2)}ms`);
+            
+            if (remoteData.length === 0) {
+                // No changes to export
+                const resultMessage = 'No changes to export. All data already in sync.';
+                console.log(`Remote export: ${resultMessage}`);
+                this.safeShowNotification(resultMessage, 'success');
+                return;
             }
             
-            console.log(`Remote export: Conversion complete, ${remoteData.length} restaurants ready for export`);
+            console.log(`Remote export: ${remoteData.length} restaurants prepared for export (filtered from ${localData.restaurants.length} total)`);
             
-            // Split into batches if necessary to avoid payload size issues
-            const BATCH_SIZE = 25; // Adjust based on testing
+            // Split into smaller batches for more reliable processing
+            const BATCH_SIZE = 15;
             const batches = [];
             for (let i = 0; i < remoteData.length; i += BATCH_SIZE) {
                 batches.push(remoteData.slice(i, i + BATCH_SIZE));
@@ -705,108 +755,41 @@ class ExportImportModule {
             
             console.log(`Remote export: Split data into ${batches.length} batches for processing`);
             
-            // Process each batch
+            // Process batches one at a time for more reliability
+            const MAX_CONCURRENT = 1;
             let successCount = 0;
             let failedCount = 0;
             
-            for (let batchIndex = 0; batchIndex < batches.length; batchIndex++) {
-                const batch = batches[batchIndex];
+            // Process batches sequentially
+            for (let i = 0; i < batches.length; i += MAX_CONCURRENT) {
+                const batchPromises = [];
+                const currentBatches = batches.slice(i, i + MAX_CONCURRENT);
                 
-                // Update loading message to show progress
-                this.updateLoadingMessage(`Exporting batch ${batchIndex + 1} of ${batches.length}...`);
-                
-                // Prepare data for sending and log details
-                const payloadJson = JSON.stringify(batch);
-                const payloadSize = payloadJson.length;
-                
-                console.log(`Remote export: Processing batch ${batchIndex + 1}/${batches.length} - ${batch.length} restaurants, payload size: ${(payloadSize/1024).toFixed(2)} KB`);
-                
-                // Create a controller for timeout management
-                const controller = new AbortController();
-                const signal = controller.signal;
-                
-                // Set a timeout to abort the fetch after 30 seconds
-                const timeoutId = setTimeout(() => {
-                    controller.abort();
-                    console.error(`Remote export: Batch ${batchIndex + 1} request timed out after 30 seconds`);
-                }, 30000);
-                
-                try {
-                    // Send data to remote server with timeout handling
-                    const startTime = performance.now();
+                for (let j = 0; j < currentBatches.length; j++) {
+                    const batchIndex = i + j;
+                    const batch = currentBatches[j];
                     
-                    const response = await fetch('https://wsmontes.pythonanywhere.com/api/restaurants/batch', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: payloadJson,
-                        signal: signal
-                    });
+                    // Update loading message
+                    this.updateLoadingMessage(`Exporting batch ${batchIndex + 1} of ${batches.length}...`);
                     
-                    // Clear timeout since request completed
-                    clearTimeout(timeoutId);
-                    
-                    const endTime = performance.now();
-                    console.log(`Remote export: Batch ${batchIndex + 1} request completed in ${(endTime - startTime).toFixed(2)}ms`);
-                    
-                    if (!response.ok) {
-                        // Log detailed error information
-                        let errorText = '';
-                        try {
-                            errorText = await response.text();
-                        } catch (e) {
-                            errorText = 'Could not read error response';
-                        }
-                        
-                        console.error(`Remote export: Server error for batch ${batchIndex + 1}: ${response.status}: ${response.statusText}`, errorText);
-                        failedCount += batch.length;
-                        continue; // Skip to next batch
-                    }
-                    
-                    // Try to parse response
-                    let responseData;
-                    try {
-                        const responseText = await response.text();
-                        responseData = responseText ? JSON.parse(responseText) : {};
-                        console.log(`Remote export: Batch ${batchIndex + 1} response:`, responseData);
-                    } catch (parseError) {
-                        console.warn(`Remote export: Could not parse response for batch ${batchIndex + 1}:`, parseError);
-                        // If we can't parse the response but the request was successful, count it as a success
-                        if (response.ok) {
-                            responseData = { status: 'success' };
-                        }
-                    }
-                    
-                    // Empty response with 200 OK is considered success
-                    if (response.ok && (!responseData || Object.keys(responseData).length === 0)) {
-                        responseData = { status: 'success' };
-                    }
-                    
-                    // Count success based on response
-                    const isSuccess = response.ok && 
-                                    (responseData?.success === true || 
-                                     responseData?.status === 'success' ||
-                                     (Array.isArray(responseData?.restaurants) && responseData.restaurants.length > 0));
-                    
-                    if (isSuccess) {
-                        successCount += batch.length;
-                    } else {
-                        failedCount += batch.length;
-                    }
-                    
-                } catch (fetchError) {
-                    // Clear timeout in case of error
-                    clearTimeout(timeoutId);
-                    
-                    if (fetchError.name === 'AbortError') {
-                        console.error(`Remote export: Batch ${batchIndex + 1} timed out`);
-                    } else {
-                        console.error(`Remote export: Error in batch ${batchIndex + 1}:`, fetchError);
-                    }
-                    
-                    failedCount += batch.length;
+                    // Create promise for this batch
+                    batchPromises.push(this.processBatch(batch, batchIndex, batches.length));
                 }
+                
+                // Wait for current batch group to complete
+                const results = await Promise.all(batchPromises);
+                
+                // Tally results
+                results.forEach(result => {
+                    if (result.success) {
+                        successCount += result.count;
+                    } else {
+                        failedCount += result.count;
+                    }
+                });
+                
+                // Progress update
+                this.updateLoadingMessage(`Completed ${i + 1}/${batches.length} batches (${successCount} restaurants synced)`);
             }
             
             // Update last sync time
@@ -820,7 +803,9 @@ class ExportImportModule {
             }
             
             // Final message for user
-            const resultMessage = `Export complete. ${successCount} restaurants successfully exported${failedCount > 0 ? `, ${failedCount} failed` : ''}.`;
+            const totalEndTime = performance.now();
+            const totalTime = ((totalEndTime - totalStartTime) / 1000).toFixed(1);
+            const resultMessage = `Export complete in ${totalTime}s. ${successCount} restaurants successfully exported${failedCount > 0 ? `, ${failedCount} failed` : ''}.`;
             console.log(`Remote export: ${resultMessage}`);
             this.safeShowNotification(resultMessage, failedCount > 0 ? 'warning' : 'success');
             
@@ -834,6 +819,285 @@ class ExportImportModule {
                 console.log('Remote export: Hiding loading indicator');
             }
         }
+    }
+    
+    /**
+     * Prepares restaurant data for export by filtering and optimizing payload
+     * @param {Object} localData - Complete data from local database
+     * @param {string|null} lastSyncTime - ISO timestamp of last sync, or null
+     * @returns {Array} - Optimized array of restaurant objects to export
+     */
+    prepareRestaurantsForExport(localData, lastSyncTime) {
+        const startTime = performance.now();
+        
+        // Create lookup maps for better performance
+        const curatorsById = new Map();
+        const conceptsById = new Map();
+        const conceptsByRestaurant = new Map();
+        const locationsByRestaurant = new Map();
+        
+        // Build lookup maps efficiently
+        if (localData.curators && Array.isArray(localData.curators)) {
+            localData.curators.forEach(curator => {
+                if (curator && curator.id !== undefined) {
+                    curatorsById.set(String(curator.id), curator);
+                }
+            });
+        }
+        
+        if (localData.concepts && Array.isArray(localData.concepts)) {
+            localData.concepts.forEach(concept => {
+                if (concept && concept.id !== undefined) {
+                    conceptsById.set(String(concept.id), concept);
+                }
+            });
+        }
+        
+        if (localData.restaurantConcepts && Array.isArray(localData.restaurantConcepts)) {
+            localData.restaurantConcepts.forEach(rc => {
+                if (!rc || rc.restaurantId === undefined || rc.conceptId === undefined) return;
+                
+                const restId = String(rc.restaurantId);
+                if (!conceptsByRestaurant.has(restId)) {
+                    conceptsByRestaurant.set(restId, []);
+                }
+                
+                const concept = conceptsById.get(String(rc.conceptId));
+                if (concept) {
+                    conceptsByRestaurant.get(restId).push(concept);
+                }
+            });
+        }
+        
+        if (localData.restaurantLocations && Array.isArray(localData.restaurantLocations)) {
+            localData.restaurantLocations.forEach(rl => {
+                if (!rl || rl.restaurantId === undefined) return;
+                
+                locationsByRestaurant.set(String(rl.restaurantId), {
+                    latitude: rl.latitude,
+                    longitude: rl.longitude,
+                    address: rl.address || ""
+                });
+            });
+        }
+
+        // Parse last sync time if available
+        let syncDate = null;
+        if (lastSyncTime) {
+            try {
+                syncDate = new Date(lastSyncTime);
+                if (isNaN(syncDate.getTime())) {
+                    console.warn(`Invalid last sync time: ${lastSyncTime}`);
+                    syncDate = null;
+                }
+            } catch (e) {
+                console.warn(`Error parsing sync time: ${lastSyncTime}`, e);
+                syncDate = null;
+            }
+        }
+        
+        // Process and filter restaurants
+        const remoteData = [];
+        let totalRestaurants = 0;
+        let skippedRestaurants = 0;
+        
+        if (localData.restaurants && Array.isArray(localData.restaurants)) {
+            totalRestaurants = localData.restaurants.length;
+            
+            for (const restaurant of localData.restaurants) {
+                if (!restaurant || restaurant.id === undefined) continue;
+                
+                // Skip restaurants that haven't changed since last sync
+                if (syncDate && restaurant.timestamp) {
+                    const restaurantDate = new Date(restaurant.timestamp);
+                    if (!isNaN(restaurantDate.getTime()) && restaurantDate <= syncDate) {
+                        skippedRestaurants++;
+                        continue;
+                    }
+                }
+                
+                const restId = String(restaurant.id);
+                const curator = restaurant.curatorId !== undefined ? curatorsById.get(String(restaurant.curatorId)) : null;
+                const concepts = conceptsByRestaurant.get(restId) || [];
+                const location = locationsByRestaurant.get(restId) || null;
+
+                // Create minimal restaurant object
+                const remoteRestaurant = {
+                    name: restaurant.name,
+                    curator: {
+                        name: curator?.name || "Unknown Curator"
+                    }
+                };
+                
+                // Only include fields that have values
+                if (restaurant.timestamp) remoteRestaurant.timestamp = restaurant.timestamp;
+                if (restaurant.description) remoteRestaurant.description = restaurant.description;
+                if (restaurant.transcription) remoteRestaurant.transcription = restaurant.transcription;
+                
+                // Add concepts if we have any, filtering out any empty categories
+                if (concepts.length > 0) {
+                    const filteredConcepts = concepts
+                        .filter(c => c.category && c.value && c.value.trim() !== '')
+                        .map(c => ({
+                            category: c.category,
+                            value: c.value
+                        }));
+                    
+                    if (filteredConcepts.length > 0) {
+                        remoteRestaurant.concepts = filteredConcepts;
+                    }
+                }
+                
+                // Add location only if we have valid coordinates
+                if (location && typeof location.latitude === 'number' && typeof location.longitude === 'number' &&
+                    !isNaN(location.latitude) && !isNaN(location.longitude)) {
+                    remoteRestaurant.location = {
+                        latitude: location.latitude,
+                        longitude: location.longitude
+                    };
+                    
+                    // Only add address if it exists and isn't empty
+                    if (location.address && location.address.trim() !== '') {
+                        remoteRestaurant.location.address = location.address;
+                    }
+                }
+                
+                remoteData.push(remoteRestaurant);
+            }
+        }
+        
+        const endTime = performance.now();
+        console.log(`Export preparation: Processed ${totalRestaurants} restaurants, sending ${remoteData.length}, skipped ${skippedRestaurants} unchanged (in ${(endTime-startTime).toFixed(2)}ms)`);
+        
+        return remoteData;
+    }
+
+    /**
+     * Process a single export batch
+     * @param {Array} batch - Batch of restaurants to export
+     * @param {number} batchIndex - Index of this batch
+     * @param {number} totalBatches - Total number of batches
+     * @returns {Promise<Object>} - Result with success status and count
+     */
+    async processBatch(batch, batchIndex, totalBatches) {
+        // Prepare data for sending
+        const payloadJson = JSON.stringify(batch);
+        const payloadSize = payloadJson.length;
+        
+        console.log(`Remote export: Processing batch ${batchIndex + 1}/${totalBatches} - ${batch.length} restaurants, payload size: ${(payloadSize/1024).toFixed(2)} KB`);
+        
+        // Parameters for retry logic
+        const MAX_RETRIES = 2;
+        const TIMEOUT_SECONDS = 60; // Increased from 45 to 60 seconds
+        let retryCount = 0;
+        
+        while (retryCount <= MAX_RETRIES) {
+            // Create a controller for timeout management
+            const controller = new AbortController();
+            const signal = controller.signal;
+            
+            // Set a timeout to abort the fetch after specified seconds
+            const timeoutId = setTimeout(() => {
+                controller.abort();
+                console.error(`Remote export: Batch ${batchIndex + 1} request timed out after ${TIMEOUT_SECONDS} seconds`);
+            }, TIMEOUT_SECONDS * 1000);
+            
+            try {
+                // Add retry information to console log
+                if (retryCount > 0) {
+                    console.log(`Remote export: Retry #${retryCount} for batch ${batchIndex + 1}`);
+                    this.updateLoadingMessage(`Retrying batch ${batchIndex + 1} (attempt ${retryCount + 1})...`);
+                }
+                
+                // Send data to remote server with timeout handling
+                const startTime = performance.now();
+                
+                const response = await fetch('https://wsmontes.pythonanywhere.com/api/restaurants/batch', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json' // Explicitly request JSON response
+                    },
+                    body: payloadJson,
+                    signal: signal,
+                    // Add keepalive flag to maintain connection for longer operations
+                    keepalive: true,
+                    mode: 'cors', // Explicitly state CORS mode
+                    cache: 'no-cache', // Don't use cached responses
+                    redirect: 'follow', // Follow redirects automatically
+                });
+                
+                // Clear timeout since request completed
+                clearTimeout(timeoutId);
+                
+                const endTime = performance.now();
+                console.log(`Remote export: Batch ${batchIndex + 1} request completed in ${(endTime - startTime).toFixed(2)}ms`);
+                
+                if (!response.ok) {
+                    // Log error information
+                    let errorText = '';
+                    try {
+                        errorText = await response.text();
+                    } catch (e) {
+                        errorText = 'Could not read error response';
+                    }
+                    
+                    console.error(`Remote export: Server error for batch ${batchIndex + 1}: ${response.status}: ${response.statusText}`, errorText);
+                    
+                    // If server returned 5xx error, retry
+                    if (response.status >= 500 && retryCount < MAX_RETRIES) {
+                        retryCount++;
+                        // Wait before retrying - exponential backoff
+                        const delay = 2000 * Math.pow(2, retryCount - 1);
+                        console.log(`Remote export: Will retry batch ${batchIndex + 1} in ${delay}ms`);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                        continue;
+                    }
+                    
+                    return { success: false, count: batch.length };
+                }
+                
+                return { success: true, count: batch.length };
+                    
+            } catch (fetchError) {
+                // Clear timeout in case of error
+                clearTimeout(timeoutId);
+                
+                // Provide more specific error information
+                let errorMessage = 'Unknown error';
+                let isNetworkError = false;
+                
+                if (fetchError.name === 'AbortError') {
+                    errorMessage = `Request timeout after ${TIMEOUT_SECONDS} seconds`;
+                } else if (fetchError.message && fetchError.message.includes('NetworkError')) {
+                    errorMessage = 'Network connection error';
+                    isNetworkError = true;
+                } else if (fetchError.message && fetchError.message.includes('Failed to fetch')) {
+                    errorMessage = 'Server connection failed (server may be down or unreachable)';
+                    isNetworkError = true;
+                } else if (fetchError.message) {
+                    errorMessage = fetchError.message;
+                }
+                
+                console.error(`Remote export: Error in batch ${batchIndex + 1}: ${errorMessage}`, fetchError);
+                
+                // Always retry network errors
+                if ((isNetworkError || fetchError.name === 'TypeError') && retryCount < MAX_RETRIES) {
+                    retryCount++;
+                    // Wait longer for network errors - exponential backoff with longer base time
+                    const delay = 3000 * Math.pow(2, retryCount - 1);
+                    console.log(`Remote export: Will retry batch ${batchIndex + 1} in ${delay}ms (network error)`);
+                    this.updateLoadingMessage(`Network error - retrying in ${Math.round(delay/1000)}s...`);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    continue;
+                }
+                
+                return { success: false, count: batch.length };
+            }
+        }
+        
+        // If we get here, all retries failed
+        return { success: false, count: batch.length };
     }
 
     /**
@@ -1002,116 +1266,25 @@ class ExportImportModule {
     }
     
     /**
-     * Converts local data format to remote export format
-     * @param {Object} localData - Data from dataStorage.exportData()
-     * @returns {Array} - Array of restaurant objects for remote API
-     */
-    convertLocalDataToRemote(localData) {
-        console.log('Converting local data format to remote format...');
-
-        // Create lookup maps - ISSUE: The type conversion is needed for ID comparison
-        // String conversion is required because IDs may come as different types (number vs string)
-        const curatorsById = new Map();
-        localData.curators.forEach(curator => {
-            curatorsById.set(String(curator.id), curator);
-        });
-        console.log(`Created lookup map for ${localData.curators.length} curators`);
-
-        const conceptsById = new Map();
-        localData.concepts.forEach(concept => {
-            conceptsById.set(String(concept.id), concept);
-        });
-        console.log(`Created lookup map for ${localData.concepts.length} concepts`);
-
-        const conceptsByRestaurant = new Map();
-        localData.restaurantConcepts.forEach(rc => {
-            const restId = String(rc.restaurantId);
-            if (!conceptsByRestaurant.has(restId)) {
-                conceptsByRestaurant.set(restId, []);
-            }
-            const concept = conceptsById.get(String(rc.conceptId));
-            if (concept) {
-                conceptsByRestaurant.get(restId).push(concept);
-            } else {
-                console.warn(`Concept ID ${rc.conceptId} not found for restaurant ID ${rc.restaurantId}`);
-            }
-        });
-        console.log(`Created concept relationships map for ${conceptsByRestaurant.size} restaurants`);
-        
-        // Log the first restaurant's concepts to help debug
-        if (conceptsByRestaurant.size > 0) {
-            const firstRestId = conceptsByRestaurant.keys().next().value;
-            const firstRestConcepts = conceptsByRestaurant.get(firstRestId);
-            console.log(`Sample - Restaurant ID ${firstRestId} has ${firstRestConcepts?.length || 0} concepts:`);
-            if (firstRestConcepts && firstRestConcepts.length > 0) {
-                console.log(firstRestConcepts.map(c => `${c.category}: ${c.value}`).slice(0, 5));
-            }
-        }
-
-        const locationsByRestaurant = new Map();
-        localData.restaurantLocations.forEach(rl => {
-            locationsByRestaurant.set(String(rl.restaurantId), {
-                latitude: rl.latitude,
-                longitude: rl.longitude,
-                address: rl.address || ""
-            });
-        });
-        console.log(`Created location map for ${locationsByRestaurant.size} restaurants`);
-
-        console.log(`Converting ${localData.restaurants.length} restaurants to remote format`);
-        const remoteData = localData.restaurants.map((restaurant, index) => {
-            if (index % 10 === 0) {
-                console.log(`Converting local restaurant ${index + 1}/${localData.restaurants.length}`);
-            }
-
-            const restId = String(restaurant.id);
-            const curator = curatorsById.get(String(restaurant.curatorId));
-            const concepts = conceptsByRestaurant.get(restId) || [];
-            const location = locationsByRestaurant.get(restId) || null;
-
-            // Check if this restaurant has concepts and log for debugging
-            if (concepts.length === 0) {
-                console.log(`Restaurant "${restaurant.name}" (ID: ${restaurant.id}) has no concepts`);
-            }
-
-            return {
-                name: restaurant.name,
-                curator: {
-                    name: curator?.name || "Unknown Curator"
-                },
-                timestamp: restaurant.timestamp,
-                description: restaurant.description || "",
-                transcription: restaurant.transcription || "",
-                concepts: concepts.map(c => ({
-                    category: c.category,
-                    value: c.value
-                })),
-                location: location
-            };
-        });
-
-        console.log(`Conversion complete. Generated ${remoteData.length} restaurant objects for remote API`);
-        return remoteData;
-    }
-
-    /**
      * Converts local data format to remote export format with additional validation
      * @param {Object} localData - Data from dataStorage.exportData()
      * @returns {Array} - Array of restaurant objects for remote API
      */
     convertLocalDataToRemote(localData) {
-        console.log('Converting local data format to remote format...');
-        
         // Validate input
         if (!localData || !localData.restaurants || !Array.isArray(localData.restaurants)) {
-            console.error('Invalid local data format:', localData);
+            console.error('Invalid local data format');
             throw new Error('Invalid local data structure');
         }
 
         try {
-            // Create lookup maps - ISSUE: The type conversion is needed for ID comparison
-            // String conversion is required because IDs may come as different types (number vs string)
+            // Create lookup maps - use Map for better performance
             const curatorsById = new Map();
+            const conceptsById = new Map();
+            const conceptsByRestaurant = new Map();
+            const locationsByRestaurant = new Map();
+            
+            // Build lookup maps efficiently
             if (localData.curators && Array.isArray(localData.curators)) {
                 localData.curators.forEach(curator => {
                     if (curator && curator.id !== undefined) {
@@ -1119,9 +1292,7 @@ class ExportImportModule {
                     }
                 });
             }
-            console.log(`Created lookup map for ${curatorsById.size} curators`);
-
-            const conceptsById = new Map();
+            
             if (localData.concepts && Array.isArray(localData.concepts)) {
                 localData.concepts.forEach(concept => {
                     if (concept && concept.id !== undefined) {
@@ -1129,9 +1300,7 @@ class ExportImportModule {
                     }
                 });
             }
-            console.log(`Created lookup map for ${conceptsById.size} concepts`);
-
-            const conceptsByRestaurant = new Map();
+            
             if (localData.restaurantConcepts && Array.isArray(localData.restaurantConcepts)) {
                 localData.restaurantConcepts.forEach(rc => {
                     if (!rc || rc.restaurantId === undefined || rc.conceptId === undefined) return;
@@ -1147,9 +1316,7 @@ class ExportImportModule {
                     }
                 });
             }
-            console.log(`Created concept relationships map for ${conceptsByRestaurant.size} restaurants`);
-
-            const locationsByRestaurant = new Map();
+            
             if (localData.restaurantLocations && Array.isArray(localData.restaurantLocations)) {
                 localData.restaurantLocations.forEach(rl => {
                     if (!rl || rl.restaurantId === undefined) return;
@@ -1161,26 +1328,21 @@ class ExportImportModule {
                     });
                 });
             }
-            console.log(`Created location map for ${locationsByRestaurant.size} restaurants`);
 
-            console.log(`Converting ${localData.restaurants.length} restaurants to remote format`);
+            // Process each restaurant - reduce logging
             const remoteData = [];
+            const restaurantsLength = localData.restaurants.length;
             
-            // Process each restaurant
-            for (let i = 0; i < localData.restaurants.length; i++) {
+            for (let i = 0; i < restaurantsLength; i++) {
                 const restaurant = localData.restaurants[i];
                 if (!restaurant || restaurant.id === undefined) continue;
                 
-                if (i % 10 === 0) {
-                    console.log(`Converting local restaurant ${i + 1}/${localData.restaurants.length}`);
-                }
-
                 const restId = String(restaurant.id);
                 const curator = restaurant.curatorId !== undefined ? curatorsById.get(String(restaurant.curatorId)) : null;
                 const concepts = conceptsByRestaurant.get(restId) || [];
                 const location = locationsByRestaurant.get(restId) || null;
 
-                // Create remote restaurant object
+                // Create remote restaurant object - minimal object
                 const remoteRestaurant = {
                     name: restaurant.name || "Unknown Restaurant",
                     curator: {
@@ -1209,7 +1371,6 @@ class ExportImportModule {
                 remoteData.push(remoteRestaurant);
             }
 
-            console.log(`Conversion complete. Generated ${remoteData.length} restaurant objects for remote API`);
             return remoteData;
         } catch (error) {
             console.error('Error converting local data to remote format:', error);

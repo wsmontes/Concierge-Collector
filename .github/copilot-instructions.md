@@ -9,4 +9,6 @@
 - If a requested feature can’t be fully implemented, state that fact and propose valid alternatives.
 - Write code and comments so they’re intelligible to an AI with no prior context.
 - Don't include data samples in the code as a fallback. Never.
+- Always prefer fixing the code over introducing new code.
+- Avoid creating diagnostic utilities; instead, analyze the code and fix it.
 - Don't break what is working while changing other stuff.

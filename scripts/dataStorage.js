@@ -421,144 +421,154 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
      */
     async getRestaurants(options = {}) {
         try {
-            // Set default options
-            const defaults = {
-                curatorId: null,
-                onlyCuratorRestaurants: false,
-                includeRemote: true,
-                includeLocal: true,
-                deduplicate: true
-            };
+            // Default options with clear logging
+            const {
+                curatorId = null,
+                onlyCuratorRestaurants = true,
+                includeRemote = true, 
+                includeLocal = true,
+                deduplicate = true
+            } = options;
             
-            // Merge with defaults
-            options = {...defaults, ...options};
+            console.log(`Getting restaurants with options:`, {
+                curatorId: curatorId ? `${curatorId} (${typeof curatorId})` : null,
+                onlyCuratorRestaurants,
+                includeRemote,
+                includeLocal,
+                deduplicate
+            });
             
-            console.log(`Getting restaurants with options:`, options);
-            
-            // First, get all restaurants that meet the base criteria
-            let allRestaurants = [];
-            
-            // Apply curator filter if requested
-            if (options.onlyCuratorRestaurants && options.curatorId) {
-                console.log(`Filtering restaurants by curator ID: ${options.curatorId}`);
-                allRestaurants = await this.db.restaurants.where('curatorId').equals(options.curatorId).toArray();
+            // Log filtering information
+            if (onlyCuratorRestaurants && curatorId) {
+                console.log(`Filtering restaurants by curator ID: ${curatorId}`);
+                
+                // Get all restaurants without any filtering first
+                const allRestaurants = await this.db.restaurants.toArray();
+                console.log(`Total restaurants in database: ${allRestaurants.length}`);
+                
+                // Convert curatorId to string for consistent comparison
+                const curatorIdStr = String(curatorId);
+                
+                // Apply filtering with detailed logging for each rejected restaurant
+                const filteredRestaurants = allRestaurants.filter(restaurant => {
+                    // Handle source filtering
+                    if (restaurant.source === 'remote' && !includeRemote) return false;
+                    if (restaurant.source === 'local' && !includeLocal) return false;
+                    
+                    // Skip curator filtering if not required
+                    if (!onlyCuratorRestaurants) return true;
+                    
+                    // Convert restaurant curatorId to string for consistent comparison
+                    const restaurantCuratorIdStr = restaurant.curatorId !== undefined && 
+                                                  restaurant.curatorId !== null ? 
+                                                  String(restaurant.curatorId) : null;
+                    
+                    // Check if this restaurant belongs to the curator
+                    const isMatch = restaurantCuratorIdStr === curatorIdStr;
+                    
+                    // Log rejection reasons for debugging
+                    if (!isMatch && restaurantCuratorIdStr !== null) {
+                        console.log(`Restaurant ${restaurant.id} (${restaurant.name}) has curatorId ${restaurantCuratorIdStr}, does not match ${curatorIdStr}`);
+                    }
+                    
+                    return isMatch;
+                });
+                
+                console.log(`After curator filtering: ${filteredRestaurants.length} restaurants match curator ${curatorIdStr}`);
+                
+                // Replace restaurants with filtered list
+                const restaurantIds = filteredRestaurants.map(r => r.id);
+                return await this.processRestaurants(
+                    await this.db.restaurants.where('id').anyOf(restaurantIds).toArray(),
+                    deduplicate
+                );
             } else {
-                console.log('Getting all restaurants (no curator filter)');
-                allRestaurants = await this.db.restaurants.toArray();
+                // No curator filtering
+                console.log(`Getting all restaurants (no curator filter)`);
+                return await this.processRestaurants(
+                    await this.db.restaurants.toArray(), 
+                    deduplicate
+                );
             }
-            
-            console.log(`Retrieved ${allRestaurants.length} raw restaurants from database`);
-            
-            // Apply source filtering if requested
-            let filteredRestaurants = allRestaurants;
-            if (!options.includeRemote || !options.includeLocal) {
-                filteredRestaurants = allRestaurants.filter(restaurant => {
-                    const source = restaurant.source || 'local'; // Default to local if not set
-                    if (!options.includeRemote && source === 'remote') return false;
-                    if (!options.includeLocal && source === 'local') return false;
-                    return true;
-                });
-                console.log(`After source filtering: ${filteredRestaurants.length} restaurants`);
-            }
-            
-            // Apply deduplication if requested
-            let processedRestaurants = filteredRestaurants;
-            if (options.deduplicate) {
-                const uniqueRestaurants = new Map();
-                
-                // First pass: Group by normalized name
-                const restaurantsByName = new Map();
-                filteredRestaurants.forEach(restaurant => {
-                    const normalizedName = restaurant.name.toLowerCase().trim();
-                    if (!restaurantsByName.has(normalizedName)) {
-                        restaurantsByName.set(normalizedName, []);
-                    }
-                    restaurantsByName.get(normalizedName).push(restaurant);
-                });
-                
-                // Second pass: For each name group, prioritize:
-                // 1. Local over remote (preserves user edits)
-                // 2. Newer over older
-                restaurantsByName.forEach((restaurants, normalizedName) => {
-                    // Sort by source (local first) and then by timestamp (newer first)
-                    restaurants.sort((a, b) => {
-                        const aSource = a.source || 'local';
-                        const bSource = b.source || 'local';
-                        
-                        // Priority 1: Local over remote
-                        if (aSource === 'local' && bSource === 'remote') return -1;
-                        if (aSource === 'remote' && bSource === 'local') return 1;
-                        
-                        // Priority 2: Newer over older
-                        const aDate = a.timestamp ? new Date(a.timestamp) : new Date(0);
-                        const bDate = b.timestamp ? new Date(b.timestamp) : new Date(0);
-                        return bDate - aDate;
-                    });
-                    
-                    // Keep the highest priority restaurant
-                    uniqueRestaurants.set(normalizedName, restaurants[0]);
-                });
-                
-                processedRestaurants = Array.from(uniqueRestaurants.values());
-                console.log(`After deduplication: ${processedRestaurants.length} restaurants`);
-            }
-            
-            // Enhance restaurants with curator names, concepts, and location data
-            for (const restaurant of processedRestaurants) {
-                // Add curator name if available
-                if (restaurant.curatorId) {
-                    const curator = await this.db.curators.get(restaurant.curatorId);
-                    restaurant.curatorName = curator ? curator.name : 'Unknown';
-                    restaurant.curatorId = curator ? curator.id : null;
-                }
-                
-                // Add source metadata if not present
-                if (!restaurant.source) {
-                    restaurant.source = 'local';
-                }
-                
-                // Get concept IDs for this restaurant
-                const restaurantConcepts = await this.db.restaurantConcepts
-                    .where('restaurantId')
-                    .equals(restaurant.id)
-                    .toArray();
-                    
-                // Deduplicate concepts (some may have been duplicated)
-                const conceptSet = new Set();
-                const uniqueConceptIds = [];
-                restaurantConcepts.forEach(rc => {
-                    if (!conceptSet.has(rc.conceptId)) {
-                        conceptSet.add(rc.conceptId);
-                        uniqueConceptIds.push(rc.conceptId);
-                    }
-                });
-                
-                // Get full concept data
-                restaurant.concepts = await this.db.concepts
-                    .where('id')
-                    .anyOf(uniqueConceptIds)
-                    .toArray();
-                    
-                // Get location data
-                const locations = await this.db.restaurantLocations
-                    .where('restaurantId')
-                    .equals(restaurant.id)
-                    .toArray();
-                restaurant.location = locations.length > 0 ? locations[0] : null;
-                
-                // Get photo count
-                const photos = await this.db.restaurantPhotos
-                    .where('restaurantId')
-                    .equals(restaurant.id)
-                    .count();
-                restaurant.photoCount = photos;
-            }
-            
-            return processedRestaurants;
         } catch (error) {
-            console.error('Error getting restaurants:', error);
+            console.error("Error getting restaurants:", error);
             throw error;
         }
+    }
+
+    /**
+     * Process restaurants by adding related data and optionally deduplicating
+     * @param {Array} restaurants - Raw restaurant records
+     * @param {boolean} deduplicate - Whether to deduplicate by name
+     * @returns {Promise<Array>} - Enhanced restaurant objects
+     */
+    async processRestaurants(restaurants, deduplicate = true) {
+        console.log(`Retrieved ${restaurants.length} raw restaurants from database`);
+        
+        // Load additional data
+        const result = [];
+        const processedNames = new Set();
+        
+        for (const restaurant of restaurants) {
+            // Skip duplicates if deduplicate is enabled
+            if (deduplicate && restaurant.name && processedNames.has(restaurant.name.toLowerCase())) {
+                continue;
+            }
+            
+            // Get curator name
+            let curatorName = "Unknown";
+            if (restaurant.curatorId) {
+                const curator = await this.db.curators.get(restaurant.curatorId);
+                if (curator) {
+                    curatorName = curator.name;
+                }
+            }
+            
+            // Get concepts
+            const restaurantConcepts = await this.db.restaurantConcepts
+                .where("restaurantId")
+                .equals(restaurant.id)
+                .toArray();
+            
+            const concepts = [];
+            for (const rc of restaurantConcepts) {
+                const concept = await this.db.concepts.get(rc.conceptId);
+                if (concept) {
+                    concepts.push({
+                        category: concept.category,
+                        value: concept.value
+                    });
+                }
+            }
+            
+            // Get location
+            const location = await this.db.restaurantLocations
+                .where("restaurantId")
+                .equals(restaurant.id)
+                .first();
+            
+            // Get photo count
+            const photoCount = await this.db.restaurantPhotos
+                .where("restaurantId")
+                .equals(restaurant.id)
+                .count();
+            
+            // Add to result
+            result.push({
+                ...restaurant,
+                curatorName,
+                concepts,
+                location,
+                photoCount
+            });
+            
+            if (deduplicate && restaurant.name) {
+                processedNames.add(restaurant.name.toLowerCase());
+            }
+        }
+        
+        console.log(`After deduplication: ${result.length} restaurants`);
+        return result;
     }
 
     /**

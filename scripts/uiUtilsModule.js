@@ -102,75 +102,221 @@ window.uiUtils = {
 };
 
 /**
- * UI Utilities module class for modular architecture
+ * UI Utilities Module - Provides common UI functionalities
+ * This module is designed to be used both directly and as an extension to uiManager
  */
 class UIUtilsModule {
-    constructor(uiManager) {
+    constructor(uiManager = null) {
         this.uiManager = uiManager;
+        console.log('UI Utils Module initialized');
+    }
+
+    init() {
+        console.log('Initializing UI Utils Module');
+        this.patchUIManager();
     }
 
     /**
-     * Initialize the module and patch global uiManager if needed
+     * Patches the global uiManager with utility functions if they're missing
+     * Uses a declarative approach for better maintainability
      */
-    init() {
-        console.log('Initializing UI Utils Module');
+    patchUIManager() {
+        if (!window.uiManager) {
+            console.log('UIManager not available for patching');
+            return;
+        }
         
-        // Patch the global uiManager with our utility functions if they're missing
-        if (window.uiManager) {
-            if (typeof window.uiManager.showLoading !== 'function') {
-                console.log('Patching uiManager.showLoading with global utility function');
-                window.uiManager.showLoading = window.uiUtils.showLoading.bind(window.uiUtils);
+        // Define functions to patch with consistent interface
+        const functionsToPath = {
+            showLoading: this.showLoading,
+            hideLoading: this.hideLoading,
+            updateLoadingMessage: this.updateLoadingMessage,
+            showNotification: this.showNotification,
+            getCurrentPosition: this.getCurrentPosition
+        };
+        
+        // Apply patches only where methods are missing
+        let patchedAny = false;
+        
+        Object.entries(functionsToPath).forEach(([methodName, methodFunction]) => {
+            if (typeof window.uiManager[methodName] !== 'function') {
+                console.log(`Patching uiManager.${methodName} with utility function`);
+                window.uiManager[methodName] = methodFunction.bind(this);
+                patchedAny = true;
             }
-            
-            if (typeof window.uiManager.hideLoading !== 'function') {
-                console.log('Patching uiManager.hideLoading with global utility function');
-                window.uiManager.hideLoading = window.uiUtils.hideLoading.bind(window.uiUtils);
-            }
-            
-            if (typeof window.uiManager.updateLoadingMessage !== 'function') {
-                console.log('Patching uiManager.updateLoadingMessage with global utility function');
-                window.uiManager.updateLoadingMessage = window.uiUtils.updateLoadingMessage.bind(window.uiUtils);
-            }
-            
-            if (typeof window.uiManager.showNotification !== 'function') {
-                console.log('Patching uiManager.showNotification with global utility function');
-                window.uiManager.showNotification = window.uiUtils.showNotification.bind(window.uiUtils);
-            }
-            
-            if (typeof window.uiManager.getCurrentPosition !== 'function') {
-                console.log('Patching uiManager.getCurrentPosition with global utility function');
-                window.uiManager.getCurrentPosition = window.uiUtils.getCurrentPosition.bind(window.uiUtils);
-            }
+        });
+        
+        if (patchedAny) {
+            console.log('uiManager patched with missing utility methods');
+        } else {
+            console.log('uiManager has all required methods, no patching needed');
         }
     }
 
-    // These methods delegate to the global utilities
-    showLoading(message) {
-        window.uiUtils.showLoading(message);
+    /**
+     * Shows a loading overlay with a message
+     * @param {string} message - Message to display
+     */
+    showLoading(message = 'Loading...') {
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const loadingMessage = loadingOverlay?.querySelector('.loading-message');
+        
+        if (loadingOverlay && loadingMessage) {
+            loadingMessage.textContent = message;
+            loadingOverlay.classList.remove('hidden');
+        } else {
+            console.warn('Loading overlay elements not found, creating temporary overlay');
+            this.createTemporaryLoadingOverlay(message);
+        }
     }
 
+    /**
+     * Creates a temporary loading overlay when the standard one isn't available
+     * @param {string} message - Message to display
+     */
+    createTemporaryLoadingOverlay(message) {
+        // Clean up any existing temporary overlays
+        this.removeTemporaryLoadingOverlay();
+        
+        const tempOverlay = document.createElement('div');
+        tempOverlay.id = 'temp-loading-overlay';
+        tempOverlay.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+        
+        tempOverlay.innerHTML = `
+            <div class="bg-white p-6 rounded-lg flex flex-col items-center">
+                <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
+                <p class="loading-message text-gray-700 font-medium">${message}</p>
+            </div>
+        `;
+        
+        document.body.appendChild(tempOverlay);
+    }
+
+    /**
+     * Removes any temporary loading overlay that might have been created
+     */
+    removeTemporaryLoadingOverlay() {
+        const tempOverlay = document.getElementById('temp-loading-overlay');
+        if (tempOverlay) {
+            document.body.removeChild(tempOverlay);
+        }
+    }
+
+    /**
+     * Hides the loading overlay
+     */
     hideLoading() {
-        window.uiUtils.hideLoading();
+        const loadingOverlay = document.getElementById('loading-overlay');
+        if (loadingOverlay) {
+            loadingOverlay.classList.add('hidden');
+        }
+        
+        // Also remove any temporary overlay if it exists
+        this.removeTemporaryLoadingOverlay();
     }
-    
+
+    /**
+     * Updates the message on the loading overlay
+     * @param {string} message - New message to display
+     */
     updateLoadingMessage(message) {
-        window.uiUtils.updateLoadingMessage(message);
+        const loadingOverlay = document.getElementById('loading-overlay');
+        const loadingMessage = loadingOverlay?.querySelector('.loading-message');
+        
+        if (loadingOverlay && loadingMessage) {
+            loadingMessage.textContent = message;
+        }
+        
+        // Also update temporary overlay if it exists
+        const tempOverlay = document.getElementById('temp-loading-overlay');
+        const tempMessage = tempOverlay?.querySelector('.loading-message');
+        if (tempMessage) {
+            tempMessage.textContent = message;
+        }
     }
 
+    /**
+     * Shows a notification message
+     * @param {string} message - Notification message
+     * @param {string} type - Notification type (success, error, warning, info)
+     */
     showNotification(message, type = 'success') {
-        window.uiUtils.showNotification(message, type);
+        if (typeof Toastify !== 'function') {
+            console.warn('Toastify not available, using alert fallback');
+            alert(message);
+            return;
+        }
+        
+        // Map type to colors based on CSS variables
+        const colorMap = {
+            success: getComputedStyle(document.documentElement).getPropertyValue('--success') || '#10b981',
+            error: getComputedStyle(document.documentElement).getPropertyValue('--error') || '#ef4444',
+            warning: getComputedStyle(document.documentElement).getPropertyValue('--warning') || '#f59e0b',
+            info: getComputedStyle(document.documentElement).getPropertyValue('--info') || '#3b82f6'
+        };
+        
+        const backgroundColor = colorMap[type] || colorMap.info;
+        
+        Toastify({
+            text: message,
+            duration: 3000,
+            gravity: "top",
+            position: "center",
+            backgroundColor: backgroundColor,
+            stopOnFocus: true,
+            className: `notification-${type}`
+        }).showToast();
     }
 
-    getCurrentPosition() {
-        return window.uiUtils.getCurrentPosition();
+    /**
+     * Gets the current geolocation position with improved error handling
+     * @returns {Promise<GeolocationPosition>}
+     */
+    async getCurrentPosition() {
+        return new Promise((resolve, reject) => {
+            if (!navigator.geolocation) {
+                reject(new Error('Geolocation is not supported by your browser'));
+                return;
+            }
+            
+            // Show a loading indicator during geolocation request
+            this.showLoading('Getting your location...');
+            
+            navigator.geolocation.getCurrentPosition(
+                (position) => {
+                    this.hideLoading();
+                    resolve(position);
+                },
+                (error) => {
+                    this.hideLoading();
+                    let errorMessage = 'Unknown error occurred while getting your location.';
+                    
+                    switch (error.code) {
+                        case error.PERMISSION_DENIED:
+                            errorMessage = 'Location access denied. Please enable location services.';
+                            break;
+                        case error.POSITION_UNAVAILABLE:
+                            errorMessage = 'Location information is unavailable. Please try again.';
+                            break;
+                        case error.TIMEOUT:
+                            errorMessage = 'Location request timed out. Please try again.';
+                            break;
+                    }
+                    
+                    reject(new Error(errorMessage));
+                },
+                {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 0
+                }
+            );
+        });
     }
 }
 
-// Export the class - this will be used as a module
-window.UIUtilsModule = UIUtilsModule;
-
-// Create an instance that can be used directly
-window.uiUtilsModule = new UIUtilsModule();
-
-// Initialize immediately to patch global uiManager
-window.uiUtilsModule.init();
+// Create a global instance if it doesn't exist already
+if (!window.uiUtils) {
+    window.uiUtils = new UIUtilsModule();
+    console.log('Global uiUtils instance created');
+}

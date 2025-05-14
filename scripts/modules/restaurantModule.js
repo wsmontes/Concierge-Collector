@@ -114,16 +114,16 @@ class RestaurantModule {
 
     /**
      * Loads restaurant list with enhanced source indicators and debugging
-     * @param {number} curatorId - Current curator's ID
+     * @param {number|string} curatorId - Current curator's ID
      * @param {boolean} filterEnabled - Whether to filter by curator
      */
     async loadRestaurantList(curatorId, filterEnabled) {
         try {
-            console.log(`Loading restaurant list for curatorId: ${curatorId}, filterEnabled: ${filterEnabled}`);
+            console.log(`Loading restaurant list for curatorId: ${curatorId} (type: ${typeof curatorId}), filterEnabled: ${filterEnabled}`);
             
-            // Get restaurants with filter options
+            // Get restaurants with filter options - convert curatorId to string for consistent comparison
             const options = {
-                curatorId: curatorId,
+                curatorId: String(curatorId),
                 onlyCuratorRestaurants: filterEnabled,
                 deduplicate: true // Enable deduplication by name
             };
@@ -140,6 +140,21 @@ class RestaurantModule {
             });
             console.log(`Source distribution - Local: ${sourceCount.local}, Remote: ${sourceCount.remote}, Undefined: ${sourceCount.undefined}`);
             
+            // If filtering is enabled but no restaurants found, double-check if the filter is working correctly
+            if (filterEnabled && restaurants.length === 0) {
+                console.warn(`No restaurants found with filter. Checking if any restaurants exist with curatorId: ${curatorId}`);
+                
+                // Get a raw count of restaurants from this curator to verify data exists
+                const allRestaurantsForCurator = await dataStorage.db.restaurants
+                    .where('curatorId')
+                    .equals(curatorId)
+                    .or('curatorId')
+                    .equals(Number(curatorId))
+                    .toArray();
+                
+                console.log(`Direct database query found ${allRestaurantsForCurator.length} restaurants for curatorId: ${curatorId}`);
+            }
+            
             this.uiManager.restaurantsContainer.innerHTML = '';
             
             if (restaurants.length === 0) {
@@ -151,8 +166,8 @@ class RestaurantModule {
             restaurants.sort((a, b) => a.name.localeCompare(b.name));
             
             for (const restaurant of restaurants) {
-                // Add this debug line to check each restaurant's source
-                console.log(`Restaurant "${restaurant.name}" (ID: ${restaurant.id}) - source: ${restaurant.source}, serverId: ${restaurant.serverId || 'none'}`);
+                // Add this debug line to check each restaurant's source and curator
+                console.log(`Restaurant "${restaurant.name}" (ID: ${restaurant.id}) - source: ${restaurant.source}, serverId: ${restaurant.serverId || 'none'}, curatorId: ${restaurant.curatorId}`);
                 
                 const card = document.createElement('div');
                 card.className = 'restaurant-card bg-white p-4 rounded-lg shadow hover:shadow-md transition-all';
