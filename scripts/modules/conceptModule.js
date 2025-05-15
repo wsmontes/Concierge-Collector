@@ -782,18 +782,39 @@ class ConceptModule {
             const isDuplicate = this.isDuplicateConcept(mostSimilar.category, mostSimilar.value);
             
             if (!isDuplicate) {
+                // Add to current concepts only if it's not already there
                 this.uiManager.currentConcepts.push({
                     category: mostSimilar.category,
                     value: mostSimilar.value
                 });
-                this.renderConcepts();
-                this.safeShowNotification(`Added existing concept: ${mostSimilar.value}`);
+                
+                // Show notification about using existing concept
+                const notification = `Using existing concept: ${mostSimilar.value}`;
+                if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
+                    window.uiUtils.showNotification(notification);
+                } else if (this.uiManager && typeof this.uiManager.showNotification === 'function') {
+                    this.uiManager.showNotification(notification);
+                } else {
+                    console.log(notification);
+                }
             } else {
-                this.safeShowNotification(`Concept already exists: ${mostSimilar.value}`, 'warning');
+                // Already in concepts list, show informational message
+                const notification = `Concept "${mostSimilar.value}" already added`;
+                if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
+                    window.uiUtils.showNotification(notification, 'info');
+                } else if (this.uiManager && typeof this.uiManager.showNotification === 'function') {
+                    this.uiManager.showNotification(notification, 'info');
+                } else {
+                    console.log(notification);
+                }
             }
             
+            // Always remove the modal
             document.body.removeChild(modalContainer);
             document.body.style.overflow = '';
+            
+            // Update concepts display
+            this.updateConceptsDisplay();
         });
         
         modalContainer.querySelector('#use-new').addEventListener('click', () => {

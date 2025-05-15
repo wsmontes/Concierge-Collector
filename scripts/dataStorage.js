@@ -781,20 +781,35 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
     }
 
     /**
-     * Update a restaurant's server sync status
+     * Update restaurant sync status after successful server sync
      * @param {number} restaurantId - Local restaurant ID
-     * @param {number} serverId - Server restaurant ID
-     * @returns {Promise<void>}
+     * @param {string|number} serverId - Server-assigned ID
+     * @param {string} source - Data source ('remote' by default)
+     * @returns {Promise<void>} - Promise that resolves when update completes
      */
-    async updateRestaurantSyncStatus(restaurantId, serverId) {
+    async updateRestaurantSyncStatus(restaurantId, serverId, source = 'remote') {
         try {
-            // FIXED: Explicitly update source field when syncing to server
-            await this.db.restaurants.update(restaurantId, {
-                source: 'remote', // Mark as remote since it's now synced with the server
-                serverId: serverId // Store the server ID
+            console.log(`Updating sync status for restaurant ${restaurantId} with server ID ${serverId} and source ${source}`);
+            
+            // Validate parameters
+            if (!restaurantId) {
+                throw new Error('Missing required parameter: restaurantId');
+            }
+            if (!serverId) {
+                throw new Error('Missing required parameter: serverId');
+            }
+            
+            // Convert ID types for consistency
+            const localId = Number(restaurantId);
+            
+            // Update restaurant record
+            await this.db.restaurants.update(localId, { 
+                serverId: String(serverId),
+                source: source
             });
             
-            console.log(`Restaurant ${restaurantId} marked as synced with server ID ${serverId}`);
+            console.log(`Restaurant ${localId} sync status updated. Server ID: ${serverId}, Source: ${source}`);
+            return true;
         } catch (error) {
             console.error('Error updating restaurant sync status:', error);
             throw error;
