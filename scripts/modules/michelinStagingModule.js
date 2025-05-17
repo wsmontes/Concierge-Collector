@@ -265,42 +265,64 @@ if (typeof window.MichelinStagingModule === 'undefined') {
         }
         
         /**
-         * Create a menu button if needed - positioned next to Add Restaurant button
+         * Create a menu button if needed - positioned below the Recording Section
          */
         createMenuButtonIfNeeded() {
             if (!document.getElementById('open-staging-search')) {
-                // First try to find the Add Restaurant button
-                const addRestaurantBtn = document.getElementById('add-restaurant');
+                // Look for the recording section container
+                const recordingSection = document.getElementById('recording-section');
                 
-                if (addRestaurantBtn) {
-                    // Create button with matching style to Add Restaurant button
+                if (recordingSection) {
+                    // Create a container for the button that will be placed below the recording section
+                    const buttonContainer = document.createElement('div');
+                    buttonContainer.className = 'michelin-button-container flex justify-center my-4';
+                    
+                    // Create the button with prominent styling
                     const button = document.createElement('button');
                     button.id = 'open-staging-search';
+                    button.className = 'flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md shadow transition-colors';
+                    button.innerHTML = `
+                        <span class="material-icons mr-2">stars</span>
+                        Search Michelin Restaurants
+                    `;
                     
-                    // Copy the class list from the Add Restaurant button
-                    button.className = addRestaurantBtn.className;
+                    buttonContainer.appendChild(button);
                     
-                    // Adjust colors from blue to red
-                    button.className = button.className
-                        .replace(/bg-blue-\d+/g, 'bg-red-600')
-                        .replace(/hover:bg-blue-\d+/g, 'hover:bg-red-700');
+                    // Insert the button container after the recording section
+                    recordingSection.parentNode.insertBefore(buttonContainer, recordingSection.nextSibling);
                     
-                    button.innerHTML = '<span class="material-icons mr-1">stars</span> Michelin Search';
-                    
-                    // Insert button right after the Add Restaurant button
-                    if (addRestaurantBtn.parentNode) {
-                        addRestaurantBtn.parentNode.insertBefore(button, addRestaurantBtn.nextSibling);
-                        
-                        // Add a margin to create space between buttons
-                        button.classList.add('ml-2');
-                    }
-                    
-                    button.addEventListener('click', () => this.openModal());
-                    console.log('Added Michelin search button next to Add Restaurant button');
+                    console.log('Michelin search button added below recording section');
                     return;
                 }
                 
-                // Fallback to original method if Add Restaurant button not found
+                // Fallback if recording section is not found
+                // First try to find a suitable container to append to
+                const recordContainer = document.querySelector('#record-container') || 
+                                       document.querySelector('.record-container') ||
+                                       document.querySelector('#content-container');
+                
+                if (recordContainer) {
+                    // Create a container for the button
+                    const buttonContainer = document.createElement('div');
+                    buttonContainer.className = 'michelin-button-container flex justify-center my-4';
+                    
+                    // Create the button
+                    const button = document.createElement('button');
+                    button.id = 'open-staging-search';
+                    button.className = 'flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-md shadow transition-colors';
+                    button.innerHTML = `
+                        <span class="material-icons mr-2">stars</span>
+                        Search Michelin Restaurants
+                    `;
+                    
+                    buttonContainer.appendChild(button);
+                    recordContainer.appendChild(buttonContainer);
+                    
+                    console.log('Michelin search button added to record container (fallback)');
+                    return;
+                }
+                
+                // Ultimate fallback - if all else fails, add to header as before
                 const menuContainer = document.querySelector('.header-actions') || 
                                      document.querySelector('header nav ul') || 
                                      document.querySelector('header');
@@ -308,37 +330,15 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                 if (menuContainer) {
                     const button = document.createElement('button');
                     button.id = 'open-staging-search';
-                    button.className = 'bg-red-600 hover:bg-red-700 text-white py-2 px-3 rounded-md shadow-sm flex items-center text-sm';
-                    button.innerHTML = '<span class="material-icons mr-1">stars</span> Michelin Search';
-                    
-                    // Add to container
-                    if (menuContainer.tagName === 'UL') {
-                        const li = document.createElement('li');
-                        li.className = 'ml-2';
-                        li.appendChild(button);
-                        menuContainer.appendChild(li);
-                    } else {
-                        menuContainer.appendChild(button);
-                    }
-                    
-                    button.addEventListener('click', () => this.openModal());
-                    console.log('Added Michelin search button to navigation');
+                    button.className = 'flex items-center px-3 py-1 ml-2 bg-red-600 hover:bg-red-700 text-white rounded text-sm';
+                    button.innerHTML = `
+                        <span class="material-icons text-sm mr-1">stars</span>
+                        Michelin
+                    `;
+                    menuContainer.appendChild(button);
+                    console.log('Michelin search button added to header (last resort fallback)');
                 } else {
-                    // Add floating action button if no menu container found
-                    const fab = document.createElement('div');
-                    fab.className = 'fixed right-4 bottom-20 z-20';
-                    
-                    const button = document.createElement('button');
-                    button.id = 'open-staging-search';
-                    button.className = 'bg-red-600 hover:bg-red-700 text-white w-12 h-12 rounded-full shadow-lg flex items-center justify-center';
-                    button.innerHTML = '<span class="material-icons">stars</span>';
-                    button.title = "Search Michelin Restaurants";
-                    
-                    fab.appendChild(button);
-                    document.body.appendChild(fab);
-                    
-                    button.addEventListener('click', () => this.openModal());
-                    console.log('Added floating Michelin search button');
+                    console.warn('Could not find suitable container for Michelin search button');
                 }
             }
         }
