@@ -791,19 +791,44 @@ if (typeof window.MichelinStagingModule === 'undefined') {
             try {
                 // Check if curator is set
                 if (!window.uiManager || !window.uiManager.currentCurator) {
-                    this.showNotification('Please set up curator information first', 'error');
-                    return;
+                    throw new Error('Please set up curator information first');
                 }
                 
                 // Show loading indicator
                 if (window.uiUtils && typeof window.uiUtils.showLoading === 'function') {
-                    window.uiUtils.showLoading('Importing restaurant...');
+                    window.uiUtils.showLoading('Processing restaurant data...');
                 }
                 
-                console.log('Importing restaurant:', restaurant);
+                console.log('Importing restaurant to form:', restaurant);
                 
-                // Extract concepts from the restaurant data
-                const concepts = await this.extractConceptsFromRestaurant(restaurant);
+                // Extract basic concepts from the restaurant data
+                const basicConcepts = await this.extractConceptsFromRestaurant(restaurant);
+                
+                // Process the review as if it were a transcription
+                let allConcepts = [...basicConcepts];
+                
+                if (restaurant.review && window.uiManager && window.uiManager.conceptModule) {
+                    try {
+                        // Extract concepts from the review using the conceptModule's functionality
+                        if (typeof window.uiManager.conceptModule.extractConcepts === 'function') {
+                            const extractedConcepts = await window.uiManager.conceptModule.extractConcepts(restaurant.review);
+                            
+                            if (extractedConcepts && extractedConcepts.length > 0) {
+                                console.log('AI extracted additional concepts from review:', extractedConcepts);
+                                
+                                // Add non-duplicate concepts
+                                extractedConcepts.forEach(newConcept => {
+                                    if (!this.conceptExists(allConcepts, newConcept.category, newConcept.value)) {
+                                        allConcepts.push(newConcept);
+                                    }
+                                });
+                            }
+                        }
+                    } catch (conceptError) {
+                        console.warn('Error extracting concepts from review:', conceptError);
+                        // Continue with basic concepts only
+                    }
+                }
                 
                 // Prepare location data
                 let location = null;
@@ -815,42 +840,88 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                     };
                 }
                 
-                // Save to database
-                const savedId = await dataStorage.saveRestaurant(
-                    restaurant.name,
-                    window.uiManager.currentCurator.id,
-                    concepts,
-                    location,
-                    [], // No photos
-                    restaurant.review || '', // Transcription from review
-                    restaurant.review || '', // Description from review
-                    'michelin', // Source
-                    null // No server ID yet
-                );
-                
                 // Hide loading
                 if (window.uiUtils && typeof window.uiUtils.hideLoading === 'function') {
                     window.uiUtils.hideLoading();
                 }
                 
-                // Show success notification
-                this.showNotification(`Successfully imported "${restaurant.name}"`, 'success');
-                
-                // Close the modal
-                this.closeModal();
-                
-                // Refresh restaurant list if possible
-                if (window.uiManager && 
-                    window.uiManager.restaurantModule && 
-                    typeof window.uiManager.restaurantModule.loadRestaurantList === 'function') {
+                // Populate the restaurant form instead of saving directly
+                if (window.uiManager) {
+                    // Set restaurant data in uiManager
+                    window.uiManager.isEditingRestaurant = false; // This is a new restaurant
+                    window.uiManager.editingRestaurantId = null;
+                    window.uiManager.currentConcepts = allConcepts || [];
+                    window.uiManager.currentLocation = location;
+                    window.uiManager.currentPhotos = []; // No photos from import
                     
-                    await window.uiManager.restaurantModule.loadRestaurantList(
-                        window.uiManager.currentCurator.id, 
-                        await dataStorage.getSetting('filterByActiveCurator', true)
+                    // Show restaurant form section
+                    window.uiManager.showRestaurantFormSection();
+                    
+                    // Populate name field
+                    const nameInput = document.getElementById('restaurant-name');
+                    if (nameInput) {
+                        nameInput.value = restaurant.name || '';
+                    }
+                    
+                    // Populate description/transcription fields
+                    const descriptionInput = document.getElementById('restaurant-description');
+                    if (descriptionInput) {
+                        descriptionInput.value = restaurant.review || '';
+                    }
+                    
+                    const transcriptionInput = document.getElementById('restaurant-transcription');
+                    if (transcriptionInput) {
+                        transcriptionInput.value = restaurant.review || '';
+                    }
+                    
+                    // Update location display if available
+                    if (location) {
+                        const locationDisplay = document.getElementById('location-display');
+                        if (locationDisplay) {
+                            locationDisplay.innerHTML = `
+                                <p class="text-green-600">Location saved:</p>
+                                <p>Latitude: ${location.latitude.toFixed(6)}</p>
+                                <p>Longitude: ${location.longitude.toFixed(6)}</p>
+                                ${location.address ? `<p>Address: ${location.address}</p>` : ''}
+                            `;
+                        }
+                    }
+                    
+                    // Update concept display
+                    if (window.uiManager.conceptModule && 
+                        typeof window.uiManager.conceptModule.renderConcepts === 'function') {
+                        window.uiManager.conceptModule.renderConcepts();
+                    }
+                    
+                    // Show success notification
+                    this.showNotification(
+                        `Restaurant "${restaurant.name}" imported to form. Review and save when ready.`,
+                        'success'
                     );
+                    
+                    // Close the modal
+                    this.closeModal();
+                    
+                    // Add visual indicator showing this is imported from Michelin
+                    const restaurantFormHeader = document.querySelector('.restaurant-form-section h2');
+                    if (restaurantFormHeader) {
+                        // Remove any existing badge first
+                        const existingBadge = restaurantFormHeader.querySelector('.michelin-badge');
+                        if (existingBadge) {
+                            existingBadge.remove();
+                        }
+                        
+                        // Add Michelin badge
+                        const badge = document.createElement('span');
+                        badge.className = 'michelin-badge ml-2 bg-red-100 text-red-700 text-xs px-2 py-1 rounded-full';
+                        badge.innerHTML = '<span class="material-icons text-xs mr-1" style="font-size:10px;vertical-align:middle;">stars</span>Michelin';
+                        restaurantFormHeader.appendChild(badge);
+                    }
+                    
+                    return true;
+                } else {
+                    throw new Error('UI Manager not available');
                 }
-                
-                return savedId;
             } catch (error) {
                 console.error('Error importing restaurant:', error);
                 
@@ -860,6 +931,7 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                 }
                 
                 this.showNotification(`Failed to import restaurant: ${error.message}`, 'error');
+                return false;
             }
         }
         
