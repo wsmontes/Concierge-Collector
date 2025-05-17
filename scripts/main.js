@@ -19,6 +19,9 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
     }
     
+    // Cleanup browser data before initialization
+    cleanupBrowserData();
+    
     // Initialize the application components in the correct order using our wrapper
     initializeApp().catch(error => {
         console.error('Error during application initialization:', error);
@@ -147,4 +150,64 @@ function initializeBackgroundServices() {
     }, 3500);
     
     console.log('Background services scheduled for initialization');
+}
+
+// Browser data cleanup function - runs at application startup
+function cleanupBrowserData() {
+    console.log('Performing browser data cleanup...');
+    
+    try {
+        // Define keys to preserve in localStorage
+        const preserveKeys = [
+            'openai_api_key',
+            'current_curator_id',
+            'last_sync_time',
+            'filter_by_curator',
+            'debug_mode'
+        ];
+        
+        // Clean localStorage (preserve only essential keys)
+        const keysToRemove = [];
+        for (let i = 0; i < localStorage.length; i++) {
+            const key = localStorage.key(i);
+            if (!preserveKeys.includes(key)) {
+                keysToRemove.push(key);
+            }
+        }
+        
+        // Remove the identified keys
+        keysToRemove.forEach(key => {
+            localStorage.removeItem(key);
+            console.log(`Removed localStorage item: ${key}`);
+        });
+        
+        // Clear sessionStorage completely
+        sessionStorage.clear();
+        console.log('SessionStorage cleared');
+        
+        // Clear non-essential cookies
+        const cookies = document.cookie.split(';');
+        const preserveCookies = ['session_id']; // Add any essential cookies here
+        
+        cookies.forEach(cookie => {
+            const cookieName = cookie.split('=')[0].trim();
+            if (!preserveCookies.includes(cookieName)) {
+                document.cookie = `${cookieName}=; expires=Thu, 01 Jan 1970 00:00:00 GMT; path=/`;
+                console.log(`Removed cookie: ${cookieName}`);
+            }
+        });
+        
+        console.log('Browser data cleanup complete');
+        
+        // Show notification if uiUtils is available
+        if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
+            // Slight delay to ensure notification system is ready
+            setTimeout(() => {
+                window.uiUtils.showNotification('Browser data cleaned up successfully', 'info');
+            }, 1000);
+        }
+        
+    } catch (error) {
+        console.error('Error during browser data cleanup:', error);
+    }
 }

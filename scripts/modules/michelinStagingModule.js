@@ -287,61 +287,16 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                     
                     button.innerHTML = '<span class="material-icons mr-1">stars</span> Michelin Search';
                     
-                    // Create container for responsive button layout if needed
-                    const parentNode = addRestaurantBtn.parentNode;
-                    if (parentNode) {
-                        // Check if we need to create a responsive container
-                        const isContainerNeeded = window.innerWidth < 768 && 
-                            !parentNode.classList.contains('flex') &&
-                            !parentNode.classList.contains('flex-col');
+                    // Insert button right after the Add Restaurant button
+                    if (addRestaurantBtn.parentNode) {
+                        addRestaurantBtn.parentNode.insertBefore(button, addRestaurantBtn.nextSibling);
                         
-                        if (isContainerNeeded) {
-                            // Create a responsive container for buttons
-                            const buttonContainer = document.createElement('div');
-                            buttonContainer.className = 'flex flex-col sm:flex-row w-full gap-2 mb-4';
-                            
-                            // Move the add restaurant button into this container
-                            parentNode.insertBefore(buttonContainer, addRestaurantBtn);
-                            buttonContainer.appendChild(addRestaurantBtn);
-                            
-                            // Add our button to the container
-                            buttonContainer.appendChild(button);
-                            
-                            // Make both buttons full width on mobile
-                            addRestaurantBtn.classList.add('w-full');
-                            button.classList.add('w-full');
-                        } else {
-                            // Standard desktop layout - just insert after
-                            parentNode.insertBefore(button, addRestaurantBtn.nextSibling);
-                            
-                            // Add responsive margin classes
-                            button.classList.add('ml-0', 'mt-2', 'sm:mt-0', 'sm:ml-2');
-                        }
+                        // Add a margin to create space between buttons
+                        button.classList.add('ml-2');
                     }
                     
                     button.addEventListener('click', () => this.openModal());
                     console.log('Added Michelin search button next to Add Restaurant button');
-                    return;
-                }
-                
-                // Mobile-optimized fallback - create a more visible floating button
-                const existingFab = document.getElementById('fab');
-                if (existingFab && window.innerWidth < 768) {
-                    // Create a secondary FAB for Michelin search
-                    const michelinFab = document.createElement('div');
-                    michelinFab.className = 'fixed right-6 bottom-24 z-20';
-                    
-                    const button = document.createElement('button');
-                    button.id = 'open-staging-search';
-                    button.className = 'bg-red-600 hover:bg-red-700 text-white w-14 h-14 rounded-full shadow-lg flex items-center justify-center';
-                    button.innerHTML = '<span class="material-icons">stars</span>';
-                    button.title = "Search Michelin Restaurants";
-                    
-                    michelinFab.appendChild(button);
-                    document.body.appendChild(michelinFab);
-                    
-                    button.addEventListener('click', () => this.openModal());
-                    console.log('Added floating Michelin search button for mobile');
                     return;
                 }
                 
@@ -353,13 +308,13 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                 if (menuContainer) {
                     const button = document.createElement('button');
                     button.id = 'open-staging-search';
-                    button.className = 'bg-red-600 hover:bg-red-700 text-white py-2 px-3 rounded-md shadow-sm flex items-center text-sm w-full sm:w-auto';
+                    button.className = 'bg-red-600 hover:bg-red-700 text-white py-2 px-3 rounded-md shadow-sm flex items-center text-sm';
                     button.innerHTML = '<span class="material-icons mr-1">stars</span> Michelin Search';
                     
                     // Add to container
                     if (menuContainer.tagName === 'UL') {
                         const li = document.createElement('li');
-                        li.className = 'ml-0 mt-2 sm:ml-2 sm:mt-0';
+                        li.className = 'ml-2';
                         li.appendChild(button);
                         menuContainer.appendChild(li);
                     } else {
