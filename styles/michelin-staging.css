@@ -67,6 +67,59 @@
     box-shadow: 0 0 0 2px rgba(154, 0, 2, 0.1);
 }
 
+/* Enhanced dropdown styling */
+#staging-search-form select {
+    appearance: none;
+    background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+    background-position: right 0.5rem center;
+    background-repeat: no-repeat;
+    background-size: 1.5em 1.5em;
+    padding-right: 2.5rem;
+    transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+#staging-search-form select:focus {
+    border-color: #9a0002;
+    outline: none;
+    box-shadow: 0 0 0 2px rgba(154, 0, 2, 0.1);
+}
+
+#staging-search-form select:disabled {
+    background-color: #f3f4f6;
+    cursor: not-allowed;
+}
+
+#staging-search-form label {
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: #4b5563;
+}
+
+/* Search form layout */
+#staging-search-form {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 1rem;
+}
+
+@media (min-width: 768px) {
+    #staging-search-form {
+        grid-template-columns: 1fr 1fr;
+    }
+}
+
+/* Loading animation for dropdowns */
+@keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
+}
+
+#staging-search-form select option[value="loading"] {
+    background: linear-gradient(90deg, #f3f4f6, #e5e7eb, #f3f4f6);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+}
+
 /* Animation for location search */
 @keyframes pulse-location {
     0% { box-shadow: 0 0 0 0 rgba(59, 130, 246, 0.5); }
@@ -104,4 +157,36 @@
 
 #staging-search-results > div {
     animation: fade-in 0.3s ease-out forwards;
+}
+
+/* Pagination styling */
+#staging-pagination {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding-top: 1rem;
+    border-top: 1px solid #e5e7eb;
+}
+
+#staging-pagination button {
+    transition: all 0.2s ease;
+}
+
+#staging-pagination button:not(:disabled):hover {
+    background-color: #e5e7eb;
+    transform: translateY(-1px);
+}
+
+#staging-pagination button:disabled {
+    cursor: not-allowed;
+    opacity: 0.5;
+}
+
+/* Results counter badge */
+#staging-search-results-count {
+    background-color: #f3f4f6;
+    border-radius: 4px;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.875rem;
+    text-align: center;
 }

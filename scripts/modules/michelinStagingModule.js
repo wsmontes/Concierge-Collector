@@ -50,14 +50,45 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                                 <button id="close-staging-search-modal" class="text-gray-500 hover:text-gray-800 text-xl md:text-2xl">&times;</button>
                             </div>
                             <form id="staging-search-form" class="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <input type="text" id="search-staging-name" class="border rounded p-2" placeholder="Restaurant Name">
-                                <input type="text" id="search-staging-city" class="border rounded p-2" placeholder="City">
-                                <input type="text" id="search-staging-country" class="border rounded p-2" placeholder="Country">
-                                <input type="text" id="search-staging-cuisine" class="border rounded p-2" placeholder="Cuisine">
-                                <div class="space-y-2 md:col-span-2">
+                                <div>
+                                    <label for="search-staging-name" class="block text-sm font-medium text-gray-700 mb-1">Restaurant Name</label>
+                                    <input type="text" id="search-staging-name" class="border rounded p-2 w-full" placeholder="Restaurant Name">
+                                </div>
+                                <div>
+                                    <label for="search-staging-country" class="block text-sm font-medium text-gray-700 mb-1">Country</label>
+                                    <select id="search-staging-country" class="border rounded p-2 w-full">
+                                        <option value="">Any Country</option>
+                                        <option value="loading" disabled>Loading countries...</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="search-staging-city" class="block text-sm font-medium text-gray-700 mb-1">City</label>
+                                    <select id="search-staging-city" class="border rounded p-2 w-full" disabled>
+                                        <option value="">Select a Country First</option>
+                                    </select>
+                                </div>
+                                <div>
+                                    <label for="search-staging-cuisine" class="block text-sm font-medium text-gray-700 mb-1">Cuisine</label>
+                                    <select id="search-staging-cuisine" class="border rounded p-2 w-full">
+                                        <option value="">Any Cuisine</option>
+                                        <option value="loading" disabled>Loading cuisines...</option>
+                                    </select>
+                                </div>
+                                <div class="md:col-span-2">
                                     <label class="flex items-center space-x-2">
                                         <input type="checkbox" id="search-staging-location" class="form-checkbox">
                                         <span>Search Near Me</span>
+                                    </label>
+                                </div>
+                                <div class="md:col-span-2">
+                                    <label class="flex items-center space-x-2">
+                                        <span class="text-sm font-medium text-gray-700">Results per page:</span>
+                                        <select id="search-staging-per-page" class="border rounded p-1">
+                                            <option value="10">10</option>
+                                            <option value="20" selected>20</option>
+                                            <option value="50">50</option>
+                                            <option value="100">100</option>
+                                        </select>
                                     </label>
                                 </div>
                             </form>
@@ -79,6 +110,19 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                             <div id="staging-search-results" class="space-y-4 max-h-96 overflow-y-auto">
                                 <p class="text-gray-500 text-center">Search to see Michelin restaurants.</p>
                             </div>
+                            <div id="staging-pagination" class="mt-4 flex items-center justify-between hidden">
+                                <button id="staging-prev-page" class="bg-gray-200 text-gray-700 px-3 py-1 rounded flex items-center disabled:opacity-50">
+                                    <span class="material-icons text-sm mr-1">chevron_left</span>
+                                    Previous
+                                </button>
+                                <div class="text-sm text-gray-600">
+                                    Page <span id="staging-current-page">1</span> of <span id="staging-total-pages">1</span>
+                                </div>
+                                <button id="staging-next-page" class="bg-gray-200 text-gray-700 px-3 py-1 rounded flex items-center disabled:opacity-50">
+                                    Next
+                                    <span class="material-icons text-sm ml-1">chevron_right</span>
+                                </button>
+                            </div>
                         </div>
                     </div>
                 `;
@@ -92,6 +136,31 @@ if (typeof window.MichelinStagingModule === 'undefined') {
             }
         }
         
+        /**
+         * Open the search modal
+         */
+        openModal() {
+            const modal = document.getElementById('restaurant-staging-search-modal');
+            if (modal) {
+                modal.classList.remove('hidden');
+                
+                // Focus the name input
+                setTimeout(() => {
+                    document.getElementById('search-staging-name')?.focus();
+                }, 100);
+                
+                // Load the dropdown options if not already loaded
+                this.loadFilterOptions();
+                
+                // Initialize pagination state
+                this.currentPage = 1;
+                this.totalPages = 1;
+                this.perPage = 20;
+                
+                console.log('Michelin restaurant search modal opened');
+            }
+        }
+
         /**
          * Set up event listeners for the modal
          */
@@ -161,6 +230,38 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                     }
                 });
             }
+            
+            // Add event listeners for the country dropdown
+            const countrySelect = document.getElementById('search-staging-country');
+            if (countrySelect) {
+                countrySelect.addEventListener('change', () => {
+                    this.handleCountryChange(countrySelect.value);
+                });
+            }
+            
+            // Pagination buttons
+            const prevPageBtn = document.getElementById('staging-prev-page');
+            if (prevPageBtn) {
+                prevPageBtn.addEventListener('click', () => {
+                    this.navigatePage('prev');
+                });
+            }
+            
+            const nextPageBtn = document.getElementById('staging-next-page');
+            if (nextPageBtn) {
+                nextPageBtn.addEventListener('click', () => {
+                    this.navigatePage('next');
+                });
+            }
+            
+            const perPageSelect = document.getElementById('search-staging-per-page');
+            if (perPageSelect) {
+                perPageSelect.addEventListener('change', () => {
+                    this.perPage = parseInt(perPageSelect.value, 10);
+                    this.currentPage = 1; // Reset to first page
+                    this.performSearch();
+                });
+            }
         }
         
         /**
@@ -186,16 +287,61 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                     
                     button.innerHTML = '<span class="material-icons mr-1">stars</span> Michelin Search';
                     
-                    // Insert button right after the Add Restaurant button
-                    if (addRestaurantBtn.parentNode) {
-                        addRestaurantBtn.parentNode.insertBefore(button, addRestaurantBtn.nextSibling);
+                    // Create container for responsive button layout if needed
+                    const parentNode = addRestaurantBtn.parentNode;
+                    if (parentNode) {
+                        // Check if we need to create a responsive container
+                        const isContainerNeeded = window.innerWidth < 768 && 
+                            !parentNode.classList.contains('flex') &&
+                            !parentNode.classList.contains('flex-col');
                         
-                        // Add a margin to create space between buttons
-                        button.classList.add('ml-2');
+                        if (isContainerNeeded) {
+                            // Create a responsive container for buttons
+                            const buttonContainer = document.createElement('div');
+                            buttonContainer.className = 'flex flex-col sm:flex-row w-full gap-2 mb-4';
+                            
+                            // Move the add restaurant button into this container
+                            parentNode.insertBefore(buttonContainer, addRestaurantBtn);
+                            buttonContainer.appendChild(addRestaurantBtn);
+                            
+                            // Add our button to the container
+                            buttonContainer.appendChild(button);
+                            
+                            // Make both buttons full width on mobile
+                            addRestaurantBtn.classList.add('w-full');
+                            button.classList.add('w-full');
+                        } else {
+                            // Standard desktop layout - just insert after
+                            parentNode.insertBefore(button, addRestaurantBtn.nextSibling);
+                            
+                            // Add responsive margin classes
+                            button.classList.add('ml-0', 'mt-2', 'sm:mt-0', 'sm:ml-2');
+                        }
                     }
                     
                     button.addEventListener('click', () => this.openModal());
                     console.log('Added Michelin search button next to Add Restaurant button');
+                    return;
+                }
+                
+                // Mobile-optimized fallback - create a more visible floating button
+                const existingFab = document.getElementById('fab');
+                if (existingFab && window.innerWidth < 768) {
+                    // Create a secondary FAB for Michelin search
+                    const michelinFab = document.createElement('div');
+                    michelinFab.className = 'fixed right-6 bottom-24 z-20';
+                    
+                    const button = document.createElement('button');
+                    button.id = 'open-staging-search';
+                    button.className = 'bg-red-600 hover:bg-red-700 text-white w-14 h-14 rounded-full shadow-lg flex items-center justify-center';
+                    button.innerHTML = '<span class="material-icons">stars</span>';
+                    button.title = "Search Michelin Restaurants";
+                    
+                    michelinFab.appendChild(button);
+                    document.body.appendChild(michelinFab);
+                    
+                    button.addEventListener('click', () => this.openModal());
+                    console.log('Added floating Michelin search button for mobile');
                     return;
                 }
                 
@@ -207,13 +353,13 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                 if (menuContainer) {
                     const button = document.createElement('button');
                     button.id = 'open-staging-search';
-                    button.className = 'bg-red-600 hover:bg-red-700 text-white py-2 px-3 rounded-md shadow-sm flex items-center text-sm';
+                    button.className = 'bg-red-600 hover:bg-red-700 text-white py-2 px-3 rounded-md shadow-sm flex items-center text-sm w-full sm:w-auto';
                     button.innerHTML = '<span class="material-icons mr-1">stars</span> Michelin Search';
                     
                     // Add to container
                     if (menuContainer.tagName === 'UL') {
                         const li = document.createElement('li');
-                        li.className = 'ml-2';
+                        li.className = 'ml-0 mt-2 sm:ml-2 sm:mt-0';
                         li.appendChild(button);
                         menuContainer.appendChild(li);
                     } else {
@@ -239,23 +385,6 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                     button.addEventListener('click', () => this.openModal());
                     console.log('Added floating Michelin search button');
                 }
-            }
-        }
-        
-        /**
-         * Open the search modal
-         */
-        openModal() {
-            const modal = document.getElementById('restaurant-staging-search-modal');
-            if (modal) {
-                modal.classList.remove('hidden');
-                
-                // Focus the name input
-                setTimeout(() => {
-                    document.getElementById('search-staging-name')?.focus();
-                }, 100);
-                
-                console.log('Michelin restaurant search modal opened');
             }
         }
         
@@ -289,9 +418,22 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                 countDiv.classList.add('hidden');
             }
             
+            // Hide pagination
+            const paginationDiv = document.getElementById('staging-pagination');
+            if (paginationDiv) {
+                paginationDiv.classList.add('hidden');
+            }
+            
+            // Reset city dropdown
+            this.handleCountryChange('');
+            
             // Clear current location data
             this.currentLatitude = null;
             this.currentLongitude = null;
+            
+            // Reset pagination state
+            this.currentPage = 1;
+            this.totalPages = 1;
             
             console.log('Search form reset');
         }
@@ -367,23 +509,39 @@ if (typeof window.MichelinStagingModule === 'undefined') {
         
         /**
          * Perform the search with current form values
+         * @param {boolean} resetPage - Whether to reset to page 1 (default: true)
          */
-        async performSearch() {
+        async performSearch(resetPage = true) {
             if (this.isLoading) return;
             
             try {
                 this.showLoading();
                 
-                // Get form values
+                // Reset to page 1 if specified
+                if (resetPage) {
+                    this.currentPage = 1;
+                }
+                
+                // Get form values - updated for select dropdowns
                 const form = document.getElementById('staging-search-form');
                 if (!form) return;
                 
                 const params = {
-                    name: form.querySelector('#search-staging-name')?.value || '',
-                    city: form.querySelector('#search-staging-city')?.value || '',
-                    country: form.querySelector('#search-staging-country')?.value || '',
-                    cuisine: form.querySelector('#search-staging-cuisine')?.value || ''
+                    name: document.getElementById('search-staging-name')?.value || '',
+                    country: document.getElementById('search-staging-country')?.value || '',
+                    cuisine: document.getElementById('search-staging-cuisine')?.value || '',
+                    page: this.currentPage,
+                    per_page: this.perPage || 20
                 };
+                
+                // IMPORTANT: The API expects 'location' parameter, not 'city'
+                // Add the city value to the location parameter
+                const cityValue = document.getElementById('search-staging-city')?.value || '';
+                if (cityValue) {
+                    params.location = cityValue;
+                    // Do not set city parameter - it causes 500 errors
+                    // params.city = cityValue; <- REMOVING THIS
+                }
                 
                 // Add location if available and checkbox is checked
                 const locationCheckbox = document.getElementById('search-staging-location');
@@ -392,6 +550,9 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                     params.longitude = this.currentLongitude;
                     params.tolerance = 0.05; // Approximately 5km radius
                 }
+                
+                // Debug the final request parameters
+                console.log('Search parameters:', params);
                 
                 // Build query string (only include non-empty params)
                 const query = Object.entries(params)
@@ -404,6 +565,9 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                 
                 // Render results
                 this.renderResults(results);
+                
+                // Update pagination UI
+                this.updatePaginationUI();
             } catch (error) {
                 console.error('Search error:', error);
                 this.showSearchError(error.message);
@@ -420,34 +584,108 @@ if (typeof window.MichelinStagingModule === 'undefined') {
         async fetchResults(url) {
             console.log('Fetching restaurants from:', url);
             
-            const response = await fetch(url);
+            // Add retry functionality for server errors
+            const MAX_RETRIES = 2;
+            let retries = 0;
+            let lastError = null;
             
-            if (!response.ok) {
-                throw new Error(`API returned error: ${response.status} ${response.statusText}`);
+            while (retries <= MAX_RETRIES) {
+                try {
+                    // If we're retrying, add a small delay
+                    if (retries > 0) {
+                        // Wait longer with each retry (exponential backoff)
+                        const delay = Math.pow(2, retries) * 1000;
+                        console.log(`Retry ${retries}/${MAX_RETRIES} after ${delay}ms delay...`);
+                        await new Promise(resolve => setTimeout(resolve, delay));
+                    }
+                    
+                    const response = await fetch(url, {
+                        // Add cache control to avoid potential caching issues on retries
+                        cache: 'no-store',
+                        headers: {
+                            'Accept': 'application/json',
+                            'Cache-Control': 'no-cache'
+                        }
+                    });
+                    
+                    // Handle different error cases with specific messages
+                    if (!response.ok) {
+                        // For 500 errors, usually server-side issues
+                        if (response.status === 500) {
+                            // If we have retries left, try again
+                            if (retries < MAX_RETRIES) {
+                                retries++;
+                                lastError = new Error(`Server error (${response.status}): The server encountered an issue. Retrying...`);
+                                console.warn(`Server returned 500 error. Retry ${retries}/${MAX_RETRIES}`);
+                                continue;
+                            } else {
+                                throw new Error(`The server encountered an internal error. This might be due to a temporary issue or invalid search parameters. Please try simplifying your search criteria.`);
+                            }
+                        }
+                        // For 404 errors, usually path not found
+                        else if (response.status === 404) {
+                            throw new Error(`The requested information could not be found (${response.status})`);
+                        }
+                        // For 429 errors, usually rate limiting
+                        else if (response.status === 429) {
+                            throw new Error(`Too many requests. Please wait a moment before trying again (${response.status})`);
+                        }
+                        // Generic error for other cases
+                        else {
+                            throw new Error(`API returned error: ${response.status} ${response.statusText}`);
+                        }
+                    }
+                    
+                    const data = await response.json();
+                    console.log('API response:', data);
+                    
+                    // Handle paginated response format
+                    if (data && data.results && Array.isArray(data.results)) {
+                        // Store pagination details
+                        if (data.total !== undefined) {
+                            this.totalCount = data.total;
+                        }
+                        if (data.page !== undefined) {
+                            this.currentPage = data.page;
+                        } else {
+                            this.currentPage = 1;
+                        }
+                        if (data.per_page !== undefined) {
+                            this.perPage = data.per_page;
+                        }
+                        
+                        // Calculate total pages
+                        this.totalPages = Math.max(1, Math.ceil(this.totalCount / this.perPage));
+                        
+                        return data.results;
+                    } 
+                    // Handle direct array response (legacy format)
+                    else if (Array.isArray(data)) {
+                        this.totalCount = data.length;
+                        this.totalPages = 1;
+                        this.currentPage = 1;
+                        return data;
+                    } 
+                    else {
+                        throw new Error('Invalid response format from API');
+                    }
+                } catch (error) {
+                    lastError = error;
+                    
+                    // Only retry on network errors or server errors (500s)
+                    if ((error.name === 'TypeError' || error.message.includes('500')) && retries < MAX_RETRIES) {
+                        retries++;
+                        console.warn(`Error during API request (${error.message}). Retry ${retries}/${MAX_RETRIES}`);
+                        continue;
+                    }
+                    
+                    // Otherwise, throw the error to be handled by the caller
+                    throw error;
+                }
             }
             
-            const data = await response.json();
-            console.log('API response:', data);
-            
-            // Different API responses might have different structures
-            if (Array.isArray(data)) {
-                return data;
-            } else if (data.results && Array.isArray(data.results)) {
-                // Store pagination details if available
-                if (data.count !== undefined) {
-                    this.totalCount = data.count;
-                }
-                if (data.page !== undefined) {
-                    this.currentPage = data.page;
-                }
-                if (data.total_pages !== undefined) {
-                    this.totalPages = data.total_pages;
-                }
-                
-                return data.results;
-            } else {
-                throw new Error('Invalid response format from API');
-            }
+            // This will only be reached if we exhausted retries and still failed
+            throw lastError || new Error('Failed to fetch results after retries');
         }
         
         /**
@@ -463,10 +701,12 @@ if (typeof window.MichelinStagingModule === 'undefined') {
             // Store results
             this.searchResults = results;
             
-            // Show count
+            // Show count with pagination info
             if (countDiv) {
-                if (results.length > 0) {
-                    countDiv.textContent = `Found ${results.length} restaurant${results.length !== 1 ? 's' : ''}`;
+                if (this.totalCount > 0) {
+                    const start = (this.currentPage - 1) * this.perPage + 1;
+                    const end = Math.min(this.currentPage * this.perPage, this.totalCount);
+                    countDiv.textContent = `Showing ${start}-${end} of ${this.totalCount} restaurant${this.totalCount !== 1 ? 's' : ''}`;
                     countDiv.classList.remove('hidden');
                 } else {
                     countDiv.classList.add('hidden');
@@ -928,16 +1168,59 @@ if (typeof window.MichelinStagingModule === 'undefined') {
             const resultsDiv = document.getElementById('staging-search-results');
             if (!resultsDiv) return;
             
-            resultsDiv.innerHTML = `
-                <div class="text-center py-6">
-                    <span class="material-icons text-red-500 text-4xl mb-2">error_outline</span>
-                    <p class="text-red-500 font-medium">Search error</p>
-                    <p class="text-gray-600 mt-2">${message || 'An error occurred while searching'}</p>
-                    <button id="staging-retry-btn" class="mt-4 bg-blue-500 text-white px-4 py-2 rounded">
-                        Try Again
-                    </button>
-                </div>
-            `;
+            // Create a more user-friendly error message
+            let friendlyMessage = message;
+            
+            // If it's a 500 error, add more helpful suggestions
+            if (message.includes('500') || message.includes('internal error')) {
+                friendlyMessage = 'The server encountered an issue processing your search. This might be due to:';
+                
+                resultsDiv.innerHTML = `
+                    <div class="text-center py-6">
+                        <span class="material-icons text-red-500 text-4xl mb-2">error_outline</span>
+                        <p class="text-red-500 font-medium">Search error</p>
+                        <p class="text-gray-600 mt-2">${friendlyMessage}</p>
+                        <ul class="text-gray-600 mt-2 list-disc text-left max-w-md mx-auto">
+                            <li class="mb-1">A temporary server issue</li>
+                            <li class="mb-1">Too many search filters applied at once</li>
+                            <li class="mb-1">Special characters in your search terms</li>
+                        </ul>
+                        <p class="text-gray-600 mt-3">Try simplifying your search or try again later.</p>
+                        <div class="mt-4 flex justify-center gap-3">
+                            <button id="staging-retry-btn" class="bg-blue-500 text-white px-4 py-2 rounded flex items-center">
+                                <span class="material-icons mr-1">refresh</span>
+                                Try Again
+                            </button>
+                            <button id="staging-clear-filters-btn" class="bg-gray-500 text-white px-4 py-2 rounded flex items-center">
+                                <span class="material-icons mr-1">clear_all</span>
+                                Clear Filters
+                            </button>
+                        </div>
+                    </div>
+                `;
+                
+                // Add clear filters button functionality
+                const clearFiltersBtn = document.getElementById('staging-clear-filters-btn');
+                if (clearFiltersBtn) {
+                    clearFiltersBtn.addEventListener('click', () => {
+                        this.resetSearch();
+                        this.performSearch();
+                    });
+                }
+            } else {
+                // Standard error display for other errors
+                resultsDiv.innerHTML = `
+                    <div class="text-center py-6">
+                        <span class="material-icons text-red-500 text-4xl mb-2">error_outline</span>
+                        <p class="text-red-500 font-medium">Search error</p>
+                        <p class="text-gray-600 mt-2">${friendlyMessage}</p>
+                        <button id="staging-retry-btn" class="mt-4 bg-blue-500 text-white px-4 py-2 rounded flex items-center mx-auto">
+                            <span class="material-icons mr-1">refresh</span>
+                            Try Again
+                        </button>
+                    </div>
+                `;
+            }
             
             // Add retry button functionality
             const retryBtn = document.getElementById('staging-retry-btn');
@@ -972,6 +1255,496 @@ if (typeof window.MichelinStagingModule === 'undefined') {
             // For errors, show alert
             if (type === 'error') {
                 alert(`Error: ${message}`);
+            }
+        }
+        
+        /**
+         * Load filter options for dropdowns from the API
+         */
+        async loadFilterOptions() {
+            try {
+                // Only load data if we haven't already
+                if (this.filterOptionsLoaded) {
+                    return;
+                }
+                
+                // Set a flag to indicate we're loading options
+                this.filterOptionsLoading = true;
+                
+                // Show "loading" in the dropdowns
+                this.setLoadingState(true);
+                
+                // Load countries list first
+                await this.loadCountries();
+                
+                // Load cuisines list
+                await this.loadCuisines();
+                
+                // Set flag to indicate options are loaded
+                this.filterOptionsLoaded = true;
+                this.filterOptionsLoading = false;
+                
+                // Remove loading state
+                this.setLoadingState(false);
+                
+            } catch (error) {
+                console.error('Error loading filter options:', error);
+                this.setLoadingState(false);
+                this.filterOptionsLoading = false;
+                
+                // Show error in the dropdowns
+                this.setErrorState('Failed to load options');
+            }
+        }
+        
+        /**
+         * Load countries from the API
+         */
+        async loadCountries() {
+            try {
+                // Use the new distinct endpoint for better performance
+                const url = `${this.apiEndpoint}/distinct/country`;
+                console.log('Fetching countries from:', url);
+                
+                // Fetch the data
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`Failed to load countries: ${response.status}`);
+                }
+                
+                // Parse the response, with robust error handling
+                const rawData = await response.json();
+                console.log('Country API response format:', typeof rawData, rawData);
+                
+                // Handle different possible response formats
+                let countries = [];
+                
+                // Case 1: Response is an array of strings
+                if (Array.isArray(rawData)) {
+                    countries = rawData;
+                } 
+                // Case 2: Response is an object with country values
+                else if (rawData && typeof rawData === 'object') {
+                    // Check if it's {values: ["Country1", "Country2"]} format
+                    if (Array.isArray(rawData.values)) {
+                        countries = rawData.values;
+                    }
+                    // Check if it's {data: ["Country1", "Country2"]} format
+                    else if (Array.isArray(rawData.data)) {
+                        countries = rawData.data;
+                    }
+                    // Check if it's {results: ["Country1", "Country2"]} format
+                    else if (Array.isArray(rawData.results)) {
+                        countries = rawData.results;
+                    }
+                    // If none of the above, try to extract any array in the object
+                    else {
+                        for (const key in rawData) {
+                            if (Array.isArray(rawData[key])) {
+                                countries = rawData[key];
+                                break;
+                            }
+                        }
+                        
+                        // If still empty, try to get values as an array
+                        if (countries.length === 0) {
+                            countries = Object.values(rawData).flat();
+                        }
+                    }
+                }
+                
+                // Filter to ensure we only have valid strings
+                countries = countries
+                    .filter(country => country && typeof country === 'string' && country.trim() !== '')
+                    .map(country => country.trim());
+                
+                // Remove duplicates if any
+                countries = [...new Set(countries)];
+                
+                // Sort countries alphabetically if we have an array
+                if (Array.isArray(countries)) {
+                    countries.sort((a, b) => a.localeCompare(b));
+                }
+                
+                // Populate the country dropdown
+                const countrySelect = document.getElementById('search-staging-country');
+                
+                if (countrySelect) {
+                    // Clear existing options except the first one
+                    while (countrySelect.options.length > 1) {
+                        countrySelect.remove(1);
+                    }
+                    
+                    // Add each country as an option
+                    countries.forEach(country => {
+                        if (country && typeof country === 'string' && country.trim() !== '') {
+                            const option = document.createElement('option');
+                            option.value = country;
+                            option.textContent = country;
+                            countrySelect.appendChild(option);
+                        }
+                    });
+                    
+                    // Store countries for later use
+                    this.countries = countries;
+                }
+                
+                console.log(`Loaded ${countries.length} countries`);
+                
+            } catch (error) {
+                console.error('Error loading countries:', error);
+                // Set an error state in the dropdown
+                const countrySelect = document.getElementById('search-staging-country');
+                if (countrySelect) {
+                    // Clear options except first
+                    while (countrySelect.options.length > 1) {
+                        countrySelect.remove(1);
+                    }
+                    // Add error option
+                    const errorOption = document.createElement('option');
+                    errorOption.value = "";
+                    errorOption.textContent = "Error loading countries";
+                    errorOption.disabled = true;
+                    countrySelect.appendChild(errorOption);
+                }
+            }
+        }
+        
+        /**
+         * Load cuisines from the API
+         */
+        async loadCuisines() {
+            try {
+                // Use the new distinct endpoint for better performance
+                const url = `${this.apiEndpoint}/distinct/cuisine`;
+                console.log('Fetching cuisines from:', url);
+                
+                // Fetch the data
+                const response = await fetch(url);
+                
+                if (!response.ok) {
+                    throw new Error(`Failed to load cuisines: ${response.status}`);
+                }
+                
+                // Parse the response, with robust error handling
+                const rawData = await response.json();
+                console.log('Cuisine API response format:', typeof rawData, rawData);
+                
+                // Handle different possible response formats
+                let cuisines = [];
+                
+                // Case 1: Response is an array of strings
+                if (Array.isArray(rawData)) {
+                    cuisines = rawData;
+                } 
+                // Case 2: Response is an object with cuisine values
+                else if (rawData && typeof rawData === 'object') {
+                    // Check if it's {values: ["Cuisine1", "Cuisine2"]} format
+                    if (Array.isArray(rawData.values)) {
+                        cuisines = rawData.values;
+                    }
+                    // Check if it's {data: ["Cuisine1", "Cuisine2"]} format
+                    else if (Array.isArray(rawData.data)) {
+                        cuisines = rawData.data;
+                    }
+                    // Check if it's {results: ["Cuisine1", "Cuisine2"]} format
+                    else if (Array.isArray(rawData.results)) {
+                        cuisines = rawData.results;
+                    }
+                    // If none of the above, try to extract any array in the object
+                    else {
+                        for (const key in rawData) {
+                            if (Array.isArray(rawData[key])) {
+                                cuisines = rawData[key];
+                                break;
+                            }
+                        }
+                        
+                        // If still empty, try to get values as an array
+                        if (cuisines.length === 0) {
+                            cuisines = Object.values(rawData).flat();
+                        }
+                    }
+                }
+                
+                // Filter to ensure we only have valid strings
+                cuisines = cuisines
+                    .filter(cuisine => cuisine && typeof cuisine === 'string' && cuisine.trim() !== '')
+                    .map(cuisine => cuisine.trim());
+                    
+                // Handle comma-separated cuisines (split and flatten)
+                const allCuisines = [];
+                for (const cuisine of cuisines) {
+                    if (typeof cuisine === 'string' && cuisine.includes(',')) {
+                        const splitCuisines = cuisine.split(',').map(c => c.trim()).filter(c => c !== '');
+                        allCuisines.push(...splitCuisines);
+                    } else if (typeof cuisine === 'string' && cuisine.trim() !== '') {
+                        allCuisines.push(cuisine.trim());
+                    }
+                }
+                
+                // Remove duplicates
+                const uniqueCuisines = [...new Set(allCuisines)];
+                
+                // Sort cuisines alphabetically
+                uniqueCuisines.sort((a, b) => a.localeCompare(b));
+                
+                // Populate the cuisine dropdown
+                const cuisineSelect = document.getElementById('search-staging-cuisine');
+                
+                if (cuisineSelect) {
+                    // Clear existing options except the first one
+                    while (cuisineSelect.options.length > 1) {
+                        cuisineSelect.remove(1);
+                    }
+                    
+                    // Add each cuisine as an option
+                    uniqueCuisines.forEach(cuisine => {
+                        if (cuisine && typeof cuisine === 'string') {
+                            const option = document.createElement('option');
+                            option.value = cuisine;
+                            option.textContent = cuisine;
+                            cuisineSelect.appendChild(option);
+                        }
+                    });
+                    
+                    // Store cuisines for later use
+                    this.cuisines = uniqueCuisines;
+                }
+                
+                console.log(`Loaded ${uniqueCuisines.length} cuisines`);
+                
+            } catch (error) {
+                console.error('Error loading cuisines:', error);
+                // Set an error state in the dropdown
+                const cuisineSelect = document.getElementById('search-staging-cuisine');
+                if (cuisineSelect) {
+                    // Clear options except first
+                    while (cuisineSelect.options.length > 1) {
+                        cuisineSelect.remove(1);
+                    }
+                    // Add error option
+                    const errorOption = document.createElement('option');
+                    errorOption.value = "";
+                    errorOption.textContent = "Error loading cuisines";
+                    errorOption.disabled = true;
+                    cuisineSelect.appendChild(errorOption);
+                }
+            }
+        }
+        
+        /**
+         * Handle country dropdown change - load cities for the selected country
+         * @param {string} country - Selected country
+         */
+        async handleCountryChange(country) {
+            try {
+                const citySelect = document.getElementById('search-staging-city');
+                
+                if (!citySelect) return;
+                
+                // If no country selected, disable city dropdown
+                if (!country) {
+                    // Clear and disable city dropdown
+                    citySelect.disabled = true;
+                    while (citySelect.options.length > 0) {
+                        citySelect.remove(0);
+                    }
+                    const defaultOption = document.createElement('option');
+                    defaultOption.value = "";
+                    defaultOption.textContent = "Select a Country First";
+                    citySelect.appendChild(defaultOption);
+                    return;
+                }
+                
+                // Show loading state
+                citySelect.disabled = true;
+                while (citySelect.options.length > 0) {
+                    citySelect.remove(0);
+                }
+                const loadingOption = document.createElement('option');
+                loadingOption.value = "";
+                loadingOption.textContent = "Loading cities...";
+                citySelect.appendChild(loadingOption);
+                
+                // There's no direct distinct endpoint with filtering, so we need to use a search
+                // to get cities for a specific country
+                const searchUrl = `${this.apiEndpoint}?country=${encodeURIComponent(country)}&per_page=100`;
+                console.log('Fetching restaurants to extract cities:', searchUrl);
+                
+                // Fetch the data
+                const response = await fetch(searchUrl);
+                
+                if (!response.ok) {
+                    throw new Error(`Failed to load cities: ${response.status}`);
+                }
+                
+                const data = await response.json();
+                
+                // Extract unique cities from the search results
+                const cities = new Set();
+                
+                // Handle both possible response formats
+                const restaurants = Array.isArray(data) ? data : (data.results || []);
+                
+                // Extract cities from restaurant data
+                restaurants.forEach(restaurant => {
+                    // Check both location and city fields
+                    if (restaurant.location && typeof restaurant.location === 'string' && restaurant.location.trim()) {
+                        cities.add(restaurant.location.trim());
+                    }
+                    if (restaurant.city && typeof restaurant.city === 'string' && restaurant.city.trim()) {
+                        cities.add(restaurant.city.trim());
+                    }
+                });
+                
+                // Convert to array, filter out empty values, and sort
+                const citiesArray = [...cities].filter(Boolean).sort();
+                
+                // Populate the city dropdown
+                while (citySelect.options.length > 0) {
+                    citySelect.remove(0);
+                }
+                
+                // Add default option
+                const defaultOption = document.createElement('option');
+                defaultOption.value = "";
+                defaultOption.textContent = "Any City";
+                citySelect.appendChild(defaultOption);
+                
+                // Add each city as an option
+                citiesArray.forEach(city => {
+                    const option = document.createElement('option');
+                    option.value = city;
+                    option.textContent = city;
+                    citySelect.appendChild(option);
+                });
+                
+                // Enable the city dropdown
+                citySelect.disabled = false;
+                
+                console.log(`Loaded ${citiesArray.length} cities for ${country}`);
+            } catch (error) {
+                console.error(`Error loading cities for ${country}:`, error);
+                
+                // Set error state in city dropdown
+                const citySelect = document.getElementById('search-staging-city');
+                if (citySelect) {
+                    citySelect.disabled = false;
+                    while (citySelect.options.length > 0) {
+                        citySelect.remove(0);
+                    }
+                    const errorOption = document.createElement('option');
+                    errorOption.value = "";
+                    errorOption.textContent = "Error loading cities";
+                    citySelect.appendChild(errorOption);
+                    
+                    // Add a second option to allow manual search
+                    const anyOption = document.createElement('option');
+                    anyOption.value = "";
+                    anyOption.textContent = "- Enter city in search field -";
+                    citySelect.appendChild(anyOption);
+                }
+            }
+        }
+        
+        /**
+         * Set loading state for dropdown selects
+         * @param {boolean} isLoading - Whether dropdown options are loading
+         */
+        setLoadingState(isLoading) {
+            const countrySelect = document.getElementById('search-staging-country');
+            const cuisineSelect = document.getElementById('search-staging-cuisine');
+            
+            if (isLoading) {
+                if (countrySelect) {
+                    countrySelect.disabled = true;
+                }
+                if (cuisineSelect) {
+                    cuisineSelect.disabled = true;
+                }
+            } else {
+                if (countrySelect) {
+                    countrySelect.disabled = false;
+                }
+                if (cuisineSelect) {
+                    cuisineSelect.disabled = false;
+                }
+            }
+        }
+        
+        /**
+         * Set error state for dropdown selects
+         * @param {string} message - Error message to display
+         */
+        setErrorState(message) {
+            const countrySelect = document.getElementById('search-staging-country');
+            const cuisineSelect = document.getElementById('search-staging-cuisine');
+            
+            if (countrySelect) {
+                while (countrySelect.options.length > 1) {
+                    countrySelect.remove(1);
+                }
+                const errorOption = document.createElement('option');
+                errorOption.value = "";
+                errorOption.textContent = message;
+                errorOption.disabled = true;
+                countrySelect.appendChild(errorOption);
+            }
+            
+            if (cuisineSelect) {
+                while (cuisineSelect.options.length > 1) {
+                    cuisineSelect.remove(1);
+                }
+                const errorOption = document.createElement('option');
+                errorOption.value = "";
+                errorOption.textContent = message;
+                errorOption.disabled = true;
+                cuisineSelect.appendChild(errorOption);
+            }
+        }
+        
+        /**
+         * Navigate between result pages
+         * @param {string} direction - 'prev' or 'next'
+         */
+        navigatePage(direction) {
+            if (direction === 'prev' && this.currentPage > 1) {
+                this.currentPage--;
+            } else if (direction === 'next' && this.currentPage < this.totalPages) {
+                this.currentPage++;
+            } else {
+                return; // No change needed
+            }
+            
+            this.updatePaginationUI();
+            this.performSearch(false); // Don't reset page number
+        }
+        
+        /**
+         * Update pagination UI elements
+         */
+        updatePaginationUI() {
+            const currentPageEl = document.getElementById('staging-current-page');
+            const totalPagesEl = document.getElementById('staging-total-pages');
+            const prevBtn = document.getElementById('staging-prev-page');
+            const nextBtn = document.getElementById('staging-next-page');
+            
+            if (currentPageEl) currentPageEl.textContent = this.currentPage;
+            if (totalPagesEl) totalPagesEl.textContent = this.totalPages;
+            
+            if (prevBtn) prevBtn.disabled = this.currentPage <= 1;
+            if (nextBtn) nextBtn.disabled = this.currentPage >= this.totalPages;
+            
+            // Show/hide pagination based on results
+            const paginationDiv = document.getElementById('staging-pagination');
+            if (paginationDiv) {
+                if (this.totalPages > 1) {
+                    paginationDiv.classList.remove('hidden');
+                } else {
+                    paginationDiv.classList.add('hidden');
+                }
             }
         }
     };
