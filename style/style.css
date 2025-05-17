@@ -1344,3 +1344,74 @@ button .material-icons {
     will-change: opacity; /* Optimize for animation */
   }
 }
+
+/* Michelin Staging Modal Mobile Styles */
+#restaurant-staging-search-modal {
+  touch-action: manipulation;
+  -webkit-overflow-scrolling: touch;
+}
+
+#restaurant-staging-search-modal .collapse-on-mobile {
+  transition: all 0.2s ease-in-out;
+}
+
+/* Improve restaurant card layout */
+#staging-search-results .bg-white {
+  transition: transform 0.15s ease;
+}
+
+#staging-search-results .bg-white:hover {
+  transform: translateY(-2px);
+}
+
+/* Keep modal header in view */
+#restaurant-staging-search-modal .sticky {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+/* Pagination styles */
+#staging-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 1rem;
+  border-top: 1px solid #f0f0f0;
+  margin-top: 1rem;
+}
+
+#staging-pagination button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+#staging-pagination button:not(:disabled):hover {
+  background-color: #e5e5e5;
+}
+
+/* Responsive padding adjustments */
+@media (max-width: 640px) {
+  #restaurant-staging-search-modal {
+    padding: 0;
+  }
+  
+  #restaurant-staging-search-modal .bg-white {
+    border-radius: 0;
+    max-height: 100vh;
+    margin: 0;
+  }
+  
+  #staging-search-results {
+    margin-top: 0.5rem;
+  }
+  
+  #staging-search-results .bg-white {
+    padding: 0.75rem;
+  }
+  
+  #staging-pagination {
+    padding: 0.75rem 0;
+  }
+}

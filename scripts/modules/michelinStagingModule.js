@@ -40,88 +40,110 @@ if (typeof window.MichelinStagingModule === 'undefined') {
         createModalIfNeeded() {
             if (!document.getElementById('restaurant-staging-search-modal')) {
                 const modalHTML = `
-                    <div id="restaurant-staging-search-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
-                        <div class="bg-white p-6 md:p-8 rounded-lg w-full max-w-2xl shadow-xl border border-gray-100">
-                            <div class="flex justify-between items-center mb-6">
-                                <h2 class="text-xl md:text-2xl font-bold flex items-center">
+                    <div id="restaurant-staging-search-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-start justify-center z-50 hidden overflow-y-auto pt-4 pb-4">
+                        <div class="bg-white rounded-lg shadow-xl border border-gray-100 w-full max-w-2xl mx-4 my-auto flex flex-col max-h-[90vh]">
+                            <!-- Sticky header -->
+                            <div class="sticky top-0 bg-white px-4 py-3 border-b border-gray-200 flex justify-between items-center z-10 rounded-t-lg">
+                                <h2 class="text-lg md:text-xl font-bold flex items-center">
                                     <span class="material-icons mr-2 text-red-600">stars</span>
-                                    Search Michelin Restaurants
+                                    Michelin Restaurants
                                 </h2>
-                                <button id="close-staging-search-modal" class="text-gray-500 hover:text-gray-800 text-xl md:text-2xl">&times;</button>
+                                <button id="close-staging-search-modal" class="text-gray-500 hover:text-gray-800 text-xl md:text-2xl p-1">&times;</button>
                             </div>
-                            <form id="staging-search-form" class="mb-6 grid grid-cols-1 md:grid-cols-2 gap-4">
-                                <div>
-                                    <label for="search-staging-name" class="block text-sm font-medium text-gray-700 mb-1">Restaurant Name</label>
-                                    <input type="text" id="search-staging-name" class="border rounded p-2 w-full" placeholder="Restaurant Name">
+
+                            <div class="overflow-y-auto flex-grow px-4 pb-4">
+                                <!-- Collapsible filters section -->
+                                <div class="mb-4 mt-3">
+                                    <button id="toggle-filters-btn" class="w-full py-2 px-3 bg-gray-100 rounded-md text-left flex justify-between items-center md:hidden">
+                                        <span class="font-medium">Search Filters</span>
+                                        <span class="material-icons">expand_more</span>
+                                    </button>
+                                    
+                                    <form id="staging-search-form" class="mt-3 space-y-3 md:space-y-0 md:grid md:grid-cols-2 md:gap-4 collapse-on-mobile">
+                                        <div>
+                                            <label for="search-staging-name" class="block text-sm font-medium text-gray-700 mb-1">Restaurant Name</label>
+                                            <input type="text" id="search-staging-name" class="border rounded p-2 w-full" placeholder="Restaurant Name">
+                                        </div>
+                                        
+                                        <div>
+                                            <label for="search-staging-country" class="block text-sm font-medium text-gray-700 mb-1">Country</label>
+                                            <select id="search-staging-country" class="border rounded p-2 w-full">
+                                                <option value="">Any Country</option>
+                                                <option value="loading" disabled>Loading countries...</option>
+                                            </select>
+                                        </div>
+                                        
+                                        <div>
+                                            <label for="search-staging-city" class="block text-sm font-medium text-gray-700 mb-1">City</label>
+                                            <select id="search-staging-city" class="border rounded p-2 w-full" disabled>
+                                                <option value="">Select a Country First</option>
+                                            </select>
+                                        </div>
+                                        
+                                        <div>
+                                            <label for="search-staging-cuisine" class="block text-sm font-medium text-gray-700 mb-1">Cuisine</label>
+                                            <select id="search-staging-cuisine" class="border rounded p-2 w-full">
+                                                <option value="">Any Cuisine</option>
+                                                <option value="loading" disabled>Loading cuisines...</option>
+                                            </select>
+                                        </div>
+                                        
+                                        <div class="md:col-span-2 flex items-center py-2">
+                                            <label class="flex items-center space-x-2 mr-4">
+                                                <input type="checkbox" id="search-staging-location" class="form-checkbox">
+                                                <span>Near Me</span>
+                                            </label>
+                                            
+                                            <label class="flex items-center space-x-2">
+                                                <span class="text-sm font-medium text-gray-700">Results:</span>
+                                                <select id="search-staging-per-page" class="border rounded p-1 ml-1">
+                                                    <option value="10">10</option>
+                                                    <option value="20" selected>20</option>
+                                                    <option value="50">50</option>
+                                                </select>
+                                            </label>
+                                        </div>
+                                    </form>
                                 </div>
-                                <div>
-                                    <label for="search-staging-country" class="block text-sm font-medium text-gray-700 mb-1">Country</label>
-                                    <select id="search-staging-country" class="border rounded p-2 w-full">
-                                        <option value="">Any Country</option>
-                                        <option value="loading" disabled>Loading countries...</option>
-                                    </select>
+                                
+                                <!-- Action buttons -->
+                                <div class="flex flex-wrap gap-2 mb-4">
+                                    <button id="staging-search-btn" class="bg-red-600 text-white px-3 py-2 rounded flex items-center text-sm">
+                                        <span class="material-icons mr-1 text-sm">search</span>
+                                        Search
+                                    </button>
+                                    <button id="staging-search-map-btn" class="bg-blue-600 text-white px-3 py-2 rounded flex items-center text-sm">
+                                        <span class="material-icons mr-1 text-sm">map</span>
+                                        Map View
+                                    </button>
+                                    <button id="staging-reset-btn" class="bg-gray-400 text-white px-3 py-2 rounded flex items-center text-sm">
+                                        <span class="material-icons mr-1 text-sm">refresh</span>
+                                        Reset
+                                    </button>
                                 </div>
-                                <div>
-                                    <label for="search-staging-city" class="block text-sm font-medium text-gray-700 mb-1">City</label>
-                                    <select id="search-staging-city" class="border rounded p-2 w-full" disabled>
-                                        <option value="">Select a Country First</option>
-                                    </select>
+                                
+                                <!-- Results count -->
+                                <div id="staging-search-results-count" class="text-sm text-gray-600 mb-2 hidden"></div>
+                                
+                                <!-- Results container -->
+                                <div id="staging-search-results" class="space-y-3 overflow-y-visible">
+                                    <p class="text-gray-500 text-center">Search to see Michelin restaurants.</p>
                                 </div>
-                                <div>
-                                    <label for="search-staging-cuisine" class="block text-sm font-medium text-gray-700 mb-1">Cuisine</label>
-                                    <select id="search-staging-cuisine" class="border rounded p-2 w-full">
-                                        <option value="">Any Cuisine</option>
-                                        <option value="loading" disabled>Loading cuisines...</option>
-                                    </select>
+                                
+                                <!-- Pagination -->
+                                <div id="staging-pagination" class="mt-4 flex items-center justify-between hidden">
+                                    <button id="staging-prev-page" class="bg-gray-200 text-gray-700 px-3 py-1 rounded flex items-center disabled:opacity-50">
+                                        <span class="material-icons text-sm mr-1">chevron_left</span>
+                                        Previous
+                                    </button>
+                                    <div class="text-sm text-gray-600">
+                                        Page <span id="staging-current-page">1</span> of <span id="staging-total-pages">1</span>
+                                    </div>
+                                    <button id="staging-next-page" class="bg-gray-200 text-gray-700 px-3 py-1 rounded flex items-center disabled:opacity-50">
+                                        Next
+                                        <span class="material-icons text-sm ml-1">chevron_right</span>
+                                    </button>
                                 </div>
-                                <div class="md:col-span-2">
-                                    <label class="flex items-center space-x-2">
-                                        <input type="checkbox" id="search-staging-location" class="form-checkbox">
-                                        <span>Search Near Me</span>
-                                    </label>
-                                </div>
-                                <div class="md:col-span-2">
-                                    <label class="flex items-center space-x-2">
-                                        <span class="text-sm font-medium text-gray-700">Results per page:</span>
-                                        <select id="search-staging-per-page" class="border rounded p-1">
-                                            <option value="10">10</option>
-                                            <option value="20" selected>20</option>
-                                            <option value="50">50</option>
-                                            <option value="100">100</option>
-                                        </select>
-                                    </label>
-                                </div>
-                            </form>
-                            <div class="flex flex-wrap gap-3 mb-4">
-                                <button id="staging-search-btn" class="bg-red-600 text-white px-4 py-2 rounded flex items-center">
-                                    <span class="material-icons mr-1">search</span>
-                                    Search
-                                </button>
-                                <button id="staging-search-map-btn" class="bg-blue-600 text-white px-4 py-2 rounded flex items-center">
-                                    <span class="material-icons mr-1">map</span>
-                                    Map View
-                                </button>
-                                <button id="staging-reset-btn" class="bg-gray-400 text-white px-4 py-2 rounded flex items-center">
-                                    <span class="material-icons mr-1">refresh</span>
-                                    Reset
-                                </button>
-                            </div>
-                            <div id="staging-search-results-count" class="text-sm text-gray-600 mb-2 hidden"></div>
-                            <div id="staging-search-results" class="space-y-4 max-h-96 overflow-y-auto">
-                                <p class="text-gray-500 text-center">Search to see Michelin restaurants.</p>
-                            </div>
-                            <div id="staging-pagination" class="mt-4 flex items-center justify-between hidden">
-                                <button id="staging-prev-page" class="bg-gray-200 text-gray-700 px-3 py-1 rounded flex items-center disabled:opacity-50">
-                                    <span class="material-icons text-sm mr-1">chevron_left</span>
-                                    Previous
-                                </button>
-                                <div class="text-sm text-gray-600">
-                                    Page <span id="staging-current-page">1</span> of <span id="staging-total-pages">1</span>
-                                </div>
-                                <button id="staging-next-page" class="bg-gray-200 text-gray-700 px-3 py-1 rounded flex items-center disabled:opacity-50">
-                                    Next
-                                    <span class="material-icons text-sm ml-1">chevron_right</span>
-                                </button>
                             </div>
                         </div>
                     </div>
@@ -131,6 +153,28 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                 const modalWrapper = document.createElement('div');
                 modalWrapper.innerHTML = modalHTML;
                 document.body.appendChild(modalWrapper.firstElementChild);
+                
+                // Add event listener for the collapsible filter section
+                setTimeout(() => {
+                    const toggleFiltersBtn = document.getElementById('toggle-filters-btn');
+                    const filtersForm = document.getElementById('staging-search-form');
+                    
+                    if (toggleFiltersBtn && filtersForm) {
+                        // Initially collapse on mobile
+                        if (window.innerWidth < 768) {
+                            filtersForm.classList.add('hidden');
+                        }
+                        
+                        toggleFiltersBtn.addEventListener('click', () => {
+                            filtersForm.classList.toggle('hidden');
+                            // Update icon
+                            const icon = toggleFiltersBtn.querySelector('.material-icons');
+                            if (icon) {
+                                icon.textContent = filtersForm.classList.contains('hidden') ? 'expand_more' : 'expand_less';
+                            }
+                        });
+                    }
+                }, 100);
                 
                 console.log('Michelin restaurant search modal created');
             }
@@ -178,11 +222,13 @@ if (typeof window.MichelinStagingModule === 'undefined') {
             if (closeBtn) {
                 closeBtn.addEventListener('click', () => this.closeModal());
             }
-            
+
             const modal = document.getElementById('restaurant-staging-search-modal');
             if (modal) {
                 modal.addEventListener('click', (e) => {
-                    if (e.target === modal) this.closeModal();
+                    if (e.target === modal) {
+                        this.closeModal();
+                    }
                 });
             }
             
@@ -411,10 +457,15 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                 const form = document.getElementById('staging-search-form');
                 if (!form) return;
                 
+                // Calculate offset based on current page and items per page
+                const offset = (this.currentPage - 1) * this.perPage;
+                
                 const params = {
                     name: document.getElementById('search-staging-name')?.value || '',
                     country: document.getElementById('search-staging-country')?.value || '',
                     cuisine: document.getElementById('search-staging-cuisine')?.value || '',
+                    // Use page/per_page for compatibility with the server implementation
+                    // The server doesn't correctly handle 'limit' as a parameter name
                     page: this.currentPage,
                     per_page: this.perPage || 20
                 };
@@ -425,7 +476,6 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                 if (cityValue) {
                     params.location = cityValue;
                     // Do not set city parameter - it causes 500 errors
-                    // params.city = cityValue; <- REMOVING THIS
                 }
                 
                 // Add location if available and checkbox is checked
@@ -433,7 +483,7 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                 if (locationCheckbox?.checked && this.currentLatitude && this.currentLongitude) {
                     params.latitude = this.currentLatitude;
                     params.longitude = this.currentLongitude;
-                    params.tolerance = 0.05; // Approximately 5km radius
+                    params.tolerance = 0.05;
                 }
                 
                 // Debug the final request parameters
@@ -478,14 +528,11 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                 try {
                     // If we're retrying, add a small delay
                     if (retries > 0) {
-                        // Wait longer with each retry (exponential backoff)
-                        const delay = Math.pow(2, retries) * 1000;
-                        console.log(`Retry ${retries}/${MAX_RETRIES} after ${delay}ms delay...`);
-                        await new Promise(resolve => setTimeout(resolve, delay));
+                        await new Promise(resolve => setTimeout(resolve, retries * 1000));
+                        console.log(`Retry attempt ${retries}/${MAX_RETRIES}...`);
                     }
                     
                     const response = await fetch(url, {
-                        // Add cache control to avoid potential caching issues on retries
                         cache: 'no-store',
                         headers: {
                             'Accept': 'application/json',
@@ -495,64 +542,54 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                     
                     // Handle different error cases with specific messages
                     if (!response.ok) {
-                        // For 500 errors, usually server-side issues
-                        if (response.status === 500) {
-                            // If we have retries left, try again
-                            if (retries < MAX_RETRIES) {
-                                retries++;
-                                lastError = new Error(`Server error (${response.status}): The server encountered an issue. Retrying...`);
-                                console.warn(`Server returned 500 error. Retry ${retries}/${MAX_RETRIES}`);
-                                continue;
+                        let errorText = '';
+                        try {
+                            // Try to get detailed error information
+                            const contentType = response.headers.get('content-type');
+                            if (contentType && contentType.includes('application/json')) {
+                                const errorData = await response.json();
+                                errorText = errorData.message || errorData.error || `Server error (${response.status})`;
                             } else {
-                                throw new Error(`The server encountered an internal error. This might be due to a temporary issue or invalid search parameters. Please try simplifying your search criteria.`);
+                                errorText = await response.text();
                             }
+                        } catch (e) {
+                            errorText = `Server error (${response.status})`;
                         }
-                        // For 404 errors, usually path not found
-                        else if (response.status === 404) {
-                            throw new Error(`The requested information could not be found (${response.status})`);
-                        }
-                        // For 429 errors, usually rate limiting
-                        else if (response.status === 429) {
-                            throw new Error(`Too many requests. Please wait a moment before trying again (${response.status})`);
-                        }
-                        // Generic error for other cases
-                        else {
-                            throw new Error(`API returned error: ${response.status} ${response.statusText}`);
-                        }
+                        
+                        console.error(`API error response: ${response.status} - ${errorText}`);
+                        throw new Error(errorText);
                     }
                     
                     const data = await response.json();
                     console.log('API response:', data);
                     
-                    // Handle paginated response format
-                    if (data && data.results && Array.isArray(data.results)) {
-                        // Store pagination details
-                        if (data.total !== undefined) {
-                            this.totalCount = data.total;
-                        }
-                        if (data.page !== undefined) {
-                            this.currentPage = data.page;
+                    // Handle different response formats
+                    if (data && Array.isArray(data)) {
+                        // Get total count from response headers if available
+                        const totalCountHeader = response.headers.get('X-Total-Count');
+                        if (totalCountHeader) {
+                            this.totalCount = parseInt(totalCountHeader, 10);
+                            this.totalPages = Math.ceil(this.totalCount / this.perPage);
                         } else {
-                            this.currentPage = 1;
+                            // Estimate total pages based on results length and page size
+                            if (data.length < this.perPage) {
+                                this.totalPages = this.currentPage;
+                            } else {
+                                this.totalPages = this.currentPage + 1; // There might be more
+                            }
+                            this.totalCount = (this.currentPage - 1) * this.perPage + data.length;
                         }
-                        if (data.per_page !== undefined) {
-                            this.perPage = data.per_page;
-                        }
-                        
-                        // Calculate total pages
-                        this.totalPages = Math.max(1, Math.ceil(this.totalCount / this.perPage));
-                        
-                        return data.results;
-                    } 
-                    // Handle direct array response (legacy format)
-                    else if (Array.isArray(data)) {
-                        this.totalCount = data.length;
-                        this.totalPages = 1;
-                        this.currentPage = 1;
                         return data;
-                    } 
-                    else {
-                        throw new Error('Invalid response format from API');
+                    } else if (data && data.results && Array.isArray(data.results)) {
+                        // Response with pagination metadata
+                        if (data.total_count !== undefined) {
+                            this.totalCount = data.total_count;
+                            this.totalPages = Math.ceil(data.total_count / this.perPage);
+                        }
+                        return data.results;
+                    } else {
+                        console.warn('Unknown API response format:', data);
+                        return [];
                     }
                 } catch (error) {
                     lastError = error;
@@ -560,17 +597,57 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                     // Only retry on network errors or server errors (500s)
                     if ((error.name === 'TypeError' || error.message.includes('500')) && retries < MAX_RETRIES) {
                         retries++;
-                        console.warn(`Error during API request (${error.message}). Retry ${retries}/${MAX_RETRIES}`);
-                        continue;
+                        console.log(`Server error, retrying (${retries}/${MAX_RETRIES})...`);
+                    } else {
+                        // Otherwise, throw the error to be handled by the caller
+                        throw error;
                     }
-                    
-                    // Otherwise, throw the error to be handled by the caller
-                    throw error;
                 }
             }
             
             // This will only be reached if we exhausted retries and still failed
             throw lastError || new Error('Failed to fetch results after retries');
+        }
+        
+        /**
+         * Navigate between result pages
+         * @param {string} direction - 'prev' or 'next'
+         */
+        navigatePage(direction) {
+            if (direction === 'prev' && this.currentPage > 1) {
+                this.currentPage--;
+                console.log(`Moving to previous page: ${this.currentPage}`);
+            } else if (direction === 'next' && this.currentPage < this.totalPages) {
+                this.currentPage++;
+                console.log(`Moving to next page: ${this.currentPage}`);
+            } else {
+                console.log('Cannot navigate: already at first/last page');
+                return;
+            }
+            
+            this.updatePaginationUI();
+            this.performSearch(false); // Don't reset page number
+        }
+        
+        /**
+         * Get error message from response
+         * @param {Response} response - Fetch Response object
+         * @returns {Promise<string>} Error message
+         */
+        async getErrorMessageFromResponse(response) {
+            try {
+                const contentType = response.headers.get('content-type');
+                
+                if (contentType && contentType.includes('application/json')) {
+                    const errorData = await response.json();
+                    return errorData.message || errorData.error || `Server error (${response.status})`;
+                } else {
+                    const text = await response.text();
+                    return text || `Server error (${response.status})`;
+                }
+            } catch (e) {
+                return `Server error (${response.status})`;
+            }
         }
         
         /**
@@ -590,8 +667,8 @@ if (typeof window.MichelinStagingModule === 'undefined') {
             if (countDiv) {
                 if (this.totalCount > 0) {
                     const start = (this.currentPage - 1) * this.perPage + 1;
-                    const end = Math.min(this.currentPage * this.perPage, this.totalCount);
-                    countDiv.textContent = `Showing ${start}-${end} of ${this.totalCount} restaurant${this.totalCount !== 1 ? 's' : ''}`;
+                    const end = Math.min(start + results.length - 1, this.totalCount);
+                    countDiv.innerHTML = `Showing ${start}-${end} of ${this.totalCount} restaurants`;
                     countDiv.classList.remove('hidden');
                 } else {
                     countDiv.classList.add('hidden');
@@ -1597,10 +1674,13 @@ if (typeof window.MichelinStagingModule === 'undefined') {
         navigatePage(direction) {
             if (direction === 'prev' && this.currentPage > 1) {
                 this.currentPage--;
+                console.log(`Moving to previous page: ${this.currentPage}`);
             } else if (direction === 'next' && this.currentPage < this.totalPages) {
                 this.currentPage++;
+                console.log(`Moving to next page: ${this.currentPage}`);
             } else {
-                return; // No change needed
+                console.log('Cannot navigate: already at first/last page');
+                return;
             }
             
             this.updatePaginationUI();
