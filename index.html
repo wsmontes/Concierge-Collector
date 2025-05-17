@@ -26,6 +26,7 @@
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <!-- Custom CSS -->
     <link href="style/style.css" rel="stylesheet">
+    <link rel="stylesheet" href="styles/michelin-section.css">
     
     <!-- Add stylesheets for sync badges and curator selection -->
     <style>
@@ -331,6 +332,19 @@
             </div>
         </section>
 
+        <!-- Michelin Search Section -->
+        <div id="michelin-search-section" class="bg-white rounded-lg p-6 shadow-md mb-6">
+            <h2 class="text-xl font-bold mb-4 flex items-center">
+                <span class="material-icons mr-2 text-red-600">stars</span>
+                Michelin Restaurants
+            </h2>
+            <p class="text-gray-600 mb-4">Search and import restaurants from the Michelin guide database.</p>
+            <button id="open-staging-search" class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 flex items-center">
+                <span class="material-icons mr-1">search</span>
+                Search Michelin Restaurants
+            </button>
+        </div>
+
         <!-- Restaurant List Section -->
         <section id="restaurant-list-section" class="mb-8 p-6 bg-white rounded-lg shadow-md border border-gray-100 hover:shadow-lg transition-all duration-300 hidden">
             <div class="flex justify-between items-center mb-4">
@@ -544,8 +558,16 @@
     <script src="scripts/uiUtils.js"></script>
     <script src="scripts/moduleWrapper.js"></script>
     
-    <!-- Application modules -->
+    <!-- Application modules - core components -->
     <script src="scripts/promptTemplate.js"></script>
+    <script src="scripts/apiHandler.js"></script>
+    <script src="scripts/dataStorage.js"></script>
+    <script src="scripts/conceptMatcher.js"></script>
+    <script src="scripts/audioRecorder.js"></script>
+    <script src="scripts/syncService.js"></script>
+    <script src="scripts/uiManager.js"></script>
+    
+    <!-- Module implementations - these should NOT duplicate core components -->
     <script src="scripts/modules/uiUtilsModule.js"></script>
     <script src="scripts/modules/curatorModule.js"></script>
     <script src="scripts/modules/recordingModule.js"></script>
@@ -554,6 +576,7 @@
     <script src="scripts/modules/restaurantModule.js"></script>
     <script src="scripts/modules/exportImportModule.js"></script>
     <script src="scripts/modules/quickActionModule.js"></script>
+    <script src="scripts/modules/michelinStagingModule.js"></script>
 
     <!-- Core application scripts -->
     <script src="scripts/apiHandler.js"></script>
@@ -561,7 +584,9 @@
     <script src="scripts/conceptMatcher.js"></script>
     <script src="scripts/audioRecorder.js"></script>
     <script src="scripts/uiManager.js"></script>
-    <script src="scripts/syncService.js"></script>
+
+
+</html></body>    <script src="scripts/syncService.js"></script>
     
     <!-- Main application script loaded last -->
     <script src="scripts/main.js"></script>
