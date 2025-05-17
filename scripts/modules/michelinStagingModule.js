@@ -784,6 +784,47 @@ if (typeof window.MichelinStagingModule === 'undefined') {
         }
         
         /**
+         * Update loading message with current processing step
+         * @param {string} message - Processing step message
+         * @param {number} step - Current step number (optional)
+         * @param {number} totalSteps - Total number of steps (optional) 
+         */
+        updateLoadingMessage(message, step = null, totalSteps = null) {
+            try {
+                let displayMessage = message;
+                
+                // Add step counter if provided
+                if (step !== null && totalSteps !== null) {
+                    displayMessage = `Step ${step}/${totalSteps}: ${message}`;
+                }
+                
+                // Try multiple approaches to update the loading message
+                
+                // First try window.uiUtils
+                if (window.uiUtils && typeof window.uiUtils.updateLoadingMessage === 'function') {
+                    window.uiUtils.updateLoadingMessage(displayMessage);
+                    return;
+                }
+                
+                // Then try standalone method on window.uiUtils
+                if (window.uiUtils && typeof window.uiUtils.updateStandaloneLoadingMessage === 'function') {
+                    window.uiUtils.updateStandaloneLoadingMessage(displayMessage);
+                    return;
+                }
+                
+                // Direct DOM approach as final fallback
+                const messageElement = document.querySelector('#loading-overlay .loading-message, #standalone-loading-overlay p');
+                if (messageElement) {
+                    messageElement.textContent = displayMessage;
+                }
+                
+                console.log(`Loading message updated: ${displayMessage}`);
+            } catch (error) {
+                console.warn('Error updating loading message:', error);
+            }
+        }
+
+        /**
          * Import a restaurant into the app
          * @param {Object} restaurant - Restaurant data from search results
          */
@@ -794,29 +835,40 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                     throw new Error('Please set up curator information first');
                 }
                 
-                // Show loading indicator
+                // Close the modal immediately so user can see the processing steps
+                this.closeModal();
+                
+                // Define total steps for the process
+                const TOTAL_STEPS = 4;
+                
+                // Show loading indicator with initial step info
                 if (window.uiUtils && typeof window.uiUtils.showLoading === 'function') {
-                    window.uiUtils.showLoading('Processing restaurant data...');
+                    window.uiUtils.showLoading('Preparing restaurant import...');
                 }
                 
                 console.log('Importing restaurant to form:', restaurant);
                 
-                // Extract basic concepts from the restaurant data
+                // STEP 1: Extract basic concepts from restaurant data
+                this.updateLoadingMessage('Extracting restaurant information', 1, TOTAL_STEPS);
+                await new Promise(resolve => setTimeout(resolve, 300)); // Small delay for UI update
                 const basicConcepts = await this.extractConceptsFromRestaurant(restaurant);
                 
-                // Process the review as if it were a transcription
+                // STEP 2: Process the review as if it were a transcription
+                this.updateLoadingMessage('Processing restaurant review', 2, TOTAL_STEPS);
                 let allConcepts = [...basicConcepts];
                 
                 if (restaurant.review && window.uiManager && window.uiManager.conceptModule) {
                     try {
                         // Extract concepts from the review using the conceptModule's functionality
                         if (typeof window.uiManager.conceptModule.extractConcepts === 'function') {
+                            this.updateLoadingMessage('Analyzing review text for additional details', 2, TOTAL_STEPS);
                             const extractedConcepts = await window.uiManager.conceptModule.extractConcepts(restaurant.review);
                             
                             if (extractedConcepts && extractedConcepts.length > 0) {
                                 console.log('AI extracted additional concepts from review:', extractedConcepts);
                                 
                                 // Add non-duplicate concepts
+                                this.updateLoadingMessage('Processing extracted concepts', 2, TOTAL_STEPS);
                                 extractedConcepts.forEach(newConcept => {
                                     if (!this.conceptExists(allConcepts, newConcept.category, newConcept.value)) {
                                         allConcepts.push(newConcept);
@@ -826,11 +878,14 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                         }
                     } catch (conceptError) {
                         console.warn('Error extracting concepts from review:', conceptError);
+                        this.updateLoadingMessage('Continuing with basic information (review analysis failed)', 2, TOTAL_STEPS);
+                        await new Promise(resolve => setTimeout(resolve, 800)); // Pause to show the error message
                         // Continue with basic concepts only
                     }
                 }
                 
-                // Prepare location data
+                // STEP 3: Prepare location data
+                this.updateLoadingMessage('Processing location information', 3, TOTAL_STEPS);
                 let location = null;
                 if (restaurant.latitude && restaurant.longitude) {
                     location = {
@@ -840,10 +895,9 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                     };
                 }
                 
-                // Hide loading
-                if (window.uiUtils && typeof window.uiUtils.hideLoading === 'function') {
-                    window.uiUtils.hideLoading();
-                }
+                // STEP 4: Populate the restaurant form
+                this.updateLoadingMessage('Preparing restaurant form', 4, TOTAL_STEPS);
+                await new Promise(resolve => setTimeout(resolve, 300)); // Small delay for UI update
                 
                 // Populate the restaurant form instead of saving directly
                 if (window.uiManager) {
@@ -893,14 +947,16 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                         window.uiManager.conceptModule.renderConcepts();
                     }
                     
+                    // Hide loading now that everything is ready
+                    if (window.uiUtils && typeof window.uiUtils.hideLoading === 'function') {
+                        window.uiUtils.hideLoading();
+                    }
+                    
                     // Show success notification
                     this.showNotification(
                         `Restaurant "${restaurant.name}" imported to form. Review and save when ready.`,
                         'success'
                     );
-                    
-                    // Close the modal
-                    this.closeModal();
                     
                     // Add visual indicator showing this is imported from Michelin
                     const restaurantFormHeader = document.querySelector('.restaurant-form-section h2');
