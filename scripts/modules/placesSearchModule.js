@@ -8,7 +8,7 @@ class PlacesSearchModule {
         this.uiManager = uiManager;
         this.apiLoaded = false;
         this.searchResults = [];
-        this.apiKey = ''; // Will be populated from settings
+        this.apiKey = '';
         this.placesService = null;
         this.autocompleteWidget = null;
         this.selectedPlace = null;
@@ -40,67 +40,115 @@ class PlacesSearchModule {
     createSectionIfNeeded() {
         console.log('Checking if Places search section needs to be created');
         if (!document.getElementById('places-search-section')) {
-            console.log('Creating Places search section');
-            const placesSearchHTML = `
-                <div id="places-search-section" class="mt-6 p-4 bg-white rounded-lg shadow-md">
-                    <h2 class="text-lg font-semibold mb-4 flex items-center">
-                        <span class="material-icons text-blue-600 mr-2">place</span>
-                        Search Google Places
-                    </h2>
-                    
-                    <div class="mb-4">
-                        <div id="places-api-key-section" class="mb-4">
-                            <label for="places-api-key" class="block text-sm font-medium text-gray-700 mb-1">Google Places API Key:</label>
-                            <div class="flex">
-                                <input type="text" id="places-api-key" class="border rounded p-2 flex-grow" placeholder="Enter your Google Places API key">
-                                <button id="save-places-api-key" class="ml-2 bg-blue-500 text-white px-4 py-2 rounded">Save</button>
-                            </div>
-                            <p class="text-xs text-gray-500 mt-1">Required to use the Places API. Your API key is stored locally.</p>
+            // Section doesn't exist, create it
+            const section = document.createElement('div');
+            section.id = 'places-search-section';
+            section.className = 'bg-white rounded-lg shadow-md p-4 mb-6';
+            // Increase padding to 100px at the bottom of the search card
+            section.style.paddingBottom = '100px';
+            
+            // Create the toggle header - this will always be visible
+            const toggleHeader = document.createElement('div');
+            toggleHeader.id = 'places-search-toggle';
+            toggleHeader.className = 'flex justify-between items-center cursor-pointer';
+            toggleHeader.innerHTML = `
+                <h2 class="text-lg font-semibold flex items-center">
+                    <span class="material-icons mr-2">place</span>
+                    Google Places Search
+                </h2>
+                <span class="material-icons toggle-icon">expand_more</span>
+            `;
+            
+            // Create the content container - this will be hidden by default
+            const contentContainer = document.createElement('div');
+            contentContainer.id = 'places-search-content';
+            contentContainer.className = 'mt-4 hidden'; // Hidden by default
+            
+            // Add the API key section and search container to the content
+            contentContainer.innerHTML = `
+                <div id="places-api-key-section" class="mb-4">
+                    <p class="mb-2">Enter your Google Places API key to enable restaurant search</p>
+                    <div class="flex">
+                        <input type="text" id="places-api-key" class="border p-2 flex-grow" placeholder="API Key">
+                        <button id="save-places-api-key" class="bg-blue-500 text-white px-4 py-2">Save</button>
+                    </div>
+                </div>
+                <div id="places-search-container" class="hidden">
+                    <div id="places-search-input-container" class="mb-4">
+                        <div id="places-autocomplete-container" class="relative">
+                            <input id="places-autocomplete" type="text" placeholder="Search for a restaurant..." class="border p-2 w-full">
                         </div>
-                        
-                        <div id="places-search-container" class="hidden">
-                            <div id="places-autocomplete-container" class="mb-4">
-                                <!-- The Places Autocomplete widget will be inserted here -->
-                            </div>
-                            
-                            <div id="places-selected-result" class="hidden border-t pt-4 mt-4">
-                                <h3 class="font-medium text-gray-700 mb-2">Selected Place</h3>
-                                <div id="places-selected-details" class="bg-gray-50 p-3 rounded text-sm"></div>
-                                
-                                <div class="mt-4 flex justify-end">
-                                    <button id="import-place-button" class="bg-green-600 text-white px-4 py-2 rounded flex items-center">
-                                        <span class="material-icons mr-1">add_circle</span>
-                                        Import Restaurant
-                                    </button>
-                                </div>
-                            </div>
+                    </div>
+                    <div id="place-details-container" class="hidden">
+                        <div id="place-details-content"></div>
+                        <div class="mt-4">
+                            <button id="import-place-button" class="bg-green-500 text-white px-4 py-2">
+                                Import Restaurant
+                            </button>
                         </div>
                     </div>
                 </div>
             `;
             
-            // Find the Michelin search section to insert after it
-            const michelinSection = document.getElementById('michelin-search-section');
+            // Add toggle header and content container to the main section
+            section.appendChild(toggleHeader);
+            section.appendChild(contentContainer);
             
-            if (michelinSection) {
-                // Insert after the Michelin section
-                michelinSection.insertAdjacentHTML('afterend', placesSearchHTML);
-                console.log('Places search section created after Michelin section');
+            // Add the section to the page after the recording section
+            const recordingSection = document.getElementById('recording-section');
+            if (recordingSection && recordingSection.parentNode) {
+                recordingSection.parentNode.insertBefore(section, recordingSection.nextSibling);
             } else {
-                // If Michelin section doesn't exist, find another suitable location
-                const restaurantSection = document.getElementById('restaurant-list-section');
-                if (restaurantSection) {
-                    restaurantSection.insertAdjacentHTML('beforebegin', placesSearchHTML);
-                    console.log('Places search section created before restaurant list section');
+                // Fallback: add to restaurant form section
+                const restaurantForm = document.getElementById('restaurant-form-section');
+                if (restaurantForm) {
+                    restaurantForm.appendChild(section);
                 } else {
-                    // Last resort: append to the body
-                    document.body.insertAdjacentHTML('beforeend', placesSearchHTML);
-                    console.log('Places search section added to body');
+                    // Last resort: add to body
+                    document.body.appendChild(section);
                 }
             }
+            
+            // Add toggle functionality
+            this.setupToggleListener(toggleHeader);
+            
         } else {
-            console.log('Places search section already exists');
+            // Section already exists, ensure it has the increased bottom padding
+            const section = document.getElementById('places-search-section');
+            section.style.paddingBottom = '100px';
+            
+            // Make sure the toggle functionality is set up
+            const toggleHeader = document.getElementById('places-search-toggle');
+            if (toggleHeader && !toggleHeader._hasToggleListener) {
+                this.setupToggleListener(toggleHeader);
+            }
         }
+    }
+    
+    /**
+     * Set up toggle listener for expanding/collapsing the section
+     * @param {HTMLElement} toggleHeader - The header element that toggles visibility
+     */
+    setupToggleListener(toggleHeader) {
+        if (!toggleHeader) return;
+        
+        toggleHeader.addEventListener('click', () => {
+            const content = document.getElementById('places-search-content');
+            const icon = toggleHeader.querySelector('.toggle-icon');
+            
+            if (content.classList.contains('hidden')) {
+                // Expand
+                content.classList.remove('hidden');
+                icon.textContent = 'expand_less';
+            } else {
+                // Collapse
+                content.classList.add('hidden');
+                icon.textContent = 'expand_more';
+            }
+        });
+        
+        // Mark that we've attached the listener to avoid duplicate listeners
+        toggleHeader._hasToggleListener = true;
     }
     
     /**
@@ -112,103 +160,130 @@ class PlacesSearchModule {
         // Save API key button - Using direct event attachment with verification
         const saveApiKeyBtn = document.getElementById('save-places-api-key');
         if (saveApiKeyBtn) {
-            console.log('Found save-places-api-key button, attaching click handler');
-            // Remove any existing listeners to prevent duplicates
-            const newButton = saveApiKeyBtn.cloneNode(true);
-            saveApiKeyBtn.parentNode.replaceChild(newButton, saveApiKeyBtn);
-            
-            // Add the event listener to the new button
-            newButton.addEventListener('click', (e) => {
-                e.preventDefault();
-                console.log('Save API key button clicked');
-                this.saveApiKey();
-            });
-        } else {
-            console.warn('save-places-api-key button not found');
+            saveApiKeyBtn.addEventListener('click', () => this.saveApiKey());
         }
         
         // Import place button
         const importPlaceBtn = document.getElementById('import-place-button');
         if (importPlaceBtn) {
-            // Remove any existing listeners to prevent duplicates
-            const newImportBtn = importPlaceBtn.cloneNode(true);
-            importPlaceBtn.parentNode.replaceChild(newImportBtn, importPlaceBtn);
-            
-            newImportBtn.addEventListener('click', () => {
-                console.log('Import place button clicked');
-                this.importSelectedPlace();
-            });
-        }
-        
-        console.log('Event listeners set up for Places search section');
-    }
-    
-    /**
-     * Load Google Places API key from localStorage
-     */
-    loadApiKey() {
-        console.log('Loading Google Places API key from localStorage');
-        const apiKey = localStorage.getItem('google_places_api_key');
-        
-        if (apiKey) {
-            console.log('Google Places API key found in localStorage');
-            // Set the API key in the input field
-            const apiKeyInput = document.getElementById('places-api-key');
-            if (apiKeyInput) {
-                apiKeyInput.value = apiKey;
-            }
-            
-            this.apiKey = apiKey;
-            
-            // Show the search container and hide API key section
-            this.showSearchContainer();
-            
-            // Initialize the Places API
-            this.initializePlacesApi();
-        } else {
-            console.log('No Google Places API key found in localStorage');
+            importPlaceBtn.addEventListener('click', () => this.importSelectedPlace());
         }
     }
     
     /**
-     * Save Google Places API key to localStorage
+     * Load Google Places API key from localStorage and database with enhanced persistence
      */
-    saveApiKey() {
-        console.log('saveApiKey method called');
-        const apiKeyInput = document.getElementById('places-api-key');
-        
-        if (!apiKeyInput) {
-            console.warn('API key input element not found');
-            this.safeShowNotification('Error: API key input not found', 'error');
-            return;
-        }
-        
-        const apiKey = apiKeyInput.value.trim();
-        if (!apiKey) {
-            console.warn('No API key provided');
-            this.safeShowNotification('Please enter a valid API key', 'error');
-            return;
-        }
-        
-        console.log('Saving API key to localStorage (first 4 chars):', apiKey.substring(0, 4) + '...');
+    async loadApiKey() {
+        console.log('Loading Google Places API key from storage');
         
         try {
-            // Save to localStorage
-            localStorage.setItem('google_places_api_key', apiKey);
+            // First try to get API key from database (most persistent)
+            let apiKey = null;
             
+            if (window.dataStorage && typeof window.dataStorage.getSetting === 'function') {
+                try {
+                    apiKey = await window.dataStorage.getSetting('google_places_api_key');
+                    console.log('Google Places API key found in database');
+                } catch (dbError) {
+                    console.warn('Could not load Google Places API key from database:', dbError);
+                }
+            }
+            
+            // If not found in database, try localStorage
+            if (!apiKey) {
+                apiKey = localStorage.getItem('google_places_api_key');
+                
+                if (apiKey) {
+                    console.log('Google Places API key found in localStorage');
+                    
+                    // Save to database for persistence across devices if not already there
+                    if (window.dataStorage && typeof window.dataStorage.updateSetting === 'function') {
+                        try {
+                            await window.dataStorage.updateSetting('google_places_api_key', apiKey);
+                            console.log('Synced Google Places API key from localStorage to database');
+                        } catch (syncError) {
+                            console.warn('Could not sync API key to database:', syncError);
+                        }
+                    }
+                } else {
+                    console.log('No Google Places API key found in localStorage');
+                }
+            } else {
+                // API key found in database, ensure it's in localStorage too for faster access
+                localStorage.setItem('google_places_api_key', apiKey);
+            }
+            
+            if (apiKey) {
+                // Save to instance variable
+                this.apiKey = apiKey;
+                
+                // Show the search container since we have an API key
+                this.showSearchContainer();
+                
+                // Initialize the Places API with the retrieved key
+                this.initializePlacesApi();
+                
+                return true;
+            } else {
+                console.log('No Google Places API key found in any storage');
+                return false;
+            }
+        } catch (error) {
+            console.error('Error loading Google Places API key:', error);
+            return false;
+        }
+    }
+    
+    /**
+     * Save Google Places API key to localStorage and database for persistence
+     */
+    async saveApiKey() {
+        console.log('Saving Google Places API key');
+        
+        try {
+            const apiKeyInput = document.getElementById('places-api-key');
+            if (!apiKeyInput) {
+                throw new Error('API key input element not found');
+            }
+            
+            const apiKey = apiKeyInput.value.trim();
+            if (!apiKey) {
+                this.safeShowNotification('Please enter a valid API key', 'error');
+                return false;
+            }
+            
+            // Save to instance variable
             this.apiKey = apiKey;
             
-            // Show the search container
-            this.showSearchContainer();
+            // Save to localStorage for immediate availability
+            localStorage.setItem('google_places_api_key', apiKey);
+            console.log('Google Places API key saved to localStorage');
             
-            // Initialize the Places API
+            // Save to database for persistence across devices
+            if (window.dataStorage && typeof window.dataStorage.updateSetting === 'function') {
+                try {
+                    await window.dataStorage.updateSetting('google_places_api_key', apiKey);
+                    console.log('Google Places API key saved to database');
+                } catch (dbError) {
+                    console.warn('Could not save Google Places API key to database:', dbError);
+                    this.safeShowNotification('API key saved locally but not to database', 'warning');
+                }
+            } else {
+                console.warn('Database storage not available for API key');
+            }
+            
+            // Show notification
+            this.safeShowNotification('API key saved successfully', 'success');
+            
+            // Show search container and initialize API
+            this.showSearchContainer();
             this.initializePlacesApi();
             
-            // Show success notification
-            this.safeShowNotification('Google Places API key saved successfully', 'success');
+            return true;
         } catch (error) {
-            console.error('Error saving API key:', error);
+            console.error('Error saving Google Places API key:', error);
             this.safeShowNotification('Error saving API key: ' + error.message, 'error');
+            return false;
         }
     }
     
@@ -216,28 +291,21 @@ class PlacesSearchModule {
      * Show the search container and hide API key section when API key is set
      */
     showSearchContainer() {
-        console.log('Showing search container');
         const apiKeySection = document.getElementById('places-api-key-section');
         const searchContainer = document.getElementById('places-search-container');
         
-        if (!apiKeySection || !searchContainer) {
-            console.warn('Could not find API key section or search container elements');
-            return;
+        if (apiKeySection) apiKeySection.classList.add('hidden');
+        if (searchContainer) searchContainer.classList.remove('hidden');
+        
+        // Also make sure the content section is visible when API key is set
+        const contentContainer = document.getElementById('places-search-content');
+        if (contentContainer && contentContainer.classList.contains('hidden')) {
+            contentContainer.classList.remove('hidden');
+            
+            // Update the toggle icon
+            const toggleIcon = document.querySelector('#places-search-toggle .toggle-icon');
+            if (toggleIcon) toggleIcon.textContent = 'expand_less';
         }
-        
-        // Don't completely hide the API key section, just make it collapsible
-        apiKeySection.classList.add('border-b', 'pb-2', 'mb-4');
-        
-        // If possible, mask the API key input for security
-        const apiKeyInput = apiKeySection.querySelector('input');
-        if (apiKeyInput) {
-            apiKeyInput.type = 'password';
-            apiKeyInput.placeholder = '••••••••••••••••••••••••••';
-        }
-        
-        // Show search container
-        searchContainer.classList.remove('hidden');
-        console.log('Search container is now visible');
     }
     
     /**
@@ -329,6 +397,7 @@ class PlacesSearchModule {
                 
                 // Use mutation observer to still fix any dropdown positioning issues
                 this.injectDropdownFixStyles();
+                this.setupAutocompleteObserver();  // <<<<<<<<<<<<<<<< ADDED FIX
                 
                 console.log('Places Autocomplete widget created using PlaceAutocompleteElement');
                 
@@ -358,6 +427,7 @@ class PlacesSearchModule {
                 
                 // Apply our dropdown positioning fix for classic API
                 this.injectDropdownFixStyles();
+                this.setupAutocompleteObserver();  // <<<<<<<<<<<<<<<< ADDED FIX
                 
                 console.log('Places Autocomplete widget created using classic API');
             }
@@ -448,7 +518,9 @@ class PlacesSearchModule {
      * Dynamically positions the dropdown above or below the input based on available space
      */
     setupAutocompleteObserver() {
-        // Create observer to monitor for pac-container elements
+        if (window.__pacObserverSetup) return; // Only run once per page
+        window.__pacObserverSetup = true;
+
         const observer = new MutationObserver((mutations) => {
             for (const mutation of mutations) {
                 if (mutation.type === 'childList') {
@@ -456,16 +528,12 @@ class PlacesSearchModule {
                     pacContainers.forEach(container => {
                         // Only process containers that haven't been fixed
                         if (!container.dataset.fixed) {
-                            console.log('Fixing pac-container positioning');
-                            
                             // Move to body if not already there
                             if (container.parentElement !== document.body) {
                                 document.body.appendChild(container);
                             }
-                            
                             // Mark as fixed
                             container.dataset.fixed = 'true';
-                            
                             // Get position of input for correct placement
                             const input = document.getElementById('places-autocomplete-input');
                             if (input) {
@@ -1229,3 +1297,21 @@ class PlacesSearchModule {
         }
     }
 }
+
+// Brute force hack: reposition .pac-container dropdown so it's never cut off by a container
+setInterval(() => {
+  document.querySelectorAll('.pac-container').forEach(container => {
+    // Move the dropdown to the body if it's not already there
+    if (container.parentNode !== document.body) {
+      document.body.appendChild(container);
+    }
+    // Optionally, you can tweak left/top for the input (here it stays default)
+    // But we add a very high z-index and reset overflow
+    container.style.zIndex = 100000;
+    container.style.position = 'fixed';
+    container.style.maxHeight = '300px';
+    container.style.overflowY = 'auto';
+    container.style.display = 'block';
+    container.style.visibility = 'visible';
+  });
+}, 100);
