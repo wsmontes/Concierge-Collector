@@ -345,6 +345,43 @@
             </button>
         </div>
 
+        <!-- Google Places Search Section -->
+        <section id="places-search-section" class="mt-6 p-4 bg-white rounded-lg shadow-md">
+            <h2 class="text-lg font-semibold mb-4 flex items-center">
+                <span class="material-icons text-blue-600 mr-2">place</span>
+                Search Google Places
+            </h2>
+            
+            <div class="mb-4">
+                <div id="places-api-key-section" class="mb-4">
+                    <label for="places-api-key" class="block text-sm font-medium text-gray-700 mb-1">Google Places API Key:</label>
+                    <div class="flex">
+                        <input type="text" id="places-api-key" class="border rounded p-2 flex-grow" placeholder="Enter your Google Places API key">
+                        <button id="save-places-api-key" class="ml-2 bg-blue-500 text-white px-4 py-2 rounded">Save</button>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">Required to use the Places API. Your API key is stored locally.</p>
+                </div>
+                
+                <div id="places-search-container" class="hidden">
+                    <div id="places-autocomplete-container" class="mb-4">
+                        <!-- The Places Autocomplete widget will be inserted here -->
+                    </div>
+                    
+                    <div id="places-selected-result" class="hidden border-t pt-4 mt-4">
+                        <h3 class="font-medium text-gray-700 mb-2">Selected Place</h3>
+                        <div id="places-selected-details" class="bg-gray-50 p-3 rounded text-sm"></div>
+                        
+                        <div class="mt-4 flex justify-end">
+                            <button id="import-place-button" class="bg-green-600 text-white px-4 py-2 rounded flex items-center">
+                                <span class="material-icons mr-1">add_circle</span>
+                                Import Restaurant
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <!-- Restaurant List Section -->
         <section id="restaurant-list-section" class="mb-8 p-6 bg-white rounded-lg shadow-md border border-gray-100 hover:shadow-lg transition-all duration-300 hidden">
             <div class="flex justify-between items-center mb-4">
@@ -577,6 +614,7 @@
     <script src="scripts/modules/exportImportModule.js"></script>
     <script src="scripts/modules/quickActionModule.js"></script>
     <script src="scripts/modules/michelinStagingModule.js"></script>
+    <script src="scripts/modules/placesSearchModule.js"></script>
 
     <!-- Core application scripts -->
     <script src="scripts/apiHandler.js"></script>
@@ -585,12 +623,22 @@
     <script src="scripts/audioRecorder.js"></script>
     <script src="scripts/uiManager.js"></script>
 
-
-</html></body>    <script src="scripts/syncService.js"></script>
-    
     <!-- Main application script loaded last -->
     <script src="scripts/main.js"></script>
     <script src="scripts/syncSettingsManager.js"></script>
     <script src="scripts/autoSync.js"></script>
+
+    <!-- Ensure this appears after all other scripts -->
+    <script>
+        // Initialize Places Search Module if needed
+        document.addEventListener('DOMContentLoaded', function() {
+            console.log('DOM fully loaded, initializing modules if needed');
+            // Check if module is already initialized
+            if (!window.placesSearchModule && typeof PlacesSearchModule === 'function') {
+                console.log('Initializing Places Search Module from inline script');
+                window.placesSearchModule = new PlacesSearchModule(window.uiManager);
+            }
+        });
+    </script>
 </body>
 </html>

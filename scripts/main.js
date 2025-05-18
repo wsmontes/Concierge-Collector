@@ -28,6 +28,47 @@ document.addEventListener('DOMContentLoaded', () => {
         console.error('Stack trace:', error.stack);
         showFatalError('There was an error initializing the application. Please check the console for details.');
     });
+    
+    // Load and initialize Places Search Module
+    function loadPlacesSearchModule() {
+        console.log('Initializing Places Search Module');
+        
+        // Check if module script is already loaded
+        if (!document.querySelector('script[src*="placesSearchModule.js"]')) {
+            // Load the script dynamically
+            const script = document.createElement('script');
+            script.src = 'scripts/modules/placesSearchModule.js';
+            script.onload = function() {
+                console.log('Places Search Module script loaded');
+                initializePlacesSearchModule();
+            };
+            script.onerror = function() {
+                console.error('Failed to load Places Search Module script');
+            };
+            document.head.appendChild(script);
+        } else {
+            // Script already exists, just initialize the module
+            initializePlacesSearchModule();
+        }
+    }
+    
+    // Initialize the Places Search Module
+    function initializePlacesSearchModule() {
+        if (typeof PlacesSearchModule === 'function') {
+            // Check if module is already initialized
+            if (!window.placesSearchModule) {
+                console.log('Creating new PlacesSearchModule instance');
+                window.placesSearchModule = new PlacesSearchModule(window.uiManager);
+            } else {
+                console.log('Places Search Module already initialized');
+            }
+        } else {
+            console.error('PlacesSearchModule class not available');
+        }
+    }
+    
+    // Call the function to load and initialize the module
+    loadPlacesSearchModule();
 });
 
 /**
@@ -211,3 +252,20 @@ function cleanupBrowserData() {
         console.error('Error during browser data cleanup:', error);
     }
 }
+
+// Add a function to create the Places Search Module
+function initializePlacesSearchModule() {
+    console.log('Initializing Places Search Module...');
+    if (typeof PlacesSearchModule === 'function') {
+        if (!window.placesSearchModule) {
+            window.placesSearchModule = new PlacesSearchModule(window.uiManager);
+        } else {
+            console.log('PlacesSearchModule already initialized');
+        }
+    } else {
+        console.error('PlacesSearchModule class not available');
+    }
+}
+
+// Call the initialization function after a delay
+setTimeout(initializePlacesSearchModule, 1000);

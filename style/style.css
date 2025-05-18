@@ -1415,3 +1415,104 @@ button .material-icons {
     padding: 0.75rem 0;
   }
 }
+
+/* Google Places Autocomplete styles */
+
+/* Fix for autocomplete dropdown being cut off */
+.pac-container {
+    z-index: 99999 !important; /* Extremely high z-index */
+    position: absolute !important;
+    top: auto !important; /* Let Google handle positioning */
+    left: auto !important; /* Let Google handle positioning */
+    margin-top: 0 !important;
+    transform: none !important;
+    width: auto !important;
+    min-width: 300px !important;
+    max-width: 500px !important;
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.15) !important;
+    border-radius: 0 0 8px 8px !important;
+    overflow: visible !important; /* Ensure dropdown isn't clipped */
+    font-family: inherit !important;
+    background-color: white !important;
+    border: 1px solid #d1d5db !important;
+    border-top: none !important;
+}
+
+/* Move the pac-container to the document body to break out of any overflow containers */
+body .pac-container {
+    position: fixed !important; /* Use fixed position to break out of containers */
+    top: auto !important; /* Let Google calculate the position */
+    left: auto !important; /* Let Google calculate the position */
+    z-index: 100000 !important; /* Extremely high z-index */
+    margin-top: 5px !important; /* Give some space from input */
+    width: 100% !important;
+    max-width: 500px !important;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2) !important;
+    transform: none !important; /* Prevent any transforms */
+}
+
+/* Fix for z-index issues */
+#places-search-section {
+    position: relative;
+    z-index: 1;
+}
+
+#places-autocomplete-container {
+    position: relative;
+    z-index: 2;
+}
+
+/* Google Places Autocomplete dropdown fix */
+.pac-container,
+gmp-pac-container {
+  z-index: 100000 !important;
+  position: fixed !important;
+  border-radius: 8px !important;
+  box-shadow: 0 4px 18px rgba(0,0,0,0.14) !important;
+  background: #fff !important;
+  overflow-y: auto !important;
+  max-height: 320px !important;
+  border: 1px solid #e0e0e0 !important;
+  transform: none !important;
+  transition: none !important;
+  /* Ensure dropdown breaks out of any container with overflow hidden */
+  clip-path: none !important;
+  clip: auto !important;
+}
+
+/* Special styling for dropdown when positioned above the input */
+.pac-container-above {
+    border-radius: 8px 8px 0 0 !important;
+    border-bottom-width: 0 !important;
+}
+
+/* Item styling for consistent appearance */
+.pac-item,
+gmp-pac-item {
+    padding: 10px 14px !important;
+    font-size: 15px !important;
+    cursor: pointer !important;
+    transition: background-color 0.2s ease !important;
+}
+
+/* Hover and selected states */
+.pac-item:hover,
+.pac-item-selected,
+gmp-pac-item:hover,
+gmp-pac-item-selected {
+    background-color: #f0f4ff !important;
+}
+
+/* Style for the input field to give visual cues */
+#places-autocomplete-input:focus,
+gmp-place-autocomplete input:focus {
+    box-shadow: 0 0 0 2px rgba(66, 133, 244, 0.4) !important;
+    border-color: #4285f4 !important;
+    outline: none !important;
+}
+
+/* Make sure container doesn't hide overflow */
+#places-autocomplete-container {
+    position: relative !important;
+    overflow: visible !important;
+}

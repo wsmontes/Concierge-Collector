@@ -83,6 +83,65 @@ class UIManager {
         
         // Load curator info
         this.curatorModule.loadCuratorInfo();
+        
+        // Initialize Places Search Module
+        this.initializeModules();
+    }
+
+    /**
+     * Initialize all modules
+     */
+    initializeModules() {
+        // Initialize modules conditionally (only if not already initialized)
+        if (!this.curatorModule) this.curatorModule = new CuratorModule(this);
+        if (!this.recordingModule) this.recordingModule = new RecordingModule(this);
+        if (!this.transcriptionModule) this.transcriptionModule = new TranscriptionModule(this);
+        if (!this.conceptModule) this.conceptModule = new ConceptModule(this);
+        if (!this.restaurantModule) this.restaurantModule = new RestaurantModule(this);
+        if (!this.exportImportModule) this.exportImportModule = new ExportImportModule(this);
+        
+        // Initialize the quick action module safely
+        if (!this.quickActionModule) {
+            this.quickActionModule = new QuickActionModule(this);
+        }
+        
+        // Setup events for each module
+        this.curatorModule.setupEvents();
+        this.recordingModule.setupEvents();
+        this.transcriptionModule.setupEvents();
+        this.conceptModule.setupEvents();
+        this.restaurantModule.setupEvents();
+        this.exportImportModule.setupEvents();
+        
+        // Only set up quick action events if all required elements exist
+        if (this.fab && this.quickActionModal && this.closeQuickModal) {
+            this.quickActionModule.setupEvents();
+        } else {
+            console.warn('Quick action elements not found, skipping initialization');
+        }
+        
+        // Load curator info
+        this.curatorModule.loadCuratorInfo();
+        
+        // Initialize Places Search Module
+        try {
+            console.log('Attempting to initialize PlacesSearchModule');
+            if (typeof PlacesSearchModule === 'function') {
+                this.placesSearchModule = new PlacesSearchModule(this);
+                console.log('Places Search Module initialized through UIManager');
+            } else {
+                console.warn('PlacesSearchModule not available yet, will initialize later');
+                // Schedule initialization for later when the class might be available
+                setTimeout(() => {
+                    if (typeof PlacesSearchModule === 'function' && !this.placesSearchModule) {
+                        this.placesSearchModule = new PlacesSearchModule(this);
+                        console.log('Places Search Module initialized (delayed)');
+                    }
+                }, 2000);
+            }
+        } catch (error) {
+            console.error('Error initializing Places Search Module:', error);
+        }
     }
 
     /**
