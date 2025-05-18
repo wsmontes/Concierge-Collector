@@ -223,8 +223,8 @@ class CuratorModule {
                 
                 // Display name with ID and origin badge for better disambiguation
                 const badge = curator.origin === 'remote' ? '[Server]' : '[Local]';
-                const serverId = curator.serverId ? ` | Server ID: ${curator.serverId}` : '';
-                option.textContent = `${curator.name} (${curator.id}${serverId}) ${badge}`;
+                // Remove server ID from display text
+                option.textContent = `${curator.name} (${curator.id}) ${badge}`;
                 
                 // Set data attributes for additional info
                 option.dataset.origin = curator.origin;

@@ -588,7 +588,6 @@ class ConceptModule {
                 );
                 
                 // Add special handling for potential plurals/singulars that might be missed by similarity calculation
-                // A threshold of 0.7 (70%) will be more sensitive to small differences like adding an 's'
                 const potentialPluralOrSingular = similarConcepts.filter(concept => {
                     // Check for plural/singular variations that might have lower similarity scores
                     const newValue = newConcept.value.toLowerCase();
