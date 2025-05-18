@@ -630,143 +630,181 @@ class PlacesSearchModule {
             this.safeShowNotification('No place selected', 'error');
             return;
         }
-        
+
         try {
-            // Check if curator is set
             if (!this.uiManager || !this.uiManager.currentCurator) {
                 this.safeShowNotification('Please set up curator information first', 'error');
                 return;
             }
-            
+
             this.safeShowLoading('Importing restaurant from Google Places...');
-            
-            const place = this.selectedPlace;
-            // Use either displayName (new API) or name (old API)
-            const restaurantName = place.displayName || place.name;
-            
-            console.log('Importing place:', restaurantName);
-            
-            // Extract concepts from place data, adjusting for the new object structure
-            const concepts = this.extractConceptsFromPlace(place);
-            console.log('Extracted concepts:', concepts);
-            
-            // Debug location data
-            console.log('Location data:', {
-                isNewApi: !!place.location,
-                location: place.location,
-                geometry: place.geometry,
-                latType: place.location ? typeof place.location.lat : typeof place.geometry?.location.lat(),
-                lngType: place.location ? typeof place.location.lng : typeof place.geometry?.location.lng()
-            });
-            
-            // Prepare location data, accounting for new object structure and ensuring numeric values
-            let latitude, longitude;
-            
+
+            let place = this.selectedPlace;
+            // If using the new API and place.fetchFields exists, fetch all possible fields
+            if (typeof place.fetchFields === 'function') {
+                try {
+                    await place.fetchFields({
+                        fields: [
+                            'displayName', 'name', 'formattedAddress', 'formatted_address', 'location', 'geometry',
+                            'types', 'websiteURI', 'website', 'rating', 'internationalPhoneNumber', 'international_phone_number',
+                            'editorialSummary', 'reviews', 'priceLevel', 'price_level', 'photos'
+                        ]
+                    });
+                } catch (fetchError) {
+                    // Continue with what we have
+                }
+            } else if (place.place_id && window.google && google.maps && google.maps.places && google.maps.places.PlacesService) {
+                // Classic API: fetch details if not already present
+                const service = this.placesService || new google.maps.places.PlacesService(document.createElement('div'));
+                await new Promise((resolve) => {
+                    service.getDetails(
+                        {
+                            placeId: place.place_id,
+                            fields: [
+                                'name', 'formatted_address', 'geometry', 'types', 'website', 'rating',
+                                'international_phone_number', 'editorial_summary', 'reviews', 'price_level', 'photos'
+                            ]
+                        },
+                        (result, status) => {
+                            if (status === google.maps.places.PlacesServiceStatus.OK && result) {
+                                place = Object.assign(place, result);
+                            }
+                            resolve();
+                        }
+                    );
+                });
+            }
+
+            // Name
+            const restaurantName = place.displayName || place.name || '';
+
+            // Location
+            let latitude, longitude, address;
             if (place.location) {
-                // New API format - check if lat/lng are functions or properties
                 latitude = typeof place.location.lat === 'function' ? place.location.lat() : place.location.lat;
                 longitude = typeof place.location.lng === 'function' ? place.location.lng() : place.location.lng;
+                address = place.formattedAddress || '';
             } else if (place.geometry && place.geometry.location) {
-                // Old API format
-                latitude = place.geometry.location.lat();
-                longitude = place.geometry.location.lng();
+                latitude = typeof place.geometry.location.lat === 'function' ? place.geometry.location.lat() : place.geometry.location.lat;
+                longitude = typeof place.geometry.location.lng === 'function' ? place.geometry.location.lng() : place.geometry.location.lng;
+                address = place.formatted_address || '';
             } else {
-                console.warn('No location data available for place');
                 latitude = 0;
                 longitude = 0;
+                address = '';
             }
-            
-            // Ensure we have numeric values
             latitude = Number(latitude);
             longitude = Number(longitude);
-            
+
             const location = {
-                latitude: latitude,
-                longitude: longitude,
-                address: place.formattedAddress || place.formatted_address || ''
+                latitude,
+                longitude,
+                address
             };
-            
-            // Prepare description
+
+            // Description and Transcription
             let description = `Imported from Google Places. `;
-            
-            if (place.rating) {
-                description += `Rated ${place.rating}/5 stars. `;
+            if (place.rating) description += `Rated ${place.rating}/5 stars. `;
+            if (place.price_level !== undefined || place.priceLevel !== undefined) {
+                const priceLevel = place.priceLevel !== undefined ? place.priceLevel : place.price_level;
+                const priceLevels = ['Free', 'Inexpensive', 'Moderate', 'Expensive', 'Very Expensive'];
+                if (priceLevel >= 0 && priceLevel < priceLevels.length) {
+                    description += `Price level: ${priceLevels[priceLevel]}. `;
+                }
             }
-            
-            // Use either websiteURI (new API) or website (old API)
             const websiteUrl = place.websiteURI || place.website;
-            if (websiteUrl) {
-                description += `Website: ${websiteUrl}`;
+            if (websiteUrl) description += `Website: ${websiteUrl}. `;
+            const phone = place.internationalPhoneNumber || place.international_phone_number;
+            if (phone) description += `Phone: ${phone}. `;
+
+            // Add editorial summary or reviews for richer description/transcription
+            let transcription = '';
+            if (place.editorialSummary && place.editorialSummary.text) {
+                description += `\n\n${place.editorialSummary.text}`;
+                transcription = place.editorialSummary.text;
+            } else if (place.editorial_summary && place.editorial_summary.text) {
+                description += `\n\n${place.editorial_summary.text}`;
+                transcription = place.editorial_summary.text;
+            } else if (place.reviews && place.reviews.length > 0) {
+                description += `\n\nReviews:\n`;
+                const reviewsToShow = place.reviews.slice(0, 2);
+                reviewsToShow.forEach((review, idx) => {
+                    if (review.text) {
+                        description += `${idx + 1}. "${review.text.slice(0, 150)}${review.text.length > 150 ? '...' : ''}"\n`;
+                    }
+                });
+                // Use up to 3 reviews for transcription
+                const reviewTexts = place.reviews.slice(0, 3).map(r => r.text).filter(Boolean);
+                transcription = reviewTexts.join('\n\n');
+            } else {
+                transcription = description;
             }
-            
-            // Populate the restaurant form instead of saving directly
+
+            // Concepts
+            const concepts = this.extractConceptsFromPlace(place);
+
+            // Populate the restaurant form for review
             if (this.uiManager) {
-                // Switch to the restaurant form section
                 if (typeof this.uiManager.showRestaurantFormSection === 'function') {
                     this.uiManager.showRestaurantFormSection();
-                } else {
-                    console.warn('showRestaurantFormSection method not found on uiManager');
-                    
-                    // Try alternative methods that might exist
-                    if (typeof this.uiManager.showSection === 'function') {
-                        this.uiManager.showSection('restaurant-form-section');
-                    }
+                } else if (typeof this.uiManager.showSection === 'function') {
+                    this.uiManager.showSection('restaurant-form-section');
                 }
-                
-                // Set the restaurant name
+
+                // Name
                 const nameInput = document.getElementById('restaurant-name');
                 if (nameInput) {
                     nameInput.value = restaurantName;
-                    // Trigger input event to activate any listeners
                     nameInput.dispatchEvent(new Event('input'));
                 }
-                
-                // Set concepts
+
+                // Concepts
                 this.uiManager.currentConcepts = concepts;
-                
-                // Set location
+
+                // Location
                 this.uiManager.currentLocation = location;
-                
-                // Update location display with error handling
                 const locationDisplay = document.getElementById('location-display');
                 if (locationDisplay) {
-                    try {
-                        // Ensure latitude and longitude are numbers and valid before using toFixed
-                        const latFormatted = isNaN(location.latitude) ? "unknown" : location.latitude.toFixed(6);
-                        const lngFormatted = isNaN(location.longitude) ? "unknown" : location.longitude.toFixed(6);
-                        
-                        locationDisplay.innerHTML = `
-                            <p class="text-green-600">Location saved:</p>
-                            <p>Latitude: ${latFormatted}</p>
-                            <p>Longitude: ${lngFormatted}</p>
-                            <p>${location.address || ''}</p>
-                        `;
-                    } catch (formatError) {
-                        console.error('Error formatting location display:', formatError);
-                        locationDisplay.innerHTML = `
-                            <p class="text-green-600">Location saved:</p>
-                            <p>Address: ${location.address || 'No address available'}</p>
-                        `;
-                    }
+                    locationDisplay.innerHTML = `
+                        <p class="text-green-600">Location saved:</p>
+                        <p>Latitude: ${location.latitude.toFixed(6)}</p>
+                        <p>Longitude: ${location.longitude.toFixed(6)}</p>
+                        <p>${location.address || ''}</p>
+                    `;
                 }
-                
-                // Set description
+
+                // Description
                 const descriptionInput = document.getElementById('restaurant-description');
                 if (descriptionInput) {
                     descriptionInput.value = description;
-                    // Trigger input event to activate any listeners
                     descriptionInput.dispatchEvent(new Event('input'));
                 }
-                
-                // Render concepts if conceptModule is available
+
+                // Transcription
+                const transcriptionInput = document.getElementById('restaurant-transcription');
+                if (transcriptionInput) {
+                    transcriptionInput.value = transcription;
+                    transcriptionInput.dispatchEvent(new Event('input'));
+                }
+
+                // Render concepts if available
                 if (this.uiManager.conceptModule && typeof this.uiManager.conceptModule.renderConcepts === 'function') {
                     this.uiManager.conceptModule.renderConcepts();
-                } else {
-                    console.warn('conceptModule not found or renderConcepts is not a function');
                 }
-                
+
+                // Add Google Places badge to header
+                const restaurantFormHeader = document.querySelector('.restaurant-form-section h2');
+                if (restaurantFormHeader) {
+                    const existingBadge = restaurantFormHeader.querySelector('.google-places-badge');
+                    if (existingBadge) existingBadge.remove();
+                    const badge = document.createElement('span');
+                    badge.className = 'google-places-badge ml-2 bg-blue-100 text-blue-700 text-xs px-2 py-1 rounded-full';
+                    badge.innerHTML = '<span class="material-icons text-xs mr-1" style="font-size:10px;vertical-align:middle;">place</span>Google Places';
+                    restaurantFormHeader.appendChild(badge);
+                }
+
                 this.safeHideLoading();
-                this.safeShowNotification('Restaurant imported from Google Places successfully', 'success');
+                this.safeShowNotification('Restaurant imported from Google Places. Review and save when ready.', 'success');
             } else {
                 this.safeHideLoading();
                 this.safeShowNotification('UI Manager not available, could not populate form', 'error');
