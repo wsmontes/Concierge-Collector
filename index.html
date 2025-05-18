@@ -250,7 +250,16 @@
                     <label class="block mb-2 font-medium">
                         Restaurant Name: <span class="text-red-500">*</span>
                     </label>
-                    <input type="text" id="restaurant-name" class="border p-2 w-full rounded required-field" placeholder="Enter restaurant name" required>
+                    <div class="mb-4 flex items-center gap-2">
+                        <div class="flex-grow relative">
+                            <input type="text" id="restaurant-name" class="border rounded p-2 w-full" placeholder="Restaurant Name">
+                        </div>
+                        <button id="places-lookup-btn" type="button" class="bg-blue-500 text-white px-3 py-2 rounded flex items-center" title="Get from Google Places">
+                            <span class="material-icons mr-1">travel_explore</span>
+                            Places
+                        </button>
+                    </div>
+                    <div id="places-autocomplete-inline-container" class="mb-2 hidden"></div>
                     <p class="text-xs text-red-500 mt-1">This field is required</p>
                 </div>
                 
@@ -615,6 +624,7 @@
     <script src="scripts/modules/quickActionModule.js"></script>
     <script src="scripts/modules/michelinStagingModule.js"></script>
     <script src="scripts/modules/placesSearchModule.js"></script>
+    <script src="scripts/modules/placesInlineSearchModule.js"></script>
 
     <!-- Core application scripts -->
     <script src="scripts/apiHandler.js"></script>

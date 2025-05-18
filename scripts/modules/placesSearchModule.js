@@ -640,30 +640,31 @@ class PlacesSearchModule {
             this.safeShowLoading('Importing restaurant from Google Places...');
 
             let place = this.selectedPlace;
-            // If using the new API and place.fetchFields exists, fetch all possible fields
+            let reviewsFetched = false;
+            const placeFields = [
+                'id', 'place_id', 'displayName', 'name', 'formattedAddress', 'formatted_address', 'location', 'geometry',
+                'types', 'websiteURI', 'website', 'rating', 'userRatingCount', 'user_ratings_total',
+                'internationalPhoneNumber', 'international_phone_number', 'editorialSummary', 'editorial_summary',
+                'reviews', 'priceLevel', 'price_level', 'photos', 'addressComponents', 'plusCode',
+                'primaryType', 'primaryTypeDisplayName', 'businessStatus', 'openingHours', 'servesBreakfast',
+                'servesLunch', 'servesDinner', 'servesBrunch', 'servesDessert', 'servesVegetarianFood',
+                'servesWine', 'servesBeer', 'servesCocktails', 'servesCoffee', 'hasOutdoorSeating', 'hasTakeout',
+                'hasDelivery', 'isGoodForGroups', 'isGoodForChildren', 'isReservable', 'hasRestroom', 'paymentOptions'
+            ];
             if (typeof place.fetchFields === 'function') {
                 try {
-                    await place.fetchFields({
-                        fields: [
-                            'displayName', 'name', 'formattedAddress', 'formatted_address', 'location', 'geometry',
-                            'types', 'websiteURI', 'website', 'rating', 'internationalPhoneNumber', 'international_phone_number',
-                            'editorialSummary', 'reviews', 'priceLevel', 'price_level', 'photos'
-                        ]
-                    });
+                    await place.fetchFields({ fields: placeFields });
+                    reviewsFetched = !!place.reviews;
                 } catch (fetchError) {
                     // Continue with what we have
                 }
             } else if (place.place_id && window.google && google.maps && google.maps.places && google.maps.places.PlacesService) {
-                // Classic API: fetch details if not already present
                 const service = this.placesService || new google.maps.places.PlacesService(document.createElement('div'));
                 await new Promise((resolve) => {
                     service.getDetails(
                         {
                             placeId: place.place_id,
-                            fields: [
-                                'name', 'formatted_address', 'geometry', 'types', 'website', 'rating',
-                                'international_phone_number', 'editorial_summary', 'reviews', 'price_level', 'photos'
-                            ]
+                            fields: placeFields
                         },
                         (result, status) => {
                             if (status === google.maps.places.PlacesServiceStatus.OK && result) {
@@ -673,6 +674,34 @@ class PlacesSearchModule {
                         }
                     );
                 });
+                reviewsFetched = !!place.reviews;
+            }
+
+            // Always fetch up to 5 reviews using the REST API as fallback and use the full response as transcription
+            let transcription = '';
+            if (place.place_id && this.apiKey) {
+                try {
+                    const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${place.place_id}&fields=name,rating,reviews&key=${this.apiKey}`;
+                    const resp = await fetch(url);
+                    if (resp.ok) {
+                        const data = await resp.json();
+                        if (data.result && data.result.reviews) {
+                            place.reviews = data.result.reviews;
+                        }
+                        // Place the full API response in the transcription field
+                        transcription = JSON.stringify(data, null, 2);
+                    }
+                } catch (err) {
+                    transcription = '[Unable to fetch reviews]';
+                }
+            }
+            if (!transcription) {
+                // fallback to full place object if REST API fails
+                try {
+                    transcription = JSON.stringify(place, null, 2);
+                } catch (err) {
+                    transcription = '[Unable to stringify place data]';
+                }
             }
 
             // Name
@@ -702,9 +731,12 @@ class PlacesSearchModule {
                 address
             };
 
-            // Description and Transcription
+            // Description
             let description = `Imported from Google Places. `;
             if (place.rating) description += `Rated ${place.rating}/5 stars. `;
+            if (place.userRatingCount || place.user_ratings_total) {
+                description += `Based on ${place.userRatingCount || place.user_ratings_total} reviews. `;
+            }
             if (place.price_level !== undefined || place.priceLevel !== undefined) {
                 const priceLevel = place.priceLevel !== undefined ? place.priceLevel : place.price_level;
                 const priceLevels = ['Free', 'Inexpensive', 'Moderate', 'Expensive', 'Very Expensive'];
@@ -716,29 +748,6 @@ class PlacesSearchModule {
             if (websiteUrl) description += `Website: ${websiteUrl}. `;
             const phone = place.internationalPhoneNumber || place.international_phone_number;
             if (phone) description += `Phone: ${phone}. `;
-
-            // Add editorial summary or reviews for richer description/transcription
-            let transcription = '';
-            if (place.editorialSummary && place.editorialSummary.text) {
-                description += `\n\n${place.editorialSummary.text}`;
-                transcription = place.editorialSummary.text;
-            } else if (place.editorial_summary && place.editorial_summary.text) {
-                description += `\n\n${place.editorial_summary.text}`;
-                transcription = place.editorial_summary.text;
-            } else if (place.reviews && place.reviews.length > 0) {
-                description += `\n\nReviews:\n`;
-                const reviewsToShow = place.reviews.slice(0, 2);
-                reviewsToShow.forEach((review, idx) => {
-                    if (review.text) {
-                        description += `${idx + 1}. "${review.text.slice(0, 150)}${review.text.length > 150 ? '...' : ''}"\n`;
-                    }
-                });
-                // Use up to 3 reviews for transcription
-                const reviewTexts = place.reviews.slice(0, 3).map(r => r.text).filter(Boolean);
-                transcription = reviewTexts.join('\n\n');
-            } else {
-                transcription = description;
-            }
 
             // Concepts
             const concepts = this.extractConceptsFromPlace(place);
@@ -780,7 +789,7 @@ class PlacesSearchModule {
                     descriptionInput.dispatchEvent(new Event('input'));
                 }
 
-                // Transcription
+                // Transcription (full API reviews response)
                 const transcriptionInput = document.getElementById('restaurant-transcription');
                 if (transcriptionInput) {
                     transcriptionInput.value = transcription;
