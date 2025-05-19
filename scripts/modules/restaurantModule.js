@@ -764,6 +764,14 @@ class RestaurantModule {
                 Update Restaurant
             `;
         }
+        
+        // IMPORTANT: Set up additional review button after form is shown
+        setTimeout(() => {
+            if (this.uiManager.conceptModule) {
+                console.log('Setting up additional review button for edit mode');
+                this.uiManager.conceptModule.setupAdditionalReviewButton();
+            }
+        }, 300);  // Short delay to ensure the form is fully rendered
     }
 
     /**
@@ -788,7 +796,6 @@ class RestaurantModule {
             // Populate form fields with restaurant data
             document.getElementById('restaurant-name').value = restaurant.name || '';
             document.getElementById('restaurant-description').value = restaurant.description || '';
-            // ...existing code...
             
             // Update the transcription with this specific restaurant's transcription
             const transcriptionTextarea = document.getElementById('restaurant-transcription');
@@ -798,7 +805,54 @@ class RestaurantModule {
                 this.uiManager.originalTranscription = restaurant.transcription || '';
             }
             
-            // ...existing code...
+            // Load and display location
+            this.uiManager.currentLocation = restaurant.location;
+            const locationDisplay = document.getElementById('location-display');
+            if (locationDisplay && restaurant.location) {
+                locationDisplay.innerHTML = `
+                    <p class="text-green-600">Location saved:</p>
+                    <p>Latitude: ${restaurant.location.latitude.toFixed(6)}</p>
+                    <p>Longitude: ${restaurant.location.longitude.toFixed(6)}</p>
+                `;
+            }
+            
+            // Load and display photos
+            this.uiManager.currentPhotos = [];
+            const photosPreview = document.getElementById('photos-preview');
+            if (photosPreview) {
+                photosPreview.innerHTML = '';
+                if (restaurant.photos && restaurant.photos.length) {
+                    restaurant.photos.forEach(photo => {
+                        const photoData = photo.photoData;
+                        this.uiManager.currentPhotos.push(photoData);
+                        
+                        // Add preview with delete button
+                        const photoContainer = document.createElement('div');
+                        photoContainer.className = 'photo-container';
+                        
+                        const img = document.createElement('img');
+                        img.src = photoData;
+                        img.className = 'w-full h-32 object-cover rounded';
+                        
+                        const deleteBtn = document.createElement('button');
+                        deleteBtn.className = 'photo-delete-btn';
+                        deleteBtn.innerHTML = '<span class="material-icons">close</span>';
+                        deleteBtn.addEventListener('click', () => this.uiManager.conceptModule.removePhoto(photoData, photoContainer));
+                        
+                        photoContainer.appendChild(img);
+                        photoContainer.appendChild(deleteBtn);
+                        photosPreview.appendChild(photoContainer);
+                    });
+                }
+            }
+            
+            // IMPORTANT: Call setupAdditionalReviewButton explicitly after loading restaurant data
+            setTimeout(() => {
+                if (this.uiManager.conceptModule) {
+                    console.log('Setting up additional review button for edit mode');
+                    this.uiManager.conceptModule.setupAdditionalReviewButton();
+                }
+            }, 300);  // Short delay to ensure the form is fully rendered
             
             this.safeHideLoading();
             this.uiManager.showConceptsSection();
@@ -816,16 +870,15 @@ class RestaurantModule {
         try {
             this.safeShowLoading('Saving restaurant...');
             
-            // ...existing code...
-            
             // Get transcription from textarea
             const transcription = document.getElementById('restaurant-transcription').value.trim();
             
             // Create restaurant object with transcription
             const restaurant = {
-                // ...existing code...
+                name: document.getElementById('restaurant-name').value.trim(),
+                description: document.getElementById('restaurant-description').value.trim(),
                 transcription: transcription,
-                // ...existing code...
+                // ...existing properties...
             };
             
             // ...existing code...

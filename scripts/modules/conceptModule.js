@@ -204,6 +204,9 @@ class ConceptModule {
             });
         }
         
+        // Record Additional Review button - Only create when in edit mode
+        this.setupAdditionalReviewButton();
+        
         console.log('Concepts events set up');
     }
     
@@ -1897,5 +1900,253 @@ class ConceptModule {
         });
         
         return result;
+    }
+    
+    /**
+     * Creates and sets up the "Record Additional Review" button in edit mode
+     */
+    setupAdditionalReviewButton() {
+        console.log('Setting up additional review button, edit mode:', this.uiManager?.isEditingRestaurant);
+        
+        // First, check if we're in edit mode
+        const isEditMode = this.uiManager && this.uiManager.isEditingRestaurant;
+        const transcriptionTextarea = document.getElementById('restaurant-transcription');
+        
+        if (!transcriptionTextarea) {
+            console.log('Transcription textarea not found, cannot add recording button');
+            
+            // If in edit mode but textarea not found yet, set up an observer to wait for it
+            if (isEditMode) {
+                this.setupTranscriptionObserver();
+            }
+            return;
+        }
+        
+        // Check if button already exists
+        let recordAdditionalBtn = document.getElementById('record-additional-review');
+        const transcriptionContainer = transcriptionTextarea.parentElement;
+        
+        // Remove existing button if any (to avoid duplicates on re-initialization)
+        if (recordAdditionalBtn) {
+            recordAdditionalBtn.remove();
+        }
+        
+        // Create the new button with enhanced styling
+        recordAdditionalBtn = document.createElement('button');
+        recordAdditionalBtn.id = 'record-additional-review';
+        recordAdditionalBtn.className = 'mt-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded flex items-center transition-all';
+        recordAdditionalBtn.innerHTML = `
+            <span class="material-icons mr-2">mic</span>
+            Record Additional Review
+        `;
+        recordAdditionalBtn.title = "Add another review to the existing transcription";
+        
+        // Add event listener
+        recordAdditionalBtn.addEventListener('click', () => {
+            this.startAdditionalRecording();
+        });
+        
+        // Add button after the textarea
+        if (transcriptionContainer) {
+            transcriptionContainer.appendChild(recordAdditionalBtn);
+            
+            // Control visibility based on edit mode
+            recordAdditionalBtn.style.display = isEditMode ? 'flex' : 'none';
+            console.log(`Additional review button added and set to ${isEditMode ? 'visible' : 'hidden'}`);
+        }
+        
+        // Add a data attribute to the container to mark it as processed
+        if (transcriptionContainer) {
+            transcriptionContainer.dataset.additionalReviewButtonSetup = 'true';
+        }
+    }
+
+    /**
+     * Sets up an observer to watch for the transcription textarea to appear in the DOM
+     */
+    setupTranscriptionObserver() {
+        console.log('Setting up mutation observer for transcription textarea');
+        
+        // Only set up observer if we're in edit mode
+        if (!(this.uiManager && this.uiManager.isEditingRestaurant)) {
+            console.log('Not in edit mode, skipping observer setup');
+            return;
+        }
+        
+        // Check if observer already exists
+        if (this.transcriptionObserver) {
+            this.transcriptionObserver.disconnect();
+        }
+        
+        // Create new observer
+        this.transcriptionObserver = new MutationObserver((mutations) => {
+            for (const mutation of mutations) {
+                if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+                    // Check if the transcription textarea was added
+                    const transcriptionTextarea = document.getElementById('restaurant-transcription');
+                    if (transcriptionTextarea) {
+                        const container = transcriptionTextarea.parentElement;
+                        
+                        // Check if container exists and hasn't been processed yet
+                        if (container && !container.dataset.additionalReviewButtonSetup) {
+                            console.log('Transcription textarea found via observer, setting up button');
+                            this.setupAdditionalReviewButton();
+                            
+                            // Stop observing once we've found and processed it
+                            this.transcriptionObserver.disconnect();
+                            this.transcriptionObserver = null;
+                            break;
+                        }
+                    }
+                }
+            }
+        });
+        
+        // Start observing the document body for changes
+        this.transcriptionObserver.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
+        
+        // Set a timeout to stop the observer after 10 seconds to prevent memory leaks
+        setTimeout(() => {
+            if (this.transcriptionObserver) {
+                console.log('Stopping transcription observer (timeout)');
+                this.transcriptionObserver.disconnect();
+                this.transcriptionObserver = null;
+            }
+        }, 10000);
+    }
+
+    /**
+     * Enhanced method to start an additional recording session
+     */
+    async startAdditionalRecording() {
+        try {
+            console.log('Starting additional review recording...');
+            
+            // Check if recording module is available
+            if (!this.uiManager || !this.uiManager.recordingModule) {
+                throw new Error('Recording functionality not available');
+            }
+            
+            // Add visual feedback to the button
+            const recordBtn = document.getElementById('record-additional-review');
+            if (recordBtn) {
+                recordBtn.classList.add('recording-active');
+                recordBtn.innerHTML = `
+                    <span class="material-icons mr-2 recording-pulse">fiber_manual_record</span>
+                    Recording...
+                `;
+            }
+            
+            // Show notification that we're starting recording
+            this.safeShowNotification('Starting recording for additional review...', 'info');
+            
+            // Track that this is an additional recording
+            this.uiManager.isRecordingAdditional = true;
+            
+            // Start recording using existing recording module
+            await this.uiManager.recordingModule.startRecording();
+            
+            // The transcription handling will be done in the handleAdditionalRecordingComplete method,
+            // which will be called from the recording module's transcription callback
+            
+        } catch (error) {
+            console.error('Error starting additional recording:', error);
+            this.safeShowNotification('Error starting recording: ' + error.message, 'error');
+            
+            // Reset UI state
+            this.uiManager.isRecordingAdditional = false;
+            const recordBtn = document.getElementById('record-additional-review');
+            if (recordBtn) {
+                recordBtn.classList.remove('recording-active');
+                recordBtn.innerHTML = `
+                    <span class="material-icons mr-2">mic</span>
+                    Record Additional Review
+                `;
+            }
+        }
+    }
+
+    /**
+     * Enhanced method to handle completion of additional recording
+     * @param {string} newTranscription - The newly recorded transcription
+     */
+    handleAdditionalRecordingComplete(newTranscription) {
+        try {
+            console.log(`Handling additional recording completion, text length: ${newTranscription?.length || 0}`);
+            
+            // Reset UI first
+            const recordBtn = document.getElementById('record-additional-review');
+            if (recordBtn) {
+                recordBtn.classList.remove('recording-active');
+                recordBtn.innerHTML = `
+                    <span class="material-icons mr-2">mic</span>
+                    Record Additional Review
+                `;
+            }
+            
+            // Check if we got any meaningful text
+            if (!newTranscription || newTranscription.trim() === '') {
+                this.safeShowNotification('No text was transcribed from the recording', 'warning');
+                
+                // Reset flag
+                if (this.uiManager) {
+                    this.uiManager.isRecordingAdditional = false;
+                }
+                return;
+            }
+            
+            const transcriptionTextarea = document.getElementById('restaurant-transcription');
+            if (!transcriptionTextarea) {
+                throw new Error('Transcription field not found');
+            }
+            
+            // Get current transcription
+            const currentText = transcriptionTextarea.value;
+            
+            // Create formatted timestamp
+            const timestamp = new Date().toLocaleString();
+            
+            // Format the new combined text with a clear separator and timestamp
+            let combinedText;
+            if (currentText && currentText.trim() !== '') {
+                // Add two line breaks, a separator, timestamp, and then the new text
+                combinedText = `${currentText}\n\n--- Additional Review (${timestamp}) ---\n${newTranscription}`;
+            } else {
+                // If no existing text, just use the new transcription
+                combinedText = newTranscription;
+            }
+            
+            // Update the transcription field
+            transcriptionTextarea.value = combinedText;
+            
+            // Scroll to the bottom of the textarea to show the new content
+            transcriptionTextarea.scrollTop = transcriptionTextarea.scrollHeight;
+            
+            // Briefly highlight the textarea to indicate it was updated
+            transcriptionTextarea.classList.add('highlight-update');
+            setTimeout(() => {
+                transcriptionTextarea.classList.remove('highlight-update');
+            }, 1000);
+            
+            // Reset the additional recording flag
+            if (this.uiManager) {
+                this.uiManager.isRecordingAdditional = false;
+            }
+            
+            // Show success notification
+            this.safeShowNotification('Additional review added to transcription', 'success');
+            
+        } catch (error) {
+            console.error('Error handling additional recording completion:', error);
+            this.safeShowNotification('Error adding additional review: ' + error.message, 'error');
+            
+            // Reset the flag even if there's an error
+            if (this.uiManager) {
+                this.uiManager.isRecordingAdditional = false;
+            }
+        }
     }
 }

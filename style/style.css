@@ -1516,3 +1516,84 @@ gmp-place-autocomplete input:focus {
     position: relative !important;
     overflow: visible !important;
 }
+
+/* Styling for Record Additional Review button */
+#record-additional-review {
+  transition: all 0.3s ease;
+  margin-top: 12px;
+  background-color: #9333ea;
+  color: white;
+  padding: 10px 16px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  font-weight: 500;
+}
+
+#record-additional-review:hover {
+  background-color: #7e22ce;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 6px rgba(0,0,0,0.15);
+}
+
+#record-additional-review.recording-active {
+  background-color: #ef4444;
+  animation: pulse-button 2s infinite;
+}
+
+.recording-pulse {
+  color: rgba(255,255,255,0.9);
+  animation: pulse-icon 1.5s infinite;
+}
+
+/* Animation for the textarea when updated with new content */
+.highlight-update {
+  animation: highlight-fade 1.5s ease-out;
+}
+
+@keyframes highlight-fade {
+  0% { background-color: rgba(147, 51, 234, 0.3); }
+  100% { background-color: transparent; }
+}
+
+@keyframes pulse-button {
+  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
+  70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
+}
+
+@keyframes pulse-icon {
+  0% { opacity: 1; }
+  50% { opacity: 0.5; }
+  100% { opacity: 1; }
+}
+
+/* Style for the additional review separator in the transcription */
+textarea#restaurant-transcription {
+  line-height: 1.6;
+  padding: 12px;
+  font-size: 14px;
+}
+
+/* Highlight animation for textarea when updated */
+.highlight-update {
+  animation: highlight-fade 1s ease-in-out;
+}
+
+@keyframes highlight-fade {
+  0% { background-color: rgba(147, 51, 234, 0.2); }
+  100% { background-color: transparent; }
+}
+
+/* Additional recording indicator in recording status */
+.recording-indicator.additional-recording {
+  background-color: #9333ea;
+}
+
+/* Body class for global styling during additional recording */
+body.additional-recording-active .restaurant-form-container {
+  border: 2px solid #9333ea;
+  border-radius: 8px;
+  transition: border-color 0.3s ease;
+}
