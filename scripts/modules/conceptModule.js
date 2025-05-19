@@ -1903,18 +1903,14 @@ class ConceptModule {
     }
     
     /**
-     * Creates and sets up the "Record Additional Review" button in edit mode
+     * Creates and sets up the additional recording section in edit mode
      */
     setupAdditionalReviewButton() {
-        console.log('Setting up additional review button, edit mode:', this.uiManager?.isEditingRestaurant);
-        
         // First, check if we're in edit mode
         const isEditMode = this.uiManager && this.uiManager.isEditingRestaurant;
         const transcriptionTextarea = document.getElementById('restaurant-transcription');
         
         if (!transcriptionTextarea) {
-            console.log('Transcription textarea not found, cannot add recording button');
-            
             // If in edit mode but textarea not found yet, set up an observer to wait for it
             if (isEditMode) {
                 this.setupTranscriptionObserver();
@@ -1922,43 +1918,81 @@ class ConceptModule {
             return;
         }
         
-        // Check if button already exists
-        let recordAdditionalBtn = document.getElementById('record-additional-review');
+        // Check if section already exists
+        let additionalRecordingSection = document.getElementById('additional-recording-section');
         const transcriptionContainer = transcriptionTextarea.parentElement;
         
-        // Remove existing button if any (to avoid duplicates on re-initialization)
-        if (recordAdditionalBtn) {
-            recordAdditionalBtn.remove();
+        // Remove existing section if any (to avoid duplicates on re-initialization)
+        if (additionalRecordingSection) {
+            additionalRecordingSection.remove();
         }
         
-        // Create the new button with enhanced styling
-        recordAdditionalBtn = document.createElement('button');
-        recordAdditionalBtn.id = 'record-additional-review';
-        recordAdditionalBtn.className = 'mt-2 bg-purple-600 hover:bg-purple-700 text-white px-4 py-2 rounded flex items-center transition-all';
-        recordAdditionalBtn.innerHTML = `
-            <span class="material-icons mr-2">mic</span>
-            Record Additional Review
+        // Create the additional recording section
+        additionalRecordingSection = document.createElement('div');
+        additionalRecordingSection.id = 'additional-recording-section';
+        additionalRecordingSection.className = 'mt-4 p-4 bg-purple-50 border border-purple-200 rounded-lg';
+        additionalRecordingSection.style.display = isEditMode ? 'block' : 'none';
+        
+        additionalRecordingSection.innerHTML = `
+            <h3 class="text-lg font-semibold mb-2 text-purple-700 flex items-center">
+                <span class="material-icons mr-2">add_comment</span>
+                Record Additional Review
+            </h3>
+            <p class="text-sm text-gray-600 mb-3">
+                Add another review to the existing transcription without replacing the current content.
+            </p>
+            <div class="recording-controls flex flex-wrap items-center gap-2 mb-4">
+                <button id="additional-record-start" class="bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 rounded flex items-center">
+                    <span class="material-icons mr-1">mic</span>
+                    Start Recording
+                </button>
+                <button id="additional-record-stop" class="bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded flex items-center hidden">
+                    <span class="material-icons mr-1">stop</span>
+                    Stop Recording
+                </button>
+                <div id="additional-recording-time" class="px-3 py-2 bg-white border rounded text-sm hidden">
+                    00:00
+                </div>
+                <div id="additional-recording-status" class="text-sm text-gray-600 ml-2"></div>
+            </div>
+            <div id="additional-audio-visualizer" class="h-16 mb-4 bg-black rounded overflow-hidden hidden">
+                <canvas id="additional-visualizer-canvas" class="w-full h-full"></canvas>
+            </div>
+            <div id="additional-transcription-status" class="text-sm text-gray-600 hidden">
+                <div class="flex items-center">
+                    <div class="mr-2 h-4 w-4 rounded-full bg-yellow-400 animate-pulse"></div>
+                    <span>Transcribing audio...</span>
+                </div>
+            </div>
         `;
-        recordAdditionalBtn.title = "Add another review to the existing transcription";
         
-        // Add event listener
-        recordAdditionalBtn.addEventListener('click', () => {
-            this.startAdditionalRecording();
-        });
-        
-        // Add button after the textarea
+        // Add section after the textarea
         if (transcriptionContainer) {
-            transcriptionContainer.appendChild(recordAdditionalBtn);
+            transcriptionContainer.appendChild(additionalRecordingSection);
             
-            // Control visibility based on edit mode
-            recordAdditionalBtn.style.display = isEditMode ? 'flex' : 'none';
-            console.log(`Additional review button added and set to ${isEditMode ? 'visible' : 'hidden'}`);
-        }
-        
-        // Add a data attribute to the container to mark it as processed
-        if (transcriptionContainer) {
+            // Add a data attribute to the container to mark it as processed
             transcriptionContainer.dataset.additionalReviewButtonSetup = 'true';
         }
+        
+        // Set up event listeners for recording controls
+        const startRecordBtn = document.getElementById('additional-record-start');
+        const stopRecordBtn = document.getElementById('additional-record-stop');
+        
+        if (startRecordBtn) {
+            startRecordBtn.addEventListener('click', () => {
+                this.startAdditionalRecording();
+            });
+        }
+        
+        if (stopRecordBtn) {
+            stopRecordBtn.addEventListener('click', () => {
+                if (this.uiManager && this.uiManager.recordingModule) {
+                    this.uiManager.recordingModule.stopRecording();
+                }
+            });
+        }
+        
+        console.log(`Additional recording section added and set to ${isEditMode ? 'visible' : 'hidden'}`);
     }
 
     /**
@@ -2025,20 +2059,43 @@ class ConceptModule {
         try {
             console.log('Starting additional review recording...');
             
-            // Check if recording module is available
-            if (!this.uiManager || !this.uiManager.recordingModule) {
-                throw new Error('Recording functionality not available');
+            // Enhanced check for recording module
+            let recordingModule = null;
+            
+            // Check if recording module is available in uiManager
+            if (this.uiManager && this.uiManager.recordingModule) {
+                recordingModule = this.uiManager.recordingModule;
+            } 
+            // Check if recording module is available as a global object
+            else if (window.recordingModule) {
+                recordingModule = window.recordingModule;
+                console.log('Using global recordingModule instead of uiManager.recordingModule');
+            }
+            // As a last resort, check if RecordingModule class exists to create a new instance
+            else if (typeof RecordingModule !== 'undefined') {
+                console.log('Creating new RecordingModule instance as fallback');
+                recordingModule = new RecordingModule(this.uiManager);
             }
             
-            // Add visual feedback to the button
-            const recordBtn = document.getElementById('record-additional-review');
-            if (recordBtn) {
-                recordBtn.classList.add('recording-active');
-                recordBtn.innerHTML = `
-                    <span class="material-icons mr-2 recording-pulse">fiber_manual_record</span>
-                    Recording...
-                `;
+            // If we still don't have a recording module, show error
+            if (!recordingModule) {
+                throw new Error('Recording functionality not available - could not find or create recording module');
             }
+            
+            
+            
+            // Update UI
+            const startBtn = document.getElementById('additional-record-start');
+            const stopBtn = document.getElementById('additional-record-stop');
+            const recordingTime = document.getElementById('additional-recording-time');
+            const audioVisualizer = document.getElementById('additional-audio-visualizer');
+            const recordingStatus = document.getElementById('additional-recording-status');
+            
+            if (startBtn) startBtn.classList.add('hidden');
+            if (stopBtn) stopBtn.classList.remove('hidden');
+            if (recordingTime) recordingTime.classList.remove('hidden');
+            if (audioVisualizer) audioVisualizer.classList.remove('hidden');
+            if (recordingStatus) recordingStatus.textContent = 'Recording in progress...';
             
             // Show notification that we're starting recording
             this.safeShowNotification('Starting recording for additional review...', 'info');
@@ -2046,46 +2103,51 @@ class ConceptModule {
             // Track that this is an additional recording
             this.uiManager.isRecordingAdditional = true;
             
-            // Start recording using existing recording module
-            await this.uiManager.recordingModule.startRecording();
-            
-            // The transcription handling will be done in the handleAdditionalRecordingComplete method,
-            // which will be called from the recording module's transcription callback
+            // Start recording using our found recording module
+            await recordingModule.startRecording();
             
         } catch (error) {
             console.error('Error starting additional recording:', error);
             this.safeShowNotification('Error starting recording: ' + error.message, 'error');
             
-            // Reset UI state
+            // Reset UI on error
+            const startBtn = document.getElementById('additional-record-start');
+            const stopBtn = document.getElementById('additional-record-stop');
+            const recordingTime = document.getElementById('additional-recording-time');
+            const audioVisualizer = document.getElementById('additional-audio-visualizer');
+            const recordingStatus = document.getElementById('additional-recording-status');
+            
+            if (startBtn) startBtn.classList.remove('hidden');
+            if (stopBtn) stopBtn.classList.add('hidden');
+            if (recordingTime) recordingTime.classList.add('hidden');
+            if (audioVisualizer) audioVisualizer.classList.add('hidden');
+            if (recordingStatus) recordingStatus.textContent = '';
+            
+            // Reset the flag
             this.uiManager.isRecordingAdditional = false;
-            const recordBtn = document.getElementById('record-additional-review');
-            if (recordBtn) {
-                recordBtn.classList.remove('recording-active');
-                recordBtn.innerHTML = `
-                    <span class="material-icons mr-2">mic</span>
-                    Record Additional Review
-                `;
-            }
         }
     }
 
     /**
-     * Enhanced method to handle completion of additional recording
+     * Handles completion of additional recording by appending to existing transcription
      * @param {string} newTranscription - The newly recorded transcription
      */
     handleAdditionalRecordingComplete(newTranscription) {
         try {
             console.log(`Handling additional recording completion, text length: ${newTranscription?.length || 0}`);
             
-            // Reset UI first
-            const recordBtn = document.getElementById('record-additional-review');
-            if (recordBtn) {
-                recordBtn.classList.remove('recording-active');
-                recordBtn.innerHTML = `
-                    <span class="material-icons mr-2">mic</span>
-                    Record Additional Review
-                `;
-            }
+            // Reset UI for recording controls
+            const startBtn = document.getElementById('additional-record-start');
+            const stopBtn = document.getElementById('additional-record-stop');
+            const recordingTime = document.getElementById('additional-recording-time');
+            const audioVisualizer = document.getElementById('additional-audio-visualizer');
+            const recordingStatus = document.getElementById('additional-recording-status');
+            
+            if (startBtn) startBtn.classList.remove('hidden');
+            if (stopBtn) stopBtn.classList.add('hidden');
+            if (recordingTime) recordingTime.classList.add('hidden');
+            if (audioVisualizer) audioVisualizer.classList.add('hidden');
+            if (recordingStatus) recordingStatus.textContent = '';
             
             // Check if we got any meaningful text
             if (!newTranscription || newTranscription.trim() === '') {
@@ -2097,6 +2159,9 @@ class ConceptModule {
                 }
                 return;
             }
+            
+            // NEW FEATURE: Attempt to extract restaurant name from the additional review
+            this.extractAndUpdateRestaurantName(newTranscription);
             
             const transcriptionTextarea = document.getElementById('restaurant-transcription');
             if (!transcriptionTextarea) {
@@ -2147,6 +2212,60 @@ class ConceptModule {
             if (this.uiManager) {
                 this.uiManager.isRecordingAdditional = false;
             }
+        }
+    }
+
+    /**
+     * Extracts restaurant name from additional review and updates the name field if found
+     * @param {string} transcription - The transcription text
+     */
+    async extractAndUpdateRestaurantName(transcription) {
+        try {
+            // Get the current restaurant name
+            const nameInput = document.getElementById('restaurant-name');
+            const currentName = nameInput ? nameInput.value.trim() : '';
+            
+            // Only proceed if transcription has enough content
+            if (!transcription || transcription.length < 10) return;
+            
+            console.log('Attempting to extract restaurant name from additional review...');
+            
+            // Use the existing method to extract restaurant name
+            const extractedName = await this.extractRestaurantNameFromTranscription(transcription);
+            
+            // If a name was extracted and it's different from the current name, update it
+            if (extractedName && extractedName !== currentName && nameInput) {
+                console.log(`Restaurant name found in additional review: "${extractedName}" (was: "${currentName}")`);
+                
+                // Update the name field
+                nameInput.value = extractedName;
+                
+                // Add or update AI badge to show it was auto-detected
+                const nameInputContainer = nameInput.parentElement;
+                let badge = nameInputContainer.querySelector('.ai-generated-badge');
+                
+                if (!badge) {
+                    // Create new badge
+                    badge = document.createElement('div');
+                    badge.className = 'ai-generated-badge';
+                    nameInputContainer.insertBefore(badge, nameInput.nextSibling);
+                }
+                
+                // Update badge text to indicate it came from additional review
+                badge.innerHTML = '<span class="material-icons">smart_toy</span> Updated from review';
+                
+                // Add highlight animation to name input
+                nameInput.classList.add('highlight-update');
+                setTimeout(() => {
+                    nameInput.classList.remove('highlight-update');
+                }, 1500);
+                
+                // Show notification about the name update
+                this.safeShowNotification(`Restaurant name updated to "${extractedName}"`, 'info');
+            }
+        } catch (error) {
+            console.error('Error extracting restaurant name from additional review:', error);
+            // Don't show notification to user - silently fail since this is an enhancement
         }
     }
 }

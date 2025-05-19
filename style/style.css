@@ -695,27 +695,26 @@ audio {
 
 /* AI generated badge styling */
 .ai-generated-badge {
-  display: inline-flex;
-  align-items: center;
-  font-size: 0.7rem;
-  background-color: var(--primary-light);
-  color: white;
-  padding: 1px 6px;
-  border-radius: 10px;
-  font-weight: 500;
-  margin-left: 8px;
-  margin-top: 4px;
-  animation: fadeIn 0.3s ease-in;
+    display: inline-flex;
+    align-items: center;
+    background-color: rgba(147, 51, 234, 0.1);
+    color: rgb(107, 33, 168);
+    font-size: 0.75rem;
+    padding: 0.25rem 0.5rem;
+    border-radius: 4px;
+    margin-top: 0.25rem;
+    margin-bottom: 0.5rem;
+    animation: badge-appear 0.3s ease-in;
 }
 
 .ai-generated-badge .material-icons {
-  font-size: 0.8rem;
-  margin-right: 2px;
+    font-size: 0.875rem;
+    margin-right: 0.25rem;
 }
 
-@keyframes fadeIn {
-  from { opacity: 0; }
-  to { opacity: 1; }
+@keyframes badge-appear {
+    0% { opacity: 0; transform: translateY(-5px); }
+    100% { opacity: 1; transform: translateY(0); }
 }
 
 /* ===== Restaurant Cards ===== */
@@ -1547,53 +1546,57 @@ gmp-place-autocomplete input:focus {
   animation: pulse-icon 1.5s infinite;
 }
 
-/* Animation for the textarea when updated with new content */
-.highlight-update {
-  animation: highlight-fade 1.5s ease-out;
+/* Additional Review Section styling */
+#additional-recording-section {
+    transition: all 0.3s ease;
+    margin-top: 16px;
+    border-radius: 8px;
 }
 
+#additional-record-start, 
+#additional-record-stop {
+    transition: all 0.2s ease;
+}
+
+#additional-record-start:hover, 
+#additional-record-stop:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+}
+
+#additional-recording-time {
+    font-family: monospace;
+    width: 60px;
+    text-align: center;
+}
+
+/* Animation for textarea update highlight */
 @keyframes highlight-fade {
-  0% { background-color: rgba(147, 51, 234, 0.3); }
-  100% { background-color: transparent; }
+    0% { background-color: rgba(147, 51, 234, 0.2); }
+    100% { background-color: transparent; }
 }
 
-@keyframes pulse-button {
-  0% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7); }
-  70% { box-shadow: 0 0 0 10px rgba(239, 68, 68, 0); }
-  100% { box-shadow: 0 0 0 0 rgba(239, 68, 68, 0); }
-}
-
-@keyframes pulse-icon {
-  0% { opacity: 1; }
-  50% { opacity: 0.5; }
-  100% { opacity: 1; }
-}
-
-/* Style for the additional review separator in the transcription */
-textarea#restaurant-transcription {
-  line-height: 1.6;
-  padding: 12px;
-  font-size: 14px;
-}
-
-/* Highlight animation for textarea when updated */
 .highlight-update {
-  animation: highlight-fade 1s ease-in-out;
+    animation: highlight-fade 1.8s ease-out;
 }
 
-@keyframes highlight-fade {
-  0% { background-color: rgba(147, 51, 234, 0.2); }
-  100% { background-color: transparent; }
+/* Styling for recording indicators */
+.recording-indicator {
+    display: inline-block;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background-color: #ef4444;
+    margin-right: 8px;
+    animation: recording-pulse 1.5s infinite;
 }
 
-/* Additional recording indicator in recording status */
 .recording-indicator.additional-recording {
-  background-color: #9333ea;
+    background-color: #9333ea;
 }
 
-/* Body class for global styling during additional recording */
-body.additional-recording-active .restaurant-form-container {
-  border: 2px solid #9333ea;
-  border-radius: 8px;
-  transition: border-color 0.3s ease;
+@keyframes recording-pulse {
+    0% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.6; transform: scale(0.8); }
+    100% { opacity: 1; transform: scale(1); }
 }
