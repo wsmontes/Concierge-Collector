@@ -1,8 +1,14 @@
 /**
- * Handles API requests to OpenAI (Whisper and GPT-4)
+ * Handles API requests to OpenAI (Whisper and GPT-4).
+ * Ensures all concepts, transcripts, and descriptions are generated in English,
+ * except for untranslatable local food names and expressions, which are preserved in their original form.
+ * 
+ * Dependencies:
+ * - ModuleWrapper (for class definition and instance management)
+ * - localStorage (for API key persistence)
+ * - fetch API (for HTTP requests)
  */
 
-// Only define the class if it doesn't already exist
 const ApiHandler = ModuleWrapper.defineClass('ApiHandler', class {
     constructor() {
         this.apiKey = localStorage.getItem('openai_api_key') || null;
@@ -38,14 +44,21 @@ const ApiHandler = ModuleWrapper.defineClass('ApiHandler', class {
             }
 
             const data = await response.json();
-            return data.text;
+            // Always translate the transcript to English, preserving untranslatable local terms
+            const transcript = data.text;
+            const translatedTranscript = await this.translateText(
+                transcript,
+                'English',
+                true // preserve local terms
+            );
+            return translatedTranscript;
         } catch (error) {
             console.error('Transcription error:', error);
             throw error;
         }
     }
 
-    async translateText(text, targetLanguage = 'English') {
+    async translateText(text, targetLanguage = 'English', preserveLocalTerms = false) {
         if (!this.apiKey) {
             throw new Error('OpenAI API key not set');
         }
@@ -55,7 +68,7 @@ const ApiHandler = ModuleWrapper.defineClass('ApiHandler', class {
             const messages = [
                 { 
                     role: "system", 
-                    content: `You are a translator. Translate the following text to ${targetLanguage}. Maintain restaurant names and specific culinary terms in their original form. Focus only on accurate translation.`
+                    content: `You are a translator. Translate the following text to ${targetLanguage}. Maintain restaurant names, local food names, and specific culinary terms or local expressions in their original form if their meaning cannot be fully translated. Focus only on accurate translation.`
                 },
                 { 
                     role: "user", 
@@ -108,7 +121,7 @@ const ApiHandler = ModuleWrapper.defineClass('ApiHandler', class {
             const messages = [
                 { 
                     role: "system", 
-                    content: prompt.system + " Always format your response as valid JSON."
+                    content: `${prompt.system} Always format your response as valid JSON. All concepts, descriptions, and outputs must be in English, except for local food names and local expressions that cannot be fully translated. Preserve those in their original form.`
                 },
                 { 
                     role: "user", 
@@ -130,7 +143,6 @@ const ApiHandler = ModuleWrapper.defineClass('ApiHandler', class {
                     messages: messages,
                     temperature: 0.2,
                     max_tokens: 1000
-                    // Removed response_format parameter which was causing the error
                 })
             });
 
@@ -190,13 +202,15 @@ Should I:
 2. Use the most similar existing concept (specify which one)
 3. Merge into a better phrasing (suggest the best wording)
 
+All reasoning, decisions, and suggested phrasings must be in English, except for local food names and local expressions that cannot be fully translated. Preserve those in their original form.
+
 Format your response as a JSON object with fields: "decision" (1, 2, or 3), "explanation", "chosen_concept" (if decision is 2), and "suggested_phrasing" (if decision is 3).`;
 
             const messages = [
                 { 
                     role: "system", 
                     content: (prompt.system || "You are an expert in categorizing restaurant concepts with high precision.") + 
-                             " Always format your response as valid JSON."
+                             " Always format your response as valid JSON. All outputs must be in English, except for local food names and local expressions that cannot be fully translated. Preserve those in their original form."
                 },
                 { role: "user", content: ambiguityPromptContent }
             ];
@@ -213,7 +227,6 @@ Format your response as a JSON object with fields: "decision" (1, 2, or 3), "exp
                     messages: messages,
                     temperature: 0.2,
                     max_tokens: 500
-                    // Removed response_format parameter which was causing the error
                 })
             });
 

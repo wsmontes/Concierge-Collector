@@ -593,8 +593,13 @@ class ConceptModule {
                     const newValue = newConcept.value.toLowerCase();
                     const existingValue = concept.value.toLowerCase();
                     
+                    // Skip if already matched by high similarity
+                    if (concept.similarity >= SIMILARITY_THRESHOLD) {
+                        return false;
+                    }
+                    
                     // Common plural variations: adding 's', 'es', changing 'y' to 'ies'
-                    return (
+                    const regularPluralMatch = (
                         (newValue + 's' === existingValue) || 
                         (existingValue + 's' === newValue) ||
                         (newValue + 'es' === existingValue) || 
@@ -602,12 +607,48 @@ class ConceptModule {
                         (newValue.endsWith('y') && existingValue === newValue.slice(0, -1) + 'ies') ||
                         (existingValue.endsWith('y') && newValue === existingValue.slice(0, -1) + 'ies')
                     );
+                    
+                    // Handle special 'f' to 'ves' plurals (e.g., "leaf" -> "leaves")
+                    const fToVesMatch = (
+                        (newValue.endsWith('f') && existingValue === newValue.slice(0, -1) + 'ves') ||
+                        (existingValue.endsWith('f') && newValue === existingValue.slice(0, -1) + 'ves')
+                    );
+                    
+                    // Handle irregular plurals with a simple lookup approach
+                    const irregularPlurals = {
+                        'person': 'people',
+                        'child': 'children',
+                        'foot': 'feet',
+                        'tooth': 'teeth',
+                        'goose': 'geese',
+                        'mouse': 'mice',
+                        'man': 'men',
+                        'woman': 'women',
+                        'ox': 'oxen',
+                        'dish': 'dishes',
+                        'bus': 'buses'
+                    };
+                    
+                    let irregularMatch = false;
+                    
+                    // Check if either value is an irregular plural of the other
+                    for (const [singular, plural] of Object.entries(irregularPlurals)) {
+                        if ((newValue === singular && existingValue === plural) || 
+                            (existingValue === singular && newValue === plural)) {
+                            irregularMatch = true;
+                            break;
+                        }
+                    }
+                    
+                    return regularPluralMatch || fToVesMatch || irregularMatch;
                 });
                 
                 // Combine both high similarity concepts and potential plurals without duplicates
                 const combinedConcepts = [...highSimilarityConcepts];
                 potentialPluralOrSingular.forEach(concept => {
                     if (!combinedConcepts.some(c => c.value === concept.value)) {
+                        // Add confidence score for UI display
+                        concept.matchType = 'plural/singular form';
                         combinedConcepts.push(concept);
                     }
                 });

@@ -453,6 +453,30 @@ const UIManager = ModuleWrapper.defineClass('UIManager', class {
             this.originalTranscription = transcriptionText;
         }
     }
+
+    /**
+     * Shows the restaurant edit form and initializes the recording module in edit mode.
+     * @param {object} restaurant - The restaurant object being edited
+     */
+    showEditRestaurantForm(restaurant) {
+        // Populate form fields with restaurant data
+        if (this.curatorNameInput && restaurant.curatorName) {
+            this.curatorNameInput.value = restaurant.curatorName;
+        }
+        
+        if (this.apiKeyInput && restaurant.apiKey) {
+            this.apiKeyInput.value = restaurant.apiKey;
+        }
+        
+        // Show the recording section and initialize recording module in edit mode
+        if (window.recordingModule && typeof window.recordingModule.initialize === 'function') {
+            window.recordingModule.initialize({
+                editMode: true,
+                existingTranscript: restaurant.transcription || '',
+                existingConcepts: restaurant.concepts || []
+            });
+        }
+    }
 });
 
 // Create a global instance only once
