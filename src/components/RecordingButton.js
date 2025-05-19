@@ -9,7 +9,6 @@ const RecordingButton = ({ isEditMode = false }) => {
   const [isRecording, setIsRecording] = useState(false);
   const [recordingTime, setRecordingTime] = useState(0);
   const [timerInterval, setTimerInterval] = useState(null);
-  // Prevent duplicate recording starts/stops
   const isProcessingRef = useRef(false);
 
   useEffect(() => {
@@ -20,39 +19,30 @@ const RecordingButton = ({ isEditMode = false }) => {
 
   const startRecording = async () => {
     try {
-      // Prevent multiple recording attempts or concurrent operations
       if (isRecording || isProcessingRef.current) {
         console.log("Recording already in progress or operation in process");
         return;
       }
-      
       isProcessingRef.current = true;
-      
       setIsRecording(true);
       setRecordingTime(0);
-      
+
       const interval = setInterval(() => {
         setRecordingTime(prevTime => prevTime + 1);
       }, 1000);
-      
       setTimerInterval(interval);
-      
-      // Update the edit mode flag in the recording service for proper handling
+
       if (window.recordingModule && window.recordingModule.uiManager) {
         window.recordingModule.uiManager.isEditMode = isEditMode;
       }
-      
-      // Call the appropriate recording service method with proper error handling
       if (isEditMode) {
         await recordingService.startEditModeRecording();
       } else {
         await recordingService.startRecording();
       }
-      
       isProcessingRef.current = false;
     } catch (error) {
       console.error("Error starting recording:", error);
-      // Reset state on error
       setIsRecording(false);
       if (timerInterval) {
         clearInterval(timerInterval);
@@ -64,23 +54,17 @@ const RecordingButton = ({ isEditMode = false }) => {
 
   const stopRecording = async () => {
     try {
-      // First update UI state immediately for better user experience
       if (!isRecording || isProcessingRef.current) {
         console.log("No active recording to stop or operation in process");
         return;
       }
-      
       isProcessingRef.current = true;
       setIsRecording(false);
-      
       const currentInterval = timerInterval;
       if (currentInterval) {
         clearInterval(currentInterval);
         setTimerInterval(null);
       }
-      
-      // Then try to stop the recording in the service with a small delay
-      // to ensure UI updates first and prevent duplicate stop calls
       setTimeout(async () => {
         try {
           if (isEditMode) {
@@ -118,7 +102,14 @@ const RecordingButton = ({ isEditMode = false }) => {
           >
             Stop Recording
           </button>
-          <div className={isEditMode ? 'recording-counter edit-mode-counter' : 'recording-counter rounded-counter'}>
+          <div
+            className={
+              isEditMode
+                ? "recording-counter edit-mode-counter-small"
+                : "recording-counter rounded-counter"
+            }
+            style={isEditMode ? { fontSize: "0.85em", padding: "2px 10px", minWidth: 48, textAlign: "center" } : {}}
+          >
             {formatTime(recordingTime)}
           </div>
         </>

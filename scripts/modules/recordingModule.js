@@ -784,59 +784,41 @@ class RecordingModule {
      * @param {HTMLElement} timerElement - Element to show timer in
      */
     startRecordingTimer(timerElement) {
-        // If no element passed, try to find the appropriate one based on recording mode
-        if (!timerElement) {
-            const isAdditional = this.uiManager && this.uiManager.isRecordingAdditional;
-            timerElement = document.getElementById(isAdditional ? 'additional-recording-time' : 'recording-time');
-            if (!timerElement) {
-                console.warn(`Timer element not found for ${isAdditional ? 'additional' : 'main'} recording`);
-                return;
-            }
-        }
-        
-        // Initialize recording start time
+        // Always update both main and additional counters for robustness
+        const mainTimer = document.getElementById('recording-time');
+        const additionalTimer = document.getElementById('additional-recording-time');
         this.recordingStartTime = Date.now();
-        
-        // Clear any existing timer
+
         if (this.recordingTimer) {
             clearInterval(this.recordingTimer);
         }
-        
-        // Create a new timer that updates both displays
+
         this.recordingTimer = setInterval(() => {
             const elapsedSeconds = Math.floor((Date.now() - this.recordingStartTime) / 1000);
             const minutes = Math.floor(elapsedSeconds / 60).toString().padStart(2, '0');
             const seconds = (elapsedSeconds % 60).toString().padStart(2, '0');
             const formattedTime = `${minutes}:${seconds}`;
-            
-            // Update both timer displays with the same time
-            this.updateTimerDisplays(formattedTime);
-        }, 1000);
-    }
 
-    /**
-     * Update timer displays - now handles both timer displays simultaneously
-     * @param {string} time - Formatted time string (MM:SS)
-     */
-    updateTimerDisplays(time) {
-        // Update rectangular timer
-        const rectangularTimer = document.getElementById('recording-time');
-        if (rectangularTimer) {
-            rectangularTimer.textContent = time;
-            rectangularTimer.classList.remove('hidden');
-        }
-        
-        // Update circular timer
-        const circularTimer = document.getElementById('timer');
-        if (circularTimer) {
-            circularTimer.textContent = time;
-            
-            // Show pulsating effect on circular timer
-            const pulsateElement = circularTimer.parentElement.querySelector('.pulsate');
-            if (pulsateElement) {
-                pulsateElement.classList.remove('hidden');
+            // Update main rectangular timer if present
+            if (mainTimer) {
+                mainTimer.textContent = formattedTime;
+                mainTimer.classList.remove('hidden');
             }
-        }
+            // Update additional small timer if present
+            if (additionalTimer) {
+                additionalTimer.textContent = formattedTime;
+                additionalTimer.classList.remove('hidden');
+            }
+            // Update circular timer if present
+            const circularTimer = document.getElementById('timer');
+            if (circularTimer) {
+                circularTimer.textContent = formattedTime;
+                const pulsateElement = circularTimer.parentElement.querySelector('.pulsate');
+                if (pulsateElement) {
+                    pulsateElement.classList.remove('hidden');
+                }
+            }
+        }, 1000);
     }
 
     /**
@@ -847,26 +829,20 @@ class RecordingModule {
             clearInterval(this.recordingTimer);
             this.recordingTimer = null;
         }
-        
-        // Hide all timer elements when stopping
+        // Hide and reset all timer elements
         const timerElements = [
             document.getElementById('recording-time'),
             document.getElementById('additional-recording-time')
         ];
-        
         timerElements.forEach(element => {
             if (element) {
                 element.classList.add('hidden');
-                element.textContent = '00:00'; // Reset time display
+                element.textContent = '00:00';
             }
         });
-        
-        // Reset circular timer but don't hide it
         const circularTimer = document.getElementById('timer');
         if (circularTimer) {
             circularTimer.textContent = '00:00';
-            
-            // Hide pulsating effect
             const pulsateElement = circularTimer.parentElement.querySelector('.pulsate');
             if (pulsateElement) {
                 pulsateElement.classList.add('hidden');
