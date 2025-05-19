@@ -348,28 +348,8 @@ class RecordingModule {
     }
     
     /**
-     * Process recording to get transcription
-     * @param {Blob} audioBlob - The recorded audio blob
-     */
-    async processRecording(audioBlob) {
-        try {
-            // Convert blob to base64 for API
-            const base64Audio = await this.blobToBase64(audioBlob);
-            
-            // Get transcription via API
-            const transcription = await this.transcribeAudio(base64Audio);
-            
-            // Process the transcription result
-            this.processTranscription(transcription);
-        } catch (error) {
-            console.error('Error processing recording:', error);
-            throw error;
-        }
-    }
-    
-    /**
-     * Convert blob to base64
-     * @param {Blob} blob - Audio blob
+     * Convert blob to base64 string
+     * @param {Blob} blob - Audio blob to convert
      * @returns {Promise<string>} - Base64 encoded audio
      */
     blobToBase64(blob) {
@@ -384,9 +364,123 @@ class RecordingModule {
             reader.readAsDataURL(blob);
         });
     }
-    
+
     /**
-     * Transcribe audio using Whisper API
+     * Process recording to get transcription
+     * @param {Blob} audioBlob - The recorded audio blob
+     */
+    async processRecording(audioBlob) {
+        try {
+            let mp3Blob = audioBlob;
+            
+            // Try to convert to MP3 if supported
+            try {
+                mp3Blob = await this.convertToMP3(audioBlob);
+            } catch (conversionError) {
+                console.warn('MP3 conversion failed, using original format:', conversionError.message);
+                // Continue with original blob
+                mp3Blob = audioBlob;
+            }
+            
+            // Convert blob to base64 for API
+            const base64Audio = await this.blobToBase64(mp3Blob);
+            
+            // Get transcription via API
+            const transcription = await this.transcribeAudio(base64Audio);
+            
+            // Process the transcription result
+            this.processTranscription(transcription);
+        } catch (error) {
+            console.error('Error processing recording:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Convert WebM audio to MP3 format for better compatibility
+     * @param {Blob} webmBlob - WebM audio blob from recorder
+     * @returns {Promise<Blob>} - MP3 audio blob or original blob if conversion fails
+     */
+    convertToMP3(webmBlob) {
+        return new Promise((resolve, reject) => {
+            try {
+                // Check if MP3 recording is supported
+                if (!MediaRecorder.isTypeSupported('audio/mpeg')) {
+                    console.log('MP3 recording not supported, using default format');
+                    return resolve(webmBlob);
+                }
+                
+                // Create audio element and set source
+                const audio = new Audio();
+                audio.src = URL.createObjectURL(webmBlob);
+                
+                // Set up event listeners
+                audio.addEventListener('canplaythrough', () => {
+                    try {
+                        // Create audio context
+                        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                        const source = audioContext.createMediaElementSource(audio);
+                        const dest = audioContext.createMediaStreamDestination();
+                        
+                        // Connect nodes
+                        source.connect(dest);
+                        
+                        // Create a recorder for the stream
+                        const recorder = new MediaRecorder(dest.stream, { mimeType: 'audio/mpeg' });
+                        const chunks = [];
+                        
+                        // Set up recorder events
+                        recorder.ondataavailable = (e) => {
+                            if (e.data.size > 0) chunks.push(e.data);
+                        };
+                        
+                        recorder.onstop = () => {
+                            // Clean up
+                            URL.revokeObjectURL(audio.src);
+                            
+                            // Create MP3 blob
+                            const mp3Blob = new Blob(chunks, { type: 'audio/mpeg' });
+                            resolve(mp3Blob);
+                        };
+                        
+                        // Start recording and playback
+                        recorder.start();
+                        audio.play();
+                        
+                        // Stop when audio ends
+                        audio.onended = () => {
+                            recorder.stop();
+                            audio.onended = null;
+                        };
+                        
+                        // Safety timeout (5 minutes max)
+                        setTimeout(() => {
+                            if (recorder.state === 'recording') {
+                                console.warn('MP3 conversion timed out, stopping');
+                                recorder.stop();
+                            }
+                        }, 5 * 60 * 1000);
+                    } catch (error) {
+                        console.warn('Error during MP3 conversion setup:', error);
+                        URL.revokeObjectURL(audio.src);
+                        resolve(webmBlob); // Return original blob as fallback
+                    }
+                });
+                
+                audio.addEventListener('error', (error) => {
+                    console.warn('Error loading audio for MP3 conversion:', error);
+                    URL.revokeObjectURL(audio.src);
+                    resolve(webmBlob); // Return original blob as fallback
+                });
+            } catch (error) {
+                console.warn('MP3 conversion initialization error:', error);
+                resolve(webmBlob); // Return original blob as fallback
+            }
+        });
+    }
+
+    /**
+     * Transcribe audio using Whisper API with improved MP3 compatibility
      * @param {string} base64Audio - Base64 encoded audio
      * @returns {Promise<string>} - Transcription text
      */
@@ -403,7 +497,7 @@ class RecordingModule {
         
         const formData = new FormData();
         
-        // Convert base64 to a blob
+        // Convert base64 to a blob - use audio/mpeg mimetype for better compatibility
         const byteCharacters = atob(base64Audio);
         const byteArrays = [];
         for (let i = 0; i < byteCharacters.length; i += 512) {
@@ -414,10 +508,10 @@ class RecordingModule {
             }
             byteArrays.push(new Uint8Array(byteNumbers));
         }
-        const audioBlob = new Blob(byteArrays, { type: 'audio/webm' });
+        const audioBlob = new Blob(byteArrays, { type: 'audio/mpeg' });
         
-        // Add the file to FormData
-        formData.append('file', audioBlob, 'recording.webm');
+        // Add the file to FormData with mp3 extension for compatibility
+        formData.append('file', audioBlob, 'recording.mp3');
         formData.append('model', 'whisper-1');
         formData.append('language', 'en');
         
