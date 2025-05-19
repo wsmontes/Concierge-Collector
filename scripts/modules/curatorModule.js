@@ -1,12 +1,8 @@
 /**
- * Manages curator functionality and restaurant list loading
- * Dependencies: UIManager, SafetyUtils
+ * Manages curator functionality
+ * Dependencies: uiManager, dataStorage, syncService
  */
 class CuratorModule {
-    /**
-     * Constructor for CuratorModule
-     * @param {UIManager} uiManager - Reference to the UI manager
-     */
     constructor(uiManager) {
         this.uiManager = uiManager;
         this.curatorSelectorInitialized = false;
@@ -428,35 +424,11 @@ class CuratorModule {
     }
     
     /**
-     * Safely attempts to reload curator information
-     * @returns {Promise<void>}
-     */
-    async safeReloadCuratorInfo() {
-        if (window.SafetyUtils) {
-            return SafetyUtils.safeReloadCuratorInfo(this.uiManager);
-        }
-        
-        try {
-            if (typeof this.loadCuratorInfo === 'function') {
-                await this.loadCuratorInfo();
-                console.log('Curator information reloaded');
-            } else {
-                console.warn('loadCuratorInfo not available as a function');
-            }
-        } catch (error) {
-            console.error('Error reloading curator information:', error);
-        }
-    }
-    
-    /**
-     * Safely fetches curators from the server using SafetyUtils for error handling
-     * @returns {Promise<void>}
+     * Fetch curators from server with enhanced error handling and deduplication
      */
     async fetchCurators() {
         try {
-            if (window.SafetyUtils) {
-                SafetyUtils.safeShowLoading('Fetching curators from server...', this.uiManager);
-            }
+            this.safeShowLoading('Fetching curators from server...');
             
             try {
                 // First, clean up any existing duplicate curators
@@ -485,21 +457,17 @@ class CuratorModule {
             this.curatorSelectorInitialized = false;
             await this.initializeCuratorSelector();
             
-            if (window.SafetyUtils) {
-                SafetyUtils.safeHideLoading(this.uiManager);
-                SafetyUtils.safeShowNotification('Curators fetched and deduplicated successfully', 'success', this.uiManager);
-            }
+            this.safeHideLoading();
+            this.safeShowNotification('Curators fetched and deduplicated successfully');
             
             // Also update the last sync display
             if (window.AutoSync && typeof window.AutoSync.updateLastSyncDisplay === 'function') {
                 window.AutoSync.updateLastSyncDisplay();
             }
         } catch (error) {
-            if (window.SafetyUtils) {
-                SafetyUtils.safeHideLoading(this.uiManager);
-                SafetyUtils.safeShowNotification(`Error fetching curators: ${error.message}`, 'error', this.uiManager);
-            }
+            this.safeHideLoading();
             console.error('Error fetching curators:', error);
+            this.safeShowNotification(`Error fetching curators: ${error.message}`, 'error');
         }
     }
     
@@ -538,6 +506,60 @@ class CuratorModule {
     }
     
     /**
+     * Safely loads the restaurant list
+     */
+    async safeLoadRestaurantList(curatorId, filterEnabled) {
+        try {
+            if (this.uiManager && 
+                this.uiManager.restaurantModule && 
+                typeof this.uiManager.restaurantModule.loadRestaurantList === 'function') {
+                
+                // Pass both parameters explicitly to ensure filter works correctly
+                console.log(`Loading restaurant list with curatorId: ${curatorId}, filter: ${filterEnabled}`);
+                await this.uiManager.restaurantModule.loadRestaurantList(curatorId, filterEnabled);
+            } else {
+                console.warn('restaurantModule not available or loadRestaurantList not a function');
+            }
+        } catch (error) {
+            console.error('Error loading restaurant list:', error);
+        }
+    }
+    
+    /**
+     * Toggle curator filter with improved debugging
+     * @param {boolean} enabled - Whether filter is enabled
+     */
+    async toggleCuratorFilter(enabled) {
+        try {
+            console.log(`Toggling curator filter: ${enabled ? 'enabled' : 'disabled'}`);
+            
+            // Save setting
+            await dataStorage.updateSetting('filterByActiveCurator', enabled);
+            
+            // Reload restaurant list with filter
+            if (this.uiManager && this.uiManager.currentCurator) {
+                const curatorId = this.uiManager.currentCurator.id;
+                console.log(`Filter toggled to ${enabled ? 'ON' : 'OFF'} for curator: ${this.uiManager.currentCurator.name} (ID: ${curatorId}, type: ${typeof curatorId})`);
+                
+                // Always pass curatorId as string for consistent handling
+                await this.safeLoadRestaurantList(
+                    String(curatorId),
+                    enabled
+                );
+            } else {
+                console.warn('Cannot apply filter: No current curator set');
+            }
+            
+            this.safeShowNotification(
+                enabled ? 'Showing only your restaurants' : 'Showing all restaurants'
+            );
+        } catch (error) {
+            console.error('Error toggling curator filter:', error);
+            this.safeShowNotification('Error updating filter', 'error');
+        }
+    }
+
+    /**
      * Load curator info
      */
     async loadCuratorInfo() {
@@ -567,55 +589,4 @@ class CuratorModule {
             return false;
         }
     }
-    
-    /**
-     * Safely loads restaurant list with error handling
-     * @param {number|string} curatorId - ID of the curator
-     * @param {boolean} filterEnabled - Whether to filter restaurants by curator
-     * @returns {Promise<void>}
-     */
-    async safeLoadRestaurantList(curatorId, filterEnabled) {
-        try {
-            console.log(`Loading restaurant list with curatorId: ${curatorId}, filter: ${filterEnabled}`);
-            
-            if (!this.uiManager || 
-                !this.uiManager.restaurantModule || 
-                typeof this.uiManager.restaurantModule.loadRestaurantList !== 'function') {
-                throw new Error('restaurantModule not available or loadRestaurantList not a function');
-            }
-            
-            // Use SafetyUtils if available for consistent UI feedback
-            if (window.SafetyUtils) {
-                SafetyUtils.safeShowLoading('Loading restaurant list...', this.uiManager);
-                
-                try {
-                    // Call the actual loadRestaurantList method
-                    await this.uiManager.restaurantModule.loadRestaurantList(curatorId, filterEnabled);
-                } catch (taskError) {
-                    // Handle errors gracefully with notification
-                    SafetyUtils.safeShowNotification(
-                        'Error loading restaurant list: ' + taskError.message, 
-                        'error', 
-                        this.uiManager
-                    );
-                    throw taskError; // Re-throw for outer catch
-                } finally {
-                    // Always hide loading indicator
-                    SafetyUtils.safeHideLoading(this.uiManager);
-                }
-            } else {
-                // Fallback if SafetyUtils isn't available
-                await this.uiManager.restaurantModule.loadRestaurantList(curatorId, filterEnabled);
-            }
-        } catch (error) {
-            console.error('Error loading restaurant list:', error);
-            
-            // Additional fallback notification if SafetyUtils failed or isn't available
-            if (this.uiManager && typeof this.uiManager.showNotification === 'function') {
-                this.uiManager.showNotification('Failed to load restaurant list', 'error');
-            }
-        }
-    }
 }
-
-// Don't create instance here - the ModuleWrapper system will handle this

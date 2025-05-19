@@ -162,16 +162,6 @@ class UIManager {
             loadingMessageElement.textContent = message;
         }
     }
-
-    /**
-     * Shows the recording section (used in both create and edit flows).
-     */
-    showRecordingSection() {
-        const recordingSection = document.getElementById('recording-section');
-        if (recordingSection) {
-            recordingSection.classList.remove('hidden');
-        }
-    }
     
     // ... rest of the existing methods
 }
