@@ -1,0 +1,26 @@
+/* Recording Counter Styles */
+.recording-counter {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-top: 10px;
+}
+
+/* Standard rounded counter */
+.rounded-counter {
+  background-color: #ff4a4a;
+  color: white;
+  border-radius: 20px;
+  padding: 5px 15px;
+  font-weight: bold;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+}
+
+/* Edit mode counter */
+.edit-mode-counter {
+  background-color: #4a90e2;
+  color: white;
+  padding: 5px 15px;
+  font-weight: bold;
+  border-radius: 4px;
+}

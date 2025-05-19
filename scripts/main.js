@@ -97,68 +97,67 @@ function showFatalError(message) {
 }
 
 /**
- * Initializes the application in the correct order
- * Using async/await for better flow control
+ * Initialize the application with improved UI component creation
+ * Makes sure HTML components are created before event listeners are attached
  */
 async function initializeApp() {
-    // First, initialize UI Utils for shared UI functionality
-    if (!window.uiUtils) {
-        if (typeof UIUtilsModule === 'function') {
-            window.uiUtils = new UIUtilsModule();
-            console.log('UIUtils module initialized globally');
-        } else {
-            console.warn('UIUtilsModule not found, UI utilities will be limited');
-        }
-    }
+    console.log('Initializing application...');
     
-    // Initialize core components with proper error handling
     try {
-        console.log('Initializing core components...');
+        // Create base DOM structure if it doesn't exist
+        ensureBaseStructureExists();
         
-        // Data storage first as many components depend on it
-        ModuleWrapper.createInstance('dataStorage', 'DataStorage');
+        // Initialize UI Manager
+        window.uiManager = new UIManager();
+        window.uiManager.init();
         
-        // API handler for external communication
-        ModuleWrapper.createInstance('apiHandler', 'ApiHandler');
+        // Load curator info
+        await window.uiManager.curatorModule.loadCuratorInfo();
         
-        // Concept matcher for semantic matching
-        ModuleWrapper.createInstance('conceptMatcher', 'ConceptMatcher');
-        
-        // Sync service for data synchronization
-        ModuleWrapper.createInstance('syncService', 'SyncService');
-        
-        console.log('Core components initialized successfully');
+        console.log('Application initialization complete');
     } catch (error) {
-        console.error('Error initializing core components:', error);
-        throw new Error(`Failed to initialize core components: ${error.message}`);
+        console.error('Error during application initialization:', error);
+        throw new Error('Failed to initialize UI Manager: ' + error.message);
+    }
+}
+
+/**
+ * Ensures that the base DOM structure for the application exists
+ * This helps prevent errors when components try to attach to non-existent elements
+ */
+function ensureBaseStructureExists() {
+    let container = document.querySelector('.container');
+    if (!container) {
+        console.log('Creating base container structure');
+        container = document.createElement('div');
+        container.className = 'container mx-auto px-4 py-8';
+        document.body.appendChild(container);
     }
     
-    // Initialize UI Manager (depends on core components)
-    try {
-        console.log('Initializing UI Manager...');
-        
-        // Create the UI manager instance
-        ModuleWrapper.createInstance('uiManager', 'UIManager');
-        
-        // Initialize it if created successfully
-        if (window.uiManager) {
-            await window.uiManager.init();
-            console.log('UI Manager initialized successfully');
-        } else {
-            throw new Error('UIManager instance was not properly created');
+    // Ensure minimum required sections exist
+    const sections = [
+        { id: 'recording-section', title: 'Record Your Restaurant Review', icon: 'mic' },
+        { id: 'restaurant-form', title: 'Restaurant Details', icon: 'restaurant' },
+        { id: 'concepts-section', title: 'Restaurant Concepts', icon: 'category' }
+    ];
+    
+    sections.forEach(section => {
+        if (!document.getElementById(section.id)) {
+            const sectionEl = document.createElement('div');
+            sectionEl.id = section.id;
+            sectionEl.className = 'mb-6';
+            sectionEl.innerHTML = `
+                <h2 class="text-xl font-bold mb-2 flex items-center">
+                    <span class="material-icons mr-1">${section.icon}</span>
+                    ${section.title}
+                </h2>
+                <div class="section-content"></div>
+            `;
+            container.appendChild(sectionEl);
         }
-    } catch (error) {
-        console.error('Error initializing UI Manager:', error);
-        throw new Error(`Failed to initialize UI Manager: ${error.message}`);
-    }
+    });
     
-    // Initialize background services
-    initializeBackgroundServices();
-    
-    console.log('Restaurant Curator application initialized successfully');
-    
-    // Return true to indicate successful initialization
-    return true;
+    console.log('Base DOM structure verified');
 }
 
 /**
@@ -253,19 +252,85 @@ function cleanupBrowserData() {
     }
 }
 
-// Add a function to create the Places Search Module
-function initializePlacesSearchModule() {
-    console.log('Initializing Places Search Module...');
-    if (typeof PlacesSearchModule === 'function') {
-        if (!window.placesSearchModule) {
-            window.placesSearchModule = new PlacesSearchModule(window.uiManager);
-        } else {
-            console.log('PlacesSearchModule already initialized');
+/**
+ * Ensure the recording module is properly initialized after the UI Manager is created
+ * @param {Object} uiManager - The UI Manager instance
+ */
+function ensureRecordingModuleInitialized(uiManager) {
+    // Wait for DOM to be fully ready
+    setTimeout(() => {
+        try {
+            console.log('Ensuring recording module is properly initialized');
+            
+            if (uiManager && uiManager.recordingModule) {
+                // Make sure recording module has setup its events
+                if (typeof uiManager.recordingModule.setupEvents === 'function') {
+                    uiManager.recordingModule.setupEvents();
+                    console.log('Recording module event setup reinforced');
+                    
+                    // Make module available globally for debugging if needed
+                    window.recordingModule = uiManager.recordingModule;
+                }
+            } else {
+                console.warn('Recording module not found in UI Manager');
+            }
+            
+            // Try to attach handlers to any existing buttons regardless
+            const buttons = [
+                { id: 'start-record', handler: startRecording },
+                { id: 'stop-record', handler: stopRecording },
+                { id: 'additional-record-start', handler: startAdditionalRecording },
+                { id: 'additional-record-stop', handler: stopAdditionalRecording }
+            ];
+            
+            buttons.forEach(({id, handler}) => {
+                const btn = document.getElementById(id);
+                if (btn) {
+                    // Add a direct click handler
+                    btn.addEventListener('click', () => {
+                        console.log(`Direct handler for ${id} clicked`);
+                        if (typeof handler === 'function') {
+                            handler();
+                        }
+                    });
+                }
+            });
+            
+            // Helper functions
+            function startRecording() {
+                if (uiManager && uiManager.recordingModule) {
+                    uiManager.recordingModule.startRecording();
+                }
+            }
+            
+            function stopRecording() {
+                if (uiManager && uiManager.recordingModule) {
+                    uiManager.recordingModule.stopRecording();
+                }
+            }
+            
+            function startAdditionalRecording() {
+                if (uiManager) uiManager.isRecordingAdditional = true;
+                startRecording();
+            }
+            
+            function stopAdditionalRecording() {
+                stopRecording();
+                if (uiManager) uiManager.isRecordingAdditional = false;
+            }
+            
+        } catch (error) {
+            console.error('Error ensuring recording module initialization:', error);
         }
-    } else {
-        console.error('PlacesSearchModule class not available');
-    }
+    }, 1000); // Wait 1 second after initialization
 }
 
-// Call the initialization function after a delay
-setTimeout(initializePlacesSearchModule, 1000);
+// Add this to your existing initialization code
+document.addEventListener('DOMContentLoaded', () => {
+    // ... existing initialization code ...
+    
+    // After UI Manager is created, call our new function
+    if (window.uiManager) {
+        ensureRecordingModuleInitialized(window.uiManager);
+    }
+});

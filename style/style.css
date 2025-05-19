@@ -448,9 +448,35 @@ button .material-icons {
   animation: blink 1s infinite;
 }
 
-@keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.7; }
+/* Pulsate animation for timer */
+@keyframes pulsate {
+    0% {
+        transform: scale(1);
+        opacity: 0.5;
+    }
+    50% {
+        transform: scale(1.05);
+        opacity: 0.7;
+    }
+    100% {
+        transform: scale(1);
+        opacity: 0.5;
+    }
+}
+
+.pulsate {
+    animation: pulsate 1.5s infinite ease-in-out;
+}
+
+/* Processing step styling */
+.processing-step {
+    display: flex;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.processing-step .material-icons {
+    margin-right: 8px;
 }
 
 /* Processing states */

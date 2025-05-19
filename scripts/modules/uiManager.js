@@ -45,51 +45,42 @@ class UIManager {
      * Initialize UI and all modules
      */
     init() {
-        console.log('UIManager initializing...');
+        console.log('Initializing UI Manager...');
         
-        // State variables
-        this.currentCurator = null;
-        this.isEditingCurator = false;
-        this.isEditingRestaurant = false;
-        this.editingRestaurantId = null;
-        this.currentConcepts = [];
-        this.currentLocation = null;
-        this.currentPhotos = [];
-        this.isRecordingAdditional = false; // New flag for additional recording
-        
-        // Initialize modules conditionally (only if not already initialized)
-        if (!this.curatorModule) this.curatorModule = new CuratorModule(this);
-        if (!this.recordingModule) this.recordingModule = new RecordingModule(this);
-        if (!this.transcriptionModule) this.transcriptionModule = new TranscriptionModule(this);
-        if (!this.conceptModule) this.conceptModule = new ConceptModule(this);
-        if (!this.restaurantModule) this.restaurantModule = new RestaurantModule(this);
-        if (!this.exportImportModule) this.exportImportModule = new ExportImportModule(this);
-        
-        // Initialize the quick action module safely
-        if (!this.quickActionModule) {
-            this.quickActionModule = new QuickActionModule(this);
+        try {
+            // First initialize the recording module with proper reference
+            this.recordingModule = new RecordingModule(this);
+            
+            // Make recording module available globally for debugging and access from other modules
+            window.recordingModule = this.recordingModule;
+            
+            // Ensure the recording interface exists before continuing
+            if (this.recordingModule && typeof this.recordingModule.ensureRecordingInterfaceExists === 'function') {
+                this.recordingModule.ensureRecordingInterfaceExists();
+            }
+            
+            // Initialize other modules
+            this.transcriptionModule = new TranscriptionModule(this);
+            this.restaurantModule = new RestaurantModule(this);
+            this.conceptModule = new ConceptModule(this);
+            this.curatorModule = new CuratorModule(this);
+            
+            // Set up cache for DOM elements
+            this.cacheDOM();
+            
+            // Set up event handlers now that DOM is ready
+            this.setupEvents();
+            
+            // Set up events in modules after ensuring DOM is ready
+            this.recordingModule.setupEvents();
+            this.conceptModule.setupEvents();
+            this.curatorModule.setupEvents();
+            
+            console.log('UI Manager initialization complete');
+        } catch (error) {
+            console.error('Error during UI Manager initialization:', error);
+            throw new Error('Failed to initialize UI Manager: ' + error.message);
         }
-        
-        // Setup events for each module
-        this.curatorModule.setupEvents();
-        this.recordingModule.setupEvents();
-        this.transcriptionModule.setupEvents();
-        this.conceptModule.setupEvents();
-        this.restaurantModule.setupEvents();
-        this.exportImportModule.setupEvents();
-        
-        // Only set up quick action events if all required elements exist
-        if (this.fab && this.quickActionModal && this.closeQuickModal) {
-            this.quickActionModule.setupEvents();
-        } else {
-            console.warn('Quick action elements not found, skipping initialization');
-        }
-        
-        // Load curator info
-        this.curatorModule.loadCuratorInfo();
-        
-        // Initialize Places Search Module
-        this.initializeModules();
     }
 
     /**
@@ -195,6 +186,33 @@ class UIManager {
         // Show concepts section if we have concepts
         if (this.currentConcepts && this.currentConcepts.length > 0) {
             this.conceptsSection.classList.remove('hidden');
+        }
+    }
+
+    /**
+     * Shows the recording section
+     */
+    showRecordingSection() {
+        // First make sure the section exists
+        if (this.recordingModule && typeof this.recordingModule.ensureRecordingInterfaceExists === 'function') {
+            this.recordingModule.ensureRecordingInterfaceExists();
+        }
+        
+        // Now show the section
+        const recordingSection = document.getElementById('recording-section');
+        if (recordingSection) {
+            recordingSection.classList.remove('hidden');
+        }
+        
+        // Hide other sections
+        const conceptsSection = document.getElementById('concepts-section');
+        if (conceptsSection) {
+            conceptsSection.classList.add('hidden');
+        }
+        
+        const restaurantFormSection = document.getElementById('restaurant-form');
+        if (restaurantFormSection) {
+            restaurantFormSection.classList.remove('hidden');
         }
     }
 
