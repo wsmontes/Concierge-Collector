@@ -1,95 +1,35 @@
-# Project Standards
+Project Standards
 
-- Always apply industry best practices (Clean Architecture, SOLID, etc.).
-- Every file must start with a header comment stating its purpose and dependencies.
-- No historical or “removed code” comments—only current, relevant notes.
-- Any change must leave the file in a complete, final state and automatically update all dependent files (with their headers adjusted).
-- Comments must be meaningful, consistent, and non-contradictory.
-- Do not introduce mock or fake data; provide real implementations or clearly labeled fallbacks.
-- If a requested feature can’t be fully implemented, state that fact and propose valid alternatives.
-- Write code and comments so they’re intelligible to an AI with no prior context.
-- Don't include data samples in the code as a fallback. Never.
-- Always prefer fixing the code over introducing new code.
-- Avoid creating diagnostic utilities; instead, analyze the code and fix it.
-- Don't break what is working while changing other stuff.
+Apply industry best practices: Clean Architecture, SOLID principles, and strict separation of concerns.
 
-Follow these structural and coding rules at all times when editing or generating code for this project:
+Every file must begin with a header comment describing its purpose, main responsibilities, and dependencies.
 
-1. File and Directory Organization
-Only one class/module per file.
+All comments must be clear, meaningful, and consistent—no vague, historical, or removed-code comments.
 
-Each feature/module has its own file in /modules/featureName/ModuleName.js or /modules/domain/ModuleName.js.
+Leave all files in a complete, functional state after any change. Update all dependent files and headers as needed.
 
-No duplicated or legacy files.
+Code and comments must be understandable by an AI or new developer with zero project context. No assumptions.
 
-2. Class and Instance Naming
-Class names: PascalCase (e.g. RestaurantModule)
+Never include mock, fake, or sample data in code. Only use real implementations, or clearly labeled fallbacks.
 
-Instance names: camelCase (e.g. restaurantModule)
+If a requested feature cannot be fully implemented, state this clearly in the code and propose valid alternatives.
 
-Module file name must match the class name.
+Never introduce new diagnostic or utility files—analyze and fix the actual codebase instead.
 
-3. Global Guards and Singleton Instantiation
-Protect all class and instance declarations:
+Never break working code when modifying or extending features. Prefer fixing or refactoring existing code over new code.
 
-js
-Copy
-Edit
-if (!window.ClassName) { class ClassName { ... }; window.ClassName = ClassName; }
-window.className = window.className || new window.ClassName(...);
-Only instantiate singletons in main.js and pass dependencies via constructors.
+Always use the ModuleWrapper pattern for creating and extending modules.
 
-4. Dependency Management
-Never access other modules via window inside modules.
+All class properties and methods must use this. for both data and function access.
 
-Pass dependencies as constructor arguments, assign to this.
+Global variables are not allowed. Attach all state and methods to classes or a dedicated namespace.
 
-5. App Initialization
-Only main.js is allowed to initialize and wire up modules.
+Centralize all configuration, API keys, and constants in config.js only. Never declare these elsewhere.
 
-Create all major objects in order, and assign to window for debug only.
+All initialization (modules, services, app state) must be managed from the main entry point (main.js). Modules should register themselves for initialization, but not auto-initialize on load.
 
-6. DOM and Events
-All UI logic and DOM manipulation must be inside UI/view classes.
+Do NOT use ES6 imports/exports or require(). Only use the ModuleWrapper pattern and include scripts via <script> tags. ES6 modules are not allowed.
 
-Always check for or remove old event listeners before adding new ones.
+Declare all dependencies at the top of every module.
 
-Use event delegation for dynamic lists.
-
-7. Constants and Config
-Place all magic values in a config/constants file.
-
-Reference app-wide settings via a central config object.
-
-8. Documentation
-Add a file header with purpose, dependencies, usage.
-
-Briefly document non-trivial methods.
-
-9. Extension Points
-Use registerX pattern for extensibility.
-
-Document extension points and accepted formats.
-
-10. Error Handling
-Methods must handle and log their own errors.
-
-Never fail silently.
-
-11. Code Style
-Consistent formatting, naming, and commenting.
-
-Explain and comment any exception to the rules.
-
-12. Security
-Never hardcode secrets or sensitive info.
-
-Validate/sanitize all user input.
-
-Namespace storage keys by app name and version.
-
-Never use import/export.
-Never access other modules via window except in main.js.
-Do not pollute the global scope.
-Do not write or duplicate code outside these standards.
-Always follow these rules.
+Do not alter the script load order. main.js must always serve as the app entry point.
