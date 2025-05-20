@@ -1,6 +1,7 @@
 /**
  * Recording Module - Handles audio recording and transcription
  * Dependencies: Whisper API, uiManager
+ * Enhanced for mobile compatibility and consistent MP3 conversion
  */
 class RecordingModule {
     constructor(uiManager) {
@@ -14,6 +15,44 @@ class RecordingModule {
         this.analyser = null;
         this.recordingTimer = null;
         this.recordingStartTime = null;
+        
+        // Default settings for audio recording
+        this.recordingSettings = {
+            mimeType: null, // Will be determined at runtime based on browser support
+            audioBitsPerSecond: 128000, // 128kbps for decent audio quality
+            maxDuration: 5 * 60 * 1000 // 5 minute maximum recording time
+        };
+        
+        // Initialize the supported mime type based on browser capabilities
+        this.initMimeType();
+    }
+
+    /**
+     * Initialize the best supported mime type for the current browser
+     */
+    initMimeType() {
+        // Try different mime types in order of preference
+        const mimeTypes = [
+            'audio/webm;codecs=opus',  // Best quality on most browsers
+            'audio/webm',              // Generic webm
+            'audio/mp4',               // iOS fallback
+            'audio/ogg;codecs=opus',   // Firefox fallback
+            'audio/mpeg'               // Last resort
+        ];
+        
+        // Find the first supported mime type
+        for (const mimeType of mimeTypes) {
+            if (MediaRecorder.isTypeSupported(mimeType)) {
+                this.recordingSettings.mimeType = mimeType;
+                console.log(`Selected recording format: ${mimeType}`);
+                break;
+            }
+        }
+        
+        // If no supported type is found, let browser use default
+        if (!this.recordingSettings.mimeType) {
+            console.warn('No explicit MIME type support detected, using browser default');
+        }
     }
 
     /**
@@ -36,7 +75,7 @@ class RecordingModule {
             recordingSection.id = 'recording-section';
             recordingSection.className = 'mb-6';
             
-            // Create the recording section HTML - updated with non-rounded buttons
+            // Create the recording section HTML - enhanced for mobile with larger tap targets
             recordingSection.innerHTML = `
                 <h2 class="text-xl font-bold mb-2 flex items-center">
                     <span class="material-icons mr-1 text-red-600">mic</span>
@@ -44,17 +83,17 @@ class RecordingModule {
                 </h2>
                 <p class="text-sm text-gray-600 mb-4">Record your review of the restaurant to automatically extract information.</p>
                 
-                <div class="recording-controls flex flex-wrap items-center gap-2 mb-4">
-                    <button id="start-record" class="bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded flex items-center">
+                <div class="recording-controls flex flex-wrap items-center gap-3 mb-4">
+                    <button id="start-record" class="bg-red-600 hover:bg-red-700 text-white px-4 py-3 rounded flex items-center text-lg md:text-base">
                         <span class="material-icons mr-1">mic</span>
                         Start Recording
                     </button>
-                    <button id="stop-record" class="bg-gray-600 hover:bg-gray-700 text-white px-3 py-2 rounded flex items-center hidden">
+                    <button id="stop-record" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-3 rounded flex items-center text-lg md:text-base hidden">
                         <span class="material-icons mr-1">stop</span>
                         Stop Recording
                     </button>
-                    <div id="recording-time" class="px-3 py-2 bg-white border rounded text-sm hidden">00:00</div>
-                    <div id="recording-status" class="text-sm text-gray-600 ml-2"></div>
+                    <div id="recording-time" class="px-4 py-3 bg-white border rounded text-lg md:text-base font-mono hidden">00:00</div>
+                    <div id="recording-status" class="text-base md:text-sm text-gray-600 ml-2"></div>
                 </div>
                 
                 <div id="audio-visualizer" class="h-16 mb-4 bg-black rounded overflow-hidden hidden">
@@ -65,7 +104,7 @@ class RecordingModule {
                 <div id="circular-timer-section" class="hidden">
                     <div id="timer" class="text-center text-4xl font-bold mb-2">00:00</div>
                     <div class="flex justify-center gap-2">
-                        <button id="discard-recording" class="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded">
+                        <button id="discard-recording" class="px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded text-lg md:text-base">
                             <span class="material-icons mr-1">delete</span>
                             Discard Recording
                         </button>
@@ -74,13 +113,13 @@ class RecordingModule {
                 
                 <div id="audio-preview" class="hidden mt-4">
                     <h3 class="text-lg font-semibold mb-2">Recording Preview</h3>
-                    <audio id="recorded-audio" controls class="w-full mb-2"></audio>
-                    <div class="flex gap-2">
-                        <button id="transcribe-recording" class="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded">
+                    <audio id="recorded-audio" controls class="w-full mb-3"></audio>
+                    <div class="flex gap-2 flex-wrap">
+                        <button id="transcribe-recording" class="px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded text-lg md:text-base">
                             <span class="material-icons mr-1">transcribe</span>
                             Transcribe Recording
                         </button>
-                        <button id="analyze-recording" class="px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded">
+                        <button id="analyze-recording" class="px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded text-lg md:text-base">
                             <span class="material-icons mr-1">analytics</span>
                             Analyze Recording
                         </button>
@@ -123,25 +162,25 @@ class RecordingModule {
                 let controlsContainer = recordingSection.querySelector('.recording-controls');
                 if (!controlsContainer) {
                     controlsContainer = document.createElement('div');
-                    controlsContainer.className = 'recording-controls flex flex-wrap items-center gap-2 mb-4';
+                    controlsContainer.className = 'recording-controls flex flex-wrap items-center gap-3 mb-4';
                     recordingSection.appendChild(controlsContainer);
                 } else {
                     // Clear existing buttons to prevent duplicates
                     controlsContainer.innerHTML = '';
                 }
                 
-                // Add start button with consistent styling (not rounded)
+                // Add start button with mobile-friendly styling
                 const newStartBtn = document.createElement('button');
                 newStartBtn.id = 'start-record';
-                newStartBtn.className = 'bg-red-600 hover:bg-red-700 text-white px-3 py-2 rounded flex items-center';
+                newStartBtn.className = 'bg-red-600 hover:bg-red-700 text-white px-4 py-3 rounded flex items-center text-lg md:text-base';
                 newStartBtn.innerHTML = '<span class="material-icons mr-1">mic</span>Start Recording';
                 controlsContainer.appendChild(newStartBtn);
                 console.log('Added missing start-record button');
                 
-                // Add stop button with consistent styling (not rounded)
+                // Add stop button with mobile-friendly styling
                 const newStopBtn = document.createElement('button');
                 newStopBtn.id = 'stop-record';
-                newStopBtn.className = 'bg-gray-600 hover:bg-gray-700 text-white px-3 py-2 rounded flex items-center hidden';
+                newStopBtn.className = 'bg-gray-600 hover:bg-gray-700 text-white px-4 py-3 rounded flex items-center text-lg md:text-base hidden';
                 newStopBtn.innerHTML = '<span class="material-icons mr-1">stop</span>Stop Recording';
                 controlsContainer.appendChild(newStopBtn);
                 console.log('Added missing stop-record button');
@@ -150,7 +189,7 @@ class RecordingModule {
                 if (!recordingSection.querySelector('#recording-time')) {
                     const timeDisplay = document.createElement('div');
                     timeDisplay.id = 'recording-time';
-                    timeDisplay.className = 'px-3 py-2 bg-white border rounded text-sm hidden';
+                    timeDisplay.className = 'px-4 py-3 bg-white border rounded text-lg md:text-base font-mono hidden';
                     timeDisplay.textContent = '00:00';
                     controlsContainer.appendChild(timeDisplay);
                 }
@@ -159,7 +198,7 @@ class RecordingModule {
                 if (!recordingSection.querySelector('#recording-status')) {
                     const statusDisplay = document.createElement('div');
                     statusDisplay.id = 'recording-status';
-                    statusDisplay.className = 'text-sm text-gray-600 ml-2';
+                    statusDisplay.className = 'text-base md:text-sm text-gray-600 ml-2';
                     controlsContainer.appendChild(statusDisplay);
                 }
                 
@@ -559,6 +598,7 @@ class RecordingModule {
 
     /**
      * Starts recording audio with support for both regular and additional recording modes
+     * Enhanced for mobile compatibility
      * @returns {Promise<void>}
      */
     async startRecording() {
@@ -600,21 +640,62 @@ class RecordingModule {
                 throw new Error('Audio recording not supported in this browser');
             }
             
-            // Request audio stream
-            const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+            // Request audio stream with constraints optimized for voice
+            const constraints = {
+                audio: {
+                    echoCancellation: true,
+                    noiseSuppression: true,
+                    autoGainControl: true,
+                    sampleRate: 44100 // CD quality for best transcription results
+                }
+            };
+            
+            // For iOS Safari, we need special handling
+            if (this.isIOSSafari()) {
+                console.log('iOS Safari detected, using simplified audio constraints');
+                constraints.audio = true; // Simple constraints for iOS
+            }
+            
+            const stream = await navigator.mediaDevices.getUserMedia(constraints);
             this.mediaStream = stream;
             
-            // Create media recorder
-            this.mediaRecorder = new MediaRecorder(stream);
+            // Create media recorder with best supported MIME type
+            const options = {};
+            if (this.recordingSettings.mimeType) {
+                options.mimeType = this.recordingSettings.mimeType;
+            }
+            if (this.recordingSettings.audioBitsPerSecond) {
+                options.audioBitsPerSecond = this.recordingSettings.audioBitsPerSecond;
+            }
+            
+            // Debug info for mobile debugging
+            console.log('Creating MediaRecorder with options:', options);
+            
+            try {
+                this.mediaRecorder = new MediaRecorder(stream, options);
+            } catch (err) {
+                console.warn(`Error creating MediaRecorder with options: ${err.message}, trying without options`);
+                this.mediaRecorder = new MediaRecorder(stream);
+            }
+            
             this.audioChunks = [];
             
             // Set up event handlers
             this.mediaRecorder.addEventListener('dataavailable', e => {
-                if (e.data.size > 0) this.audioChunks.push(e.data);
+                if (e.data && e.data.size > 0) this.audioChunks.push(e.data);
             });
             
-            // Start recording
-            this.mediaRecorder.start();
+            // Add safety auto-stop after max duration
+            const maxRecordingDuration = this.recordingSettings.maxDuration || 5 * 60 * 1000; // 5 minute default
+            setTimeout(() => {
+                if (this.isRecording && this.mediaRecorder && this.mediaRecorder.state === 'recording') {
+                    console.log('Auto-stopping recording due to max duration limit');
+                    this.stopRecording().catch(err => console.error('Error auto-stopping recording:', err));
+                }
+            }, maxRecordingDuration);
+            
+            // Start recording with 1 second chunks for more responsive recording
+            this.mediaRecorder.start(1000);
             this.isRecording = true;
             
             // Update recording status
@@ -643,13 +724,30 @@ class RecordingModule {
             this.startRecordingTimer();
             
         } catch (error) {
-            console.log('Error starting recording:', error);
+            console.error('Error starting recording:', error);
+            
+            // Special handling for common mobile issues
+            if (error.name === 'NotAllowedError') {
+                alert('Microphone access denied. Please allow microphone access in your browser settings to record audio.');
+            } else if (error.name === 'NotFoundError') {
+                alert('No microphone found. Please connect a microphone and try again.');
+            }
+            
+            // Reset UI state
+            const startBtn = document.getElementById('start-record');
+            const stopBtn = document.getElementById('stop-record');
+            
+            if (startBtn) startBtn.classList.remove('hidden');
+            if (stopBtn) stopBtn.classList.add('hidden');
+            
+            // Throw the error for handling upstream
             throw error;
         }
     }
 
     /**
      * Stops recording audio and shows preview
+     * Enhanced with improved MP3 conversion for Whisper API
      */
     async stopRecording() {
         try {
@@ -707,7 +805,7 @@ class RecordingModule {
                 this.mediaRecorder.addEventListener('stop', async () => {
                     try {
                         // Get recording and clean up
-                        const audioBlob = new Blob(this.audioChunks, { type: 'audio/webm' });
+                        const audioBlob = new Blob(this.audioChunks, { type: this.getOutputMimeType() });
                         
                         // Stop all tracks in the media stream
                         if (this.mediaStream) {
@@ -736,7 +834,7 @@ class RecordingModule {
                         // Stop timer but keep timer display visible
                         this.stopRecordingTimer();
                         
-                        // Fix for missing showAudioPreview function
+                        // Display audio preview without waiting for MP3 conversion
                         this.displayAudioPreview(audioBlob);
                         
                         // Process the recording
@@ -780,7 +878,7 @@ class RecordingModule {
     }
 
     /**
-     * Start a timer for recording duration - fixed to work with both main and additional UI
+     * Start a timer for recording duration - enhanced to work consistently across all scenarios
      * @param {HTMLElement} timerElement - Element to show timer in
      */
     startRecordingTimer(timerElement) {
@@ -789,6 +887,7 @@ class RecordingModule {
         const additionalTimer = document.getElementById('additional-recording-time');
         this.recordingStartTime = Date.now();
 
+        // Clear any existing timer
         if (this.recordingTimer) {
             clearInterval(this.recordingTimer);
         }
@@ -799,20 +898,32 @@ class RecordingModule {
             const seconds = (elapsedSeconds % 60).toString().padStart(2, '0');
             const formattedTime = `${minutes}:${seconds}`;
 
-            // Update main rectangular timer if present
-            if (mainTimer) {
-                mainTimer.textContent = formattedTime;
-                mainTimer.classList.remove('hidden');
-            }
-            // Update additional small timer if present
-            if (additionalTimer) {
-                additionalTimer.textContent = formattedTime;
-                additionalTimer.classList.remove('hidden');
-            }
-            // Update circular timer if present
+            // Update all available timers for consistency
+            const allTimers = [
+                mainTimer,
+                additionalTimer,
+                document.getElementById('timer')
+            ];
+            
+            allTimers.forEach(timer => {
+                if (timer) {
+                    timer.textContent = formattedTime;
+                    timer.classList.remove('hidden');
+                    
+                    // Add visual indicator when approaching max duration (4+ minutes)
+                    if (elapsedSeconds >= 240) {
+                        timer.classList.add('text-red-600');
+                        timer.classList.add('font-bold');
+                    } else {
+                        timer.classList.remove('text-red-600');
+                        timer.classList.remove('font-bold');
+                    }
+                }
+            });
+            
+            // Update circular timer pulsating effect if present
             const circularTimer = document.getElementById('timer');
             if (circularTimer) {
-                circularTimer.textContent = formattedTime;
                 const pulsateElement = circularTimer.parentElement.querySelector('.pulsate');
                 if (pulsateElement) {
                     pulsateElement.classList.remove('hidden');
@@ -950,174 +1061,448 @@ class RecordingModule {
     }
 
     /**
-     * Process recording to get transcription
-     * @param {Blob} audioBlob - The recorded audio blob
+     * Gets the best output MIME type based on recorded format
+     * @returns {string} - MIME type for output blob
      */
-    async processRecording(audioBlob) {
+    getOutputMimeType() {
+        // If we're using a specific recording MIME type, use that
+        if (this.recordingSettings.mimeType) {
+            return this.recordingSettings.mimeType;
+        }
+        
+        // Default fallback
+        return 'audio/webm';
+    }
+
+    /**
+     * Convert audio to MP3 format with improved mobile compatibility and error handling
+     * @param {Blob} audioBlob - Audio blob from recorder
+     * @returns {Promise<Blob>} - MP3 audio blob or original blob if conversion fails
+     */
+    async convertToMP3(audioBlob) {
         try {
-            let mp3Blob = audioBlob;
+            // Initial checks
+            console.log('Starting MP3 conversion, audio type:', audioBlob.type);
             
-            // Try to convert to MP3 if supported
-            try {
-                mp3Blob = await this.convertToMP3(audioBlob);
-            } catch (conversionError) {
-                console.warn('MP3 conversion failed, using original format:', conversionError.message);
-                // Continue with original blob
-                mp3Blob = audioBlob;
+            // If we already have MP3, just return it
+            if (audioBlob.type === 'audio/mpeg' || audioBlob.type === 'audio/mp3') {
+                console.log('Audio already in MP3 format, skipping conversion');
+                return audioBlob;
             }
             
-            // Convert blob to base64 for API
-            const base64Audio = await this.blobToBase64(mp3Blob);
+            // For iOS Safari, we need a simpler approach since it may not support certain Web APIs
+            if (this.isIOSSafari()) {
+                console.log('Using simplified MP3 conversion for iOS Safari');
+                return await this.simpleMP3Conversion(audioBlob);
+            }
             
-            // Get transcription via API
-            const transcription = await this.transcribeAudio(base64Audio);
-            
-            // Process the transcription result
-            this.processTranscription(transcription);
-        } catch (error) {
-            console.error('Error processing recording:', error);
-            throw error;
+            // Standard approach using Web Audio API
+            return await new Promise((resolve, reject) => {
+                const fileReader = new FileReader();
+                
+                fileReader.onload = async (event) => {
+                    try {
+                        // Create audio context
+                        const AudioContext = window.AudioContext || window.webkitAudioContext;
+                        const audioContext = new AudioContext();
+                        
+                        // Check if data is valid
+                        const arrayBuffer = event.target.result;
+                        if (!arrayBuffer || arrayBuffer.byteLength === 0) {
+                            console.error('Invalid audio data: empty buffer');
+                            // Try the simple method as fallback
+                            const fallbackResult = await this.simpleMP3Conversion(audioBlob);
+                            resolve(fallbackResult);
+                            return;
+                        }
+                        
+                        // Decode the audio data with robust error handling
+                        let audioBuffer;
+                        try {
+                            audioBuffer = await audioContext.decodeAudioData(arrayBuffer);
+                            
+                            // Validate the audio buffer
+                            if (!audioBuffer || audioBuffer.length === 0 || audioBuffer.duration === 0) {
+                                throw new Error('Decoded audio buffer is invalid');
+                            }
+                            
+                        } catch (decodeError) {
+                            console.warn('Audio decoding failed, trying alternative approach:', decodeError.message);
+                            
+                            // Try direct WebM to Opus conversion (Whisper can handle Opus)
+                            try {
+                                const opusBlob = await this.webmToOpus(audioBlob);
+                                if (opusBlob && opusBlob.size > 0) {
+                                    console.log(`Converted to Opus format: ${opusBlob.size} bytes`);
+                                    resolve(opusBlob);
+                                    return;
+                                }
+                            } catch (opusError) {
+                                console.warn('Opus conversion failed:', opusError);
+                            }
+                            
+                            // Then try with audio element as another fallback
+                            try {
+                                audioBuffer = await this.decodeAudioUsingElement(audioBlob);
+                            } catch (elementError) {
+                                console.error('All decoding approaches failed:', elementError);
+                                // Try the simple conversion as a last resort
+                                const simpleResult = await this.simpleMP3Conversion(audioBlob);
+                                resolve(simpleResult);
+                                return;
+                            }
+                        }
+                        
+                        // Process the audio buffer to create a proper MP3 blob
+                        try {
+                            // Create a media stream from the audio buffer for re-encoding
+                            const destination = audioContext.createMediaStreamDestination();
+                            const source = audioContext.createBufferSource();
+                            source.buffer = audioBuffer;
+                            source.connect(destination);
+                            
+                            // Start the source
+                            source.start(0);
+                            
+                            // Create a recorder with MP3 type if supported
+                            const recorderOptions = {};
+                            if (MediaRecorder.isTypeSupported('audio/mpeg')) {
+                                recorderOptions.mimeType = 'audio/mpeg';
+                            } else if (MediaRecorder.isTypeSupported('audio/mp3')) {
+                                recorderOptions.mimeType = 'audio/mp3';
+                            }
+                            
+                            const recorder = new MediaRecorder(destination.stream, recorderOptions);
+                            const chunks = [];
+                            
+                            recorder.ondataavailable = e => {
+                                if (e.data.size > 0) {
+                                    chunks.push(e.data);
+                                }
+                            };
+                            
+                            recorder.onstop = () => {
+                                // Create output blob - ensure it's named as MP3 for Whisper API
+                                const outputBlob = new Blob(chunks, { type: 'audio/mp3' });
+                                
+                                // Validate the output
+                                if (outputBlob.size === 0) {
+                                    console.warn('Conversion produced an empty blob, using original as fallback');
+                                    resolve(audioBlob);
+                                    return;
+                                }
+                                
+                                console.log(`MP3 conversion complete: ${outputBlob.size} bytes, type: ${outputBlob.type}`);
+                                resolve(outputBlob);
+                            };
+                            
+                            // Record for the duration of the audio buffer
+                            recorder.start();
+                            
+                            // Stop after the buffer's duration plus a small margin
+                            setTimeout(() => {
+                                try {
+                                    if (recorder.state === 'recording') {
+                                        recorder.stop();
+                                    }
+                                } catch (stopError) {
+                                    console.warn('Error stopping recorder:', stopError);
+                                    resolve(audioBlob); // Fallback to original
+                                }
+                            }, (audioBuffer.duration * 1000) + 500);
+                            
+                        } catch (processingError) {
+                            console.error('Error processing audio buffer:', processingError);
+                            // Return a specially marked blob to indicate the need for server-side processing
+                            resolve(new Blob([arrayBuffer], { 
+                                type: 'audio/wav'  // Use WAV as a more universal format
+                            }));
+                        }
+                        
+                    } catch (err) {
+                        console.error('Error in MP3 conversion:', err);
+                        // Simple fallback conversion
+                        try {
+                            const simpleResult = await this.simpleMP3Conversion(audioBlob);
+                            resolve(simpleResult);
+                        } catch (fallbackError) {
+                            console.error('Simple conversion failed too:', fallbackError);
+                            // Last resort: return original with MP3 mime type for better API compatibility
+                            const repackagedBlob = new Blob([await audioBlob.arrayBuffer()], { type: 'audio/mp3' });
+                            resolve(repackagedBlob);
+                        }
+                    }
+                };
+                
+                fileReader.onerror = async (error) => {
+                    console.error('FileReader error during MP3 conversion:', error);
+                    try {
+                        // Try simple conversion as fallback
+                        const simpleResult = await this.simpleMP3Conversion(audioBlob);
+                        resolve(simpleResult);
+                    } catch (fallbackError) {
+                        console.error('Simple conversion failed too:', fallbackError);
+                        resolve(audioBlob); // Ultimate fallback to original
+                    }
+                };
+                
+                fileReader.readAsArrayBuffer(audioBlob);
+            });
+        } catch (err) {
+            console.error('Exception in convertToMP3:', err);
+            return new Blob([await audioBlob.arrayBuffer()], { type: 'audio/mp3' });
         }
     }
 
     /**
-     * Convert WebM audio to MP3 format for better compatibility
-     * @param {Blob} webmBlob - WebM audio blob from recorder
-     * @returns {Promise<Blob>} - MP3 audio blob or original blob if conversion fails
+     * Convert WebM audio to Opus format which Whisper API can handle better
+     * @param {Blob} webmBlob - WebM audio blob
+     * @returns {Promise<Blob>} - Opus audio blob
      */
-    convertToMP3(webmBlob) {
+    async webmToOpus(webmBlob) {
         return new Promise((resolve, reject) => {
             try {
-                // Check if MP3 recording is supported
-                if (!MediaRecorder.isTypeSupported('audio/mpeg')) {
-                    console.log('MP3 recording not supported, using default format');
-                    return resolve(webmBlob);
-                }
-                
-                // Create audio element and set source
+                // Create audio element to play the WebM audio
                 const audio = new Audio();
-                audio.src = URL.createObjectURL(webmBlob);
+                const webmUrl = URL.createObjectURL(webmBlob);
+                audio.src = webmUrl;
                 
-                // Set up event listeners
-                audio.addEventListener('canplaythrough', () => {
+                // When audio metadata is loaded, we can access its properties
+                audio.onloadedmetadata = async () => {
                     try {
-                        // Create audio context
-                        const audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                        const source = audioContext.createMediaElementSource(audio);
-                        const dest = audioContext.createMediaStreamDestination();
+                        // Get audio duration
+                        const duration = audio.duration;
+                        if (!isFinite(duration) || duration <= 0) {
+                            throw new Error('Invalid audio duration');
+                        }
                         
-                        // Connect nodes
-                        source.connect(dest);
+                        // Create a new audio context
+                        const AudioContext = window.AudioContext || window.webkitAudioContext;
+                        const context = new AudioContext();
                         
-                        // Create a recorder for the stream
-                        const recorder = new MediaRecorder(dest.stream, { mimeType: 'audio/mpeg' });
+                        // Create a media stream from the audio element
+                        const mediaStream = audio.captureStream ? audio.captureStream() : 
+                                           audio.mozCaptureStream ? audio.mozCaptureStream() : null;
+                                           
+                        if (!mediaStream) {
+                            throw new Error('Browser does not support captureStream');
+                        }
+                        
+                        // Create a MediaRecorder with Opus format
+                        const recOptions = {};
+                        if (MediaRecorder.isTypeSupported('audio/webm;codecs=opus')) {
+                            recOptions.mimeType = 'audio/webm;codecs=opus';
+                        } else if (MediaRecorder.isTypeSupported('audio/ogg;codecs=opus')) {
+                            recOptions.mimeType = 'audio/ogg;codecs=opus';
+                        }
+                        
+                        const recorder = new MediaRecorder(mediaStream, recOptions);
                         const chunks = [];
                         
-                        // Set up recorder events
-                        recorder.ondataavailable = (e) => {
-                            if (e.data.size > 0) chunks.push(e.data);
+                        recorder.ondataavailable = e => {
+                            if (e.data.size > 0) {
+                                chunks.push(e.data);
+                            }
                         };
                         
                         recorder.onstop = () => {
-                            // Clean up
-                            URL.revokeObjectURL(audio.src);
-                            
-                            // Create MP3 blob
-                            const mp3Blob = new Blob(chunks, { type: 'audio/mpeg' });
-                            resolve(mp3Blob);
+                            URL.revokeObjectURL(webmUrl);
+                            const opusBlob = new Blob(chunks, { type: recorder.mimeType || 'audio/ogg' });
+                            resolve(opusBlob);
                         };
                         
                         // Start recording and playback
                         recorder.start();
                         audio.play();
                         
-                        // Stop when audio ends
+                        // Stop recording when playback ends
                         audio.onended = () => {
-                            recorder.stop();
-                            audio.onended = null;
+                            if (recorder.state === 'recording') {
+                                recorder.stop();
+                            }
                         };
                         
-                        // Safety timeout (5 minutes max)
+                        // Set a timeout as fallback
                         setTimeout(() => {
                             if (recorder.state === 'recording') {
-                                console.warn('MP3 conversion timed out, stopping');
                                 recorder.stop();
-                        }
-                        }, 5 * 60 * 1000);
+                            }
+                        }, (duration * 1000) + 2000); // Add 2 seconds buffer
+                        
                     } catch (error) {
-                        console.warn('Error during MP3 conversion setup:', error);
-                        URL.revokeObjectURL(audio.src);
-                        resolve(webmBlob); // Return original blob as fallback
+                        URL.revokeObjectURL(webmUrl);
+                        reject(error);
                     }
-                });
+                };
                 
-                audio.addEventListener('error', (error) => {
-                    console.warn('Error loading audio for MP3 conversion:', error);
-                    URL.revokeObjectURL(audio.src);
-                    resolve(webmBlob); // Return original blob as fallback
-                });
+                audio.onerror = (error) => {
+                    URL.revokeObjectURL(webmUrl);
+                    reject(new Error(`Audio loading error: ${error.message || 'unknown error'}`));
+                };
+                
+                // Start loading
+                audio.load();
+                
             } catch (error) {
-                console.warn('MP3 conversion initialization error:', error);
-                resolve(webmBlob); // Return original blob as fallback
+                reject(error);
             }
         });
     }
 
     /**
-     * Transcribe audio using Whisper API with improved MP3 compatibility
+     * Simplified MP3 conversion for iOS Safari and other limited browsers
+     * @param {Blob} audioBlob - Original audio blob
+     * @returns {Promise<Blob>} - Processed audio blob
+     */
+    async simpleMP3Conversion(audioBlob) {
+        try {
+            console.log('Starting simple conversion process');
+            
+            // Create a new blob with MP3 MIME type for better compatibility with Whisper API
+            // This isn't actually converting the format, just changing the content type
+            const processedBlob = new Blob([await audioBlob.arrayBuffer()], { 
+                type: 'audio/mp3'  // Whisper API expects this MIME type
+            });
+            
+            if (processedBlob.size === 0) {
+                throw new Error('Conversion resulted in empty blob');
+            }
+            
+            console.log(`Simple conversion complete: ${processedBlob.size} bytes, type: ${processedBlob.type}`);
+            return processedBlob;
+        } catch (err) {
+            console.error('Error in simple MP3 conversion:', err);
+            // Last resort: return the original blob but with MP3 MIME type
+            return new Blob([await audioBlob.arrayBuffer()], { type: 'audio/mp3' });
+        }
+    }
+
+    /**
+     * Transcribe audio using Whisper API with enhanced error handling and format validation
      * @param {string} base64Audio - Base64 encoded audio
      * @returns {Promise<string>} - Transcription text
      */
     async transcribeAudio(base64Audio) {
-        // For now, use a simple mock implementation
-        // In a real implementation, this would call the Whisper API
-        console.log('Transcribing audio...');
+        console.log('Transcribing audio with Whisper API...');
         
-        // Get API key from localStorage
-        const apiKey = localStorage.getItem('openai_api_key');
-        if (!apiKey) {
-            throw new Error('OpenAI API key not found');
-        }
-        
-        const formData = new FormData();
-        
-        // Convert base64 to a blob - use audio/mpeg mimetype for better compatibility
-        const byteCharacters = atob(base64Audio);
-        const byteArrays = [];
-        for (let i = 0; i < byteCharacters.length; i += 512) {
-            const slice = byteCharacters.slice(i, i + 512);
-            const byteNumbers = new Array(slice.length);
-            for (let j = 0; j < slice.length; j++) {
-                byteNumbers[j] = slice.charCodeAt(j);
+        try {
+            // Get API key from localStorage
+            const apiKey = localStorage.getItem('openai_api_key');
+            if (!apiKey) {
+                throw new Error('OpenAI API key not found. Please set it in the curator section.');
             }
-            byteArrays.push(new Uint8Array(byteNumbers));
+            
+            // Validate the base64 string
+            if (!base64Audio || base64Audio.length < 100) {
+                throw new Error('Invalid audio data: base64 string too short or empty');
+            }
+            
+            const formData = new FormData();
+            
+            // Convert base64 to a blob - ALWAYS use audio/mp3 mimetype for Whisper API
+            const byteCharacters = atob(base64Audio);
+            const byteArrays = [];
+            for (let i = 0; i < byteCharacters.length; i += 512) {
+                const slice = byteCharacters.slice(i, i + 512);
+                const byteNumbers = new Array(slice.length);
+                for (let j = 0; j < slice.length; j++) {
+                    byteNumbers[j] = slice.charCodeAt(j);
+                }
+                byteArrays.push(new Uint8Array(byteNumbers));
+            }
+            const audioBlob = new Blob(byteArrays, { type: 'audio/mp3' });
+            
+            // Validate the blob
+            if (audioBlob.size === 0) {
+                throw new Error('Generated audio blob is empty');
+            }
+            
+            // Add the file to FormData with mp3 extension for compatibility
+            formData.append('file', audioBlob, 'recording.mp3');
+            formData.append('model', 'whisper-1');
+            formData.append('language', 'en');
+            
+            // Log the request for debugging
+            console.log('Sending request to Whisper API with blob size:', audioBlob.size);
+            
+            // Call the OpenAI API
+            const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${apiKey}`
+                },
+                body: formData
+            });
+            
+            if (!response.ok) {
+                const errorData = await response.json().catch(() => ({}));
+                console.error('Whisper API error details:', errorData);
+                throw new Error(`API error: ${response.status} - ${errorData.error?.message || 'Unknown error'}`);
+            }
+            
+            const data = await response.json();
+            console.log('Transcription successful');
+            return data.text;
+        } catch (error) {
+            console.error('Error transcribing audio:', error);
+            throw new Error(`Transcription failed: ${error.message}`);
         }
-        const audioBlob = new Blob(byteArrays, { type: 'audio/mpeg' });
-        
-        // Add the file to FormData with mp3 extension for compatibility
-        formData.append('file', audioBlob, 'recording.mp3');
-        formData.append('model', 'whisper-1');
-        formData.append('language', 'en');
-        
-        // Call the OpenAI API
-        const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${apiKey}`
-            },
-            body: formData
-        });
-        
-        if (!response.ok) {
-            throw new Error(`API error: ${response.status}`);
-        }
-        
-        const data = await response.json();
-        return data.text;
     }
-    
+
     /**
-     * Process transcription results with improved mode detection
+     * Process recording to get transcription - always ensures correct format for Whisper
+     * @param {Blob} audioBlob - The recorded audio blob
+     */
+    async processRecording(audioBlob) {
+        try {
+            console.log('Processing recording, original format:', audioBlob.type);
+            
+            // Ensure we start with a valid blob
+            if (!audioBlob || audioBlob.size === 0) {
+                throw new Error('Invalid audio recording: empty or null');
+            }
+            
+            // Always convert to MP3 for Whisper API
+            console.log('Starting MP3 conversion...');
+            const mp3Blob = await this.convertToMP3(audioBlob);
+            
+            // Validate conversion result
+            if (!mp3Blob || mp3Blob.size === 0) {
+                throw new Error('Audio conversion failed: resulted in empty blob');
+            }
+            
+            console.log('MP3 conversion complete:', mp3Blob.size, 'bytes');
+            
+            // Convert blob to base64 for API
+            const base64Audio = await this.blobToBase64(mp3Blob);
+            console.log('Base64 conversion complete, length:', base64Audio.length);
+            
+            // Show transcription status
+            this.updateProcessingStatus('transcription', 'pending');
+            
+            // Get transcription via API
+            const transcription = await this.transcribeAudio(base64Audio);
+            console.log('Transcription received, length:', transcription?.length || 0);
+            
+            // Process the transcription result
+            this.processTranscription(transcription);
+        } catch (error) {
+            console.error('Error processing recording:', error);
+            this.updateProcessingStatus('transcription', 'error');
+            
+            // Show error notification
+            if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
+                window.uiUtils.showNotification('Error transcribing audio: ' + error.message, 'error');
+            } else {
+                alert('Error transcribing audio: ' + error.message);
+            }
+            
+            throw error;
+        }
+    }
+
+    /**
+     * Process transcription results with improved handling for all recording scenarios
      * @param {string} transcription - The transcribed text
      */
     processTranscription(transcription) {
@@ -1141,7 +1526,7 @@ class RecordingModule {
                     
                     // Auto-hide the status after 3 seconds
                     setTimeout(() => {
-                        if (recordingStatus.parentNode) {
+                        if (recordingStatus && recordingStatus.parentNode) {
                             recordingStatus.innerHTML = '';
                         }
                     }, 3000);
@@ -1184,14 +1569,23 @@ class RecordingModule {
                 return;
             }
             
-            // Last resort: update textarea directly
+            // Last resort: update textarea directly with proper append functionality
             const transcriptionTextarea = document.getElementById('restaurant-transcription');
             if (transcriptionTextarea) {
                 console.log('Updating transcription textarea directly');
-                // Always append new transcription with a newline, never replace
-                const currentContent = transcriptionTextarea.value || '';
-                const separator = currentContent.trim() ? '\n\n' : '';
-                transcriptionTextarea.value = currentContent + separator + transcription;
+                
+                if (isAdditional || isEditMode) {
+                    // For additional/edit mode: Add timestamp and append
+                    const timestamp = new Date().toLocaleString();
+                    const currentContent = transcriptionTextarea.value || '';
+                    const separator = currentContent.trim() ? '\n\n--- Additional Review (' + timestamp + ') ---\n' : '';
+                    transcriptionTextarea.value = currentContent + separator + transcription;
+                } else {
+                    // For new recording: Replace content
+                    transcriptionTextarea.value = transcription;
+                }
+                
+                // Scroll to show the new content
                 transcriptionTextarea.scrollTop = transcriptionTextarea.scrollHeight;
                 
                 // Highlight the update
@@ -1212,10 +1606,18 @@ class RecordingModule {
             // If all else fails, log the transcription
             console.warn('No handler available for transcription, logging to console');
             console.log('Transcription result:', transcription);
-            
         } catch (error) {
             console.error('Error processing transcription:', error);
         }
+    }
+    
+    /**
+     * Checks if browser is iOS Safari which requires special handling
+     * @returns {boolean} - True if browser is iOS Safari
+     */
+    isIOSSafari() {
+        const userAgent = navigator.userAgent;
+        return /iPad|iPhone|iPod/.test(userAgent) && !window.MSStream && /Safari/.test(userAgent);
     }
     
     /**

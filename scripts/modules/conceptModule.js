@@ -2084,6 +2084,7 @@ class ConceptModule {
             
             
             
+ 
             // Update UI
             const startBtn = document.getElementById('additional-record-start');
             const stopBtn = document.getElementById('additional-record-stop');
@@ -2160,7 +2161,7 @@ class ConceptModule {
                 return;
             }
             
-            // NEW FEATURE: Attempt to extract restaurant name from the additional review
+            // Attempt to extract restaurant name from the additional review
             this.extractAndUpdateRestaurantName(newTranscription);
             
             const transcriptionTextarea = document.getElementById('restaurant-transcription');
@@ -2199,6 +2200,12 @@ class ConceptModule {
             // Reset the additional recording flag
             if (this.uiManager) {
                 this.uiManager.isRecordingAdditional = false;
+            }
+            
+            // Process concepts from the additional review
+            if (typeof this.processConcepts === 'function') {
+                console.log('Processing concepts from additional review');
+                this.processConcepts(newTranscription);
             }
             
             // Show success notification

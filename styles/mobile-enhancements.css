@@ -1,0 +1,103 @@
+/**
+ * Mobile UI enhancements for Concierge Collector
+ * Improves touch targets and responsive design elements
+ */
+
+/* Recording indicator animation */
+.recording-indicator {
+    display: inline-block;
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background-color: #ef4444; /* Red */
+    margin-right: 8px;
+    animation: pulse 1.5s infinite;
+}
+
+.additional-recording {
+    background-color: #9333ea; /* Purple */
+}
+
+@keyframes pulse {
+    0% { opacity: 1; transform: scale(1); }
+    50% { opacity: 0.6; transform: scale(1.2); }
+    100% { opacity: 1; transform: scale(1); }
+}
+
+/* Highlight effect for updated transcription */
+.highlight-update {
+    animation: highlight-fade 1s ease-in-out;
+}
+
+@keyframes highlight-fade {
+    0% { background-color: rgba(96, 165, 250, 0.2); }
+    100% { background-color: transparent; }
+}
+
+/* Enhanced touch targets for mobile */
+@media (max-width: 768px) {
+    button, .button, [type="button"] {
+        min-height: 44px; /* Apple's recommended min touch target size */
+        min-width: 44px;
+        padding: 0.75rem 1rem;
+    }
+    
+    input, select, textarea {
+        font-size: 16px !important; /* Prevents iOS zoom on focus */
+        min-height: 44px;
+    }
+    
+    /* Increase spacing between UI elements */
+    .gap-2 {
+        gap: 0.75rem !important;
+    }
+    
+    /* Make audio controls easier to tap */
+    audio {
+        width: 100%;
+        height: 44px;
+    }
+    
+    /* Ensure proper timer visibility */
+    #recording-time, #additional-recording-time {
+        font-size: 1.125rem;
+        font-weight: 500;
+        padding: 0.75rem;
+    }
+    
+    /* Make visualizer more visible */
+    #audio-visualizer, #additional-audio-visualizer {
+        height: 60px !important;
+    }
+}
+
+/* Fix for iOS Safari issues with audio recording */
+.ios-warning {
+    display: none;
+    border: 1px solid #fde68a;
+    background-color: #fef3c7;
+    color: #92400e;
+    padding: 1rem;
+    border-radius: 0.25rem;
+    margin-bottom: 1rem;
+}
+
+.is-ios .ios-warning {
+    display: block;
+}
+
+/* Audio preview improvements */
+#audio-preview, #additional-audio-preview {
+    padding: 1rem;
+    background: #f9fafb;
+    border-radius: 0.5rem;
+    margin-top: 1rem;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+/* Timer styling */
+#timer.warning {
+    color: #ef4444;
+    font-weight: bold;
+    animation: pulse 1s infinite;
+}

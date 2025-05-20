@@ -1,6 +1,7 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+    <!-- Add meta viewport tag for proper mobile rendering -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Concierge Collector</title>
@@ -27,6 +28,7 @@
     <!-- Custom CSS -->
     <link href="style/style.css" rel="stylesheet">
     <link rel="stylesheet" href="styles/michelin-section.css">
+    <link rel="stylesheet" href="styles/mobile-enhancements.css">
     
     <!-- Add stylesheets for sync badges and curator selection -->
     <style>
@@ -77,6 +79,18 @@
     <!-- Add the Michelin staging module script -->
     <script src="scripts/modules/michelinStagingModule.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.0/lame.min.js"></script>
+    
+    <!-- Add iOS detection script -->
+    <script>
+        // Detect iOS for special handling
+        document.addEventListener('DOMContentLoaded', function() {
+            const userAgent = navigator.userAgent;
+            const isIOS = /iPad|iPhone|iPod/.test(userAgent) && !window.MSStream;
+            if (isIOS) {
+                document.documentElement.classList.add('is-ios');
+            }
+        });
+    </script>
 </head>
 <body class="bg-white">
     <div id="app" class="container mx-auto px-4">
@@ -620,6 +634,7 @@
     <script src="scripts/modules/michelinStagingModule.js"></script>
     <script src="scripts/modules/placesSearchModule.js"></script>
     <script src="scripts/modules/placesInlineSearchModule.js"></script>
+    <script src="scripts/modules/audioUtils.js"></script>
 
     <!-- Core application scripts -->
     <script src="scripts/apiHandler.js"></script>
