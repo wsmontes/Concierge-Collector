@@ -33,3 +33,8 @@ Do NOT use ES6 imports/exports or require(). Only use the ModuleWrapper pattern 
 Declare all dependencies at the top of every module.
 
 Do not alter the script load order. main.js must always serve as the app entry point.
+
+Ask me questions in case of ambiguity or uncertainty. I will provide clarifications and examples as needed.
+
+Always write the whole code. Don't leave it incomplete. If you can't finish the code, explain why and suggest alternatives.
+
