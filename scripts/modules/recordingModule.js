@@ -602,6 +602,11 @@ class RecordingModule {
      * @returns {Promise<void>}
      */
     async startRecording() {
+        console.log('Starting recording, additional mode:', this.uiManager?.isRecordingAdditional || false);
+        
+        // Store the additional recording state at the beginning of the recording
+        this.isAdditionalRecording = !!(this.uiManager && this.uiManager.isRecordingAdditional);
+        
         try {
             // Determine if this is an additional recording
             const isAdditional = this.uiManager && this.uiManager.isRecordingAdditional;
@@ -1782,5 +1787,129 @@ class RecordingModule {
         } catch (error) {
             console.error(`Error updating ${type} status:`, error);
         }
+    }
+
+    /**
+     * Handle transcription result with support for additional recording mode
+     * @param {string} transcription - The transcription text
+     */
+    handleTranscriptionResult(transcription) {
+        // Get all flags at the beginning to ensure consistent behavior
+        const isAdditionalRecording = this.isAdditionalRecording || 
+                                  (this.uiManager && this.uiManager.isRecordingAdditional);
+        
+        console.log('Processing transcription, length:', transcription?.length, 
+                'additional mode:', isAdditionalRecording, 
+                'edit mode:', this.uiManager?.isEditingRestaurant);
+        
+        // Hide transcription status first
+        this.hideTranscriptionStatus(isAdditionalRecording);
+        
+        // Early exit if no transcription
+        if (!transcription || transcription.trim() === '') {
+            console.warn('Empty transcription received');
+            this.resetRecordingState();
+            this.showNotification('No speech detected in recording', 'warning');
+            return;
+        }
+        
+        // Check if this is an additional recording
+        if (isAdditionalRecording) {
+            console.log('Processing additional recording, checking for callback...');
+            
+            // Check for callback function
+            if (typeof this._additionalRecordingCallback === 'function') {
+                console.log('Using _additionalRecordingCallback for appending transcription');
+                try {
+                    this._additionalRecordingCallback(transcription);
+                } catch (error) {
+                    console.error('Error in additional recording callback:', error);
+                    this.fallbackAppendTranscription(transcription);
+                }
+            } else {
+                // No callback set, use fallback append method
+                console.log('No callback found, using fallback append method');
+                this.fallbackAppendTranscription(transcription);
+            }
+        } else {
+            // Standard recording - replace existing content
+            console.log('Updating transcription textarea directly (standard recording)');
+            const transcriptionTextarea = document.getElementById('restaurant-transcription');
+            if (transcriptionTextarea) {
+                transcriptionTextarea.value = transcription;
+            }
+            
+            // Process concepts as usual for standard recordings
+            if (this.uiManager && this.uiManager.conceptModule && 
+                typeof this.uiManager.conceptModule.processConcepts === 'function') {
+                this.uiManager.conceptModule.processConcepts(transcription);
+            }
+        }
+        
+        // Always reset recording state when done
+        this.resetRecordingState();
+    }
+
+    /**
+     * Fallback method to append transcription if callback fails
+     * @param {string} newTranscription - The new transcription text to append
+     */
+    fallbackAppendTranscription(newTranscription) {
+        try {
+        const transcriptionTextarea = document.getElementById('restaurant-transcription');
+        if (!transcriptionTextarea) {
+            console.error('Transcription textarea not found');
+            return;
+        }
+        
+        // Get current text
+        const currentText = transcriptionTextarea.value || '';
+        
+        // Create timestamp
+        const timestamp = new Date().toLocaleString();
+        
+        // Append with separator if there's existing text
+        let combinedText;
+        if (currentText && currentText.trim() !== '') {
+            combinedText = `${currentText}\n\n--- Additional Review (${timestamp}) ---\n${newTranscription}`;
+        } else {
+            combinedText = newTranscription;
+        }
+        
+        // Update the textarea
+        transcriptionTextarea.value = combinedText;
+        
+        // Scroll to the bottom
+        transcriptionTextarea.scrollTop = transcriptionTextarea.scrollHeight;
+        
+        console.log('Successfully appended transcription using fallback method');
+        this.showNotification('Additional review added', 'success');
+        } catch (error) {
+        console.error('Error in fallback transcription append:', error);
+        }
+    }
+
+    /**
+     * Reset recording state variables
+     */
+    resetRecordingState() {
+        // Reset additional recording flag
+        this.isAdditionalRecording = false;
+        if (this.uiManager) {
+            this.uiManager.isRecordingAdditional = false;
+        }
+        
+        // ...existing code if any...
+    }
+
+    /**
+     * Stop the current recording
+     */
+    stopRecording() {
+        // Save additional recording state before stopping
+        const wasAdditionalRecording = this.isAdditionalRecording;
+        console.log('Stopping recording, additional mode:', wasAdditionalRecording);
+        
+        // ...existing code...
     }
 }

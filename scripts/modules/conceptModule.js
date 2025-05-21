@@ -2072,7 +2072,7 @@ class ConceptModule {
                 console.log('Using global recordingModule instead of uiManager.recordingModule');
             }
             // As a last resort, check if RecordingModule class exists to create a new instance
-            else if (typeof RecordingModule !== 'undefined') {
+            else if (typeof RecordingModule === 'function') {
                 console.log('Creating new RecordingModule instance as fallback');
                 recordingModule = new RecordingModule(this.uiManager);
             }
@@ -2083,26 +2083,36 @@ class ConceptModule {
             }
             
             
+            // Reset any previous recording states
+            this.resetAdditionalRecordingUI();
             
- 
-            // Update UI
+            // Update UI to show recording is starting
             const startBtn = document.getElementById('additional-record-start');
             const stopBtn = document.getElementById('additional-record-stop');
             const recordingTime = document.getElementById('additional-recording-time');
             const audioVisualizer = document.getElementById('additional-audio-visualizer');
             const recordingStatus = document.getElementById('additional-recording-status');
+            const transcriptionStatus = document.getElementById('additional-transcription-status');
             
             if (startBtn) startBtn.classList.add('hidden');
             if (stopBtn) stopBtn.classList.remove('hidden');
             if (recordingTime) recordingTime.classList.remove('hidden');
             if (audioVisualizer) audioVisualizer.classList.remove('hidden');
             if (recordingStatus) recordingStatus.textContent = 'Recording in progress...';
+            if (transcriptionStatus) transcriptionStatus.classList.add('hidden');
             
             // Show notification that we're starting recording
             this.safeShowNotification('Starting recording for additional review...', 'info');
             
-            // Track that this is an additional recording
-            this.uiManager.isRecordingAdditional = true;
+            // CRITICAL FIX: Set up the callback function properly with correct binding
+            // This ensures "this" refers to the ConceptModule instance when the callback is executed
+            const boundCallback = this.handleAdditionalRecordingComplete.bind(this);
+            recordingModule._additionalRecordingCallback = boundCallback;
+            
+            // Set flag AFTER setting up the callback
+            if (this.uiManager) {
+                this.uiManager.isRecordingAdditional = true;
+            }
             
             // Start recording using our found recording module
             await recordingModule.startRecording();
@@ -2112,43 +2122,45 @@ class ConceptModule {
             this.safeShowNotification('Error starting recording: ' + error.message, 'error');
             
             // Reset UI on error
-            const startBtn = document.getElementById('additional-record-start');
-            const stopBtn = document.getElementById('additional-record-stop');
-            const recordingTime = document.getElementById('additional-recording-time');
-            const audioVisualizer = document.getElementById('additional-audio-visualizer');
-            const recordingStatus = document.getElementById('additional-recording-status');
-            
-            if (startBtn) startBtn.classList.remove('hidden');
-            if (stopBtn) stopBtn.classList.add('hidden');
-            if (recordingTime) recordingTime.classList.add('hidden');
-            if (audioVisualizer) audioVisualizer.classList.add('hidden');
-            if (recordingStatus) recordingStatus.textContent = '';
+            this.resetAdditionalRecordingUI();
             
             // Reset the flag
-            this.uiManager.isRecordingAdditional = false;
+            if (this.uiManager) {
+                this.uiManager.isRecordingAdditional = false;
+            }
         }
+    }
+
+    /**
+     * Helper method to reset the UI for additional recording
+     */
+    resetAdditionalRecordingUI() {
+        const startBtn = document.getElementById('additional-record-start');
+        const stopBtn = document.getElementById('additional-record-stop');
+        const recordingTime = document.getElementById('additional-recording-time');
+        const audioVisualizer = document.getElementById('additional-audio-visualizer');
+        const recordingStatus = document.getElementById('additional-recording-status');
+        const transcriptionStatus = document.getElementById('additional-transcription-status');
+        
+        if (startBtn) startBtn.classList.remove('hidden');
+        if (stopBtn) stopBtn.classList.add('hidden');
+        if (recordingTime) recordingTime.classList.add('hidden');
+        if (audioVisualizer) audioVisualizer.classList.add('hidden');
+        if (recordingStatus) recordingStatus.textContent = '';
+        if (transcriptionStatus) transcriptionStatus.classList.add('hidden');
     }
 
     /**
      * Handles completion of additional recording by appending to existing transcription
      * @param {string} newTranscription - The newly recorded transcription
+     * @returns {boolean} - True if handled successfully
      */
     handleAdditionalRecordingComplete(newTranscription) {
         try {
             console.log(`Handling additional recording completion, text length: ${newTranscription?.length || 0}`);
             
             // Reset UI for recording controls
-            const startBtn = document.getElementById('additional-record-start');
-            const stopBtn = document.getElementById('additional-record-stop');
-            const recordingTime = document.getElementById('additional-recording-time');
-            const audioVisualizer = document.getElementById('additional-audio-visualizer');
-            const recordingStatus = document.getElementById('additional-recording-status');
-            
-            if (startBtn) startBtn.classList.remove('hidden');
-            if (stopBtn) stopBtn.classList.add('hidden');
-            if (recordingTime) recordingTime.classList.add('hidden');
-            if (audioVisualizer) audioVisualizer.classList.add('hidden');
-            if (recordingStatus) recordingStatus.textContent = '';
+            this.resetAdditionalRecordingUI();
             
             // Check if we got any meaningful text
             if (!newTranscription || newTranscription.trim() === '') {
@@ -2158,19 +2170,17 @@ class ConceptModule {
                 if (this.uiManager) {
                     this.uiManager.isRecordingAdditional = false;
                 }
-                return;
+                return true;
             }
-            
-            // Attempt to extract restaurant name from the additional review
-            this.extractAndUpdateRestaurantName(newTranscription);
             
             const transcriptionTextarea = document.getElementById('restaurant-transcription');
             if (!transcriptionTextarea) {
                 throw new Error('Transcription field not found');
             }
             
-            // Get current transcription
-            const currentText = transcriptionTextarea.value;
+            // Get current transcription - check content thoroughly to ensure we have the real current value
+            const currentText = transcriptionTextarea.value || '';
+            console.log(`Current transcription length: ${currentText.length} chars, new content length: ${newTranscription.length} chars`);
             
             // Create formatted timestamp
             const timestamp = new Date().toLocaleString();
@@ -2185,8 +2195,19 @@ class ConceptModule {
                 combinedText = newTranscription;
             }
             
-            // Update the transcription field
+            console.log(`Setting transcription field with combined text (${combinedText.length} chars)`);
+            
+            // Update the transcription field and ensure it's updated
             transcriptionTextarea.value = combinedText;
+            
+            // Double check the update was applied
+            if (transcriptionTextarea.value !== combinedText) {
+                console.error('Transcription update not applied! Trying again...');
+                // Try an alternative approach
+                setTimeout(() => {
+                    transcriptionTextarea.value = combinedText;
+                }, 50);
+            }
             
             // Scroll to the bottom of the textarea to show the new content
             transcriptionTextarea.scrollTop = transcriptionTextarea.scrollHeight;
@@ -2202,15 +2223,19 @@ class ConceptModule {
                 this.uiManager.isRecordingAdditional = false;
             }
             
+            // Attempt to extract restaurant name from the additional review
+            this.extractAndUpdateRestaurantName(newTranscription);
+            
             // Process concepts from the additional review
-            if (typeof this.processConcepts === 'function') {
-                console.log('Processing concepts from additional review');
-                this.processConcepts(newTranscription);
-            }
+            this.processConcepts(newTranscription).catch(error => {
+                console.error('Error processing concepts from additional review:', error);
+                // Don't show error to user - we already have the transcription
+            });
             
             // Show success notification
             this.safeShowNotification('Additional review added to transcription', 'success');
             
+            return true;
         } catch (error) {
             console.error('Error handling additional recording completion:', error);
             this.safeShowNotification('Error adding additional review: ' + error.message, 'error');
@@ -2219,6 +2244,8 @@ class ConceptModule {
             if (this.uiManager) {
                 this.uiManager.isRecordingAdditional = false;
             }
+            
+            return false;
         }
     }
 
