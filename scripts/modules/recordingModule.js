@@ -979,7 +979,7 @@ class RecordingModule {
             
             // Create audio context and analyzer if they don't exist
             if (!this.audioContext) {
-                this.audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                this.audioContext = new (window.AudioContext || window.webkit.AudioContext)();
             }
             
             // Create analyzer node
@@ -1103,7 +1103,7 @@ class RecordingModule {
                 fileReader.onload = async (event) => {
                     try {
                         // Create audio context
-                        const AudioContext = window.AudioContext || window.webkitAudioContext;
+                        const AudioContext = window.AudioContext || window.webkit.AudioContext;
                         const audioContext = new AudioContext();
                         
                         // Check if data is valid
@@ -1277,7 +1277,7 @@ class RecordingModule {
                         }
                         
                         // Create a new audio context
-                        const AudioContext = window.AudioContext || window.webkitAudioContext;
+                        const AudioContext = window.AudioContext || window.webkit.AudioContext;
                         const context = new AudioContext();
                         
                         // Create a media stream from the audio element
@@ -1378,234 +1378,85 @@ class RecordingModule {
     }
 
     /**
-     * Transcribe audio using Whisper API with enhanced error handling and format validation
-     * @param {string} base64Audio - Base64 encoded audio
-     * @returns {Promise<string>} - Transcription text
+     * Transcribe (and translate) audio to English using Whisper API.
+     * Always produces English text, no matter the spoken language.
+     * @param {Blob} audioBlob - Audio blob from recorder
+     * @returns {Promise<string>} - English transcription text
      */
-    async transcribeAudio(base64Audio) {
+    async transcribeAudio(audioBlob) {
         console.log('Transcribing audio with Whisper API...');
-        
-        try {
-            // Get API key from localStorage
-            const apiKey = localStorage.getItem('openai_api_key');
-            if (!apiKey) {
-                throw new Error('OpenAI API key not found. Please set it in the curator section.');
-            }
-            
-            // Validate the base64 string
-            if (!base64Audio || base64Audio.length < 100) {
-                throw new Error('Invalid audio data: base64 string too short or empty');
-            }
-            
-            const formData = new FormData();
-            
-            // Convert base64 to a blob - ALWAYS use audio/mp3 mimetype for Whisper API
-            const byteCharacters = atob(base64Audio);
-            const byteArrays = [];
-            for (let i = 0; i < byteCharacters.length; i += 512) {
-                const slice = byteCharacters.slice(i, i + 512);
-                const byteNumbers = new Array(slice.length);
-                for (let j = 0; j < slice.length; j++) {
-                    byteNumbers[j] = slice.charCodeAt(j);
-                }
-                byteArrays.push(new Uint8Array(byteNumbers));
-            }
-            const audioBlob = new Blob(byteArrays, { type: 'audio/mp3' });
-            
-            // Validate the blob
-            if (audioBlob.size === 0) {
-                throw new Error('Generated audio blob is empty');
-            }
-            
-            // Add the file to FormData with mp3 extension for compatibility
-            formData.append('file', audioBlob, 'recording.mp3');
-            formData.append('model', 'whisper-1');
-            formData.append('language', 'en');
-            
-            // Log the request for debugging
-            console.log('Sending request to Whisper API with blob size:', audioBlob.size);
-            
-            // Call the OpenAI API
-            const response = await fetch('https://api.openai.com/v1/audio/transcriptions', {
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${apiKey}`
-                },
-                body: formData
-            });
-            
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                console.error('Whisper API error details:', errorData);
-                throw new Error(`API error: ${response.status} - ${errorData.error?.message || 'Unknown error'}`);
-            }
-            
-            const data = await response.json();
-            console.log('Transcription successful');
-            return data.text;
-        } catch (error) {
-            console.error('Error transcribing audio:', error);
-            throw new Error(`Transcription failed: ${error.message}`);
+        const apiKey = localStorage.getItem('openai_api_key');
+        if (!apiKey) throw new Error('OpenAI API key not set');
+
+        // Wrap blob in File to provide filename+MIME
+        const ext       = audioBlob.type.split('/')[1].split(';')[0] || 'webm';
+        const audioFile = new File([audioBlob], `recording.${ext}`, { type: audioBlob.type });
+
+        const form = new FormData();
+        form.append('file', audioFile);
+        form.append('model', 'whisper-1');
+
+        // Use the Whisper "translations" endpoint for English output
+        const resp = await fetch('https://api.openai.com/v1/audio/translations', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${apiKey}` },
+            body: form
+        });
+
+        if (!resp.ok) {
+            const errJson = await resp.json().catch(() => ({}));
+            throw new Error(`API error: ${resp.status} - ${errJson.error?.message || resp.statusText}`);
         }
+
+        const data = await resp.json();
+        return data.text;
     }
 
     /**
-     * Process recording to get transcription - always ensures correct format for Whisper
-     * @param {Blob} audioBlob - The recorded audio blob
+     * Process a finished recording (standard or additional), convert to MP3/Opus, and send to Whisper.
+     * @param {Blob} audioBlob - Raw recording blob from MediaRecorder
      */
     async processRecording(audioBlob) {
         try {
             console.log('Processing recording, original format:', audioBlob.type);
             
-            // Ensure we start with a valid blob
-            if (!audioBlob || audioBlob.size === 0) {
-                throw new Error('Invalid audio recording: empty or null');
-            }
+            // Convert the blob into a compatible MP3/Opus blob
+            const preparedBlob = await this.convertToMP3(audioBlob);
+            console.log('Prepared blob for transcription:', preparedBlob.type, preparedBlob.size);
             
-            // Always convert to MP3 for Whisper API
-            console.log('Starting MP3 conversion...');
-            const mp3Blob = await this.convertToMP3(audioBlob);
+            // Send to Whisper using multipart/form-data
+            const transcription = await this.transcribeAudio(preparedBlob);
             
-            // Validate conversion result
-            if (!mp3Blob || mp3Blob.size === 0) {
-                throw new Error('Audio conversion failed: resulted in empty blob');
-            }
-            
-            console.log('MP3 conversion complete:', mp3Blob.size, 'bytes');
-            
-            // Convert blob to base64 for API
-            const base64Audio = await this.blobToBase64(mp3Blob);
-            console.log('Base64 conversion complete, length:', base64Audio.length);
-            
-            // Show transcription status
-            this.updateProcessingStatus('transcription', 'pending');
-            
-            // Get transcription via API
-            const transcription = await this.transcribeAudio(base64Audio);
-            console.log('Transcription received, length:', transcription?.length || 0);
-            
-            // Process the transcription result
+            // Append transcription to the textarea
             this.processTranscription(transcription);
+
+            // Signal UI that transcription is done
+            this.updateProcessingStatus('transcription', 'done');
         } catch (error) {
             console.error('Error processing recording:', error);
             this.updateProcessingStatus('transcription', 'error');
-            
-            // Show error notification
+            // Notify user
             if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
-                window.uiUtils.showNotification('Error transcribing audio: ' + error.message, 'error');
-            } else {
-                alert('Error transcribing audio: ' + error.message);
+                window.uiUtils.showNotification(`Error transcribing audio: ${error.message}`, 'error');
             }
-            
             throw error;
         }
     }
 
     /**
      * Process transcription results with improved handling for all recording scenarios
-     * @param {string} transcription - The transcribed text
+     * Always appends to the textarea instead of replacing it.
      */
     processTranscription(transcription) {
         try {
-            // Determine if this is an additional recording or edit mode
-            const isAdditional = this.uiManager && this.uiManager.isRecordingAdditional;
-            const isEditMode = this.uiManager && this.uiManager.isEditMode;
-            
-            console.log(`Processing transcription, length: ${transcription?.length || 0}, additional mode: ${isAdditional}, edit mode: ${isEditMode}`);
-            
-            // For additional recording mode, update UI
-            if (isAdditional) {
-                const recordingStatus = document.getElementById('additional-recording-status');
-                if (recordingStatus) {
-                    recordingStatus.innerHTML = `
-                        <div class="flex items-center text-green-700">
-                            <span class="material-icons text-green-500 mr-1">check_circle</span>
-                            <span>Additional Review Added</span>
-                        </div>
-                    `;
-                    
-                    // Auto-hide the status after 3 seconds
-                    setTimeout(() => {
-                        if (recordingStatus && recordingStatus.parentNode) {
-                            recordingStatus.innerHTML = '';
-                        }
-                    }, 3000);
-                }
-                
-                // Route additional recording to concept module handler
-                if (this.uiManager && this.uiManager.conceptModule && 
-                    typeof this.uiManager.conceptModule.handleAdditionalRecordingComplete === 'function') {
-                    console.log('Routing additional recording to concept module handler');
-                    this.uiManager.conceptModule.handleAdditionalRecordingComplete(transcription);
-                    return;
-                }
-            } else {
-                // For main recording functionality, use the original behavior
-                // Update UI elements specific to main recording
-                const recordingStatus = document.getElementById('recording-status');
-                if (recordingStatus) {
-                    recordingStatus.innerHTML = `
-                        <div class="flex items-center text-green-700">
-                            <span class="material-icons text-green-500 mr-1">check_circle</span>
-                            <span>Recording Complete</span>
-                        </div>
-                    `;
-                }
+            const textarea = document.getElementById('restaurant-transcription');
+            if (textarea) {
+                const prev = textarea.value.trim();
+                textarea.value = prev
+                    ? `${prev}\n${transcription}`
+                    : transcription;
+                textarea.dispatchEvent(new Event('input'));
             }
-            
-            // Common handling for both types of recordings - fallbacks when expected handlers don't exist
-            
-            // First try with uiManager's handleTranscriptionComplete
-            if (this.uiManager && typeof this.uiManager.handleTranscriptionComplete === 'function') {
-                console.log('Using uiManager.handleTranscriptionComplete');
-                this.uiManager.handleTranscriptionComplete(transcription, isEditMode || isAdditional);
-                return;
-            }
-            
-            // Then try with the global function
-            if (window.handleTranscriptionComplete && typeof window.handleTranscriptionComplete === 'function') {
-                console.log('Using global handleTranscriptionComplete');
-                window.handleTranscriptionComplete(transcription, isEditMode || isAdditional);
-                return;
-            }
-            
-            // Last resort: update textarea directly with proper append functionality
-            const transcriptionTextarea = document.getElementById('restaurant-transcription');
-            if (transcriptionTextarea) {
-                console.log('Updating transcription textarea directly');
-                
-                if (isAdditional || isEditMode) {
-                    // For additional/edit mode: Add timestamp and append
-                    const timestamp = new Date().toLocaleString();
-                    const currentContent = transcriptionTextarea.value || '';
-                    const separator = currentContent.trim() ? '\n\n--- Additional Review (' + timestamp + ') ---\n' : '';
-                    transcriptionTextarea.value = currentContent + separator + transcription;
-                } else {
-                    // For new recording: Replace content
-                    transcriptionTextarea.value = transcription;
-                }
-                
-                // Scroll to show the new content
-                transcriptionTextarea.scrollTop = transcriptionTextarea.scrollHeight;
-                
-                // Highlight the update
-                transcriptionTextarea.classList.add('highlight-update');
-                setTimeout(() => {
-                    transcriptionTextarea.classList.remove('highlight-update');
-                }, 1000);
-                
-                // Process concepts if possible
-                if (this.uiManager && this.uiManager.conceptModule && 
-                    typeof this.uiManager.conceptModule.processConcepts === 'function') {
-                    this.uiManager.conceptModule.processConcepts(transcription);
-                }
-                
-                return;
-            }
-            
-            // If all else fails, log the transcription
-            console.warn('No handler available for transcription, logging to console');
-            console.log('Transcription result:', transcription);
         } catch (error) {
             console.error('Error processing transcription:', error);
         }

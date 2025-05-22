@@ -860,7 +860,10 @@ class PlacesSearchModule {
                 // Transcription (full API reviews response)
                 const transcriptionInput = document.getElementById('restaurant-transcription');
                 if (transcriptionInput) {
-                    transcriptionInput.value = transcription;
+                    const prev = transcriptionInput.value.trim();
+                    transcriptionInput.value = prev
+                        ? `${prev}\n${transcription}`
+                        : transcription;
                     transcriptionInput.dispatchEvent(new Event('input'));
                 }
 

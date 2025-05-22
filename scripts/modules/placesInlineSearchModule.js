@@ -794,23 +794,12 @@
                 // Add place data to transcript area
                 const transcript = document.getElementById('restaurant-transcription');
                 if (transcript) {
-                    // Format JSON for readability
-                    const placeJson = formatJson(place);
-                    
-                    // Append to existing text with a separator
-                    if (transcript.value && transcript.value.trim() !== '') {
-                        // Add double newline before appending
-                        if (!transcript.value.endsWith('\n\n')) {
-                            if (transcript.value.endsWith('\n')) {
-                                transcript.value += '\n';
-                            } else {
-                                transcript.value += '\n\n';
-                            }
-                        }
-                        transcript.value += '/* Google Places Data */\n' + placeJson;
-                    } else {
-                        transcript.value = placeJson;
-                    }
+                    const placeJson = formatJson(placesApi.selectedPlace);
+                    const prev = transcript.value.trim();
+                    transcript.value = prev
+                        ? `${prev}\n\n${placeJson}`
+                        : placeJson;
+                    transcript.dispatchEvent(new Event('input'));
                 }
                 
                 // Close the modal

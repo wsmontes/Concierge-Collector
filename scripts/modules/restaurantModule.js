@@ -703,7 +703,12 @@ class RestaurantModule {
         // Set transcription if available
         const transcriptionTextarea = document.getElementById('restaurant-transcription');
         if (transcriptionTextarea) {
-            transcriptionTextarea.value = restaurant.transcription || '';
+            const prev = transcriptionTextarea.value.trim();
+            const text = restaurant.transcription || '';
+            transcriptionTextarea.value = prev
+                ? `${prev}\n${text}`
+                : text;
+            transcriptionTextarea.dispatchEvent(new Event('input'));
         }
         
         // Set location if available
