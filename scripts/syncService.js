@@ -720,191 +720,79 @@ if (!window.SyncService) {
         }
 
         /**
-         * Detects and cleans up orphaned server curators in IndexedDB
-         * Orphaned server curators are those marked as "server" origin but not present in the remote database
-         * @returns {Promise<void>}
+         * Check if sync is needed based on time threshold
+         * @param {number} thresholdMinutes - Minutes threshold for sync (default: 60 minutes)
+         * @returns {Promise<boolean>} - True if sync is needed
          */
-        async cleanupOrphanedServerCurators() {
+        async isAutoSyncNeeded(thresholdMinutes = 60) {
             try {
-                console.log('SyncService: Checking for orphaned server curators...');
-                
-                // Get all curators from IndexedDB marked as "server"
-                const localServerCurators = await dataStorage.db.curators
-                    .where('origin')
-                    .equals('server')
-                    .toArray();
-                    
-                if (!localServerCurators || localServerCurators.length === 0) {
-                    console.log('SyncService: No server curators found in local database');
-                    return;
+                // Add safety check for missing function
+                if (typeof dataStorage.getLastSyncTime !== 'function') {
+                    console.error('SyncService: Required method dataStorage.getLastSyncTime is not available!');
+                    return false;
                 }
                 
-                console.log(`SyncService: Found ${localServerCurators.length} local curators marked as server origin`);
+                const lastSyncTime = await dataStorage.getLastSyncTime();
                 
-                // Get all curators from the remote server
-                const remoteCurators = await this.fetchRemoteCurators();
+                // If no previous sync, definitely need to sync
+                if (!lastSyncTime) return true;
                 
-                if (!remoteCurators || remoteCurators.length === 0) {
-                    console.log('SyncService: No curators found on remote server, skipping orphan check');
-                    return;
-                }
+                // Compare last sync time to current time
+                const lastSync = new Date(lastSyncTime);
+                const now = new Date();
                 
-                // Create a map of remote curator IDs for quick lookup
-                const remoteServerIds = new Set(remoteCurators.map(curator => String(curator.id)));
+                // Calculate difference in minutes
+                const diffMs = now - lastSync;
+                const diffMinutes = diffMs / (1000 * 60);
                 
-                // Find orphaned server curators (those marked as server but not in remote database)
-                const orphanedCurators = localServerCurators.filter(curator => 
-                    curator.serverId && !remoteServerIds.has(String(curator.serverId))
-                );
-                
-                if (orphanedCurators.length === 0) {
-                    console.log('SyncService: No orphaned server curators found');
-                    return;
-                }
-                
-                console.log(`SyncService: Found ${orphanedCurators.length} orphaned server curators`);
-                
-                // Create a confirmation message with the list of curator names
-                const curatorsList = orphanedCurators.map(c => c.name).join(', ');
-                const confirmMessage = `Found ${orphanedCurators.length} curator${orphanedCurators.length > 1 ? 's' : ''} ` +
-                    `marked as server curators but not present on the server:\n\n${curatorsList}\n\n` +
-                    `Would you like to clean up this incorrect data?`;
-                    
-                // Ask for user confirmation
-                const confirmed = await this.showConfirmationDialog(confirmMessage);
-                
-                if (!confirmed) {
-                    console.log('SyncService: User declined to clean up orphaned curators');
-                    return;
-                }
-                
-                // User confirmed cleanup - delete the orphaned curators
-                console.log(`SyncService: Cleaning up ${orphanedCurators.length} orphaned server curators`);
-                
-                // Before deletion, check if any orphaned curator is the current curator
-                const currentCurator = await dataStorage.getCurrentCurator();
-                let currentCuratorOrphaned = false;
-                
-                if (currentCurator) {
-                    currentCuratorOrphaned = orphanedCurators.some(c => c.id === currentCurator.id);
-                }
-                
-                // Delete all orphaned curators
-                await Promise.all(orphanedCurators.map(curator => 
-                    dataStorage.db.curators.delete(curator.id)
-                ));
-                
-                // If current curator was deleted, reset to first available curator
-                if (currentCuratorOrphaned) {
-                    const firstAvailableCurator = await dataStorage.db.curators.toCollection().first();
-                    if (firstAvailableCurator) {
-                        await dataStorage.setCurrentCurator(firstAvailableCurator.id);
-                    }
-                }
-                
-                this.showNotification(`Successfully cleaned up ${orphanedCurators.length} incorrect server curator records`, 'success');
-                
-                // Trigger curator list refresh if UIManager is available
-                if (window.uiManager && 
-                    window.uiManager.curatorModule && 
-                    typeof window.uiManager.curatorModule.initializeCuratorSelector === 'function') {
-                    try {
-                        await window.uiManager.curatorModule.initializeCuratorSelector();
-                    } catch (error) {
-                        console.error('Error refreshing curator selector:', error);
-                    }
-                }
-                
+                console.log(`SyncService: Last sync was ${diffMinutes.toFixed(1)} minutes ago, threshold is ${thresholdMinutes} minutes`);
+                return diffMinutes >= thresholdMinutes;
             } catch (error) {
-                console.error('SyncService: Error cleaning up orphaned curators:', error);
-                this.showNotification('Error checking for curator data inconsistencies', 'error');
+                console.error('SyncService: Error checking if auto sync is needed:', error);
+                // Default to false on error to avoid unnecessary syncing
+                return false;
             }
         }
 
         /**
-         * Shows a confirmation dialog to the user
-         * @param {string} message - The confirmation message
-         * @returns {Promise<boolean>} - True if confirmed, false otherwise
-         */
-        async showConfirmationDialog(message) {
-            return new Promise(resolve => {
-                // First try to use UI modal if available
-                if (window.uiUtils && typeof window.uiUtils.showConfirmDialog === 'function') {
-                    window.uiUtils.showConfirmDialog({
-                        title: 'Clean Up Data Inconsistencies',
-                        message: message,
-                        confirmText: 'Yes, Clean Up',
-                        cancelText: 'No, Keep Data',
-                        onConfirm: () => resolve(true),
-                        onCancel: () => resolve(false)
-                    });
-                } else {
-                    // Fallback to native confirm
-                    const result = confirm(message);
-                    resolve(result);
-                }
-            });
-        }
-
-        /**
-         * Main synchronization method
+         * Update sync history with results
+         * @param {Object} results - Sync results
+         * @param {string} status - Sync status (success/error)
          * @returns {Promise<void>}
          */
-        async synchronize() {
+        async updateSyncHistory(results, status = 'success') {
             try {
-                this.showNotification('Starting synchronization...', 'info');
-                this.isSyncing = true;
+                // Check if function exists to prevent errors
+                if (typeof dataStorage.getSetting !== 'function' || 
+                    typeof dataStorage.updateSetting !== 'function') {
+                    console.error('SyncService: Required settings methods not available');
+                    return;
+                }
                 
-                // Set up synchronization timestamp
-                const syncStartTime = new Date();
+                // Get current sync history
+                const history = await dataStorage.getSetting('syncHistory', []);
                 
-                // First import curators from remote server
-                await this.importCurators();
-                
-                // Check for orphaned server curators
-                await this.cleanupOrphanedServerCurators();
-                
-                // Continue with the rest of synchronization
-                // ...existing code...
-            } catch (error) {
-                // ...existing code...
-            } finally {
-                // ...existing code...
-            }
-        }
-
-        /**
-         * Syncs all data - curators and restaurants - with the remote server
-         * @returns {Promise<Object>} - Sync results
-         */
-        async syncAll() {
-            try {
-                console.log('SyncService: Starting full sync...');
-                
-                // Step 1: Import curators
-                const curatorImportResults = await this.importCurators();
-                
-                // Step 2: Import restaurants
-                const restaurantImportResults = await this.importRestaurants();
-                
-                // Step 3: Sync unsynced restaurants
-                const unsyncedResults = await this.syncUnsyncedRestaurants();
-                
-                // Combine results
-                const results = {
-                    importCurators: curatorImportResults,
-                    importRestaurants: restaurantImportResults,
-                    syncUnsynced: unsyncedResults
+                // Create new history entry
+                const entry = {
+                    timestamp: new Date().toISOString(),
+                    status: status,
+                    message: status === 'success' 
+                        ? `Imported ${results.importRestaurants?.added || 0} new items, updated ${results.importRestaurants?.updated || 0}` 
+                        : results.error || 'Sync failed'
                 };
                 
-                // Update last sync time
-                await dataStorage.updateLastSyncTime();
+                // Add new entry and keep only last 10
+                const updatedHistory = [entry, ...history].slice(0, 10);
                 
-                console.log('SyncService: Full sync completed with results:', results);
-                return results;
+                // Save updated history
+                await dataStorage.updateSetting('syncHistory', updatedHistory);
+                
+                // Update last sync time if successful
+                if (status === 'success' && typeof dataStorage.updateLastSyncTime === 'function') {
+                    await dataStorage.updateLastSyncTime();
+                }
             } catch (error) {
-                console.error('SyncService: Error during full sync:', error);
-                throw error;
+                console.error('SyncService: Error updating sync history:', error);
             }
         }
 

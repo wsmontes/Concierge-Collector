@@ -1,450 +1,384 @@
 /**
- * Automatic synchronization module
- * Manages periodic syncing with the remote server
- * Dependencies: syncService, window.uiUtils
+ * Automatic synchronization functionality
+ * Dependencies: dataStorage, syncService, uiUtils
  */
 
-// Use IIFE to avoid global variable pollution
-(function() {
-    // Store singleton instance
-    let instance = null;
-
-    // Default configuration
-    const DEFAULT_CONFIG = {
-        syncThresholdMinutes: 30,   // How often to sync (threshold)
-        checkIntervalMinutes: 10,    // How often to check if sync needed (interval between checks)
-        logLevel: 1                  // 0: errors only, 1: important info, 2: all details
-    };
+// Global auto-sync module
+window.AutoSync = {
+    // Constants
+    DEFAULT_SYNC_INTERVAL: 30, // minutes
+    MIN_SYNC_INTERVAL: 5, // minimum allowed interval in minutes
+    SYNC_CHECK_INTERVAL: 60000, // check every minute if sync is needed
     
-    class AutoSyncManager {
-        constructor(config = {}) {
-            // Prevent multiple instances
-            if (instance) {
-                console.warn("AutoSync: Instance already exists, returning existing instance");
-                return instance;
+    // State variables
+    isInitialized: false,
+    syncIntervalId: null,
+    checkIntervalId: null,
+    lastSyncAttempt: null,
+    isSyncRunning: false,
+    
+    /**
+     * Initialize auto-sync functionality
+     */
+    async init() {
+        if (this.isInitialized) return;
+        
+        console.log('AutoSync: Initializing auto-sync module...');
+        
+        try {
+            // Get settings from database
+            const syncIntervalMinutes = await dataStorage.getSetting('syncIntervalMinutes', this.DEFAULT_SYNC_INTERVAL);
+            const syncOnStartup = await dataStorage.getSetting('syncOnStartup', true);
+            
+            // Set up interval checking
+            this.startPeriodicChecking(syncIntervalMinutes);
+            
+            // Update sync button event handler
+            this.setupSyncButton();
+            
+            // Update the last sync time display
+            await this.updateLastSyncDisplay();
+            
+            // Perform startup sync if enabled and not synced recently
+            if (syncOnStartup) {
+                const lastSyncTime = await dataStorage.getLastSyncTime();
+                const now = new Date();
+                
+                // Only sync on startup if it's been at least 5 minutes since the last sync
+                if (!lastSyncTime || (now - new Date(lastSyncTime) > 5 * 60 * 1000)) {
+                    console.log('AutoSync: Performing startup sync');
+                    await this.performSync();
+                } else {
+                    console.log('AutoSync: Skipping startup sync - recent sync detected');
+                }
             }
             
-            // Store as singleton
-            instance = this;
+            this.isInitialized = true;
+            console.log(`AutoSync: Initialized with interval: ${syncIntervalMinutes} minutes`);
+        } catch (error) {
+            console.error('AutoSync: Error initializing:', error);
+        }
+    },
+    
+    /**
+     * Sets up the sync button click event
+     */
+    setupSyncButton() {
+        // Fix: Add event handler for the main "Sync Data" button with ID 'sync-button'
+        const syncButton = document.getElementById('sync-button');
+        if (syncButton) {
+            console.log('AutoSync: Found main sync button, setting up event handler');
             
-            // Merge default and provided config
-            this.config = {...DEFAULT_CONFIG, ...config};
-
-            // State tracking
-            this.initialized = false;
-            this.checkTimer = null;
-            this.lastSyncCheck = null;
-            this.syncInProgress = false;
-            this.syncButton = null;
-            this.modalSyncButton = null;
-            this.serviceRetryCount = 0;
+            // Remove any existing event listeners to prevent duplicates
+            const newSyncButton = syncButton.cloneNode(true);
+            syncButton.parentNode.replaceChild(newSyncButton, syncButton);
             
-            // Initialize if document is already loaded
-            if (document.readyState === 'complete' || 
-                document.readyState === 'interactive') {
-                this.init();
-            } else {
-                // Otherwise wait for DOM load
-                document.addEventListener('DOMContentLoaded', () => this.init());
-            }
-            
-            // Also register for window load for reliability
-            window.addEventListener('load', () => {
-                if (!this.initialized) this.init();
+            // Add click event to trigger manual sync
+            newSyncButton.addEventListener('click', async () => {
+                console.log('AutoSync: Main sync button clicked');
+                try {
+                    await this.performManualSync();
+                } catch (error) {
+                    console.error('AutoSync: Error during manual sync:', error);
+                    this.showNotification('Sync failed: ' + error.message, 'error');
+                }
             });
             
-            this.log("AutoSync manager created with config:", this.config, 2);
+            console.log('AutoSync: Main sync button event handler configured');
+        } else {
+            console.warn('AutoSync: Main sync button with ID "sync-button" not found');
         }
         
-        /**
-         * Initialize the auto-sync functionality
-         */
-        init() {
-            if (this.initialized) {
-                this.log("AutoSync already initialized, skipping", 1);
-                return;
-            }
+        // Also set up the modal sync button (if exists)
+        const modalSyncButton = document.getElementById('manual-sync') || document.getElementById('sync-now');
+        if (modalSyncButton) {
+            modalSyncButton.addEventListener('click', async () => {
+                try {
+                    await this.performManualSync();
+                } catch (error) {
+                    console.error('AutoSync: Error during manual sync:', error);
+                    this.showNotification('Sync failed: ' + error.message, 'error');
+                }
+            });
             
-            this.log("Initializing auto-sync module...", 1);
+            console.log('AutoSync: Modal sync button event handler configured');
+        } else {
+            console.log('AutoSync: No modal sync button found');
+        }
+    },
+    
+    /**
+     * Update the last sync time display in the UI
+     */
+    async updateLastSyncDisplay() {
+        const syncStatusElement = document.getElementById('sync-status');
+        if (!syncStatusElement) return;
+        
+        try {
+            const lastSyncTime = await dataStorage.getLastSyncTime();
             
-            // Set up event handlers for manual sync button
-            this.setupSyncButtons();
-            
-            // Check if SyncService is available
-            this.waitForSyncService()
-                .then(available => {
-                    if (available) {
-                        this.log("SyncService is available, completing initialization", 1);
-                        this.completeInitialization();
-                    } else {
-                        this.log("SyncService not available after retries, will try again later", 0);
-                        // Set up a retry after 10 seconds
-                        setTimeout(() => this.waitForSyncService().then(available => {
-                            if (available) this.completeInitialization();
-                        }), 10000);
-                    }
+            if (lastSyncTime) {
+                const date = new Date(lastSyncTime);
+                const formattedTime = date.toLocaleString(undefined, {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
                 });
-        }
-
-        /**
-         * Complete the initialization once SyncService is available
-         */
-        async completeInitialization() {
-            // Check if recent sync already happened
-            try {
-                const recentSync = await this.checkLastSync();
-                
-                if (recentSync) {
-                    this.log("Skipping startup sync - recent sync detected", 1);
-                } else {
-                    // Perform initial sync after a short delay
-                    setTimeout(() => this.performSync(true), 5000);
-                }
-                
-                // Start periodic checking
-                this.startPeriodicChecking();
-                
-                this.log(`Initialized with interval: ${this.config.syncThresholdMinutes} minutes`, 1);
-                this.initialized = true;
-            } catch (error) {
-                this.log("Error during initialization: " + error.message, 0);
-            }
-        }
-        
-        /**
-         * Wait for SyncService to become available
-         * @returns {Promise<boolean>} True if service is available, false if not
-         */
-        async waitForSyncService() {
-            const MAX_RETRIES = 3;
-            
-            while (this.serviceRetryCount < MAX_RETRIES) {
-                if (this.isSyncServiceAvailable()) {
-                    return true;
-                }
-                
-                this.log(`SyncService not available, retry ${this.serviceRetryCount + 1}/${MAX_RETRIES}`, 1);
-                this.serviceRetryCount++;
-                
-                // Wait before retrying
-                await new Promise(resolve => setTimeout(resolve, 1000));
-            }
-            
-            return this.isSyncServiceAvailable();
-        }
-        
-        /**
-         * Check if SyncService is available and properly initialized
-         * @returns {boolean} True if service is ready to use
-         */
-        isSyncServiceAvailable() {
-            // Check window.syncService first
-            if (window.syncService && 
-                typeof window.syncService.synchronize === 'function' &&
-                typeof window.syncService.getLastSyncTime === 'function') {
-                return true;
-            }
-            
-            // Also check if it's available from the moduleWrapper system
-            if (typeof ModuleWrapper !== 'undefined' &&
-                ModuleWrapper.getInstanceByName &&
-                ModuleWrapper.getInstanceByName('syncService') &&
-                typeof ModuleWrapper.getInstanceByName('syncService').synchronize === 'function') {
-                // Make it globally available
-                window.syncService = ModuleWrapper.getInstanceByName('syncService');
-                return true;
-            }
-            
-            this.log("SyncService not available", 0);
-            return false;
-        }
-        
-        /**
-         * Log messages with level-based filtering
-         * @param {string} message - Main message
-         * @param {*} data - Optional data to log
-         * @param {number} level - Log level (0: error, 1: info, 2: detail)
-         */
-        log(message, data = null, level = 1) {
-            if (level > this.config.logLevel) return;
-            
-            const prefix = "AutoSync:";
-            if (data !== null) {
-                console.log(`${prefix} ${message}`, data);
+                syncStatusElement.textContent = `Last sync: ${formattedTime}`;
             } else {
-                console.log(`${prefix} ${message}`);
+                syncStatusElement.textContent = 'Last sync: Never';
             }
+        } catch (error) {
+            console.error('AutoSync: Error updating sync display:', error);
+            syncStatusElement.textContent = 'Sync status unavailable';
+        }
+    },
+    
+    /**
+     * Start periodic checking for sync needs
+     * @param {number} intervalMinutes - Interval in minutes
+     */
+    startPeriodicChecking(intervalMinutes) {
+        // Clear any existing interval
+        if (this.checkIntervalId) {
+            clearInterval(this.checkIntervalId);
         }
         
-        /**
-         * Set up event handlers for sync buttons
-         */
-        setupSyncButtons() {
-            // Try to find the sync button in the header
-            this.syncButton = document.querySelector('#manual-sync-button');
-            
-            if (this.syncButton) {
-                this.log("Found main sync button, setting up event handler", 1);
-                
-                // Remove any existing listeners to prevent duplicates
-                const newButton = this.syncButton.cloneNode(true);
-                this.syncButton.parentNode.replaceChild(newButton, this.syncButton);
-                this.syncButton = newButton;
-                
-                // Add new event handler
-                this.syncButton.addEventListener('click', () => this.handleSyncButtonClick());
-                this.log("Main sync button event handler configured", 2);
-            }
-            
-            // Also look for modal sync button
-            this.modalSyncButton = document.querySelector('#sync-now-btn');
-            
-            if (this.modalSyncButton) {
-                // Remove any existing listeners to prevent duplicates
-                const newModalButton = this.modalSyncButton.cloneNode(true);
-                this.modalSyncButton.parentNode.replaceChild(newModalButton, this.modalSyncButton);
-                this.modalSyncButton = newModalButton;
-                
-                this.modalSyncButton.addEventListener('click', () => this.handleSyncButtonClick());
-                this.log("Modal sync button event handler configured", 2);
-            }
-        }
+        // Start periodic checking - every minute we check if sync is needed
+        this.checkIntervalId = setInterval(() => {
+            this.checkAndSyncIfNeeded(intervalMinutes).catch(error => {
+                console.error('AutoSync: Error in periodic sync check:', error);
+            });
+        }, this.SYNC_CHECK_INTERVAL);
         
-        /**
-         * Handle sync button click
-         */
-        async handleSyncButtonClick() {
-            this.log("Manual sync button clicked", 1);
-            await this.performSync(true);
-        }
+        console.log('AutoSync: Started periodic sync checking');
+    },
+    
+    /**
+     * Update the sync interval
+     * @param {number} intervalMinutes - New interval in minutes
+     */
+    async updateSyncInterval(intervalMinutes) {
+        // Validate minimum interval
+        const validInterval = Math.max(intervalMinutes, this.MIN_SYNC_INTERVAL);
         
-        /**
-         * Start periodic checking for sync needs
-         */
-        startPeriodicChecking() {
-            // Clear any existing timer
-            if (this.checkTimer) {
-                clearInterval(this.checkTimer);
-            }
-            
-            // Convert minutes to milliseconds
-            const checkIntervalMs = this.config.checkIntervalMinutes * 60 * 1000;
-            
-            // Setup periodic checking
-            this.checkTimer = setInterval(() => this.checkSyncNeeded(), checkIntervalMs);
-            
-            this.log(`Started periodic sync checking every ${this.config.checkIntervalMinutes} minutes`, 1);
-        }
+        // Save setting
+        await dataStorage.updateSetting('syncIntervalMinutes', validInterval);
         
-        /**
-         * Check if sync is needed based on last sync time
-         */
-        async checkSyncNeeded() {
-            // Avoid redundant checks within 30 seconds
-            const now = new Date();
-            if (this.lastSyncCheck && 
-                (now - this.lastSyncCheck) < 30000) {
+        // Restart periodic checking with new interval
+        this.startPeriodicChecking(validInterval);
+        
+        console.log(`AutoSync: Updated sync interval to ${validInterval} minutes`);
+    },
+    
+    /**
+     * Check if sync is needed and perform sync if necessary
+     * @param {number} intervalMinutes - Sync interval in minutes
+     */
+    async checkAndSyncIfNeeded(intervalMinutes) {
+        try {
+            if (this.isSyncRunning) {
+                console.log('AutoSync: Sync already running, skipping check');
                 return;
             }
             
-            this.lastSyncCheck = now;
-            
-            // Avoid checking if sync is already in progress
-            if (this.syncInProgress) {
-                this.log("Sync already in progress, skipping check", 2);
-                return;
-            }
-            
-            // Check if SyncService is available
-            if (!this.isSyncServiceAvailable()) {
-                this.log("SyncService not available during periodic check", 0);
-                return;
-            }
-            
-            // Check if it's time to sync
-            const needsSync = await this.checkLastSync();
+            // Check if sync is needed based on time threshold
+            const needsSync = await syncService.isAutoSyncNeeded(intervalMinutes);
             
             if (needsSync) {
-                this.log("Sync needed, performing auto-sync", 1);
-                await this.performSync(false);
+                console.log('AutoSync: Sync needed, performing sync');
+                await this.performSync();
             } else {
-                this.log("Sync not needed yet", 2);
+                console.log('AutoSync: Sync not needed yet');
+            }
+        } catch (error) {
+            console.error('AutoSync: Error checking if sync is needed:', error);
+        }
+    },
+    
+    /**
+     * Perform manual sync with user feedback
+     */
+    async performManualSync() {
+        // Check if sync is already running
+        if (this.isSyncRunning) {
+            this.showNotification('Sync already in progress', 'info');
+            return;
+        }
+        
+        // Show loading
+        this.showLoading('Syncing with server...');
+        
+        try {
+            // Perform the actual sync
+            await this.performSync(true);
+            
+            // Hide loading and show success notification
+            this.hideLoading();
+            this.showNotification('Sync completed successfully');
+            
+            // Update the sync status display
+            await this.updateLastSyncDisplay();
+        } catch (error) {
+            // Hide loading and show error notification
+            this.hideLoading();
+            console.error('AutoSync: Error during manual sync:', error);
+            this.showNotification('Sync failed: ' + error.message, 'error');
+        }
+    },
+    
+    /**
+     * Perform the actual sync operation
+     * @param {boolean} isManual - Whether this is a manual sync
+     */
+    async performSync(isManual = false) {
+        if (this.isSyncRunning) return;
+        
+        this.isSyncRunning = true;
+        this.lastSyncAttempt = new Date();
+        
+        try {
+            // Perform a full sync using syncService
+            const results = await syncService.performFullSync();
+            
+            // Update last sync time
+            await dataStorage.updateLastSyncTime();
+            
+            // Log results
+            console.log('AutoSync: Sync completed with results:', results);
+            
+            // Add to sync history
+            await this.updateSyncHistory(results, 'success');
+            
+            this.isSyncRunning = false;
+            return results;
+        } catch (error) {
+            console.error('AutoSync: Error performing sync:', error);
+            
+            // Add error to sync history
+            await this.updateSyncHistory({ error: error.message }, 'error');
+            
+            this.isSyncRunning = false;
+            throw error;
+        }
+    },
+    
+    /**
+     * Update sync history with results
+     * @param {Object} results - Sync results
+     * @param {string} status - Sync status (success/error)
+     */
+    async updateSyncHistory(results, status = 'success') {
+        try {
+            // Get current sync history
+            const history = await dataStorage.getSetting('syncHistory', []);
+            
+            // Create simple message from results
+            let message = '';
+            if (status === 'success') {
+                const imported = results.importCurators?.success || 0;
+                const exported = results.exportRestaurants?.success || 0;
+                message = `Imported ${imported} curators, exported ${exported} restaurants`;
+            } else {
+                message = results.error || 'Unknown error';
             }
             
-            // Update the status display
-            this.updateLastSyncDisplay();
+            // Create new history entry
+            const entry = {
+                timestamp: new Date().toISOString(),
+                status: status,
+                message: message
+            };
+            
+            // Add new entry and keep only last 10
+            const updatedHistory = [entry, ...history].slice(0, 10);
+            
+            // Save updated history
+            await dataStorage.updateSetting('syncHistory', updatedHistory);
+        } catch (error) {
+            console.error('AutoSync: Error updating sync history:', error);
         }
-        
-        /**
-         * Check if enough time has passed since last sync
-         * @returns {Promise<boolean>} True if sync is needed
-         */
-        async checkLastSync() {
-            try {
-                if (!this.isSyncServiceAvailable()) {
-                    return false;
-                }
+    },
+    
+    /**
+     * Show loading overlay with safety fallbacks
+     * @param {string} message - Loading message
+     */
+    showLoading(message) {
+        if (window.uiUtils && typeof window.uiUtils.showLoading === 'function') {
+            window.uiUtils.showLoading(message);
+        } else if (window.uiManager && typeof window.uiManager.showLoading === 'function') {
+            window.uiManager.showLoading(message);
+        } else {
+            console.log('AutoSync: ' + message);
+            // Basic loading indicator fallback could be implemented here
+        }
+    },
+    
+    /**
+     * Hide loading overlay with safety fallbacks
+     */
+    hideLoading() {
+        if (window.uiUtils && typeof window.uiUtils.hideLoading === 'function') {
+            window.uiUtils.hideLoading();
+        } else if (window.uiManager && typeof window.uiManager.hideLoading === 'function') {
+            window.uiManager.hideLoading();
+        }
+    },
+    
+    /**
+     * Show notification with safety fallbacks
+     * @param {string} message - Notification message
+     * @param {string} type - Notification type
+     */
+    showNotification(message, type = 'success') {
+        if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
+            window.uiUtils.showNotification(message, type);
+        } else if (window.uiManager && typeof window.uiManager.showNotification === 'function') {
+            window.uiManager.showNotification(message, type);
+        } else if (typeof Toastify !== 'undefined') {
+            const bgColor = type === 'error' ? 
+                'linear-gradient(to right, #ff5f6d, #ffc371)' : 
+                'linear-gradient(to right, #00b09b, #96c93d)';
                 
-                const lastSync = await window.syncService.getLastSyncTime();
-                
-                if (!lastSync) {
-                    // No previous sync, so we should sync
-                    return true;
-                }
-                
-                const now = new Date();
-                const lastSyncDate = new Date(lastSync);
-                const diffMinutes = (now - lastSyncDate) / (1000 * 60);
-                
-                // Only log sync status info when important (threshold/2)
-                if (diffMinutes >= this.config.syncThresholdMinutes / 2) {
-                    this.log(`Last sync was ${diffMinutes.toFixed(1)} minutes ago, threshold is ${this.config.syncThresholdMinutes} minutes`, 1);
-                }
-                
-                return diffMinutes >= this.config.syncThresholdMinutes;
-                
-            } catch (error) {
-                this.log("Error checking last sync time", error, 0);
-                return false;
+            Toastify({
+                text: message,
+                duration: 3000,
+                gravity: "top",
+                position: "right",
+                style: { background: bgColor }
+            }).showToast();
+        } else {
+            alert(message);
+        }
+    }
+};
+
+// Initialize auto-sync when the DOM is loaded
+document.addEventListener('DOMContentLoaded', async () => {
+    // Wait for required dependencies to be loaded
+    setTimeout(async () => {
+        if (window.dataStorage && window.syncService) {
+            // Add safety checks before initializing
+            if (typeof dataStorage.getLastSyncTime !== 'function') {
+                console.error('AutoSync: Required method dataStorage.getLastSyncTime is missing!');
+                return;
             }
-        }
-        
-        /**
-         * Perform synchronization
-         * @param {boolean} isManual - Whether sync was manually triggered
-         */
-        async performSync(isManual = false) {
-            if (this.syncInProgress) {
-                this.log("Sync already in progress, skipping", 1);
+            if (typeof dataStorage.updateLastSyncTime !== 'function') {
+                console.error('AutoSync: Required method dataStorage.updateLastSyncTime is missing!');
                 return;
             }
             
-            this.syncInProgress = true;
-            this.updateSyncButtonState(true);
+            await window.AutoSync.init();
             
-            try {
-                this.log(`Starting ${isManual ? 'manual' : 'automatic'} sync...`, 1);
-                
-                // Make sure SyncService is available
-                if (!this.isSyncServiceAvailable()) {
-                    throw new Error("SyncService not available");
-                }
-                
-                await window.syncService.synchronize();
-                
-                this.log(`${isManual ? 'Manual' : 'Automatic'} sync completed successfully`, 1);
-                
-                // Show notification for manual syncs
-                if (isManual && window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
-                    window.uiUtils.showNotification("Synchronization completed successfully", "success");
-                }
-                
-                // Update UI to reflect new sync status
-                this.updateLastSyncDisplay();
-                
-            } catch (error) {
-                this.log(`Error during ${isManual ? 'manual' : 'automatic'} sync:`, error, 0);
-                
-                // Show notification for errors on manual syncs
-                if (isManual && window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
-                    window.uiUtils.showNotification(`Sync error: ${error.message}`, "error");
-                }
-            } finally {
-                this.syncInProgress = false;
-                this.updateSyncButtonState(false);
-            }
+            // Re-setup sync buttons after DOM is fully loaded (ensures buttons exist)
+            setTimeout(() => {
+                window.AutoSync.setupSyncButton();
+            }, 1000);
+        } else {
+            console.error('AutoSync: Required dependencies not loaded');
         }
-        
-        /**
-         * Update the last sync display in the UI
-         */
-        updateLastSyncDisplay() {
-            try {
-                const lastSyncDisplay = document.getElementById('last-sync-time');
-                
-                if (!lastSyncDisplay || !this.isSyncServiceAvailable()) return;
-                
-                window.syncService.getLastSyncTime().then(lastSync => {
-                    if (!lastSync) {
-                        lastSyncDisplay.textContent = "Never";
-                        return;
-                    }
-                    
-                    // Format date for display
-                    const lastSyncDate = new Date(lastSync);
-                    const now = new Date();
-                    
-                    // If same day, show time only
-                    if (lastSyncDate.toDateString() === now.toDateString()) {
-                        lastSyncDisplay.textContent = lastSyncDate.toLocaleTimeString([], {
-                            hour: '2-digit', 
-                            minute: '2-digit'
-                        });
-                    } else {
-                        // Otherwise show date and time
-                        lastSyncDisplay.textContent = lastSyncDate.toLocaleString([], {
-                            month: 'short',
-                            day: 'numeric',
-                            hour: '2-digit',
-                            minute: '2-digit'
-                        });
-                    }
-                    
-                    // Add sync age info
-                    const minutesAgo = Math.round((now - lastSyncDate) / (60 * 1000));
-                    
-                    if (minutesAgo < 60) {
-                        lastSyncDisplay.title = `${minutesAgo} minute${minutesAgo !== 1 ? 's' : ''} ago`;
-                    } else {
-                        const hoursAgo = Math.floor(minutesAgo / 60);
-                        lastSyncDisplay.title = `${hoursAgo} hour${hoursAgo !== 1 ? 's' : ''} ago`;
-                    }
-                });
-            } catch (error) {
-                this.log("Error updating sync display", error, 0);
-            }
-        }
-        
-        /**
-         * Update sync button state (disabled/enabled)
-         * @param {boolean} isLoading - Whether sync is in progress
-         */
-        updateSyncButtonState(isLoading) {
-            try {
-                // Update main sync button if it exists
-                if (this.syncButton) {
-                    this.syncButton.disabled = isLoading;
-                    
-                    // Update icon spin state
-                    const syncIcon = this.syncButton.querySelector('.sync-icon');
-                    if (syncIcon) {
-                        if (isLoading) {
-                            syncIcon.classList.add('animate-spin');
-                        } else {
-                            syncIcon.classList.remove('animate-spin');
-                        }
-                    }
-                }
-                
-                // Update modal sync button if it exists
-                if (this.modalSyncButton) {
-                    this.modalSyncButton.disabled = isLoading;
-                    
-                    // Update text
-                    this.modalSyncButton.textContent = isLoading ? 
-                        "Syncing..." : 
-                        "Sync Now";
-                }
-            } catch (error) {
-                this.log("Error updating sync button state", error, 0);
-            }
-        }
-    }
-    
-    // Create the singleton instance with reasonable defaults
-    window.AutoSync = new AutoSyncManager({
-        syncThresholdMinutes: 30,  // Sync every 30 minutes
-        checkIntervalMinutes: 10,  // Check every 10 minutes
-        logLevel: 1                // Show important logs only
-    });
-})();
+    }, 2000); // Give dependencies time to initialize
+});
