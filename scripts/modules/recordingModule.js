@@ -1421,17 +1421,15 @@ class RecordingModule {
             console.log('Processing recording, original format:', audioBlob.type);
             
             // Convert the blob into a compatible MP3/Opus blob
-            const preparedBlob = await this.convertToMP3(audioBlob);
-            console.log('Prepared blob for transcription:', preparedBlob.type, preparedBlob.size);
-            
-            // Send to Whisper using multipart/form-data
-            const transcription = await this.transcribeAudio(preparedBlob);
-            
-            // Append transcription to the textarea
+            const preparedBlob   = await this.convertToMP3(audioBlob);
+            const transcription  = await this.transcribeAudio(preparedBlob);
             this.processTranscription(transcription);
 
-            // Signal UI that transcription is done
+            // Signal main transcription done
             this.updateProcessingStatus('transcription', 'done');
+
+            // ALSO clear any “additional review” status indicator
+            this.updateProcessingStatus('analysis', 'done');
         } catch (error) {
             console.error('Error processing recording:', error);
             this.updateProcessingStatus('transcription', 'error');
