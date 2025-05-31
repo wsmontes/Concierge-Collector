@@ -22,6 +22,12 @@
     color: #92400E;
 }
 
+.data-badge.local-only {
+    background-color: #FEF3C7;
+    color: #92400E;
+    border: 1px solid #F59E0B;
+}
+
 .data-badge.remote {
     background-color: #D1FAE5;
     color: #065F46;
@@ -35,6 +41,21 @@
 
 .restaurant-card.restaurant-local {
     border-left: 3px solid #F59E0B;
+}
+
+.restaurant-card.restaurant-local-only {
+    border-left: 3px solid #F59E0B;
+    position: relative;
+}
+
+.restaurant-card.restaurant-local-only::after {
+    content: "";
+    position: absolute;
+    right: 0;
+    top: 0;
+    border-style: solid;
+    border-width: 0 12px 12px 0;
+    border-color: transparent #F59E0B transparent transparent;
 }
 
 .restaurant-card.restaurant-remote {
@@ -89,4 +110,39 @@
     height: 1rem;
     margin-right: 0.5rem;
     accent-color: #2563EB;
+}
+
+/* Origin verification badges */
+.origin-badge {
+    position: absolute;
+    top: 0.5rem;
+    right: 0.5rem;
+    z-index: 5;
+}
+
+/* Curator origin indicators */
+.curator-option-local-only {
+    font-weight: 500;
+    font-style: italic;
+}
+
+.curator-name-badge {
+    display: inline-flex;
+    align-items: center;
+    margin-left: 0.5rem;
+    padding: 0.125rem 0.375rem;
+    border-radius: 0.25rem;
+    font-size: 0.7rem;
+    font-weight: 500;
+}
+
+.curator-name-badge.local-only {
+    background-color: #FEF3C7;
+    color: #92400E;
+    border: 1px solid #F59E0B;
+}
+
+.curator-name-badge.remote {
+    background-color: #D1FAE5;
+    color: #065F46;
 }

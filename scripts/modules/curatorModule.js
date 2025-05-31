@@ -207,6 +207,17 @@ class CuratorModule {
                 curatorSelector.remove(2);
             }
             
+            // Verify if any curators exist on the remote server
+            let remoteServerAvailable = false;
+            if (syncService && typeof syncService.checkServerAvailability === 'function') {
+                try {
+                    remoteServerAvailable = await syncService.checkServerAvailability();
+                } catch (error) {
+                    console.warn('Error checking remote server availability:', error);
+                    remoteServerAvailable = false;
+                }
+            }
+            
             // Log before adding to selector
             console.log('Adding curators to selector:', curators.map(c => ({
                 id: c.id, 
@@ -221,14 +232,25 @@ class CuratorModule {
                 const option = document.createElement('option');
                 option.value = curator.id;
                 
+                // Check if this curator is local-only (has no serverId and remote server is available)
+                const isLocalOnly = !curator.serverId && remoteServerAvailable && curator.origin === 'local';
+                
                 // Display name with ID and origin badge for better disambiguation
-                const badge = curator.origin === 'remote' ? '[Server]' : '[Local]';
+                const badge = isLocalOnly ? '[Local Only]' : 
+                              curator.origin === 'remote' ? '[Server]' : '[Local]';
+                              
                 // Remove server ID from display text
                 option.textContent = `${curator.name} (${curator.id}) ${badge}`;
                 
                 // Set data attributes for additional info
                 option.dataset.origin = curator.origin;
-                option.dataset.serverId = curator.serverId;
+                option.dataset.serverId = curator.serverId || '';
+                option.dataset.localOnly = isLocalOnly ? 'true' : 'false';
+                
+                // Add CSS class for local-only curators
+                if (isLocalOnly) {
+                    option.classList.add('curator-option-local-only');
+                }
                 
                 curatorSelector.appendChild(option);
             });
@@ -406,10 +428,28 @@ class CuratorModule {
             curatorForm.classList.add('hidden');
             curatorInfo.classList.remove('hidden');
             
-            // Format name with ID and origin badge
-            const badge = this.uiManager.currentCurator.origin === 'remote' ? '[Server]' : '[Local]';
-            const displayName = `${this.uiManager.currentCurator.name} (${this.uiManager.currentCurator.id}) ${badge}`;
-            curatorNameDisplay.textContent = displayName;
+            // Check if this curator is local-only
+            const isLocalOnly = this.isLocalOnlyCurator(this.uiManager.currentCurator);
+            
+            // Create enhanced display with badge
+            const badgeClass = isLocalOnly ? 'local-only' : 
+                              (this.uiManager.currentCurator.origin === 'remote' ? 'remote' : 'local');
+            const badgeText = isLocalOnly ? 'Local Only' :
+                             (this.uiManager.currentCurator.origin === 'remote' ? 'Server' : 'Local');
+            
+            // Clear any existing content
+            curatorNameDisplay.innerHTML = '';
+            
+            // Add name text
+            const nameText = document.createElement('span');
+            nameText.textContent = `${this.uiManager.currentCurator.name} (${this.uiManager.currentCurator.id})`;
+            curatorNameDisplay.appendChild(nameText);
+            
+            // Add badge
+            const badge = document.createElement('span');
+            badge.className = `curator-name-badge ${badgeClass}`;
+            badge.textContent = badgeText;
+            curatorNameDisplay.appendChild(badge);
             
             // Update curator selector
             const curatorSelector = document.getElementById('curator-selector');
@@ -421,6 +461,33 @@ class CuratorModule {
             curatorForm.classList.remove('hidden');
             curatorInfo.classList.add('hidden');
         }
+    }
+    
+    /**
+     * Determines if a curator is local-only (not synced to remote)
+     * @param {Object} curator - The curator object to check
+     * @returns {boolean} - True if curator exists only locally
+     */
+    isLocalOnlyCurator(curator) {
+        if (!curator) return false;
+        
+        // A curator is local-only if:
+        // 1. It has origin 'local'
+        // 2. It doesn't have a serverId (meaning it hasn't been synced)
+        // 3. Remote server is available (meaning it could be synced but hasn't been)
+        const isLocalOrigin = curator.origin === 'local';
+        const hasNoServerId = !curator.serverId;
+        
+        // Check if remote server is available
+        let remoteServerAvailable = false;
+        try {
+            remoteServerAvailable = typeof syncService !== 'undefined' && 
+                                   syncService.serverAvailable;
+        } catch (e) {
+            console.warn('Error checking server availability:', e);
+        }
+        
+        return isLocalOrigin && hasNoServerId && remoteServerAvailable;
     }
     
     /**
