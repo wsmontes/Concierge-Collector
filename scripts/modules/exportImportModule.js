@@ -246,29 +246,10 @@ class ExportImportModule {
         }
     }
     
-    /**
-     * Run data verification before export to ensure correct source tagging
-     */
     async exportData() {
         console.log('Export data button clicked');
         try {
-            this.safeShowLoading('Preparing for export...');
-            
-            // First verify local data to ensure correct tagging
-            const verificationResult = await this.verifyLocalData();
-            
-            // Show notification if we fixed any mistagged items
-            if (verificationResult.fixedMisTaggedItems > 0) {
-                this.updateLoadingMessage(`Fixed ${verificationResult.fixedMisTaggedItems} incorrectly tagged items`);
-                await new Promise(resolve => setTimeout(resolve, 1500)); // brief pause to show message
-                
-                // Show notification to explain what happened
-                const message = `${verificationResult.fixedMisTaggedItems} restaurants were incorrectly tagged as "remote" but not found on server. They have been corrected to "local".`;
-                this.safeShowNotification(message, 'info');
-            }
-            
-            // Continue with existing export process
-            this.updateLoadingMessage('Exporting data...');
+            this.safeShowLoading('Exporting data...');
             
             // Get all data from storage
             const exportResult = await dataStorage.exportData();
@@ -1521,11 +1502,6 @@ class ExportImportModule {
             let fixedCount = 0;
             if (misTaggedRestaurants.length > 0) {
                 fixedCount = await this.fixMisTaggedRestaurants(misTaggedRestaurants);
-                if (fixedCount > 0) {
-                    console.log(`Successfully fixed ${fixedCount} restaurants with incorrect remote tags`);
-                    this.updateLoadingMessage(`Fixed ${fixedCount} restaurants with incorrect server tags`);
-                    await new Promise(resolve => setTimeout(resolve, 1000)); // Brief pause to show message
-                }
             }
             
             this.safeHideLoading();
@@ -1598,57 +1574,25 @@ class ExportImportModule {
             
             let fixedCount = 0;
             
-            // First check if we have direct access to the database
-            const db = dataStorage && dataStorage.db;
-            if (!db || !db.restaurants || typeof db.restaurants.update !== 'function') {
-                throw new Error('Database access not available');
-            }
-            
             // Update each restaurant to mark it as local
             for (const restaurant of misTaggedRestaurants) {
                 const updateData = {
                     origin: 'local',       // Set origin to local
                     serverId: null,        // Clear the serverId
-                    localOnly: true,       // Mark as local-only
-                    lastSync: null         // Clear last sync timestamp
+                    localOnly: true        // Mark as local-only
                 };
                 
-                console.log(`Updating restaurant ${restaurant.name} (ID: ${restaurant.id}) from remote to local origin`);
-                console.log(`Previous values - origin: ${restaurant.origin}, serverId: ${restaurant.serverId}`);
+                console.log(`Updating restaurant ${restaurant.name} (ID: ${restaurant.id}) to local origin`);
                 
                 try {
-                    // Update the restaurant in the database with fixed values
-                    await db.restaurants.update(restaurant.id, updateData);
-                    
-                    // Verify the update was applied correctly
-                    const updatedRestaurant = await db.restaurants.get(restaurant.id);
-                    if (updatedRestaurant) {
-                        if (updatedRestaurant.origin === 'local' && !updatedRestaurant.serverId) {
-                            console.log(`Successfully updated restaurant ${restaurant.id} to local origin`);
-                            fixedCount++;
-                        } else {
-                            console.warn(`Restaurant ${restaurant.id} was not properly updated: ` +
-                                        `origin=${updatedRestaurant.origin}, serverId=${updatedRestaurant.serverId}`);
-                        }
-                    }
+                    await dataStorage.db.restaurants.update(restaurant.id, updateData);
+                    fixedCount++;
                 } catch (updateError) {
                     console.error(`Error updating restaurant ${restaurant.id}:`, updateError);
                 }
             }
             
             console.log(`Fixed ${fixedCount} incorrectly tagged restaurants`);
-            
-            // If we fixed any restaurants, update the UI if applicable
-            if (fixedCount > 0 && this.uiManager && this.uiManager.restaurantModule) {
-                try {
-                    // If available, refresh the restaurant list to reflect the updated tags
-                    await this.uiManager.restaurantModule.loadRestaurantList();
-                    console.log('Restaurant list refreshed after tag fixes');
-                } catch (refreshError) {
-                    console.warn('Could not refresh restaurant list after fixing tags:', refreshError);
-                }
-            }
-            
             return fixedCount;
             
         } catch (error) {
@@ -1730,7 +1674,7 @@ class ExportImportModule {
                 return;
             }
             
-            // Then try with this.uiManager as fallback
+            // Then try with uiManager as fallback
             if (this.uiManager && typeof this.uiManager.showNotification === 'function') {
                 console.log('Using this.uiManager.showNotification()');
                 this.uiManager.showNotification(message, type);
@@ -1800,28 +1744,121 @@ class ExportImportModule {
     }
     
     /**
-     * Run data verification before export to ensure correct source tagging
+     * Safety wrapper for hiding loading - uses global uiUtils as primary fallback
      */
+    safeHideLoading() {
+        try {
+            // First try global utils (most reliable)
+            if (window.uiUtils && typeof window.uiUtils.hideLoading === 'function') {
+                console.log('Using window.uiUtils.hideLoading()');
+                window.uiUtils.hideLoading();
+                return;
+            }
+            
+            // Then try with uiManager as fallback
+            if (this.uiManager && typeof this.uiManager.hideLoading === 'function') {
+                console.log('Using this.uiManager.hideLoading()');
+                this.uiManager.hideLoading();
+                return;
+            }
+            
+            // Last resort fallback
+            console.log('Using standalone hide loading');
+            this.hideStandaloneLoading();
+        } catch (error) {
+            console.error('Error in safeHideLoading:', error);
+            // Last resort
+            this.hideStandaloneLoading();
+        }
+    }
+    
+    /**
+     * Safety wrapper for showing notification - uses global uiUtils as primary fallback
+     * @param {string} message - Notification message
+     * @param {string} type - Notification type
+     */
+    safeShowNotification(message, type = 'success') {
+        try {
+            // First try global utils (most reliable)
+            if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
+                console.log('Using window.uiUtils.showNotification()');
+                window.uiUtils.showNotification(message, type);
+                return;
+            }
+            
+            // Then try with uiManager as fallback
+            if (this.uiManager && typeof this.uiManager.showNotification === 'function') {
+                console.log('Using this.uiManager.showNotification()');
+                this.uiManager.showNotification(message, type);
+                return;
+            }
+            
+            // Last resort fallback
+            console.log(`Notification (${type}):`, message);
+            if (type === 'error') {
+                alert(`Error: ${message}`);
+            } else {
+                alert(message);
+            }
+        } catch (error) {
+            console.error('Error in safeShowNotification:', error);
+            // Last resort
+            alert(message);
+        }
+    }
+    
+    /**
+     * Shows standalone loading overlay as fallback when uiManager is unavailable
+     * @param {string} message - Loading message to display
+     */
+    showStandaloneLoading(message = 'Loading...') {
+        // Remove any existing loading overlay
+        this.hideStandaloneLoading();
+        
+        const loadingOverlay = document.createElement('div');
+        loadingOverlay.id = 'standalone-loading-overlay';
+        loadingOverlay.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+        
+        loadingOverlay.innerHTML = `
+            <div class="bg-white p-4 rounded-lg shadow-lg flex flex-col items-center">
+                <div class="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-2"></div>
+                <p class="text-gray-800" id="standalone-loading-message">${message}</p>
+            </div>
+        `;
+        
+        document.body.appendChild(loadingOverlay);
+        document.body.style.overflow = 'hidden';
+        
+        console.log('Standalone loading overlay shown');
+    }
+    
+    /**
+     * Hides the standalone loading overlay
+     */
+    hideStandaloneLoading() {
+        const loadingOverlay = document.getElementById('standalone-loading-overlay');
+        if (loadingOverlay) {
+            document.body.removeChild(loadingOverlay);
+            document.body.style.overflow = '';
+            console.log('Standalone loading overlay hidden');
+        }
+    }
+    
+    /**
+     * Updates the standalone loading message
+     * @param {string} message - New message to display
+     */
+    updateStandaloneLoadingMessage(message) {
+        const messageElement = document.getElementById('standalone-loading-message');
+        if (messageElement) {
+            messageElement.textContent = message;
+        }
+    }
+    
     async exportData() {
         console.log('Export data button clicked');
         try {
-            this.safeShowLoading('Preparing for export...');
-            
-            // First verify local data to ensure correct tagging
-            const verificationResult = await this.verifyLocalData();
-            
-            // Show notification if we fixed any mistagged items
-            if (verificationResult.fixedMisTaggedItems > 0) {
-                this.updateLoadingMessage(`Fixed ${verificationResult.fixedMisTaggedItems} incorrectly tagged items`);
-                await new Promise(resolve => setTimeout(resolve, 1500)); // brief pause to show message
-                
-                // Show notification to explain what happened
-                const message = `${verificationResult.fixedMisTaggedItems} restaurants were incorrectly tagged as "remote" but not found on server. They have been corrected to "local".`;
-                this.safeShowNotification(message, 'info');
-            }
-            
-            // Continue with existing export process
-            this.updateLoadingMessage('Exporting data...');
+            this.safeShowLoading('Exporting data...');
             
             // Get all data from storage
             const exportResult = await dataStorage.exportData();
@@ -2333,37 +2370,37 @@ class ExportImportModule {
             
             // Split into smaller batches for more reliable processing
             const BATCH_SIZE = 15;
-            const batches = [];    });
+            const batches = [];
             for (let i = 0; i < remoteData.length; i += BATCH_SIZE) {
-                batches.push(remoteData.slice(i, i + BATCH_SIZE));/ Progress updatetry {
-            } restaurants synced)`);taStorage.updateLastSyncTime === 'function') {
+                batches.push(remoteData.slice(i, i + BATCH_SIZE));
+            }
             
             console.log(`Remote export: Split data into ${batches.length} batches for processing`);
-            date last sync time    }
-            // Process batches one at a time for more reliability
-            const MAX_CONCURRENT = 1;ction') {    console.warn('Remote export: Could not update last sync time:', syncTimeError);
-            let successCount = 0;       await window.dataStorage.updateLastSyncTime();
-            let failedCount = 0;        console.log('Remote export: Updated last sync time');
             
-            // Process batches sequentiallyime = performance.now();
-            for (let i = 0; i < batches.length; i += MAX_CONCURRENT) {ncTimeError);const totalTime = ((totalEndTime - totalStartTime) / 1000).toFixed(1);
+            // Process batches one at a time for more reliability
+            const MAX_CONCURRENT = 1;
+            let successCount = 0;
+            let failedCount = 0;
+            
+            // Process batches sequentially
+            for (let i = 0; i < batches.length; i += MAX_CONCURRENT) {
                 const batchPromises = [];
                 const currentBatches = batches.slice(i, i + MAX_CONCURRENT);
                 
-                for (let j = 0; j < currentBatches.length; j++) {const totalEndTime = performance.now();
-                    const batchIndex = i + j;me = ((totalEndTime - totalStartTime) / 1000).toFixed(1);tch (error) {
-                    const batch = currentBatches[j];essCount} restaurants successfully exported${failedCount > 0 ? `, ${failedCount} failed` : ''}.`;rver:', error);
+                for (let j = 0; j < currentBatches.length; j++) {
+                    const batchIndex = i + j;
+                    const batch = currentBatches[j];
                     
-                    // Update loading messagefeShowNotification(resultMessage, failedCount > 0 ? 'warning' : 'success');nally {
+                    // Update loading message
                     this.updateLoadingMessage(`Exporting batch ${batchIndex + 1} of ${batches.length}...`);
                     
-                    // Create promise for this batching data to remote server:', error);    this.safeHideLoading();
-                    batchPromises.push(this.processBatch(batch, batchIndex, batches.length));: ' + error.message, 'error');: Hiding loading indicator');
-                }ally {
-                   // Always hide loading indicator
-                // Wait for current batch group to complete       if (loadingShown) {
-                const results = await Promise.all(batchPromises);               this.safeHideLoading();
-                                console.log('Remote export: Hiding loading indicator');            }        }    }}
+                    // Create promise for this batch
+                    batchPromises.push(this.processBatch(batch, batchIndex, batches.length));
+                }
+                
+                // Wait for current batch group to complete
+                const results = await Promise.all(batchPromises);
+                
                 // Tally results
                 results.forEach(result => {
                     if (result.success) {
