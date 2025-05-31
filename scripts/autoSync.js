@@ -266,6 +266,56 @@ window.AutoSync = {
     },
     
     /**
+     * Perform full synchronization and update UI
+     * @param {boolean} showNotifications - Whether to show notifications
+     * @returns {Promise<Object>} - Sync results
+     */
+    async performFullSyncWithUI(showNotifications = true) {
+        // Check if sync is already running
+        if (this.isSyncRunning) {
+            if (showNotifications) this.showNotification('Sync already in progress', 'info');
+            return { alreadyRunning: true };
+        }
+        
+        // Show loading
+        this.showLoading('Syncing with server...');
+        
+        try {
+            // Perform the actual sync
+            const results = await this.performSync();
+            
+            // Hide loading
+            this.hideLoading();
+            
+            // Show success notification
+            if (showNotifications) {
+                this.showNotification('Sync completed successfully');
+            }
+            
+            // Update the sync status display
+            await this.updateLastSyncDisplay();
+            
+            // Refresh UI if uiManager is available
+            if (window.uiManager && typeof window.uiManager.refreshAfterSync === 'function') {
+                await window.uiManager.refreshAfterSync();
+            }
+            
+            return results;
+        } catch (error) {
+            // Hide loading
+            this.hideLoading();
+            
+            console.error('AutoSync: Error during sync:', error);
+            
+            if (showNotifications) {
+                this.showNotification('Sync failed: ' + error.message, 'error');
+            }
+            
+            return { success: false, error: error.message };
+        }
+    },
+    
+    /**
      * Update sync history with results
      * @param {Object} results - Sync results
      * @param {string} status - Sync status (success/error)

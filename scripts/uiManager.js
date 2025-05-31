@@ -465,6 +465,38 @@ if (typeof window.UIManager === 'undefined') {
                 this.originalTranscription = transcriptionText;
             }
         }
+
+        /**
+         * Refreshes UI components after data synchronization
+         * @returns {Promise<void>}
+         */
+        async refreshAfterSync() {
+            console.log('Refreshing UI after synchronization...');
+            
+            // Refresh curator selector if available
+            if (this.curatorModule && typeof this.curatorModule.initializeCuratorSelector === 'function') {
+                this.curatorModule.curatorSelectorInitialized = false;
+                await this.curatorModule.initializeCuratorSelector();
+                console.log('Curator selector refreshed');
+            }
+            
+            // Refresh restaurant list if available
+            if (this.restaurantModule && typeof this.restaurantModule.loadRestaurants === 'function') {
+                await this.restaurantModule.loadRestaurants();
+                console.log('Restaurant list refreshed');
+            }
+            
+            // Update any sync status indicators
+            if (document.getElementById('sync-status')) {
+                const lastSyncTime = await dataStorage.getLastSyncTime();
+                if (lastSyncTime) {
+                    const formattedTime = new Date(lastSyncTime).toLocaleString();
+                    document.getElementById('sync-status').textContent = `Last sync: ${formattedTime}`;
+                }
+            }
+            
+            console.log('UI refresh after sync complete');
+        }
     });
 
     // Create a global instance only once
