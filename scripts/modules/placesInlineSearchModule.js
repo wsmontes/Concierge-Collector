@@ -29,7 +29,9 @@
         let placesApi = {
             loaded: false,
             autocomplete: null,
-            placesService: null
+            placesService: null,
+            // Default to true, but check localStorage for user preference
+            filterFoodPlacesOnly: localStorage.getItem('places_filter_food_only') !== 'false'
         };
 
         // Helper: Show notification using any available method
@@ -146,6 +148,11 @@
                                     <div class="animate-spin rounded-full h-5 w-5 border-b-2 border-blue-500"></div>
                                 </div>
                             </div>
+                            <!-- Add filter checkbox -->
+                            <div class="mt-2 flex items-center">
+                                <input type="checkbox" id="filter-food-places" class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" ${placesApi.filterFoodPlacesOnly ? 'checked' : ''}>
+                                <label for="filter-food-places" class="ml-2 text-sm text-gray-700">Show only restaurants, bars and food places</label>
+                            </div>
                         </div>
 
                         <!-- Details section (initially hidden) -->
@@ -186,6 +193,12 @@
                 // Reset modal state if it already exists
                 resetModalState(modalContainer);
                 modalContainer.classList.remove('hidden');
+                
+                // Update checkbox to match current filter state
+                const filterCheckbox = document.getElementById('filter-food-places');
+                if (filterCheckbox) {
+                    filterCheckbox.checked = placesApi.filterFoodPlacesOnly;
+                }
             }
 
             // Prevent body scrolling when modal is open
@@ -207,6 +220,20 @@
             const closeBtn = document.getElementById('places-modal-close');
             if (closeBtn) {
                 closeBtn.addEventListener('click', closePlacesModal);
+            }
+
+            // Filter checkbox
+            const filterCheckbox = document.getElementById('filter-food-places');
+            if (filterCheckbox) {
+                filterCheckbox.addEventListener('change', function() {
+                    placesApi.filterFoodPlacesOnly = this.checked;
+                    // Save preference to localStorage
+                    localStorage.setItem('places_filter_food_only', this.checked);
+                    debugLog(`Food places filter set to: ${this.checked}`);
+                    
+                    // Reinitialize the autocomplete to apply new filter settings
+                    initializePlacesAutocompleteInModal();
+                });
             }
 
             // Close when clicking outside the modal content
@@ -312,6 +339,14 @@
                 'opening_hours', 'price_level', 'editorial_summary', 'address_components'
             ]));
             
+            // Apply food places filter if enabled
+            if (placesApi.filterFoodPlacesOnly) {
+                debugLog('Applying food places filter to modern autocomplete');
+                const foodPlaceTypes = ['restaurant', 'bar', 'cafe', 'food', 'bakery', 
+                    'meal_takeaway', 'meal_delivery', 'night_club'];
+                placeElement.setAttribute('type', JSON.stringify(foodPlaceTypes));
+            }
+            
             // Add the element to the container
             searchContainer.innerHTML = '';
             searchContainer.appendChild(placeElement);
@@ -352,16 +387,26 @@
             console.log('Initializing legacy Places Autocomplete');
             
             try {
-                // Create autocomplete with expanded fields for better data
-                placesApi.autocomplete = new google.maps.places.Autocomplete(searchInput, {
+                // Define options for autocomplete with type restrictions
+                const autocompleteOptions = {
                     fields: [
                         'place_id', 'name', 'formatted_address', 'geometry', 'types', 'photos', 
                         'website', 'international_phone_number', 'rating', 'user_ratings_total',
                         'formatted_phone_number', 'opening_hours', 'price_level', 'reviews',
                         'utc_offset_minutes', 'vicinity', 'editorial_summary', 'address_components'
-                    ],
-                    types: ['establishment']
-                });
+                    ]
+                };
+                
+                // Apply food places filter if enabled
+                if (placesApi.filterFoodPlacesOnly) {
+                    debugLog('Applying food places filter to legacy autocomplete');
+                    autocompleteOptions.types = ['restaurant', 'bar', 'cafe', 'food'];
+                } else {
+                    autocompleteOptions.types = ['establishment'];
+                }
+                
+                // Create autocomplete with expanded fields for better data
+                placesApi.autocomplete = new google.maps.places.Autocomplete(searchInput, autocompleteOptions);
                 
                 // Handle selection with better debugging and visual feedback
                 placesApi.autocomplete.addListener('place_changed', () => {

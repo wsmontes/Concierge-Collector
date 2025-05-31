@@ -12,6 +12,8 @@ class PlacesSearchModule {
         this.placesService = null;
         this.autocompleteWidget = null;
         this.selectedPlace = null;
+        // Default to true, but check localStorage for user preference
+        this.filterFoodPlacesOnly = localStorage.getItem('places_filter_food_only') !== 'false';
         
         // Initialize module
         this.initializeUI();
@@ -78,11 +80,18 @@ class PlacesSearchModule {
                         <div id="places-autocomplete-container" class="relative">
                             <input id="places-autocomplete" type="text" placeholder="Search for a restaurant..." class="border p-2 w-full">
                         </div>
+                        
+                        <!-- Add filter checkbox -->
+                        <div class="mt-2 flex items-center">
+                            <input type="checkbox" id="filter-food-places" class="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded" ${this.filterFoodPlacesOnly ? 'checked' : ''}>
+                            <label for="filter-food-places" class="ml-2 text-sm text-gray-700">Show only restaurants, bars and food places</label>
+                        </div>
                     </div>
                     <div id="place-details-container" class="hidden">
                         <div id="place-details-content"></div>
                         <div class="mt-4">
-                            <button id="import-place-button" class="bg-green-500 text-white px-4 py-2">
+                            <button id="import-place-button" class="bg-green-500 text-white px-4 py-2 rounded flex items-center">
+                                <span class="material-icons mr-1">add_circle</span>
                                 Import Restaurant
                             </button>
                         </div>
@@ -121,6 +130,12 @@ class PlacesSearchModule {
             const toggleHeader = document.getElementById('places-search-toggle');
             if (toggleHeader && !toggleHeader._hasToggleListener) {
                 this.setupToggleListener(toggleHeader);
+            }
+            
+            // Update checkbox to match current filter state
+            const filterCheckbox = document.getElementById('filter-food-places');
+            if (filterCheckbox) {
+                filterCheckbox.checked = this.filterFoodPlacesOnly;
             }
         }
     }
@@ -167,6 +182,20 @@ class PlacesSearchModule {
         const importPlaceBtn = document.getElementById('import-place-button');
         if (importPlaceBtn) {
             importPlaceBtn.addEventListener('click', () => this.importSelectedPlace());
+        }
+        
+        // Filter checkbox
+        const filterCheckbox = document.getElementById('filter-food-places');
+        if (filterCheckbox) {
+            filterCheckbox.addEventListener('change', (e) => {
+                this.filterFoodPlacesOnly = e.target.checked;
+                // Save preference to localStorage
+                localStorage.setItem('places_filter_food_only', e.target.checked);
+                console.log(`Food places filter set to: ${e.target.checked}`);
+                
+                // Reinitialize the autocomplete to apply new filter settings
+                this.createPlacesAutocomplete();
+            });
         }
     }
     
@@ -383,7 +412,10 @@ class PlacesSearchModule {
                 
                 // Create the PlaceAutocompleteElement (new recommended approach)
                 const placeAutocomplete = new google.maps.places.PlaceAutocompleteElement({
-                    types: ["restaurant", "cafe", "food"]
+                    // Apply food places filter if enabled
+                    types: this.filterFoodPlacesOnly 
+                        ? ["restaurant", "cafe", "bar", "food", "bakery", "meal_takeaway", "meal_delivery"]
+                        : ["establishment"]
                 });
                 
                 placeAutocomplete.id = 'places-autocomplete-input';
@@ -397,7 +429,7 @@ class PlacesSearchModule {
                 
                 // Use mutation observer to still fix any dropdown positioning issues
                 this.injectDropdownFixStyles();
-                this.setupAutocompleteObserver();  // <<<<<<<<<<<<<<<< ADDED FIX
+                this.setupAutocompleteObserver();
                 
                 console.log('Places Autocomplete widget created using PlaceAutocompleteElement');
                 
@@ -412,10 +444,13 @@ class PlacesSearchModule {
                 input.className = 'border rounded p-3 w-full';
                 placesContainer.appendChild(input);
                 
-                // Create the classic autocomplete widget
+                // Create the classic autocomplete widget with filter options
                 const options = {
                     fields: ['place_id', 'name', 'formatted_address', 'geometry', 'types', 'photos', 'website', 'international_phone_number', 'rating'],
-                    types: ['restaurant', 'cafe', 'food'],
+                    // Apply food places filter if enabled
+                    types: this.filterFoodPlacesOnly 
+                        ? ['restaurant', 'cafe', 'bar', 'food'] 
+                        : ['establishment']
                 };
                 
                 this.autocompleteWidget = new google.maps.places.Autocomplete(input, options);
@@ -427,7 +462,7 @@ class PlacesSearchModule {
                 
                 // Apply our dropdown positioning fix for classic API
                 this.injectDropdownFixStyles();
-                this.setupAutocompleteObserver();  // <<<<<<<<<<<<<<<< ADDED FIX
+                this.setupAutocompleteObserver();
                 
                 console.log('Places Autocomplete widget created using classic API');
             }

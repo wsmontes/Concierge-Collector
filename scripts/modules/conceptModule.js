@@ -1903,18 +1903,15 @@ class ConceptModule {
     }
     
     /**
-     * Creates and sets up the additional recording section in edit mode
+     * Creates and sets up the additional recording section in both new and edit modes
      */
     setupAdditionalReviewButton() {
-        // First, check if we're in edit mode
-        const isEditMode = this.uiManager && this.uiManager.isEditingRestaurant;
+        // Get the transcription textarea element
         const transcriptionTextarea = document.getElementById('restaurant-transcription');
         
         if (!transcriptionTextarea) {
-            // If in edit mode but textarea not found yet, set up an observer to wait for it
-            if (isEditMode) {
-                this.setupTranscriptionObserver();
-            }
+            // If textarea not found yet, set up an observer to wait for it
+            this.setupTranscriptionObserver();
             return;
         }
         
@@ -1931,7 +1928,9 @@ class ConceptModule {
         additionalRecordingSection = document.createElement('div');
         additionalRecordingSection.id = 'additional-recording-section';
         additionalRecordingSection.className = 'mt-4 p-4 bg-purple-50 border border-purple-200 rounded-lg';
-        additionalRecordingSection.style.display = isEditMode ? 'block' : 'none';
+        
+        // Show for both new and existing restaurants (removing the conditional display)
+        additionalRecordingSection.style.display = 'block';
         
         additionalRecordingSection.innerHTML = `
             <h3 class="text-lg font-semibold mb-2 text-purple-700 flex items-center">
@@ -1939,7 +1938,9 @@ class ConceptModule {
                 Record Additional Review
             </h3>
             <p class="text-sm text-gray-600 mb-3">
-                Add another review to the existing transcription without replacing the current content.
+                ${this.uiManager && this.uiManager.isEditingRestaurant ? 
+                'Add another review to the existing transcription without replacing the current content.' :
+                'Record a vocal review to add to your restaurant description.'}
             </p>
             <div class="recording-controls flex flex-wrap items-center gap-2 mb-4">
                 <button id="additional-record-start" class="bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 rounded flex items-center">
@@ -1992,7 +1993,7 @@ class ConceptModule {
             });
         }
         
-        console.log(`Additional recording section added and set to ${isEditMode ? 'visible' : 'hidden'}`);
+        console.log('Additional recording section added and set to visible for all restaurant creation modes');
     }
 
     /**
@@ -2000,12 +2001,6 @@ class ConceptModule {
      */
     setupTranscriptionObserver() {
         console.log('Setting up mutation observer for transcription textarea');
-        
-        // Only set up observer if we're in edit mode
-        if (!(this.uiManager && this.uiManager.isEditingRestaurant)) {
-            console.log('Not in edit mode, skipping observer setup');
-            return;
-        }
         
         // Check if observer already exists
         if (this.transcriptionObserver) {
