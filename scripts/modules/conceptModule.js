@@ -2170,11 +2170,17 @@ class ConceptModule {
             // Create formatted timestamp
             const timestamp = new Date().toLocaleString();
             
-            // Format the new combined text with a clear separator and timestamp
+            // Get curator name with fallback
+            let curatorName = "Unknown Curator";
+            if (this.uiManager && this.uiManager.currentCurator && this.uiManager.currentCurator.name) {
+                curatorName = this.uiManager.currentCurator.name;
+            }
+            
+            // Format the new combined text with a clear separator, curator name, and timestamp
             let combinedText;
             if (currentText && currentText.trim() !== '') {
-                // Add two line breaks, a separator, timestamp, and then the new text
-                combinedText = `${currentText}\n\n--- Additional Review (${timestamp}) ---\n${newTranscription}`;
+                // Add two line breaks, a separator with curator name and timestamp, and then the new text
+                combinedText = `${currentText}\n\n--- Additional Review by ${curatorName} (${timestamp}) ---\n${newTranscription}`;
             } else {
                 // If no existing text, just use the new transcription
                 combinedText = newTranscription;

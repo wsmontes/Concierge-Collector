@@ -1618,11 +1618,25 @@ gmp-place-autocomplete input:focus {
 }
 
 .recording-indicator.additional-recording {
-    background-color: #9333ea;
+    background-color: #9333ea; /* Purple */
+    animation: recording-pulse 1.5s infinite;
 }
 
+/* Add missing pulse animations referenced in CSS */
 @keyframes recording-pulse {
     0% { opacity: 1; transform: scale(1); }
-    50% { opacity: 0.6; transform: scale(0.8); }
+    50% { opacity: 0.6; transform: scale(1.2); }
     100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes pulse-button {
+    0% { background-color: #ef4444; }
+    50% { background-color: #b91c1c; }
+    100% { background-color: #ef4444; }
+}
+
+@keyframes pulse-icon {
+    0% { opacity: 1; }
+    50% { opacity: 0.7; }
+    100% { opacity: 1; }
 }
