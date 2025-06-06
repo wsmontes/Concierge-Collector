@@ -1,5 +1,17 @@
 /**
- * Manages quick action functionality
+ * Quick Action Module - Manages quick action functionality for restaurant reviews and operations
+ * 
+ * Purpose: Provides quick access to frequently used actions like adding restaurants, taking photos,
+ * and recording reviews with location-based functionality
+ * 
+ * Main Responsibilities:
+ * - Handle quick action modal display and management
+ * - Manage restaurant quick addition with geolocation
+ * - Process quick photo capture and attachment
+ * - Handle quick review submission
+ * - Integrate with location services for restaurant discovery
+ * 
+ * Dependencies: SafetyUtils, uiManager, dataStorage, geolocation services
  */
 
 // Only define the class if it doesn't already exist
@@ -9,219 +21,96 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
     }
 
     /**
-     * Safety wrapper for showing loading - uses global uiUtils as primary fallback
-     * @param {string} message - Loading message
+     * Sets up event listeners for quick action buttons with safe DOM operations
      */
-    safeShowLoading(message) {
-        try {
-            // First try global utils (most reliable)
-            if (window.uiUtils && typeof window.uiUtils.showLoading === 'function') {
-                console.log('QuickActionModule: Using window.uiUtils.showLoading()');
-                window.uiUtils.showLoading(message);
-                return;
-            }
-            
-            // Then try with uiManager as fallback
-            if (this.uiManager && typeof this.uiManager.showLoading === 'function') {
-                console.log('QuickActionModule: Using this.uiManager.showLoading()');
-                this.uiManager.showLoading(message);
-                return;
-            }
-            
-            // Last resort fallback
-            console.log('QuickActionModule: Using alert as fallback for loading');
-            alert(message);
-        } catch (error) {
-            console.error('Error in safeShowLoading:', error);
-            // Last resort
-            alert(message);
-        }
-    }
-    
-    /**
-     * Safety wrapper for hiding loading - uses global uiUtils as primary fallback
-     */
-    safeHideLoading() {
-        try {
-            // First try global utils (most reliable)
-            if (window.uiUtils && typeof window.uiUtils.hideLoading === 'function') {
-                console.log('QuickActionModule: Using window.uiUtils.hideLoading()');
-                window.uiUtils.hideLoading();
-                return;
-            }
-            
-            // Then try with uiManager as fallback
-            if (this.uiManager && typeof this.uiManager.hideLoading === 'function') {
-                console.log('QuickActionModule: Using this.uiManager.hideLoading()');
-                this.uiManager.hideLoading();
-                return;
-            }
-            
-            // Last resort - just log since there's no visual to clear
-            console.log('QuickActionModule: Hiding loading indicator (fallback)');
-        } catch (error) {
-            console.error('Error in safeHideLoading:', error);
-        }
-    }
-    
-    /**
-     * Safety wrapper for showing notification - uses global uiUtils as primary fallback
-     * @param {string} message - Notification message
-     * @param {string} type - Notification type
-     */
-    safeShowNotification(message, type = 'success') {
-        try {
-            // First try global utils (most reliable)
-            if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
-                console.log('QuickActionModule: Using window.uiUtils.showNotification()');
-                window.uiUtils.showNotification(message, type);
-                return;
-            }
-            
-            // Then try with uiManager as fallback
-            if (this.uiManager && typeof this.uiManager.showNotification === 'function') {
-                console.log('QuickActionModule: Using this.uiManager.showNotification()');
-                this.uiManager.showNotification(message, type);
-                return;
-            }
-            
-            // Last resort fallback
-            console.log(`QuickActionModule: Notification (${type}):`, message);
-            if (type === 'error') {
-                alert(`Error: ${message}`);
-            } else {
-                alert(message);
-            }
-        } catch (error) {
-            console.error('Error in safeShowNotification:', error);
-            // Last resort
-            alert(message);
-        }
-    }
-    
-    /**
-     * Safety wrapper for getting current position - uses global uiUtils as primary fallback
-     * @returns {Promise<GeolocationPosition>} - The position object
-     */
-    async safeGetCurrentPosition() {
-        try {
-            // First try global utils (most reliable)
-            if (window.uiUtils && typeof window.uiUtils.getCurrentPosition === 'function') {
-                console.log('QuickActionModule: Using window.uiUtils.getCurrentPosition()');
-                return await window.uiUtils.getCurrentPosition();
-            }
-            
-            // Then try with uiManager as fallback
-            if (this.uiManager && typeof this.uiManager.getCurrentPosition === 'function') {
-                console.log('QuickActionModule: Using this.uiManager.getCurrentPosition()');
-                return await this.uiManager.getCurrentPosition();
-            }
-            
-            // Last resort fallback - use browser API directly
-            console.log('QuickActionModule: Using browser geolocation API directly');
-            return await new Promise((resolve, reject) => {
-                if (!navigator.geolocation) {
-                    reject(new Error('Geolocation is not supported by your browser'));
-                    return;
-                }
-                
-                navigator.geolocation.getCurrentPosition(resolve, reject, {
-                    enableHighAccuracy: true,
-                    timeout: 10000,
-                    maximumAge: 0
-                });
-            });
-        } catch (error) {
-            console.error('Error in safeGetCurrentPosition:', error);
-            throw error; // Re-throw to be handled by caller
-        }
-    }
-
     setupEvents() {
         console.log('Setting up quick action events...');
         
-        // Safely check if elements exist before adding event listeners
         // FAB button to open quick action modal
         if (this.uiManager.fab) {
-            this.uiManager.fab.addEventListener('click', () => {
+            SafetyUtils.addEventListenerSafely(this.uiManager.fab, 'click', () => {
                 // Only show quick actions if a curator is logged in
                 if (!this.uiManager.currentCurator) {
-                    this.safeShowNotification('Please set up curator information first', 'error');
+                    SafetyUtils.showNotification('Please set up curator information first', 'error');
                     return;
                 }
                 
                 if (this.uiManager.quickActionModal) {
-                    this.uiManager.quickActionModal.classList.remove('hidden');
+                    SafetyUtils.elementClassSafely(this.uiManager.quickActionModal, 'remove', 'hidden', 'QuickActionModule');
                 }
-            });
+            }, {}, 'QuickActionModule');
         } else {
-            console.warn('FAB button element not found');
+            console.warn('QuickActionModule: FAB button element not found');
         }
         
         // Close modal button
         if (this.uiManager.closeQuickModal) {
-            this.uiManager.closeQuickModal.addEventListener('click', () => {
+            SafetyUtils.addEventListenerSafely(this.uiManager.closeQuickModal, 'click', () => {
                 if (this.uiManager.quickActionModal) {
-                    this.uiManager.quickActionModal.classList.add('hidden');
+                    SafetyUtils.elementClassSafely(this.uiManager.quickActionModal, 'add', 'hidden', 'QuickActionModule');
                 }
-            });
+            }, {}, 'QuickActionModule');
         } else {
-            console.warn('Close modal button element not found');
+            console.warn('QuickActionModule: Close modal button element not found');
         }
         
         // Close modal when clicking outside
         if (this.uiManager.quickActionModal) {
-            this.uiManager.quickActionModal.addEventListener('click', (event) => {
+            SafetyUtils.addEventListenerSafely(this.uiManager.quickActionModal, 'click', (event) => {
                 if (event.target === this.uiManager.quickActionModal) {
-                    this.uiManager.quickActionModal.classList.add('hidden');
+                    SafetyUtils.elementClassSafely(this.uiManager.quickActionModal, 'add', 'hidden', 'QuickActionModule');
                 }
-            });
+            }, {}, 'QuickActionModule');
         } else {
-            console.warn('Quick action modal element not found');
+            console.warn('QuickActionModule: Quick action modal element not found');
         }
         
         // Quick record button
         if (this.uiManager.quickRecord) {
-            this.uiManager.quickRecord.addEventListener('click', () => {
+            SafetyUtils.addEventListenerSafely(this.uiManager.quickRecord, 'click', () => {
                 this.quickRecord();
-            });
+            }, {}, 'QuickActionModule');
         } else {
-            console.warn('Quick record button element not found');
+            console.warn('QuickActionModule: Quick record button element not found');
         }
         
         // Quick location button
         if (this.uiManager.quickLocation) {
-            this.uiManager.quickLocation.addEventListener('click', async () => {
+            SafetyUtils.addEventListenerSafely(this.uiManager.quickLocation, 'click', async () => {
                 await this.quickLocation();
-            });
+            }, {}, 'QuickActionModule');
         } else {
-            console.warn('Quick location button element not found');
+            console.warn('QuickActionModule: Quick location button element not found');
         }
         
         // Quick photo button
         if (this.uiManager.quickPhoto) {
-            this.uiManager.quickPhoto.addEventListener('click', () => {
+            SafetyUtils.addEventListenerSafely(this.uiManager.quickPhoto, 'click', () => {
                 this.quickPhoto();
-            });
+            }, {}, 'QuickActionModule');
         } else {
-            console.warn('Quick photo button element not found');
+            console.warn('QuickActionModule: Quick photo button element not found');
         }
         
         // Quick manual entry button
         if (this.uiManager.quickManual) {
-            this.uiManager.quickManual.addEventListener('click', () => {
+            SafetyUtils.addEventListenerSafely(this.uiManager.quickManual, 'click', () => {
                 this.quickManual();
-            });
+            }, {}, 'QuickActionModule');
         } else {
-            console.warn('Quick manual entry button element not found');
+            console.warn('QuickActionModule: Quick manual entry button element not found');
         }
         
-        console.log('Quick action events set up');
+        console.log('QuickActionModule: Events set up successfully');
     }
 
+    /**
+     * Handles quick recording functionality with safe DOM operations
+     */
     quickRecord() {
+        // Hide the quick action modal if it exists
         if (this.uiManager.quickActionModal) {
-            this.uiManager.quickActionModal.classList.add('hidden');
+            SafetyUtils.elementClassSafely(this.uiManager.quickActionModal, 'add', 'hidden', 'QuickActionModule');
         }
         
         // Safely show recording section
@@ -232,33 +121,39 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
         }
         
         // Auto-click the start recording button if available
-        const startRecordingBtn = document.getElementById('start-recording');
+        const startRecordingBtn = SafetyUtils.getElementByIdSafely('start-recording', 'QuickActionModule');
         if (startRecordingBtn) {
             startRecordingBtn.click();
         }
     }
 
+    /**
+     * Handles quick location functionality with safe DOM operations and geolocation
+     */
     async quickLocation() {
+        // Hide the quick action modal if it exists
         if (this.uiManager.quickActionModal) {
-            this.uiManager.quickActionModal.classList.add('hidden');
+            SafetyUtils.elementClassSafely(this.uiManager.quickActionModal, 'add', 'hidden', 'QuickActionModule');
         }
         
         // Get current location
-        this.safeShowLoading('Getting your location...');
+        SafetyUtils.showLoading('Getting your location...');
         
         try {
-            const position = await this.safeGetCurrentPosition();
+            const position = await SafetyUtils.getCurrentPosition();
             
             // Safely update location in uiManager
             if (this.uiManager) {
                 this.uiManager.currentLocation = {
                     latitude: position.coords.latitude,
-                    longitude: position.coords.longitude
+                    longitude: position.coords.longitude,
+                    accuracy: position.coords.accuracy,
+                    timestamp: new Date()
                 };
             }
             
-            this.safeHideLoading();
-            this.safeShowNotification('Location saved successfully');
+            SafetyUtils.hideLoading();
+            SafetyUtils.showNotification('Location saved successfully');
             
             // Safely show restaurant form section
             if (this.uiManager && typeof this.uiManager.showRestaurantFormSection === 'function') {
@@ -267,39 +162,32 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
                 console.warn('QuickActionModule: showRestaurantFormSection not available');
             }
             
-            // Update location display
-            const locationDisplay = document.getElementById('location-display');
+            // Update location display safely
+            const locationDisplay = SafetyUtils.getElementByIdSafely('location-display', 'QuickActionModule');
             if (locationDisplay && this.uiManager && this.uiManager.currentLocation) {
-                locationDisplay.innerHTML = `
+                const locationHTML = `
                     <p class="text-green-600">Location saved:</p>
                     <p>Latitude: ${this.uiManager.currentLocation.latitude.toFixed(6)}</p>
                     <p>Longitude: ${this.uiManager.currentLocation.longitude.toFixed(6)}</p>
+                    ${this.uiManager.currentLocation.accuracy ? 
+                      `<p>Accuracy: ±${Math.round(this.uiManager.currentLocation.accuracy)}m</p>` : ''}
                 `;
+                SafetyUtils.setInnerHTMLSafely(locationDisplay, locationHTML, true, 'QuickActionModule');
             }
         } catch (error) {
-            this.safeHideLoading();
+            SafetyUtils.hideLoading();
             console.error('Error getting location:', error);
-            this.safeShowNotification('Error getting location: ' + error.message, 'error');
+            SafetyUtils.showNotification('Error getting location: ' + error.message, 'error');
         }
     }
 
     /**
-     * Safely removes a DOM element if it exists in the document
-     * @param {HTMLElement} element - The element to remove
-     * @param {HTMLElement} parent - The parent element (defaults to document.body)
-     * @returns {boolean} - Whether the element was successfully removed
+     * Handles quick photo capture functionality with safe DOM operations
      */
-    safelyRemoveElement(element, parent = document.body) {
-        if (element && parent.contains(element)) {
-            parent.removeChild(element);
-            return true;
-        }
-        return false;
-    }
-
     quickPhoto() {
+        // Hide the quick action modal if it exists
         if (this.uiManager.quickActionModal) {
-            this.uiManager.quickActionModal.classList.add('hidden');
+            SafetyUtils.elementClassSafely(this.uiManager.quickActionModal, 'add', 'hidden', 'QuickActionModule');
         }
         
         // Safely show restaurant form section
@@ -309,14 +197,23 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
             console.warn('QuickActionModule: showRestaurantFormSection not available');
         }
         
-        // Show a small popup asking whether to use camera or gallery
-        const options = document.createElement('div');
-        options.className = 'fixed bg-white shadow-lg rounded-lg z-50 p-2';
-        options.style.top = '50%';
-        options.style.left = '50%';
-        options.style.transform = 'translate(-50%, -50%)';
+        // Create the options dialog
+        const options = SafetyUtils.createElementSafely('div', {
+            className: 'fixed bg-white shadow-lg rounded-lg z-50 p-2',
+            style: {
+                top: '50%',
+                left: '50%',
+                transform: 'translate(-50%, -50%)'
+            }
+        }, [], 'QuickActionModule');
         
-        options.innerHTML = `
+        if (!options) {
+            SafetyUtils.showNotification('Failed to create photo options dialog', 'error');
+            return;
+        }
+        
+        // Set the dialog content
+        SafetyUtils.setInnerHTMLSafely(options, `
             <div class="p-2 text-center font-medium">Choose option:</div>
             <div class="flex flex-col">
                 <button id="quick-camera-btn" class="py-2 px-4 flex items-center hover:bg-gray-100 rounded">
@@ -326,43 +223,61 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
                     <span class="material-icons mr-2">photo_library</span> Gallery
                 </button>
             </div>
-        `;
+        `, true, 'QuickActionModule');
         
         document.body.appendChild(options);
         
-        // Reference to the click event handler for proper removal
-        const outsideClickHandler = (e) => {
-            if (e.target !== options && !options.contains(e.target) && 
-                e.target !== this.uiManager.quickPhoto) {
-                if (this.safelyRemoveElement(options)) {
-                    // Remove the event listener once the element is removed
-                    document.removeEventListener('click', outsideClickHandler);
-                }
+        // Function to safely remove the options dialog
+        const removeOptionsDialog = () => {
+            if (options && document.body.contains(options)) {
+                document.body.removeChild(options);
             }
         };
         
-        // Add event listeners
-        document.getElementById('quick-camera-btn').addEventListener('click', () => {
-            document.getElementById('camera-input').click();
-            if (this.safelyRemoveElement(options)) {
+        // Outside click handler
+        const outsideClickHandler = (e) => {
+            if (e.target !== options && !options.contains(e.target) && 
+                e.target !== this.uiManager.quickPhoto) {
+                removeOptionsDialog();
                 document.removeEventListener('click', outsideClickHandler);
             }
-        });
+        };
         
-        document.getElementById('quick-gallery-btn').addEventListener('click', () => {
-            document.getElementById('gallery-input').click();
-            if (this.safelyRemoveElement(options)) {
+        // Add event listeners for camera button
+        const cameraBtnEl = SafetyUtils.getElementByIdSafely('quick-camera-btn', 'QuickActionModule');
+        const cameraInputEl = SafetyUtils.getElementByIdSafely('camera-input', 'QuickActionModule');
+        
+        if (cameraBtnEl && cameraInputEl) {
+            SafetyUtils.addEventListenerSafely(cameraBtnEl, 'click', () => {
+                cameraInputEl.click();
+                removeOptionsDialog();
                 document.removeEventListener('click', outsideClickHandler);
-            }
-        });
+            }, {}, 'QuickActionModule');
+        }
+        
+        // Add event listeners for gallery button
+        const galleryBtnEl = SafetyUtils.getElementByIdSafely('quick-gallery-btn', 'QuickActionModule');
+        const galleryInputEl = SafetyUtils.getElementByIdSafely('gallery-input', 'QuickActionModule');
+        
+        if (galleryBtnEl && galleryInputEl) {
+            SafetyUtils.addEventListenerSafely(galleryBtnEl, 'click', () => {
+                galleryInputEl.click();
+                removeOptionsDialog();
+                document.removeEventListener('click', outsideClickHandler);
+            }, {}, 'QuickActionModule');
+        }
         
         // Close when clicking outside
         document.addEventListener('click', outsideClickHandler);
     }
 
+    /**
+     * Handles quick manual entry functionality with safe DOM operations
+     */
     quickManual() {
+        // Hide the quick action modal if it exists
         if (this.uiManager.quickActionModal) {
-            this.uiManager.quickActionModal.classList.add('hidden');
+            SafetyUtils.elementClassSafely(this.uiManager.quickActionModal, 'add', 'hidden', 'QuickActionModule');
         }
         
         // Safely show restaurant form section

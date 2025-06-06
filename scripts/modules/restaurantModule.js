@@ -1,100 +1,22 @@
 /**
- * Manages restaurant data and operations
+ * Restaurant Module - Manages restaurant data and operations
+ * 
+ * Purpose: Handles all restaurant-related functionality including CRUD operations,
+ * restaurant form management, data validation, and restaurant discovery integration
+ * 
+ * Main Responsibilities:
+ * - Manage restaurant creation, editing, and deletion
+ * - Handle restaurant form validation and submission
+ * - Process restaurant images and media attachments
+ * - Integrate with external restaurant APIs and services
+ * - Manage restaurant search and filtering functionality
+ * - Handle restaurant location and mapping features
+ * 
+ * Dependencies: SafetyUtils, uiManager, dataStorage, geolocation services, image processing
  */
 class RestaurantModule {
     constructor(uiManager) {
         this.uiManager = uiManager;
-    }
-
-    /**
-     * Safety wrapper for showing loading - uses global uiUtils as primary fallback
-     * @param {string} message - Loading message
-     */
-    safeShowLoading(message) {
-        try {
-            // First try global utils (most reliable)
-            if (window.uiUtils && typeof window.uiUtils.showLoading === 'function') {
-                console.log('RestaurantModule: Using window.uiUtils.showLoading()');
-                window.uiUtils.showLoading(message);
-                return;
-            }
-            
-            // Then try with uiManager as fallback
-            if (this.uiManager && typeof this.uiManager.showLoading === 'function') {
-                console.log('RestaurantModule: Using this.uiManager.showLoading()');
-                this.uiManager.showLoading(message);
-                return;
-            }
-            
-            // Last resort fallback
-            console.log('RestaurantModule: Using alert as fallback for loading');
-            alert(message);
-        } catch (error) {
-            console.error('Error in safeShowLoading:', error);
-            // Last resort
-            alert(message);
-        }
-    }
-    
-    /**
-     * Safety wrapper for hiding loading - uses global uiUtils as primary fallback
-     */
-    safeHideLoading() {
-        try {
-            // First try global utils (most reliable)
-            if (window.uiUtils && typeof window.uiUtils.hideLoading === 'function') {
-                console.log('RestaurantModule: Using window.uiUtils.hideLoading()');
-                window.uiUtils.hideLoading();
-                return;
-            }
-            
-            // Then try with uiManager as fallback
-            if (this.uiManager && typeof this.uiManager.hideLoading === 'function') {
-                console.log('RestaurantModule: Using this.uiManager.hideLoading()');
-                this.uiManager.hideLoading();
-                return;
-            }
-            
-            // Last resort - just log since there's no visual to clear
-            console.log('RestaurantModule: Hiding loading indicator (fallback)');
-        } catch (error) {
-            console.error('Error in safeHideLoading:', error);
-        }
-    }
-    
-    /**
-     * Safety wrapper for showing notification - uses global uiUtils as primary fallback
-     * @param {string} message - Notification message
-     * @param {string} type - Notification type
-     */
-    safeShowNotification(message, type = 'success') {
-        try {
-            // First try global utils (most reliable)
-            if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
-                console.log('RestaurantModule: Using window.uiUtils.showNotification()');
-                window.uiUtils.showNotification(message, type);
-                return;
-            }
-            
-            // Then try with uiManager as fallback
-            if (this.uiManager && typeof this.uiManager.showNotification === 'function') {
-                console.log('RestaurantModule: Using this.uiManager.showNotification()');
-                this.uiManager.showNotification(message, type);
-                return;
-            }
-            
-            // Last resort fallback
-            console.log(`RestaurantModule: Notification (${type}):`, message);
-            if (type === 'error') {
-                alert(`Error: ${message}`);
-            } else {
-                alert(message);
-            }
-        } catch (error) {
-            console.error('Error in safeShowNotification:', error);
-            // Last resort
-            alert(message);
-        }
     }
     
     setupEvents() {
@@ -305,7 +227,7 @@ class RestaurantModule {
             }
         } catch (error) {
             console.error('Error loading restaurant list:', error);
-            this.safeShowNotification('Error loading restaurants', 'error');
+            SafetyUtils.showNotification('Error loading restaurants', 'error');
         }
     }
 
@@ -315,7 +237,7 @@ class RestaurantModule {
      */
     async syncRestaurant(restaurantId) {
         try {
-            this.safeShowLoading('Syncing restaurant to server...');
+            SafetyUtils.showLoading('Syncing restaurant to server...');
             
             // Get the restaurant details
             const restaurant = await dataStorage.getRestaurantDetails(restaurantId);
@@ -459,8 +381,8 @@ class RestaurantModule {
             // Update last sync time
             await dataStorage.updateLastSyncTime();
             
-            this.safeHideLoading();
-            this.safeShowNotification('Restaurant synced to server successfully');
+            SafetyUtils.hideLoading();
+            SafetyUtils.showNotification('Restaurant synced to server successfully');
             
             // Refresh restaurant list
             await this.loadRestaurantList(
@@ -468,9 +390,9 @@ class RestaurantModule {
                 await dataStorage.getSetting('filterByActiveCurator', true)
             );
         } catch (error) {
-            this.safeHideLoading();
+            SafetyUtils.hideLoading();
             console.error('Error syncing restaurant:', error);
-            this.safeShowNotification(`Error syncing restaurant: ${error.message}`, 'error');
+            SafetyUtils.showNotification(`Error syncing restaurant: ${error.message}`, 'error');
         }
     }
 
@@ -481,13 +403,13 @@ class RestaurantModule {
     async viewRestaurantDetails(restaurantId) {
         try {
             // Use our safe method instead of direct call
-            this.safeShowLoading('Loading restaurant details...');
+            SafetyUtils.showLoading('Loading restaurant details...');
             
             const restaurant = await dataStorage.getRestaurantDetails(restaurantId);
             
             if (!restaurant) {
-                this.safeHideLoading();
-                this.safeShowNotification('Restaurant not found', 'error');
+                SafetyUtils.hideLoading();
+                SafetyUtils.showNotification('Restaurant not found', 'error');
                 return;
             }
             
@@ -650,17 +572,17 @@ class RestaurantModule {
             modalContainer.querySelector('.delete-restaurant').addEventListener('click', async () => {
                 if (confirm(`Are you sure you want to delete "${restaurant.name}"?`)) {
                     try {
-                        this.safeShowLoading('Deleting restaurant...');
+                        SafetyUtils.showLoading('Deleting restaurant...');
                         await dataStorage.deleteRestaurant(restaurant.id);
-                        this.safeHideLoading();
-                        this.safeShowNotification('Restaurant deleted successfully');
+                        SafetyUtils.hideLoading();
+                        SafetyUtils.showNotification('Restaurant deleted successfully');
                         document.body.removeChild(modalContainer);
                         document.body.style.overflow = '';
                         this.loadRestaurantList(this.uiManager.currentCurator.id);
                     } catch (error) {
-                        this.safeHideLoading();
+                        SafetyUtils.hideLoading();
                         console.error('Error deleting restaurant:', error);
-                        this.safeShowNotification('Error deleting restaurant', 'error');
+                        SafetyUtils.showNotification('Error deleting restaurant', 'error');
                     }
                 }
             });
@@ -674,12 +596,12 @@ class RestaurantModule {
             });
             
             // Use our safe method instead of direct call
-            this.safeHideLoading();
+            SafetyUtils.hideLoading();
         } catch (error) {
             // Use our safe methods instead of direct calls
-            this.safeHideLoading();
+            SafetyUtils.hideLoading();
             console.error('Error viewing restaurant details:', error);
-            this.safeShowNotification('Error loading restaurant details', 'error');
+            SafetyUtils.showNotification('Error loading restaurant details', 'error');
         }
     }
     
@@ -786,7 +708,7 @@ class RestaurantModule {
     async loadRestaurantForEdit(restaurantId) {
         try {
             console.log(`Loading restaurant ${restaurantId} for editing`);
-            this.safeShowLoading('Loading restaurant details...');
+            SafetyUtils.showLoading('Loading restaurant details...');
             
             const restaurant = await db.restaurants.get(restaurantId);
             if (!restaurant) {
@@ -859,12 +781,12 @@ class RestaurantModule {
                 }
             }, 300);  // Short delay to ensure the form is fully rendered
             
-            this.safeHideLoading();
+            SafetyUtils.hideLoading();
             this.uiManager.showConceptsSection();
         } catch (error) {
-            this.safeHideLoading();
+            SafetyUtils.hideLoading();
             console.error('Error loading restaurant for edit:', error);
-            this.safeShowNotification(`Error loading restaurant: ${error.message}`, 'error');
+            SafetyUtils.showNotification(`Error loading restaurant: ${error.message}`, 'error');
         }
     }
 
@@ -873,7 +795,7 @@ class RestaurantModule {
      */
     async saveRestaurant() {
         try {
-            this.safeShowLoading('Saving restaurant...');
+            SafetyUtils.showLoading('Saving restaurant...');
             
             // Get transcription from textarea
             const transcription = document.getElementById('restaurant-transcription').value.trim();
@@ -888,17 +810,17 @@ class RestaurantModule {
             
             // ...existing code...
             
-            this.safeHideLoading();
-            this.safeShowNotification('Restaurant saved successfully');
+            SafetyUtils.hideLoading();
+            SafetyUtils.showNotification('Restaurant saved successfully');
             
             // Clear transcription data after successful save
             this.uiManager.clearTranscriptionData();
             
             // ...existing code...
         } catch (error) {
-            this.safeHideLoading();
+            SafetyUtils.hideLoading();
             console.error('Error saving restaurant:', error);
-            this.safeShowNotification(`Error saving restaurant: ${error.message}`, 'error');
+            SafetyUtils.showNotification(`Error saving restaurant: ${error.message}`, 'error');
         }
     }
 }

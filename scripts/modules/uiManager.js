@@ -48,33 +48,14 @@ class UIManager {
         console.log('Initializing UI Manager...');
         
         try {
-            // First initialize the recording module with proper reference
-            this.recordingModule = new RecordingModule(this);
+            // Initialize modules in correct order
+            this.initializeModules();
             
-            // Make recording module available globally for debugging and access from other modules
-            window.recordingModule = this.recordingModule;
-            
-            // Ensure the recording interface exists before continuing
-            if (this.recordingModule && typeof this.recordingModule.ensureRecordingInterfaceExists === 'function') {
-                this.recordingModule.ensureRecordingInterfaceExists();
-            }
-            
-            // Initialize other modules
-            this.transcriptionModule = new TranscriptionModule(this);
-            this.restaurantModule = new RestaurantModule(this);
-            this.conceptModule = new ConceptModule(this);
-            this.curatorModule = new CuratorModule(this);
-            
-            // Set up cache for DOM elements
+            // Cache DOM elements after modules are ready
             this.cacheDOM();
             
             // Set up event handlers now that DOM is ready
             this.setupEvents();
-            
-            // Set up events in modules after ensuring DOM is ready
-            this.recordingModule.setupEvents();
-            this.conceptModule.setupEvents();
-            this.curatorModule.setupEvents();
             
             console.log('UI Manager initialization complete');
         } catch (error) {
@@ -88,20 +69,58 @@ class UIManager {
      * This fixes issues with module references and ensures recording module is properly accessible
      */
     initializeModules() {
-        // Initialize all needed modules
+        console.log('Initializing UI Manager modules...');
+        
+        // Initialize modules in dependency order
+        this.uiUtilsModule = new UIUtilsModule(this);
+        this.curatorModule = new CuratorModule(this);
         this.recordingModule = new RecordingModule(this);
         this.transcriptionModule = new TranscriptionModule(this);
-        this.restaurantModule = new RestaurantModule(this);
         this.conceptModule = new ConceptModule(this);
-        this.curatorModule = new CuratorModule(this);
+        this.restaurantModule = new RestaurantModule(this);
+        this.exportImportModule = new ExportImportModule(this);
+        this.quickActionModule = new QuickActionModule(this);
         
-        // Make recordingModule globally accessible as a fallback
+        // Make critical modules globally accessible for debugging and inter-module communication
         window.recordingModule = this.recordingModule;
+        window.uiUtils = this.uiUtilsModule;
         
-        console.log('UI Manager modules initialized');
+        // Ensure the recording interface exists before continuing
+        if (this.recordingModule && typeof this.recordingModule.ensureRecordingInterfaceExists === 'function') {
+            this.recordingModule.ensureRecordingInterfaceExists();
+        }
         
+        // Set up events in modules after initialization
+        if (this.recordingModule && typeof this.recordingModule.setupEvents === 'function') {
+            this.recordingModule.setupEvents();
+        }
+        if (this.conceptModule && typeof this.conceptModule.setupEvents === 'function') {
+            this.conceptModule.setupEvents();
+        }
+        if (this.curatorModule && typeof this.curatorModule.setupEvents === 'function') {
+            this.curatorModule.setupEvents();
+        }
+        
+        console.log('UI Manager modules initialized successfully');
+    }
+
+    /**
+     * Cache DOM elements for better performance
+     */
+    cacheDOM() {
+        // Additional DOM caching if needed
+        this.restaurantFormSection = document.getElementById('concepts-section');
+        this.restaurantNameInput = document.getElementById('restaurant-name');
+        this.restaurantTranscriptionTextarea = document.getElementById('restaurant-transcription');
+        this.restaurantDescriptionTextarea = document.getElementById('restaurant-description');
+    }
+
+    /**
+     * Set up event handlers
+     */
+    setupEvents() {
         // Setup initial events
-        this.setupEvents();
+        console.log('Setting up UI Manager events');
     }
 
     /**
@@ -113,7 +132,9 @@ class UIManager {
         this.hideAllSections();
         
         // Show restaurant form section
-        this.restaurantFormSection.classList.remove('hidden');
+        if (this.restaurantFormSection) {
+            this.restaurantFormSection.classList.remove('hidden');
+        }
         
         // Clear restaurant form
         this.clearRestaurantForm();
@@ -127,13 +148,15 @@ class UIManager {
             console.log(`Showing restaurant form in edit mode for: ${restaurant.name} (ID: ${restaurant.id})`);
             
             // Populate restaurant form with data
-            this.restaurantNameInput.value = restaurant.name || '';
+            if (this.restaurantNameInput) {
+                this.restaurantNameInput.value = restaurant.name || '';
+            }
             
-            if (restaurant.transcription) {
+            if (restaurant.transcription && this.restaurantTranscriptionTextarea) {
                 this.restaurantTranscriptionTextarea.value = restaurant.transcription;
             }
             
-            if (restaurant.description) {
+            if (restaurant.description && this.restaurantDescriptionTextarea) {
                 this.restaurantDescriptionTextarea.value = restaurant.description;
             }
             
@@ -145,6 +168,65 @@ class UIManager {
             // Show location if available
             if (this.currentLocation) {
                 const locationDisplay = document.getElementById('location-display');
+                if (locationDisplay) {
+                    locationDisplay.textContent = `📍 ${this.currentLocation.latitude}, ${this.currentLocation.longitude}`;
+                }
+            }
+            
+            // Set up the additional review button after a short delay to ensure the DOM is ready
+            setTimeout(() => {
+                if (this.conceptModule && typeof this.conceptModule.setupAdditionalReviewButton === 'function') {
+                    console.log('Setting up additional review button from showRestaurantForm');
+                    this.conceptModule.setupAdditionalReviewButton();
+                }
+            }, 200);  // Short delay to ensure the form is fully rendered
+        } else {
+            // Clear edit mode flags for new restaurant
+            this.isEditingRestaurant = false;
+            this.editingRestaurantId = null;
+            this.currentConcepts = [];
+            this.currentLocation = null;
+            this.currentPhotos = [];
+        }
+        
+        // Show concepts section if we have concepts
+        if (this.currentConcepts && this.currentConcepts.length > 0 && this.conceptsSection) {
+            this.conceptsSection.classList.remove('hidden');
+        }
+    }
+
+    /**
+     * Clear the restaurant form
+     */
+    clearRestaurantForm() {
+        if (this.restaurantNameInput) this.restaurantNameInput.value = '';
+        if (this.restaurantTranscriptionTextarea) this.restaurantTranscriptionTextarea.value = '';
+        if (this.restaurantDescriptionTextarea) this.restaurantDescriptionTextarea.value = '';
+        
+        // Clear other form elements
+        this.currentConcepts = [];
+        this.currentLocation = null;
+        this.currentPhotos = [];
+    }
+
+    /**
+     * Hide all sections
+     */
+    hideAllSections() {
+        const sections = [
+            this.recordingSection,
+            this.transcriptionSection,
+            this.conceptsSection,
+            this.restaurantListSection,
+            this.exportImportSection
+        ];
+        
+        sections.forEach(section => {
+            if (section) {
+                section.classList.add('hidden');
+            }
+        });
+    }
                 if (locationDisplay) {
                     locationDisplay.innerHTML = `
                         <p class="text-green-600">Location saved:</p>

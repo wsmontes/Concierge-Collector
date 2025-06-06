@@ -1,102 +1,22 @@
 /**
- * Manages curator functionality
- * Dependencies: uiManager, dataStorage, syncService
+ * Curator Module - Manages curator functionality and authentication
+ * 
+ * Purpose: Handles curator profile management, authentication, preferences, and curator-specific
+ * operations for the restaurant review application
+ * 
+ * Main Responsibilities:
+ * - Manage curator profile creation and editing
+ * - Handle curator selection and authentication
+ * - Store and retrieve curator preferences and settings
+ * - Manage curator-specific data and permissions
+ * - Integration with restaurant review workflows
+ * 
+ * Dependencies: SafetyUtils, uiManager, dataStorage, syncService
  */
 class CuratorModule {
     constructor(uiManager) {
         this.uiManager = uiManager;
         this.curatorSelectorInitialized = false;
-    }
-    
-    /**
-     * Safety wrapper for showing loading - uses global uiUtils as primary fallback
-     * @param {string} message - Loading message
-     */
-    safeShowLoading(message) {
-        try {
-            // First try global utils (most reliable)
-            if (window.uiUtils && typeof window.uiUtils.showLoading === 'function') {
-                console.log('CuratorModule: Using window.uiUtils.showLoading()');
-                window.uiUtils.showLoading(message);
-                return;
-            }
-            
-            // Then try with uiManager as fallback
-            if (this.uiManager && typeof this.uiManager.showLoading === 'function') {
-                console.log('CuratorModule: Using this.uiManager.showLoading()');
-                this.uiManager.showLoading(message);
-                return;
-            }
-            
-            // Last resort fallback
-            console.log('CuratorModule: Using alert as fallback for loading');
-            alert(message);
-        } catch (error) {
-            console.error('Error in safeShowLoading:', error);
-            // Last resort
-            alert(message);
-        }
-    }
-    
-    /**
-     * Safety wrapper for hiding loading - uses global uiUtils as primary fallback
-     */
-    safeHideLoading() {
-        try {
-            // First try global utils (most reliable)
-            if (window.uiUtils && typeof window.uiUtils.hideLoading === 'function') {
-                console.log('CuratorModule: Using window.uiUtils.hideLoading()');
-                window.uiUtils.hideLoading();
-                return;
-            }
-            
-            // Then try with uiManager as fallback
-            if (this.uiManager && typeof this.uiManager.hideLoading === 'function') {
-                console.log('CuratorModule: Using this.uiManager.hideLoading()');
-                this.uiManager.hideLoading();
-                return;
-            }
-            
-            // Last resort - just log since there's no visual to clear
-            console.log('CuratorModule: Hiding loading indicator (fallback)');
-        } catch (error) {
-            console.error('Error in safeHideLoading:', error);
-        }
-    }
-    
-    /**
-     * Safety wrapper for showing notification - uses global uiUtils as primary fallback
-     * @param {string} message - Notification message
-     * @param {string} type - Notification type
-     */
-    safeShowNotification(message, type = 'success') {
-        try {
-            // First try global utils (most reliable)
-            if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
-                console.log('CuratorModule: Using window.uiUtils.showNotification()');
-                window.uiUtils.showNotification(message, type);
-                return;
-            }
-            
-            // Then try with uiManager as fallback
-            if (this.uiManager && typeof this.uiManager.showNotification === 'function') {
-                console.log('CuratorModule: Using this.uiManager.showNotification()');
-                this.uiManager.showNotification(message, type);
-                return;
-            }
-            
-            // Last resort fallback
-            console.log(`CuratorModule: Notification (${type}):`, message);
-            if (type === 'error') {
-                alert(`Error: ${message}`);
-            } else {
-                alert(message);
-            }
-        } catch (error) {
-            console.error('Error in safeShowNotification:', error);
-            // Last resort
-            alert(message);
-        }
     }
     
     setupEvents() {
@@ -108,7 +28,7 @@ class CuratorModule {
             saveButton.addEventListener('click', () => {
                 this.saveCurator().catch(error => {
                     console.error('Error saving curator:', error);
-                    this.safeShowNotification(`Error saving curator: ${error.message}`, 'error');
+                    SafetyUtils.showNotification(`Error saving curator: ${error.message}`, 'error');
                 });
             });
         }
@@ -148,7 +68,7 @@ class CuratorModule {
                     }
                 } catch (error) {
                     console.error('Error handling curator selector change:', error);
-                    this.safeShowNotification(`Error: ${error.message}`, 'error');
+                    SafetyUtils.showNotification(`Error: ${error.message}`, 'error');
                 }
             });
         }
@@ -161,7 +81,7 @@ class CuratorModule {
                     await this.fetchCurators();
                 } catch (error) {
                     console.error('Error fetching curators:', error);
-                    this.safeShowNotification(`Error fetching curators: ${error.message}`, 'error');
+                    SafetyUtils.showNotification(`Error fetching curators: ${error.message}`, 'error');
                 }
             });
         }
@@ -174,7 +94,7 @@ class CuratorModule {
                     await this.toggleCuratorFilter(e.target.checked);
                 } catch (error) {
                     console.error('Error toggling curator filter:', error);
-                    this.safeShowNotification(`Error updating filter: ${error.message}`, 'error');
+                    SafetyUtils.showNotification(`Error updating filter: ${error.message}`, 'error');
                 }
             });
             
@@ -242,7 +162,7 @@ class CuratorModule {
             console.log('Curator selector initialization complete');
         } catch (error) {
             console.error('Error initializing curator selector:', error);
-            this.safeShowNotification('Error loading curators', 'error');
+            SafetyUtils.showNotification('Error loading curators', 'error');
         }
     }
     
@@ -275,17 +195,17 @@ class CuratorModule {
         console.log(`Name entered: ${name ? 'Yes' : 'No'}, API key entered: ${apiKey ? 'Yes' : 'No'}`);
         
         if (!name) {
-            this.safeShowNotification('Please enter your name', 'error');
+            SafetyUtils.showNotification('Please enter your name', 'error');
             return;
         }
         
         if (!apiKey) {
-            this.safeShowNotification('Please enter your OpenAI API key', 'error');
+            SafetyUtils.showNotification('Please enter your OpenAI API key', 'error');
             return;
         }
         
         try {
-            this.safeShowLoading('Saving curator information...');
+            SafetyUtils.showLoading('Saving curator information...');
             
             // Check if dataStorage is available
             if (!dataStorage) {
@@ -324,8 +244,8 @@ class CuratorModule {
             // Refresh curator selector
             await this.initializeCuratorSelector();
             
-            this.safeHideLoading();
-            this.safeShowNotification('Curator information saved');
+            SafetyUtils.hideLoading();
+            SafetyUtils.showNotification('Curator information saved');
             
             // Load restaurants with filtering
             const filterEnabled = await dataStorage.getSetting('filterByActiveCurator', true);
@@ -334,9 +254,9 @@ class CuratorModule {
             // Show recording section
             this.uiManager.showRecordingSection();
         } catch (error) {
-            this.safeHideLoading();
+            SafetyUtils.hideLoading();
             console.error('Error saving curator:', error);
-            this.safeShowNotification(`Error saving curator: ${error.message}`, 'error');
+            SafetyUtils.showNotification(`Error saving curator: ${error.message}`, 'error');
         }
     }
     
@@ -428,7 +348,7 @@ class CuratorModule {
      */
     async fetchCurators() {
         try {
-            this.safeShowLoading('Fetching curators from server...');
+            SafetyUtils.showLoading('Fetching curators from server...');
             
             try {
                 // First, clean up any existing duplicate curators
@@ -457,17 +377,17 @@ class CuratorModule {
             this.curatorSelectorInitialized = false;
             await this.initializeCuratorSelector();
             
-            this.safeHideLoading();
-            this.safeShowNotification('Curators fetched and deduplicated successfully');
+            SafetyUtils.hideLoading();
+            SafetyUtils.showNotification('Curators fetched and deduplicated successfully');
             
             // Also update the last sync display
             if (window.AutoSync && typeof window.AutoSync.updateLastSyncDisplay === 'function') {
                 window.AutoSync.updateLastSyncDisplay();
             }
         } catch (error) {
-            this.safeHideLoading();
+            SafetyUtils.hideLoading();
             console.error('Error fetching curators:', error);
-            this.safeShowNotification(`Error fetching curators: ${error.message}`, 'error');
+            SafetyUtils.showNotification(`Error fetching curators: ${error.message}`, 'error');
         }
     }
     
@@ -477,7 +397,7 @@ class CuratorModule {
      */
     async selectCurator(curatorId) {
         try {
-            this.safeShowLoading('Loading curator...');
+            SafetyUtils.showLoading('Loading curator...');
             
             // Get curator from database
             const curator = await dataStorage.db.curators.get(curatorId);
@@ -496,12 +416,12 @@ class CuratorModule {
             const filterEnabled = await dataStorage.getSetting('filterByActiveCurator', true);
             await this.safeLoadRestaurantList(curatorId, filterEnabled);
             
-            this.safeHideLoading();
-            this.safeShowNotification(`Selected curator: ${curator.name}`);
+            SafetyUtils.hideLoading();
+            SafetyUtils.showNotification(`Selected curator: ${curator.name}`);
         } catch (error) {
-            this.safeHideLoading();
+            SafetyUtils.hideLoading();
             console.error('Error selecting curator:', error);
-            this.safeShowNotification(`Error selecting curator: ${error.message}`, 'error');
+            SafetyUtils.showNotification(`Error selecting curator: ${error.message}`, 'error');
         }
     }
     
@@ -550,12 +470,12 @@ class CuratorModule {
                 console.warn('Cannot apply filter: No current curator set');
             }
             
-            this.safeShowNotification(
+            SafetyUtils.showNotification(
                 enabled ? 'Showing only your restaurants' : 'Showing all restaurants'
             );
         } catch (error) {
             console.error('Error toggling curator filter:', error);
-            this.safeShowNotification('Error updating filter', 'error');
+            SafetyUtils.showNotification('Error updating filter', 'error');
         }
     }
 
@@ -585,7 +505,7 @@ class CuratorModule {
             return false;
         } catch (error) {
             console.error('Error loading curator info:', error);
-            this.safeShowNotification('Error loading curator information', 'error');
+            SafetyUtils.showNotification('Error loading curator information', 'error');
             return false;
         }
     }

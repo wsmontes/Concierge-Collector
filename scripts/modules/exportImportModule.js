@@ -16,7 +16,7 @@ class ExportImportModule {
             exportBtn.addEventListener('click', () => {
                 this.exportData().catch(error => {
                     console.error('Error in exportData:', error);
-                    this.safeShowNotification(`Export error: ${error.message}`, 'error');
+                    SafetyUtils.showNotification(`Export error: ${error.message}`, 'error');
                 });
             });
         }
@@ -29,7 +29,7 @@ class ExportImportModule {
             importBtn.addEventListener('click', () => {
                 this.importData(importFile).catch(error => {
                     console.error('Error in importData:', error);
-                    this.safeShowNotification(`Import error: ${error.message}`, 'error');
+                    SafetyUtils.showNotification(`Import error: ${error.message}`, 'error');
                 });
             });
         }
@@ -41,7 +41,7 @@ class ExportImportModule {
             importConciergeBtn.addEventListener('click', () => {
                 this.importConciergeData(importConciergeFile).catch(error => {
                     console.error('Error in importConciergeData:', error);
-                    this.safeShowNotification(`Concierge import error: ${error.message}`, 'error');
+                    SafetyUtils.showNotification(`Concierge import error: ${error.message}`, 'error');
                 });
             });
         }
@@ -56,7 +56,7 @@ class ExportImportModule {
                 console.log('Import remote button clicked');
                 
                 // Always safely show loading with fallback
-                self.safeShowLoading('Importing data from remote server...');
+                SafetyUtils.showLoading('Importing data from remote server...');
                 
                 // Execute the import method directly on self (this module instance)
                 self.importFromRemote()
@@ -65,11 +65,11 @@ class ExportImportModule {
                     })
                     .catch(error => {
                         console.error('Error in importFromRemote:', error);
-                        self.safeShowNotification(`Import error: ${error.message}`, 'error');
+                        SafetyUtils.showNotification(`Import error: ${error.message}`, 'error');
                     })
                     .finally(() => {
                         // Always hide loading when done
-                        self.safeHideLoading();
+                        SafetyUtils.hideLoading();
                     });
             });
         }
@@ -83,7 +83,7 @@ class ExportImportModule {
                 console.log('Export remote button clicked');
                 
                 // Always safely show loading with fallback
-                self.safeShowLoading('Exporting data to remote server...');
+                SafetyUtils.showLoading('Exporting data to remote server...');
                 
                 // Execute the export method directly on self (this module instance)
                 self.exportToRemote()
@@ -92,11 +92,11 @@ class ExportImportModule {
                     })
                     .catch(error => {
                         console.error('Error in exportToRemote:', error);
-                        self.safeShowNotification(`Export error: ${error.message}`, 'error');
+                        SafetyUtils.showNotification(`Export error: ${error.message}`, 'error');
                     })
                     .finally(() => {
                         // Always hide loading when done
-                        self.safeHideLoading();
+                        SafetyUtils.hideLoading();
                     });
             });
         }
@@ -108,95 +108,7 @@ class ExportImportModule {
      * Safety wrapper for showing loading - uses global uiUtils as primary fallback
      * @param {string} message - Loading message
      */
-    safeShowLoading(message) {
-        try {
-            // First try global utils (most reliable)
-            if (window.uiUtils && typeof window.uiUtils.showLoading === 'function') {
-                console.log('Using window.uiUtils.showLoading()');
-                window.uiUtils.showLoading(message);
-                return;
-            }
-            
-            // Then try with uiManager as fallback
-            if (this.uiManager && typeof this.uiManager.showLoading === 'function') {
-                console.log('Using this.uiManager.showLoading()');
-                this.uiManager.showLoading(message);
-                return;
-            }
-            
-            // Last resort fallback
-            console.log('Using standalone loading');
-            this.showStandaloneLoading(message);
-        } catch (error) {
-            console.error('Error in safeShowLoading:', error);
-            // Last resort
-            this.showStandaloneLoading(message);
-        }
-    }
-    
-    /**
-     * Safety wrapper for hiding loading - uses global uiUtils as primary fallback
-     */
-    safeHideLoading() {
-        try {
-            // First try global utils (most reliable)
-            if (window.uiUtils && typeof window.uiUtils.hideLoading === 'function') {
-                console.log('Using window.uiUtils.hideLoading()');
-                window.uiUtils.hideLoading();
-                return;
-            }
-            
-            // Then try with uiManager as fallback
-            if (this.uiManager && typeof this.uiManager.hideLoading === 'function') {
-                console.log('Using this.uiManager.hideLoading()');
-                this.uiManager.hideLoading();
-                return;
-            }
-            
-            // Last resort fallback
-            console.log('Using standalone hide loading');
-            this.hideStandaloneLoading();
-        } catch (error) {
-            console.error('Error in safeHideLoading:', error);
-            // Last resort
-            this.hideStandaloneLoading();
-        }
-    }
-    
-    /**
-     * Safety wrapper for showing notification - uses global uiUtils as primary fallback
-     * @param {string} message - Notification message
-     * @param {string} type - Notification type
-     */
-    safeShowNotification(message, type = 'success') {
-        try {
-            // First try global utils (most reliable)
-            if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
-                console.log('Using window.uiUtils.showNotification()');
-                window.uiUtils.showNotification(message, type);
-                return;
-            }
-            
-            // Then try with uiManager as fallback
-            if (this.uiManager && typeof this.uiManager.showNotification === 'function') {
-                console.log('Using this.uiManager.showNotification()');
-                this.uiManager.showNotification(message, type);
-                return;
-            }
-            
-            // Last resort fallback
-            console.log(`Notification (${type}):`, message);
-            if (type === 'error') {
-                alert(`Error: ${message}`);
-            } else {
-                alert(message);
-            }
-        } catch (error) {
-            console.error('Error in safeShowNotification:', error);
-            // Last resort
-            alert(message);
-        }
-    }
+    // These safety wrapper methods were removed and replaced with calls to the centralized SafetyUtils module
     
     /**
      * Shows standalone loading overlay as fallback when uiManager is unavailable
@@ -249,7 +161,7 @@ class ExportImportModule {
     async exportData() {
         console.log('Export data button clicked');
         try {
-            this.safeShowLoading('Exporting data...');
+            SafetyUtils.showLoading('Exporting data...');
             
             // Get all data from storage
             const exportResult = await dataStorage.exportData();
@@ -317,12 +229,12 @@ class ExportImportModule {
                 document.body.removeChild(downloadLink);
             }
             
-            this.safeHideLoading();
-            this.safeShowNotification('Data exported successfully');
+            SafetyUtils.hideLoading();
+            SafetyUtils.showNotification('Data exported successfully');
         } catch (error) {
-            this.safeHideLoading();
+            SafetyUtils.hideLoading();
             console.error('Error exporting data:', error);
-            this.safeShowNotification(`Error exporting data: ${error.message}`, 'error');
+            SafetyUtils.showNotification(`Error exporting data: ${error.message}`, 'error');
         }
     }
     
@@ -331,12 +243,12 @@ class ExportImportModule {
         const file = importFile.files[0];
         
         if (!file) {
-            this.safeShowNotification('Please select a file to import', 'error');
+            SafetyUtils.showNotification('Please select a file to import', 'error');
             return;
         }
         
         try {
-            this.safeShowLoading('Importing data...');
+            SafetyUtils.showLoading('Importing data...');
             
             // Determine if it's a ZIP or JSON file
             if (file.name.toLowerCase().endsWith('.zip')) {
@@ -383,12 +295,12 @@ class ExportImportModule {
             // Reload curator info
             await this.uiManager.curatorModule.loadCuratorInfo();
             
-            this.safeHideLoading();
-            this.safeShowNotification('Data imported successfully');
+            SafetyUtils.hideLoading();
+            SafetyUtils.showNotification('Data imported successfully');
         } catch (error) {
-            this.safeHideLoading();
+            SafetyUtils.hideLoading();
             console.error('Error importing data:', error);
-            this.safeShowNotification(`Error importing data: ${error.message}`, 'error');
+            SafetyUtils.showNotification(`Error importing data: ${error.message}`, 'error');
         }
     }
 
@@ -400,12 +312,12 @@ class ExportImportModule {
         const file = importFile.files[0];
         
         if (!file) {
-            this.safeShowNotification('Please select a file to import', 'error');
+            SafetyUtils.showNotification('Please select a file to import', 'error');
             return;
         }
         
         try {
-            this.safeShowLoading('Importing Concierge data...');
+            SafetyUtils.showLoading('Importing Concierge data...');
             
             // Read the file content
             const fileContents = await new Promise((resolve, reject) => {
@@ -427,12 +339,12 @@ class ExportImportModule {
             // Reload curator info
             await this.uiManager.curatorModule.loadCuratorInfo();
             
-            this.safeHideLoading();
-            this.safeShowNotification('Concierge data imported successfully');
+            SafetyUtils.hideLoading();
+            SafetyUtils.showNotification('Concierge data imported successfully');
         } catch (error) {
-            this.safeHideLoading();
+            SafetyUtils.hideLoading();
             console.error('Error importing Concierge data:', error);
-            this.safeShowNotification('Error importing Concierge data: ' + error.message, 'error');
+            SafetyUtils.showNotification('Error importing Concierge data: ' + error.message, 'error');
         }
     }
     
@@ -547,7 +459,7 @@ class ExportImportModule {
         
         try {
             // Use our safe method for consistent behavior
-            this.safeShowLoading('Importing data from remote server...');
+            SafetyUtils.showLoading('Importing data from remote server...');
             
             console.log('Remote import: Sending GET request to https://wsmontes.pythonanywhere.com/api/restaurants');
             
@@ -594,7 +506,7 @@ class ExportImportModule {
             if (!Array.isArray(responseData) || responseData.length === 0) {
                 console.warn('Remote import: No data or invalid format received');
                 
-                this.safeShowNotification('No data received from remote server or invalid format.', 'error');
+                SafetyUtils.showNotification('No data received from remote server or invalid format.', 'error');
                 return;
             }
             
@@ -618,14 +530,14 @@ class ExportImportModule {
             console.log('Remote import: Reloading curator information...');
             await this.safeReloadCuratorInfo();
             
-            this.safeShowNotification('Remote data imported successfully');
+            SafetyUtils.showNotification('Remote data imported successfully');
             
             // Show alert as fallback notification
             alert(`Successfully imported ${responseData.length} restaurants from remote server.`);
             
         } catch (error) {
             console.error('Error importing remote data:', error);
-            this.safeShowNotification('Error importing remote data: ' + error.message, 'error');
+            SafetyUtils.showNotification('Error importing remote data: ' + error.message, 'error');
             throw error; // Re-throw to be caught by the caller
         }
         // Note: We don't hide loading here because that's handled in the finally block of the caller
@@ -661,7 +573,7 @@ class ExportImportModule {
         const totalStartTime = performance.now();
         
         try {
-            this.safeShowLoading('Exporting data to remote server...');
+            SafetyUtils.showLoading('Exporting data to remote server...');
             loadingShown = true;
             
             // Check internet connectivity first
@@ -740,7 +652,7 @@ class ExportImportModule {
                 // No changes to export
                 const resultMessage = 'No changes to export. All data already in sync.';
                 console.log(`Remote export: ${resultMessage}`);
-                this.safeShowNotification(resultMessage, 'success');
+                SafetyUtils.showNotification(resultMessage, 'success');
                 return;
             }
             
@@ -807,15 +719,15 @@ class ExportImportModule {
             const totalTime = ((totalEndTime - totalStartTime) / 1000).toFixed(1);
             const resultMessage = `Export complete in ${totalTime}s. ${successCount} restaurants successfully exported${failedCount > 0 ? `, ${failedCount} failed` : ''}.`;
             console.log(`Remote export: ${resultMessage}`);
-            this.safeShowNotification(resultMessage, failedCount > 0 ? 'warning' : 'success');
+            SafetyUtils.showNotification(resultMessage, failedCount > 0 ? 'warning' : 'success');
             
         } catch (error) {
             console.error('Error exporting data to remote server:', error);
-            this.safeShowNotification('Error exporting to remote server: ' + error.message, 'error');
+            SafetyUtils.showNotification('Error exporting to remote server: ' + error.message, 'error');
         } finally {
             // Always hide loading indicator
             if (loadingShown) {
-                this.safeHideLoading();
+                SafetyUtils.hideLoading();
                 console.log('Remote export: Hiding loading indicator');
             }
         }

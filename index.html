@@ -26,9 +26,10 @@
     <!-- Material Icons -->
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
     <!-- Custom CSS -->
-    <link href="style/style.css" rel="stylesheet">
+    <link href="styles/style.css" rel="stylesheet">
     <link rel="stylesheet" href="styles/michelin-section.css">
     <link rel="stylesheet" href="styles/mobile-enhancements.css">
+    <link rel="stylesheet" href="styles/places-section.css">
     
     <!-- Add stylesheets for sync badges and curator selection -->
     <style>
@@ -248,13 +249,6 @@
                 <span class="material-icons">category</span>
                 Restaurant Concepts
             </h2>
-            
-            <!-- Restaurant Details moved to top -->
-            <div class="mb-8 pb-6 border-b border-gray-100">
-                <h3 class="text-lg font-semibold mb-4 flex items-center">
-                    <span class="material-icons mr-2 text-blue-500">restaurant</span>
-                    Restaurant Details
-                </h3>
                 <div class="mb-6">
                     <label class="block mb-2 font-medium">
                         Restaurant Name: <span class="text-red-500">*</span>
@@ -367,37 +361,13 @@
         <section id="places-search-section" class="mt-6 p-4 bg-white rounded-lg shadow-md">
             <h2 class="text-lg font-semibold mb-4 flex items-center">
                 <span class="material-icons text-blue-600 mr-2">place</span>
-                Search Google Places
+                Google Places
             </h2>
-            
-            <div class="mb-4">
-                <div id="places-api-key-section" class="mb-4">
-                    <label for="places-api-key" class="block text-sm font-medium text-gray-700 mb-1">Google Places API Key:</label>
-                    <div class="flex">
-                        <input type="text" id="places-api-key" class="border rounded p-2 flex-grow" placeholder="Enter your Google Places API key">
-                        <button id="save-places-api-key" class="ml-2 bg-blue-500 text-white px-4 py-2 rounded">Save</button>
-                    </div>
-                    <p class="text-xs text-gray-500 mt-1">Required to use the Places API. Your API key is stored locally.</p>
-                </div>
-                
-                <div id="places-search-container" class="hidden">
-                    <div id="places-autocomplete-container" class="mb-4">
-                        <!-- The Places Autocomplete widget will be inserted here -->
-                    </div>
-                    
-                    <div id="places-selected-result" class="hidden border-t pt-4 mt-4">
-                        <h3 class="font-medium text-gray-700 mb-2">Selected Place</h3>
-                        <div id="places-selected-details" class="bg-gray-50 p-3 rounded text-sm"></div>
-                        
-                        <div class="mt-4 flex justify-end">
-                            <button id="import-place-button" class="bg-green-600 text-white px-4 py-2 rounded flex items-center">
-                                <span class="material-icons mr-1">add_circle</span>
-                                Import Restaurant
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
+            <p class="text-gray-600 mb-4">Search and import restaurants from Google Places.</p>
+            <button id="open-places-search" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 flex items-center">
+                <span class="material-icons mr-1">search</span>
+                Search Google Places
+            </button>
         </section>
 
         <!-- Restaurant List Section -->
@@ -518,44 +488,6 @@
         </div>
     </div>
 
-    <!-- Add this modal template to the bottom of your body element -->
-    <div id="sync-settings-modal" class="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center hidden">
-        <div class="bg-white rounded-lg p-6 max-w-md w-full">
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="text-xl font-bold">Sync Settings</h2>
-                <button id="close-sync-settings" class="text-gray-500 hover:text-gray-700">
-                    <span class="material-icons">close</span>
-                </button>
-            </div>
-            
-            <div class="mb-4">
-                <label class="block text-gray-700 mb-2">Auto-sync interval (minutes)</label>
-                <input type="number" id="sync-interval" min="5" step="5" value="30" class="border rounded w-full p-2">
-                <p class="text-xs text-gray-500 mt-1">Minimum: 5 minutes</p>
-            </div>
-            
-            <div class="mb-4">
-                <label class="flex items-center">
-                    <input type="checkbox" id="sync-on-startup" class="mr-2">
-                    <span>Sync on application startup</span>
-                </label>
-            </div>
-            
-            <div class="mb-4 border-t pt-3">
-                <h3 class="font-medium mb-2">Sync History</h3>
-                <div id="sync-history" class="text-sm text-gray-600 max-h-32 overflow-y-auto">
-                    <p class="text-gray-400 italic">No sync history available</p>
-                </div>
-            </div>
-            
-            <div class="flex justify-end">
-                <button id="save-sync-settings" class="bg-blue-500 hover:bg-blue-600 text-white px-4 py-2 rounded">
-                    Save Settings
-                </button>
-            </div>
-        </div>
-    </div>
-
     <!-- Add the sync settings modal elements -->
     <div id="sync-settings-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
         <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
@@ -623,27 +555,21 @@
     <script src="scripts/uiManager.js"></script>
     
     <!-- Module implementations - these should NOT duplicate core components -->
+    <script src="scripts/modules/safetyUtils.js"></script>
     <script src="scripts/modules/uiUtilsModule.js"></script>
     <script src="scripts/modules/curatorModule.js"></script>
     <script src="scripts/modules/recordingModule.js"></script>
     <script src="scripts/modules/transcriptionModule.js"></script>
     <script src="scripts/modules/conceptModule.js"></script>
     <script src="scripts/modules/restaurantModule.js"></script>
+    <script src="scripts/modules/restaurantListModule.js"></script>
     <script src="scripts/modules/exportImportModule.js"></script>
     <script src="scripts/modules/quickActionModule.js"></script>
     <script src="scripts/modules/michelinStagingModule.js"></script>
-    <script src="scripts/modules/placesSearchModule.js"></script>
-    <script src="scripts/modules/placesInlineSearchModule.js"></script>
+    <script src="scripts/modules/placesModule.js"></script>
     <script src="scripts/modules/audioUtils.js"></script>
 
     <!-- Core application scripts -->
-    <script src="scripts/apiHandler.js"></script>
-    <script src="scripts/dataStorage.js"></script>
-    <script src="scripts/conceptMatcher.js"></script>
-    <script src="scripts/audioRecorder.js"></script>
-    <script src="scripts/uiManager.js"></script>
-
-    <!-- Main application script loaded last -->
     <script src="scripts/main.js"></script>
     <script src="scripts/syncSettingsManager.js"></script>
     <script src="scripts/autoSync.js"></script>
