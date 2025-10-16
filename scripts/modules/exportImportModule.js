@@ -158,23 +158,212 @@ class ExportImportModule {
         }
     }
     
+    /**
+     * Prompts user to select export format
+     * @returns {Promise<string|null>} - 'standard', 'concierge', or null if cancelled
+     */
+    async promptExportFormat() {
+        return new Promise((resolve) => {
+            // Create modal
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+            modal.innerHTML = `
+                <div class="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
+                    <h3 class="text-xl font-semibold mb-4 flex items-center">
+                        <span class="material-icons mr-2">file_download</span>
+                        Select Export Format
+                    </h3>
+                    <p class="text-gray-600 mb-6">Choose the format for your data export:</p>
+                    
+                    <div class="space-y-3 mb-6">
+                        <button id="export-format-concierge" class="w-full p-4 border-2 border-purple-500 rounded-lg hover:bg-purple-50 text-left transition-colors">
+                            <div class="flex items-start">
+                                <span class="material-icons text-purple-500 mr-3">restaurant_menu</span>
+                                <div>
+                                    <div class="font-semibold text-gray-900">Concierge Format</div>
+                                    <div class="text-sm text-gray-600 mt-1">
+                                        Simplified format with restaurant names as keys.<br>
+                                        Compatible with Concierge systems.
+                                    </div>
+                                </div>
+                            </div>
+                        </button>
+                        
+                        <button id="export-format-standard" class="w-full p-4 border-2 border-blue-500 rounded-lg hover:bg-blue-50 text-left transition-colors">
+                            <div class="flex items-start">
+                                <span class="material-icons text-blue-500 mr-3">storage</span>
+                                <div>
+                                    <div class="font-semibold text-gray-900">Standard Format (Full Backup)</div>
+                                    <div class="text-sm text-gray-600 mt-1">
+                                        Complete database export with all data and photos.<br>
+                                        Use for backup and restore.
+                                    </div>
+                                </div>
+                            </div>
+                        </button>
+                    </div>
+                    
+                    <div class="flex justify-end space-x-3">
+                        <button id="export-format-cancel" class="px-4 py-2 text-gray-600 hover:text-gray-800 rounded transition-colors">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+            
+            // Add event listeners
+            document.getElementById('export-format-concierge').addEventListener('click', () => {
+                document.body.removeChild(modal);
+                resolve('concierge');
+            });
+            
+            document.getElementById('export-format-standard').addEventListener('click', () => {
+                document.body.removeChild(modal);
+                resolve('standard');
+            });
+            
+            document.getElementById('export-format-cancel').addEventListener('click', () => {
+                document.body.removeChild(modal);
+                resolve(null);
+            });
+            
+            // Close on background click
+            modal.addEventListener('click', (e) => {
+                if (e.target === modal) {
+                    document.body.removeChild(modal);
+                    resolve(null);
+                }
+            });
+        });
+    }
+    
+    /**
+     * Converts standard export format to Concierge format
+     * @param {Object} standardData - Data from dataStorage.exportData()
+     * @returns {Object} - Data in Concierge format (object with restaurant names as keys)
+     */
+    convertToConciergeFormat(standardData) {
+        console.log('Converting standard format to Concierge format...');
+        
+        const conciergeData = {};
+        
+        // Create lookup maps
+        const conceptsById = new Map();
+        standardData.concepts.forEach(concept => {
+            conceptsById.set(concept.id, concept);
+        });
+        
+        // Group concepts by restaurant
+        const conceptsByRestaurant = new Map();
+        standardData.restaurantConcepts.forEach(rc => {
+            if (!conceptsByRestaurant.has(rc.restaurantId)) {
+                conceptsByRestaurant.set(rc.restaurantId, []);
+            }
+            const concept = conceptsById.get(rc.conceptId);
+            if (concept) {
+                conceptsByRestaurant.get(rc.restaurantId).push(concept);
+            }
+        });
+        
+        // Process each restaurant
+        standardData.restaurants.forEach(restaurant => {
+            const restaurantConcepts = conceptsByRestaurant.get(restaurant.id) || [];
+            
+            // Group concepts by category
+            const categorizedConcepts = {
+                cuisine: [],
+                menu: [],
+                food_style: [],
+                drinks: [],
+                setting: [],
+                mood: [],
+                crowd: [],
+                suitable_for: [],
+                special_features: [],
+                covid_specials: [],
+                price_and_payment: [],
+                price_range: []
+            };
+            
+            // Map standard categories to Concierge format
+            const categoryMap = {
+                'Cuisine': 'cuisine',
+                'Menu': 'menu',
+                'Food Style': 'food_style',
+                'Drinks': 'drinks',
+                'Setting': 'setting',
+                'Mood': 'mood',
+                'Crowd': 'crowd',
+                'Suitable For': 'suitable_for',
+                'Special Features': 'special_features',
+                'Covid Specials': 'covid_specials',
+                'Price and Payment': 'price_and_payment',
+                'Price Range': 'price_range'
+            };
+            
+            // Categorize concepts
+            restaurantConcepts.forEach(concept => {
+                const conciergeCategory = categoryMap[concept.category];
+                if (conciergeCategory && categorizedConcepts[conciergeCategory]) {
+                    // Convert to lowercase to match Concierge format convention
+                    const normalizedValue = concept.value.toLowerCase();
+                    categorizedConcepts[conciergeCategory].push(normalizedValue);
+                }
+            });
+            
+            // Only include categories that have values
+            const restaurantData = {};
+            Object.keys(categorizedConcepts).forEach(category => {
+                if (categorizedConcepts[category].length > 0) {
+                    restaurantData[category] = categorizedConcepts[category];
+                }
+            });
+            
+            // Use restaurant name as key
+            conciergeData[restaurant.name] = restaurantData;
+        });
+        
+        console.log(`Converted ${standardData.restaurants.length} restaurants to Concierge format`);
+        return conciergeData;
+    }
+    
     async exportData() {
         console.log('Export data button clicked');
         try {
+            // Ask user which format they want
+            const format = await this.promptExportFormat();
+            if (!format) {
+                console.log('Export cancelled by user');
+                return;
+            }
+            
             SafetyUtils.showLoading('Exporting data...');
             
             // Get all data from storage
             const exportResult = await dataStorage.exportData();
             console.log("🔥 Export raw localData:", JSON.stringify(exportResult.jsonData, null, 2));
-            // Check if there are any photos to include
-            const hasPhotos = exportResult.photos && exportResult.photos.length > 0;
+            
+            let exportData = exportResult.jsonData;
+            let fileName = `restaurant-curator-export-${new Date().toISOString().slice(0, 10)}`;
+            
+            // Convert to Concierge format if requested
+            if (format === 'concierge') {
+                console.log('Converting to Concierge format...');
+                exportData = this.convertToConciergeFormat(exportResult.jsonData);
+                fileName = `restaurants-${new Date().toISOString().slice(0, 10)}`;
+            }
+            
+            // Check if there are any photos to include (only for standard format)
+            const hasPhotos = format === 'standard' && exportResult.photos && exportResult.photos.length > 0;
             
             if (hasPhotos) {
                 // Create a ZIP file with JSZip
                 const zip = new JSZip();
                 
                 // Add the JSON data
-                zip.file("data.json", JSON.stringify(exportResult.jsonData, null, 2));
+                zip.file("data.json", JSON.stringify(exportData, null, 2));
                 
                 // Add each photo to the ZIP
                 for (const photo of exportResult.photos) {
@@ -207,7 +396,7 @@ class ExportImportModule {
                 // Create download link
                 const downloadLink = document.createElement('a');
                 downloadLink.href = URL.createObjectURL(zipBlob);
-                downloadLink.download = `restaurant-curator-export-${new Date().toISOString().slice(0, 10)}.zip`;
+                downloadLink.download = `${fileName}.zip`;
                 
                 // Trigger download
                 document.body.appendChild(downloadLink);
@@ -215,13 +404,13 @@ class ExportImportModule {
                 document.body.removeChild(downloadLink);
             } else {
                 // No photos, just export JSON
-                const dataStr = JSON.stringify(exportResult.jsonData, null, 2);
+                const dataStr = JSON.stringify(exportData, null, 2);
                 const dataBlob = new Blob([dataStr], { type: 'application/json' });
                 
                 // Create download link
                 const downloadLink = document.createElement('a');
                 downloadLink.href = URL.createObjectURL(dataBlob);
-                downloadLink.download = `restaurant-curator-export-${new Date().toISOString().slice(0, 10)}.json`;
+                downloadLink.download = `${fileName}.json`;
                 
                 // Trigger download
                 document.body.appendChild(downloadLink);
@@ -277,7 +466,7 @@ class ExportImportModule {
                 // Import data with photos
                 await dataStorage.importData({jsonData: importData}, photoFiles);
             } else {
-                // Handle JSON import (legacy format)
+                // Handle JSON import
                 const fileContents = await new Promise((resolve, reject) => {
                     const reader = new FileReader();
                     reader.onload = e => resolve(e.target.result);
@@ -288,15 +477,32 @@ class ExportImportModule {
                 // Parse JSON
                 const importData = JSON.parse(fileContents);
                 
-                // Import into database
-                await dataStorage.importData(importData);
+                // Detect if this is Concierge format or standard export format
+                const isConciergeFormat = this.detectConciergeFormat(importData);
+                
+                if (isConciergeFormat) {
+                    console.log('Detected Concierge format data, using Concierge import handler');
+                    SafetyUtils.hideLoading();
+                    SafetyUtils.showLoading('Importing Concierge data...');
+                    
+                    // Convert Concierge format to our internal format
+                    const convertedData = this.convertConciergeFormat(importData);
+                    
+                    // Import into database
+                    await dataStorage.importData(convertedData);
+                    
+                    SafetyUtils.hideLoading();
+                    SafetyUtils.showNotification('Concierge data imported successfully');
+                } else {
+                    // Standard export format
+                    await dataStorage.importData(importData);
+                    SafetyUtils.hideLoading();
+                    SafetyUtils.showNotification('Data imported successfully');
+                }
             }
             
             // Reload curator info
             await this.uiManager.curatorModule.loadCuratorInfo();
-            
-            SafetyUtils.hideLoading();
-            SafetyUtils.showNotification('Data imported successfully');
         } catch (error) {
             SafetyUtils.hideLoading();
             console.error('Error importing data:', error);
@@ -304,6 +510,57 @@ class ExportImportModule {
         }
     }
 
+    /**
+     * Detects if JSON data is in Concierge format
+     * @param {Object|Array} data - The parsed JSON data
+     * @returns {boolean} - True if Concierge format, false otherwise
+     */
+    detectConciergeFormat(data) {
+        // Standard export format has specific top-level properties
+        const hasStandardFormat = data.hasOwnProperty('curators') && 
+                                   data.hasOwnProperty('concepts') && 
+                                   data.hasOwnProperty('restaurants');
+        
+        if (hasStandardFormat) {
+            return false; // This is standard export format
+        }
+        
+        // Concierge format detection
+        // Array format: [{name: "...", cuisine: [...], menu: [...], ...}]
+        if (Array.isArray(data)) {
+            // Check if array elements have Concierge-style properties
+            if (data.length > 0) {
+                const first = data[0];
+                const hasConciergeProps = first.hasOwnProperty('cuisine') || 
+                                          first.hasOwnProperty('menu') || 
+                                          first.hasOwnProperty('food_style') ||
+                                          first.hasOwnProperty('drinks');
+                return hasConciergeProps;
+            }
+            return false;
+        }
+        
+        // Object format: {"restaurant name": {cuisine: [...], menu: [...], ...}}
+        if (typeof data === 'object' && data !== null) {
+            const keys = Object.keys(data);
+            if (keys.length > 0) {
+                const firstKey = keys[0];
+                const firstValue = data[firstKey];
+                
+                // Check if the value has Concierge-style array properties
+                if (typeof firstValue === 'object' && firstValue !== null) {
+                    const hasConciergeProps = firstValue.hasOwnProperty('cuisine') || 
+                                              firstValue.hasOwnProperty('menu') || 
+                                              firstValue.hasOwnProperty('food_style') ||
+                                              firstValue.hasOwnProperty('drinks');
+                    return hasConciergeProps;
+                }
+            }
+        }
+        
+        return false;
+    }
+    
     /**
      * Imports restaurant data from Concierge JSON format
      */
@@ -350,6 +607,7 @@ class ExportImportModule {
     
     /**
      * Converts Concierge format to our internal format
+     * Supports both array format [{name: "...", ...}] and object format {"restaurant name": {...}}
      */
     convertConciergeFormat(conciergeData) {
         // Get current curator ID
@@ -369,8 +627,25 @@ class ExportImportModule {
         const conceptMap = new Map();
         let conceptIdCounter = -1; // Negative IDs for temporary concepts
         
+        // Normalize the data format: convert object format to array format
+        let restaurantsArray = [];
+        if (Array.isArray(conciergeData)) {
+            // Already in array format
+            restaurantsArray = conciergeData;
+        } else if (typeof conciergeData === 'object' && conciergeData !== null) {
+            // Object format: convert to array, using keys as restaurant names
+            restaurantsArray = Object.keys(conciergeData).map(restaurantName => ({
+                name: restaurantName,
+                ...conciergeData[restaurantName]
+            }));
+        } else {
+            throw new Error('Invalid Concierge data format: expected array or object');
+        }
+        
+        console.log(`Processing ${restaurantsArray.length} restaurants from Concierge format`);
+        
         // Process each restaurant
-        conciergeData.forEach((restaurant, index) => {
+        restaurantsArray.forEach((restaurant, index) => {
             // Create restaurant record
             const restaurantId = -(index + 1); // Negative IDs for temporary restaurants
             importData.restaurants.push({
@@ -429,6 +704,8 @@ class ExportImportModule {
             if (restaurant.food_style) processCategory('Food Style', restaurant.food_style);
             if (restaurant.drinks) processCategory('Drinks', restaurant.drinks);
             if (restaurant.special_features) processCategory('Special Features', restaurant.special_features);
+            if (restaurant.covid_specials) processCategory('Covid Specials', restaurant.covid_specials);
+            if (restaurant.price_and_payment) processCategory('Price and Payment', restaurant.price_and_payment);
             
             // If there's a review, add it as a special concept
             if (restaurant.review && restaurant.review.trim()) {
@@ -446,6 +723,8 @@ class ExportImportModule {
                 });
             }
         });
+        
+        console.log(`Conversion complete. Created ${importData.restaurants.length} restaurants, ${importData.concepts.length} unique concepts, ${importData.restaurantConcepts.length} relationships`);
         
         return importData;
     }
