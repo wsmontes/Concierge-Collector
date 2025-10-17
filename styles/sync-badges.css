@@ -2,6 +2,35 @@
  * Styles for sync status badges and enhanced curator UI
  */
 
+/* Sync button animation - all sync buttons */
+#sync-with-server,
+#sync-with-server-compact,
+#sync-with-server-selector {
+    position: relative;
+    overflow: hidden;
+}
+
+#sync-with-server:active .material-icons,
+#sync-with-server-compact:active .material-icons,
+#sync-with-server-selector:active .material-icons {
+    animation: spin 1s linear infinite;
+}
+
+#sync-with-server.syncing .material-icons,
+#sync-with-server-compact.syncing .material-icons,
+#sync-with-server-selector.syncing .material-icons {
+    animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+    from {
+        transform: rotate(0deg);
+    }
+    to {
+        transform: rotate(360deg);
+    }
+}
+
 /* Data origin badges */
 .data-badge {
     display: inline-flex;
@@ -89,4 +118,65 @@
     height: 1rem;
     margin-right: 0.5rem;
     accent-color: #2563EB;
+}
+
+/* Compact curator section styles */
+#curator-section {
+    transition: all 0.2s ease;
+}
+
+#curator-section.editing {
+    padding: 1rem;
+}
+
+/* Compact display mode */
+#curator-compact-display {
+    display: flex;
+}
+
+/* Hover states for compact buttons */
+#curator-compact-display button,
+#curator-edit-form button,
+#curator-selector-compact button {
+    transition: all 0.15s ease;
+}
+
+/* Mobile optimizations */
+@media (max-width: 639px) {
+    #curator-compact-display {
+        padding: 0.25rem 0;
+    }
+    
+    #curator-compact-display > div {
+        width: 100%;
+    }
+}
+
+/* Smooth slide-down animation for form sections */
+#curator-edit-form:not(.hidden),
+#curator-selector-compact:not(.hidden) {
+    animation: slideDown 0.2s ease;
+}
+
+@keyframes slideDown {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
+/* API key visibility toggle button */
+#toggle-api-visibility {
+    cursor: pointer;
+    user-select: none;
+}
+
+#toggle-api-visibility:focus {
+    outline: 2px solid #3B82F6;
+    outline-offset: 2px;
+    border-radius: 0.25rem;
 }

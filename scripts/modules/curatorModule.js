@@ -22,6 +22,23 @@ class CuratorModule {
     setupEvents() {
         console.log('Setting up curator events...');
         
+        // Setup old button events (for backward compatibility)
+        this.setupLegacyEvents();
+        
+        // Setup new compact button events
+        this.setupCompactEvents();
+        
+        // Setup API visibility toggle
+        this.setupAPIVisibilityToggle();
+        
+        console.log('Curator events set up');
+    }
+    
+    /**
+     * Setup legacy button events (old curator section)
+     * Kept for backward compatibility during transition
+     */
+    setupLegacyEvents() {
         // Save curator button
         const saveButton = document.getElementById('save-curator');
         if (saveButton) {
@@ -48,8 +65,159 @@ class CuratorModule {
                 this.editCurator();
             });
         }
+    }
+    
+    /**
+     * Setup compact button events (new curator section)
+     */
+    setupCompactEvents() {
+        // Save curator button (compact)
+        const saveCompactButton = document.getElementById('save-curator-compact');
+        if (saveCompactButton) {
+            saveCompactButton.addEventListener('click', () => {
+                this.saveCuratorCompact().catch(error => {
+                    console.error('Error saving curator:', error);
+                    SafetyUtils.showNotification(`Error saving curator: ${error.message}`, 'error');
+                });
+            });
+        }
         
-        // Curator selector change event
+        // Cancel curator button (compact)
+        const cancelCompactButton = document.getElementById('cancel-curator-compact');
+        if (cancelCompactButton) {
+            cancelCompactButton.addEventListener('click', () => {
+                this.cancelCuratorCompact();
+            });
+        }
+        
+        // Edit curator button (compact)
+        const editCompactButton = document.getElementById('edit-curator-compact');
+        if (editCompactButton) {
+            editCompactButton.addEventListener('click', () => {
+                this.editCuratorCompact();
+            });
+        }
+        
+        // Switch curator button (compact)
+        const switchCompactButton = document.getElementById('switch-curator-compact');
+        if (switchCompactButton) {
+            switchCompactButton.addEventListener('click', () => {
+                this.switchCuratorCompact();
+            });
+        }
+        
+        // Filter toggle (compact)
+        const filterCompactToggle = document.getElementById('filter-by-curator-compact');
+        if (filterCompactToggle) {
+            filterCompactToggle.addEventListener('change', async (e) => {
+                try {
+                    await this.toggleCuratorFilter(e.target.checked);
+                } catch (error) {
+                    console.error('Error toggling curator filter:', error);
+                    SafetyUtils.showNotification(`Error updating filter: ${error.message}`, 'error');
+                }
+            });
+            
+            // Initialize toggle from settings
+            this.initializeFilterToggle(filterCompactToggle);
+        }
+        
+        // Sync with server button (selector section)
+        const syncSelectorButton = document.getElementById('sync-with-server-selector');
+        if (syncSelectorButton) {
+            syncSelectorButton.addEventListener('click', () => {
+                console.log('Selector sync button clicked');
+                
+                // Disable button and add syncing class
+                syncSelectorButton.disabled = true;
+                syncSelectorButton.classList.add('syncing', 'opacity-75', 'cursor-not-allowed');
+                
+                // Call the sync method from exportImportModule through uiManager
+                if (this.uiManager.exportImportModule && typeof this.uiManager.exportImportModule.syncWithServer === 'function') {
+                    this.uiManager.exportImportModule.syncWithServer()
+                        .then(() => {
+                            console.log('Sync completed successfully');
+                        })
+                        .catch(error => {
+                            console.error('Error in syncWithServer:', error);
+                            SafetyUtils.showNotification(`Sync error: ${error.message}`, 'error');
+                        })
+                        .finally(() => {
+                            // Re-enable button
+                            syncSelectorButton.disabled = false;
+                            syncSelectorButton.classList.remove('syncing', 'opacity-75', 'cursor-not-allowed');
+                        });
+                } else {
+                    console.error('exportImportModule.syncWithServer not available');
+                    SafetyUtils.showNotification('Sync functionality not available', 'error');
+                    syncSelectorButton.disabled = false;
+                    syncSelectorButton.classList.remove('syncing', 'opacity-75', 'cursor-not-allowed');
+                }
+            });
+        }
+        
+        // Curator selector dropdown (compact)
+        const curatorSelectorDropdown = document.getElementById('curator-selector-dropdown');
+        if (curatorSelectorDropdown) {
+            curatorSelectorDropdown.addEventListener('change', async (e) => {
+                const selectedValue = e.target.value;
+                
+                try {
+                    if (selectedValue === 'new') {
+                        // Show curator form for creating new curator
+                        this.showCuratorFormCompact();
+                    } else if (selectedValue === 'fetch') {
+                        // Fetch curators from server
+                        await this.fetchCurators();
+                    } else {
+                        // Select existing curator
+                        await this.selectCurator(parseInt(selectedValue, 10));
+                    }
+                } catch (error) {
+                    console.error('Error handling curator selector change:', error);
+                    SafetyUtils.showNotification(`Error: ${error.message}`, 'error');
+                }
+            });
+        }
+        
+        // Filter checkbox (compact selector)
+        const filterCheckboxCompact = document.getElementById('filter-checkbox-compact');
+        if (filterCheckboxCompact) {
+            filterCheckboxCompact.addEventListener('change', async (e) => {
+                try {
+                    await this.toggleCuratorFilter(e.target.checked);
+                } catch (error) {
+                    console.error('Error toggling curator filter:', error);
+                    SafetyUtils.showNotification(`Error updating filter: ${error.message}`, 'error');
+                }
+            });
+            
+            // Initialize toggle from settings
+            this.initializeFilterToggle(filterCheckboxCompact);
+        }
+    }
+    
+    /**
+     * Setup API key visibility toggle
+     */
+    setupAPIVisibilityToggle() {
+        const toggleBtn = document.getElementById('toggle-api-visibility');
+        const input = document.getElementById('api-key-compact-input');
+        
+        if (toggleBtn && input) {
+            toggleBtn.addEventListener('click', () => {
+                const icon = toggleBtn.querySelector('.material-icons');
+                if (input.type === 'password') {
+                    input.type = 'text';
+                    if (icon) icon.textContent = 'visibility_off';
+                } else {
+                    input.type = 'password';
+                    if (icon) icon.textContent = 'visibility';
+                }
+            });
+        }
+        
+        // Also setup old curator selector events (legacy)
         const curatorSelector = document.getElementById('curator-selector');
         if (curatorSelector) {
             curatorSelector.addEventListener('change', async (e) => {
@@ -57,13 +225,10 @@ class CuratorModule {
                 
                 try {
                     if (selectedValue === 'new') {
-                        // Show curator form for creating new curator
                         this.showCuratorForm();
                     } else if (selectedValue === 'fetch') {
-                        // Fetch curators from server
                         await this.fetchCurators();
                     } else {
-                        // Select existing curator
                         await this.selectCurator(parseInt(selectedValue, 10));
                     }
                 } catch (error) {
@@ -102,10 +267,9 @@ class CuratorModule {
             this.initializeFilterToggle();
         }
         
-        // Initialize curator selector
+        // Initialize curator selectors (both old and new)
         this.initializeCuratorSelector();
-        
-        console.log('Curator events set up');
+        this.populateCuratorSelectorCompact();
     }
     
     /**
@@ -409,8 +573,8 @@ class CuratorModule {
             await dataStorage.setCurrentCurator(curatorId);
             this.uiManager.currentCurator = curator;
             
-            // Update UI
-            this.displayCuratorInfo();
+            // Update UI (compact mode)
+            this.displayCuratorInfoCompact();
             
             // Load restaurants with filtering
             const filterEnabled = await dataStorage.getSetting('filterByActiveCurator', true);
@@ -489,8 +653,8 @@ class CuratorModule {
             if (curator) {
                 this.uiManager.currentCurator = curator;
                 
-                // Display curator info
-                this.displayCuratorInfo();
+                // Display curator info (compact UI only)
+                this.displayCuratorInfoCompact();
                 
                 // Show recording section since we have a curator
                 this.uiManager.showRecordingSection();
@@ -507,6 +671,304 @@ class CuratorModule {
             console.error('Error loading curator info:', error);
             SafetyUtils.showNotification('Error loading curator information', 'error');
             return false;
+        }
+    }
+    
+    /**
+     * Display curator information in compact mode
+     */
+    displayCuratorInfoCompact() {
+        const compactDisplay = document.getElementById('curator-compact-display');
+        const editForm = document.getElementById('curator-edit-form');
+        const selectorSection = document.getElementById('curator-selector-compact');
+        const curatorNameCompact = document.getElementById('curator-name-compact');
+        
+        // Debug: Check if elements exist
+        if (!compactDisplay || !editForm || !selectorSection) {
+            console.error('Compact curator elements missing:', {
+                compactDisplay: !!compactDisplay,
+                editForm: !!editForm,
+                selectorSection: !!selectorSection
+            });
+            return;
+        }
+        
+        console.log('displayCuratorInfoCompact called:', {
+            hasCurator: !!this.uiManager.currentCurator,
+            curatorName: this.uiManager.currentCurator?.name
+        });
+        
+        if (this.uiManager.currentCurator) {
+            // Show compact display
+            console.log('Showing compact display for curator:', this.uiManager.currentCurator.name);
+            compactDisplay.classList.remove('hidden');
+            compactDisplay.classList.add('flex');
+            
+            // Hide other sections
+            editForm.classList.add('hidden');
+            selectorSection.classList.add('hidden');
+            
+            // Update curator name display
+            if (curatorNameCompact) {
+                curatorNameCompact.textContent = this.uiManager.currentCurator.name;
+            }
+            
+            // Update filter checkbox state
+            const filterCheckbox = document.getElementById('filter-by-curator-compact');
+            if (filterCheckbox) {
+                dataStorage.getSetting('filterByActiveCurator', true).then(enabled => {
+                    filterCheckbox.checked = enabled;
+                });
+            }
+        } else {
+            // Show selector for new curator
+            console.log('No curator, showing selector');
+            compactDisplay.classList.add('hidden');
+            compactDisplay.classList.remove('flex');
+            editForm.classList.add('hidden');
+            selectorSection.classList.remove('hidden');
+        }
+    }
+    
+    /**
+     * Edit curator (compact mode)
+     */
+    editCuratorCompact() {
+        const compactDisplay = document.getElementById('curator-compact-display');
+        const editForm = document.getElementById('curator-edit-form');
+        const section = document.getElementById('curator-section');
+        const curatorNameInput = document.getElementById('curator-name-compact-input');
+        const apiKeyInput = document.getElementById('api-key-compact-input');
+        
+        if (!editForm || !compactDisplay) return;
+        
+        // Populate fields
+        if (this.uiManager.currentCurator && curatorNameInput) {
+            curatorNameInput.value = this.uiManager.currentCurator.name || '';
+        }
+        
+        // Get API key from localStorage
+        const apiKey = localStorage.getItem('openai_api_key') || '';
+        if (apiKeyInput) {
+            apiKeyInput.value = apiKey;
+        }
+        
+        // Update state
+        this.uiManager.isEditingCurator = true;
+        
+        // Toggle sections
+        compactDisplay.classList.add('hidden');
+        editForm.classList.remove('hidden');
+        if (section) {
+            section.classList.add('editing');
+        }
+    }
+    
+    /**
+     * Save curator (compact mode)
+     */
+    async saveCuratorCompact() {
+        const curatorNameInput = document.getElementById('curator-name-compact-input');
+        const apiKeyInput = document.getElementById('api-key-compact-input');
+        
+        const name = curatorNameInput?.value?.trim();
+        const apiKey = apiKeyInput?.value?.trim();
+        
+        if (!name) {
+            SafetyUtils.showNotification('Please enter your name', 'error');
+            return;
+        }
+        
+        if (!apiKey) {
+            SafetyUtils.showNotification('Please enter your OpenAI API key', 'error');
+            return;
+        }
+        
+        try {
+            SafetyUtils.showLoading('Saving curator information...');
+            
+            // Check if dataStorage is available
+            if (!dataStorage) {
+                throw new Error('Data storage service is not available');
+            }
+            
+            // Check if editing existing curator
+            let curatorId;
+            if (this.uiManager.isEditingCurator && this.uiManager.currentCurator) {
+                // Update existing curator
+                await dataStorage.db.curators.update(this.uiManager.currentCurator.id, {
+                    name: name,
+                    lastActive: new Date()
+                });
+                curatorId = this.uiManager.currentCurator.id;
+            } else {
+                // Save new curator as local
+                curatorId = await dataStorage.saveCurator(name, apiKey, 'local');
+            }
+            
+            // Set API key in apiHandler
+            if (window.apiHandler) {
+                window.apiHandler.setApiKey(apiKey);
+            }
+            
+            // Set as current curator
+            await dataStorage.setCurrentCurator(curatorId);
+            
+            // Update UI manager state
+            this.uiManager.currentCurator = await dataStorage.db.curators.get(curatorId);
+            
+            // Update UI (both old and new)
+            this.displayCuratorInfo();
+            this.displayCuratorInfoCompact();
+            
+            // Refresh curator selector
+            await this.initializeCuratorSelector();
+            await this.populateCuratorSelectorCompact();
+            
+            SafetyUtils.hideLoading();
+            SafetyUtils.showNotification('Curator information saved');
+            
+            // Load restaurants with filtering
+            const filterEnabled = await dataStorage.getSetting('filterByActiveCurator', true);
+            await this.safeLoadRestaurantList(curatorId, filterEnabled);
+            
+            // Show recording section
+            this.uiManager.showRecordingSection();
+        } catch (error) {
+            SafetyUtils.hideLoading();
+            console.error('Error saving curator:', error);
+            SafetyUtils.showNotification(`Error saving curator: ${error.message}`, 'error');
+        }
+    }
+    
+    /**
+     * Cancel curator editing (compact mode)
+     */
+    cancelCuratorCompact() {
+        const compactDisplay = document.getElementById('curator-compact-display');
+        const editForm = document.getElementById('curator-edit-form');
+        const selectorSection = document.getElementById('curator-selector-compact');
+        const section = document.getElementById('curator-section');
+        
+        if (this.uiManager.currentCurator) {
+            // If we have curator data, show compact display
+            compactDisplay?.classList.remove('hidden');
+            compactDisplay?.classList.add('flex');
+            editForm?.classList.add('hidden');
+            selectorSection?.classList.add('hidden');
+        } else {
+            // Otherwise show selector
+            compactDisplay?.classList.add('hidden');
+            editForm?.classList.add('hidden');
+            selectorSection?.classList.remove('hidden');
+            
+            // Reset form values
+            const curatorNameInput = document.getElementById('curator-name-compact-input');
+            const apiKeyInput = document.getElementById('api-key-compact-input');
+            if (curatorNameInput) curatorNameInput.value = '';
+            if (apiKeyInput) apiKeyInput.value = '';
+        }
+        
+        // Remove editing class
+        if (section) {
+            section.classList.remove('editing');
+        }
+        
+        // Reset state
+        this.uiManager.isEditingCurator = false;
+    }
+    
+    /**
+     * Switch curator (compact mode) - Show curator selector
+     */
+    switchCuratorCompact() {
+        const compactDisplay = document.getElementById('curator-compact-display');
+        const editForm = document.getElementById('curator-edit-form');
+        const selectorSection = document.getElementById('curator-selector-compact');
+        
+        if (!compactDisplay || !editForm || !selectorSection) return;
+        
+        // Hide compact display and show selector
+        compactDisplay.classList.add('hidden');
+        compactDisplay.classList.remove('flex');
+        editForm.classList.add('hidden');
+        selectorSection.classList.remove('hidden');
+        
+        // Populate the selector with current curators
+        this.populateCuratorSelectorCompact();
+    }
+    
+    /**
+     * Show curator form for new curator (compact mode)
+     */
+    showCuratorFormCompact() {
+        const compactDisplay = document.getElementById('curator-compact-display');
+        const editForm = document.getElementById('curator-edit-form');
+        const selectorSection = document.getElementById('curator-selector-compact');
+        const section = document.getElementById('curator-section');
+        const curatorNameInput = document.getElementById('curator-name-compact-input');
+        const apiKeyInput = document.getElementById('api-key-compact-input');
+        
+        // Reset form values
+        if (curatorNameInput) curatorNameInput.value = '';
+        if (apiKeyInput) apiKeyInput.value = '';
+        
+        // Update state
+        this.uiManager.isEditingCurator = false;
+        this.uiManager.currentCurator = null;
+        
+        // Toggle sections
+        compactDisplay?.classList.add('hidden');
+        editForm?.classList.remove('hidden');
+        selectorSection?.classList.add('hidden');
+        
+        if (section) {
+            section.classList.add('editing');
+        }
+    }
+    
+    /**
+     * Populate curator selector dropdown (compact mode)
+     */
+    async populateCuratorSelectorCompact() {
+        const curatorSelector = document.getElementById('curator-selector-dropdown');
+        if (!curatorSelector) return;
+        
+        try {
+            console.log('Populating compact curator selector...');
+            
+            // Get all curators from database
+            const curators = await dataStorage.getAllCurators(true);
+            console.log(`Retrieved ${curators.length} curators for compact selector`);
+            
+            // Clear all existing options except the first one ("+ Create new curator")
+            while (curatorSelector.options.length > 1) {
+                curatorSelector.remove(1);
+            }
+            
+            // Add each curator as an option
+            curators.forEach(curator => {
+                const option = document.createElement('option');
+                option.value = curator.id;
+                
+                // Display name with origin badge
+                const badge = curator.origin === 'remote' ? '[Server]' : '[Local]';
+                option.textContent = `${curator.name} ${badge}`;
+                
+                option.dataset.origin = curator.origin;
+                if (curator.serverId) {
+                    option.dataset.serverId = curator.serverId;
+                }
+                
+                curatorSelector.appendChild(option);
+            });
+            
+            // Select current curator if exists
+            if (this.uiManager.currentCurator) {
+                curatorSelector.value = this.uiManager.currentCurator.id;
+            }
+        } catch (error) {
+            console.error('Error populating compact curator selector:', error);
         }
     }
 }

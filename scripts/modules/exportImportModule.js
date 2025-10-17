@@ -46,57 +46,32 @@ class ExportImportModule {
             });
         }
         
-        // Setup remote sync buttons with proper binding and error catching
-        const importRemoteBtn = document.getElementById('import-remote-data');
-        if (importRemoteBtn) {
+        // Setup unified sync button with proper binding and error catching
+        const syncBtn = document.getElementById('sync-with-server');
+        if (syncBtn) {
             // Store module reference to ensure 'this' context
             const self = this;
             
-            importRemoteBtn.addEventListener('click', () => {
-                console.log('Import remote button clicked');
+            syncBtn.addEventListener('click', () => {
+                console.log('Sync with server button clicked');
                 
-                // Always safely show loading with fallback
-                SafetyUtils.showLoading('Importing data from remote server...');
+                // Disable button and add syncing class for animation
+                syncBtn.disabled = true;
+                syncBtn.classList.add('syncing', 'opacity-75', 'cursor-not-allowed');
                 
-                // Execute the import method directly on self (this module instance)
-                self.importFromRemote()
+                // Execute the sync method directly on self (this module instance)
+                self.syncWithServer()
                     .then(() => {
-                        console.log('Import completed successfully');
+                        console.log('Sync completed successfully');
                     })
                     .catch(error => {
-                        console.error('Error in importFromRemote:', error);
-                        SafetyUtils.showNotification(`Import error: ${error.message}`, 'error');
+                        console.error('Error in syncWithServer:', error);
+                        SafetyUtils.showNotification(`Sync error: ${error.message}`, 'error');
                     })
                     .finally(() => {
-                        // Always hide loading when done
-                        SafetyUtils.hideLoading();
-                    });
-            });
-        }
-        
-        const exportRemoteBtn = document.getElementById('export-remote-data');
-        if (exportRemoteBtn) {
-            // Store module reference to ensure 'this' context
-            const self = this;
-            
-            exportRemoteBtn.addEventListener('click', () => {
-                console.log('Export remote button clicked');
-                
-                // Always safely show loading with fallback
-                SafetyUtils.showLoading('Exporting data to remote server...');
-                
-                // Execute the export method directly on self (this module instance)
-                self.exportToRemote()
-                    .then(() => {
-                        console.log('Export completed successfully');
-                    })
-                    .catch(error => {
-                        console.error('Error in exportToRemote:', error);
-                        SafetyUtils.showNotification(`Export error: ${error.message}`, 'error');
-                    })
-                    .finally(() => {
-                        // Always hide loading when done
-                        SafetyUtils.hideLoading();
+                        // Re-enable button and remove syncing class
+                        syncBtn.disabled = false;
+                        syncBtn.classList.remove('syncing', 'opacity-75', 'cursor-not-allowed');
                     });
             });
         }
@@ -796,6 +771,105 @@ class ExportImportModule {
      * Import restaurant data from remote PostgreSQL server
      * @returns {Promise<void>}
      */
+    /**
+     * Unified sync with server: imports from and exports to remote server
+     * Performs bidirectional sync in the optimal order
+     * @returns {Promise<void>}
+     */
+    async syncWithServer() {
+        console.log('🔄 Starting unified sync with server...');
+        const syncStartTime = performance.now();
+        
+        try {
+            SafetyUtils.showLoading('🔄 Syncing with server...');
+            
+            // Step 1: Import from server first to get latest remote data
+            console.log('🔄 Step 1/3: Importing from server...');
+            this.updateLoadingMessage('📥 Importing restaurants (1/3)...');
+            
+            try {
+                await this.importFromRemote();
+                console.log('✅ Import completed successfully');
+            } catch (importError) {
+                console.error('❌ Import failed:', importError);
+                // Continue with export even if import fails
+                SafetyUtils.showNotification(`Import failed: ${importError.message}. Continuing with export...`, 'warning');
+            }
+            
+            // Small delay to let user see the progress
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // Step 2: Export to server to push any local changes
+            console.log('🔄 Step 2/3: Exporting to server...');
+            this.updateLoadingMessage('📤 Exporting to server (2/3)...');
+            
+            try {
+                await this.exportToRemote();
+                console.log('✅ Export completed successfully');
+            } catch (exportError) {
+                console.error('❌ Export failed:', exportError);
+                throw exportError; // Propagate export error
+            }
+            
+            // Small delay to let user see the progress
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // Step 3: Sync curators from server
+            console.log('🔄 Step 3/3: Syncing curators...');
+            this.updateLoadingMessage('👥 Syncing curators (3/3)...');
+            
+            try {
+                if (this.uiManager && this.uiManager.curatorModule && typeof this.uiManager.curatorModule.fetchCurators === 'function') {
+                    await this.uiManager.curatorModule.fetchCurators();
+                    console.log('✅ Curators synced successfully');
+                } else {
+                    console.warn('⚠️ Curator module not available, skipping curator sync');
+                }
+            } catch (curatorError) {
+                console.error('❌ Curator sync failed:', curatorError);
+                // Don't throw - curator sync failure shouldn't fail the whole operation
+                SafetyUtils.showNotification(`Warning: Curator sync failed: ${curatorError.message}`, 'warning');
+            }
+            
+            const syncEndTime = performance.now();
+            const totalTime = ((syncEndTime - syncStartTime) / 1000).toFixed(2);
+            
+            console.log(`✅ Unified sync completed in ${totalTime}s`);
+            SafetyUtils.hideLoading();
+            SafetyUtils.showNotification(`✅ Sync completed successfully in ${totalTime}s`, 'success');
+            
+            // Refresh the restaurant list to show any imported changes
+            if (this.uiManager && typeof this.uiManager.refreshRestaurantList === 'function') {
+                this.uiManager.refreshRestaurantList();
+            } else if (window.restaurantListModule && typeof window.restaurantListModule.renderRestaurantList === 'function') {
+                window.restaurantListModule.renderRestaurantList();
+            }
+            
+        } catch (error) {
+            console.error('❌ Sync failed:', error);
+            SafetyUtils.hideLoading();
+            SafetyUtils.showNotification(`Sync failed: ${error.message}`, 'error');
+            throw error;
+        }
+    }
+    
+    /**
+     * Updates the loading message text
+     * @param {string} message - New loading message
+     */
+    updateLoadingMessage(message) {
+        const loadingMessage = document.getElementById('standalone-loading-message');
+        if (loadingMessage) {
+            loadingMessage.textContent = message;
+        }
+        
+        // Also try to update the main loading overlay if it exists
+        const mainLoadingMessage = document.querySelector('.loading-overlay p');
+        if (mainLoadingMessage) {
+            mainLoadingMessage.textContent = message;
+        }
+    }
+    
     async importFromRemote() {
         console.log('Starting remote data import operation...');
         
