@@ -557,7 +557,7 @@ const RestaurantListModule = ModuleWrapper.defineClass('RestaurantListModule', c
         }
 
         /**
-         * Delete restaurant with confirmation
+         * Delete restaurant with confirmation and smart strategy
          * @param {number} restaurantId - Restaurant ID
          */
         async deleteRestaurant(restaurantId) {
@@ -568,18 +568,49 @@ const RestaurantListModule = ModuleWrapper.defineClass('RestaurantListModule', c
                     return;
                 }
 
-                const confirmed = confirm(`Are you sure you want to delete "${restaurant.name}"? This action cannot be undone.`);
+                // Determine if this is a synced restaurant
+                const isSynced = restaurant.serverId && restaurant.source === 'remote';
+                
+                let confirmMessage;
+                
+                if (isSynced) {
+                    confirmMessage = `"${restaurant.name}" was synced from the server.\n\n` +
+                                   `⚠️ ARCHIVE (Recommended):\n` +
+                                   `This will hide the restaurant locally but keep it for sync.\n` +
+                                   `It won't appear in your list.\n\n` +
+                                   `Note: Permanent deletion would cause it to re-appear on next sync.\n\n` +
+                                   `Archive this restaurant?`;
+                } else {
+                    confirmMessage = `Are you sure you want to delete "${restaurant.name}"?\n\n` +
+                                   `This local restaurant will be permanently deleted.\n` +
+                                   `This action cannot be undone.`;
+                }
+
+                const confirmed = confirm(confirmMessage);
                 if (!confirmed) return;
 
-                await this.dataStorage.db.restaurants.delete(restaurantId);
-                SafetyUtils.showNotification('Restaurant deleted successfully', 'success');
+                // Use smart delete strategy
+                const result = await this.dataStorage.smartDeleteRestaurant(restaurantId);
+                
+                if (result.type === 'soft') {
+                    SafetyUtils.showNotification(
+                        `"${result.name}" archived. It will not appear in your list but is preserved for sync.`, 
+                        'info',
+                        5000
+                    );
+                } else {
+                    SafetyUtils.showNotification(
+                        `"${result.name}" deleted permanently`, 
+                        'success'
+                    );
+                }
 
                 // Refresh the list
                 await this.loadRestaurants();
                 
             } catch (error) {
                 console.error('Error deleting restaurant:', error);
-                SafetyUtils.showNotification('Failed to delete restaurant', 'error');
+                SafetyUtils.showNotification('Failed to delete restaurant: ' + error.message, 'error');
             }
         }
 

@@ -413,32 +413,72 @@ class RestaurantModule {
                 return;
             }
             
+            // Get curator information
+            let curatorName = 'Unknown';
+            if (restaurant.curatorId) {
+                const curator = await dataStorage.db.curators.get(restaurant.curatorId);
+                if (curator) {
+                    curatorName = curator.name;
+                }
+            }
+            
             // Create a modal for displaying restaurant details
             const modalContainer = document.createElement('div');
-            modalContainer.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
-            modalContainer.style.overflow = 'hidden'; // Prevent body scrolling
+            modalContainer.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-2';
+            modalContainer.style.overflowY = 'auto'; // Allow scrolling the modal overlay
             
             let modalHTML = `
-                <div class="bg-white rounded-lg w-full max-w-lg mx-2 flex flex-col" style="max-height: 90vh;">
-                    <div class="flex justify-between items-center p-6 border-b sticky top-0 bg-white z-10">
-                        <h2 class="text-2xl font-bold">${restaurant.name}</h2>
-                        <button class="close-modal text-gray-500 hover:text-gray-800 text-xl">&times;</button>
+                <div class="bg-white rounded-lg w-full max-w-2xl flex flex-col my-4" style="max-height: 90vh;">
+                    <div class="flex justify-between items-start p-4 sm:p-6 border-b bg-white z-10 flex-shrink-0">
+                        <div class="flex-1 pr-4">
+                            <h2 class="text-xl sm:text-2xl font-bold mb-2">${restaurant.name}</h2>
+                            <div class="flex flex-wrap gap-2 items-center text-xs sm:text-sm text-gray-600">
+                                <span class="flex items-center">
+                                    <span class="material-icons text-sm mr-1">access_time</span>
+                                    ${new Date(restaurant.timestamp).toLocaleDateString()}
+                                </span>
+                                <span class="flex items-center">
+                                    <span class="material-icons text-sm mr-1">person</span>
+                                    ${curatorName}
+                                </span>
+                                ${restaurant.source ? `
+                                    <span class="data-badge ${restaurant.source === 'local' ? 'local' : 'remote'}">
+                                        ${restaurant.source === 'local' ? '📱 Local' : '☁️ Synced'}
+                                    </span>
+                                ` : ''}
+                            </div>
+                        </div>
+                        <button class="close-modal text-gray-500 hover:text-gray-800 text-2xl leading-none flex-shrink-0">&times;</button>
                     </div>
                     
-                    <div class="overflow-y-auto p-6 flex-1" style="overscroll-behavior: contain;">
-                        <p class="text-sm text-gray-500 mb-4">Added: ${new Date(restaurant.timestamp).toLocaleDateString()}</p>
+                    <div class="overflow-y-auto px-4 sm:px-6 pt-4 sm:pt-6 pb-8 flex-1" style="overscroll-behavior: contain;">
             `;
             
-            // Add description if available - ALWAYS show in view mode
+            // Add description if available
             if (restaurant.description) {
                 modalHTML += `
-                    <div class="mb-6">
-                        <h3 class="text-lg font-semibold mb-2 flex items-center">
-                            <span class="material-icons mr-2 text-yellow-500">description</span>
+                    <div class="mb-4 sm:mb-6">
+                        <h3 class="text-base sm:text-lg font-semibold mb-2 flex items-center">
+                            <span class="material-icons mr-2 text-yellow-600" style="font-size: 20px;">description</span>
                             Description
                         </h3>
-                        <div class="p-3 bg-yellow-50 rounded border text-sm italic">
-                            "${restaurant.description}"
+                        <div class="p-3 bg-yellow-50 rounded-lg border border-yellow-100 text-sm sm:text-base leading-relaxed">
+                            <p class="italic text-gray-800">"${restaurant.description}"</p>
+                        </div>
+                    </div>
+                `;
+            }
+            
+            // Add transcription if available (the missing information!)
+            if (restaurant.transcription) {
+                modalHTML += `
+                    <div class="mb-4 sm:mb-6">
+                        <h3 class="text-base sm:text-lg font-semibold mb-2 flex items-center">
+                            <span class="material-icons mr-2 text-purple-600" style="font-size: 20px;">mic</span>
+                            Audio Transcription
+                        </h3>
+                        <div class="p-3 bg-purple-50 rounded-lg border border-purple-100 text-sm sm:text-base leading-relaxed">
+                            <p class="text-gray-700 whitespace-pre-wrap">${restaurant.transcription}</p>
                         </div>
                     </div>
                 `;
@@ -447,42 +487,47 @@ class RestaurantModule {
             // Add location if available
             if (restaurant.location) {
                 modalHTML += `
-                    <div class="mb-6">
-                        <h3 class="text-lg font-semibold mb-2 flex items-center">
-                            <span class="material-icons mr-2 text-blue-500">location_on</span>
+                    <div class="mb-4 sm:mb-6">
+                        <h3 class="text-base sm:text-lg font-semibold mb-2 flex items-center">
+                            <span class="material-icons mr-2 text-blue-600" style="font-size: 20px;">location_on</span>
                             Location
                         </h3>
-                        <p>
-                            Latitude: ${restaurant.location.latitude.toFixed(5)}<br>
-                            Longitude: ${restaurant.location.longitude.toFixed(5)}
-                        </p>
+                        <div class="p-3 bg-blue-50 rounded-lg border border-blue-100 text-sm">
+                            <div class="flex items-center mb-1">
+                                <span class="font-medium text-gray-700 w-20">Latitude:</span>
+                                <span class="text-gray-800">${restaurant.location.latitude.toFixed(6)}</span>
+                            </div>
+                            <div class="flex items-center">
+                                <span class="font-medium text-gray-700 w-20">Longitude:</span>
+                                <span class="text-gray-800">${restaurant.location.longitude.toFixed(6)}</span>
+                            </div>
+                        </div>
                     </div>
                 `;
             }
             
-            // DO NOT show transcription in view mode - REMOVED
-            
             // Add photos if available
             if (restaurant.photos && restaurant.photos.length) {
                 modalHTML += `
-                    <div class="mb-6">
-                        <h3 class="text-lg font-semibold mb-2 flex items-center">
-                            <span class="material-icons mr-2 text-green-500">photo_library</span>
-                            Photos
+                    <div class="mb-4 sm:mb-6">
+                        <h3 class="text-base sm:text-lg font-semibold mb-2 flex items-center">
+                            <span class="material-icons mr-2 text-green-600" style="font-size: 20px;">photo_library</span>
+                            Photos (${restaurant.photos.length})
                         </h3>
-                        <div class="grid grid-cols-2 gap-3">
+                        <div class="grid grid-cols-2 sm:grid-cols-3 gap-2 sm:gap-3">
                 `;
                 
-                restaurant.photos.forEach(photo => {
+                restaurant.photos.forEach((photo, index) => {
                     modalHTML += `
-                        <div class="photo-container">
-                            <img src="${photo.photoData}" alt="Restaurant photo" class="w-full h-32 object-cover rounded shadow-sm hover:shadow-md transition-all">
+                        <div class="photo-container relative">
+                            <img src="${photo.photoData}" alt="Restaurant photo ${index + 1}" class="w-full h-24 sm:h-32 object-cover rounded-lg shadow-sm hover:shadow-md transition-all cursor-pointer" onclick="window.open('${photo.photoData}', '_blank')">
                         </div>
                     `;
                 });
                 
                 modalHTML += `
                         </div>
+                        <p class="text-xs text-gray-500 mt-2 italic">Tap photos to view full size</p>
                     </div>
                 `;
             }
@@ -490,19 +535,21 @@ class RestaurantModule {
             // Add concepts
             modalHTML += `
                 <div class="mb-4">
-                    <h3 class="text-lg font-semibold mb-3 flex items-center">
-                        <span class="material-icons mr-2 text-purple-500">category</span>
-                        Details
+                    <h3 class="text-base sm:text-lg font-semibold mb-3 flex items-center">
+                        <span class="material-icons mr-2 text-indigo-600" style="font-size: 20px;">category</span>
+                        Restaurant Details
                     </h3>
             `;
             
             // Group concepts by category
             const conceptsByCategory = {};
-            for (const concept of restaurant.concepts) {
-                if (!conceptsByCategory[concept.category]) {
-                    conceptsByCategory[concept.category] = [];
+            if (restaurant.concepts && restaurant.concepts.length > 0) {
+                for (const concept of restaurant.concepts) {
+                    if (!conceptsByCategory[concept.category]) {
+                        conceptsByCategory[concept.category] = [];
+                    }
+                    conceptsByCategory[concept.category].push(concept.value);
                 }
-                conceptsByCategory[concept.category].push(concept.value);
             }
             
             const categories = [
@@ -510,19 +557,21 @@ class RestaurantModule {
                 'Crowd', 'Suitable For', 'Food Style', 'Drinks', 'Special Features'
             ];
             
+            let hasAnyConcepts = false;
             for (const category of categories) {
                 if (conceptsByCategory[category] && conceptsByCategory[category].length > 0) {
-                    const cssClass = category.toLowerCase().replace(' ', '-');
+                    hasAnyConcepts = true;
+                    const cssClass = category.toLowerCase().replace(/ /g, '-');
                     
                     modalHTML += `
-                        <div class="mb-4">
-                            <h4 class="font-medium text-gray-700 mb-2">${category}</h4>
-                            <div class="flex flex-wrap gap-1">
+                        <div class="mb-3">
+                            <h4 class="text-sm font-semibold text-gray-700 mb-2">${category}</h4>
+                            <div class="flex flex-wrap gap-1.5">
                     `;
                     
                     conceptsByCategory[category].forEach(concept => {
                         modalHTML += `
-                            <span class="concept-tag ${cssClass}">${concept}</span>
+                            <span class="concept-tag ${cssClass} text-xs sm:text-sm">${concept}</span>
                         `;
                     });
                     
@@ -533,17 +582,25 @@ class RestaurantModule {
                 }
             }
             
+            if (!hasAnyConcepts) {
+                modalHTML += `
+                    <p class="text-sm text-gray-500 italic">No detailed categories added yet.</p>
+                `;
+            }
+            
+            modalHTML += `</div>`; // Close concepts section
+            
             // Add action buttons at the bottom
             modalHTML += `
                     </div>
                     
-                    <div class="p-6 border-t flex justify-between sticky bottom-0 bg-white">
-                        <button class="delete-restaurant bg-red-500 text-white px-4 py-2 rounded-lg flex items-center">
-                            <span class="material-icons mr-2">delete</span>
+                    <div class="p-4 sm:p-6 border-t flex flex-col sm:flex-row gap-2 sm:gap-0 sm:justify-between bg-white flex-shrink-0">
+                        <button class="delete-restaurant bg-red-500 hover:bg-red-600 text-white px-4 py-2.5 rounded-lg flex items-center justify-center transition-colors text-sm sm:text-base">
+                            <span class="material-icons mr-2" style="font-size: 18px;">delete</span>
                             Delete
                         </button>
-                        <button class="edit-restaurant bg-blue-500 text-white px-4 py-2 rounded-lg flex items-center">
-                            <span class="material-icons mr-2">edit</span>
+                        <button class="edit-restaurant bg-blue-500 hover:bg-blue-600 text-white px-4 py-2.5 rounded-lg flex items-center justify-center transition-colors text-sm sm:text-base">
+                            <span class="material-icons mr-2" style="font-size: 18px;">edit</span>
                             Edit Restaurant
                         </button>
                     </div>
@@ -556,42 +613,66 @@ class RestaurantModule {
             document.body.appendChild(modalContainer);
             document.body.style.overflow = 'hidden'; // Prevent scrolling behind modal
             
-            modalContainer.querySelector('.close-modal').addEventListener('click', () => {
+            // Close modal function
+            const closeModal = () => {
                 document.body.removeChild(modalContainer);
                 document.body.style.overflow = '';
+            };
+            
+            // Close on X button
+            modalContainer.querySelector('.close-modal').addEventListener('click', closeModal);
+            
+            // Close on clicking overlay (but not the modal content)
+            modalContainer.addEventListener('click', (e) => {
+                if (e.target === modalContainer) {
+                    closeModal();
+                }
             });
             
             // Edit restaurant functionality
             modalContainer.querySelector('.edit-restaurant').addEventListener('click', () => {
                 this.editRestaurant(restaurant);
-                document.body.removeChild(modalContainer);
-                document.body.style.overflow = '';
+                closeModal();
             });
             
-            // Delete restaurant functionality
+            // Delete restaurant functionality with smart strategy
             modalContainer.querySelector('.delete-restaurant').addEventListener('click', async () => {
-                if (confirm(`Are you sure you want to delete "${restaurant.name}"?`)) {
+                // Determine if this is a synced restaurant
+                const isSynced = restaurant.serverId && restaurant.source === 'remote';
+                
+                let confirmMessage;
+                if (isSynced) {
+                    confirmMessage = `"${restaurant.name}" was synced from the server.\n\n` +
+                                   `⚠️ ARCHIVE (Recommended):\n` +
+                                   `Hide locally but preserve for sync?\n` +
+                                   `(Permanent deletion would cause it to re-appear on next sync)`;
+                } else {
+                    confirmMessage = `Permanently delete "${restaurant.name}"?\n\nThis action cannot be undone.`;
+                }
+                
+                if (confirm(confirmMessage)) {
                     try {
                         SafetyUtils.showLoading('Deleting restaurant...');
-                        await dataStorage.deleteRestaurant(restaurant.id);
+                        const result = await dataStorage.smartDeleteRestaurant(restaurant.id);
                         SafetyUtils.hideLoading();
-                        SafetyUtils.showNotification('Restaurant deleted successfully');
-                        document.body.removeChild(modalContainer);
-                        document.body.style.overflow = '';
+                        
+                        if (result.type === 'soft') {
+                            SafetyUtils.showNotification(
+                                `"${result.name}" archived (hidden from list)`,
+                                'info',
+                                5000
+                            );
+                        } else {
+                            SafetyUtils.showNotification('Restaurant deleted permanently');
+                        }
+                        
+                        closeModal();
                         this.loadRestaurantList(this.uiManager.currentCurator.id);
                     } catch (error) {
                         SafetyUtils.hideLoading();
                         console.error('Error deleting restaurant:', error);
-                        SafetyUtils.showNotification('Error deleting restaurant', 'error');
+                        SafetyUtils.showNotification('Error deleting restaurant: ' + error.message, 'error');
                     }
-                }
-            });
-            
-            // Also close when clicking outside the modal
-            modalContainer.addEventListener('click', event => {
-                if (event.target === modalContainer) {
-                    document.body.removeChild(modalContainer);
-                    document.body.style.overflow = '';
                 }
             });
             

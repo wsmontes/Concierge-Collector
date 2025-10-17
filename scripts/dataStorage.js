@@ -23,15 +23,37 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             
             this.db = new Dexie('RestaurantCurator');
             
-            // Increase version number to 6 to add source index for restaurant sync
-            this.db.version(6).stores({
+            // Version 7: Added pending audio and draft restaurants
+            this.db.version(7).stores({
                 curators: '++id, name, lastActive, serverId, origin',
                 concepts: '++id, category, value, timestamp, [category+value]',
                 restaurants: '++id, name, curatorId, timestamp, transcription, description, origin, source, serverId',
                 restaurantConcepts: '++id, restaurantId, conceptId',
                 restaurantPhotos: '++id, restaurantId, photoData',
                 restaurantLocations: '++id, restaurantId, latitude, longitude, address',
-                settings: 'key' // Added settings table for app configuration
+                settings: 'key',
+                pendingAudio: '++id, restaurantId, draftId, audioBlob, timestamp, retryCount, lastError, status, isAdditional',
+                draftRestaurants: '++id, curatorId, name, timestamp, lastModified, hasAudio, transcription, description'
+            });
+            
+            // Version 8: Add soft delete fields for restaurants
+            this.db.version(8).stores({
+                curators: '++id, name, lastActive, serverId, origin',
+                concepts: '++id, category, value, timestamp, [category+value]',
+                restaurants: '++id, name, curatorId, timestamp, transcription, description, origin, source, serverId, deletedLocally, deletedAt',
+                restaurantConcepts: '++id, restaurantId, conceptId',
+                restaurantPhotos: '++id, restaurantId, photoData',
+                restaurantLocations: '++id, restaurantId, latitude, longitude, address',
+                settings: 'key',
+                pendingAudio: '++id, restaurantId, draftId, audioBlob, timestamp, retryCount, lastError, status, isAdditional',
+                draftRestaurants: '++id, curatorId, name, timestamp, lastModified, hasAudio, transcription, description'
+            }).upgrade(tx => {
+                console.log('Upgrading database to version 8: Adding soft delete fields');
+                // Add deletedLocally and deletedAt fields to existing restaurants
+                return tx.restaurants.toCollection().modify(restaurant => {
+                    restaurant.deletedLocally = false;
+                    restaurant.deletedAt = null;
+                });
             });
 
             // Open the database to ensure it's properly initialized
@@ -83,14 +105,37 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             
             // Reinitialize with fresh schema
             this.db = new Dexie('RestaurantCurator');
-            this.db.version(6).stores({
+            
+            // Version 7: Added pending audio and draft restaurants  
+            this.db.version(7).stores({
                 curators: '++id, name, lastActive, serverId, origin',
                 concepts: '++id, category, value, timestamp, [category+value]',
                 restaurants: '++id, name, curatorId, timestamp, transcription, description, origin, source, serverId',
                 restaurantConcepts: '++id, restaurantId, conceptId',
                 restaurantPhotos: '++id, restaurantId, photoData',
                 restaurantLocations: '++id, restaurantId, latitude, longitude, address',
-                settings: 'key'
+                settings: 'key',
+                pendingAudio: '++id, restaurantId, draftId, audioBlob, timestamp, retryCount, lastError, status, isAdditional',
+                draftRestaurants: '++id, curatorId, name, timestamp, lastModified, hasAudio, transcription, description'
+            });
+            
+            // Version 8: Add soft delete fields
+            this.db.version(8).stores({
+                curators: '++id, name, lastActive, serverId, origin',
+                concepts: '++id, category, value, timestamp, [category+value]',
+                restaurants: '++id, name, curatorId, timestamp, transcription, description, origin, source, serverId, deletedLocally, deletedAt',
+                restaurantConcepts: '++id, restaurantId, conceptId',
+                restaurantPhotos: '++id, restaurantId, photoData',
+                restaurantLocations: '++id, restaurantId, latitude, longitude, address',
+                settings: 'key',
+                pendingAudio: '++id, restaurantId, draftId, audioBlob, timestamp, retryCount, lastError, status, isAdditional',
+                draftRestaurants: '++id, curatorId, name, timestamp, lastModified, hasAudio, transcription, description'
+            }).upgrade(tx => {
+                console.log('Upgrading database to version 8: Adding soft delete fields');
+                return tx.restaurants.toCollection().modify(restaurant => {
+                    restaurant.deletedLocally = false;
+                    restaurant.deletedAt = null;
+                });
             });
             
             await this.db.open();
@@ -417,6 +462,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
      * @param {boolean} options.includeRemote - Include remote restaurants (default: true)
      * @param {boolean} options.includeLocal - Include local restaurants (default: true)
      * @param {boolean} options.deduplicate - Deduplicate by name (default: true)
+     * @param {boolean} options.includeDeleted - Include soft-deleted restaurants (default: false)
      * @returns {Promise<Array>} - Array of restaurant objects
      */
     async getRestaurants(options = {}) {
@@ -427,7 +473,8 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 onlyCuratorRestaurants = true,
                 includeRemote = true, 
                 includeLocal = true,
-                deduplicate = true
+                deduplicate = true,
+                includeDeleted = false  // NEW: Filter out soft-deleted by default
             } = options;
             
             console.log(`Getting restaurants with options:`, {
@@ -435,7 +482,8 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 onlyCuratorRestaurants,
                 includeRemote,
                 includeLocal,
-                deduplicate
+                deduplicate,
+                includeDeleted
             });
             
             // Log filtering information
@@ -451,6 +499,11 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 
                 // Apply filtering with detailed logging for each rejected restaurant
                 const filteredRestaurants = allRestaurants.filter(restaurant => {
+                    // NEW: Filter out soft-deleted restaurants unless explicitly requested
+                    if (!includeDeleted && restaurant.deletedLocally) {
+                        return false;
+                    }
+                    
                     // Handle source filtering
                     if (restaurant.source === 'remote' && !includeRemote) return false;
                     if (restaurant.source === 'local' && !includeLocal) return false;
@@ -1019,9 +1072,10 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
         }
     }
 
-    async saveRestaurant(name, curatorId, concepts, location, photos, transcription, description) {
+    async saveRestaurant(name, curatorId, concepts, location, photos, transcription, description, source = 'local', serverId = null) {
         console.log(`Saving restaurant: ${name} with curator ID: ${curatorId}`);
         console.log(`Concepts count: ${concepts.length}, Has location: ${!!location}, Photos count: ${photos ? photos.length : 0}, Has transcription: ${!!transcription}, Has description: ${!!description}`);
+        console.log(`Source: ${source}, Server ID: ${serverId}`);
         
         // Try to save without a transaction first to preload the concepts
         // This helps avoid issues with the transaction
@@ -1039,7 +1093,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             }
 
             // Now proceed with the main transaction
-            return await this.saveRestaurantWithTransaction(name, curatorId, conceptIds, location, photos, transcription, description);
+            return await this.saveRestaurantWithTransaction(name, curatorId, conceptIds, location, photos, transcription, description, source, serverId);
         } catch (error) {
             console.error('Error in pre-save phase:', error);
             
@@ -1051,14 +1105,14 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 await this.resetDatabase();
                 
                 // Try again after reset, but without the pre-save step
-                return await this.saveRestaurantWithTransaction(name, curatorId, concepts, location, photos, transcription, description);
+                return await this.saveRestaurantWithTransaction(name, curatorId, concepts, location, photos, transcription, description, source, serverId);
             }
             
             throw error;
         }
     }
     
-    async saveRestaurantWithTransaction(name, curatorId, conceptsOrIds, location, photos, transcription, description) {
+    async saveRestaurantWithTransaction(name, curatorId, conceptsOrIds, location, photos, transcription, description, source = 'local', serverId = null) {
         // Determine if we're working with pre-saved concept IDs or raw concepts
         const areConceptIds = conceptsOrIds.length > 0 && conceptsOrIds[0].conceptId !== undefined;
         
@@ -1068,15 +1122,17 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 [this.db.restaurants, this.db.restaurantConcepts, 
                 this.db.restaurantLocations, this.db.restaurantPhotos], 
             async () => {
-                // Save restaurant
+                // Save restaurant with source and serverId
                 const restaurantId = await this.db.restaurants.put({
                     name,
                     curatorId,
                     timestamp: new Date(),
                     transcription: transcription || null,
-                    description: description || null
+                    description: description || null,
+                    source: source,
+                    serverId: serverId
                 });
-                console.log(`Restaurant saved with ID: ${restaurantId}`);
+                console.log(`Restaurant saved with ID: ${restaurantId}, source: ${source}, serverId: ${serverId}`);
                 
                 // Save concepts - handle both pre-saved concepts and raw concepts
                 if (areConceptIds) {
@@ -1212,6 +1268,99 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             return true;
         } catch (error) {
             console.error('Error deleting restaurant:', error);
+            throw error;
+        }
+    }
+    
+    /**
+     * Smart delete restaurant - determines strategy based on source
+     * @param {number} restaurantId - Restaurant ID to delete
+     * @param {Object} options - Delete options
+     * @param {boolean} options.force - Force permanent delete even for synced restaurants
+     * @param {boolean} options.includeDeleted - Include soft-deleted in query
+     * @returns {Promise<Object>} - Delete result with type and id
+     */
+    async smartDeleteRestaurant(restaurantId, options = {}) {
+        try {
+            const restaurant = await this.db.restaurants.get(restaurantId);
+            if (!restaurant) {
+                throw new Error('Restaurant not found');
+            }
+            
+            // Determine if this is a local-only restaurant
+            const isLocal = !restaurant.serverId || 
+                           !restaurant.source || 
+                           restaurant.source === 'local';
+            
+            console.log(`Smart delete for "${restaurant.name}": isLocal=${isLocal}, serverId=${restaurant.serverId}, source=${restaurant.source}`);
+            
+            if (isLocal) {
+                // STRATEGY 1: Permanent delete for local-only restaurants
+                console.log('Performing permanent delete (local-only restaurant)');
+                await this.deleteRestaurant(restaurantId);
+                return { type: 'permanent', id: restaurantId, name: restaurant.name };
+            } else {
+                // STRATEGY 2: Soft delete for synced restaurants (unless forced)
+                if (options.force === true) {
+                    console.log('Performing forced permanent delete (synced restaurant)');
+                    await this.deleteRestaurant(restaurantId);
+                    return { type: 'permanent', id: restaurantId, name: restaurant.name, forced: true };
+                }
+                
+                console.log('Performing soft delete (synced restaurant)');
+                await this.softDeleteRestaurant(restaurantId);
+                return { type: 'soft', id: restaurantId, name: restaurant.name };
+            }
+        } catch (error) {
+            console.error('Error in smart delete restaurant:', error);
+            throw error;
+        }
+    }
+    
+    /**
+     * Soft delete restaurant (mark as deleted locally, hide from UI)
+     * @param {number} restaurantId - Restaurant ID to soft delete
+     * @returns {Promise<number>} - Number of records updated
+     */
+    async softDeleteRestaurant(restaurantId) {
+        try {
+            await this.db.restaurants.update(restaurantId, {
+                deletedLocally: true,
+                deletedAt: new Date()
+            });
+            console.log(`Restaurant ${restaurantId} soft deleted (archived)`);
+            return 1;
+        } catch (error) {
+            console.error('Error soft deleting restaurant:', error);
+            throw error;
+        }
+    }
+    
+    /**
+     * Restore a soft-deleted restaurant
+     * @param {number} restaurantId - Restaurant ID to restore
+     * @returns {Promise<Object>} - Restore result
+     */
+    async restoreRestaurant(restaurantId) {
+        try {
+            const restaurant = await this.db.restaurants.get(restaurantId);
+            if (!restaurant) {
+                throw new Error('Restaurant not found');
+            }
+            
+            if (!restaurant.deletedLocally) {
+                throw new Error('Restaurant is not deleted');
+            }
+            
+            await this.db.restaurants.update(restaurantId, {
+                deletedLocally: false,
+                deletedAt: null
+            });
+            
+            console.log(`Restaurant ${restaurantId} restored`);
+            return { restored: true, id: restaurantId, name: restaurant.name };
+        } catch (error) {
+            console.error('Error restoring restaurant:', error);
             throw error;
         }
     }

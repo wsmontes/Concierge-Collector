@@ -1,0 +1,162 @@
+/**
+ * Access Control Styles
+ * 
+ * Purpose: Styling for password gate overlay
+ * Design: Matches main application design system (style.css)
+ */
+
+#access-control-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: var(--neutral-100, #f3f4f6);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 10000;
+    font-family: var(--font-sans, 'Inter', system-ui, -apple-system, sans-serif);
+}
+
+.access-control-container {
+    width: 100%;
+    max-width: 400px;
+    padding: 1rem;
+}
+
+.access-control-card {
+    background: white;
+    border-radius: var(--border-radius-lg, 0.5rem);
+    padding: 3rem 2.5rem;
+    box-shadow: var(--shadow-md, 0 4px 6px -1px rgba(0, 0, 0, 0.1));
+    border: 1px solid var(--neutral-200, #e5e7eb);
+    text-align: center;
+}
+
+/* Logo styling */
+.access-control-logo {
+    width: 80px;
+    height: auto;
+    margin: 0 auto 1.5rem;
+    display: block;
+}
+
+.access-control-card h1 {
+    font-size: 1.875rem;
+    font-weight: 700;
+    color: var(--neutral-800, #1f2937);
+    margin: 0 0 0.5rem 0;
+    font-family: var(--font-sans, 'Inter', sans-serif);
+}
+
+.access-control-card p {
+    font-size: 1rem;
+    color: var(--neutral-600, #4b5563);
+    margin: 0 0 2rem 0;
+    line-height: 1.5;
+}
+
+#access-password {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    font-size: 1rem;
+    border: 1px solid var(--neutral-300, #d1d5db);
+    border-radius: var(--border-radius-md, 0.25rem);
+    margin-bottom: 1rem;
+    box-sizing: border-box;
+    transition: border-color var(--transition-fast, 150ms), box-shadow var(--transition-fast, 150ms);
+    font-family: var(--font-sans, 'Inter', sans-serif);
+    color: var(--neutral-800, #1f2937);
+}
+
+#access-password:focus {
+    outline: none;
+    border-color: var(--primary, #3b82f6);
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+#access-password::placeholder {
+    color: var(--neutral-400, #9ca3af);
+}
+
+#access-submit {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    font-size: 1rem;
+    font-weight: 600;
+    color: white;
+    background-color: var(--primary, #3b82f6);
+    border: none;
+    border-radius: var(--border-radius-md, 0.25rem);
+    cursor: pointer;
+    transition: background-color var(--transition-fast, 150ms), 
+                transform var(--transition-fast, 150ms), 
+                box-shadow var(--transition-fast, 150ms);
+    font-family: var(--font-sans, 'Inter', sans-serif);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+}
+
+#access-submit:hover {
+    background-color: var(--primary-dark, #1d4ed8);
+    box-shadow: var(--shadow-sm, 0 1px 3px rgba(0, 0, 0, 0.05));
+}
+
+#access-submit:active {
+    transform: translateY(1px);
+}
+
+#access-submit:focus {
+    outline: none;
+    box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+}
+
+.access-error {
+    color: var(--error, #ef4444);
+    font-size: 0.875rem;
+    margin-top: 0.75rem;
+    min-height: 1.25rem;
+    font-weight: 500;
+}
+
+/* Mobile responsiveness */
+@media (max-width: 480px) {
+    .access-control-container {
+        padding: 1rem;
+    }
+    
+    .access-control-card {
+        padding: 2rem 1.5rem;
+    }
+    
+    .access-control-card h1 {
+        font-size: 1.5rem;
+    }
+    
+    .access-control-logo {
+        width: 64px;
+    }
+}
+
+/* Tablet styles */
+@media (min-width: 481px) and (max-width: 768px) {
+    .access-control-container {
+        max-width: 480px;
+    }
+}
+
+/* Touch improvements for mobile */
+@media (hover: none) and (pointer: coarse) {
+    #access-submit {
+        padding: 0.875rem 1rem;
+        font-size: 1.0625rem;
+    }
+    
+    #access-password {
+        padding: 0.875rem 1rem;
+        font-size: 1rem;
+    }
+}

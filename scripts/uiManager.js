@@ -192,6 +192,14 @@ if (typeof window.UIManager === 'undefined') {
             
             // Render the extracted concepts
             this.renderConcepts();
+            
+            // Scroll to the concepts section smoothly
+            setTimeout(() => {
+                const conceptsSection = document.getElementById('concepts-section');
+                if (conceptsSection) {
+                    conceptsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            }, 100);
         }
 
         showRestaurantListSection() {

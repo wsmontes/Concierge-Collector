@@ -30,6 +30,7 @@
     <link rel="stylesheet" href="styles/michelin-section.css">
     <link rel="stylesheet" href="styles/mobile-enhancements.css">
     <link rel="stylesheet" href="styles/places-section.css">
+    <link rel="stylesheet" href="styles/access-control.css">
     
     <!-- Add stylesheets for sync badges and curator selection -->
     <style>
@@ -557,6 +558,8 @@
     <!-- Module implementations - these should NOT duplicate core components -->
     <script src="scripts/modules/safetyUtils.js"></script>
     <script src="scripts/modules/uiUtilsModule.js"></script>
+    <script src="scripts/modules/pendingAudioManager.js"></script>
+    <script src="scripts/modules/draftRestaurantManager.js"></script>
     <script src="scripts/modules/curatorModule.js"></script>
     <script src="scripts/modules/recordingModule.js"></script>
     <script src="scripts/modules/transcriptionModule.js"></script>
@@ -569,10 +572,16 @@
     <script src="scripts/modules/placesModule.js"></script>
     <script src="scripts/modules/audioUtils.js"></script>
 
+    <!-- Access Control (must load before main.js) -->
+    <script src="scripts/accessControl.js"></script>
+
     <!-- Core application scripts -->
     <script src="scripts/main.js"></script>
     <script src="scripts/syncSettingsManager.js"></script>
     <script src="scripts/autoSync.js"></script>
+    
+    <!-- Database utilities (for manual cleanup) -->
+    <script src="scripts/dbCleanupUtils.js"></script>
 
     <!-- Ensure this appears after all other scripts -->
     <script>

@@ -1485,10 +1485,47 @@ class RecordingModule {
     /**
      * Process a finished recording (standard or additional), convert to MP3/Opus, and send to Whisper.
      * @param {Blob} audioBlob - Raw recording blob from MediaRecorder
+     * @param {number} pendingAudioId - ID of pending audio record (for retries)
      */
-    async processRecording(audioBlob) {
+    async processRecording(audioBlob, pendingAudioId = null) {
+        let audioId = pendingAudioId;
+        
         try {
             console.log('Processing recording, original format:', audioBlob.type);
+            
+            // Save audio to IndexedDB first if not already saved
+            if (!audioId && window.PendingAudioManager) {
+                // Get current draft ID if exists
+                let draftId = null;
+                if (window.DraftRestaurantManager && window.DraftRestaurantManager.currentDraftId) {
+                    draftId = window.DraftRestaurantManager.currentDraftId;
+                } else if (this.uiManager && this.uiManager.currentCurator) {
+                    // Create or get draft for current curator
+                    if (window.DraftRestaurantManager) {
+                        draftId = await window.DraftRestaurantManager.getOrCreateCurrentDraft(
+                            this.uiManager.currentCurator.id
+                        );
+                    }
+                }
+                
+                audioId = await window.PendingAudioManager.saveAudio(audioBlob, {
+                    isAdditional: this.isAdditionalRecording,
+                    restaurantId: this.uiManager?.editingRestaurantId || null,
+                    draftId: draftId
+                });
+                
+                // Update draft to indicate it has audio
+                if (draftId && window.DraftRestaurantManager) {
+                    await window.DraftRestaurantManager.updateDraft(draftId, { hasAudio: true });
+                }
+                
+                console.log(`Audio saved to IndexedDB with ID: ${audioId}`);
+            }
+            
+            // Update status to processing
+            if (audioId && window.PendingAudioManager) {
+                await window.PendingAudioManager.updateAudio(audioId, { status: 'processing' });
+            }
             
             // Utilize AudioUtils module if available for better conversion
             let preparedBlob;
@@ -1510,15 +1547,60 @@ class RecordingModule {
             // ALSO clear any "additional review" status indicator
             this.updateProcessingStatus('analysis', 'done');
             
+            // Mark audio as completed in IndexedDB
+            if (audioId && window.PendingAudioManager) {
+                await window.PendingAudioManager.updateAudio(audioId, { 
+                    status: 'completed',
+                    completedAt: new Date()
+                });
+                console.log(`Audio ${audioId} marked as completed`);
+            }
+            
             // Reset recording tool state after successful transcription
             this.resetRecordingToolState();
         } catch (error) {
             console.error('Error processing recording:', error);
             this.updateProcessingStatus('transcription', 'error');
             
-            // Notify user
-            if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
-                window.uiUtils.showNotification(`Error transcribing audio: ${error.message}`, 'error');
+            // Handle retry logic
+            if (audioId && window.PendingAudioManager) {
+                const retryCount = await window.PendingAudioManager.incrementRetryCount(audioId, error.message);
+                console.log(`Transcription failed. Retry count: ${retryCount}`);
+                
+                const audio = await window.PendingAudioManager.getAudio(audioId);
+                if (window.PendingAudioManager.canAutoRetry(audio)) {
+                    // Schedule automatic retry
+                    console.log('Scheduling automatic retry...');
+                    await window.PendingAudioManager.scheduleAutoRetry(audioId, async (retryAudioId, retryAudio) => {
+                        console.log(`Retrying transcription for audio ${retryAudioId}`);
+                        await this.processRecording(retryAudio.audioBlob, retryAudioId);
+                    });
+                    
+                    // Notify user about retry
+                    if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
+                        window.uiUtils.showNotification(
+                            `Transcription failed. Retrying automatically (attempt ${retryCount + 1} of ${window.PendingAudioManager.maxAutoRetries})...`, 
+                            'warning'
+                        );
+                    }
+                } else {
+                    // Max retries reached, show manual retry option
+                    console.log('Max auto-retries reached. Manual retry required.');
+                    if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
+                        window.uiUtils.showNotification(
+                            `Transcription failed after ${retryCount} attempts. Please try again manually.`, 
+                            'error'
+                        );
+                    }
+                    
+                    // Show manual retry UI
+                    this.showManualRetryUI(audioId);
+                }
+            } else {
+                // No audio manager available, just show error
+                if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
+                    window.uiUtils.showNotification(`Error transcribing audio: ${error.message}`, 'error');
+                }
             }
             
             // Still reset recording tool state on error
@@ -1976,6 +2058,186 @@ class RecordingModule {
             console.log('Additional transcription appended successfully');
         } catch (error) {
             console.error('Error appending transcription:', error);
+        }
+    }
+
+    /**
+     * Show manual retry UI for failed transcriptions
+     * @param {number} audioId - Pending audio ID
+     */
+    showManualRetryUI(audioId) {
+        try {
+            // Find the recording section or transcription textarea
+            const recordingSection = document.getElementById('recording-section');
+            const transcriptionContainer = document.getElementById('restaurant-transcription')?.parentElement;
+            const targetContainer = recordingSection || transcriptionContainer;
+            
+            if (!targetContainer) {
+                console.warn('Cannot show manual retry UI - container not found');
+                return;
+            }
+            
+            // Remove existing retry UI if any
+            const existingRetryUI = document.getElementById('manual-retry-ui');
+            if (existingRetryUI) {
+                existingRetryUI.remove();
+            }
+            
+            // Create retry UI
+            const retryUI = document.createElement('div');
+            retryUI.id = 'manual-retry-ui';
+            retryUI.className = 'bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4 rounded';
+            retryUI.innerHTML = `
+                <div class="flex items-start">
+                    <div class="flex-shrink-0">
+                        <span class="material-icons text-yellow-600">warning</span>
+                    </div>
+                    <div class="ml-3 flex-1">
+                        <h3 class="text-sm font-medium text-yellow-800">Transcription Failed</h3>
+                        <p class="mt-1 text-sm text-yellow-700">
+                            The audio recording could not be transcribed after multiple attempts. 
+                            The audio has been saved and you can retry or delete it.
+                        </p>
+                        <div class="mt-3 flex gap-2">
+                            <button id="retry-transcription-btn" data-audio-id="${audioId}" 
+                                class="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded text-sm flex items-center">
+                                <span class="material-icons text-sm mr-1">refresh</span>
+                                Retry Transcription
+                            </button>
+                            <button id="delete-failed-audio-btn" data-audio-id="${audioId}"
+                                class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded text-sm flex items-center">
+                                <span class="material-icons text-sm mr-1">delete</span>
+                                Delete Audio
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Insert at the top of the container
+            targetContainer.insertBefore(retryUI, targetContainer.firstChild);
+            
+            // Add event listeners
+            const retryBtn = retryUI.querySelector('#retry-transcription-btn');
+            const deleteBtn = retryUI.querySelector('#delete-failed-audio-btn');
+            
+            if (retryBtn) {
+                retryBtn.addEventListener('click', async () => {
+                    retryBtn.disabled = true;
+                    retryBtn.innerHTML = '<span class="material-icons text-sm mr-1 animate-spin">refresh</span> Retrying...';
+                    
+                    try {
+                        const audio = await window.PendingAudioManager.getAudio(audioId);
+                        if (audio && audio.audioBlob) {
+                            // Reset retry count for manual retry
+                            await window.PendingAudioManager.updateAudio(audioId, {
+                                retryCount: 0,
+                                status: 'pending',
+                                lastError: null
+                            });
+                            
+                            await this.processRecording(audio.audioBlob, audioId);
+                            
+                            // Remove retry UI on success
+                            retryUI.remove();
+                        }
+                    } catch (error) {
+                        console.error('Manual retry failed:', error);
+                        retryBtn.disabled = false;
+                        retryBtn.innerHTML = '<span class="material-icons text-sm mr-1">refresh</span> Retry Transcription';
+                    }
+                });
+            }
+            
+            if (deleteBtn) {
+                deleteBtn.addEventListener('click', async () => {
+                    if (confirm('Are you sure you want to delete this audio recording? This action cannot be undone.')) {
+                        try {
+                            await window.PendingAudioManager.deleteAudio(audioId);
+                            retryUI.remove();
+                            
+                            if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
+                                window.uiUtils.showNotification('Audio recording deleted', 'success');
+                            }
+                        } catch (error) {
+                            console.error('Error deleting audio:', error);
+                            if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
+                                window.uiUtils.showNotification('Error deleting audio', 'error');
+                            }
+                        }
+                    }
+                });
+            }
+            
+        } catch (error) {
+            console.error('Error showing manual retry UI:', error);
+        }
+    }
+
+    /**
+     * Show pending audio indicator badge
+     * @param {number} count - Number of pending audios
+     */
+    async showPendingAudioBadge() {
+        try {
+            if (!window.PendingAudioManager) return;
+            
+            const counts = await window.PendingAudioManager.getAudioCounts();
+            const pendingCount = counts.pending + counts.processing + counts.failed;
+            
+            if (pendingCount === 0) {
+                // Remove badge if no pending audios
+                const existingBadge = document.getElementById('pending-audio-badge');
+                if (existingBadge) {
+                    existingBadge.remove();
+                }
+                return;
+            }
+            
+            // Find or create badge container
+            const recordingSection = document.getElementById('recording-section');
+            if (!recordingSection) return;
+            
+            const header = recordingSection.querySelector('h2');
+            if (!header) return;
+            
+            // Remove existing badge
+            let badge = document.getElementById('pending-audio-badge');
+            if (badge) {
+                badge.remove();
+            }
+            
+            // Create new badge
+            badge = document.createElement('span');
+            badge.id = 'pending-audio-badge';
+            badge.className = 'ml-2 bg-yellow-500 text-white text-xs px-2 py-1 rounded-full cursor-pointer hover:bg-yellow-600';
+            badge.textContent = `${pendingCount} pending`;
+            badge.title = 'Click to view pending recordings';
+            
+            // Add click handler to show pending audio list
+            badge.addEventListener('click', () => this.showPendingAudioList());
+            
+            header.appendChild(badge);
+        } catch (error) {
+            console.error('Error showing pending audio badge:', error);
+        }
+    }
+
+    /**
+     * Show list of pending audios
+     */
+    async showPendingAudioList() {
+        try {
+            if (!window.PendingAudioManager) return;
+            
+            const audios = await window.PendingAudioManager.getAudios();
+            
+            // Create modal or section to show pending audios
+            alert(`You have ${audios.length} pending audio recordings.\n\nThis feature will show a detailed list in a future update.`);
+            
+            // TODO: Implement full UI for viewing and managing pending audios
+        } catch (error) {
+            console.error('Error showing pending audio list:', error);
         }
     }
 }

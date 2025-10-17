@@ -657,6 +657,10 @@ audio {
 .concept-tag.drinks { 
   background: linear-gradient(135deg, #4ade80, #22c55e); 
 }
+.concept-tag.special-features { 
+  background: linear-gradient(135deg, #818cf8, #6366f1); 
+  /* Indigo gradient - distinct from other categories */
+}
 
 /* Concept suggestions dropdown */
 #concept-suggestions {

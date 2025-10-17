@@ -1,9 +1,11 @@
 /**
  * Main application initialization
- * Dependencies: Dexie.js, ModuleWrapper
+ * Dependencies: Dexie.js, ModuleWrapper, AccessControl
  */
-document.addEventListener('DOMContentLoaded', () => {
-    console.log('DOM loaded, initializing application...');
+
+// Expose startApplication function for AccessControl to call after unlock
+window.startApplication = function() {
+    console.log('Starting application after access control...');
     
     // Check if required libraries and components exist
     if (typeof Dexie === 'undefined') {
@@ -33,7 +35,9 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error('Stack trace:', error.stack);
             showFatalError('There was an error initializing the application. Please check the console for details.');
         });
-});
+};
+
+// Note: AccessControl module will call window.startApplication() after password verification
 
 /**
  * Displays a fatal error message to the user
@@ -71,6 +75,28 @@ async function initializeApp() {
         // Create base DOM structure if it doesn't exist
         ensureBaseStructureExists();
         
+        // Initialize data storage first (database needs to be ready)
+        if (!window.dataStorage) {
+            console.error('DataStorage not initialized!');
+            throw new Error('DataStorage is required but not initialized');
+        }
+        
+        // Initialize pending audio manager
+        if (window.PendingAudioManager) {
+            window.PendingAudioManager.init(window.dataStorage);
+            console.log('PendingAudioManager initialized');
+        } else {
+            console.warn('PendingAudioManager not available');
+        }
+        
+        // Initialize draft restaurant manager
+        if (window.DraftRestaurantManager) {
+            window.DraftRestaurantManager.init(window.dataStorage);
+            console.log('DraftRestaurantManager initialized');
+        } else {
+            console.warn('DraftRestaurantManager not available');
+        }
+        
         // Initialize UI Manager
         window.uiManager = new UIManager();
         window.uiManager.init();
@@ -78,10 +104,15 @@ async function initializeApp() {
         // Load curator info
         await window.uiManager.curatorModule.loadCuratorInfo();
         
+        // Show pending audio badge if there are pending recordings
+        if (window.uiManager.recordingModule && typeof window.uiManager.recordingModule.showPendingAudioBadge === 'function') {
+            await window.uiManager.recordingModule.showPendingAudioBadge();
+        }
+        
         console.log('Application initialization complete');
     } catch (error) {
         console.error('Error during application initialization:', error);
-        throw new Error('Failed to initialize UI Manager: ' + error.message);
+        throw new Error('Failed to initialize application: ' + error.message);
     }
 }
 
@@ -167,7 +198,8 @@ function cleanupBrowserData() {
             'current_curator_id',
             'last_sync_time',
             'filter_by_curator',
-            'debug_mode'
+            'debug_mode',
+            'concierge_access_granted'  // CRITICAL: Preserve password access
         ];
         
         // Clean localStorage (preserve only essential keys)
@@ -292,16 +324,12 @@ function ensureRecordingModuleInitialized(uiManager) {
 /**
  * Triggers initial synchronization with the server after application initialization
  * This ensures we have the latest data from the server upon startup
+ * OPTIMIZED: Only syncs if needed, doesn't block app startup
  */
 function triggerInitialSync() {
-    console.log('Attempting initial data synchronization with server...');
+    console.log('Checking if sync is needed...');
     
-    // Show a notification that sync is starting
-    if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
-        window.uiUtils.showNotification('Syncing data with server...', 'info');
-    }
-    
-    // Give time for other modules to initialize
+    // Give time for other modules to initialize and UI to render
     setTimeout(async () => {
         try {
             // Check if syncService is available
@@ -310,21 +338,26 @@ function triggerInitialSync() {
                 return;
             }
             
-            // Show loading indicator
-            if (window.uiUtils && typeof window.uiUtils.showLoading === 'function') {
-                window.uiUtils.showLoading('Fetching curators and restaurants...');
+            // Check last sync time - only sync if it's been a while
+            const lastSyncTime = await dataStorage.getLastSyncTime();
+            const now = new Date();
+            const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
+            
+            if (lastSyncTime && new Date(lastSyncTime) > fiveMinutesAgo) {
+                console.log('Recent sync detected, skipping initial sync');
+                console.log(`Last sync was at: ${new Date(lastSyncTime).toLocaleTimeString()}`);
+                return;
             }
             
-            // Import curators first
+            // Show a subtle notification that sync is starting (non-blocking)
+            console.log('Starting background sync...');
+            
+            // Import curators first (quick operation)
             console.log('Importing curators from server...');
             const curatorResults = await window.syncService.importCurators();
             console.log(`Imported ${curatorResults.length} curators from server`);
             
-            if (window.uiUtils && typeof window.uiUtils.updateLoadingMessage === 'function') {
-                window.uiUtils.updateLoadingMessage('Importing restaurants from server...');
-            }
-            
-            // Then import restaurants with enhanced error handling
+            // Then import restaurants (potentially longer operation)
             console.log('Importing restaurants from server...');
             try {
                 const restaurantResults = await window.syncService.importRestaurants();
@@ -333,13 +366,8 @@ function triggerInitialSync() {
                 console.log('Restaurant import results:', restaurantResults);
                 console.log(`Imported ${restaurantResults.added} restaurants, updated ${restaurantResults.updated}, skipped ${restaurantResults.skipped}`);
                 
-                // Hide loading indicator
-                if (window.uiUtils && typeof window.uiUtils.hideLoading === 'function') {
-                    window.uiUtils.hideLoading();
-                }
-                
-                // Update UI to reflect new data if UI manager exists
-                if (window.uiManager) {
+                // Update UI to reflect new data if UI manager exists (only if there are changes)
+                if (window.uiManager && (restaurantResults.added > 0 || restaurantResults.updated > 0)) {
                     // Refresh curator selector if available
                     if (window.uiManager.curatorModule && 
                         typeof window.uiManager.curatorModule.initializeCuratorSelector === 'function') {
@@ -353,47 +381,20 @@ function triggerInitialSync() {
                         console.log('Refreshing restaurant list to display newly imported data...');
                         await window.uiManager.restaurantModule.loadRestaurants();
                     }
-                }
-                
-                // Show success notification with restaurant count details
-                if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
-                    let notificationMessage = `Sync completed successfully.`;
                     
-                    if (restaurantResults.added > 0 || restaurantResults.updated > 0) {
-                        notificationMessage = `Sync completed: ${restaurantResults.added} restaurants added, ${restaurantResults.updated} updated`;
-                    } else if (restaurantResults.skipped > 0) {
-                        notificationMessage = `Sync completed: ${restaurantResults.skipped} existing restaurants detected`;
+                    // Show notification only if there were changes
+                    if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
+                        const notificationMessage = `Background sync: ${restaurantResults.added} added, ${restaurantResults.updated} updated`;
+                        window.uiUtils.showNotification(notificationMessage, 'success');
                     }
-                    
-                    window.uiUtils.showNotification(notificationMessage, 'success');
+                } else {
+                    console.log('No changes from sync, UI update skipped');
                 }
                 
             } catch (restaurantError) {
-                console.error('Error importing restaurants:', restaurantError);
-                
-                // Hide loading indicator even on error
-                if (window.uiUtils && typeof window.uiUtils.hideLoading === 'function') {
-                    window.uiUtils.hideLoading();
-                }
-                
-                // Show error notification specific to restaurants
-                if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
-                    window.uiUtils.showNotification(
-                        `Error importing restaurants: ${restaurantError.message}`, 
-                        'error'
-                    );
-                }
-                
-                // Still try to update the curator selector since that might have worked
-                if (window.uiManager && window.uiManager.curatorModule && 
-                    typeof window.uiManager.curatorModule.initializeCuratorSelector === 'function') {
-                    try {
-                        window.uiManager.curatorModule.curatorSelectorInitialized = false;
-                        await window.uiManager.curatorModule.initializeCuratorSelector();
-                    } catch (error) {
-                        console.error('Error refreshing curator selector:', error);
-                    }
-                }
+                console.error('Background sync error:', restaurantError);
+                // Don't show error notification on background sync - it's non-critical
+                // The user can manually sync later if needed
             }
             
             // Update last sync time even with partial success
@@ -402,22 +403,10 @@ function triggerInitialSync() {
             }
             
         } catch (error) {
-            console.error('Error during initial sync:', error);
-            
-            // Hide loading indicator
-            if (window.uiUtils && typeof window.uiUtils.hideLoading === 'function') {
-                window.uiUtils.hideLoading();
-            }
-            
-            // Show error notification
-            if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
-                window.uiUtils.showNotification(
-                    `Sync failed: ${error.message}`, 
-                    'error'
-                );
-            }
+            console.error('Background sync error:', error);
+            // Silent fail - user can manually sync if needed
         }
-    }, 2500); // Wait 2.5 seconds to ensure all modules are initialized
+    }, 3000); // Wait 3 seconds to ensure UI is fully loaded before background sync
 }
 
 /**

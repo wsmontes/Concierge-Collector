@@ -30,7 +30,17 @@ if (!window.SyncService) {
                     throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
                 }
                 
-                const remoteRestaurants = await response.json();
+                const remoteRestaurantsData = await response.json();
+                
+                // Convert object format to array format
+                // API returns: { "RestaurantName": { cuisine: [...], ... }, ... }
+                // We need: [{ name: "RestaurantName", id: "RestaurantName", ... }]
+                const remoteRestaurants = Object.entries(remoteRestaurantsData).map(([name, data]) => ({
+                    name: name,
+                    id: name, // Use name as ID since API doesn't provide IDs
+                    ...data
+                }));
+                
                 console.log(`SyncService: Fetched ${remoteRestaurants.length} restaurants from server`);
                 
                 // Process each restaurant and add/update in local database
@@ -254,16 +264,41 @@ if (!window.SyncService) {
          * @returns {Array} - Concepts in local format
          */
         processRemoteConcepts(remoteConcepts) {
-            if (!remoteConcepts || !Array.isArray(remoteConcepts)) {
+            // Handle both formats:
+            // 1. Array format: [{ category, value }, ...]
+            // 2. Object format: { cuisine: [...], menu: [...], ... }
+            
+            if (!remoteConcepts) {
                 return [];
             }
             
-            return remoteConcepts.map(concept => {
-                return {
+            // If it's already in array format with category/value
+            if (Array.isArray(remoteConcepts)) {
+                return remoteConcepts.map(concept => ({
                     category: concept.category,
                     value: concept.value
-                };
-            });
+                }));
+            }
+            
+            // If it's in object format (API response), convert it
+            if (typeof remoteConcepts === 'object') {
+                const concepts = [];
+                for (const [category, values] of Object.entries(remoteConcepts)) {
+                    // Skip non-array values
+                    if (!Array.isArray(values)) continue;
+                    
+                    // Add each value as a separate concept
+                    values.forEach(value => {
+                        concepts.push({
+                            category: category,
+                            value: value
+                        });
+                    });
+                }
+                return concepts;
+            }
+            
+            return [];
         }
         
         /**
@@ -425,7 +460,14 @@ if (!window.SyncService) {
                     throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
                 }
                 
-                const restaurants = await response.json();
+                const restaurantsData = await response.json();
+                
+                // Convert object format to array format
+                const restaurants = Object.entries(restaurantsData).map(([name, data]) => ({
+                    name: name,
+                    ...data
+                }));
+                
                 console.log(`SyncService: Received ${restaurants.length} restaurants to extract curators from`);
                 
                 // Extract unique curators from restaurant data

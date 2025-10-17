@@ -25,11 +25,32 @@ class ConceptModule {
     setupEvents() {
         console.log('Setting up concepts events...');
         
-        // Restaurant name input focus
+        // Restaurant name input with auto-save
         const nameInput = document.getElementById('restaurant-name');
         if (nameInput) {
             nameInput.addEventListener('focus', () => {
                 console.log('Restaurant name input focused');
+            });
+            
+            // Auto-save draft on name change
+            nameInput.addEventListener('input', () => {
+                this.autoSaveDraft();
+            });
+        }
+        
+        // Auto-save on transcription changes
+        const transcriptionTextarea = document.getElementById('restaurant-transcription');
+        if (transcriptionTextarea) {
+            transcriptionTextarea.addEventListener('input', () => {
+                this.autoSaveDraft();
+            });
+        }
+        
+        // Auto-save on description changes
+        const descriptionInput = document.getElementById('restaurant-description');
+        if (descriptionInput) {
+            descriptionInput.addEventListener('input', () => {
+                this.autoSaveDraft();
             });
         }
         
@@ -72,6 +93,9 @@ class ConceptModule {
                             <p>Longitude: ${this.uiManager.currentLocation.longitude.toFixed(6)}</p>
                         `;
                     }
+                    
+                    // Auto-save draft with new location
+                    this.autoSaveDraft();
                 } catch (error) {
                     SafetyUtils.hideLoading();
                     console.error('Error getting location:', error);
@@ -191,6 +215,61 @@ class ConceptModule {
         }
     }
 
+    /**
+     * Auto-save draft restaurant data
+     */
+    async autoSaveDraft() {
+        try {
+            if (!this.uiManager || !this.uiManager.currentCurator) {
+                return; // No curator selected, can't save draft
+            }
+            
+            // Don't auto-save if we're editing an existing saved restaurant
+            if (this.uiManager.isEditingRestaurant && this.uiManager.editingRestaurantId) {
+                return;
+            }
+            
+            const nameInput = document.getElementById('restaurant-name');
+            const transcriptionTextarea = document.getElementById('restaurant-transcription');
+            const descriptionInput = document.getElementById('restaurant-description');
+            
+            const draftData = {
+                name: nameInput?.value?.trim() || '',
+                transcription: transcriptionTextarea?.value?.trim() || '',
+                description: descriptionInput?.value?.trim() || '',
+                concepts: this.uiManager.currentConcepts || [],
+                location: this.uiManager.currentLocation || null,
+                photos: this.uiManager.currentPhotos || []
+            };
+            
+            // Check if there's any data worth saving
+            const hasData = !!(
+                draftData.name ||
+                draftData.transcription ||
+                draftData.description ||
+                (draftData.concepts && draftData.concepts.length > 0) ||
+                draftData.location ||
+                (draftData.photos && draftData.photos.length > 0)
+            );
+            
+            if (!hasData) {
+                return; // Nothing to save
+            }
+            
+            if (window.DraftRestaurantManager) {
+                const draftId = await window.DraftRestaurantManager.getOrCreateCurrentDraft(
+                    this.uiManager.currentCurator.id
+                );
+                
+                await window.DraftRestaurantManager.autoSaveDraft(draftId, draftData);
+                console.log('Draft auto-saved');
+            }
+        } catch (error) {
+            console.error('Error auto-saving draft:', error);
+            // Don't show error to user - auto-save should be silent
+        }
+    }
+    
     discardRestaurant() {
         console.log('Discard restaurant button clicked');
         this.uiManager.currentConcepts = [];
@@ -284,6 +363,36 @@ class ConceptModule {
                 'Restaurant updated successfully' : 
                 'Restaurant saved successfully'
             );
+            
+            // Clean up pending audio and draft data for this restaurant
+            try {
+                const draftId = window.DraftRestaurantManager?.currentDraftId;
+                
+                // Delete pending audio associated with this restaurant or draft
+                if (window.PendingAudioManager) {
+                    if (restaurantId) {
+                        await window.PendingAudioManager.deleteAudios({ restaurantId });
+                    }
+                    if (draftId) {
+                        await window.PendingAudioManager.deleteAudios({ draftId });
+                    }
+                    console.log('Pending audio cleaned up after restaurant save');
+                }
+                
+                // Delete draft restaurant
+                if (draftId && window.DraftRestaurantManager) {
+                    await window.DraftRestaurantManager.deleteDraft(draftId);
+                    console.log('Draft restaurant cleaned up after save');
+                }
+                
+                // Update pending audio badge
+                if (this.uiManager.recordingModule && typeof this.uiManager.recordingModule.showPendingAudioBadge === 'function') {
+                    await this.uiManager.recordingModule.showPendingAudioBadge();
+                }
+            } catch (cleanupError) {
+                console.error('Error cleaning up after restaurant save:', cleanupError);
+                // Don't throw - the restaurant was saved successfully
+            }
             
             // Reset state
             this.uiManager.isEditingRestaurant = false;
@@ -544,6 +653,7 @@ class ConceptModule {
                 } else {
                     this.uiManager.currentConcepts.push(newConcept);
                     this.renderConcepts();
+                    this.autoSaveDraft(); // Auto-save when concept added
                     document.body.removeChild(modalContainer);
                     document.body.style.overflow = '';
                 }
@@ -555,6 +665,7 @@ class ConceptModule {
                 // Fallback: add directly
                 this.uiManager.currentConcepts.push({ category, value });
                 this.renderConcepts();
+                this.autoSaveDraft(); // Auto-save when concept added
                 document.body.removeChild(modalContainer);
                 document.body.style.overflow = '';
             }
