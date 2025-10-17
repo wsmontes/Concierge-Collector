@@ -17,6 +17,8 @@ const RestaurantListModule = ModuleWrapper.defineClass('RestaurantListModule', c
             this.currentPage = 1;
             this.itemsPerPage = 12;
             this.isLoading = false;
+            this.selectedRestaurants = new Set(); // Track selected restaurant IDs
+            this.selectionMode = false; // Whether selection mode is active
         }
 
         /**
@@ -94,7 +96,7 @@ const RestaurantListModule = ModuleWrapper.defineClass('RestaurantListModule', c
                 SafetyUtils.showLoading();
                 
                 console.log('Loading restaurants from database...');
-                this.restaurants = await this.dataStorage.db.restaurants.orderBy('dateAdded').reverse().toArray();
+                this.restaurants = await this.dataStorage.db.restaurants.orderBy('timestamp').reverse().toArray();
                 
                 console.log(`Loaded ${this.restaurants.length} restaurants`);
                 this.applyFilters();
@@ -239,7 +241,7 @@ const RestaurantListModule = ModuleWrapper.defineClass('RestaurantListModule', c
          * Render the restaurant list with pagination
          */
         renderRestaurantList() {
-            const container = document.getElementById('restaurant-list-container');
+            const container = document.getElementById('restaurants-container');
             if (!container) {
                 console.warn('Restaurant list container not found');
                 return;
@@ -289,10 +291,22 @@ const RestaurantListModule = ModuleWrapper.defineClass('RestaurantListModule', c
                 '<span class="material-icons text-red-500">favorite</span>' : 
                 '<span class="material-icons text-gray-300">favorite_border</span>';
 
+            const isSelected = this.selectedRestaurants.has(restaurant.id);
+            const cardClasses = `restaurant-card bg-white rounded-lg shadow-md hover:shadow-lg transition-all p-4 cursor-pointer relative ${isSelected ? 'ring-2 ring-blue-500 bg-blue-50' : ''}`;
+
             return `
-                <div class="restaurant-card bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow p-4 cursor-pointer" 
+                <div class="${cardClasses}" 
                      data-restaurant-id="${restaurant.id}">
-                    <div class="flex justify-between items-start mb-2">
+                    <!-- Selection Checkbox (top-left corner) -->
+                    <div class="absolute top-2 left-2 z-10">
+                        <input type="checkbox" 
+                               class="restaurant-checkbox w-5 h-5 rounded border-2 border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500 cursor-pointer transition-all hover:border-blue-500"
+                               data-restaurant-id="${restaurant.id}"
+                               ${isSelected ? 'checked' : ''}
+                               onclick="event.stopPropagation()">
+                    </div>
+                    
+                    <div class="flex justify-between items-start mb-2 ml-8">
                         <h3 class="font-semibold text-lg truncate flex-1 mr-2">${restaurant.name || 'Unknown Restaurant'}</h3>
                         <button class="favorite-btn p-1" data-restaurant-id="${restaurant.id}" title="Toggle Favorite">
                             ${favIcon}
@@ -439,10 +453,20 @@ const RestaurantListModule = ModuleWrapper.defineClass('RestaurantListModule', c
             // Restaurant card click (view details)
             document.querySelectorAll('.restaurant-card').forEach(card => {
                 card.addEventListener('click', (e) => {
-                    if (!e.target.closest('button')) {
+                    // Don't trigger if clicking on checkbox, buttons, or their children
+                    if (!e.target.closest('button') && !e.target.closest('.restaurant-checkbox')) {
                         const restaurantId = parseInt(card.dataset.restaurantId);
                         this.viewRestaurantDetails(restaurantId);
                     }
+                });
+            });
+
+            // Checkbox selection
+            document.querySelectorAll('.restaurant-checkbox').forEach(checkbox => {
+                checkbox.addEventListener('change', (e) => {
+                    e.stopPropagation();
+                    const restaurantId = parseInt(checkbox.dataset.restaurantId);
+                    this.toggleSelection(restaurantId);
                 });
             });
 
@@ -568,22 +592,15 @@ const RestaurantListModule = ModuleWrapper.defineClass('RestaurantListModule', c
                     return;
                 }
 
-                // Determine if this is a synced restaurant
-                const isSynced = restaurant.serverId && restaurant.source === 'remote';
+                // Determine if this is a local or synced restaurant
+                const isSynced = restaurant.serverId != null;
                 
                 let confirmMessage;
                 
                 if (isSynced) {
-                    confirmMessage = `"${restaurant.name}" was synced from the server.\n\n` +
-                                   `⚠️ ARCHIVE (Recommended):\n` +
-                                   `This will hide the restaurant locally but keep it for sync.\n` +
-                                   `It won't appear in your list.\n\n` +
-                                   `Note: Permanent deletion would cause it to re-appear on next sync.\n\n` +
-                                   `Archive this restaurant?`;
+                    confirmMessage = `Delete "${restaurant.name}"?\n\nAre you sure?`;
                 } else {
-                    confirmMessage = `Are you sure you want to delete "${restaurant.name}"?\n\n` +
-                                   `This local restaurant will be permanently deleted.\n` +
-                                   `This action cannot be undone.`;
+                    confirmMessage = `Delete "${restaurant.name}"?\n\nThis restaurant is not synced and the operation cannot be undone.\n\nAre you sure?`;
                 }
 
                 const confirmed = confirm(confirmMessage);
@@ -594,8 +611,8 @@ const RestaurantListModule = ModuleWrapper.defineClass('RestaurantListModule', c
                 
                 if (result.type === 'soft') {
                     SafetyUtils.showNotification(
-                        `"${result.name}" archived. It will not appear in your list but is preserved for sync.`, 
-                        'info',
+                        `"${result.name}" deleted from server and marked as deleted locally`, 
+                        'success',
                         5000
                     );
                 } else {
@@ -612,6 +629,243 @@ const RestaurantListModule = ModuleWrapper.defineClass('RestaurantListModule', c
                 console.error('Error deleting restaurant:', error);
                 SafetyUtils.showNotification('Failed to delete restaurant: ' + error.message, 'error');
             }
+        }
+
+        /**
+         * Toggle selection state for a restaurant
+         * @param {number} restaurantId - Restaurant ID
+         */
+        toggleSelection(restaurantId) {
+            if (this.selectedRestaurants.has(restaurantId)) {
+                this.selectedRestaurants.delete(restaurantId);
+            } else {
+                this.selectedRestaurants.add(restaurantId);
+            }
+            
+            // Update selection mode
+            this.selectionMode = this.selectedRestaurants.size > 0;
+            
+            // Update only the specific card styling (efficient)
+            const card = document.querySelector(`.restaurant-card[data-id="${restaurantId}"]`);
+            if (card) {
+                const isSelected = this.selectedRestaurants.has(restaurantId);
+                const checkbox = card.querySelector('.restaurant-checkbox');
+                
+                if (isSelected) {
+                    card.classList.add('ring-2', 'ring-blue-500', 'bg-blue-50');
+                    if (checkbox) checkbox.checked = true;
+                } else {
+                    card.classList.remove('ring-2', 'ring-blue-500', 'bg-blue-50');
+                    if (checkbox) checkbox.checked = false;
+                }
+            }
+            
+            // Update bulk action toolbar
+            this.updateBulkActionToolbar();
+        }
+
+        /**
+         * Update bulk action toolbar visibility and content
+         */
+        updateBulkActionToolbar() {
+            const toolbar = document.getElementById('bulk-action-toolbar');
+            
+            if (this.selectedRestaurants.size > 0) {
+                // Show toolbar with count
+                if (toolbar) {
+                    toolbar.classList.remove('hidden');
+                    const countElement = toolbar.querySelector('.selection-count');
+                    if (countElement) {
+                        countElement.textContent = `${this.selectedRestaurants.size} selected`;
+                    }
+                } else {
+                    // Create toolbar if it doesn't exist
+                    this.createBulkActionToolbar();
+                }
+            } else {
+                // Hide toolbar
+                if (toolbar) {
+                    toolbar.classList.add('hidden');
+                }
+            }
+        }
+
+        /**
+         * Create bulk action toolbar
+         */
+        createBulkActionToolbar() {
+            // Check if toolbar already exists
+            if (document.getElementById('bulk-action-toolbar')) return;
+            
+            const toolbar = document.createElement('div');
+            toolbar.id = 'bulk-action-toolbar';
+            toolbar.className = 'fixed bottom-0 left-0 right-0 bg-white border-t-2 border-blue-500 shadow-lg p-4 z-50';
+            toolbar.innerHTML = `
+                <div class="max-w-7xl mx-auto flex items-center justify-between">
+                    <div class="flex items-center gap-4">
+                        <span class="selection-count font-semibold text-gray-700">${this.selectedRestaurants.size} selected</span>
+                    </div>
+                    <div class="flex gap-2">
+                        <button id="export-selected-btn" class="px-4 py-2 bg-green-500 text-white rounded hover:bg-green-600 transition-colors flex items-center gap-2">
+                            <i class="material-icons text-sm">download</i>
+                            Export Selected
+                        </button>
+                        <button id="delete-selected-btn" class="px-4 py-2 bg-red-500 text-white rounded hover:bg-red-600 transition-colors flex items-center gap-2">
+                            <i class="material-icons text-sm">delete</i>
+                            Delete Selected
+                        </button>
+                        <button id="clear-selection-btn" class="px-4 py-2 bg-gray-300 text-gray-700 rounded hover:bg-gray-400 transition-colors">
+                            Clear Selection
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(toolbar);
+            
+            // Attach event listeners
+            document.getElementById('export-selected-btn').addEventListener('click', () => this.exportSelected());
+            document.getElementById('delete-selected-btn').addEventListener('click', () => this.deleteSelected());
+            document.getElementById('clear-selection-btn').addEventListener('click', () => this.clearSelection());
+        }
+
+        /**
+         * Export selected restaurants
+         */
+        async exportSelected() {
+            try {
+                const selectedIds = Array.from(this.selectedRestaurants);
+                
+                if (selectedIds.length === 0) {
+                    SafetyUtils.showNotification('No restaurants selected', 'warning');
+                    return;
+                }
+                
+                // Get selected restaurants
+                const restaurants = await this.dataStorage.db.restaurants
+                    .where('id')
+                    .anyOf(selectedIds)
+                    .toArray();
+                
+                if (restaurants.length === 0) {
+                    SafetyUtils.showNotification('Selected restaurants not found', 'error');
+                    return;
+                }
+                
+                // Transform to V2 format (await each transformation)
+                const exportData = await Promise.all(
+                    restaurants.map(r => this.dataStorage.transformToV2Format(r))
+                );
+                
+                // Create and download file
+                const dataStr = JSON.stringify(exportData, null, 2);
+                const blob = new Blob([dataStr], { type: 'application/json' });
+                const url = URL.createObjectURL(blob);
+                
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `selected_restaurants_${new Date().toISOString().split('T')[0]}.json`;
+                a.click();
+                
+                URL.revokeObjectURL(url);
+                
+                SafetyUtils.showNotification(`Exported ${restaurants.length} restaurants`, 'success');
+                
+            } catch (error) {
+                console.error('Error exporting selected restaurants:', error);
+                SafetyUtils.showNotification('Failed to export selected restaurants', 'error');
+            }
+        }
+
+        /**
+         * Delete selected restaurants with confirmation
+         */
+        async deleteSelected() {
+            try {
+                const selectedIds = Array.from(this.selectedRestaurants);
+                
+                // Get selected restaurants to count synced vs local
+                const restaurants = await this.dataStorage.db.restaurants
+                    .where('id')
+                    .anyOf(selectedIds)
+                    .toArray();
+                
+                const syncedCount = restaurants.filter(r => r.serverId != null).length;
+                const localCount = restaurants.length - syncedCount;
+                
+                // Build confirmation message
+                let confirmMessage = `Delete ${restaurants.length} restaurants?\n\n`;
+                
+                if (localCount > 0 && syncedCount > 0) {
+                    confirmMessage += `${localCount} are local (cannot be undone)\n${syncedCount} are synced\n\n`;
+                } else if (localCount > 0) {
+                    confirmMessage += `All are local and the operation cannot be undone.\n\n`;
+                } else {
+                    confirmMessage += `All are synced.\n\n`;
+                }
+                
+                confirmMessage += 'Are you sure?';
+                
+                const confirmed = confirm(confirmMessage);
+                if (!confirmed) return;
+                
+                // Delete each restaurant
+                let successCount = 0;
+                let errorCount = 0;
+                
+                for (const id of selectedIds) {
+                    try {
+                        await this.dataStorage.smartDeleteRestaurant(id);
+                        successCount++;
+                    } catch (error) {
+                        console.error(`Error deleting restaurant ${id}:`, error);
+                        errorCount++;
+                    }
+                }
+                
+                // Clear selection
+                this.clearSelection();
+                
+                // Show result
+                if (errorCount === 0) {
+                    SafetyUtils.showNotification(`Successfully deleted ${successCount} restaurants`, 'success');
+                } else {
+                    SafetyUtils.showNotification(
+                        `Deleted ${successCount} restaurants, ${errorCount} failed`, 
+                        'warning'
+                    );
+                }
+                
+                // Refresh list
+                await this.loadRestaurants();
+                
+            } catch (error) {
+                console.error('Error deleting selected restaurants:', error);
+                SafetyUtils.showNotification('Failed to delete selected restaurants', 'error');
+            }
+        }
+
+        /**
+         * Clear all selection
+         */
+        clearSelection() {
+            // Store IDs to clear before clearing the set
+            const idsToClean = Array.from(this.selectedRestaurants);
+            
+            this.selectedRestaurants.clear();
+            this.selectionMode = false;
+            
+            // Update each card efficiently (no re-render)
+            idsToClean.forEach(restaurantId => {
+                const card = document.querySelector(`.restaurant-card[data-id="${restaurantId}"]`);
+                if (card) {
+                    card.classList.remove('ring-2', 'ring-blue-500', 'bg-blue-50');
+                    const checkbox = card.querySelector('.restaurant-checkbox');
+                    if (checkbox) checkbox.checked = false;
+                }
+            });
+            
+            this.updateBulkActionToolbar();
         }
 
         /**

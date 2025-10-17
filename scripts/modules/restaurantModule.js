@@ -92,7 +92,14 @@ class RestaurantModule {
                 console.log(`Restaurant "${restaurant.name}" (ID: ${restaurant.id}) - source: ${restaurant.source}, serverId: ${restaurant.serverId || 'none'}, curatorId: ${restaurant.curatorId}`);
                 
                 const card = document.createElement('div');
-                card.className = 'restaurant-card bg-white p-4 rounded-lg shadow hover:shadow-md transition-all';
+                card.className = 'restaurant-card bg-white p-4 rounded-lg shadow hover:shadow-md transition-all relative flex flex-col';
+                card.setAttribute('data-id', restaurant.id); // Add data-id for selection
+                
+                // Check if restaurant is selected (if restaurantListModule exists)
+                const isSelected = window.restaurantListModule?.selectedRestaurants?.has(restaurant.id) || false;
+                if (isSelected) {
+                    card.classList.add('ring-2', 'ring-blue-500', 'bg-blue-50');
+                }
                 
                 // Get concepts by category
                 const conceptsByCategory = {};
@@ -105,9 +112,20 @@ class RestaurantModule {
                     }
                 }
                 
-                // Create card content
+                // Create card content with checkbox
                 let cardHTML = `
-                    <h3 class="text-lg font-bold mb-2 flex items-center">
+                    <!-- Selection Checkbox (top-left corner) -->
+                    <div class="absolute top-2 left-2 z-10">
+                        <input type="checkbox" 
+                               class="restaurant-checkbox w-5 h-5 rounded border-2 border-gray-300 text-blue-600 focus:ring-2 focus:ring-blue-500 cursor-pointer transition-all hover:border-blue-500"
+                               data-restaurant-id="${restaurant.id}"
+                               ${isSelected ? 'checked' : ''}
+                               onclick="event.stopPropagation(); if(window.restaurantListModule) window.restaurantListModule.toggleSelection(${restaurant.id});">
+                    </div>
+                    
+                    <!-- Main content wrapper (flex-grow to push button down) -->
+                    <div class="flex-grow">
+                    <h3 class="text-lg font-bold mb-2 flex items-center ml-8">
                         ${restaurant.name}
                         ${restaurant.source === 'local' ? 
                             '<span class="ml-2 text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full">Local</span>' : 
@@ -191,9 +209,12 @@ class RestaurantModule {
                 
                 cardHTML += `</div>`;
                 
-                // Add view details button
+                // Close flex-grow wrapper
+                cardHTML += `</div>`;
+                
+                // Add view details button (aligned to bottom with mt-auto)
                 cardHTML += `
-                    <button class="view-details" data-id="${restaurant.id}">
+                    <button class="view-details mt-4" data-id="${restaurant.id}">
                         View Details
                     </button>
                 `;
@@ -637,17 +658,14 @@ class RestaurantModule {
             
             // Delete restaurant functionality with smart strategy
             modalContainer.querySelector('.delete-restaurant').addEventListener('click', async () => {
-                // Determine if this is a synced restaurant
-                const isSynced = restaurant.serverId && restaurant.source === 'remote';
+                // Determine if this is a local or synced restaurant
+                const isSynced = restaurant.serverId != null;
                 
                 let confirmMessage;
                 if (isSynced) {
-                    confirmMessage = `"${restaurant.name}" was synced from the server.\n\n` +
-                                   `⚠️ ARCHIVE (Recommended):\n` +
-                                   `Hide locally but preserve for sync?\n` +
-                                   `(Permanent deletion would cause it to re-appear on next sync)`;
+                    confirmMessage = `Delete "${restaurant.name}"?\n\nAre you sure?`;
                 } else {
-                    confirmMessage = `Permanently delete "${restaurant.name}"?\n\nThis action cannot be undone.`;
+                    confirmMessage = `Delete "${restaurant.name}"?\n\nThis restaurant is not synced and the operation cannot be undone.\n\nAre you sure?`;
                 }
                 
                 if (confirm(confirmMessage)) {
@@ -658,8 +676,8 @@ class RestaurantModule {
                         
                         if (result.type === 'soft') {
                             SafetyUtils.showNotification(
-                                `"${result.name}" archived (hidden from list)`,
-                                'info',
+                                `"${result.name}" deleted from server and marked as deleted locally`,
+                                'success',
                                 5000
                             );
                         } else {

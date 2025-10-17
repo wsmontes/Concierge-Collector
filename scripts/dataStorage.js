@@ -1300,16 +1300,40 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 await this.deleteRestaurant(restaurantId);
                 return { type: 'permanent', id: restaurantId, name: restaurant.name };
             } else {
-                // STRATEGY 2: Soft delete for synced restaurants (unless forced)
+                // STRATEGY 2: Soft delete + server delete for synced restaurants (unless forced)
                 if (options.force === true) {
                     console.log('Performing forced permanent delete (synced restaurant)');
                     await this.deleteRestaurant(restaurantId);
                     return { type: 'permanent', id: restaurantId, name: restaurant.name, forced: true };
                 }
                 
-                console.log('Performing soft delete (synced restaurant)');
+                console.log('Performing soft delete + server delete (synced restaurant)');
+                
+                // First, try to delete from server
+                try {
+                    console.log(`Attempting to delete restaurant from server: serverId=${restaurant.serverId}`);
+                    const response = await fetch(`https://wsmontes.pythonanywhere.com/api/restaurants/${restaurant.serverId}`, {
+                        method: 'DELETE',
+                        headers: {
+                            'Accept': 'application/json',
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    
+                    if (!response.ok) {
+                        console.warn(`Server delete failed with status ${response.status}: ${response.statusText}`);
+                        // Continue with soft delete even if server delete fails
+                    } else {
+                        console.log(`Successfully deleted restaurant from server: serverId=${restaurant.serverId}`);
+                    }
+                } catch (serverError) {
+                    console.error('Error deleting from server:', serverError);
+                    // Continue with soft delete even if server call fails
+                }
+                
+                // Soft delete locally (mark as deleted)
                 await this.softDeleteRestaurant(restaurantId);
-                return { type: 'soft', id: restaurantId, name: restaurant.name };
+                return { type: 'soft', id: restaurantId, name: restaurant.name, serverDeleted: true };
             }
         } catch (error) {
             console.error('Error in smart delete restaurant:', error);
@@ -1361,6 +1385,50 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             return { restored: true, id: restaurantId, name: restaurant.name };
         } catch (error) {
             console.error('Error restoring restaurant:', error);
+            throw error;
+        }
+    }
+    
+    /**
+     * Mark restaurants that have serverId but are not in server response as local-only
+     * Purpose: Handle sync inconsistencies when restaurants are deleted from server
+     * @param {Set<number>} serverRestaurantIds - Set of restaurant IDs from server
+     * @returns {Promise<number>} - Number of restaurants marked as local
+     */
+    async markMissingRestaurantsAsLocal(serverRestaurantIds) {
+        try {
+            // Get all local restaurants that have a serverId
+            const syncedRestaurants = await this.db.restaurants
+                .filter(r => r.serverId != null)
+                .toArray();
+            
+            console.log(`Found ${syncedRestaurants.length} synced restaurants locally`);
+            
+            let markedCount = 0;
+            
+            // Check each synced restaurant
+            for (const restaurant of syncedRestaurants) {
+                // If restaurant has serverId but is not in server response, mark as local
+                if (!serverRestaurantIds.has(restaurant.serverId)) {
+                    console.log(`Restaurant "${restaurant.name}" (serverId: ${restaurant.serverId}) not found on server - marking as local`);
+                    
+                    await this.db.restaurants.update(restaurant.id, {
+                        serverId: null,
+                        source: 'local',
+                        origin: 'local',
+                        deletedLocally: false,
+                        deletedAt: null,
+                        lastSyncedAt: null
+                    });
+                    
+                    markedCount++;
+                }
+            }
+            
+            console.log(`Marked ${markedCount} restaurants as local (server inconsistency detected)`);
+            return markedCount;
+        } catch (error) {
+            console.error('Error marking missing restaurants as local:', error);
             throw error;
         }
     }
@@ -1590,6 +1658,159 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
      * Purpose: Export restaurants with metadata array structure, conditional inclusion
      * Dependencies: db.restaurants, db.curators, db.restaurantLocations, db.restaurantPhotos, db.restaurantConcepts, db.concepts
      */
+    /**
+     * Transform a single restaurant to V2 format
+     * Purpose: Convert a single restaurant with its related data to V2 metadata array structure
+     * Dependencies: db.curators, db.concepts, db.restaurantConcepts, db.restaurantLocations, db.restaurantPhotos
+     * @param {Object} restaurant - Restaurant object to transform
+     * @param {Object} options - Optional related data (curator, location, photos, concepts)
+     * @returns {Object} Restaurant in V2 format
+     */
+    async transformToV2Format(restaurant, options = {}) {
+        // Get related data if not provided
+        const curator = options.curator || 
+            await this.db.curators.get(restaurant.curatorId);
+        
+        const location = options.location || 
+            await this.db.restaurantLocations
+                .where('restaurantId').equals(restaurant.id).first();
+        
+        const photos = options.photos || 
+            await this.db.restaurantPhotos
+                .where('restaurantId').equals(restaurant.id).toArray();
+        
+        // Get concepts for this restaurant
+        let restaurantConcepts = options.concepts;
+        if (!restaurantConcepts) {
+            const concepts = await this.db.concepts.toArray();
+            const restaurantConceptLinks = await this.db.restaurantConcepts
+                .where('restaurantId').equals(restaurant.id).toArray();
+            const conceptIds = restaurantConceptLinks.map(rc => rc.conceptId);
+            restaurantConcepts = concepts.filter(c => conceptIds.includes(c.id));
+        }
+        
+        // Build metadata array
+        const metadata = [];
+        
+        // 1. Restaurant metadata (CONDITIONAL - only if needed)
+        const hasServerId = restaurant.serverId != null;
+        const isDeleted = restaurant.deletedLocally === true;
+        const wasModified = restaurant.modifiedAt && restaurant.modifiedAt !== restaurant.timestamp;
+        
+        if (hasServerId || isDeleted || wasModified) {
+            const restaurantMeta = {
+                type: 'restaurant',
+                id: restaurant.id
+            };
+            
+            if (hasServerId) {
+                restaurantMeta.serverId = restaurant.serverId;
+            }
+            
+            restaurantMeta.created = {
+                timestamp: restaurant.timestamp,
+                curator: {
+                    id: restaurant.curatorId,
+                    name: curator?.name || 'Unknown'
+                }
+            };
+            
+            if (wasModified) {
+                restaurantMeta.modified = {
+                    timestamp: restaurant.modifiedAt
+                };
+            }
+            
+            const syncData = {};
+            if (hasServerId) {
+                syncData.status = 'synced';
+                if (restaurant.lastSyncedAt) {
+                    syncData.lastSyncedAt = restaurant.lastSyncedAt;
+                }
+            }
+            if (isDeleted) {
+                syncData.deletedLocally = true;
+                if (restaurant.deletedAt) {
+                    syncData.deletedAt = restaurant.deletedAt;
+                }
+            }
+            
+            if (Object.keys(syncData).length > 0) {
+                restaurantMeta.sync = syncData;
+            }
+            
+            metadata.push(restaurantMeta);
+        }
+        
+        // 2. Collector data (ALWAYS present, but fields are conditional)
+        const collectorData = {
+            type: 'collector',
+            source: restaurant.source || 'local',
+            data: {
+                name: restaurant.name // Required
+            }
+        };
+        
+        // Only add optional fields if they have data
+        if (restaurant.description && restaurant.description.trim()) {
+            collectorData.data.description = restaurant.description;
+        }
+        
+        if (restaurant.transcription && restaurant.transcription.trim()) {
+            collectorData.data.transcription = restaurant.transcription;
+        }
+        
+        if (location && location.latitude != null && location.longitude != null) {
+            collectorData.data.location = {
+                latitude: location.latitude,
+                longitude: location.longitude
+            };
+            if (location.address && location.address.trim()) {
+                collectorData.data.location.address = location.address;
+            }
+        }
+        
+        if (photos && photos.length > 0) {
+            collectorData.data.photos = photos.map(p => {
+                const photo = {
+                    id: p.id,
+                    photoData: p.photoData
+                };
+                if (p.timestamp) {
+                    photo.timestamp = p.timestamp;
+                }
+                return photo;
+            });
+        }
+        
+        metadata.push(collectorData);
+        
+        // Build curator categories at root level (ONLY categories with values)
+        const categorizedConcepts = {};
+        restaurantConcepts.forEach(concept => {
+            if (concept.category && concept.value) {
+                if (!categorizedConcepts[concept.category]) {
+                    categorizedConcepts[concept.category] = [];
+                }
+                categorizedConcepts[concept.category].push(concept.value);
+            }
+        });
+        
+        // Build final restaurant object
+        const restaurantExport = {
+            metadata,
+            ...categorizedConcepts
+        };
+        
+        return restaurantExport;
+    }
+
+    /**
+     * Export all restaurants in V2 format
+     * Purpose: Export all restaurants with metadata array structure
+     * Dependencies: transformToV2Format, db.restaurants
+     * @returns {Array} Array of restaurants in V2 format
+     */
     async exportDataV2() {
         console.log('Starting V2 export with metadata array structure...');
         
@@ -1601,154 +1822,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
         
         const exportRestaurants = await Promise.all(
             restaurants.map(async restaurant => {
-                const curator = curators.find(c => c.id === restaurant.curatorId);
-                const location = await this.db.restaurantLocations
-                    .where('restaurantId').equals(restaurant.id).first();
-                const photos = await this.db.restaurantPhotos
-                    .where('restaurantId').equals(restaurant.id).toArray();
-                
-                // Get concepts for this restaurant
-                const restaurantConceptLinks = await this.db.restaurantConcepts
-                    .where('restaurantId').equals(restaurant.id).toArray();
-                const conceptIds = restaurantConceptLinks.map(rc => rc.conceptId);
-                const restaurantConcepts = concepts.filter(c => conceptIds.includes(c.id));
-                
-                // Build metadata array
-                const metadata = [];
-                
-                // 1. Restaurant metadata (CONDITIONAL - only if needed)
-                const hasServerId = restaurant.serverId != null;
-                const isDeleted = restaurant.deletedLocally === true;
-                const wasModified = restaurant.modifiedAt && restaurant.modifiedAt !== restaurant.timestamp;
-                
-                if (hasServerId || isDeleted || wasModified) {
-                    const restaurantMeta = {
-                        type: 'restaurant',
-                        id: restaurant.id
-                    };
-                    
-                    if (hasServerId) {
-                        restaurantMeta.serverId = restaurant.serverId;
-                    }
-                    
-                    restaurantMeta.created = {
-                        timestamp: restaurant.timestamp,
-                        curator: {
-                            id: restaurant.curatorId,
-                            name: curator?.name || 'Unknown'
-                        }
-                    };
-                    
-                    if (wasModified) {
-                        restaurantMeta.modified = {
-                            timestamp: restaurant.modifiedAt
-                        };
-                    }
-                    
-                    const syncData = {};
-                    if (hasServerId) {
-                        syncData.status = 'synced';
-                        if (restaurant.lastSyncedAt) {
-                            syncData.lastSyncedAt = restaurant.lastSyncedAt;
-                        }
-                    }
-                    if (isDeleted) {
-                        syncData.deletedLocally = true;
-                        if (restaurant.deletedAt) {
-                            syncData.deletedAt = restaurant.deletedAt;
-                        }
-                    }
-                    
-                    if (Object.keys(syncData).length > 0) {
-                        restaurantMeta.sync = syncData;
-                    }
-                    
-                    metadata.push(restaurantMeta);
-                }
-                
-                // 2. Collector data (ALWAYS present, but fields are conditional)
-                const collectorData = {
-                    type: 'collector',
-                    source: restaurant.source || 'local',
-                    data: {
-                        name: restaurant.name // Required
-                    }
-                };
-                
-                // Only add optional fields if they have data
-                if (restaurant.description && restaurant.description.trim()) {
-                    collectorData.data.description = restaurant.description;
-                }
-                
-                if (restaurant.transcription && restaurant.transcription.trim()) {
-                    collectorData.data.transcription = restaurant.transcription;
-                }
-                
-                if (location && location.latitude != null && location.longitude != null) {
-                    collectorData.data.location = {
-                        latitude: location.latitude,
-                        longitude: location.longitude
-                    };
-                    if (location.address && location.address.trim()) {
-                        collectorData.data.location.address = location.address;
-                    }
-                }
-                
-                if (photos && photos.length > 0) {
-                    collectorData.data.photos = photos.map(p => {
-                        const photo = {
-                            id: p.id,
-                            photoData: p.photoData
-                        };
-                        if (p.timestamp) {
-                            photo.timestamp = p.timestamp;
-                        }
-                        return photo;
-                    });
-                }
-                
-                metadata.push(collectorData);
-                
-                // 3. Michelin data (ONLY if imported from Michelin)
-                // TODO: Implement when Michelin data storage is added
-                // if (restaurant.michelinData) {
-                //     metadata.push({
-                //         type: 'michelin',
-                //         source: 'michelin-api',
-                //         importedAt: restaurant.michelinImportedAt,
-                //         data: restaurant.michelinData
-                //     });
-                // }
-                
-                // 4. Google Places data (ONLY if imported from Google)
-                // TODO: Implement when Google Places data storage is added
-                // if (restaurant.googlePlacesData) {
-                //     metadata.push({
-                //         type: 'google-places',
-                //         source: 'google-places-api',
-                //         importedAt: restaurant.googlePlacesImportedAt,
-                //         data: restaurant.googlePlacesData
-                //     });
-                // }
-                
-                // Build curator categories at root level (ONLY categories with values)
-                const categorizedConcepts = {};
-                restaurantConcepts.forEach(concept => {
-                    if (concept.category && concept.value) {
-                        if (!categorizedConcepts[concept.category]) {
-                            categorizedConcepts[concept.category] = [];
-                        }
-                        categorizedConcepts[concept.category].push(concept.value);
-                    }
-                });
-                
-                // Build final restaurant object
-                const restaurantExport = {
-                    metadata,
-                    ...categorizedConcepts
-                };
-                
-                return restaurantExport;
+                return await this.transformToV2Format(restaurant);
             })
         );
         

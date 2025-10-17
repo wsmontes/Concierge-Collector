@@ -868,6 +868,14 @@ class ExportImportModule {
             await dataStorage.importData(importData);
             console.log('Remote import: Database import completed successfully');
             
+            // Handle sync inconsistencies - mark restaurants not in server response as local
+            console.log('Remote import: Checking for sync inconsistencies...');
+            const serverRestaurantIds = new Set(responseData.map(r => r.id).filter(id => id != null));
+            const markedAsLocal = await dataStorage.markMissingRestaurantsAsLocal(serverRestaurantIds);
+            if (markedAsLocal > 0) {
+                console.log(`Remote import: Marked ${markedAsLocal} restaurants as local (not found on server)`);
+            }
+            
             // Reload curator info safely
             console.log('Remote import: Reloading curator information...');
             await this.safeReloadCuratorInfo();

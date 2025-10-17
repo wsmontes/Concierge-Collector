@@ -86,6 +86,16 @@ if (typeof window.UIManager === 'undefined') {
             if (!this.restaurantModule && typeof RestaurantModule !== 'undefined') 
                 this.restaurantModule = new RestaurantModule(this);
             
+            if (!this.restaurantListModule && typeof RestaurantListModule !== 'undefined') {
+                this.restaurantListModule = new RestaurantListModule();
+                this.restaurantListModule.init({
+                    dataStorage: window.dataStorage,
+                    uiUtils: window.uiUtils
+                });
+                // Expose to window for debugging
+                window.restaurantListModule = this.restaurantListModule;
+            }
+            
             if (!this.exportImportModule && typeof ExportImportModule !== 'undefined') 
                 this.exportImportModule = new ExportImportModule(this);
             
