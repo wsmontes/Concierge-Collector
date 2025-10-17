@@ -1,0 +1,401 @@
+[
+  {
+    "metadata": [
+        {
+          "type": "restaurant",
+          "id": 42,
+          "serverId": 789,
+          "created": {
+            "timestamp": "2025-09-15T14:30:00.000Z",
+            "curator": {
+              "id": 3,
+              "name": "Maria Santos"
+            }
+          },
+          "modified": {
+            "timestamp": "2025-10-10T16:45:00.000Z",
+            "curator": {
+              "id": 3,
+              "name": "Maria Santos"
+            }
+          },
+          "sync": {
+            "status": "synced",
+            "lastSyncedAt": "2025-10-17T10:00:00.000Z",
+            "deletedLocally": false
+          },
+          "system": {
+            "exportedAt": "2025-10-17T18:30:00.000Z",
+            "exportFormat": "concierge-v2",
+            "schemaVersion": "2.0"
+          }
+        },
+        {
+          "type": "collector",
+          "source": "local",
+          "origin": "local",
+          "data": {
+            "name": "Osteria Francescana",
+            "description": "Incredible three-star experience in the heart of Modena. Chef Massimo Bottura's creativity shines in every dish. The famous 'Five Ages of Parmigiano Reggiano' is mind-blowing. Each course tells a story, blending tradition with innovation. The service is impeccable without being pretentious.",
+            "transcription": "Just finished an unforgettable meal at Osteria Francescana. Every single course was a revelation. The tortellini walk in brodo was traditional yet completely reimagined. The wine pairing by sommelier Marco was perfect. Book at least three months in advance. Dress smart casual. Worth every penny.",
+            "location": {
+              "latitude": 44.6467,
+              "longitude": 10.9252,
+              "address": "Via Stella, 22, 41121 Modena MO, Italy",
+              "enteredBy": "curator"
+            },
+            "photos": [
+              {
+                "id": 101,
+                "restaurantId": 42,
+                "photoData": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD...",
+                "capturedBy": "curator",
+                "timestamp": "2025-09-15T20:15:00.000Z"
+              },
+              {
+                "id": 102,
+                "restaurantId": 42,
+                "photoData": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD...",
+                "capturedBy": "curator",
+                "timestamp": "2025-09-15T21:30:00.000Z"
+              }
+            ],
+            "notes": {
+              "private": "Ask for Marco the sommelier. Mention you're a wine collector. They have a secret cellar tour.",
+              "public": "Reservations required 3+ months in advance. Smart casual dress code. No walk-ins accepted."
+            }
+          }
+        },
+        {
+          "type": "michelin",
+          "source": "michelin-api",
+          "importedAt": "2025-09-16T09:00:00.000Z",
+          "data": {
+            "michelinId": "osteria-francescana-modena-italy",
+            "rating": {
+              "stars": 3,
+              "distinction": "Three MICHELIN Stars",
+              "year": 2025
+            },
+            "guide": {
+              "country": "Italy",
+              "region": "Emilia-Romagna",
+              "city": "Modena"
+            },
+            "awards": [
+              "Three MICHELIN Stars 2025",
+              "Three MICHELIN Stars 2024",
+              "Three MICHELIN Stars 2023",
+              "Best Restaurant in the World 2016",
+              "Best Restaurant in the World 2018"
+            ],
+            "pricing": {
+              "range": "€€€€",
+              "averagePrice": 270
+            },
+            "michelinDescription": "Massimo Bottura's famous restaurant needs no introduction: as a symbol of Italian regional cuisine reinterpreted with a modern twist, his reputation extends far beyond the country's borders. Booking well in advance is essential if you want to sample highly imaginative, personalised and yet technically outstanding cuisine which pays tribute to Italian traditions.",
+            "websiteUrl": "https://www.osteriafrancescana.it",
+            "reservationUrl": "https://osteriafrancescana.sevenrooms.com",
+            "michelinUrl": "https://guide.michelin.com/en/emilia-romagna/modena/restaurant/osteria-francescana"
+          }
+        },
+        {
+          "type": "google-places",
+          "source": "google-places-api",
+          "importedAt": "2025-09-16T10:30:00.000Z",
+          "data": {
+            "placeId": "ChIJpQKS3vC1f0cRDTy8wF0NxdI",
+            "rating": {
+              "average": 4.6,
+              "totalRatings": 2847,
+              "priceLevel": 4
+            },
+            "businessStatus": "OPERATIONAL",
+            "location": {
+              "latitude": 44.6467,
+              "longitude": 10.9252,
+              "formattedAddress": "Via Stella, 22, 41121 Modena MO, Italy",
+              "vicinity": "Via Stella, 22, Modena"
+            },
+            "contact": {
+              "phoneNumber": "+39 059 210118",
+              "internationalPhone": "+39 059 210118",
+              "website": "https://www.osteriafrancescana.it"
+            },
+            "hours": {
+              "openNow": false,
+              "weekdayText": [
+                "Monday: Closed",
+                "Tuesday: Closed",
+                "Wednesday: 12:30 – 2:00 PM, 7:30 – 10:00 PM",
+                "Thursday: 12:30 – 2:00 PM, 7:30 – 10:00 PM",
+                "Friday: 12:30 – 2:00 PM, 7:30 – 10:00 PM",
+                "Saturday: 12:30 – 2:00 PM, 7:30 – 10:00 PM",
+                "Sunday: Closed"
+              ]
+            },
+            "photos": [
+              {
+                "reference": "CmRaAAAAcGgT8FZ9W7vX...",
+                "width": 4032,
+                "height": 3024,
+                "attributions": ["Osteria Francescana"]
+              }
+            ],
+            "types": [
+              "restaurant",
+              "food",
+              "point_of_interest",
+              "establishment"
+            ],
+            "reviews": [
+              {
+                "author": "Giovanni Rossi",
+                "rating": 5,
+                "text": "Absolutely incredible experience. Every dish was a work of art. Worth every penny. The tortellini is legendary.",
+                "time": 1697558400,
+                "relativeTime": "3 months ago"
+              },
+              {
+                "author": "Sarah Johnson",
+                "rating": 5,
+                "text": "Best meal of my life. Massimo Bottura is a genius. Book months ahead!",
+                "time": 1695052800,
+                "relativeTime": "4 months ago"
+              }
+            ]
+          }
+        }
+      ],
+      "Cuisine": [
+        "Italian",
+        "Contemporary"
+      ],
+      "Menu": [
+        "Pasta",
+        "Risotto",
+        "Decadent desserts",
+        "Tasting Menu"
+      ],
+      "Price Range": [
+        "Expensive"
+      ],
+      "Mood": [
+        "Sophisticated",
+        "Intimate",
+        "Romantic"
+      ],
+      "Setting": [
+        "Modern",
+        "Elegant",
+        "Sophisticated",
+        "Open kitchen"
+      ],
+      "Crowd": [
+        "International",
+        "Fashionable",
+        "Executives"
+      ],
+      "Suitable For": [
+        "Dating",
+        "Celebrations",
+        "Business dinners",
+        "See and be seen"
+      ],
+      "Food Style": [
+        "Modern",
+        "Sophisticated",
+        "Molecular",
+        "Set menus"
+      ],
+      "Drinks": [
+        "Wine list",
+        "Signature Cocktails",
+        "Grappa"
+      ],
+      "Special Features": [
+        "Reservations recommended",
+        "Sommelier",
+        "Formal service",
+        "Valet parking"
+      ]
+    },
+    {
+      "metadata": [
+        {
+          "type": "collector",
+          "source": "local",
+          "origin": "local",
+          "data": {
+            "name": "Joe's Pizza",
+            "description": "Best New York slice in the village. No frills, just amazing pizza. The classic cheese slice is perfect - thin crust, great sauce, quality mozzarella. Been coming here for years.",
+            "location": {
+              "latitude": 40.730610,
+              "longitude": -74.002410,
+              "address": "7 Carmine St, New York, NY 10014",
+              "enteredBy": "curator"
+            }
+          }
+        }
+      ],
+      "Cuisine": [
+        "Pizza",
+        "Italian"
+      ],
+      "Menu": [
+        "Pizza"
+      ],
+      "Price Range": [
+        "Affordable"
+      ],
+      "Mood": [
+        "Casual",
+        "Lively"
+      ],
+      "Setting": [
+        "Casual",
+        "Laid back"
+      ],
+      "Crowd": [
+        "Local",
+        "Students",
+        "Tourists"
+      ],
+      "Suitable For": [
+        "Friends gathering",
+        "Late night dinners",
+        "Families"
+      ],
+      "Food Style": [
+        "Casual",
+        "Fast Food",
+        "Traditional"
+      ]
+    },
+    {
+      "metadata": [
+        {
+          "type": "restaurant",
+          "id": 128,
+          "serverId": 456,
+          "created": {
+            "timestamp": "2025-08-20T11:00:00.000Z",
+            "curator": {
+              "id": 5,
+              "name": "John Smith"
+            }
+          },
+          "sync": {
+            "status": "synced",
+            "lastSyncedAt": "2025-10-17T12:00:00.000Z"
+          }
+        },
+        {
+          "type": "collector",
+          "source": "local",
+          "origin": "local",
+          "data": {
+            "name": "Sukiyabashi Jiro",
+            "description": "The legendary sushi restaurant run by Jiro Ono. Intimate 10-seat counter. Every piece of sushi is crafted with decades of mastery. The omakase experience is sublime - perfect rice temperature, impeccable fish quality. A once-in-a-lifetime meal.",
+            "transcription": "Finally got to eat at Jiro. Twenty courses of pure perfection. Each nigiri is served at the exact right moment. The tuna was buttery, the uni was sweet and creamy. Jiro himself served us. His son is now running most of the service. Unforgettable experience. Worth the wait and the price.",
+            "location": {
+              "latitude": 35.665498,
+              "longitude": 139.763328,
+              "address": "Tsukamoto Sogyo Building B1F, 4-2-15 Ginza, Chuo City, Tokyo 104-0061, Japan",
+              "enteredBy": "curator"
+            },
+            "photos": [
+              {
+                "id": 250,
+                "restaurantId": 128,
+                "photoData": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEAYABgAAD...",
+                "capturedBy": "curator",
+                "timestamp": "2025-08-20T19:00:00.000Z"
+              }
+            ],
+            "notes": {
+              "private": "Need to book through hotel concierge. No photos allowed during meal. Cash only.",
+              "public": "Reservations through luxury hotel concierge only. No photography. Cash payment required. Omakase only, no à la carte."
+            }
+          }
+        },
+        {
+          "type": "michelin",
+          "source": "michelin-api",
+          "importedAt": "2025-08-21T08:00:00.000Z",
+          "data": {
+            "michelinId": "sukiyabashi-jiro-tokyo-japan",
+            "rating": {
+              "stars": 3,
+              "distinction": "Three MICHELIN Stars",
+              "year": 2025
+            },
+            "guide": {
+              "country": "Japan",
+              "region": "Tokyo",
+              "city": "Ginza"
+            },
+            "awards": [
+              "Three MICHELIN Stars 2025",
+              "Three MICHELIN Stars 2024",
+              "Three MICHELIN Stars 2023"
+            ],
+            "pricing": {
+              "range": "¥¥¥¥",
+              "averagePrice": 40000
+            },
+            "michelinDescription": "Sukiyabashi Jiro is a legendary sushi restaurant in Tokyo, run by Jiro Ono, the oldest chef to have earned three Michelin stars. The intimate 10-seat counter offers an unforgettable omakase experience featuring the finest seasonal fish and perfectly seasoned rice.",
+            "websiteUrl": "https://www.sushi-jiro.jp",
+            "michelinUrl": "https://guide.michelin.com/en/tokyo/tokyo/restaurant/sukiyabashi-jiro"
+          }
+        }
+      ],
+      "Cuisine": [
+        "Japanese",
+        "Sushi"
+      ],
+      "Menu": [
+        "Sushi",
+        "Sashimi",
+        "Tuna",
+        "Sea Food"
+      ],
+      "Price Range": [
+        "Expensive"
+      ],
+      "Mood": [
+        "Formal",
+        "Silent",
+        "Sophisticated"
+      ],
+      "Setting": [
+        "Minimalistic",
+        "Intimate",
+        "Classical",
+        "Bar seating"
+      ],
+      "Crowd": [
+        "International",
+        "Executives"
+      ],
+      "Suitable For": [
+        "Celebrations",
+        "Business dinners",
+        "See and be seen"
+      ],
+      "Food Style": [
+        "Traditional",
+        "Set menus",
+        "Sophisticated"
+      ],
+      "Drinks": [
+        "Sake",
+        "Beer"
+      ],
+      "Special Features": [
+        "Reservations recommended",
+        "Formal service"
+      ]
+    }
+  ]
+]

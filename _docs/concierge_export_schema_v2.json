@@ -1,0 +1,479 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://concierge-collector.com/schemas/export-v2.json",
+  "title": "Concierge Collector Export Format V2",
+  "description": "Export format for Concierge Collector restaurants with metadata array and curator categories at root level",
+  "type": "array",
+  "items": {
+    "$ref": "#/definitions/Restaurant"
+  },
+  "definitions": {
+    "Restaurant": {
+      "type": "object",
+      "required": ["metadata"],
+      "properties": {
+        "metadata": {
+          "type": "array",
+          "description": "Array of metadata objects containing all non-curator data (system, sources, collector data)",
+          "minItems": 1,
+          "items": {
+            "oneOf": [
+              { "$ref": "#/definitions/RestaurantMetadata" },
+              { "$ref": "#/definitions/CollectorMetadata" },
+              { "$ref": "#/definitions/MichelinMetadata" },
+              { "$ref": "#/definitions/GooglePlacesMetadata" }
+            ]
+          }
+        },
+        "Cuisine": {
+          "type": "array",
+          "description": "Type of food/cooking style",
+          "items": { "type": "string" }
+        },
+        "Menu": {
+          "type": "array",
+          "description": "Specific dishes or ingredients",
+          "items": { "type": "string" }
+        },
+        "Price Range": {
+          "type": "array",
+          "description": "Price range (Affordable, Mid-range, Expensive)",
+          "items": { 
+            "type": "string",
+            "enum": ["Affordable", "Mid-range", "Expensive"]
+          }
+        },
+        "Mood": {
+          "type": "array",
+          "description": "Atmosphere feeling (Romantic, Casual, Lively, etc.)",
+          "items": { "type": "string" }
+        },
+        "Setting": {
+          "type": "array",
+          "description": "Physical environment (Outdoor seating, Modern, Garden, etc.)",
+          "items": { "type": "string" }
+        },
+        "Crowd": {
+          "type": "array",
+          "description": "Type of clientele (Families, Executives, Tourists, etc.)",
+          "items": { "type": "string" }
+        },
+        "Suitable For": {
+          "type": "array",
+          "description": "Occasions (Business dinners, Dating, Celebrations, etc.)",
+          "items": { "type": "string" }
+        },
+        "Food Style": {
+          "type": "array",
+          "description": "Service/preparation style (Buffet, Traditional, Molecular, etc.)",
+          "items": { "type": "string" }
+        },
+        "Drinks": {
+          "type": "array",
+          "description": "Beverage offerings (Wine list, Cocktails, Craft Beer, etc.)",
+          "items": { "type": "string" }
+        },
+        "Special Features": {
+          "type": "array",
+          "description": "Unique services (Sommelier, Valet parking, Delivery, etc.)",
+          "items": { "type": "string" }
+        }
+      }
+    },
+    "RestaurantMetadata": {
+      "type": "object",
+      "description": "System metadata about the restaurant (only included if serverId exists or restaurant was modified/deleted)",
+      "required": ["type", "id", "created"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "restaurant"
+        },
+        "id": {
+          "type": "integer",
+          "description": "Local database restaurant ID"
+        },
+        "serverId": {
+          "type": "integer",
+          "description": "Server-assigned restaurant ID (only if synced)"
+        },
+        "created": {
+          "type": "object",
+          "required": ["timestamp", "curator"],
+          "properties": {
+            "timestamp": {
+              "type": "string",
+              "format": "date-time",
+              "description": "ISO 8601 timestamp of creation"
+            },
+            "curator": {
+              "type": "object",
+              "required": ["id", "name"],
+              "properties": {
+                "id": {
+                  "type": "integer",
+                  "description": "Curator ID"
+                },
+                "name": {
+                  "type": "string",
+                  "description": "Curator name"
+                }
+              }
+            }
+          }
+        },
+        "modified": {
+          "type": "object",
+          "description": "Modification timestamp (only if modified after creation)",
+          "required": ["timestamp"],
+          "properties": {
+            "timestamp": {
+              "type": "string",
+              "format": "date-time",
+              "description": "ISO 8601 timestamp of last modification"
+            },
+            "curator": {
+              "type": "object",
+              "properties": {
+                "id": { "type": "integer" },
+                "name": { "type": "string" }
+              }
+            }
+          }
+        },
+        "sync": {
+          "type": "object",
+          "description": "Sync status information",
+          "properties": {
+            "status": {
+              "type": "string",
+              "enum": ["synced", "pending", "conflict", "error"]
+            },
+            "lastSyncedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "deletedLocally": {
+              "type": "boolean"
+            },
+            "deletedAt": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        },
+        "system": {
+          "type": "object",
+          "description": "System information about the export",
+          "properties": {
+            "exportedAt": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "exportFormat": {
+              "type": "string",
+              "const": "concierge-v2"
+            },
+            "schemaVersion": {
+              "type": "string",
+              "const": "2.0"
+            }
+          }
+        }
+      }
+    },
+    "CollectorMetadata": {
+      "type": "object",
+      "description": "Collector internal data entered by curators",
+      "required": ["type", "source", "data"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "collector"
+        },
+        "source": {
+          "type": "string",
+          "description": "Source identifier",
+          "default": "local"
+        },
+        "origin": {
+          "type": "string",
+          "description": "Data origin",
+          "default": "local"
+        },
+        "data": {
+          "type": "object",
+          "required": ["name"],
+          "properties": {
+            "name": {
+              "type": "string",
+              "description": "Restaurant name (required field)"
+            },
+            "description": {
+              "type": "string",
+              "description": "Curator's written description (only if not empty)"
+            },
+            "transcription": {
+              "type": "string",
+              "description": "Audio transcription (only if exists)"
+            },
+            "location": {
+              "type": "object",
+              "description": "Location data (only if coordinates exist)",
+              "required": ["latitude", "longitude"],
+              "properties": {
+                "latitude": {
+                  "type": "number",
+                  "minimum": -90,
+                  "maximum": 90
+                },
+                "longitude": {
+                  "type": "number",
+                  "minimum": -180,
+                  "maximum": 180
+                },
+                "address": {
+                  "type": "string"
+                },
+                "enteredBy": {
+                  "type": "string",
+                  "enum": ["curator", "michelin", "google-places"]
+                }
+              }
+            },
+            "photos": {
+              "type": "array",
+              "description": "Photos array (only if photos exist)",
+              "items": {
+                "type": "object",
+                "required": ["id", "photoData"],
+                "properties": {
+                  "id": {
+                    "type": "integer"
+                  },
+                  "restaurantId": {
+                    "type": "integer"
+                  },
+                  "photoData": {
+                    "type": "string",
+                    "description": "Base64 encoded image data or URL"
+                  },
+                  "capturedBy": {
+                    "type": "string",
+                    "enum": ["curator", "google-places"]
+                  },
+                  "timestamp": {
+                    "type": "string",
+                    "format": "date-time"
+                  }
+                }
+              }
+            },
+            "notes": {
+              "type": "object",
+              "description": "Curator notes (only if exist)",
+              "properties": {
+                "private": {
+                  "type": "string"
+                },
+                "public": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "MichelinMetadata": {
+      "type": "object",
+      "description": "Michelin Guide data (only included if restaurant was imported from Michelin)",
+      "required": ["type", "source", "importedAt", "data"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "michelin"
+        },
+        "source": {
+          "type": "string",
+          "const": "michelin-api"
+        },
+        "importedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when data was imported from Michelin"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "michelinId": {
+              "type": "string",
+              "description": "Michelin unique identifier"
+            },
+            "rating": {
+              "type": "object",
+              "properties": {
+                "stars": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 3
+                },
+                "distinction": {
+                  "type": "string"
+                },
+                "year": {
+                  "type": "integer"
+                }
+              }
+            },
+            "guide": {
+              "type": "object",
+              "properties": {
+                "country": { "type": "string" },
+                "region": { "type": "string" },
+                "city": { "type": "string" }
+              }
+            },
+            "awards": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "pricing": {
+              "type": "object",
+              "properties": {
+                "range": { "type": "string" },
+                "averagePrice": { "type": "number" }
+              }
+            },
+            "michelinDescription": {
+              "type": "string",
+              "description": "Official Michelin description"
+            },
+            "websiteUrl": {
+              "type": "string",
+              "format": "uri"
+            },
+            "reservationUrl": {
+              "type": "string",
+              "format": "uri"
+            },
+            "michelinUrl": {
+              "type": "string",
+              "format": "uri"
+            }
+          }
+        }
+      }
+    },
+    "GooglePlacesMetadata": {
+      "type": "object",
+      "description": "Google Places API data (only included if restaurant was imported from Google Places)",
+      "required": ["type", "source", "importedAt", "data"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "const": "google-places"
+        },
+        "source": {
+          "type": "string",
+          "const": "google-places-api"
+        },
+        "importedAt": {
+          "type": "string",
+          "format": "date-time",
+          "description": "Timestamp when data was imported from Google Places"
+        },
+        "data": {
+          "type": "object",
+          "properties": {
+            "placeId": {
+              "type": "string",
+              "description": "Google Places unique identifier"
+            },
+            "rating": {
+              "type": "object",
+              "properties": {
+                "average": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 5
+                },
+                "totalRatings": {
+                  "type": "integer"
+                },
+                "priceLevel": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 4
+                }
+              }
+            },
+            "businessStatus": {
+              "type": "string",
+              "enum": ["OPERATIONAL", "CLOSED_TEMPORARILY", "CLOSED_PERMANENTLY"]
+            },
+            "location": {
+              "type": "object",
+              "properties": {
+                "latitude": { "type": "number" },
+                "longitude": { "type": "number" },
+                "formattedAddress": { "type": "string" },
+                "vicinity": { "type": "string" }
+              }
+            },
+            "contact": {
+              "type": "object",
+              "properties": {
+                "phoneNumber": { "type": "string" },
+                "internationalPhone": { "type": "string" },
+                "website": { "type": "string", "format": "uri" }
+              }
+            },
+            "hours": {
+              "type": "object",
+              "properties": {
+                "openNow": { "type": "boolean" },
+                "weekdayText": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                }
+              }
+            },
+            "photos": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "reference": { "type": "string" },
+                  "width": { "type": "integer" },
+                  "height": { "type": "integer" },
+                  "attributions": {
+                    "type": "array",
+                    "items": { "type": "string" }
+                  }
+                }
+              }
+            },
+            "types": {
+              "type": "array",
+              "items": { "type": "string" }
+            },
+            "reviews": {
+              "type": "array",
+              "items": {
+                "type": "object",
+                "properties": {
+                  "author": { "type": "string" },
+                  "rating": { "type": "integer" },
+                  "text": { "type": "string" },
+                  "time": { "type": "integer" },
+                  "relativeTime": { "type": "string" }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}

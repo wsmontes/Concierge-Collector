@@ -160,7 +160,7 @@ class ExportImportModule {
     
     /**
      * Prompts user to select export format
-     * @returns {Promise<string|null>} - 'standard', 'concierge', or null if cancelled
+     * @returns {Promise<string|null>} - 'standard', 'v2', 'concierge', or null if cancelled
      */
     async promptExportFormat() {
         return new Promise((resolve) => {
@@ -176,11 +176,24 @@ class ExportImportModule {
                     <p class="text-gray-600 mb-6">Choose the format for your data export:</p>
                     
                     <div class="space-y-3 mb-6">
+                        <button id="export-format-v2" class="w-full p-4 border-2 border-green-500 rounded-lg hover:bg-green-50 text-left transition-colors">
+                            <div class="flex items-start">
+                                <span class="material-icons text-green-500 mr-3">new_releases</span>
+                                <div>
+                                    <div class="font-semibold text-gray-900">Concierge V2 Format (Recommended)</div>
+                                    <div class="text-sm text-gray-600 mt-1">
+                                        New metadata array structure with source tracking.<br>
+                                        Clean, minimal JSON with conditional fields.
+                                    </div>
+                                </div>
+                            </div>
+                        </button>
+                        
                         <button id="export-format-concierge" class="w-full p-4 border-2 border-purple-500 rounded-lg hover:bg-purple-50 text-left transition-colors">
                             <div class="flex items-start">
                                 <span class="material-icons text-purple-500 mr-3">restaurant_menu</span>
                                 <div>
-                                    <div class="font-semibold text-gray-900">Concierge Format</div>
+                                    <div class="font-semibold text-gray-900">Concierge V1 Format (Legacy)</div>
                                     <div class="text-sm text-gray-600 mt-1">
                                         Simplified format with restaurant names as keys.<br>
                                         Compatible with Concierge systems.
@@ -214,6 +227,11 @@ class ExportImportModule {
             document.body.appendChild(modal);
             
             // Add event listeners
+            document.getElementById('export-format-v2').addEventListener('click', () => {
+                document.body.removeChild(modal);
+                resolve('v2');
+            });
+            
             document.getElementById('export-format-concierge').addEventListener('click', () => {
                 document.body.removeChild(modal);
                 resolve('concierge');
@@ -341,22 +359,36 @@ class ExportImportModule {
             
             SafetyUtils.showLoading('Exporting data...');
             
-            // Get all data from storage
-            const exportResult = await dataStorage.exportData();
-            console.log("🔥 Export raw localData:", JSON.stringify(exportResult.jsonData, null, 2));
-            
-            let exportData = exportResult.jsonData;
+            let exportData;
             let fileName = `restaurant-curator-export-${new Date().toISOString().slice(0, 10)}`;
+            let hasPhotos = false;
+            let photos = [];
             
-            // Convert to Concierge format if requested
-            if (format === 'concierge') {
-                console.log('Converting to Concierge format...');
-                exportData = this.convertToConciergeFormat(exportResult.jsonData);
-                fileName = `restaurants-${new Date().toISOString().slice(0, 10)}`;
+            // Handle different export formats
+            if (format === 'v2') {
+                // Use new V2 format with metadata array
+                console.log('Exporting in V2 format (metadata array structure)...');
+                exportData = await dataStorage.exportDataV2();
+                fileName = `concierge-v2-${new Date().toISOString().slice(0, 10)}`;
+                console.log("✅ V2 Export data:", JSON.stringify(exportData, null, 2));
+            } else {
+                // Use legacy export for standard and concierge formats
+                const exportResult = await dataStorage.exportData();
+                console.log("🔥 Export raw localData:", JSON.stringify(exportResult.jsonData, null, 2));
+                
+                exportData = exportResult.jsonData;
+                photos = exportResult.photos || [];
+                
+                // Convert to Concierge V1 format if requested
+                if (format === 'concierge') {
+                    console.log('Converting to Concierge V1 format...');
+                    exportData = this.convertToConciergeFormat(exportResult.jsonData);
+                    fileName = `restaurants-${new Date().toISOString().slice(0, 10)}`;
+                }
+                
+                // Check if there are any photos to include (only for standard format)
+                hasPhotos = format === 'standard' && photos.length > 0;
             }
-            
-            // Check if there are any photos to include (only for standard format)
-            const hasPhotos = format === 'standard' && exportResult.photos && exportResult.photos.length > 0;
             
             if (hasPhotos) {
                 // Create a ZIP file with JSZip
@@ -366,7 +398,7 @@ class ExportImportModule {
                 zip.file("data.json", JSON.stringify(exportData, null, 2));
                 
                 // Add each photo to the ZIP
-                for (const photo of exportResult.photos) {
+                for (const photo of photos) {
                     if (photo.photoData) {
                         // Convert base64 to blob if necessary
                         let photoBlob = photo.photoData;
@@ -477,11 +509,22 @@ class ExportImportModule {
                 // Parse JSON
                 const importData = JSON.parse(fileContents);
                 
-                // Detect if this is Concierge format or standard export format
-                const isConciergeFormat = this.detectConciergeFormat(importData);
+                // Detect format type
+                const format = this.detectImportFormat(importData);
+                console.log(`Detected import format: ${format}`);
                 
-                if (isConciergeFormat) {
-                    console.log('Detected Concierge format data, using Concierge import handler');
+                if (format === 'v2') {
+                    console.log('Importing V2 format data (metadata array structure)...');
+                    SafetyUtils.hideLoading();
+                    SafetyUtils.showLoading('Importing V2 data...');
+                    
+                    // Import V2 format directly
+                    await dataStorage.importDataV2(importData);
+                    
+                    SafetyUtils.hideLoading();
+                    SafetyUtils.showNotification('V2 data imported successfully');
+                } else if (format === 'concierge') {
+                    console.log('Detected Concierge V1 format data, using Concierge import handler');
                     SafetyUtils.hideLoading();
                     SafetyUtils.showLoading('Importing Concierge data...');
                     
@@ -511,36 +554,50 @@ class ExportImportModule {
     }
 
     /**
-     * Detects if JSON data is in Concierge format
+     * Detects the format of import data
      * @param {Object|Array} data - The parsed JSON data
-     * @returns {boolean} - True if Concierge format, false otherwise
+     * @returns {string} - 'v2', 'concierge', or 'standard'
      */
-    detectConciergeFormat(data) {
+    detectImportFormat(data) {
+        // V2 format: Array of objects with metadata array
+        if (Array.isArray(data)) {
+            if (data.length > 0) {
+                const first = data[0];
+                
+                // Check for V2 format (has metadata array)
+                if (first.hasOwnProperty('metadata') && Array.isArray(first.metadata)) {
+                    console.log('Detected V2 format: Array with metadata arrays');
+                    return 'v2';
+                }
+                
+                // Check for Concierge V1 format (has concept categories)
+                const hasConciergeProps = first.hasOwnProperty('Cuisine') || 
+                                          first.hasOwnProperty('Menu') || 
+                                          first.hasOwnProperty('Food Style') ||
+                                          first.hasOwnProperty('Drinks') ||
+                                          first.hasOwnProperty('cuisine') || 
+                                          first.hasOwnProperty('menu') || 
+                                          first.hasOwnProperty('food_style') ||
+                                          first.hasOwnProperty('drinks');
+                if (hasConciergeProps) {
+                    console.log('Detected Concierge V1 format: Array with concept categories');
+                    return 'concierge';
+                }
+            }
+            return 'standard'; // Unknown array format, try standard
+        }
+        
         // Standard export format has specific top-level properties
         const hasStandardFormat = data.hasOwnProperty('curators') && 
                                    data.hasOwnProperty('concepts') && 
                                    data.hasOwnProperty('restaurants');
         
         if (hasStandardFormat) {
-            return false; // This is standard export format
+            console.log('Detected standard export format');
+            return 'standard';
         }
         
-        // Concierge format detection
-        // Array format: [{name: "...", cuisine: [...], menu: [...], ...}]
-        if (Array.isArray(data)) {
-            // Check if array elements have Concierge-style properties
-            if (data.length > 0) {
-                const first = data[0];
-                const hasConciergeProps = first.hasOwnProperty('cuisine') || 
-                                          first.hasOwnProperty('menu') || 
-                                          first.hasOwnProperty('food_style') ||
-                                          first.hasOwnProperty('drinks');
-                return hasConciergeProps;
-            }
-            return false;
-        }
-        
-        // Object format: {"restaurant name": {cuisine: [...], menu: [...], ...}}
+        // Concierge V1 Object format: {"restaurant name": {cuisine: [...], menu: [...], ...}}
         if (typeof data === 'object' && data !== null) {
             const keys = Object.keys(data);
             if (keys.length > 0) {
@@ -549,16 +606,22 @@ class ExportImportModule {
                 
                 // Check if the value has Concierge-style array properties
                 if (typeof firstValue === 'object' && firstValue !== null) {
-                    const hasConciergeProps = firstValue.hasOwnProperty('cuisine') || 
+                    const hasConciergeProps = firstValue.hasOwnProperty('Cuisine') || 
+                                              firstValue.hasOwnProperty('Menu') ||
+                                              firstValue.hasOwnProperty('cuisine') || 
                                               firstValue.hasOwnProperty('menu') || 
                                               firstValue.hasOwnProperty('food_style') ||
                                               firstValue.hasOwnProperty('drinks');
-                    return hasConciergeProps;
+                    if (hasConciergeProps) {
+                        console.log('Detected Concierge V1 format: Object with restaurant names as keys');
+                        return 'concierge';
+                    }
                 }
             }
         }
         
-        return false;
+        console.log('Unknown format, defaulting to standard');
+        return 'standard';
     }
     
     /**

@@ -1585,6 +1585,450 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
         return restaurant;
     }
 
+    /**
+     * Export data in V2 format (metadata array structure)
+     * Purpose: Export restaurants with metadata array structure, conditional inclusion
+     * Dependencies: db.restaurants, db.curators, db.restaurantLocations, db.restaurantPhotos, db.restaurantConcepts, db.concepts
+     */
+    async exportDataV2() {
+        console.log('Starting V2 export with metadata array structure...');
+        
+        const restaurants = await this.db.restaurants.toArray();
+        const curators = await this.db.curators.toArray();
+        const concepts = await this.db.concepts.toArray();
+        
+        console.log(`Exporting ${restaurants.length} restaurants in V2 format`);
+        
+        const exportRestaurants = await Promise.all(
+            restaurants.map(async restaurant => {
+                const curator = curators.find(c => c.id === restaurant.curatorId);
+                const location = await this.db.restaurantLocations
+                    .where('restaurantId').equals(restaurant.id).first();
+                const photos = await this.db.restaurantPhotos
+                    .where('restaurantId').equals(restaurant.id).toArray();
+                
+                // Get concepts for this restaurant
+                const restaurantConceptLinks = await this.db.restaurantConcepts
+                    .where('restaurantId').equals(restaurant.id).toArray();
+                const conceptIds = restaurantConceptLinks.map(rc => rc.conceptId);
+                const restaurantConcepts = concepts.filter(c => conceptIds.includes(c.id));
+                
+                // Build metadata array
+                const metadata = [];
+                
+                // 1. Restaurant metadata (CONDITIONAL - only if needed)
+                const hasServerId = restaurant.serverId != null;
+                const isDeleted = restaurant.deletedLocally === true;
+                const wasModified = restaurant.modifiedAt && restaurant.modifiedAt !== restaurant.timestamp;
+                
+                if (hasServerId || isDeleted || wasModified) {
+                    const restaurantMeta = {
+                        type: 'restaurant',
+                        id: restaurant.id
+                    };
+                    
+                    if (hasServerId) {
+                        restaurantMeta.serverId = restaurant.serverId;
+                    }
+                    
+                    restaurantMeta.created = {
+                        timestamp: restaurant.timestamp,
+                        curator: {
+                            id: restaurant.curatorId,
+                            name: curator?.name || 'Unknown'
+                        }
+                    };
+                    
+                    if (wasModified) {
+                        restaurantMeta.modified = {
+                            timestamp: restaurant.modifiedAt
+                        };
+                    }
+                    
+                    const syncData = {};
+                    if (hasServerId) {
+                        syncData.status = 'synced';
+                        if (restaurant.lastSyncedAt) {
+                            syncData.lastSyncedAt = restaurant.lastSyncedAt;
+                        }
+                    }
+                    if (isDeleted) {
+                        syncData.deletedLocally = true;
+                        if (restaurant.deletedAt) {
+                            syncData.deletedAt = restaurant.deletedAt;
+                        }
+                    }
+                    
+                    if (Object.keys(syncData).length > 0) {
+                        restaurantMeta.sync = syncData;
+                    }
+                    
+                    metadata.push(restaurantMeta);
+                }
+                
+                // 2. Collector data (ALWAYS present, but fields are conditional)
+                const collectorData = {
+                    type: 'collector',
+                    source: restaurant.source || 'local',
+                    data: {
+                        name: restaurant.name // Required
+                    }
+                };
+                
+                // Only add optional fields if they have data
+                if (restaurant.description && restaurant.description.trim()) {
+                    collectorData.data.description = restaurant.description;
+                }
+                
+                if (restaurant.transcription && restaurant.transcription.trim()) {
+                    collectorData.data.transcription = restaurant.transcription;
+                }
+                
+                if (location && location.latitude != null && location.longitude != null) {
+                    collectorData.data.location = {
+                        latitude: location.latitude,
+                        longitude: location.longitude
+                    };
+                    if (location.address && location.address.trim()) {
+                        collectorData.data.location.address = location.address;
+                    }
+                }
+                
+                if (photos && photos.length > 0) {
+                    collectorData.data.photos = photos.map(p => {
+                        const photo = {
+                            id: p.id,
+                            photoData: p.photoData
+                        };
+                        if (p.timestamp) {
+                            photo.timestamp = p.timestamp;
+                        }
+                        return photo;
+                    });
+                }
+                
+                metadata.push(collectorData);
+                
+                // 3. Michelin data (ONLY if imported from Michelin)
+                // TODO: Implement when Michelin data storage is added
+                // if (restaurant.michelinData) {
+                //     metadata.push({
+                //         type: 'michelin',
+                //         source: 'michelin-api',
+                //         importedAt: restaurant.michelinImportedAt,
+                //         data: restaurant.michelinData
+                //     });
+                // }
+                
+                // 4. Google Places data (ONLY if imported from Google)
+                // TODO: Implement when Google Places data storage is added
+                // if (restaurant.googlePlacesData) {
+                //     metadata.push({
+                //         type: 'google-places',
+                //         source: 'google-places-api',
+                //         importedAt: restaurant.googlePlacesImportedAt,
+                //         data: restaurant.googlePlacesData
+                //     });
+                // }
+                
+                // Build curator categories at root level (ONLY categories with values)
+                const categorizedConcepts = {};
+                restaurantConcepts.forEach(concept => {
+                    if (concept.category && concept.value) {
+                        if (!categorizedConcepts[concept.category]) {
+                            categorizedConcepts[concept.category] = [];
+                        }
+                        categorizedConcepts[concept.category].push(concept.value);
+                    }
+                });
+                
+                // Build final restaurant object
+                const restaurantExport = {
+                    metadata,
+                    ...categorizedConcepts
+                };
+                
+                return restaurantExport;
+            })
+        );
+        
+        console.log(`V2 export complete: ${exportRestaurants.length} restaurants processed`);
+        
+        // V2 format: Return array of restaurants directly (no wrapper object)
+        return exportRestaurants;
+    }
+
+    /**
+     * Import data in V2 format (metadata array structure)
+     * Purpose: Import restaurants from V2 format with metadata arrays
+     * Dependencies: db.restaurants, db.curators, db.concepts, db.restaurantConcepts, db.restaurantLocations, db.restaurantPhotos
+     */
+    async importDataV2(restaurantsArray) {
+        console.log('Starting V2 import with metadata array structure...');
+        console.log(`Importing ${restaurantsArray.length} restaurants`);
+        
+        // Validate input
+        if (!Array.isArray(restaurantsArray)) {
+            throw new Error('V2 import expects an array of restaurant objects');
+        }
+        
+        // Transaction to ensure all data is imported together
+        await this.db.transaction('rw',
+            [this.db.curators, this.db.concepts, this.db.restaurants,
+             this.db.restaurantConcepts, this.db.restaurantLocations, this.db.restaurantPhotos],
+        async () => {
+            // Get existing data for deduplication
+            const existingCurators = await this.db.curators.toArray();
+            const existingCuratorsByName = new Map();
+            existingCurators.forEach(curator => {
+                existingCuratorsByName.set(curator.name.toLowerCase(), curator);
+            });
+            
+            const existingConcepts = await this.db.concepts.toArray();
+            const existingConceptMap = new Map();
+            existingConcepts.forEach(concept => {
+                const key = `${concept.category.toLowerCase()}:${concept.value.toLowerCase()}`;
+                existingConceptMap.set(key, concept);
+            });
+            
+            // Process each restaurant
+            for (const restaurantData of restaurantsArray) {
+                const { metadata, ...categories } = restaurantData;
+                
+                if (!metadata || !Array.isArray(metadata)) {
+                    console.warn('Restaurant missing metadata array, skipping:', restaurantData);
+                    continue;
+                }
+                
+                // Extract data from metadata array
+                const restaurantMeta = metadata.find(m => m.type === 'restaurant');
+                const collectorMeta = metadata.find(m => m.type === 'collector');
+                const michelinMeta = metadata.find(m => m.type === 'michelin');
+                const googlePlacesMeta = metadata.find(m => m.type === 'google-places');
+                
+                if (!collectorMeta || !collectorMeta.data || !collectorMeta.data.name) {
+                    console.warn('Restaurant missing collector data with name, skipping:', restaurantData);
+                    continue;
+                }
+                
+                // Get or create curator
+                let curatorId;
+                if (restaurantMeta && restaurantMeta.created && restaurantMeta.created.curator) {
+                    const curatorName = restaurantMeta.created.curator.name;
+                    const existingCurator = existingCuratorsByName.get(curatorName.toLowerCase());
+                    
+                    if (existingCurator) {
+                        curatorId = existingCurator.id;
+                    } else {
+                        // Create new curator
+                        curatorId = await this.db.curators.add({
+                            name: curatorName,
+                            lastActive: new Date(restaurantMeta.created.timestamp),
+                            origin: 'local',
+                            serverId: null
+                        });
+                        existingCuratorsByName.set(curatorName.toLowerCase(), {
+                            id: curatorId,
+                            name: curatorName
+                        });
+                        console.log(`Created new curator: ${curatorName} (ID: ${curatorId})`);
+                    }
+                } else {
+                    // No curator info in metadata, use default/current curator
+                    const defaultCurator = await this.db.curators.orderBy('lastActive').reverse().first();
+                    if (defaultCurator) {
+                        curatorId = defaultCurator.id;
+                    } else {
+                        // Create a default curator
+                        curatorId = await this.db.curators.add({
+                            name: 'Imported Curator',
+                            lastActive: new Date(),
+                            origin: 'local',
+                            serverId: null
+                        });
+                    }
+                }
+                
+                // Check if restaurant already exists
+                const restaurantName = collectorMeta.data.name;
+                const existingRestaurant = await this.db.restaurants
+                    .where('name')
+                    .equals(restaurantName)
+                    .and(r => r.curatorId === curatorId)
+                    .first();
+                
+                let restaurantId;
+                
+                if (existingRestaurant) {
+                    // Update existing restaurant
+                    restaurantId = existingRestaurant.id;
+                    
+                    const updateData = {};
+                    if (collectorMeta.data.description) {
+                        updateData.description = collectorMeta.data.description;
+                    }
+                    if (collectorMeta.data.transcription) {
+                        updateData.transcription = collectorMeta.data.transcription;
+                    }
+                    if (collectorMeta.source) {
+                        updateData.source = collectorMeta.source;
+                    }
+                    if (restaurantMeta) {
+                        if (restaurantMeta.serverId) {
+                            updateData.serverId = restaurantMeta.serverId;
+                        }
+                        if (restaurantMeta.modified) {
+                            updateData.modifiedAt = new Date(restaurantMeta.modified.timestamp);
+                        }
+                        if (restaurantMeta.sync) {
+                            if (restaurantMeta.sync.lastSyncedAt) {
+                                updateData.lastSyncedAt = new Date(restaurantMeta.sync.lastSyncedAt);
+                            }
+                            if (restaurantMeta.sync.deletedLocally !== undefined) {
+                                updateData.deletedLocally = restaurantMeta.sync.deletedLocally;
+                            }
+                            if (restaurantMeta.sync.deletedAt) {
+                                updateData.deletedAt = new Date(restaurantMeta.sync.deletedAt);
+                            }
+                        }
+                    }
+                    
+                    if (Object.keys(updateData).length > 0) {
+                        await this.db.restaurants.update(restaurantId, updateData);
+                        console.log(`Updated restaurant: ${restaurantName} (ID: ${restaurantId})`);
+                    }
+                } else {
+                    // Create new restaurant
+                    const newRestaurantData = {
+                        name: restaurantName,
+                        curatorId: curatorId,
+                        timestamp: restaurantMeta && restaurantMeta.created 
+                            ? new Date(restaurantMeta.created.timestamp) 
+                            : new Date(),
+                        description: collectorMeta.data.description || null,
+                        transcription: collectorMeta.data.transcription || null,
+                        source: collectorMeta.source || 'local',
+                        origin: 'local'
+                    };
+                    
+                    if (restaurantMeta) {
+                        if (restaurantMeta.serverId) {
+                            newRestaurantData.serverId = restaurantMeta.serverId;
+                        }
+                        if (restaurantMeta.modified) {
+                            newRestaurantData.modifiedAt = new Date(restaurantMeta.modified.timestamp);
+                        }
+                        if (restaurantMeta.sync) {
+                            if (restaurantMeta.sync.lastSyncedAt) {
+                                newRestaurantData.lastSyncedAt = new Date(restaurantMeta.sync.lastSyncedAt);
+                            }
+                            if (restaurantMeta.sync.deletedLocally !== undefined) {
+                                newRestaurantData.deletedLocally = restaurantMeta.sync.deletedLocally;
+                            }
+                            if (restaurantMeta.sync.deletedAt) {
+                                newRestaurantData.deletedAt = new Date(restaurantMeta.sync.deletedAt);
+                            }
+                        }
+                    }
+                    
+                    restaurantId = await this.db.restaurants.add(newRestaurantData);
+                    console.log(`Created new restaurant: ${restaurantName} (ID: ${restaurantId})`);
+                }
+                
+                // Handle location data
+                if (collectorMeta.data.location) {
+                    const locationData = collectorMeta.data.location;
+                    const existingLocation = await this.db.restaurantLocations
+                        .where('restaurantId')
+                        .equals(restaurantId)
+                        .first();
+                    
+                    if (existingLocation) {
+                        await this.db.restaurantLocations.update(existingLocation.id, {
+                            latitude: locationData.latitude,
+                            longitude: locationData.longitude,
+                            address: locationData.address || null
+                        });
+                    } else {
+                        await this.db.restaurantLocations.add({
+                            restaurantId: restaurantId,
+                            latitude: locationData.latitude,
+                            longitude: locationData.longitude,
+                            address: locationData.address || null
+                        });
+                    }
+                }
+                
+                // Handle photos
+                if (collectorMeta.data.photos && collectorMeta.data.photos.length > 0) {
+                    // Delete existing photos for this restaurant first
+                    await this.db.restaurantPhotos.where('restaurantId').equals(restaurantId).delete();
+                    
+                    // Add new photos
+                    for (const photo of collectorMeta.data.photos) {
+                        await this.db.restaurantPhotos.add({
+                            restaurantId: restaurantId,
+                            photoData: photo.photoData,
+                            timestamp: photo.timestamp ? new Date(photo.timestamp) : new Date()
+                        });
+                    }
+                }
+                
+                // Handle concepts (categories)
+                // First, delete existing concept relationships for this restaurant
+                await this.db.restaurantConcepts.where('restaurantId').equals(restaurantId).delete();
+                
+                // Process each category
+                for (const [category, values] of Object.entries(categories)) {
+                    if (!Array.isArray(values)) continue;
+                    
+                    for (const value of values) {
+                        // Get or create concept
+                        const conceptKey = `${category.toLowerCase()}:${value.toLowerCase()}`;
+                        let conceptId;
+                        
+                        const existingConcept = existingConceptMap.get(conceptKey);
+                        if (existingConcept) {
+                            conceptId = existingConcept.id;
+                        } else {
+                            // Create new concept
+                            conceptId = await this.db.concepts.add({
+                                category: category,
+                                value: value,
+                                timestamp: new Date()
+                            });
+                            existingConceptMap.set(conceptKey, {
+                                id: conceptId,
+                                category: category,
+                                value: value
+                            });
+                            console.log(`Created new concept: ${category}:${value} (ID: ${conceptId})`);
+                        }
+                        
+                        // Create restaurant-concept relationship
+                        await this.db.restaurantConcepts.add({
+                            restaurantId: restaurantId,
+                            conceptId: conceptId
+                        });
+                    }
+                }
+                
+                // TODO: Handle Michelin data when storage is implemented
+                // if (michelinMeta) { ... }
+                
+                // TODO: Handle Google Places data when storage is implemented
+                // if (googlePlacesMeta) { ... }
+            }
+        });
+        
+        console.log(`V2 import complete: ${restaurantsArray.length} restaurants processed`);
+    }
+
+    /**
+     * Export data in legacy V1 format (backward compatibility)
+     * Purpose: Export all database tables in original flat structure
+     * Dependencies: db.restaurants, db.curators, db.concepts, db.restaurantConcepts, db.restaurantLocations, db.restaurantPhotos
+     */
     async exportData() {
         // Export all database tables
         const exportData = {
@@ -1614,18 +2058,156 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
     }
     
     /**
-     * Import data with duplicate handling
-     * @param {Object} data - Import data
+     * Convert V2 format restaurants to V1 format for import
+     * Purpose: Transform metadata array structure back to flat structure
+     * Dependencies: None
+     */
+    convertV2ToV1Format(v2Data) {
+        console.log('Converting V2 format to V1 format for import...');
+        
+        const v1Restaurants = [];
+        const v1RestaurantConcepts = [];
+        const v1RestaurantLocations = [];
+        const v1RestaurantPhotos = [];
+        
+        // Process each V2 restaurant
+        v2Data.restaurants.forEach((v2Restaurant, index) => {
+            const restaurantId = index + 1; // Temporary ID
+            
+            // Find collector data in metadata array
+            const collectorMeta = v2Restaurant.metadata.find(m => m.type === 'collector');
+            const restaurantMeta = v2Restaurant.metadata.find(m => m.type === 'restaurant');
+            
+            if (!collectorMeta || !collectorMeta.data) {
+                console.warn('Restaurant missing collector data, skipping...');
+                return;
+            }
+            
+            // Build V1 restaurant object
+            const v1Restaurant = {
+                id: restaurantMeta?.id || restaurantId,
+                name: collectorMeta.data.name,
+                curatorId: restaurantMeta?.created?.curator?.id || 1,
+                timestamp: restaurantMeta?.created?.timestamp || new Date().toISOString(),
+                description: collectorMeta.data.description || null,
+                transcription: collectorMeta.data.transcription || null,
+                origin: collectorMeta.source || 'local',
+                source: collectorMeta.source || 'local'
+            };
+            
+            // Add sync-related fields if present
+            if (restaurantMeta) {
+                v1Restaurant.serverId = restaurantMeta.serverId || null;
+                v1Restaurant.deletedLocally = restaurantMeta.sync?.deletedLocally || false;
+                v1Restaurant.deletedAt = restaurantMeta.sync?.deletedAt || null;
+            }
+            
+            v1Restaurants.push(v1Restaurant);
+            
+            // Extract location if present
+            if (collectorMeta.data.location) {
+                v1RestaurantLocations.push({
+                    restaurantId: v1Restaurant.id,
+                    latitude: collectorMeta.data.location.latitude,
+                    longitude: collectorMeta.data.location.longitude,
+                    address: collectorMeta.data.location.address || null
+                });
+            }
+            
+            // Extract photos if present
+            if (collectorMeta.data.photos && Array.isArray(collectorMeta.data.photos)) {
+                collectorMeta.data.photos.forEach(photo => {
+                    v1RestaurantPhotos.push({
+                        id: photo.id,
+                        restaurantId: v1Restaurant.id,
+                        photoData: photo.photoData,
+                        timestamp: photo.timestamp || new Date().toISOString()
+                    });
+                });
+            }
+            
+            // Extract concepts from root-level categories
+            Object.keys(v2Restaurant).forEach(key => {
+                // Skip metadata and other non-category fields
+                if (key === 'metadata') return;
+                
+                const category = key;
+                const values = v2Restaurant[key];
+                
+                if (Array.isArray(values)) {
+                    values.forEach(value => {
+                        // Find concept ID from concepts array
+                        const concept = v2Data.concepts.find(c => 
+                            c.category === category && c.value === value
+                        );
+                        
+                        if (concept) {
+                            v1RestaurantConcepts.push({
+                                restaurantId: v1Restaurant.id,
+                                conceptId: concept.id
+                            });
+                        }
+                    });
+                }
+            });
+        });
+        
+        console.log(`Converted ${v1Restaurants.length} V2 restaurants to V1 format`);
+        
+        return {
+            curators: v2Data.curators || [],
+            concepts: v2Data.concepts || [],
+            restaurants: v1Restaurants,
+            restaurantConcepts: v1RestaurantConcepts,
+            restaurantLocations: v1RestaurantLocations,
+            restaurantPhotos: v1RestaurantPhotos
+        };
+    }
+    
+    /**
+     * Detect import data format
+     * Purpose: Identify whether data is V1 or V2 format
+     * Returns: 'v1' or 'v2'
+     */
+    detectImportFormat(importData) {
+        // V2 format has version field or restaurants with metadata array
+        if (importData.version === '2.0' || importData.exportFormat === 'concierge-v2') {
+            return 'v2';
+        }
+        
+        // Check if restaurants have metadata array (V2 format)
+        if (importData.restaurants && 
+            importData.restaurants.length > 0 && 
+            importData.restaurants[0].metadata) {
+            return 'v2';
+        }
+        
+        // Default to V1 format
+        return 'v1';
+    }
+
+    /**
+     * Import data with duplicate handling (supports both V1 and V2 formats)
+     * @param {Object} data - Import data (V1 or V2 format)
      * @param {Object} photoFiles - Photo files (optional)
      * @returns {Promise<boolean>} - Success flag
      */
     async importData(data, photoFiles = null) {
         // If data contains jsonData, it came from a ZIP import
-        const importData = data.jsonData || data;
+        let importData = data.jsonData || data;
         
         // Basic validation
         if (!importData.curators || !importData.concepts || !importData.restaurants) {
             throw new Error("Invalid import data format");
+        }
+        
+        // Detect format and convert if needed
+        const format = this.detectImportFormat(importData);
+        console.log(`Detected import format: ${format}`);
+        
+        if (format === 'v2') {
+            console.log('Converting V2 format to V1 for import...');
+            importData = this.convertV2ToV1Format(importData);
         }
         
         // Transaction to ensure all data is imported together
