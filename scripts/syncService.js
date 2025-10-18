@@ -108,10 +108,15 @@ if (!window.SyncService) {
                         // Check if we already have this restaurant by server ID
                         const existingRestaurant = existingByServerId.get(remoteRestaurant.id.toString());
                         
-                        // If exists with serverId, update it unless it's marked as local
+                        // If exists with serverId, check if it needs sync (has local changes)
                         if (existingRestaurant) {
-                            // Don't overwrite local changes - only update if it's marked as remote
-                            if (existingRestaurant.source === 'remote') {
+                            // Check needsSync flag (or source='local' which means the same)
+                            if (existingRestaurant.needsSync || existingRestaurant.source === 'local') {
+                                // Has pending local changes - skip update to preserve local data
+                                results.skipped++;
+                                console.log(`SyncService: Skipping ${remoteRestaurant.name} - has pending local changes (source='local' or needsSync=true)`);
+                            } else {
+                                // No pending changes (source='remote') - safe to update from server
                                 // Find or create curator
                                 const curatorId = await this.findOrCreateCurator(remoteRestaurant.curator);
                                 
@@ -121,7 +126,7 @@ if (!window.SyncService) {
                                 // Process location
                                 const location = this.processRemoteLocation(remoteRestaurant.location);
                                 
-                                // Update the restaurant
+                                // Update the restaurant (will set source='local' and needsSync=true)
                                 await dataStorage.updateRestaurant(
                                     existingRestaurant.id,
                                     remoteRestaurant.name,
@@ -133,18 +138,16 @@ if (!window.SyncService) {
                                     remoteRestaurant.description || ''
                                 );
                                 
-                                // Explicitly update source and serverId to ensure they're set correctly
+                                // Override back to 'remote' - this came from server so it's synced
                                 await dataStorage.db.restaurants.update(existingRestaurant.id, {
-                                    source: 'remote',
+                                    source: 'remote',    // Mark as synced
                                     serverId: remoteRestaurant.id,
-                                    lastSynced: new Date()
+                                    needsSync: false,    // Not pending sync (just synced)
+                                    lastSynced: new Date()  // Record sync time
                                 });
                                 
                                 results.updated++;
                                 console.log(`SyncService: Updated restaurant ${remoteRestaurant.name} (Server ID: ${remoteRestaurant.id}, Local ID: ${existingRestaurant.id})`);
-                            } else {
-                                results.skipped++;
-                                console.log(`SyncService: Skipping update for ${remoteRestaurant.name} because it has local changes`);
                             }
                             
                             continue;
@@ -670,12 +673,27 @@ if (!window.SyncService) {
                 // Send each restaurant to server
                 for (const restaurant of restaurants) {
                     try {
-                        const response = await fetch(`${this.apiBase}/restaurants`, {
-                            method: 'POST',
+                        // Get local restaurant to check serverId
+                        const localRestaurant = await dataStorage.db.restaurants.get(restaurant.localId);
+                        
+                        // Determine if this is a new restaurant (POST) or update (PUT)
+                        const isNew = !localRestaurant || !localRestaurant.serverId || localRestaurant.serverId === 0;
+                        const method = isNew ? 'POST' : 'PUT';
+                        const url = isNew 
+                            ? `${this.apiBase}/restaurants`
+                            : `${this.apiBase}/restaurants/${localRestaurant.serverId}`;
+                        
+                        console.log(`SyncService: ${method} ${restaurant.name} (serverId: ${localRestaurant?.serverId || 'none'})`);
+                        
+                        // Remove localId from data sent to server
+                        const { localId, ...serverData } = restaurant;
+                        
+                        const response = await fetch(url, {
+                            method: method,
                             headers: {
                                 'Content-Type': 'application/json'
                             },
-                            body: JSON.stringify(restaurant)
+                            body: JSON.stringify(serverData)
                         });
                         
                         if (!response.ok) {
@@ -761,6 +779,7 @@ if (!window.SyncService) {
                         
                         // Create server restaurant object
                         serverRestaurants.push({
+                            localId: restaurant.id,  // Add local ID for lookup
                             name: restaurant.name,
                             curator: {
                                 name: curator ? curator.name : 'Unknown',

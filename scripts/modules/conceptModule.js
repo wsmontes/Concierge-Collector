@@ -331,6 +331,7 @@ class ConceptModule {
             SafetyUtils.showLoading(this.uiManager.isEditingRestaurant ? 'Updating restaurant...' : 'Saving restaurant...');
             
             let restaurantId;
+            let syncStatus = 'local-only';
             
             if (this.uiManager.isEditingRestaurant) {
                 // Update existing restaurant
@@ -345,8 +346,8 @@ class ConceptModule {
                     description
                 );
             } else {
-                // Save new restaurant
-                restaurantId = await dataStorage.saveRestaurant(
+                // Save new restaurant with auto-sync
+                const result = await dataStorage.saveRestaurantWithAutoSync(
                     name,
                     this.uiManager.currentCurator.id,
                     this.uiManager.currentConcepts,
@@ -355,14 +356,32 @@ class ConceptModule {
                     transcription,
                     description
                 );
+                
+                restaurantId = result.restaurantId;
+                syncStatus = result.syncStatus;
+                
+                // Show sync status to user
+                if (syncStatus === 'synced') {
+                    console.log('✅ Restaurant synced to server automatically');
+                } else {
+                    console.warn('⚠️ Restaurant saved locally only, sync failed:', result.syncError);
+                }
             }
             
             SafetyUtils.hideLoading();
-            SafetyUtils.showNotification(
-                this.uiManager.isEditingRestaurant ? 
+            
+            // Show appropriate notification based on sync status
+            let message = this.uiManager.isEditingRestaurant ? 
                 'Restaurant updated successfully' : 
-                'Restaurant saved successfully'
-            );
+                'Restaurant saved successfully';
+            
+            if (!this.uiManager.isEditingRestaurant && syncStatus === 'synced') {
+                message += ' and synced to server';
+            } else if (!this.uiManager.isEditingRestaurant && syncStatus === 'local-only') {
+                message += ' (local only - will sync later)';
+            }
+            
+            SafetyUtils.showNotification(message);
             
             // Clean up pending audio and draft data for this restaurant
             try {

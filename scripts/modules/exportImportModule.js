@@ -777,46 +777,197 @@ class ExportImportModule {
      * @returns {Promise<void>}
      */
     async syncWithServer() {
-        console.log('🔄 Starting unified sync with server...');
+        console.log('🔄 Starting comprehensive bidirectional sync with server...');
         const syncStartTime = performance.now();
         
         try {
             SafetyUtils.showLoading('🔄 Syncing with server...');
             
-            // Step 1: Import from server first to get latest remote data
-            console.log('🔄 Step 1/3: Importing from server...');
-            this.updateLoadingMessage('📥 Importing restaurants (1/3)...');
+            // Step 1: Upload all local restaurants to server
+            console.log('🔄 Step 1/4: Uploading local restaurants...');
+            this.updateLoadingMessage('� Uploading local restaurants (1/4)...');
             
+            try {
+                const localRestaurants = await dataStorage.getUnsyncedRestaurants();
+                
+                if (localRestaurants.length > 0) {
+                    console.log(`Found ${localRestaurants.length} local restaurants to upload`);
+                    
+                    // Export using syncService
+                    if (window.syncService) {
+                        await window.syncService.syncUnsyncedRestaurants();
+                        console.log('✅ Local restaurants uploaded successfully');
+                    } else {
+                        console.warn('⚠️ SyncService not available');
+                    }
+                } else {
+                    console.log('✅ No local restaurants to upload');
+                }
+            } catch (uploadError) {
+                console.error('❌ Upload failed:', uploadError);
+                SafetyUtils.showNotification(`Upload failed: ${uploadError.message}. Continuing...`, 'warning');
+            }
+            
+            await new Promise(resolve => setTimeout(resolve, 500));
+            
+            // Step 2: Download all restaurants from server
+            console.log('🔄 Step 2/4: Downloading restaurants from server...');
+            this.updateLoadingMessage('📥 Downloading from server (2/4)...');
+            
+            let serverRestaurants = [];
             try {
                 await this.importFromRemote();
-                console.log('✅ Import completed successfully');
-            } catch (importError) {
-                console.error('❌ Import failed:', importError);
-                // Continue with export even if import fails
-                SafetyUtils.showNotification(`Import failed: ${importError.message}. Continuing with export...`, 'warning');
+                
+                // Get all restaurants that came from server
+                serverRestaurants = await dataStorage.db.restaurants
+                    .where('source')
+                    .equals('remote')
+                    .toArray();
+                
+                console.log(`✅ Downloaded ${serverRestaurants.length} restaurants from server`);
+            } catch (downloadError) {
+                console.error('❌ Download failed:', downloadError);
+                SafetyUtils.showNotification(`Download failed: ${downloadError.message}. Continuing...`, 'warning');
             }
             
-            // Small delay to let user see the progress
             await new Promise(resolve => setTimeout(resolve, 500));
             
-            // Step 2: Export to server to push any local changes
-            console.log('🔄 Step 2/3: Exporting to server...');
-            this.updateLoadingMessage('📤 Exporting to server (2/3)...');
+            // Step 3: Detect and resolve duplicates/conflicts
+            console.log('🔄 Step 3/4: Detecting duplicates and conflicts...');
+            this.updateLoadingMessage('🔍 Resolving conflicts (3/4)...');
             
             try {
-                await this.exportToRemote();
-                console.log('✅ Export completed successfully');
-            } catch (exportError) {
-                console.error('❌ Export failed:', exportError);
-                throw exportError; // Propagate export error
+                const conflicts = [];
+                const merged = [];
+                
+                // Get all local restaurants
+                const localRestaurants = await dataStorage.db.restaurants
+                    .where('source')
+                    .equals('local')
+                    .toArray();
+                
+                for (const localRest of localRestaurants) {
+                    // Enhance with concepts for comparison
+                    const conceptRelations = await dataStorage.db.restaurantConcepts
+                        .where('restaurantId')
+                        .equals(localRest.id)
+                        .toArray();
+                    
+                    const conceptIds = conceptRelations.map(rel => rel.conceptId);
+                    localRest.concepts = await dataStorage.db.concepts
+                        .where('id')
+                        .anyOf(conceptIds)
+                        .toArray();
+                    
+                    // Compare with server restaurants
+                    for (const serverRest of serverRestaurants) {
+                        // Enhance server restaurant with concepts
+                        const serverConceptRelations = await dataStorage.db.restaurantConcepts
+                            .where('restaurantId')
+                            .equals(serverRest.id)
+                            .toArray();
+                        
+                        const serverConceptIds = serverConceptRelations.map(rel => rel.conceptId);
+                        serverRest.concepts = await dataStorage.db.concepts
+                            .where('id')
+                            .anyOf(serverConceptIds)
+                            .toArray();
+                        
+                        // Compare
+                        const comparison = dataStorage.compareRestaurants(localRest, serverRest);
+                        
+                        if (comparison.isDuplicate) {
+                            console.log(`🔍 Duplicate detected: ${localRest.name}`);
+                            console.log(`   Conflict type: ${comparison.conflictType}`);
+                            console.log(`   Strategy: ${comparison.mergeStrategy}`);
+                            
+                            if (comparison.mergeStrategy === 'merge-concepts') {
+                                // Merge concepts from both versions
+                                const mergedConcepts = comparison.details.mergedConcepts;
+                                
+                                // Update local restaurant with merged concepts
+                                // Parse concepts back from "category:value" format
+                                const conceptObjects = mergedConcepts.map(c => {
+                                    const [category, value] = c.split(':');
+                                    return { category, value };
+                                });
+                                
+                                // Save concepts (this will deduplicate automatically)
+                                for (const concept of conceptObjects) {
+                                    const conceptId = await dataStorage.saveConcept(concept.category, concept.value);
+                                    
+                                    // Add relation if not exists
+                                    const exists = await dataStorage.db.restaurantConcepts
+                                        .where(['restaurantId', 'conceptId'])
+                                        .equals([localRest.id, conceptId])
+                                        .first();
+                                    
+                                    if (!exists) {
+                                        await dataStorage.db.restaurantConcepts.add({
+                                            restaurantId: localRest.id,
+                                            conceptId: conceptId
+                                        });
+                                    }
+                                }
+                                
+                                merged.push({
+                                    name: localRest.name,
+                                    action: 'merged concepts'
+                                });
+                                
+                                console.log(`✅ Merged concepts for: ${localRest.name}`);
+                            } else if (comparison.mergeStrategy === 'use-server') {
+                                // Identical - mark local as synced with server
+                                if (serverRest.serverId) {
+                                    await dataStorage.db.restaurants.update(localRest.id, {
+                                        serverId: serverRest.serverId,
+                                        source: 'remote'
+                                    });
+                                    
+                                    merged.push({
+                                        name: localRest.name,
+                                        action: 'marked as synced'
+                                    });
+                                    
+                                    console.log(`✅ Marked as synced: ${localRest.name}`);
+                                }
+                            } else if (comparison.mergeStrategy === 'manual') {
+                                // Requires manual intervention
+                                conflicts.push({
+                                    localRestaurant: localRest,
+                                    serverRestaurant: serverRest,
+                                    comparison: comparison
+                                });
+                                
+                                console.log(`⚠️ Manual conflict: ${localRest.name}`);
+                            }
+                            // For 'use-local', we keep local as-is
+                        }
+                    }
+                }
+                
+                // Report results
+                if (merged.length > 0) {
+                    console.log(`✅ Merged/resolved ${merged.length} restaurants`);
+                }
+                
+                if (conflicts.length > 0) {
+                    console.warn(`⚠️ Found ${conflicts.length} conflicts requiring manual review`);
+                    SafetyUtils.showNotification(
+                        `Sync completed with ${conflicts.length} conflicts requiring manual review`,
+                        'warning'
+                    );
+                }
+            } catch (conflictError) {
+                console.error('❌ Conflict resolution failed:', conflictError);
+                SafetyUtils.showNotification(`Conflict resolution failed: ${conflictError.message}`, 'warning');
             }
             
-            // Small delay to let user see the progress
             await new Promise(resolve => setTimeout(resolve, 500));
             
-            // Step 3: Sync curators from server
-            console.log('🔄 Step 3/3: Syncing curators...');
-            this.updateLoadingMessage('👥 Syncing curators (3/3)...');
+            // Step 4: Sync curators from server
+            console.log('🔄 Step 4/4: Syncing curators...');
+            this.updateLoadingMessage('👥 Syncing curators (4/4)...');
             
             try {
                 if (this.uiManager && this.uiManager.curatorModule && typeof this.uiManager.curatorModule.fetchCurators === 'function') {
@@ -827,14 +978,13 @@ class ExportImportModule {
                 }
             } catch (curatorError) {
                 console.error('❌ Curator sync failed:', curatorError);
-                // Don't throw - curator sync failure shouldn't fail the whole operation
                 SafetyUtils.showNotification(`Warning: Curator sync failed: ${curatorError.message}`, 'warning');
             }
             
             const syncEndTime = performance.now();
             const totalTime = ((syncEndTime - syncStartTime) / 1000).toFixed(2);
             
-            console.log(`✅ Unified sync completed in ${totalTime}s`);
+            console.log(`✅ Comprehensive bidirectional sync completed in ${totalTime}s`);
             SafetyUtils.hideLoading();
             SafetyUtils.showNotification(`✅ Sync completed successfully in ${totalTime}s`, 'success');
             
@@ -843,7 +993,6 @@ class ExportImportModule {
                 this.uiManager.restaurantModule && 
                 typeof this.uiManager.restaurantModule.loadRestaurantList === 'function' &&
                 this.uiManager.currentCurator) {
-                // Pass only curatorId - loadRestaurantList will automatically get filter state from checkbox
                 await this.uiManager.restaurantModule.loadRestaurantList(this.uiManager.currentCurator.id);
             }
             

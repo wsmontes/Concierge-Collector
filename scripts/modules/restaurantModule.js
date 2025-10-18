@@ -31,7 +31,75 @@ class RestaurantModule {
             });
         }
         
+        // Sync restaurants button
+        const syncRestaurantsBtn = document.getElementById('sync-restaurants-btn');
+        if (syncRestaurantsBtn) {
+            syncRestaurantsBtn.addEventListener('click', async () => {
+                try {
+                    console.log('Manual sync triggered from restaurant list');
+                    
+                    // Show loading state
+                    const syncText = document.getElementById('sync-restaurants-text');
+                    const originalText = syncText ? syncText.textContent : 'Sync';
+                    if (syncText) syncText.textContent = 'Syncing...';
+                    syncRestaurantsBtn.disabled = true;
+                    
+                    // Trigger sync via syncService
+                    if (window.syncService) {
+                        await window.syncService.syncUnsyncedRestaurants();
+                        this.uiManager.showNotification('Restaurants synced successfully!', 'success');
+                        
+                        // Reload restaurant list
+                        const currentCurator = await dataStorage.getCurrentCurator();
+                        if (currentCurator) {
+                            await this.loadRestaurantList(currentCurator.id);
+                        }
+                    }
+                } catch (error) {
+                    console.error('Sync failed:', error);
+                    this.uiManager.showNotification('Sync failed: ' + error.message, 'error');
+                } finally {
+                    // Restore button state
+                    const syncText = document.getElementById('sync-restaurants-text');
+                    if (syncText) syncText.textContent = 'Sync';
+                    syncRestaurantsBtn.disabled = false;
+                    
+                    // Update button visibility
+                    await this.updateSyncButton();
+                }
+            });
+        }
+        
         console.log('Restaurant list events set up');
+    }
+
+    /**
+     * Update sync button visibility and badge based on restaurants needing sync
+     */
+    async updateSyncButton() {
+        try {
+            const syncBtn = document.getElementById('sync-restaurants-btn');
+            const syncBadge = document.getElementById('sync-restaurants-badge');
+            
+            if (!syncBtn || !syncBadge) return;
+            
+            // Get restaurants needing sync (uses indexed needsSync field)
+            const restaurantsNeedingSync = await dataStorage.getRestaurantsNeedingSync();
+            const needsSyncCount = restaurantsNeedingSync.length;
+            
+            if (needsSyncCount > 0) {
+                // Show button with badge
+                syncBtn.classList.remove('hidden');
+                syncBadge.classList.remove('hidden');
+                syncBadge.textContent = needsSyncCount.toString();
+            } else {
+                // Hide button
+                syncBtn.classList.add('hidden');
+                syncBadge.classList.add('hidden');
+            }
+        } catch (error) {
+            console.error('Error updating sync button:', error);
+        }
     }
 
     /**
@@ -272,6 +340,9 @@ class RestaurantModule {
                 
                 this.uiManager.restaurantsContainer.appendChild(card);
             }
+            
+            // Update sync button visibility after loading restaurants
+            await this.updateSyncButton();
         } catch (error) {
             console.error('Error loading restaurant list:', error);
             SafetyUtils.showNotification('Error loading restaurants', 'error');

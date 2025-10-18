@@ -15,9 +15,73 @@ if (typeof window.ApiHandler === 'undefined') {
     const ApiHandler = ModuleWrapper.defineClass('ApiHandler', class {
         constructor() {
             this.apiKey = localStorage.getItem('openai_api_key') || null;
+            this.serverBase = 'https://wsmontes.pythonanywhere.com';
         }
 
         setApiKey(key) {
+            this.apiKey = key;
+            localStorage.setItem('openai_api_key', key);
+        }
+        
+        /**
+         * Generic POST request to server API
+         * @param {string} endpoint - API endpoint (e.g., '/api/restaurants')
+         * @param {Object} data - Data to send
+         * @returns {Promise<Object>} - { success: boolean, data: Object, error: string }
+         */
+        async post(endpoint, data) {
+            try {
+                const response = await fetch(`${this.serverBase}${endpoint}`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
+                }
+                
+                const responseData = await response.json();
+                return { success: true, data: responseData };
+            } catch (error) {
+                console.error('POST request error:', error);
+                return { success: false, error: error.message };
+            }
+        }
+        
+        /**
+         * Generic PUT request to server API
+         * @param {string} endpoint - API endpoint (e.g., '/api/restaurants/123')
+         * @param {Object} data - Data to send
+         * @returns {Promise<Object>} - { success: boolean, data: Object, error: string }
+         */
+        async put(endpoint, data) {
+            try {
+                const response = await fetch(`${this.serverBase}${endpoint}`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify(data)
+                });
+                
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(`HTTP ${response.status}: ${errorText}`);
+                }
+                
+                const responseData = await response.json();
+                return { success: true, data: responseData };
+            } catch (error) {
+                console.error('PUT request error:', error);
+                return { success: false, error: error.message };
+            }
+        }
+
+        async setApiKey(key) {
             this.apiKey = key;
             localStorage.setItem('openai_api_key', key);
         }

@@ -56,6 +56,21 @@
     color: #065F46;
 }
 
+.data-badge.syncing {
+    background-color: #DBEAFE;
+    color: #1E40AF;
+    animation: pulse 1.5s ease-in-out infinite;
+}
+
+@keyframes pulse {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.6;
+    }
+}
+
 /* Restaurant cards with sync status */
 .restaurant-card {
     position: relative;
