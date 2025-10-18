@@ -701,8 +701,11 @@ if (!window.SyncService) {
                         }
                         
                         const serverRestaurants = await response.json();
+                        console.log(`SyncService: Server response for ${restaurant.name}:`, serverRestaurants);
+                        
                         // Batch endpoint returns array, get first element
                         const serverRestaurant = Array.isArray(serverRestaurants) ? serverRestaurants[0] : serverRestaurants;
+                        console.log(`SyncService: Extracted restaurant:`, serverRestaurant);
                         
                         // Include localId in result so we can match it later
                         results.restaurants.push({
