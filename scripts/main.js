@@ -569,10 +569,10 @@ function triggerInitialSync() {
                     }
                     
                     // Refresh restaurant list if available
-                    if (window.uiManager.restaurantModule && 
-                        typeof window.uiManager.restaurantModule.loadRestaurants === 'function') {
+                    if (window.uiManager.restaurantListModule && 
+                        typeof window.uiManager.restaurantListModule.loadRestaurants === 'function') {
                         console.log('Refreshing restaurant list to display newly imported data...');
-                        await window.uiManager.restaurantModule.loadRestaurants();
+                        await window.uiManager.restaurantListModule.loadRestaurants();
                     }
                     
                     // Show notification only if there were changes
