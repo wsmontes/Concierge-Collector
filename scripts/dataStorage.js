@@ -2738,9 +2738,12 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 console.log('Performing soft delete + server delete (synced restaurant)');
                 
                 // First, try to delete from server
+                // Note: Server API uses restaurant name as identifier, not numeric ID
                 try {
-                    console.log(`Attempting to delete restaurant from server: serverId=${restaurant.serverId}`);
-                    const response = await fetch(`https://wsmontes.pythonanywhere.com/api/restaurants/${restaurant.serverId}`, {
+                    const restaurantIdentifier = restaurant.serverId || restaurant.name;
+                    console.log(`Attempting to delete restaurant from server: name="${restaurant.name}", identifier=${restaurantIdentifier}`);
+                    
+                    const response = await fetch(`https://wsmontes.pythonanywhere.com/api/restaurants/${encodeURIComponent(restaurantIdentifier)}`, {
                         method: 'DELETE',
                         headers: {
                             'Accept': 'application/json',
@@ -2749,10 +2752,12 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                     });
                     
                     if (!response.ok) {
-                        console.warn(`Server delete failed with status ${response.status}: ${response.statusText}`);
+                        const errorText = await response.text();
+                        console.warn(`Server delete failed with status ${response.status}: ${response.statusText}`, errorText);
                         // Continue with soft delete even if server delete fails
                     } else {
-                        console.log(`Successfully deleted restaurant from server: serverId=${restaurant.serverId}`);
+                        const result = await response.json();
+                        console.log(`Successfully deleted restaurant from server:`, result);
                     }
                 } catch (serverError) {
                     console.error('Error deleting from server:', serverError);
