@@ -820,10 +820,13 @@ if (!window.SyncService) {
                 
                 // Update sync status for successfully synced restaurants
                 // Note: Batch endpoint returns {status: 'success'} without restaurant data
-                // We use existing serverId from local database since restaurants were already synced before
+                // For restaurants with existing serverId, we use that
+                // For new restaurants, we need to fetch from server to get their new IDs
                 if (result && result.restaurants && result.restaurants.length > 0) {
                     let syncedCount = 0;
+                    let newRestaurants = [];
                     
+                    // First pass: Update restaurants that already have serverIds
                     for (const serverRestaurant of result.restaurants) {
                         if (!serverRestaurant.localId) {
                             console.warn('SyncService: Server restaurant missing localId, skipping sync status update');
@@ -839,10 +842,11 @@ if (!window.SyncService) {
                             continue;
                         }
                         
-                        // Use existing serverId if available, otherwise this is a new restaurant
+                        // Check if this restaurant already has a serverId
                         const serverId = localRestaurant.serverId;
                         if (serverId === undefined || serverId === null) {
-                            console.warn(`SyncService: Restaurant ${localRestaurant.name} (${localId}) has no serverId - cannot mark as synced`);
+                            // This is a new restaurant - save for second pass
+                            newRestaurants.push({ localId, localRestaurant });
                             continue;
                         }
                         
@@ -854,6 +858,46 @@ if (!window.SyncService) {
                             syncedCount++;
                         } catch (updateError) {
                             console.error(`SyncService: Error updating sync status for restaurant ${localId}:`, updateError);
+                        }
+                    }
+                    
+                    // Second pass: For new restaurants, fetch from server to get their IDs
+                    if (newRestaurants.length > 0) {
+                        console.log(`SyncService: Fetching server data for ${newRestaurants.length} new restaurants...`);
+                        
+                        try {
+                            // Fetch all restaurants from server
+                            const response = await fetch(`${this.apiBase}/restaurants`);
+                            if (response.ok) {
+                                const serverData = await response.json();
+                                
+                                // Server returns: { "RestaurantName": { cuisine: [...], ... }, ... }
+                                // Match by name to find the new restaurant
+                                for (const { localId, localRestaurant } of newRestaurants) {
+                                    const restaurantName = localRestaurant.name;
+                                    
+                                    // Look for this restaurant in server data
+                                    if (serverData[restaurantName]) {
+                                        // Server uses restaurant name as ID
+                                        const serverId = restaurantName;
+                                        
+                                        console.log(`SyncService: Found new restaurant ${restaurantName} on server, updating with serverId`);
+                                        
+                                        try {
+                                            await dataStorage.updateRestaurantSyncStatus(localId, serverId);
+                                            syncedCount++;
+                                        } catch (updateError) {
+                                            console.error(`SyncService: Error updating sync status for new restaurant ${localId}:`, updateError);
+                                        }
+                                    } else {
+                                        console.warn(`SyncService: Could not find new restaurant ${restaurantName} on server after POST`);
+                                    }
+                                }
+                            } else {
+                                console.error(`SyncService: Failed to fetch server data for new restaurants: ${response.status}`);
+                            }
+                        } catch (fetchError) {
+                            console.error('SyncService: Error fetching server data for new restaurants:', fetchError);
                         }
                     }
                     
