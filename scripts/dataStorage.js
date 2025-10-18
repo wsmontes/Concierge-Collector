@@ -2678,6 +2678,144 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             throw error;
         }
     }
+
+    /**
+     * Permanently delete a restaurant and all related data
+     * @param {number} restaurantId - Restaurant ID to delete
+     * @returns {Promise<boolean>} - Success status
+     */
+    async deleteRestaurant(restaurantId) {
+        try {
+            // First delete all related data
+            await this.db.restaurantConcepts.where('restaurantId').equals(restaurantId).delete();
+            await this.db.restaurantLocations.where('restaurantId').equals(restaurantId).delete();
+            await this.db.restaurantPhotos.where('restaurantId').equals(restaurantId).delete();
+            
+            // Then delete the restaurant itself
+            await this.db.restaurants.delete(restaurantId);
+            
+            return true;
+        } catch (error) {
+            console.error('Error deleting restaurant:', error);
+            throw error;
+        }
+    }
+    
+    /**
+     * Smart delete restaurant - determines strategy based on source
+     * @param {number} restaurantId - Restaurant ID to delete
+     * @param {Object} options - Delete options
+     * @param {boolean} options.force - Force permanent delete even for synced restaurants
+     * @returns {Promise<Object>} - Delete result with type and id
+     */
+    async smartDeleteRestaurant(restaurantId, options = {}) {
+        try {
+            const restaurant = await this.db.restaurants.get(restaurantId);
+            if (!restaurant) {
+                throw new Error('Restaurant not found');
+            }
+            
+            // Determine if this is a local-only restaurant
+            const isLocal = !restaurant.serverId || 
+                           !restaurant.source || 
+                           restaurant.source === 'local';
+            
+            console.log(`Smart delete for "${restaurant.name}": isLocal=${isLocal}, serverId=${restaurant.serverId}, source=${restaurant.source}`);
+            
+            if (isLocal) {
+                // STRATEGY 1: Permanent delete for local-only restaurants
+                console.log('Performing permanent delete (local-only restaurant)');
+                await this.deleteRestaurant(restaurantId);
+                return { type: 'permanent', id: restaurantId, name: restaurant.name };
+            } else {
+                // STRATEGY 2: Soft delete + server delete for synced restaurants (unless forced)
+                if (options.force === true) {
+                    console.log('Performing forced permanent delete (synced restaurant)');
+                    await this.deleteRestaurant(restaurantId);
+                    return { type: 'permanent', id: restaurantId, name: restaurant.name, forced: true };
+                }
+                
+                console.log('Performing soft delete + server delete (synced restaurant)');
+                
+                // First, try to delete from server
+                try {
+                    console.log(`Attempting to delete restaurant from server: serverId=${restaurant.serverId}`);
+                    const response = await fetch(`https://wsmontes.pythonanywhere.com/api/restaurants/${restaurant.serverId}`, {
+                        method: 'DELETE',
+                        headers: {
+                            'Accept': 'application/json',
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    
+                    if (!response.ok) {
+                        console.warn(`Server delete failed with status ${response.status}: ${response.statusText}`);
+                        // Continue with soft delete even if server delete fails
+                    } else {
+                        console.log(`Successfully deleted restaurant from server: serverId=${restaurant.serverId}`);
+                    }
+                } catch (serverError) {
+                    console.error('Error deleting from server:', serverError);
+                    // Continue with soft delete even if server call fails
+                }
+                
+                // Soft delete locally (mark as deleted)
+                await this.softDeleteRestaurant(restaurantId);
+                return { type: 'soft', id: restaurantId, name: restaurant.name, serverDeleted: true };
+            }
+        } catch (error) {
+            console.error('Error in smart delete restaurant:', error);
+            throw error;
+        }
+    }
+    
+    /**
+     * Soft delete restaurant (mark as deleted locally, hide from UI)
+     * @param {number} restaurantId - Restaurant ID to soft delete
+     * @returns {Promise<number>} - Number of records updated
+     */
+    async softDeleteRestaurant(restaurantId) {
+        try {
+            await this.db.restaurants.update(restaurantId, {
+                deletedLocally: true,
+                deletedAt: new Date()
+            });
+            console.log(`Restaurant ${restaurantId} soft deleted (archived)`);
+            return 1;
+        } catch (error) {
+            console.error('Error soft deleting restaurant:', error);
+            throw error;
+        }
+    }
+    
+    /**
+     * Restore a soft-deleted restaurant
+     * @param {number} restaurantId - Restaurant ID to restore
+     * @returns {Promise<Object>} - Restore result
+     */
+    async restoreRestaurant(restaurantId) {
+        try {
+            const restaurant = await this.db.restaurants.get(restaurantId);
+            if (!restaurant) {
+                throw new Error('Restaurant not found');
+            }
+            
+            if (!restaurant.deletedLocally) {
+                throw new Error('Restaurant is not deleted');
+            }
+            
+            await this.db.restaurants.update(restaurantId, {
+                deletedLocally: false,
+                deletedAt: null
+            });
+            
+            console.log(`Restaurant ${restaurantId} restored`);
+            return { id: restaurantId, name: restaurant.name };
+        } catch (error) {
+            console.error('Error restoring restaurant:', error);
+            throw error;
+        }
+    }
 });
 
 // Create a global instance only once
