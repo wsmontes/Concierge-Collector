@@ -1410,6 +1410,50 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
     }
 
     /**
+     * Mark restaurants that have serverId but are not in server response as local-only
+     * Purpose: Handle sync inconsistencies when restaurants are deleted from server
+     * @param {Set<number>} serverRestaurantIds - Set of restaurant IDs from server
+     * @returns {Promise<number>} - Number of restaurants marked as local
+     */
+    async markMissingRestaurantsAsLocal(serverRestaurantIds) {
+        try {
+            // Get all local restaurants that have a serverId
+            const syncedRestaurants = await this.db.restaurants
+                .filter(r => r.serverId != null)
+                .toArray();
+            
+            console.log(`Found ${syncedRestaurants.length} synced restaurants locally`);
+            
+            let markedCount = 0;
+            
+            // Check each synced restaurant
+            for (const restaurant of syncedRestaurants) {
+                // If restaurant has serverId but is not in server response, mark as local
+                if (!serverRestaurantIds.has(restaurant.serverId)) {
+                    console.log(`Restaurant "${restaurant.name}" (serverId: ${restaurant.serverId}) not found on server - marking as local`);
+                    
+                    await this.db.restaurants.update(restaurant.id, {
+                        serverId: null,
+                        source: 'local',
+                        origin: 'local',
+                        deletedLocally: false,
+                        deletedAt: null,
+                        lastSyncedAt: null
+                    });
+                    
+                    markedCount++;
+                }
+            }
+            
+            console.log(`Marked ${markedCount} restaurants as local (server inconsistency detected)`);
+            return markedCount;
+        } catch (error) {
+            console.error('Error marking missing restaurants as local:', error);
+            throw error;
+        }
+    }
+
+    /**
      * Update restaurant sync status after successful server sync
      * @param {number} restaurantId - Local restaurant ID
      * @param {string|number} serverId - Server-assigned ID
