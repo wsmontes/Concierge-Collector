@@ -27,6 +27,9 @@ window.startApplication = function() {
     // Initialize the application components in the correct order using our wrapper
     initializeApp()
         .then(() => {
+            // Check if API key exists after initialization
+            window.checkAndPromptForApiKey();
+            
             // After initialization, trigger initial sync
             triggerInitialSync();
         })
@@ -36,6 +39,156 @@ window.startApplication = function() {
             showFatalError('There was an error initializing the application. Please check the console for details.');
         });
 };
+
+/**
+ * Check if OpenAI API key exists and prompt user if not
+ * Exposed globally so it can be called anytime
+ */
+window.checkAndPromptForApiKey = function() {
+    console.log('Checking for OpenAI API key...');
+    
+    // Check localStorage for API key
+    const apiKey = localStorage.getItem('openai_api_key');
+    
+    if (!apiKey || apiKey.trim() === '') {
+        console.log('No API key found, showing prompt...');
+        showApiKeyPrompt();
+        return false;
+    } else {
+        console.log('API key found in storage');
+        return true;
+    }
+};
+
+/**
+ * Show API key input prompt
+ */
+function showApiKeyPrompt() {
+    // Check if modal already exists
+    if (document.getElementById('api-key-modal')) {
+        return;
+    }
+    
+    const modal = document.createElement('div');
+    modal.id = 'api-key-modal';
+    modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+    modal.innerHTML = `
+        <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+            <div class="flex items-center mb-4">
+                <span class="material-icons text-blue-600 text-3xl mr-3">vpn_key</span>
+                <h2 class="text-2xl font-bold text-gray-800">OpenAI API Key Required</h2>
+            </div>
+            
+            <p class="text-gray-600 mb-4">
+                This app uses OpenAI's API for transcription and concept extraction. 
+                Please enter your OpenAI API key to continue.
+            </p>
+            
+            <div class="mb-4">
+                <label for="api-key-input" class="block text-sm font-medium text-gray-700 mb-2">
+                    API Key
+                </label>
+                <input 
+                    type="password" 
+                    id="api-key-input" 
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    placeholder="sk-..."
+                    autocomplete="off"
+                />
+                <p class="text-xs text-gray-500 mt-1">
+                    Get your API key from <a href="https://platform.openai.com/api-keys" target="_blank" class="text-blue-600 hover:underline">OpenAI Platform</a>
+                </p>
+            </div>
+            
+            <div class="flex gap-3">
+                <button 
+                    id="api-key-save" 
+                    class="flex-1 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
+                >
+                    <span class="material-icons text-sm">save</span>
+                    Save & Continue
+                </button>
+                <button 
+                    id="api-key-skip" 
+                    class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+                >
+                    Skip for now
+                </button>
+            </div>
+            
+            <div id="api-key-error" class="text-red-600 text-sm mt-3 hidden"></div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    const input = document.getElementById('api-key-input');
+    const saveButton = document.getElementById('api-key-save');
+    const skipButton = document.getElementById('api-key-skip');
+    const errorDiv = document.getElementById('api-key-error');
+    
+    function saveApiKey() {
+        const apiKey = input.value.trim();
+        
+        if (!apiKey) {
+            errorDiv.textContent = 'Please enter an API key';
+            errorDiv.classList.remove('hidden');
+            return;
+        }
+        
+        if (!apiKey.startsWith('sk-')) {
+            errorDiv.textContent = 'Invalid API key format. OpenAI keys start with "sk-"';
+            errorDiv.classList.remove('hidden');
+            return;
+        }
+        
+        // Save to localStorage
+        localStorage.setItem('openai_api_key', apiKey);
+        
+        // Set in apiHandler if available
+        if (window.apiHandler && typeof window.apiHandler.setApiKey === 'function') {
+            window.apiHandler.setApiKey(apiKey);
+        }
+        
+        console.log('API key saved successfully');
+        
+        // Show success notification
+        if (window.SafetyUtils && typeof SafetyUtils.showNotification === 'function') {
+            SafetyUtils.showNotification('API key saved successfully!', 'success');
+        }
+        
+        // Remove modal
+        modal.remove();
+    }
+    
+    function skipApiKey() {
+        console.log('User skipped API key setup');
+        
+        // Show warning
+        if (window.SafetyUtils && typeof SafetyUtils.showNotification === 'function') {
+            SafetyUtils.showNotification(
+                'You can add your API key later in the curator settings.',
+                'info',
+                5000
+            );
+        }
+        
+        // Remove modal
+        modal.remove();
+    }
+    
+    saveButton.addEventListener('click', saveApiKey);
+    skipButton.addEventListener('click', skipApiKey);
+    
+    input.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            saveApiKey();
+        }
+    });
+    
+    // Focus input after a short delay
+    setTimeout(() => input.focus(), 100);
+}
 
 // Note: AccessControl module will call window.startApplication() after password verification
 
