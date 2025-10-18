@@ -27,7 +27,26 @@ if (!window.SyncService) {
                 const response = await fetch(`${this.apiBase}/restaurants`);
                 
                 if (!response.ok) {
-                    throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
+                    // Get error text if available
+                    let errorDetails = response.statusText;
+                    try {
+                        const errorText = await response.text();
+                        if (errorText) {
+                            errorDetails += ` - ${errorText}`;
+                        }
+                    } catch (e) {
+                        // Ignore if we can't read error text
+                    }
+                    
+                    // Log detailed error
+                    console.error(`SyncService: Server error ${response.status}: ${errorDetails}`);
+                    
+                    // Show user-friendly error
+                    const userMessage = response.status >= 500 
+                        ? 'Server is currently unavailable. Please try again later.'
+                        : `Failed to import: ${response.statusText}`;
+                    
+                    throw new Error(userMessage);
                 }
                 
                 const remoteRestaurantsData = await response.json();

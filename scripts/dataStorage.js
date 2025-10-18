@@ -1590,7 +1590,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                     }
                 }
                 
-                console.log(`Restaurant updated successfully. ID: ${restaurantId}, Source: ${source}`);
+                console.log(`Restaurant updated successfully. ID: ${restaurantId}, Source: 'local' (needs sync)`);
                 
                 // Trigger background sync (non-blocking)
                 if (window.backgroundSync) {
