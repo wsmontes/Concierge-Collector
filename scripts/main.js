@@ -309,6 +309,45 @@ function ensureBaseStructureExists() {
 }
 
 /**
+ * Setup manual sync button to use BackgroundSync (Phase 1.3)
+ */
+function setupManualSyncButton() {
+    const syncButton = document.getElementById('sync-button');
+    if (!syncButton) {
+        console.warn('⚠️ Sync button not found');
+        return;
+    }
+
+    console.log('🔧 Configuring manual sync button...');
+
+    // Remove existing listeners (clone and replace)
+    const newButton = syncButton.cloneNode(true);
+    syncButton.parentNode.replaceChild(newButton, syncButton);
+
+    // Add click handler using BackgroundSync
+    newButton.addEventListener('click', async () => {
+        console.log('🔄 Manual sync triggered');
+        
+        if (!window.backgroundSync) {
+            console.error('❌ BackgroundSync not available');
+            if (window.uiUtils?.showNotification) {
+                window.uiUtils.showNotification('Sync service not available', 'error');
+            }
+            return;
+        }
+
+        try {
+            await window.backgroundSync.syncAllPendingWithUI(true);
+            console.log('✅ Manual sync completed');
+        } catch (error) {
+            console.error('❌ Manual sync error:', error);
+        }
+    });
+
+    console.log('✅ Manual sync button configured (using BackgroundSync)');
+}
+
+/**
  * Initializes background services with proper error handling
  */
 function initializeBackgroundServices() {
@@ -321,13 +360,16 @@ function initializeBackgroundServices() {
         }
     }, 2000);
     
-    // Initialize AutoSync module after a short delay
+    // PHASE 1.3: AutoSync DISABLED - using BackgroundSync only
+    // Previously: AutoSync periodic sync every 30min
+    // Now: BackgroundSync handles all sync (60s retry + manual sync)
+    // Manual sync via sync-button → backgroundSync.syncAllPendingWithUI()
     setTimeout(() => {
-        if (window.AutoSync && typeof window.AutoSync.init === 'function') {
-            window.AutoSync.init().catch(error => {
-                console.error('Error initializing AutoSync:', error);
-            });
-        }
+        console.log('⚠️ AutoSync periodic sync disabled (Phase 1.3)');
+        console.log('✅ Using BackgroundSync for all sync operations');
+        
+        // Setup manual sync button to use BackgroundSync
+        setupManualSyncButton();
     }, 3000);
     
     // Initialize sync settings manager

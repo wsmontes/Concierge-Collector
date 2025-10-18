@@ -69,9 +69,11 @@
     <!-- Add sync service script -->
     <link rel="stylesheet" href="styles/sync-badges.css">
     
-    <!-- Add script references -->
+    <!-- PHASE 1.3: Keep syncService for initial import, disable AutoSync periodic sync -->
     <script src="scripts/syncService.js" defer></script>
-    <script src="scripts/autoSync.js" defer></script>
+    <!-- AutoSync DISABLED - periodic sync replaced by BackgroundSync -->
+    <!-- <script src="scripts/autoSync.js" defer></script> -->
+    
     <!-- Add the debug script -->
     <script src="scripts/displayDebuggingInfo.js" defer></script>
 
@@ -374,31 +376,17 @@
             </div>
         </section>
 
-        <!-- Michelin Search Section -->
-        <div id="michelin-search-section" class="bg-white rounded-lg p-6 shadow-md mb-6">
-            <h2 class="text-xl font-bold mb-4 flex items-center">
-                <span class="material-icons mr-2 text-red-600">stars</span>
-                Michelin Restaurants
-            </h2>
-            <p class="text-gray-600 mb-4">Search and import restaurants from the Michelin guide database.</p>
-            <button id="open-staging-search" class="bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 flex items-center">
-                <span class="material-icons mr-1">search</span>
-                Search Michelin Restaurants
+        <!-- External Search Actions - Compact -->
+        <div class="flex gap-3 mb-6">
+            <button id="open-places-search" class="flex-1 bg-blue-600 text-white px-4 py-3 rounded-lg hover:bg-blue-700 flex items-center justify-center shadow-md transition-all">
+                <span class="material-icons mr-2">place</span>
+                <span class="font-medium">Google Places</span>
+            </button>
+            <button id="open-staging-search" class="flex-1 bg-red-600 text-white px-4 py-3 rounded-lg hover:bg-red-700 flex items-center justify-center shadow-md transition-all">
+                <span class="material-icons mr-2">stars</span>
+                <span class="font-medium">Michelin Guide</span>
             </button>
         </div>
-
-        <!-- Google Places Search Section -->
-        <section id="places-search-section" class="mt-6 p-4 bg-white rounded-lg shadow-md">
-            <h2 class="text-lg font-semibold mb-4 flex items-center">
-                <span class="material-icons text-blue-600 mr-2">place</span>
-                Google Places
-            </h2>
-            <p class="text-gray-600 mb-4">Search and import restaurants from Google Places.</p>
-            <button id="open-places-search" class="bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 flex items-center">
-                <span class="material-icons mr-1">search</span>
-                Search Google Places
-            </button>
-        </section>
 
         <!-- Restaurant List Section -->
         <section id="restaurant-list-section" class="mb-8 p-6 bg-white rounded-lg shadow-md border border-gray-100 hover:shadow-lg transition-all duration-300 hidden">
@@ -407,10 +395,17 @@
                     <span class="material-icons mr-2 text-green-500">restaurant</span>
                     Restaurants
                 </h2>
-                <button id="add-restaurant" class="bg-green-500 text-white px-3 py-1 rounded flex items-center">
-                    <span class="material-icons mr-1">add</span>
-                    Add Restaurant
-                </button>
+                <div class="flex gap-2">
+                    <button id="sync-restaurants-btn" class="bg-blue-500 text-white px-3 py-1 rounded flex items-center hidden">
+                        <span class="material-icons mr-1 text-sm">sync</span>
+                        <span id="sync-restaurants-text">Sync</span>
+                        <span id="sync-restaurants-badge" class="ml-2 bg-white text-blue-500 px-2 py-0.5 rounded-full text-xs font-bold hidden"></span>
+                    </button>
+                    <button id="add-restaurant" class="bg-green-500 text-white px-3 py-1 rounded flex items-center">
+                        <span class="material-icons mr-1">add</span>
+                        Add Restaurant
+                    </button>
+                </div>
             </div>
             <div id="restaurants-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
         </section>
@@ -582,6 +577,7 @@
     <script src="scripts/conceptMatcher.js"></script>
     <script src="scripts/audioRecorder.js"></script>
     <script src="scripts/syncService.js"></script>
+    <script src="scripts/backgroundSync.js"></script>
     <script src="scripts/uiManager.js"></script>
     
     <!-- Module implementations - these should NOT duplicate core components -->
