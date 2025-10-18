@@ -1,6 +1,6 @@
 /**
  * Manages synchronization settings UI and functionality
- * Dependencies: dataStorage, AutoSync
+ * Dependencies: dataStorage, BackgroundSync (Phase 1.3 - AutoSync removed)
  */
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -12,8 +12,16 @@ document.addEventListener('DOMContentLoaded', () => {
  * Sets up the sync settings modal and functionality
  */
 function setupSyncSettings() {
-    // Check if dependencies are available
-    if (!window.dataStorage || !window.AutoSync) {
+    // PHASE 1.3: AutoSync removed, BackgroundSync is now the only sync system
+    // SyncSettingsManager disabled as periodic sync settings are no longer needed
+    // BackgroundSync runs automatically (60s retry) without user configuration
+    
+    console.log('⚠️ SyncSettingsManager disabled (Phase 1.3)');
+    console.log('ℹ️ BackgroundSync handles all sync automatically');
+    return;
+    
+    // Check if dependencies are available (legacy code - kept for reference)
+    if (!window.dataStorage || !window.backgroundSync) {
         console.error('SyncSettingsManager: Required dependencies not loaded');
         return;
     }

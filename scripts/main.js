@@ -372,12 +372,10 @@ function initializeBackgroundServices() {
         setupManualSyncButton();
     }, 3000);
     
-    // Initialize sync settings manager
-    setTimeout(() => {
-        if (typeof setupSyncSettings === 'function') {
-            setupSyncSettings();
-        }
-    }, 3500);
+    // PHASE 1.3: SyncSettingsManager DISABLED (no longer needed)
+    // Previously: Managed AutoSync interval settings
+    // Now: BackgroundSync has fixed 60s retry, no user configuration needed
+    // Manual sync via button, no settings UI required
     
     console.log('Background services scheduled for initialization');
 }
