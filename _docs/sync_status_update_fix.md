@@ -1,75 +1,50 @@
 # Sync Status Update Fix
 
 **Date:** 2025-10-18  
-**Commit:** 3a6e15c  
+**Commits:** 3a6e15c, 566b570 (debug), 614a3bc (final fix)  
 **Status:** ✅ Fixed
 
 ## Problem
 
-After successfully exporting restaurants to server via `/api/restaurants/batch`, the sync status update was failing with:
+After successfully exporting restaurants to server via `/api/restaurants/batch`, the sync status update was failing because the server response didn't contain restaurant IDs.
 
 ```
-Error: Missing required parameter: serverId
+✅ POST /api/restaurants/batch → 200 OK
+❌ Server returns: {status: 'success'} (no restaurant data)
+❌ Cannot extract serverId from response
+❌ Restaurants stay marked as 'local'
 ```
 
-This prevented restaurants from being marked as `'remote'` after successful sync.
+## Root Cause Discovery
 
-## Root Cause
+**Debug logging revealed:**
+```javascript
+Server response: {status: 'success'}
+Extracted restaurant: {status: 'success'}
+// Missing: id field needed for sync status update
+```
 
-The `exportRestaurants()` method was correctly receiving server responses with restaurant IDs, but when passing results to `syncUnsyncedRestaurants()`, there was no way to match server responses back to local restaurant IDs.
-
-**Original flow:**
-1. `exportRestaurants()` sends restaurant → server returns `{id: serverId, ...}`
-2. Result stored without `localId` reference
-3. `syncUnsyncedRestaurants()` tries to match by array index (unreliable if some exports fail)
-4. Mismatch causes `serverId` to be `undefined`
+The `/api/restaurants/batch` endpoint only returns a success status, not the restaurant data with IDs. This is a server API design limitation.
 
 ## Solution
 
-**Modified `exportRestaurants()`** (syncService.js ~line 705):
-```javascript
-// Include localId in result so we can match it later
-results.restaurants.push({
-    ...serverRestaurant,
-    localId: restaurant.localId  // Add localId to match with local database
-});
-```
+Since all restaurants **already have `serverId` values** from previous syncs (visible in console logs as `serverId: 0, 1, 2, 3...`), we use the existing `serverId` from the local database instead of trying to extract it from the server response.
 
-**Modified `syncUnsyncedRestaurants()`** (syncService.js ~line 818):
+**Modified sync status update logic** (syncService.js ~line 820):
+
 ```javascript
-// Each restaurant in result includes localId and server id
-for (const serverRestaurant of result.restaurants) {
-    if (!serverRestaurant || !serverRestaurant.id) {
-        console.warn('SyncService: Server restaurant missing id, skipping');
-        continue;
-    }
-    
-    if (!serverRestaurant.localId) {
-        console.warn('SyncService: Server restaurant missing localId, skipping');
-        continue;
-    }
-    
-    const localId = serverRestaurant.localId;
-    const serverId = serverRestaurant.id;
-    
-    console.log(`SyncService: Updating restaurant ${localId} with serverId ${serverId}`);
-    
-    try {
-        await dataStorage.updateRestaurantSyncStatus(localId, serverId);
-        syncedCount++;
-    } catch (updateError) {
-        console.error(`SyncService: Error updating sync status for restaurant ${localId}:`, updateError);
-    }
+// Get the restaurant from local database to find its serverId
+const localRestaurant = await dataStorage.db.restaurants.get(localId);
+
+// Use existing serverId (restaurants were already synced before)
+const serverId = localRestaurant.serverId;
+
+if (serverId !== undefined && serverId !== null) {
+    // Update source to 'remote' and mark as synced
+    await dataStorage.updateRestaurantSyncStatus(localId, serverId);
+    syncedCount++;
 }
 ```
-
-## Key Changes
-
-1. ✅ **Preserve localId mapping**: `exportRestaurants()` now includes `localId` in results
-2. ✅ **Direct matching**: No longer relies on array index matching
-3. ✅ **Better validation**: Checks for both `id` and `localId` before updating
-4. ✅ **Error handling**: Individual restaurant failures don't break entire sync
-5. ✅ **Logging**: Clear console logs show which restaurant is being updated
 
 ## Expected Behavior After Fix
 
