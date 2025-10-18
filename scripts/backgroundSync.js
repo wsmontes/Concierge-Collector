@@ -121,36 +121,42 @@ const BackgroundSyncService = ModuleWrapper.defineClass('BackgroundSyncService',
                 originalCuratorId: restaurant.originalCuratorId
             };
             
-            // Always use POST - server doesn't support PUT
+            // Use batch endpoint - server requires /api/restaurants/batch for POST
             let response;
-            if (!silent) console.log(`� Syncing restaurant: ${restaurant.name} (serverId: ${restaurant.serverId || 'none'})`);
-            response = await window.apiHandler.post('/api/restaurants', serverData);
+            if (!silent) console.log(`📤 Syncing restaurant: ${restaurant.name} (serverId: ${restaurant.serverId || 'none'})`);
+            // Batch endpoint expects array, returns array
+            response = await window.apiHandler.post('/api/restaurants/batch', [serverData]);
             
-            if (response.success && response.data && response.data.id) {
-                // Update to remote status
-                await dataStorage.db.restaurants.update(restaurantId, {
-                    source: 'remote',
-                    serverId: response.data.id,
-                    needsSync: false,
-                    lastSynced: new Date()
-                });
-                
-                // Update UI badge
-                this.updateUIBadge(restaurantId, 'remote');
-                
-                if (!silent) {
-                    console.log(`✅ Background sync success: ${restaurant.name}`);
+            // Extract first element from batch response array
+            if (response.success && response.data) {
+                const restaurantData = Array.isArray(response.data) ? response.data[0] : response.data;
+                if (restaurantData && restaurantData.id) {
+                    // Update to remote status
+                    await dataStorage.db.restaurants.update(restaurantId, {
+                        source: 'remote',
+                        serverId: restaurantData.id,
+                        needsSync: false,
+                        lastSynced: new Date()
+                    });
+                    
+                    // Update UI badge
+                    this.updateUIBadge(restaurantId, 'remote');
+                    
+                    if (!silent) {
+                        console.log(`✅ Background sync success: ${restaurant.name}`);
+                    }
+                    
+                    // Update sync button count
+                    if (window.restaurantModule) {
+                        window.restaurantModule.updateSyncButton();
+                    }
+                    
+                    return true;
                 }
-                
-                // Update sync button count
-                if (window.restaurantModule) {
-                    window.restaurantModule.updateSyncButton();
-                }
-                
-                return true;
-            } else {
-                throw new Error('Server response missing ID');
             }
+            
+            // If we get here, response was missing data
+            throw new Error('Server response missing restaurant data');
             
         } catch (err) {
             // Failed - keep as local

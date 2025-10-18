@@ -676,16 +676,16 @@ if (!window.SyncService) {
                         // Get local restaurant to check serverId
                         const localRestaurant = await dataStorage.db.restaurants.get(restaurant.localId);
                         
-                        // Determine if this is a new restaurant (POST) or update (PUT)
-                        // Always use POST - server doesn't support PUT
+                        // Use batch endpoint - server requires /api/restaurants/batch for POST
                         const method = 'POST';
-                        const url = `${this.apiBase}/restaurants`;
+                        const url = `${this.apiBase}/restaurants/batch`;
                         
                         console.log(`SyncService: ${method} ${restaurant.name} (serverId: ${localRestaurant?.serverId || 'none'})`);
                         
                         // Remove localId from data sent to server
                         const { localId, ...serverData } = restaurant;
                         
+                        // Batch endpoint expects an array
                         const response = await fetch(url, {
                             method: method,
                             headers: {
@@ -693,14 +693,16 @@ if (!window.SyncService) {
                                 'Accept': 'application/json'
                             },
                             mode: 'cors',
-                            body: JSON.stringify(serverData)
+                            body: JSON.stringify([serverData])  // Wrap in array for batch endpoint
                         });
                         
                         if (!response.ok) {
                             throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
                         }
                         
-                        const serverRestaurant = await response.json();
+                        const serverRestaurants = await response.json();
+                        // Batch endpoint returns array, get first element
+                        const serverRestaurant = Array.isArray(serverRestaurants) ? serverRestaurants[0] : serverRestaurants;
                         results.restaurants.push(serverRestaurant);
                         console.log(`SyncService: Successfully exported restaurant ${restaurant.name}`);
                         
