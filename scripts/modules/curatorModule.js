@@ -98,6 +98,14 @@ class CuratorModule {
             });
         }
         
+        // New curator button (compact display)
+        const newCuratorCompactButton = document.getElementById('new-curator-compact');
+        if (newCuratorCompactButton) {
+            newCuratorCompactButton.addEventListener('click', () => {
+                this.createNewCurator();
+            });
+        }
+        
         // Switch curator button (compact)
         const switchCompactButton = document.getElementById('switch-curator-compact');
         if (switchCompactButton) {
@@ -211,6 +219,14 @@ class CuratorModule {
                     console.error('Error handling curator selector change:', error);
                     SafetyUtils.showNotification(`Error: ${error.message}`, 'error');
                 }
+            });
+        }
+        
+        // New curator button (selector section)
+        const newCuratorSelectorButton = document.getElementById('new-curator-selector');
+        if (newCuratorSelectorButton) {
+            newCuratorSelectorButton.addEventListener('click', () => {
+                this.createNewCurator();
             });
         }
         
@@ -770,7 +786,7 @@ class CuratorModule {
     /**
      * Edit curator (compact mode)
      */
-    editCuratorCompact() {
+    async editCuratorCompact() {
         const compactDisplay = document.getElementById('curator-compact-display');
         const editForm = document.getElementById('curator-edit-form');
         const section = document.getElementById('curator-section');
@@ -784,8 +800,14 @@ class CuratorModule {
             curatorNameInput.value = this.uiManager.currentCurator.name || '';
         }
         
-        // Get API key from localStorage
-        const apiKey = localStorage.getItem('openai_api_key') || '';
+        // Get API key - use curator's individual key if available, otherwise global key
+        let apiKey = '';
+        if (this.uiManager.currentCurator) {
+            apiKey = await dataStorage.getApiKeyForCurator(this.uiManager.currentCurator.id);
+        }
+        if (!apiKey) {
+            apiKey = localStorage.getItem('openai_api_key') || '';
+        }
         if (apiKeyInput) {
             apiKeyInput.value = apiKey;
         }
@@ -829,18 +851,39 @@ class CuratorModule {
                 throw new Error('Data storage service is not available');
             }
             
-            // Check if editing existing curator
+            // Check if editing existing curator or creating new
             let curatorId;
-            if (this.uiManager.isEditingCurator && this.uiManager.currentCurator) {
-                // Update existing curator
+            if (this.uiManager.isEditingCurator && this.uiManager.currentCurator && !this.uiManager.isCreatingNewCurator) {
+                // Update existing curator - update both name and API key
                 await dataStorage.db.curators.update(this.uiManager.currentCurator.id, {
                     name: name,
+                    apiKey: apiKey, // Update individual API key
                     lastActive: new Date()
                 });
                 curatorId = this.uiManager.currentCurator.id;
+                
+                // Also update global API key if provided
+                if (apiKey) {
+                    localStorage.setItem('openai_api_key', apiKey);
+                }
             } else {
-                // Save new curator as local
+                // Save new curator as local (saveCurator handles both individual and global key)
                 curatorId = await dataStorage.saveCurator(name, apiKey, 'local');
+                // Clear the creating flag
+                this.uiManager.isCreatingNewCurator = false;
+                
+                // Sync new curator to server immediately to avoid conflicts
+                console.log('New curator created, syncing to server...');
+                try {
+                    await this.syncNewCuratorToServer(curatorId);
+                } catch (syncError) {
+                    console.error('Error syncing new curator to server:', syncError);
+                    SafetyUtils.showNotification(
+                        'Curator saved locally. Server sync will be attempted during next full sync.',
+                        'warning',
+                        5000
+                    );
+                }
             }
             
             // Set API key in apiHandler
@@ -877,6 +920,64 @@ class CuratorModule {
             SafetyUtils.showNotification(`Error saving curator: ${error.message}`, 'error');
         }
     }
+    
+    /**
+     * Sync new curator to server immediately
+     * @param {number} curatorId - ID of the curator to sync
+     */
+    async syncNewCuratorToServer(curatorId) {
+        try {
+            console.log(`Syncing new curator ${curatorId} to server...`);
+            
+            // Get curator details
+            const curator = await dataStorage.db.curators.get(curatorId);
+            if (!curator) {
+                throw new Error('Curator not found');
+            }
+            
+            // Prepare curator data for server
+            const curatorData = {
+                name: curator.name,
+                timestamp: curator.lastActive || new Date().toISOString()
+            };
+            
+            // Send to server
+            const response = await fetch('https://wsmontes.pythonanywhere.com/api/curators', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify(curatorData)
+            });
+            
+            if (!response.ok) {
+                throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
+            }
+            
+            const result = await response.json();
+            console.log('Curator synced to server successfully:', result);
+            
+            // Update curator with serverId if provided
+            if (result.id || result.curator_id) {
+                const serverId = result.id || result.curator_id;
+                await dataStorage.db.curators.update(curatorId, {
+                    serverId: serverId,
+                    origin: 'remote' // Mark as synced with server
+                });
+                console.log(`Updated curator ${curatorId} with serverId: ${serverId}`);
+            }
+            
+            SafetyUtils.showNotification('✅ Curator synced to server', 'success', 3000);
+            
+        } catch (error) {
+            console.error('Error syncing curator to server:', error);
+            throw error;
+        }
+    }
+    
+    /**
+     * Cancel curator editing (compact mode)
+```
     
     /**
      * Cancel curator editing (compact mode)
@@ -933,6 +1034,50 @@ class CuratorModule {
         
         // Populate the selector with current curators
         this.populateCuratorSelectorCompact();
+    }
+    
+    /**
+     * Create new curator - clears form and shows edit mode
+     */
+    createNewCurator() {
+        console.log('Creating new curator...');
+        
+        const compactDisplay = document.getElementById('curator-compact-display');
+        const editForm = document.getElementById('curator-edit-form');
+        const selectorSection = document.getElementById('curator-selector-compact');
+        const curatorNameInput = document.getElementById('curator-name-compact-input');
+        const apiKeyInput = document.getElementById('api-key-compact-input');
+        
+        // Clear the name field
+        if (curatorNameInput) curatorNameInput.value = '';
+        
+        // Pre-fill API key with existing global key (from localStorage)
+        const existingApiKey = localStorage.getItem('openai_api_key') || '';
+        if (apiKeyInput) {
+            apiKeyInput.value = existingApiKey;
+        }
+        
+        // Clear current curator temporarily to indicate we're creating new
+        this.uiManager.isCreatingNewCurator = true;
+        
+        // Hide compact display and selector, show edit form
+        if (compactDisplay) {
+            compactDisplay.classList.add('hidden');
+            compactDisplay.classList.remove('flex');
+        }
+        if (selectorSection) {
+            selectorSection.classList.add('hidden');
+        }
+        if (editForm) {
+            editForm.classList.remove('hidden');
+        }
+        
+        // Focus on name input
+        setTimeout(() => {
+            if (curatorNameInput) curatorNameInput.focus();
+        }, 100);
+        
+        SafetyUtils.showNotification('Enter details for new curator', 'info');
     }
     
     /**

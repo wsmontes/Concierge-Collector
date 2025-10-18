@@ -187,6 +187,28 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 console.log('✅ Database upgraded to version 10');
             });
 
+            // Version 11: Add API key field to curators for individual key support
+            this.db.version(11).stores({
+                curators: '++id, name, lastActive, serverId, origin, apiKey',
+                concepts: '++id, category, value, timestamp, [category+value]',
+                restaurants: '++id, name, curatorId, timestamp, transcription, description, origin, source, serverId, deletedLocally, deletedAt, sharedRestaurantId, originalCuratorId',
+                restaurantConcepts: '++id, restaurantId, conceptId',
+                restaurantPhotos: '++id, restaurantId, photoData',
+                restaurantLocations: '++id, restaurantId, latitude, longitude, address',
+                settings: 'key',
+                pendingAudio: '++id, restaurantId, draftId, audioBlob, timestamp, retryCount, lastError, status, isAdditional',
+                draftRestaurants: '++id, curatorId, name, timestamp, lastModified, hasAudio, transcription, description',
+                appMetadata: 'key'
+            }).upgrade(async tx => {
+                console.log('Upgrading database to version 11: Adding API key field to curators');
+                // Add apiKey field to existing curators (will be null)
+                return tx.curators.toCollection().modify(curator => {
+                    if (!curator.apiKey) {
+                        curator.apiKey = null;
+                    }
+                });
+            });
+
             // Open the database to ensure it's properly initialized
             this.db.open()
                 .then(async () => {
@@ -385,17 +407,19 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 await this.db.open();
             }
             
-            // Save curator to database with origin and serverId
+            // Save curator to database with origin, serverId, and apiKey
             const curatorId = await this.db.curators.put({
                 name,
                 lastActive: new Date(),
                 origin,
-                serverId
+                serverId,
+                apiKey: apiKey || null // Store individual API key
             });
             
-            // Store API key in localStorage for local-only curators
-            if (origin === 'local' && apiKey) {
+            // Also update global API key in localStorage if provided
+            if (apiKey) {
                 localStorage.setItem('openai_api_key', apiKey);
+                console.log('Updated global API key in localStorage');
             }
             
             console.log(`DataStorage: Curator saved successfully with ID: ${curatorId}`);
@@ -462,6 +486,37 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
         } catch (error) {
             console.error('Error saving server curator:', error);
             throw error;
+        }
+    }
+
+    /**
+     * Get API key for a curator with fallback to global key
+     * @param {number} curatorId - Curator ID
+     * @returns {Promise<string|null>} - API key or null
+     */
+    async getApiKeyForCurator(curatorId) {
+        try {
+            // Get curator
+            const curator = await this.db.curators.get(curatorId);
+            
+            // If curator has individual API key, use it
+            if (curator && curator.apiKey) {
+                console.log(`Using individual API key for curator ${curatorId}`);
+                return curator.apiKey;
+            }
+            
+            // Otherwise, fall back to global API key from localStorage
+            const globalApiKey = localStorage.getItem('openai_api_key');
+            if (globalApiKey) {
+                console.log(`Using global API key for curator ${curatorId}`);
+                return globalApiKey;
+            }
+            
+            console.log(`No API key found for curator ${curatorId}`);
+            return null;
+        } catch (error) {
+            console.error('Error getting API key for curator:', error);
+            return null;
         }
     }
 
