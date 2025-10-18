@@ -82,18 +82,146 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 });
             });
 
-            // Open the database to ensure it's properly initialized
-            this.db.open().catch(error => {
-                console.error('Failed to open database:', error);
+            // Version 10: Data cleanup and compatibility check
+            this.db.version(10).stores({
+                curators: '++id, name, lastActive, serverId, origin',
+                concepts: '++id, category, value, timestamp, [category+value]',
+                restaurants: '++id, name, curatorId, timestamp, transcription, description, origin, source, serverId, deletedLocally, deletedAt, sharedRestaurantId, originalCuratorId',
+                restaurantConcepts: '++id, restaurantId, conceptId',
+                restaurantPhotos: '++id, restaurantId, photoData',
+                restaurantLocations: '++id, restaurantId, latitude, longitude, address',
+                settings: 'key',
+                pendingAudio: '++id, restaurantId, draftId, audioBlob, timestamp, retryCount, lastError, status, isAdditional',
+                draftRestaurants: '++id, curatorId, name, timestamp, lastModified, hasAudio, transcription, description',
+                appMetadata: 'key' // New table for app metadata
+            }).upgrade(async tx => {
+                console.log('Upgrading database to version 10: Data cleanup and compatibility check');
                 
-                // If there's a schema error or corruption, reset the database
-                if (error.name === 'VersionError' || 
-                    error.name === 'InvalidStateError' || 
-                    error.name === 'NotFoundError') {
-                    console.warn('Database schema issue detected, attempting to reset database...');
-                    this.resetDatabase();
+                // Check if this is a fresh upgrade or needs cleanup
+                const metadata = await tx.table('appMetadata').get('lastMajorVersion');
+                const currentVersion = 10;
+                
+                // If upgrading from a very old version or corrupted data, clean up
+                if (!metadata || metadata.value < 9) {
+                    console.log('🧹 Performing data cleanup for major version upgrade...');
+                    
+                    // Remove any restaurants with missing required fields
+                    const restaurants = await tx.restaurants.toArray();
+                    let cleanedCount = 0;
+                    
+                    for (const restaurant of restaurants) {
+                        let needsCleaning = false;
+                        
+                        // Check for missing critical fields
+                        if (!restaurant.curatorId || 
+                            typeof restaurant.curatorId !== 'number' ||
+                            !restaurant.name ||
+                            !restaurant.timestamp) {
+                            needsCleaning = true;
+                        }
+                        
+                        if (needsCleaning) {
+                            // Remove the problematic restaurant
+                            await tx.restaurants.delete(restaurant.id);
+                            
+                            // Clean up related data
+                            await tx.restaurantConcepts.where('restaurantId').equals(restaurant.id).delete();
+                            await tx.restaurantPhotos.where('restaurantId').equals(restaurant.id).delete();
+                            await tx.restaurantLocations.where('restaurantId').equals(restaurant.id).delete();
+                            
+                            cleanedCount++;
+                        } else {
+                            // Ensure all restaurants have required new fields
+                            await tx.restaurants.update(restaurant.id, {
+                                sharedRestaurantId: restaurant.sharedRestaurantId || crypto.randomUUID(),
+                                originalCuratorId: restaurant.originalCuratorId || restaurant.curatorId,
+                                deletedLocally: restaurant.deletedLocally ?? false,
+                                deletedAt: restaurant.deletedAt ?? null,
+                                source: restaurant.source || 'local',
+                                origin: restaurant.origin || 'local'
+                            });
+                        }
+                    }
+                    
+                    if (cleanedCount > 0) {
+                        console.log(`🧹 Cleaned up ${cleanedCount} incompatible restaurant(s)`);
+                    }
+                    
+                    // Clean up orphaned data
+                    const allRestaurantIds = (await tx.restaurants.toArray()).map(r => r.id);
+                    
+                    // Remove orphaned concepts
+                    const concepts = await tx.restaurantConcepts.toArray();
+                    for (const concept of concepts) {
+                        if (!allRestaurantIds.includes(concept.restaurantId)) {
+                            await tx.restaurantConcepts.delete(concept.id);
+                        }
+                    }
+                    
+                    // Remove orphaned photos
+                    const photos = await tx.restaurantPhotos.toArray();
+                    for (const photo of photos) {
+                        if (!allRestaurantIds.includes(photo.restaurantId)) {
+                            await tx.restaurantPhotos.delete(photo.id);
+                        }
+                    }
+                    
+                    // Remove orphaned locations
+                    const locations = await tx.restaurantLocations.toArray();
+                    for (const location of locations) {
+                        if (!allRestaurantIds.includes(location.restaurantId)) {
+                            await tx.restaurantLocations.delete(location.id);
+                        }
+                    }
+                    
+                    console.log('✅ Database cleanup completed successfully');
                 }
+                
+                // Store the current version
+                await tx.table('appMetadata').put({
+                    key: 'lastMajorVersion',
+                    value: currentVersion,
+                    timestamp: new Date().toISOString()
+                });
+                
+                console.log('✅ Database upgraded to version 10');
             });
+
+            // Open the database to ensure it's properly initialized
+            this.db.open()
+                .then(async () => {
+                    // Check if we just upgraded
+                    const metadata = await this.db.appMetadata.get('lastMajorVersion');
+                    if (metadata && metadata.value === 10) {
+                        // Check if this was a recent upgrade (within last 5 seconds)
+                        const upgradeTime = new Date(metadata.timestamp).getTime();
+                        const now = Date.now();
+                        if (now - upgradeTime < 5000) {
+                            console.log('✨ Database upgraded successfully to version 10');
+                            // Show user-friendly notification after a short delay
+                            setTimeout(() => {
+                                if (window.SafetyUtils && typeof SafetyUtils.showNotification === 'function') {
+                                    SafetyUtils.showNotification(
+                                        '✨ App updated! Your data has been optimized for the new version.',
+                                        'success',
+                                        5000
+                                    );
+                                }
+                            }, 1000);
+                        }
+                    }
+                })
+                .catch(error => {
+                    console.error('Failed to open database:', error);
+                    
+                    // If there's a schema error or corruption, reset the database
+                    if (error.name === 'VersionError' || 
+                        error.name === 'InvalidStateError' || 
+                        error.name === 'NotFoundError') {
+                        console.warn('Database schema issue detected, attempting to reset database...');
+                        this.resetDatabase();
+                    }
+                });
 
             console.log('Database initialized successfully');
         } catch (error) {
