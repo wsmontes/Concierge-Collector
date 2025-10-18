@@ -1659,18 +1659,509 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
         }
     }
 
+    async saveRestaurant(name, curatorId, concepts, location, photos, transcription, description, source = 'local', serverId = null) {
+        console.log(`Saving restaurant: ${name} with curator ID: ${curatorId}`);
+        console.log(`Concepts count: ${concepts.length}, Has location: ${!!location}, Photos count: ${photos ? photos.length : 0}, Has transcription: ${!!transcription}, Has description: ${!!description}`);
+        console.log(`Source: ${source}, Server ID: ${serverId}`);
+        
+        // Try to save without a transaction first to preload the concepts
+        // This helps avoid issues with the transaction
+        try {
+            // Pre-save all concepts outside any transaction
+            const conceptIds = [];
+            for (const concept of concepts) {
+                try {
+                    const conceptId = await this.saveConcept(concept.category, concept.value);
+                    conceptIds.push({ conceptId, restaurantConcept: concept });
+                } catch (error) {
+                    console.warn(`Failed to pre-save concept: ${concept.category} - ${concept.value}`, error);
+                    // Continue with other concepts
+                }
+            }
 
-    // ============================================================
-    // DUPLICATE METHODS REMOVED (formerly lines 1662-2164)
-    // 
-    // Removed duplicate definitions of:
-    // - saveRestaurant() (line 1662) - lacked sharedRestaurantId support
-    // - saveRestaurantWithTransaction() (line 1702) - lacked sharedRestaurantId
-    // - updateRestaurant() (line 2023) - lacked background sync
-    //
-    // Correct versions are at lines 915, 988, 1460 respectively
-    // ============================================================
+            // Now proceed with the main transaction
+            return await this.saveRestaurantWithTransaction(name, curatorId, conceptIds, location, photos, transcription, description, source, serverId);
+        } catch (error) {
+            console.error('Error in pre-save phase:', error);
+            
+            // If we get a database error, try resetting the database
+            if (error.name === 'NotFoundError' || 
+                error.message.includes('object store was not found') ||
+                error.name === 'PrematureCommitError') {
+                
+                await this.resetDatabase();
+                
+                // Try again after reset, but without the pre-save step
+                return await this.saveRestaurantWithTransaction(name, curatorId, concepts, location, photos, transcription, description, source, serverId);
+            }
+            
+            throw error;
+        }
+    }
+    
+    async saveRestaurantWithTransaction(name, curatorId, conceptsOrIds, location, photos, transcription, description, source = 'local', serverId = null) {
+        // Determine if we're working with pre-saved concept IDs or raw concepts
+        const areConceptIds = conceptsOrIds.length > 0 && conceptsOrIds[0].conceptId !== undefined;
+        
+        try {
+            // Transaction to ensure all related data is saved together
+            return await this.db.transaction('rw', 
+                [this.db.restaurants, this.db.restaurantConcepts, 
+                this.db.restaurantLocations, this.db.restaurantPhotos], 
+            async () => {
+                // Save restaurant with source and serverId
+                const restaurantId = await this.db.restaurants.put({
+                    name,
+                    curatorId,
+                    timestamp: new Date(),
+                    transcription: transcription || null,
+                    description: description || null,
+                    source: source,
+                    serverId: serverId
+                });
+                console.log(`Restaurant saved with ID: ${restaurantId}, source: ${source}, serverId: ${serverId}`);
+                
+                // Save concepts - handle both pre-saved concepts and raw concepts
+                if (areConceptIds) {
+                    // Use pre-saved concept IDs
+                    for (const item of conceptsOrIds) {
+                        await this.db.restaurantConcepts.put({
+                            restaurantId,
+                            conceptId: item.conceptId
+                        });
+                    }
+                } else {
+                    // Save concepts within transaction (fallback)
+                    for (const concept of conceptsOrIds) {
+                        // Simple put operation without error handling
+                        // If there's an error here, let the transaction handle it
+                        const conceptId = await this.db.concepts.put({
+                            category: concept.category,
+                            value: concept.value,
+                            timestamp: new Date()
+                        });
+                        
+                        await this.db.restaurantConcepts.put({
+                            restaurantId,
+                            conceptId
+                        });
+                    }
+                }
+                
+                // Save location if provided
+                if (location) {
+                    await this.db.restaurantLocations.put({
+                        restaurantId,
+                        latitude: location.latitude,
+                        longitude: location.longitude,
+                        address: location.address || null
+                    });
+                }
+                
+                // Save photos if provided
+                if (photos && photos.length) {
+                    for (const photoData of photos) {
+                        await this.db.restaurantPhotos.put({
+                            restaurantId,
+                            photoData
+                        });
+                    }
+                }
+                
+                return restaurantId;
+            });
+        } catch (error) {
+            console.error('Error in saveRestaurant transaction:', error);
+            
+            // If this is a database structure issue and we haven't just reset
+            if (!this.isResetting && (
+                error.name === 'NotFoundError' || 
+                error.message.includes('object store was not found') ||
+                error.name === 'PrematureCommitError')) {
+                
+                // Reset database outside of transaction
+                await this.resetDatabase();
+                
+                // Try one more time after reset
+                return await this.db.transaction('rw', 
+                    [this.db.restaurants, this.db.restaurantConcepts, 
+                    this.db.restaurantLocations, this.db.restaurantPhotos], 
+                async () => {
+                    // Simplified retry logic - just the essential operations
+                    const restaurantId = await this.db.restaurants.put({
+                        name,
+                        curatorId,
+                        timestamp: new Date(),
+                        transcription: transcription || null,
+                        description: description || null
+                    });
+                    
+                    // Handle raw concepts only in retry
+                    const concepts = areConceptIds 
+                        ? conceptsOrIds.map(item => item.restaurantConcept) 
+                        : conceptsOrIds;
+                    
+                    for (const concept of concepts) {
+                        const conceptId = await this.db.concepts.put({
+                            category: concept.category,
+                            value: concept.value,
+                            timestamp: new Date()
+                        });
+                        
+                        await this.db.restaurantConcepts.put({
+                            restaurantId,
+                            conceptId
+                        });
+                    }
+                    
+                    // Location
+                    if (location) {
+                        await this.db.restaurantLocations.put({
+                            restaurantId,
+                            latitude: location.latitude,
+                            longitude: location.longitude,
+                            address: location.address || null
+                        });
+                    }
+                    
+                    // Photos (limit to 5 in retry to reduce chance of error)
+                    if (photos && photos.length) {
+                        for (let i = 0; i < Math.min(photos.length, 5); i++) {
+                            await this.db.restaurantPhotos.put({
+                                restaurantId,
+                                photoData: photos[i]
+                            });
+                        }
+                    }
+                    
+                    return restaurantId;
+                });
+            }
+            
+            throw error;
+        }
+    }
 
+    async deleteRestaurant(restaurantId) {
+        try {
+            // First delete all related data
+            await this.db.restaurantConcepts.where('restaurantId').equals(restaurantId).delete();
+            await this.db.restaurantLocations.where('restaurantId').equals(restaurantId).delete();
+            await this.db.restaurantPhotos.where('restaurantId').equals(restaurantId).delete();
+            
+            // Then delete the restaurant itself
+            await this.db.restaurants.delete(restaurantId);
+            
+            return true;
+        } catch (error) {
+            console.error('Error deleting restaurant:', error);
+            throw error;
+        }
+    }
+    
+    /**
+     * Smart delete restaurant - determines strategy based on source
+     * @param {number} restaurantId - Restaurant ID to delete
+     * @param {Object} options - Delete options
+     * @param {boolean} options.force - Force permanent delete even for synced restaurants
+     * @param {boolean} options.includeDeleted - Include soft-deleted in query
+     * @returns {Promise<Object>} - Delete result with type and id
+     */
+    async smartDeleteRestaurant(restaurantId, options = {}) {
+        try {
+            const restaurant = await this.db.restaurants.get(restaurantId);
+            if (!restaurant) {
+                throw new Error('Restaurant not found');
+            }
+            
+            // Determine if this is a local-only restaurant
+            const isLocal = !restaurant.serverId || 
+                           !restaurant.source || 
+                           restaurant.source === 'local';
+            
+            console.log(`Smart delete for "${restaurant.name}": isLocal=${isLocal}, serverId=${restaurant.serverId}, source=${restaurant.source}`);
+            
+            if (isLocal) {
+                // STRATEGY 1: Permanent delete for local-only restaurants
+                console.log('Performing permanent delete (local-only restaurant)');
+                await this.deleteRestaurant(restaurantId);
+                return { type: 'permanent', id: restaurantId, name: restaurant.name };
+            } else {
+                // STRATEGY 2: Soft delete + server delete for synced restaurants (unless forced)
+                if (options.force === true) {
+                    console.log('Performing forced permanent delete (synced restaurant)');
+                    await this.deleteRestaurant(restaurantId);
+                    return { type: 'permanent', id: restaurantId, name: restaurant.name, forced: true };
+                }
+                
+                console.log('Performing soft delete + server delete (synced restaurant)');
+                
+                // First, try to delete from server
+                try {
+                    console.log(`Attempting to delete restaurant from server: serverId=${restaurant.serverId}`);
+                    const response = await fetch(`https://wsmontes.pythonanywhere.com/api/restaurants/${restaurant.serverId}`, {
+                        method: 'DELETE',
+                        headers: {
+                            'Accept': 'application/json',
+                            'Content-Type': 'application/json'
+                        }
+                    });
+                    
+                    if (!response.ok) {
+                        console.warn(`Server delete failed with status ${response.status}: ${response.statusText}`);
+                        // Continue with soft delete even if server delete fails
+                    } else {
+                        console.log(`Successfully deleted restaurant from server: serverId=${restaurant.serverId}`);
+                    }
+                } catch (serverError) {
+                    console.error('Error deleting from server:', serverError);
+                    // Continue with soft delete even if server call fails
+                }
+                
+                // Soft delete locally (mark as deleted)
+                await this.softDeleteRestaurant(restaurantId);
+                return { type: 'soft', id: restaurantId, name: restaurant.name, serverDeleted: true };
+            }
+        } catch (error) {
+            console.error('Error in smart delete restaurant:', error);
+            throw error;
+        }
+    }
+    
+    /**
+     * Soft delete restaurant (mark as deleted locally, hide from UI)
+     * @param {number} restaurantId - Restaurant ID to soft delete
+     * @returns {Promise<number>} - Number of records updated
+     */
+    async softDeleteRestaurant(restaurantId) {
+        try {
+            await this.db.restaurants.update(restaurantId, {
+                deletedLocally: true,
+                deletedAt: new Date()
+            });
+            console.log(`Restaurant ${restaurantId} soft deleted (archived)`);
+            return 1;
+        } catch (error) {
+            console.error('Error soft deleting restaurant:', error);
+            throw error;
+        }
+    }
+    
+    /**
+     * Restore a soft-deleted restaurant
+     * @param {number} restaurantId - Restaurant ID to restore
+     * @returns {Promise<Object>} - Restore result
+     */
+    async restoreRestaurant(restaurantId) {
+        try {
+            const restaurant = await this.db.restaurants.get(restaurantId);
+            if (!restaurant) {
+                throw new Error('Restaurant not found');
+            }
+            
+            if (!restaurant.deletedLocally) {
+                throw new Error('Restaurant is not deleted');
+            }
+            
+            await this.db.restaurants.update(restaurantId, {
+                deletedLocally: false,
+                deletedAt: null
+            });
+            
+            console.log(`Restaurant ${restaurantId} restored`);
+            return { restored: true, id: restaurantId, name: restaurant.name };
+        } catch (error) {
+            console.error('Error restoring restaurant:', error);
+            throw error;
+        }
+    }
+    
+    /**
+     * Mark restaurants that have serverId but are not in server response as local-only
+     * Purpose: Handle sync inconsistencies when restaurants are deleted from server
+     * @param {Set<number>} serverRestaurantIds - Set of restaurant IDs from server
+     * @returns {Promise<number>} - Number of restaurants marked as local
+     */
+    async markMissingRestaurantsAsLocal(serverRestaurantIds) {
+        try {
+            // Get all local restaurants that have a serverId
+            const syncedRestaurants = await this.db.restaurants
+                .filter(r => r.serverId != null)
+                .toArray();
+            
+            console.log(`Found ${syncedRestaurants.length} synced restaurants locally`);
+            
+            let markedCount = 0;
+            
+            // Check each synced restaurant
+            for (const restaurant of syncedRestaurants) {
+                // If restaurant has serverId but is not in server response, mark as local
+                if (!serverRestaurantIds.has(restaurant.serverId)) {
+                    console.log(`Restaurant "${restaurant.name}" (serverId: ${restaurant.serverId}) not found on server - marking as local`);
+                    
+                    await this.db.restaurants.update(restaurant.id, {
+                        serverId: null,
+                        source: 'local',
+                        origin: 'local',
+                        deletedLocally: false,
+                        deletedAt: null,
+                        lastSyncedAt: null
+                    });
+                    
+                    markedCount++;
+                }
+            }
+            
+            console.log(`Marked ${markedCount} restaurants as local (server inconsistency detected)`);
+            return markedCount;
+        } catch (error) {
+            console.error('Error marking missing restaurants as local:', error);
+            throw error;
+        }
+    }
+
+    async updateRestaurant(restaurantId, name, curatorId, concepts, location, photos, transcription, description) {
+        console.log(`Updating restaurant: ${name} with ID: ${restaurantId}`);
+        console.log(`Concepts count: ${concepts.length}, Has location: ${!!location}, Photos count: ${photos ? photos.length : 0}, Has transcription: ${!!transcription}, Has description: ${!!description}`);
+        
+        try {
+            // Pre-save all concepts outside any transaction
+            const conceptIds = [];
+            for (const concept of concepts) {
+                try {
+                    const conceptId = await this.saveConcept(concept.category, concept.value);
+                    conceptIds.push(conceptId);
+                } catch (error) {
+                    console.warn(`Failed to pre-save concept: ${concept.category} - ${concept.value}`, error);
+                    // Continue with other concepts
+                }
+            }
+            
+            // Now proceed with the main transaction
+            return await this.db.transaction('rw', 
+                [this.db.restaurants, this.db.restaurantConcepts, 
+                 this.db.restaurantLocations, this.db.restaurantPhotos], 
+            async () => {
+                // Update restaurant basic info
+                await this.db.restaurants.update(restaurantId, {
+                    name,
+                    curatorId,
+                    transcription: transcription || null,
+                    description: description || null
+                    // Don't update timestamp to preserve original creation date
+                });
+                
+                // Delete all existing concept relationships
+                await this.db.restaurantConcepts.where('restaurantId').equals(restaurantId).delete();
+                
+                // Add new concepts using the pre-saved concept IDs
+                for (const conceptId of conceptIds) {
+                    // Add relationship
+                    await this.db.restaurantConcepts.put({
+                        restaurantId,
+                        conceptId
+                    });
+                }
+                
+                // Update location
+                await this.db.restaurantLocations.where('restaurantId').equals(restaurantId).delete();
+                if (location) {
+                    await this.db.restaurantLocations.put({
+                        restaurantId,
+                        latitude: location.latitude,
+                        longitude: location.longitude,
+                        address: location.address || null
+                    });
+                }
+                
+                // Update photos
+                await this.db.restaurantPhotos.where('restaurantId').equals(restaurantId).delete();
+                if (photos && photos.length) {
+                    for (const photoData of photos) {
+                        await this.db.restaurantPhotos.put({
+                            restaurantId,
+                            photoData
+                        });
+                    }
+                }
+                
+                return restaurantId;
+            });
+        } catch (error) {
+            console.error('Error updating restaurant:', error);
+            
+            // If this is a database structure issue and we haven't just reset
+            if (!this.isResetting && (
+                error.name === 'NotFoundError' || 
+                error.message.includes('object store was not found') ||
+                error.name === 'PrematureCommitError')) {
+                
+                try {
+                    // Reset database outside of transaction
+                    await this.resetDatabase();
+                    
+                    // Try a simplified update after reset
+                    return await this.db.transaction('rw', 
+                        [this.db.restaurants, this.db.restaurantConcepts, 
+                        this.db.restaurantLocations, this.db.restaurantPhotos], 
+                    async () => {
+                        // Update restaurant basic info
+                        await this.db.restaurants.update(restaurantId, {
+                            name,
+                            curatorId,
+                            transcription: transcription || null,
+                            description: description || null
+                        });
+                        
+                        // Re-save concepts directly in the recovery transaction
+                        await this.db.restaurantConcepts.where('restaurantId').equals(restaurantId).delete();
+                        
+                        for (const concept of concepts) {
+                            const conceptId = await this.db.concepts.put({
+                                category: concept.category,
+                                value: concept.value,
+                                timestamp: new Date()
+                            });
+                            
+                            await this.db.restaurantConcepts.put({
+                                restaurantId,
+                                conceptId
+                            });
+                        }
+                        
+                        // Update location
+                        await this.db.restaurantLocations.where('restaurantId').equals(restaurantId).delete();
+                        if (location) {
+                            await this.db.restaurantLocations.put({
+                                restaurantId,
+                                latitude: location.latitude,
+                                longitude: location.longitude,
+                                address: location.address || null
+                            });
+                        }
+                        
+                        // Update photos (limit to 5 in recovery to reduce chance of error)
+                        await this.db.restaurantPhotos.where('restaurantId').equals(restaurantId).delete();
+                        if (photos && photos.length) {
+                            for (let i = 0; i < Math.min(photos.length, 5); i++) {
+                                await this.db.restaurantPhotos.put({
+                                    restaurantId,
+                                    photoData: photos[i]
+                                });
+                            }
+                        }
+                        
+                        return restaurantId;
+                    });
+                } catch (retryError) {
+                    console.error('Error in restaurant update retry:', retryError);
+                    throw retryError;
+                }
+            }
+            
+            throw error;
+        }
+    }
 
     async getAllConcepts() {
         return await this.db.concepts.toArray();
