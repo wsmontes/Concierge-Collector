@@ -839,10 +839,12 @@ class ExportImportModule {
             SafetyUtils.showNotification(`✅ Sync completed successfully in ${totalTime}s`, 'success');
             
             // Refresh the restaurant list to show any imported changes
-            if (this.uiManager && typeof this.uiManager.refreshRestaurantList === 'function') {
-                this.uiManager.refreshRestaurantList();
-            } else if (window.restaurantListModule && typeof window.restaurantListModule.renderRestaurantList === 'function') {
-                window.restaurantListModule.renderRestaurantList();
+            if (this.uiManager && 
+                this.uiManager.restaurantModule && 
+                typeof this.uiManager.restaurantModule.loadRestaurantList === 'function' &&
+                this.uiManager.currentCurator) {
+                // Pass only curatorId - loadRestaurantList will automatically get filter state from checkbox
+                await this.uiManager.restaurantModule.loadRestaurantList(this.uiManager.currentCurator.id);
             }
             
         } catch (error) {
@@ -1265,6 +1267,14 @@ class ExportImportModule {
                     }
                 };
                 
+                // Include shared restaurant fields for collaborative editing
+                if (restaurant.sharedRestaurantId) {
+                    remoteRestaurant.sharedRestaurantId = restaurant.sharedRestaurantId;
+                }
+                if (restaurant.originalCuratorId) {
+                    remoteRestaurant.originalCuratorId = restaurant.originalCuratorId;
+                }
+                
                 // Only include fields that have values
                 if (restaurant.timestamp) remoteRestaurant.timestamp = restaurant.timestamp;
                 if (restaurant.description) remoteRestaurant.description = restaurant.description;
@@ -1528,14 +1538,24 @@ class ExportImportModule {
             
             // 2. Process restaurant
             const restaurantId = restaurantIdCounter--;
-            importData.restaurants.push({
+            const restaurantData = {
                 id: restaurantId,
                 name: remoteRestaurant.name,
                 curatorId: curatorId,
                 timestamp: remoteRestaurant.timestamp ? new Date(remoteRestaurant.timestamp).toISOString() : new Date().toISOString(),
                 description: remoteRestaurant.description || null,
                 transcription: remoteRestaurant.transcription || null
-            });
+            };
+            
+            // Preserve shared restaurant fields
+            if (remoteRestaurant.sharedRestaurantId) {
+                restaurantData.sharedRestaurantId = remoteRestaurant.sharedRestaurantId;
+            }
+            if (remoteRestaurant.originalCuratorId) {
+                restaurantData.originalCuratorId = remoteRestaurant.originalCuratorId;
+            }
+            
+            importData.restaurants.push(restaurantData);
             console.log(`Created restaurant: ${remoteRestaurant.name} with ID: ${restaurantId}`);
             
             // 3. Process concepts

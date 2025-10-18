@@ -653,6 +653,67 @@ if (!window.SyncService) {
         }
 
         /**
+         * Export an array of restaurants to the server
+         * @param {Array} restaurants - Array of restaurant objects to export
+         * @returns {Promise<Object>} - Export results with success flag and restaurant details
+         */
+        async exportRestaurants(restaurants) {
+            try {
+                console.log(`SyncService: Exporting ${restaurants.length} restaurants to server...`);
+                
+                const results = {
+                    success: true,
+                    restaurants: [],
+                    errors: []
+                };
+                
+                // Send each restaurant to server
+                for (const restaurant of restaurants) {
+                    try {
+                        const response = await fetch(`${this.apiBase}/restaurants`, {
+                            method: 'POST',
+                            headers: {
+                                'Content-Type': 'application/json'
+                            },
+                            body: JSON.stringify(restaurant)
+                        });
+                        
+                        if (!response.ok) {
+                            throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
+                        }
+                        
+                        const serverRestaurant = await response.json();
+                        results.restaurants.push(serverRestaurant);
+                        console.log(`SyncService: Successfully exported restaurant ${restaurant.name}`);
+                        
+                    } catch (error) {
+                        console.error(`SyncService: Error exporting restaurant ${restaurant.name}:`, error);
+                        results.errors.push({
+                            name: restaurant.name,
+                            error: error.message
+                        });
+                    }
+                }
+                
+                if (results.errors.length === restaurants.length) {
+                    // All failed
+                    results.success = false;
+                }
+                
+                console.log(`SyncService: Export completed - ${results.restaurants.length} succeeded, ${results.errors.length} failed`);
+                return results;
+                
+            } catch (error) {
+                console.error('SyncService: Error in exportRestaurants:', error);
+                return {
+                    success: false,
+                    restaurants: [],
+                    errors: [{ error: error.message }]
+                };
+            }
+        }
+
+        /**
          * Sync unsynced local restaurants to server
          * @returns {Promise<Object>} - Sync results
          */

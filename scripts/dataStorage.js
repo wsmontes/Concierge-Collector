@@ -56,6 +56,32 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 });
             });
 
+            // Version 9: Add shared restaurant fields for collaborative editing
+            this.db.version(9).stores({
+                curators: '++id, name, lastActive, serverId, origin',
+                concepts: '++id, category, value, timestamp, [category+value]',
+                restaurants: '++id, name, curatorId, timestamp, transcription, description, origin, source, serverId, deletedLocally, deletedAt, sharedRestaurantId, originalCuratorId',
+                restaurantConcepts: '++id, restaurantId, conceptId',
+                restaurantPhotos: '++id, restaurantId, photoData',
+                restaurantLocations: '++id, restaurantId, latitude, longitude, address',
+                settings: 'key',
+                pendingAudio: '++id, restaurantId, draftId, audioBlob, timestamp, retryCount, lastError, status, isAdditional',
+                draftRestaurants: '++id, curatorId, name, timestamp, lastModified, hasAudio, transcription, description'
+            }).upgrade(tx => {
+                console.log('Upgrading database to version 9: Adding shared restaurant fields');
+                // Add sharedRestaurantId and originalCuratorId to existing restaurants
+                return tx.restaurants.toCollection().modify(restaurant => {
+                    // Generate UUID for existing restaurants if not present
+                    if (!restaurant.sharedRestaurantId) {
+                        restaurant.sharedRestaurantId = crypto.randomUUID();
+                    }
+                    // Set originalCuratorId for existing restaurants
+                    if (!restaurant.originalCuratorId) {
+                        restaurant.originalCuratorId = restaurant.curatorId;
+                    }
+                });
+            });
+
             // Open the database to ensure it's properly initialized
             this.db.open().catch(error => {
                 console.error('Failed to open database:', error);
@@ -135,6 +161,29 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 return tx.restaurants.toCollection().modify(restaurant => {
                     restaurant.deletedLocally = false;
                     restaurant.deletedAt = null;
+                });
+            });
+
+            // Version 9: Add shared restaurant fields
+            this.db.version(9).stores({
+                curators: '++id, name, lastActive, serverId, origin',
+                concepts: '++id, category, value, timestamp, [category+value]',
+                restaurants: '++id, name, curatorId, timestamp, transcription, description, origin, source, serverId, deletedLocally, deletedAt, sharedRestaurantId, originalCuratorId',
+                restaurantConcepts: '++id, restaurantId, conceptId',
+                restaurantPhotos: '++id, restaurantId, photoData',
+                restaurantLocations: '++id, restaurantId, latitude, longitude, address',
+                settings: 'key',
+                pendingAudio: '++id, restaurantId, draftId, audioBlob, timestamp, retryCount, lastError, status, isAdditional',
+                draftRestaurants: '++id, curatorId, name, timestamp, lastModified, hasAudio, transcription, description'
+            }).upgrade(tx => {
+                console.log('Upgrading database to version 9: Adding shared restaurant fields');
+                return tx.restaurants.toCollection().modify(restaurant => {
+                    if (!restaurant.sharedRestaurantId) {
+                        restaurant.sharedRestaurantId = crypto.randomUUID();
+                    }
+                    if (!restaurant.originalCuratorId) {
+                        restaurant.originalCuratorId = restaurant.curatorId;
+                    }
                 });
             });
             
@@ -577,6 +626,15 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 }
             }
             
+            // Get original curator name (for shared restaurants)
+            let originalCuratorName = null;
+            if (restaurant.originalCuratorId) {
+                const originalCurator = await this.db.curators.get(restaurant.originalCuratorId);
+                if (originalCurator) {
+                    originalCuratorName = originalCurator.name;
+                }
+            }
+            
             // Get concepts
             const restaurantConcepts = await this.db.restaurantConcepts
                 .where("restaurantId")
@@ -610,6 +668,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             result.push({
                 ...restaurant,
                 curatorName,
+                originalCuratorName,
                 concepts,
                 location,
                 photoCount
@@ -625,7 +684,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
     }
 
     /**
-     * Save a restaurant with source tracking
+     * Save a restaurant with source tracking and shared restaurant support
      * @param {string} name - Restaurant name
      * @param {number|null} curatorId - Curator ID (can be null for local restaurants)
      * @param {Array} concepts - Array of concept objects
@@ -635,6 +694,9 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
      * @param {string} description - Restaurant description
      * @param {string} source - Data source ('local' or 'remote')
      * @param {string|number|null} serverId - Server ID if source is remote
+     * @param {number|null} restaurantId - Existing restaurant ID for updates (null for new)
+     * @param {string|null} sharedRestaurantId - UUID linking all copies of same restaurant
+     * @param {number|null} originalCuratorId - ID of curator who originally created this
      * @returns {Promise<number>} - Restaurant ID
      */
     async saveRestaurant(
@@ -646,10 +708,25 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
         transcription = '', 
         description = '',
         source = 'local',
-        serverId = null
+        serverId = null,
+        restaurantId = null,
+        sharedRestaurantId = null,
+        originalCuratorId = null
     ) {
         console.log(`Saving restaurant: ${name} with curator ID: ${curatorId}, source: ${source}`);
         console.log(`Concepts count: ${concepts.length}, Has location: ${!!location}, Photos count: ${photos ? photos.length : 0}, Has transcription: ${!!transcription}, Has description: ${!!description}`);
+        
+        // Generate sharedRestaurantId for new restaurants if not provided
+        if (!restaurantId && !sharedRestaurantId) {
+            sharedRestaurantId = crypto.randomUUID();
+            console.log(`Generated new sharedRestaurantId: ${sharedRestaurantId}`);
+        }
+        
+        // Set originalCuratorId for new restaurants if not provided
+        if (!restaurantId && !originalCuratorId && curatorId) {
+            originalCuratorId = curatorId;
+            console.log(`Set originalCuratorId to current curator: ${originalCuratorId}`);
+        }
         
         // Try to save without a transaction first to preload the concepts
         try {
@@ -674,7 +751,8 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             // Now proceed with the main transaction
             return await this.saveRestaurantWithTransaction(
                 name, curatorId, conceptIds, location, photos, 
-                transcription, description, source, serverId
+                transcription, description, source, serverId, restaurantId,
+                sharedRestaurantId, originalCuratorId
             );
         } catch (error) {
             console.error('Error in pre-save phase:', error);
@@ -686,7 +764,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 console.warn('Database error in saveRestaurant, attempting to reset...');
                 if (await this.resetDatabase()) {
                     // Try one more time after reset
-                    return this.saveRestaurant(name, curatorId, concepts, location, photos, transcription, description, source, serverId);
+                    return this.saveRestaurant(name, curatorId, concepts, location, photos, transcription, description, source, serverId, restaurantId, sharedRestaurantId, originalCuratorId);
                 }
             }
             
@@ -696,7 +774,8 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
     
     async saveRestaurantWithTransaction(
         name, curatorId, conceptsOrIds, location, photos, 
-        transcription, description, source = 'local', serverId = null
+        transcription, description, source = 'local', serverId = null, restaurantId = null,
+        sharedRestaurantId = null, originalCuratorId = null
     ) {
         // Determine if we're working with pre-saved concept IDs or raw concepts
         const areConceptIds = conceptsOrIds.length > 0 && conceptsOrIds[0].conceptId !== undefined;
@@ -707,18 +786,25 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 [this.db.restaurants, this.db.restaurantConcepts, 
                 this.db.restaurantLocations, this.db.restaurantPhotos], 
             async () => {
-                // FIXED: Explicitly set the source field when saving
-                const restaurantId = await this.db.restaurants.add({
+                // Create restaurant object with shared restaurant fields
+                const restaurantData = {
                     name,
                     curatorId,
                     timestamp: new Date(),
                     transcription,
                     description,
-                    source: source,      // Ensure source is explicitly set
-                    serverId: serverId   // Store server ID if available
-                });
+                    source: source,                    // Ensure source is explicitly set
+                    serverId: serverId,                // Store server ID if available
+                    sharedRestaurantId: sharedRestaurantId,  // UUID linking copies
+                    originalCuratorId: originalCuratorId     // Original creator
+                };
                 
-                console.log(`Restaurant saved with ID: ${restaurantId}, source: ${source}, serverId: ${serverId || 'none'}`);
+                // Use add() for new restaurants, put() for updates
+                const savedRestaurantId = restaurantId 
+                    ? await this.db.restaurants.put({...restaurantData, id: restaurantId})
+                    : await this.db.restaurants.add(restaurantData);
+                
+                console.log(`Restaurant saved with ID: ${savedRestaurantId}, source: ${source}, serverId: ${serverId || 'none'}, sharedId: ${sharedRestaurantId}`);
                 
                 // Save concept relationships
                 if (conceptsOrIds && conceptsOrIds.length > 0) {
@@ -726,14 +812,14 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                         if (areConceptIds) {
                             // Using pre-saved concept IDs
                             await this.db.restaurantConcepts.add({
-                                restaurantId,
+                                restaurantId: savedRestaurantId,
                                 conceptId: item.conceptId
                             });
                         } else {
                             // Using raw concepts
                             const conceptId = await this.saveConcept(item.category, item.value);
                             await this.db.restaurantConcepts.add({
-                                restaurantId,
+                                restaurantId: savedRestaurantId,
                                 conceptId
                             });
                         }
@@ -743,7 +829,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 // Save location if provided
                 if (location && location.latitude !== undefined && location.longitude !== undefined) {
                     await this.db.restaurantLocations.add({
-                        restaurantId,
+                        restaurantId: savedRestaurantId,
                         latitude: location.latitude,
                         longitude: location.longitude,
                         address: location.address || null
@@ -754,13 +840,13 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 if (photos && photos.length > 0) {
                     for (const photoData of photos) {
                         await this.db.restaurantPhotos.add({
-                            restaurantId,
+                            restaurantId: savedRestaurantId,
                             photoData
                         });
                     }
                 }
                 
-                return restaurantId;
+                return savedRestaurantId;
             });
         } catch (error) {
             console.error('Error in saveRestaurant transaction:', error);
@@ -777,6 +863,108 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 }
             }
             
+            throw error;
+        }
+    }
+
+    /**
+     * Find if a curator already has a copy of a shared restaurant
+     * @param {string} sharedRestaurantId - The shared restaurant UUID
+     * @param {number} curatorId - The curator ID to check for
+     * @returns {Promise<Object|null>} - The existing copy or null
+     */
+    async findRestaurantCopy(sharedRestaurantId, curatorId) {
+        try {
+            if (!sharedRestaurantId || !curatorId) {
+                return null;
+            }
+            
+            const copy = await this.db.restaurants
+                .where('sharedRestaurantId')
+                .equals(sharedRestaurantId)
+                .filter(r => r.curatorId === curatorId && !r.deletedLocally)
+                .first();
+            
+            if (copy) {
+                console.log(`Found existing copy of shared restaurant for curator ${curatorId}`);
+            }
+            
+            return copy || null;
+        } catch (error) {
+            console.error('Error finding restaurant copy:', error);
+            return null;
+        }
+    }
+
+    /**
+     * Create a copy of a restaurant for a different curator
+     * Preserves sharedRestaurantId and originalCuratorId while creating a new instance
+     * @param {number} sourceRestaurantId - ID of the restaurant to copy
+     * @param {number} newCuratorId - ID of the curator who will own the copy
+     * @returns {Promise<number>} - ID of the newly created copy
+     */
+    async createRestaurantCopy(sourceRestaurantId, newCuratorId) {
+        try {
+            console.log(`Creating copy of restaurant ${sourceRestaurantId} for curator ${newCuratorId}`);
+            
+            // Get source restaurant
+            const sourceRestaurant = await this.db.restaurants.get(sourceRestaurantId);
+            if (!sourceRestaurant) {
+                throw new Error(`Source restaurant ${sourceRestaurantId} not found`);
+            }
+            
+            // Get source restaurant concepts
+            const restaurantConcepts = await this.db.restaurantConcepts
+                .where('restaurantId')
+                .equals(sourceRestaurantId)
+                .toArray();
+            
+            const concepts = [];
+            for (const rc of restaurantConcepts) {
+                const concept = await this.db.concepts.get(rc.conceptId);
+                if (concept) {
+                    concepts.push({
+                        category: concept.category,
+                        value: concept.value
+                    });
+                }
+            }
+            
+            // Get source restaurant location
+            const location = await this.db.restaurantLocations
+                .where('restaurantId')
+                .equals(sourceRestaurantId)
+                .first();
+            
+            // Get source restaurant photos
+            const photos = await this.db.restaurantPhotos
+                .where('restaurantId')
+                .equals(sourceRestaurantId)
+                .toArray();
+            
+            const photoData = photos.map(p => p.photoData);
+            
+            // Create the copy with preserved shared fields
+            const copyId = await this.saveRestaurant(
+                sourceRestaurant.name,
+                newCuratorId,                                    // New owner
+                concepts,
+                location,
+                photoData,
+                sourceRestaurant.transcription || '',
+                sourceRestaurant.description || '',
+                'local',                                         // Source is local (not synced yet)
+                null,                                            // No serverId yet (will get one on sync)
+                null,                                            // No restaurantId (new copy)
+                sourceRestaurant.sharedRestaurantId,             // PRESERVE shared ID
+                sourceRestaurant.originalCuratorId               // PRESERVE original creator
+            );
+            
+            console.log(`Created copy with ID ${copyId}, sharedRestaurantId: ${sourceRestaurant.sharedRestaurantId}`);
+            
+            return copyId;
+        } catch (error) {
+            console.error('Error creating restaurant copy:', error);
             throw error;
         }
     }
@@ -1623,6 +1811,22 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
     async getRestaurantDetails(restaurantId) {
         const restaurant = await this.db.restaurants.get(restaurantId);
         if (!restaurant) return null;
+        
+        // Get curator name
+        if (restaurant.curatorId) {
+            const curator = await this.db.curators.get(restaurant.curatorId);
+            if (curator) {
+                restaurant.curatorName = curator.name;
+            }
+        }
+        
+        // Get original curator name (for shared restaurants)
+        if (restaurant.originalCuratorId) {
+            const originalCurator = await this.db.curators.get(restaurant.originalCuratorId);
+            if (originalCurator) {
+                restaurant.originalCuratorName = originalCurator.name;
+            }
+        }
         
         // Get concept IDs for this restaurant
         const restaurantConcepts = await this.db.restaurantConcepts

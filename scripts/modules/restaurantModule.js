@@ -35,11 +35,25 @@ class RestaurantModule {
     }
 
     /**
+     * Get current filter state from UI checkbox
+     * @returns {boolean} - Current filter state (true = show only my restaurants)
+     */
+    getCurrentFilterState() {
+        const filterCheckbox = document.getElementById('filter-by-curator-compact');
+        return filterCheckbox ? filterCheckbox.checked : true;
+    }
+
+    /**
      * Loads restaurant list with enhanced source indicators and debugging
      * @param {number|string} curatorId - Current curator's ID
-     * @param {boolean} filterEnabled - Whether to filter by curator
+     * @param {boolean} filterEnabled - Whether to filter by curator (defaults to current UI state)
      */
     async loadRestaurantList(curatorId, filterEnabled) {
+        // If filterEnabled not provided, get current UI state
+        if (filterEnabled === undefined) {
+            filterEnabled = this.getCurrentFilterState();
+        }
+        
         try {
             console.log(`Loading restaurant list for curatorId: ${curatorId} (type: ${typeof curatorId}), filterEnabled: ${filterEnabled}`);
             
@@ -144,6 +158,18 @@ class RestaurantModule {
                         <p class="text-xs bg-purple-100 text-purple-800 inline-block px-2 py-1 rounded mb-2">
                             Added by: ${curatorName} (ID: ${restaurant.curatorId})
                         </p>
+                    `;
+                }
+                
+                // Add shared restaurant badge if this is based on another curator's review
+                if (restaurant.originalCuratorId && restaurant.originalCuratorId !== curatorId) {
+                    // This restaurant is a copy/adaptation of another curator's restaurant
+                    const originalCuratorName = restaurant.originalCuratorName || "Unknown Curator";
+                    cardHTML += `
+                        <div class="shared-restaurant-badge">
+                            <span class="material-icons text-sm">people</span>
+                            <span>Based on ${originalCuratorName}'s review</span>
+                        </div>
                     `;
                 }
                 
@@ -405,11 +431,8 @@ class RestaurantModule {
             SafetyUtils.hideLoading();
             SafetyUtils.showNotification('Restaurant synced to server successfully');
             
-            // Refresh restaurant list
-            await this.loadRestaurantList(
-                this.uiManager.currentCurator.id,
-                await dataStorage.getSetting('filterByActiveCurator', true)
-            );
+            // Refresh restaurant list - preserve current filter state
+            await this.loadRestaurantList(this.uiManager.currentCurator.id);
         } catch (error) {
             SafetyUtils.hideLoading();
             console.error('Error syncing restaurant:', error);
@@ -704,8 +727,52 @@ class RestaurantModule {
         }
     }
     
-    editRestaurant(restaurant) {
+    async editRestaurant(restaurant) {
         console.log('Editing restaurant:', restaurant);
+        
+        // Check if editing another curator's restaurant
+        const currentCurator = this.uiManager.currentCurator;
+        if (currentCurator && restaurant.curatorId !== currentCurator.id) {
+            console.log(`Cross-curator edit detected: restaurant belongs to curator ${restaurant.curatorId}, current curator is ${currentCurator.id}`);
+            
+            // Check if user already has a copy
+            const existingCopy = await dataStorage.findRestaurantCopy(
+                restaurant.sharedRestaurantId,
+                currentCurator.id
+            );
+            
+            if (existingCopy) {
+                console.log(`Found existing copy (ID: ${existingCopy.id}), editing that instead`);
+                SafetyUtils.showNotification(`Editing your copy of this restaurant`, 'info');
+                // Edit the existing copy instead
+                return this.editRestaurant(existingCopy);
+            } else {
+                console.log('No existing copy found, creating new copy');
+                SafetyUtils.showLoading('Creating your copy of this restaurant...');
+                
+                try {
+                    // Create a copy for this curator
+                    const copyId = await dataStorage.createRestaurantCopy(
+                        restaurant.id,
+                        currentCurator.id
+                    );
+                    
+                    // Get the new copy with all details
+                    const copy = await dataStorage.getRestaurantDetails(copyId);
+                    
+                    SafetyUtils.hideLoading();
+                    SafetyUtils.showNotification(`Created your copy of "${restaurant.name}"`, 'success');
+                    
+                    // Edit the copy instead
+                    return this.editRestaurant(copy);
+                } catch (error) {
+                    SafetyUtils.hideLoading();
+                    console.error('Error creating restaurant copy:', error);
+                    SafetyUtils.showNotification(`Error creating copy: ${error.message}`, 'error');
+                    return;
+                }
+            }
+        }
         
         // Set editing flag and restaurant ID
         this.uiManager.isEditingRestaurant = true;

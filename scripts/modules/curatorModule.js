@@ -122,6 +122,40 @@ class CuratorModule {
             this.initializeFilterToggle(filterCompactToggle);
         }
         
+        // Sync button in compact display
+        const syncCompactButton = document.getElementById('sync-compact-display');
+        if (syncCompactButton) {
+            syncCompactButton.addEventListener('click', () => {
+                console.log('Compact display sync button clicked');
+                
+                // Disable button and add syncing class
+                syncCompactButton.disabled = true;
+                syncCompactButton.classList.add('syncing', 'opacity-75', 'cursor-not-allowed');
+                
+                // Call the sync method from exportImportModule through uiManager
+                if (this.uiManager.exportImportModule && typeof this.uiManager.exportImportModule.syncWithServer === 'function') {
+                    this.uiManager.exportImportModule.syncWithServer()
+                        .then(() => {
+                            console.log('Sync completed successfully');
+                        })
+                        .catch(error => {
+                            console.error('Error in syncWithServer:', error);
+                            SafetyUtils.showNotification(`Sync error: ${error.message}`, 'error');
+                        })
+                        .finally(() => {
+                            // Re-enable button and remove syncing class
+                            syncCompactButton.disabled = false;
+                            syncCompactButton.classList.remove('syncing', 'opacity-75', 'cursor-not-allowed');
+                        });
+                } else {
+                    console.error('exportImportModule or syncWithServer not available');
+                    SafetyUtils.showNotification('Sync functionality not available', 'error');
+                    syncCompactButton.disabled = false;
+                    syncCompactButton.classList.remove('syncing', 'opacity-75', 'cursor-not-allowed');
+                }
+            });
+        }
+        
         // Sync with server button (selector section)
         const syncSelectorButton = document.getElementById('sync-with-server-selector');
         if (syncSelectorButton) {
@@ -617,8 +651,11 @@ class CuratorModule {
         try {
             console.log(`Toggling curator filter: ${enabled ? 'enabled' : 'disabled'}`);
             
-            // Save setting
-            await dataStorage.updateSetting('filterByActiveCurator', enabled);
+            // Update checkbox state to match (in case called programmatically)
+            const filterCheckbox = document.getElementById('filter-by-curator-compact');
+            if (filterCheckbox) {
+                filterCheckbox.checked = enabled;
+            }
             
             // Reload restaurant list with filter
             if (this.uiManager && this.uiManager.currentCurator) {
@@ -817,8 +854,7 @@ class CuratorModule {
             // Update UI manager state
             this.uiManager.currentCurator = await dataStorage.db.curators.get(curatorId);
             
-            // Update UI (both old and new)
-            this.displayCuratorInfo();
+            // Update compact UI display
             this.displayCuratorInfoCompact();
             
             // Refresh curator selector
@@ -828,8 +864,9 @@ class CuratorModule {
             SafetyUtils.hideLoading();
             SafetyUtils.showNotification('Curator information saved');
             
-            // Load restaurants with filtering
-            const filterEnabled = await dataStorage.getSetting('filterByActiveCurator', true);
+            // Load restaurants with current filter state
+            const filterCheckbox = document.getElementById('filter-by-curator-compact');
+            const filterEnabled = filterCheckbox ? filterCheckbox.checked : true;
             await this.safeLoadRestaurantList(curatorId, filterEnabled);
             
             // Show recording section

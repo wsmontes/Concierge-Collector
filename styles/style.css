@@ -1644,3 +1644,35 @@ gmp-place-autocomplete input:focus {
     50% { opacity: 0.7; }
     100% { opacity: 1; }
 }
+
+/* ===== Shared Restaurant Badge ===== */
+.shared-restaurant-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.75rem;
+    line-height: 1rem;
+    color: #6b7280;
+    background-color: #f3f4f6;
+    padding: 4px 10px;
+    border-radius: 9999px;
+    margin-bottom: 8px;
+    font-weight: 500;
+}
+
+.shared-restaurant-badge .material-icons {
+    font-size: 14px;
+}
+
+/* Mobile optimization */
+@media (max-width: 640px) {
+    .shared-restaurant-badge {
+        font-size: 0.6875rem;
+        padding: 3px 8px;
+    }
+    
+    .shared-restaurant-badge .material-icons {
+        font-size: 12px;
+    }
+}
+
