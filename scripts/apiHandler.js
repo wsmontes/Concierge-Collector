@@ -34,8 +34,10 @@ if (typeof window.ApiHandler === 'undefined') {
                 const response = await fetch(`${this.serverBase}${endpoint}`, {
                     method: 'POST',
                     headers: {
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
                     },
+                    mode: 'cors',
                     body: JSON.stringify(data)
                 });
                 
@@ -63,8 +65,10 @@ if (typeof window.ApiHandler === 'undefined') {
                 const response = await fetch(`${this.serverBase}${endpoint}`, {
                     method: 'PUT',
                     headers: {
-                        'Content-Type': 'application/json'
+                        'Content-Type': 'application/json',
+                        'Accept': 'application/json'
                     },
+                    mode: 'cors',
                     body: JSON.stringify(data)
                 });
                 

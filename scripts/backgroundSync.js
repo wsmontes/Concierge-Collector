@@ -121,19 +121,10 @@ const BackgroundSyncService = ModuleWrapper.defineClass('BackgroundSyncService',
                 originalCuratorId: restaurant.originalCuratorId
             };
             
-            // Determine if this is a new restaurant (POST) or update (PUT)
-            const isNew = !restaurant.serverId || restaurant.serverId === 0;
+            // Always use POST - server doesn't support PUT
             let response;
-            
-            if (isNew) {
-                // New restaurant - POST
-                if (!silent) console.log(`🆕 Creating new restaurant: ${restaurant.name}`);
-                response = await window.apiHandler.post('/api/restaurants', serverData);
-            } else {
-                // Existing restaurant - PUT
-                if (!silent) console.log(`🔄 Updating restaurant: ${restaurant.name} (serverId: ${restaurant.serverId})`);
-                response = await window.apiHandler.put(`/api/restaurants/${restaurant.serverId}`, serverData);
-            }
+            if (!silent) console.log(`� Syncing restaurant: ${restaurant.name} (serverId: ${restaurant.serverId || 'none'})`);
+            response = await window.apiHandler.post('/api/restaurants', serverData);
             
             if (response.success && response.data && response.data.id) {
                 // Update to remote status

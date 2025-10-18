@@ -677,11 +677,9 @@ if (!window.SyncService) {
                         const localRestaurant = await dataStorage.db.restaurants.get(restaurant.localId);
                         
                         // Determine if this is a new restaurant (POST) or update (PUT)
-                        const isNew = !localRestaurant || !localRestaurant.serverId || localRestaurant.serverId === 0;
-                        const method = isNew ? 'POST' : 'PUT';
-                        const url = isNew 
-                            ? `${this.apiBase}/restaurants`
-                            : `${this.apiBase}/restaurants/${localRestaurant.serverId}`;
+                        // Always use POST - server doesn't support PUT
+                        const method = 'POST';
+                        const url = `${this.apiBase}/restaurants`;
                         
                         console.log(`SyncService: ${method} ${restaurant.name} (serverId: ${localRestaurant?.serverId || 'none'})`);
                         
@@ -691,8 +689,10 @@ if (!window.SyncService) {
                         const response = await fetch(url, {
                             method: method,
                             headers: {
-                                'Content-Type': 'application/json'
+                                'Content-Type': 'application/json',
+                                'Accept': 'application/json'
                             },
+                            mode: 'cors',
                             body: JSON.stringify(serverData)
                         });
                         
