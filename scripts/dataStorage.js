@@ -990,6 +990,8 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
         transcription, description, source = 'local', serverId = null, restaurantId = null,
         sharedRestaurantId = null, originalCuratorId = null
     ) {
+        console.log(`dataStorage.saveRestaurantWithTransaction: ${name}, source=${source}, serverId=${serverId}`);
+        
         // Determine if we're working with pre-saved concept IDs or raw concepts
         const areConceptIds = conceptsOrIds.length > 0 && conceptsOrIds[0].conceptId !== undefined;
         

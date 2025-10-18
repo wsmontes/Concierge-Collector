@@ -199,6 +199,8 @@ if (!window.SyncService) {
                         const location = this.processRemoteLocation(remoteRestaurant.location);
                         
                         // Create new restaurant
+                        console.log(`SyncService: Creating restaurant ${remoteRestaurant.name} with source='remote' and serverId=${remoteRestaurant.id}`);
+                        
                         const restaurantId = await dataStorage.saveRestaurant(
                             remoteRestaurant.name,
                             curatorId,
@@ -210,6 +212,10 @@ if (!window.SyncService) {
                             'remote', // Explicitly mark as remote source
                             remoteRestaurant.id // Store server ID
                         );
+                        
+                        // Verify what was actually saved
+                        const savedRestaurant = await dataStorage.db.restaurants.get(restaurantId);
+                        console.log(`SyncService: Saved restaurant ${remoteRestaurant.name} - source: ${savedRestaurant.source}, serverId: ${savedRestaurant.serverId}`);
                         
                         results.added++;
                         console.log(`SyncService: Added restaurant ${remoteRestaurant.name} (Server ID: ${remoteRestaurant.id}, Local ID: ${restaurantId})`);
