@@ -1036,8 +1036,10 @@ if (typeof window.PlacesModule === 'undefined') {
                         if (window.SafetyUtils && typeof window.SafetyUtils.safeDbOperation === 'function') {
                             const setting = await window.SafetyUtils.safeDbOperation(
                                 () => window.dataStorage.getSetting('google_places_api_key'),
-                                'PlacesModule',
-                                'Loading API key from database'
+                                'Loading API key from database',  // operationName
+                                2,                                  // maxRetries
+                                500,                                // retryDelay
+                                'PlacesModule'                     // moduleName
                             );
                             if (setting) {
                                 this.apiKey = setting;
@@ -2746,21 +2748,28 @@ if (typeof window.PlacesModule === 'undefined') {
                     // Create comprehensive description from Google Places data
                     const description = this.buildEnhancedDescription(place, restaurant);
                     
-                    // Use saveRestaurant method with enhanced parameters
-                    const id = await window.dataStorage.saveRestaurant(
+                    // Use saveRestaurant method with auto-sync
+                    const result = await window.dataStorage.saveRestaurantWithAutoSync(
                         restaurant.name,           // name
                         curatorId,                 // curatorId  
                         concepts,                  // concepts (now populated!)
                         location,                  // location
                         photos,                    // photos (now populated!)
                         '',                        // transcription (empty for now)
-                        description,               // enhanced description
-                        'google_places',           // source
-                        null                       // serverId
+                        description                // enhanced description
                     );
                     
+                    const id = result.restaurantId;
+                    
                     if (id) {
-                        this.showNotification(`Restaurant "${place.name}" imported successfully with ${concepts.length} concepts and ${photos.length} photos!`, 'success');
+                        let successMessage = `Restaurant "${place.name}" imported successfully with ${concepts.length} concepts and ${photos.length} photos!`;
+                        if (result.syncStatus === 'synced') {
+                            successMessage += ' (synced to server)';
+                        } else if (result.syncStatus === 'local-only') {
+                            successMessage += ' (saved locally)';
+                        }
+                        
+                        this.showNotification(successMessage, 'success');
                         
                         // Clear the selected place
                         this.selectedPlace = null;
