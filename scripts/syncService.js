@@ -703,7 +703,12 @@ if (!window.SyncService) {
                         const serverRestaurants = await response.json();
                         // Batch endpoint returns array, get first element
                         const serverRestaurant = Array.isArray(serverRestaurants) ? serverRestaurants[0] : serverRestaurants;
-                        results.restaurants.push(serverRestaurant);
+                        
+                        // Include localId in result so we can match it later
+                        results.restaurants.push({
+                            ...serverRestaurant,
+                            localId: restaurant.localId  // Add localId to match with local database
+                        });
                         console.log(`SyncService: Successfully exported restaurant ${restaurant.name}`);
                         
                     } catch (error) {
@@ -814,17 +819,32 @@ if (!window.SyncService) {
                 const result = await this.exportRestaurants(serverRestaurants);
                 
                 // Update sync status for successfully synced restaurants
-                if (result && result.success && result.restaurants) {
+                if (result && result.restaurants && result.restaurants.length > 0) {
                     let syncedCount = 0;
                     
-                    for (let i = 0; i < unsyncedRestaurants.length; i++) {
-                        if (i < result.restaurants.length) {
-                            const localId = unsyncedRestaurants[i].id;
-                            const serverId = result.restaurants[i].id;
-                            
+                    // Each restaurant in result includes localId and server id
+                    for (const serverRestaurant of result.restaurants) {
+                        if (!serverRestaurant || !serverRestaurant.id) {
+                            console.warn('SyncService: Server restaurant missing id, skipping sync status update');
+                            continue;
+                        }
+                        
+                        if (!serverRestaurant.localId) {
+                            console.warn('SyncService: Server restaurant missing localId, skipping sync status update');
+                            continue;
+                        }
+                        
+                        const localId = serverRestaurant.localId;
+                        const serverId = serverRestaurant.id;
+                        
+                        console.log(`SyncService: Updating restaurant ${localId} with serverId ${serverId}`);
+                        
+                        try {
                             // Update source to 'remote' and set serverId
                             await dataStorage.updateRestaurantSyncStatus(localId, serverId);
                             syncedCount++;
+                        } catch (updateError) {
+                            console.error(`SyncService: Error updating sync status for restaurant ${localId}:`, updateError);
                         }
                     }
                     
