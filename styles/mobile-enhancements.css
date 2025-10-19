@@ -622,6 +622,29 @@
     padding-bottom: var(--spacing-4) !important; /* Reduce from 80px to 16px */
 }
 
+/* Fix button overlap in Restaurant section on mobile */
+@media (max-width: 768px), (hover: none) and (pointer: coarse) {
+    /* Make restaurant section header stack vertically on mobile */
+    #restaurant-list-section .flex.justify-between.items-center.mb-4 {
+        flex-direction: column !important;
+        align-items: flex-start !important;
+        gap: 0.75rem !important;
+    }
+    
+    /* Ensure buttons container takes full width */
+    #restaurant-list-section .flex.gap-2 {
+        width: 100% !important;
+        justify-content: flex-end !important;
+    }
+    
+    /* Make "Add Restaurant" button full width on very small screens */
+    @media (max-width: 400px) {
+        #add-restaurant {
+            flex: 1 !important;
+        }
+    }
+}
+
 /* Previous mobile-only version removed - now applies globally */
 
 /* Ensure loading overlay and notifications appear above EVERYTHING */
