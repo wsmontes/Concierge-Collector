@@ -407,57 +407,31 @@ class RestaurantModule {
                 }
             } else {
                 // Fallback to batch endpoint if exportRestaurant isn't available
-                console.log('Using fallback batch endpoint for restaurant sync');
+                console.log('Using centralized apiService for restaurant batch sync');
                 
                 try {
                     // Log request payload for debugging
                     const payloadForLog = { ...serverRestaurant };
                     console.log('Sync request payload:', JSON.stringify(payloadForLog));
                     
-                    const response = await fetch('https://wsmontes.pythonanywhere.com/api/restaurants/batch', {
-                        method: 'POST',
-                        headers: {
-                            'Content-Type': 'application/json'
-                        },
-                        body: JSON.stringify([serverRestaurant]) // Send as array as required by batch endpoint
-                    });
+                    const response = await window.apiService.batchUploadRestaurants([serverRestaurant]);
                     
                     // Log response status
-                    console.log(`Server response status: ${response.status} ${response.statusText}`);
+                    console.log('Server response:', response);
                     
-                    if (!response.ok) {
-                        const errorBody = await response.text();
-                        console.error('Server error response:', errorBody);
-                        throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
+                    if (!response.success) {
+                        console.error('Server error response:', response.error);
+                        throw new Error(response.error || 'Failed to sync restaurant to server');
                     }
                     
-                    // Parse response
-                    const responseText = await response.text();
-                    console.log('Server response text:', responseText);
-                    
-                    let result;
-                    try {
-                        result = JSON.parse(responseText);
-                    } catch (parseError) {
-                        console.error('Error parsing JSON response:', parseError);
-                        throw new Error('Invalid response format from server');
-                    }
+                    // Get result data
+                    const result = response.data;
                     
                     console.log('Parsed server response:', result);
                     
                     // Enhanced validation to handle different response formats
                     if (!result) {
                         throw new Error('Empty response from server');
-                    }
-                    
-                    // Check for success field, status field, or restaurants array to determine success
-                    const isSuccess = result.success === true || 
-                                     result.status === 'success' ||
-                                     (Array.isArray(result.restaurants) && result.restaurants.length > 0);
-                    
-                    if (!isSuccess) {
-                        const errorMessage = result.error || result.message || 'Unknown server error';
-                        throw new Error(`Server sync failed: ${errorMessage}`);
                     }
                     
                     // Extract the ID from the first restaurant in the response
@@ -490,7 +464,7 @@ class RestaurantModule {
                     // Update restaurant sync status
                     await dataStorage.updateRestaurantSyncStatus(restaurantId, serverId);
                 } catch (fetchError) {
-                    console.error('Error in fetch operation:', fetchError);
+                    console.error('Error in apiService operation:', fetchError);
                     throw fetchError; // Re-throw to be caught by outer try-catch
                 }
             }

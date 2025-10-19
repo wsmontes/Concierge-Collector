@@ -1041,36 +1041,29 @@ class ExportImportModule {
             
             const startTime = performance.now();
             
-            // Fetch data from remote API
-            const response = await fetch('https://wsmontes.pythonanywhere.com/api/restaurants');
+            // Fetch data from remote API using centralized apiService
+            const response = await window.apiService.getRestaurants();
             
-            if (!response.ok) {
-                console.error(`Remote import: Server responded with error ${response.status}: ${response.statusText}`);
-                throw new Error(`Server error: ${response.status} ${response.statusText}`);
+            if (!response.success) {
+                console.error('Remote import: Server responded with error:', response.error);
+                throw new Error(response.error || 'Failed to fetch restaurants from server');
             }
             
-            // Log response headers
-            console.log('Remote import: Response headers:', {
-                status: response.status,
-                statusText: response.statusText,
-                contentType: response.headers.get('content-type'),
-                contentLength: response.headers.get('content-length')
-            });
-            
-            const responseData = await response.json();
+            // Get restaurants data
+            const restaurants = response.data;
             const endTime = performance.now();
             
             // Log timing and size information
-            const dataSize = JSON.stringify(responseData).length;
+            const dataSize = JSON.stringify(restaurants).length;
             console.log(`Remote import: Received ${dataSize} bytes in ${(endTime - startTime).toFixed(2)}ms (${(dataSize/(endTime - startTime)*1000/1024).toFixed(2)} KB/s)`);
-            console.log(`Remote import: Received ${responseData.length} restaurants from server`);
+            console.log(`Remote import: Received ${restaurants.length} restaurants from server`);
             
             // Log a sample of the data (just the first restaurant)
-            if (responseData.length > 0) {
-                console.log('Remote import: First restaurant data sample:', responseData[0]);
+            if (restaurants.length > 0) {
+                console.log('Remote import: First restaurant data sample:', restaurants[0]);
             }
             
-            if (!Array.isArray(responseData) || responseData.length === 0) {
+            if (!Array.isArray(restaurants) || restaurants.length === 0) {
                 console.warn('Remote import: No data or invalid format received');
                 
                 SafetyUtils.showNotification('No data received from remote server or invalid format.', 'error');
@@ -1079,7 +1072,7 @@ class ExportImportModule {
             
             // Convert the remote data format to our local format
             console.log('Remote import: Converting remote data to local format...');
-            const importData = this.convertRemoteDataToLocal(responseData);
+            const importData = this.convertRemoteDataToLocal(restaurants);
             console.log('Remote import: Conversion complete', {
                 curators: importData.curators.length,
                 concepts: importData.concepts.length,
@@ -1095,7 +1088,7 @@ class ExportImportModule {
             
             // Handle sync inconsistencies - mark restaurants not in server response as local
             console.log('Remote import: Checking for sync inconsistencies...');
-            const serverRestaurantIds = new Set(responseData.map(r => r.id).filter(id => id != null));
+            const serverRestaurantIds = new Set(restaurants.map(r => r.id).filter(id => id != null));
             const markedAsLocal = await dataStorage.markMissingRestaurantsAsLocal(serverRestaurantIds);
             if (markedAsLocal > 0) {
                 console.log(`Remote import: Marked ${markedAsLocal} restaurants as local (not found on server)`);
@@ -1108,7 +1101,7 @@ class ExportImportModule {
             SafetyUtils.showNotification('Remote data imported successfully');
             
             // Show alert as fallback notification
-            alert(`Successfully imported ${responseData.length} restaurants from remote server.`);
+            alert(`Successfully imported ${restaurants.length} restaurants from remote server.`);
             
         } catch (error) {
             console.error('Error importing remote data:', error);
@@ -1157,20 +1150,13 @@ class ExportImportModule {
                 const pingStartTime = performance.now();
                 
                 // Try to fetch a small amount of data first to verify connectivity
-                const testResponse = await fetch('https://wsmontes.pythonanywhere.com/api/restaurants?limit=1', {
-                    method: 'GET',
-                    headers: {
-                        'Accept': 'application/json'
-                    },
-                    cache: 'no-cache',
-                    signal: AbortSignal.timeout(10000) // 10 second timeout
-                });
+                const testResponse = await window.apiService.getRestaurants({ limit: 1 });
                 
                 const pingEndTime = performance.now();
                 const pingTime = pingEndTime - pingStartTime;
                 
-                if (!testResponse.ok) {
-                    console.warn(`Remote export: Server connectivity check failed with status ${testResponse.status}`);
+                if (!testResponse.success) {
+                    console.warn('Remote export: Server connectivity check failed:', testResponse.error);
                     this.updateLoadingMessage('Server connectivity issues detected - will try anyway');
                     await new Promise(resolve => setTimeout(resolve, 2000)); // Pause for user to read message
                 } else {
@@ -1504,43 +1490,19 @@ class ExportImportModule {
                     this.updateLoadingMessage(`Retrying batch ${batchIndex + 1} (attempt ${retryCount + 1})...`);
                 }
                 
-                // Send data to remote server with timeout handling
+                // Send data to remote server using centralized apiService
                 const startTime = performance.now();
                 
-                const response = await fetch('https://wsmontes.pythonanywhere.com/api/restaurants/batch', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Accept': 'application/json' // Explicitly request JSON response
-                    },
-                    body: payloadJson,
-                    signal: signal,
-                    // Add keepalive flag to maintain connection for longer operations
-                    keepalive: true,
-                    mode: 'cors', // Explicitly state CORS mode
-                    cache: 'no-cache', // Don't use cached responses
-                    redirect: 'follow', // Follow redirects automatically
-                });
-                
-                // Clear timeout since request completed
-                clearTimeout(timeoutId);
+                const response = await window.apiService.batchUploadRestaurants(batch);
                 
                 const endTime = performance.now();
                 console.log(`Remote export: Batch ${batchIndex + 1} request completed in ${(endTime - startTime).toFixed(2)}ms`);
                 
-                if (!response.ok) {
-                    // Log error information
-                    let errorText = '';
-                    try {
-                        errorText = await response.text();
-                    } catch (e) {
-                        errorText = 'Could not read error response';
-                    }
+                if (!response.success) {
+                    console.error(`Remote export: Server error for batch ${batchIndex + 1}:`, response.error);
                     
-                    console.error(`Remote export: Server error for batch ${batchIndex + 1}: ${response.status}: ${response.statusText}`, errorText);
-                    
-                    // If server returned 5xx error, retry
-                    if (response.status >= 500 && retryCount < MAX_RETRIES) {
+                    // Retry on server errors
+                    if (retryCount < MAX_RETRIES) {
                         retryCount++;
                         // Wait before retrying - exponential backoff
                         const delay = 2000 * Math.pow(2, retryCount - 1);
@@ -1554,30 +1516,24 @@ class ExportImportModule {
                 
                 return { success: true, count: batch.length };
                     
-            } catch (fetchError) {
-                // Clear timeout in case of error
-                clearTimeout(timeoutId);
-                
+            } catch (apiError) {
                 // Provide more specific error information
                 let errorMessage = 'Unknown error';
                 let isNetworkError = false;
                 
-                if (fetchError.name === 'AbortError') {
-                    errorMessage = `Request timeout after ${TIMEOUT_SECONDS} seconds`;
-                } else if (fetchError.message && fetchError.message.includes('NetworkError')) {
+                if (apiError.message && apiError.message.includes('Network')) {
                     errorMessage = 'Network connection error';
                     isNetworkError = true;
-                } else if (fetchError.message && fetchError.message.includes('Failed to fetch')) {
-                    errorMessage = 'Server connection failed (server may be down or unreachable)';
-                    isNetworkError = true;
-                } else if (fetchError.message) {
-                    errorMessage = fetchError.message;
+                } else if (apiError.message && apiError.message.includes('timeout')) {
+                    errorMessage = 'Request timeout';
+                } else if (apiError.message) {
+                    errorMessage = apiError.message;
                 }
                 
-                console.error(`Remote export: Error in batch ${batchIndex + 1}: ${errorMessage}`, fetchError);
+                console.error(`Remote export: Error in batch ${batchIndex + 1}: ${errorMessage}`, apiError);
                 
                 // Always retry network errors
-                if ((isNetworkError || fetchError.name === 'TypeError') && retryCount < MAX_RETRIES) {
+                if (isNetworkError && retryCount < MAX_RETRIES) {
                     retryCount++;
                     // Wait longer for network errors - exponential backoff with longer base time
                     const delay = 3000 * Math.pow(2, retryCount - 1);

@@ -116,8 +116,7 @@ const ApiService = ModuleWrapper.defineClass('ApiService', class {
             const response = await this.request(url.toString(), {
                 method: 'GET',
                 headers: {
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json'
+                    'Accept': 'application/json'
                 },
                 mode: 'cors'
             });
@@ -199,8 +198,7 @@ const ApiService = ModuleWrapper.defineClass('ApiService', class {
             const response = await this.request(url, {
                 method: 'DELETE',
                 headers: {
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json'
+                    'Accept': 'application/json'
                 },
                 mode: 'cors'
             });
@@ -358,14 +356,6 @@ const ApiService = ModuleWrapper.defineClass('ApiService', class {
     // ========================================
 
     /**
-     * Get all curators from server
-     * @returns {Promise<Object>}
-     */
-    async getCurators() {
-        return this.get('/curators');
-    }
-
-    /**
      * Create new curator on server
      * @param {Object} curatorData - Curator data
      * @returns {Promise<Object>}
@@ -396,8 +386,7 @@ const ApiService = ModuleWrapper.defineClass('ApiService', class {
             const response = await this.request(url.toString(), {
                 method: 'GET',
                 headers: {
-                    'Accept': 'application/json',
-                    'Content-Type': 'application/json'
+                    'Accept': 'application/json'
                 },
                 mode: 'cors'
             });

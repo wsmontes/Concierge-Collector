@@ -283,28 +283,59 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
 
     /**
      * Import all curators from server to local database
+     * Extracts curator information from restaurant data since /curators endpoint doesn't exist
      * @returns {Promise<Array>} - Array of curators
      */
     async importCurators() {
         try {
             console.log('ConciergeSync: Importing curators from server...');
             
-            const response = await window.apiService.getCurators();
+            // Get restaurants data to extract curator information (since /curators endpoint doesn't exist)
+            const response = await window.apiService.getRestaurants();
             
             if (!response.success) {
-                throw new Error(response.error || 'Failed to fetch curators from server');
+                throw new Error(response.error || 'Failed to fetch restaurants to extract curator data');
             }
+
+            const restaurants = response.data;
+            console.log(`ConciergeSync: Received ${restaurants.length} restaurants to extract curators from`);
+
+            // Extract unique curators from restaurant data
+            const curatorsMap = new Map();
             
-            const remoteCurators = response.data;
-            console.log(`ConciergeSync: Fetched ${remoteCurators.length} curators from server`);
-            
-            // Process each curator
-            for (const curator of remoteCurators) {
+            for (const restaurant of restaurants) {
+                if (restaurant.curator && restaurant.curator.name) {
+                    const curatorName = restaurant.curator.name.toLowerCase().trim();
+                    
+                    if (!curatorsMap.has(curatorName)) {
+                        curatorsMap.set(curatorName, {
+                            name: restaurant.curator.name,
+                            origin: 'remote',
+                            created: restaurant.curator.created || new Date().toISOString(),
+                            lastActive: restaurant.curator.lastActive || restaurant.timestamp || new Date().toISOString()
+                        });
+                    } else {
+                        // Update lastActive if this restaurant is newer
+                        const curator = curatorsMap.get(curatorName);
+                        const restaurantDate = new Date(restaurant.timestamp || new Date());
+                        const lastActiveDate = new Date(curator.lastActive);
+                        if (restaurantDate > lastActiveDate) {
+                            curator.lastActive = restaurant.timestamp;
+                        }
+                    }
+                }
+            }
+
+            const curators = Array.from(curatorsMap.values());
+            console.log(`ConciergeSync: Extracted ${curators.length} unique curators from restaurant data`);
+
+            // Process each curator using existing findOrCreateCurator method
+            for (const curator of curators) {
                 await this.findOrCreateCurator(curator);
             }
-            
-            console.log(`ConciergeSync: Imported ${remoteCurators.length} curators`);
-            return remoteCurators;
+
+            console.log(`ConciergeSync: Imported ${curators.length} curators`);
+            return curators;
             
         } catch (error) {
             console.error('ConciergeSync: Curator import error:', error);

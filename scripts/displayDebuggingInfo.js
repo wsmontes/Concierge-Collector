@@ -242,6 +242,15 @@ document.addEventListener('DOMContentLoaded', () => {
             debugButton.style.right = '20px';
             debugButton.style.zIndex = '40';
             
+            // Only show debug button in development (localhost) or when URL contains debug parameter
+            const isDevelopment = location.hostname === 'localhost' || 
+                                 location.hostname === '127.0.0.1' || 
+                                 location.search.includes('debug=true');
+            
+            if (!isDevelopment) {
+                debugButton.style.display = 'none';
+            }
+            
             debugButton.addEventListener('click', () => {
                 window.showDatabaseDebugInfo();
             });

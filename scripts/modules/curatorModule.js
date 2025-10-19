@@ -941,20 +941,14 @@ class CuratorModule {
                 timestamp: curator.lastActive || new Date().toISOString()
             };
             
-            // Send to server
-            const response = await fetch('https://wsmontes.pythonanywhere.com/api/curators', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json'
-                },
-                body: JSON.stringify(curatorData)
-            });
+            // Send to server using centralized apiService
+            const response = await window.apiService.createCurator(curatorData);
             
-            if (!response.ok) {
-                throw new Error(`Server responded with ${response.status}: ${response.statusText}`);
+            if (!response.success) {
+                throw new Error(response.error || 'Failed to sync curator to server');
             }
             
-            const result = await response.json();
+            const result = response.data;
             console.log('Curator synced to server successfully:', result);
             
             // Update curator with serverId if provided

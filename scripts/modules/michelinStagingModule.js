@@ -532,35 +532,15 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                         console.log(`Retry attempt ${retries}/${MAX_RETRIES}...`);
                     }
                     
-                    const response = await fetch(url, {
-                        cache: 'no-store',
-                        headers: {
-                            'Accept': 'application/json',
-                            'Cache-Control': 'no-cache'
-                        }
-                    });
+                    const response = await window.apiService.getMichelinStaging(searchParams);
                     
                     // Handle different error cases with specific messages
-                    if (!response.ok) {
-                        let errorText = '';
-                        try {
-                            // Try to get detailed error information
-                            const contentType = response.headers.get('content-type');
-                            if (contentType && contentType.includes('application/json')) {
-                                const errorData = await response.json();
-                                errorText = errorData.message || errorData.error || `Server error (${response.status})`;
-                            } else {
-                                errorText = await response.text();
-                            }
-                        } catch (e) {
-                            errorText = `Server error (${response.status})`;
-                        }
-                        
-                        console.error(`API error response: ${response.status} - ${errorText}`);
-                        throw new Error(errorText);
+                    if (!response.success) {
+                        console.error('API error response:', response.error);
+                        throw new Error(response.error || 'Server error');
                     }
                     
-                    const data = await response.json();
+                    const data = response.data;
                     console.log('API response:', data);
                     
                     // Handle different response formats
