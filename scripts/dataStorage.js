@@ -1124,11 +1124,11 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             this.log.debug(`Restaurant saved locally with ID: ${savedRestaurantId}`);
             
             // Attempt automatic background sync (non-blocking)
-            if (window.backgroundSync) {
+            if (window.syncManager) {
                 this.log.debug('Triggering background sync...');
                 
                 // Fire-and-forget background sync
-                window.backgroundSync.syncRestaurant(savedRestaurantId, false)
+                window.syncManager.syncRestaurant(savedRestaurantId, false)
                     .then(success => {
                         if (success) {
                             this.log.debug(`✅ Background sync successful! Restaurant ID: ${savedRestaurantId}`);
@@ -1146,7 +1146,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                     syncStatus: 'pending'
                 };
             } else {
-                this.log.warn('BackgroundSync service not available');
+                this.log.warn('SyncManager service not available');
                 
                 return {
                     restaurantId: savedRestaurantId,
@@ -1605,9 +1605,9 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 this.log.debug(`Restaurant updated successfully. ID: ${restaurantId}, Source: 'local' (needs sync)`);
                 
                 // Trigger background sync (non-blocking)
-                if (window.backgroundSync) {
+                if (window.syncManager) {
                     this.log.debug('Triggering background sync after update...');
-                    window.backgroundSync.syncRestaurant(restaurantId, false).catch(err => {
+                    window.syncManager.syncRestaurant(restaurantId, false).catch(err => {
                         this.log.warn('Background sync error after update:', err.message);
                     });
                 }

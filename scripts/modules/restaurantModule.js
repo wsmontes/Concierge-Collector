@@ -392,18 +392,36 @@ class RestaurantModule {
                 } : null
             };
             
+            // Check if restaurant is already synced
+            if (restaurant.source === 'remote') {
+                this.log.debug('Restaurant already synced to server');
+                SafetyUtils.hideLoading();
+                SafetyUtils.showNotification('Restaurant is already synced to server', 'info');
+                await this.loadRestaurantList(restaurant.curatorId);
+                return;
+            }
+            
             // Use SyncManager for consistent handling instead of direct fetch API
             if (window.syncManager && typeof window.syncManager.syncRestaurant === 'function') {
                 try {
                     this.log.debug('Using syncManager.syncRestaurant method');
-                    const result = await window.syncManager.syncRestaurant(restaurantId);
+                    // syncManager.syncRestaurant returns a boolean
+                    // true = synced successfully
+                    // false = already synced, offline, or in sync queue
+                    const success = await window.syncManager.syncRestaurant(restaurantId, false);
                     
-                    // Check if export was successful
-                    if (!result || !result.success) {
-                        throw new Error('Restaurant sync failed');
+                    // If false, check if it's because it's already synced
+                    if (!success) {
+                        // Re-check the restaurant source
+                        const updatedRestaurant = await dataStorage.getRestaurantDetails(restaurantId);
+                        if (updatedRestaurant && updatedRestaurant.source === 'remote') {
+                            this.log.debug('Restaurant was synced by another process');
+                        } else {
+                            throw new Error('Restaurant sync failed - may be offline or already syncing');
+                        }
+                    } else {
+                        this.log.debug('Restaurant synced successfully via syncManager');
                     }
-                    
-                    this.log.debug('Restaurant synced successfully via syncManager');
                 } catch (syncError) {
                     this.log.error('Error using syncManager.syncRestaurant:', syncError);
                     throw syncError; // Re-throw to be caught by outer try-catch

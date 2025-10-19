@@ -454,21 +454,37 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
             const batchData = response.data;
             let serverId = null;
             
-            // Extract ID from batch response
+            // Extract ID from batch response (multiple possible formats)
             if (batchData && Array.isArray(batchData.restaurants) && batchData.restaurants.length > 0) {
                 serverId = batchData.restaurants[0].id;
             } else if (batchData && batchData.id) {
                 serverId = batchData.id;
+            } else if (restaurant.serverId) {
+                // Restaurant was already synced previously, use existing serverId
+                serverId = restaurant.serverId;
+                this.log.debug('Restaurant already has serverId, using existing:', serverId);
+            } else if (batchData && batchData.status === 'success') {
+                // Server confirmed success but didn't return ID
+                // This can happen when the restaurant already exists on server
+                // We'll mark it as synced without a serverId
+                this.log.debug('Server confirmed success without returning ID, marking as synced');
+                serverId = 'confirmed'; // Use placeholder to indicate sync success
             }
             
             if (serverId) {
                 // Update to remote status
-                await dataStorage.db.restaurants.update(restaurantId, {
+                const updateData = {
                     source: 'remote',
-                    serverId: serverId,
                     needsSync: false,
                     lastSynced: new Date()
-                });
+                };
+                
+                // Only update serverId if we got a real ID (not placeholder)
+                if (serverId !== 'confirmed') {
+                    updateData.serverId = serverId;
+                }
+                
+                await dataStorage.db.restaurants.update(restaurantId, updateData);
                 
                 this.updateUIBadge(restaurantId, 'remote');
                 

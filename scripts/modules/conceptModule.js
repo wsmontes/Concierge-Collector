@@ -366,11 +366,11 @@ class ConceptModule {
                 restaurantId = result.restaurantId;
                 syncStatus = result.syncStatus;
                 
-                // Show sync status to user
-                if (syncStatus === 'synced') {
-                    this.log.debug('✅ Restaurant synced to server automatically');
-                } else {
-                    this.log.warn('⚠️ Restaurant saved locally only, sync failed:', result.syncError);
+                // Log sync status (background sync is fire-and-forget)
+                if (syncStatus === 'pending') {
+                    this.log.debug('✅ Restaurant saved locally, background sync in progress');
+                } else if (syncStatus === 'local-only') {
+                    this.log.debug('⚠️ Restaurant saved locally, sync manager not available');
                 }
             }
             
@@ -381,10 +381,13 @@ class ConceptModule {
                 'Restaurant updated successfully' : 
                 'Restaurant saved successfully';
             
-            if (!this.uiManager.isEditingRestaurant && syncStatus === 'synced') {
-                message += ' and synced to server';
+            // Note: Background sync is asynchronous (fire-and-forget)
+            // The actual sync status will be reflected in the restaurant list badge
+            if (!this.uiManager.isEditingRestaurant && syncStatus === 'pending') {
+                // Sync is happening in the background
+                message += ' - syncing to server...';
             } else if (!this.uiManager.isEditingRestaurant && syncStatus === 'local-only') {
-                message += ' (local only - will sync later)';
+                message += ' (local only - will sync when online)';
             }
             
             SafetyUtils.showNotification(message);
