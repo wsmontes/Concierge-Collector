@@ -21,6 +21,9 @@
 
 // Only define the class if it doesn't already exist
 const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
+    // Static logger for the utility class
+    static log = Logger.module('SafetyUtils');
+    
     constructor() {
         this.moduleName = 'SafetyUtils';
     }
@@ -34,23 +37,23 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
             try {
                 // First try global uiUtils (most reliable)
                 if (window.uiUtils && typeof window.uiUtils.showLoading === 'function') {
-                    console.log(`${moduleName}: Using window.uiUtils.showLoading()`);
+                    SafetyUtils.log.debug(`${moduleName}: Using window.uiUtils.showLoading()`);
                     window.uiUtils.showLoading(message);
                     return;
                 }
                 
                 // Then try global uiManager as fallback
                 if (window.uiManager && typeof window.uiManager.showLoading === 'function') {
-                    console.log(`${moduleName}: Using window.uiManager.showLoading()`);
+                    SafetyUtils.log.debug(`${moduleName}: Using window.uiManager.showLoading()`);
                     window.uiManager.showLoading(message);
                     return;
                 }
                 
                 // Last resort - console log only
-                console.log(`${moduleName}: ${message}`);
+                SafetyUtils.log.debug(`${moduleName}: ${message}`);
             } catch (error) {
-                console.error(`Error in ${moduleName} safeShowLoading:`, error);
-                console.log(`${moduleName}: ${message} (fallback)`);
+                SafetyUtils.log.error(`Error in ${moduleName} safeShowLoading:`, error);
+                SafetyUtils.log.debug(`${moduleName}: ${message} (fallback)`);
             }
         }
 
@@ -62,22 +65,22 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
             try {
                 // First try global uiUtils (most reliable)
                 if (window.uiUtils && typeof window.uiUtils.hideLoading === 'function') {
-                    console.log(`${moduleName}: Using window.uiUtils.hideLoading()`);
+                    SafetyUtils.log.debug(`${moduleName}: Using window.uiUtils.hideLoading()`);
                     window.uiUtils.hideLoading();
                     return;
                 }
                 
                 // Then try global uiManager as fallback
                 if (window.uiManager && typeof window.uiManager.hideLoading === 'function') {
-                    console.log(`${moduleName}: Using window.uiManager.hideLoading()`);
+                    SafetyUtils.log.debug(`${moduleName}: Using window.uiManager.hideLoading()`);
                     window.uiManager.hideLoading();
                     return;
                 }
                 
                 // Last resort - just log completion
-                console.log(`${moduleName}: Loading complete`);
+                SafetyUtils.log.debug(`${moduleName}: Loading complete`);
             } catch (error) {
-                console.error(`Error in ${moduleName} safeHideLoading:`, error);
+                SafetyUtils.log.error(`Error in ${moduleName} safeHideLoading:`, error);
             }
         }
 
@@ -91,21 +94,21 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
             try {
                 // First try global uiUtils (most reliable)
                 if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
-                    console.log(`${moduleName}: Using window.uiUtils.showNotification()`);
+                    SafetyUtils.log.debug(`${moduleName}: Using window.uiUtils.showNotification()`);
                     window.uiUtils.showNotification(message, type);
                     return;
                 }
                 
                 // Then try global uiManager as fallback
                 if (window.uiManager && typeof window.uiManager.showNotification === 'function') {
-                    console.log(`${moduleName}: Using window.uiManager.showNotification()`);
+                    SafetyUtils.log.debug(`${moduleName}: Using window.uiManager.showNotification()`);
                     window.uiManager.showNotification(message, type);
                     return;
                 }
                 
                 // Try Toastify if available
                 if (typeof Toastify === 'function') {
-                    console.log(`${moduleName}: Using Toastify for notification`);
+                    SafetyUtils.log.debug(`${moduleName}: Using Toastify for notification`);
                     const backgroundColor = this.getNotificationColor(type);
                     Toastify({
                         text: message,
@@ -123,12 +126,12 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
                 }
                 
                 // Last resort - console log and alert for errors
-                console.log(`${moduleName} notification [${type}]: ${message}`);
+                SafetyUtils.log.debug(`${moduleName} notification [${type}]: ${message}`);
                 if (type === 'error') {
                     alert(`Error: ${message}`);
                 }
             } catch (error) {
-                console.error(`Error in ${moduleName} safeShowNotification:`, error);
+                SafetyUtils.log.error(`Error in ${moduleName} safeShowNotification:`, error);
                 // Final fallback
                 alert(message);
             }
@@ -159,7 +162,7 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
         static safeGetLocation(successCallback, errorCallback, options = {}, moduleName = 'Unknown') {
             try {
                 if (!navigator.geolocation) {
-                    console.warn(`${moduleName}: Geolocation is not supported by this browser`);
+                    SafetyUtils.log.warn(`${moduleName}: Geolocation is not supported by this browser`);
                     if (errorCallback) {
                         errorCallback(new Error('Geolocation not supported'));
                     }
@@ -174,20 +177,20 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
 
                 const finalOptions = { ...defaultOptions, ...options };
 
-                console.log(`${moduleName}: Requesting geolocation...`);
+                SafetyUtils.log.debug(`${moduleName}: Requesting geolocation...`);
                 navigator.geolocation.getCurrentPosition(
                     (position) => {
-                        console.log(`${moduleName}: Geolocation success`);
+                        SafetyUtils.log.debug(`${moduleName}: Geolocation success`);
                         if (successCallback) successCallback(position);
                     },
                     (error) => {
-                        console.error(`${moduleName}: Geolocation error:`, error);
+                        SafetyUtils.log.error(`${moduleName}: Geolocation error:`, error);
                         if (errorCallback) errorCallback(error);
                     },
                     finalOptions
                 );
             } catch (error) {
-                console.error(`Error in ${moduleName} safeGetLocation:`, error);
+                SafetyUtils.log.error(`Error in ${moduleName} safeGetLocation:`, error);
                 if (errorCallback) errorCallback(error);
             }
         }
@@ -201,12 +204,12 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
          */
         static async safeDbOperation(operation, operationName = 'Database operation', moduleName = 'Unknown') {
             try {
-                console.log(`${moduleName}: Starting ${operationName}...`);
+                SafetyUtils.log.debug(`${moduleName}: Starting ${operationName}...`);
                 const result = await operation();
-                console.log(`${moduleName}: ${operationName} completed successfully`);
+                SafetyUtils.log.debug(`${moduleName}: ${operationName} completed successfully`);
                 return result;
             } catch (error) {
-                console.error(`${moduleName}: Error in ${operationName}:`, error);
+                SafetyUtils.log.error(`${moduleName}: Error in ${operationName}:`, error);
                 
                 // Check if it's a database error and provide helpful context
                 if (error.name === 'DatabaseError' || error.name === 'InvalidStateError') {
@@ -249,14 +252,14 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
             for (let attempt = 0; attempt <= maxRetries; attempt++) {
                 try {
                     if (attempt > 0) {
-                        console.warn(`${moduleName}: Retrying ${operationName} (attempt ${attempt} of ${maxRetries})`);
+                        SafetyUtils.log.warn(`${moduleName}: Retrying ${operationName} (attempt ${attempt} of ${maxRetries})`);
                         // Wait before retrying
                         await new Promise(resolve => setTimeout(resolve, retryDelay));
                     }
                     
                     return await dbOperation();
                 } catch (error) {
-                    console.error(`${moduleName}: Error in ${operationName} (attempt ${attempt + 1}):`, error);
+                    SafetyUtils.log.error(`${moduleName}: Error in ${operationName} (attempt ${attempt + 1}):`, error);
                     lastError = error;
                     
                     // If it's a connection issue or transaction error, retry
@@ -286,17 +289,17 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
          */
         static async safeDbGet(db, storeName, key, moduleName = 'Unknown') {
             if (!db) {
-                console.error(`${moduleName}: Database instance is required`);
+                SafetyUtils.log.error(`${moduleName}: Database instance is required`);
                 return null;
             }
             
             if (!storeName) {
-                console.error(`${moduleName}: Store name is required`);
+                SafetyUtils.log.error(`${moduleName}: Store name is required`);
                 return null;
             }
             
             if (key === undefined || key === null) {
-                console.error(`${moduleName}: Key is required`);
+                SafetyUtils.log.error(`${moduleName}: Key is required`);
                 return null;
             }
             
@@ -317,7 +320,7 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
                     moduleName
                 );
             } catch (error) {
-                console.error(`${moduleName}: Failed to get ${storeName}[${key}]:`, error);
+                SafetyUtils.log.error(`${moduleName}: Failed to get ${storeName}[${key}]:`, error);
                 return null;
             }
         }
@@ -333,17 +336,17 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
          */
         static async safeDbPut(db, storeName, data, key = null, moduleName = 'Unknown') {
             if (!db) {
-                console.error(`${moduleName}: Database instance is required`);
+                SafetyUtils.log.error(`${moduleName}: Database instance is required`);
                 return null;
             }
             
             if (!storeName) {
-                console.error(`${moduleName}: Store name is required`);
+                SafetyUtils.log.error(`${moduleName}: Store name is required`);
                 return null;
             }
             
             if (!data) {
-                console.error(`${moduleName}: Data is required`);
+                SafetyUtils.log.error(`${moduleName}: Data is required`);
                 return null;
             }
             
@@ -368,7 +371,7 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
                     moduleName
                 );
             } catch (error) {
-                console.error(`${moduleName}: Failed to put data in ${storeName}:`, error);
+                SafetyUtils.log.error(`${moduleName}: Failed to put data in ${storeName}:`, error);
                 return null;
             }
         }
@@ -383,17 +386,17 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
          */
         static async safeDbDelete(db, storeName, key, moduleName = 'Unknown') {
             if (!db) {
-                console.error(`${moduleName}: Database instance is required`);
+                SafetyUtils.log.error(`${moduleName}: Database instance is required`);
                 return false;
             }
             
             if (!storeName) {
-                console.error(`${moduleName}: Store name is required`);
+                SafetyUtils.log.error(`${moduleName}: Store name is required`);
                 return false;
             }
             
             if (key === undefined || key === null) {
-                console.error(`${moduleName}: Key is required`);
+                SafetyUtils.log.error(`${moduleName}: Key is required`);
                 return false;
             }
             
@@ -415,7 +418,7 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
                 );
                 return true;
             } catch (error) {
-                console.error(`${moduleName}: Failed to delete ${storeName}[${key}]:`, error);
+                SafetyUtils.log.error(`${moduleName}: Failed to delete ${storeName}[${key}]:`, error);
                 return false;
             }
         }
@@ -430,17 +433,17 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
          */
         static async safeDbQuery(db, storeName, queryFn, moduleName = 'Unknown') {
             if (!db) {
-                console.error(`${moduleName}: Database instance is required`);
+                SafetyUtils.log.error(`${moduleName}: Database instance is required`);
                 return [];
             }
             
             if (!storeName) {
-                console.error(`${moduleName}: Store name is required`);
+                SafetyUtils.log.error(`${moduleName}: Store name is required`);
                 return [];
             }
             
             if (typeof queryFn !== 'function') {
-                console.error(`${moduleName}: Query function is required`);
+                SafetyUtils.log.error(`${moduleName}: Query function is required`);
                 return [];
             }
             
@@ -465,7 +468,7 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
                     moduleName
                 );
             } catch (error) {
-                console.error(`${moduleName}: Failed to query ${storeName}:`, error);
+                SafetyUtils.log.error(`${moduleName}: Failed to query ${storeName}:`, error);
                 return [];
             }
         }
@@ -479,12 +482,12 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
          */
         static async safeApiCall(apiCall, operationName = 'API call', moduleName = 'Unknown') {
             try {
-                console.log(`${moduleName}: Starting ${operationName}...`);
+                SafetyUtils.log.debug(`${moduleName}: Starting ${operationName}...`);
                 const result = await apiCall();
-                console.log(`${moduleName}: ${operationName} completed successfully`);
+                SafetyUtils.log.debug(`${moduleName}: ${operationName} completed successfully`);
                 return result;
             } catch (error) {
-                console.error(`${moduleName}: Error in ${operationName}:`, error);
+                SafetyUtils.log.error(`${moduleName}: Error in ${operationName}:`, error);
                 
                 // Provide user-friendly error messages based on error type
                 if (error.name === 'NetworkError' || !navigator.onLine) {
@@ -532,7 +535,7 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
          */
         static validateForm(formData, requiredFields = [], moduleName = 'Unknown') {
             try {
-                console.log(`${moduleName}: Validating form data...`);
+                SafetyUtils.log.debug(`${moduleName}: Validating form data...`);
                 const errors = [];
 
                 // Check required fields
@@ -562,7 +565,7 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
                 }
 
                 const isValid = errors.length === 0;
-                console.log(`${moduleName}: Form validation ${isValid ? 'passed' : 'failed'}`);
+                SafetyUtils.log.debug(`${moduleName}: Form validation ${isValid ? 'passed' : 'failed'}`);
 
                 if (!isValid) {
                     errors.forEach(error => {
@@ -572,7 +575,7 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
 
                 return { isValid, errors };
             } catch (error) {
-                console.error(`${moduleName}: Error in form validation:`, error);
+                SafetyUtils.log.error(`${moduleName}: Error in form validation:`, error);
                 return { isValid: false, errors: ['Validation error occurred'] };
             }
         }
@@ -587,7 +590,7 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
          */
         static validateFormField(inputElement, validationFn, feedbackElement = null, moduleName = 'Unknown') {
             if (!inputElement) {
-                console.warn(`${moduleName}: Cannot validate null/undefined input element`);
+                SafetyUtils.log.warn(`${moduleName}: Cannot validate null/undefined input element`);
                 return false;
             }
             
@@ -614,7 +617,7 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
                 
                 return isValid;
             } catch (error) {
-                console.error(`${moduleName}: Error validating form field:`, error);
+                SafetyUtils.log.error(`${moduleName}: Error validating form field:`, error);
                 return false;
             }
         }
@@ -629,7 +632,7 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
          */
         static validateForm(fieldsConfig, onValidCallback = null, onInvalidCallback = null, moduleName = 'Unknown') {
             if (!Array.isArray(fieldsConfig) || fieldsConfig.length === 0) {
-                console.warn(`${moduleName}: Invalid fields configuration`);
+                SafetyUtils.log.warn(`${moduleName}: Invalid fields configuration`);
                 return false;
             }
             
@@ -663,7 +666,7 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
                 
                 return isFormValid;
             } catch (error) {
-                console.error(`${moduleName}: Error validating form:`, error);
+                SafetyUtils.log.error(`${moduleName}: Error validating form:`, error);
                 return false;
             }
         }
@@ -815,7 +818,7 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
          */
         static measurePerformance(func, args = [], name = 'Anonymous Function', moduleName = 'Unknown') {
             if (typeof func !== 'function') {
-                console.error(`${moduleName}: Cannot measure performance of non-function`);
+                SafetyUtils.log.error(`${moduleName}: Cannot measure performance of non-function`);
                 return null;
             }
             
@@ -824,10 +827,10 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
                 const result = func.apply(this, args);
                 const end = performance.now();
                 
-                console.log(`${moduleName}: ${name} took ${(end - start).toFixed(2)}ms to execute`);
+                SafetyUtils.log.debug(`${moduleName}: ${name} took ${(end - start).toFixed(2)}ms to execute`);
                 return result;
             } catch (error) {
-                console.error(`${moduleName}: Error measuring performance of ${name}:`, error);
+                SafetyUtils.log.error(`${moduleName}: Error measuring performance of ${name}:`, error);
                 throw error;
             }
         }
@@ -855,7 +858,7 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
                         lastError = error;
                         
                         if (attempt < maxRetries && shouldRetry(error)) {
-                            console.warn(`Retry attempt ${attempt + 1} of ${maxRetries} for failed operation`);
+                            SafetyUtils.log.warn(`Retry attempt ${attempt + 1} of ${maxRetries} for failed operation`);
                             continue;
                         }
                         
@@ -876,18 +879,18 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
          */
         static getElementByIdSafely(id, moduleName = 'Unknown', warnOnMissing = true) {
             if (!id) {
-                console.error(`${moduleName}: Attempted to get element with empty/null ID`);
+                SafetyUtils.log.error(`${moduleName}: Attempted to get element with empty/null ID`);
                 return null;
             }
             
             try {
                 const element = document.getElementById(id);
                 if (!element && warnOnMissing) {
-                    console.warn(`${moduleName}: Element with ID '${id}' not found`);
+                    SafetyUtils.log.warn(`${moduleName}: Element with ID '${id}' not found`);
                 }
                 return element;
             } catch (error) {
-                console.error(`${moduleName}: Error getting element with ID '${id}':`, error);
+                SafetyUtils.log.error(`${moduleName}: Error getting element with ID '${id}':`, error);
                 return null;
             }
         }
@@ -902,18 +905,18 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
          */
         static querySelectorSafely(selector, parent = document, moduleName = 'Unknown', warnOnMissing = true) {
             if (!selector) {
-                console.error(`${moduleName}: Attempted to query with empty/null selector`);
+                SafetyUtils.log.error(`${moduleName}: Attempted to query with empty/null selector`);
                 return null;
             }
             
             try {
                 const element = parent.querySelector(selector);
                 if (!element && warnOnMissing) {
-                    console.warn(`${moduleName}: Element with selector '${selector}' not found`);
+                    SafetyUtils.log.warn(`${moduleName}: Element with selector '${selector}' not found`);
                 }
                 return element;
             } catch (error) {
-                console.error(`${moduleName}: Error querying element with selector '${selector}':`, error);
+                SafetyUtils.log.error(`${moduleName}: Error querying element with selector '${selector}':`, error);
                 return null;
             }
         }
@@ -927,14 +930,14 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
          */
         static querySelectorAllSafely(selector, parent = document, moduleName = 'Unknown') {
             if (!selector) {
-                console.error(`${moduleName}: Attempted to query all with empty/null selector`);
+                SafetyUtils.log.error(`${moduleName}: Attempted to query all with empty/null selector`);
                 return [];
             }
             
             try {
                 return parent.querySelectorAll(selector);
             } catch (error) {
-                console.error(`${moduleName}: Error querying elements with selector '${selector}':`, error);
+                SafetyUtils.log.error(`${moduleName}: Error querying elements with selector '${selector}':`, error);
                 return [];
             }
         }
@@ -950,17 +953,17 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
          */
         static addEventListenerSafely(element, eventType, callback, options = {}, moduleName = 'Unknown') {
             if (!element) {
-                console.warn(`${moduleName}: Cannot add ${eventType} listener to null/undefined element`);
+                SafetyUtils.log.warn(`${moduleName}: Cannot add ${eventType} listener to null/undefined element`);
                 return false;
             }
             
             if (!eventType) {
-                console.error(`${moduleName}: Event type is required`);
+                SafetyUtils.log.error(`${moduleName}: Event type is required`);
                 return false;
             }
             
             if (typeof callback !== 'function') {
-                console.error(`${moduleName}: Callback must be a function`);
+                SafetyUtils.log.error(`${moduleName}: Callback must be a function`);
                 return false;
             }
             
@@ -968,7 +971,7 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
                 element.addEventListener(eventType, callback, options);
                 return true;
             } catch (error) {
-                console.error(`${moduleName}: Error adding ${eventType} listener:`, error);
+                SafetyUtils.log.error(`${moduleName}: Error adding ${eventType} listener:`, error);
                 return false;
             }
         }
@@ -984,7 +987,7 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
          */
         static removeEventListenerSafely(element, eventType, callback, options = {}, moduleName = 'Unknown') {
             if (!element) {
-                console.warn(`${moduleName}: Cannot remove ${eventType} listener from null/undefined element`);
+                SafetyUtils.log.warn(`${moduleName}: Cannot remove ${eventType} listener from null/undefined element`);
                 return false;
             }
             
@@ -992,7 +995,7 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
                 element.removeEventListener(eventType, callback, options);
                 return true;
             } catch (error) {
-                console.error(`${moduleName}: Error removing ${eventType} listener:`, error);
+                SafetyUtils.log.error(`${moduleName}: Error removing ${eventType} listener:`, error);
                 return false;
             }
         }
@@ -1007,7 +1010,7 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
          */
         static elementAttributeSafely(element, attribute, value = null, moduleName = 'Unknown') {
             if (!element) {
-                console.warn(`${moduleName}: Cannot access attribute '${attribute}' on null/undefined element`);
+                SafetyUtils.log.warn(`${moduleName}: Cannot access attribute '${attribute}' on null/undefined element`);
                 return null;
             }
             
@@ -1020,7 +1023,7 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
                 element.setAttribute(attribute, value);
                 return value;
             } catch (error) {
-                console.error(`${moduleName}: Error accessing attribute '${attribute}':`, error);
+                SafetyUtils.log.error(`${moduleName}: Error accessing attribute '${attribute}':`, error);
                 return null;
             }
         }
@@ -1035,17 +1038,17 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
          */
         static elementClassSafely(element, action, classNames, moduleName = 'Unknown') {
             if (!element) {
-                console.warn(`${moduleName}: Cannot manipulate class on null/undefined element`);
+                SafetyUtils.log.warn(`${moduleName}: Cannot manipulate class on null/undefined element`);
                 return false;
             }
             
             if (!element.classList) {
-                console.warn(`${moduleName}: Element does not support classList`);
+                SafetyUtils.log.warn(`${moduleName}: Element does not support classList`);
                 return false;
             }
             
             if (!action || !classNames) {
-                console.error(`${moduleName}: Action and class names are required`);
+                SafetyUtils.log.error(`${moduleName}: Action and class names are required`);
                 return false;
             }
             
@@ -1067,11 +1070,11 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
                         // Only works with single class
                         return element.classList.contains(classes[0]);
                     default:
-                        console.warn(`${moduleName}: Unknown classList action: ${action}`);
+                        SafetyUtils.log.warn(`${moduleName}: Unknown classList action: ${action}`);
                         return false;
                 }
             } catch (error) {
-                console.error(`${moduleName}: Error manipulating class list:`, error);
+                SafetyUtils.log.error(`${moduleName}: Error manipulating class list:`, error);
                 return false;
             }
         }
@@ -1086,7 +1089,7 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
          */
         static setInnerHTMLSafely(element, html, sanitize = true, moduleName = 'Unknown') {
             if (!element) {
-                console.warn(`${moduleName}: Cannot set innerHTML on null/undefined element`);
+                SafetyUtils.log.warn(`${moduleName}: Cannot set innerHTML on null/undefined element`);
                 return false;
             }
             
@@ -1105,7 +1108,7 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
                 element.innerHTML = html;
                 return true;
             } catch (error) {
-                console.error(`${moduleName}: Error setting innerHTML:`, error);
+                SafetyUtils.log.error(`${moduleName}: Error setting innerHTML:`, error);
                 return false;
             }
         }
@@ -1120,7 +1123,7 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
          */
         static createElementSafely(tagName, options = {}, children = [], moduleName = 'Unknown') {
             if (!tagName) {
-                console.error(`${moduleName}: Tag name is required`);
+                SafetyUtils.log.error(`${moduleName}: Tag name is required`);
                 return null;
             }
             
@@ -1165,7 +1168,7 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
                 
                 return element;
             } catch (error) {
-                console.error(`${moduleName}: Error creating ${tagName} element:`, error);
+                SafetyUtils.log.error(`${moduleName}: Error creating ${tagName} element:`, error);
                 return null;
             }
         }
@@ -1193,5 +1196,5 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
 // Don't recreate if it already exists
 if (!window.SafetyUtils) {
     window.SafetyUtils = SafetyUtils;
-    console.log('SafetyUtils module loaded and made available globally');
+    SafetyUtils.log.debug('SafetyUtils module loaded and made available globally');
 }

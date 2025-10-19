@@ -17,6 +17,9 @@
 // Only define the class if it doesn't already exist
 const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
     constructor(uiManager) {
+        // Create module logger instance
+        this.log = Logger.module('QuickActionModule');
+        
         this.uiManager = uiManager;
     }
 
@@ -24,7 +27,7 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
      * Sets up event listeners for quick action buttons with safe DOM operations
      */
     setupEvents() {
-        console.log('Setting up quick action events...');
+        this.log.debug('Setting up quick action events...');
         
         // FAB button to open quick action modal
         if (this.uiManager.fab) {
@@ -40,7 +43,7 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
                 }
             }, {}, 'QuickActionModule');
         } else {
-            console.warn('QuickActionModule: FAB button element not found');
+            this.log.warn('QuickActionModule: FAB button element not found');
         }
         
         // Close modal button
@@ -51,7 +54,7 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
                 }
             }, {}, 'QuickActionModule');
         } else {
-            console.warn('QuickActionModule: Close modal button element not found');
+            this.log.warn('QuickActionModule: Close modal button element not found');
         }
         
         // Close modal when clicking outside
@@ -62,7 +65,7 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
                 }
             }, {}, 'QuickActionModule');
         } else {
-            console.warn('QuickActionModule: Quick action modal element not found');
+            this.log.warn('QuickActionModule: Quick action modal element not found');
         }
         
         // Quick record button
@@ -71,7 +74,7 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
                 this.quickRecord();
             }, {}, 'QuickActionModule');
         } else {
-            console.warn('QuickActionModule: Quick record button element not found');
+            this.log.warn('QuickActionModule: Quick record button element not found');
         }
         
         // Quick location button
@@ -80,7 +83,7 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
                 await this.quickLocation();
             }, {}, 'QuickActionModule');
         } else {
-            console.warn('QuickActionModule: Quick location button element not found');
+            this.log.warn('QuickActionModule: Quick location button element not found');
         }
         
         // Quick photo button
@@ -89,7 +92,7 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
                 this.quickPhoto();
             }, {}, 'QuickActionModule');
         } else {
-            console.warn('QuickActionModule: Quick photo button element not found');
+            this.log.warn('QuickActionModule: Quick photo button element not found');
         }
         
         // Quick manual entry button
@@ -98,10 +101,10 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
                 this.quickManual();
             }, {}, 'QuickActionModule');
         } else {
-            console.warn('QuickActionModule: Quick manual entry button element not found');
+            this.log.warn('QuickActionModule: Quick manual entry button element not found');
         }
         
-        console.log('QuickActionModule: Events set up successfully');
+        this.log.debug('QuickActionModule: Events set up successfully');
     }
 
     /**
@@ -117,7 +120,7 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
         if (this.uiManager && typeof this.uiManager.showRecordingSection === 'function') {
             this.uiManager.showRecordingSection();
         } else {
-            console.warn('QuickActionModule: showRecordingSection not available');
+            this.log.warn('QuickActionModule: showRecordingSection not available');
         }
         
         // Auto-click the start recording button if available
@@ -159,7 +162,7 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
             if (this.uiManager && typeof this.uiManager.showRestaurantFormSection === 'function') {
                 this.uiManager.showRestaurantFormSection();
             } else {
-                console.warn('QuickActionModule: showRestaurantFormSection not available');
+                this.log.warn('QuickActionModule: showRestaurantFormSection not available');
             }
             
             // Update location display safely
@@ -176,7 +179,7 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
             }
         } catch (error) {
             SafetyUtils.hideLoading();
-            console.error('Error getting location:', error);
+            this.log.error('Error getting location:', error);
             SafetyUtils.showNotification('Error getting location: ' + error.message, 'error');
         }
     }
@@ -194,7 +197,7 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
         if (this.uiManager && typeof this.uiManager.showRestaurantFormSection === 'function') {
             this.uiManager.showRestaurantFormSection();
         } else {
-            console.warn('QuickActionModule: showRestaurantFormSection not available');
+            this.log.warn('QuickActionModule: showRestaurantFormSection not available');
         }
         
         // Create the options dialog
@@ -284,7 +287,7 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
         if (this.uiManager && typeof this.uiManager.showRestaurantFormSection === 'function') {
             this.uiManager.showRestaurantFormSection();
         } else {
-            console.warn('QuickActionModule: showRestaurantFormSection not available');
+            this.log.warn('QuickActionModule: showRestaurantFormSection not available');
         }
     }
 });

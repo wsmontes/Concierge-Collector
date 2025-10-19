@@ -4,18 +4,21 @@
  */
 class ExportImportModule {
     constructor(uiManager) {
+        // Create module logger instance
+        this.log = Logger.module('ExportImportModule');
+        
         this.uiManager = uiManager;
     }
 
     setupEvents() {
-        console.log('Setting up export/import events...');
+        this.log.debug('Setting up export/import events...');
         
         // Export data button
         const exportBtn = document.getElementById('export-data');
         if (exportBtn) {
             exportBtn.addEventListener('click', () => {
                 this.exportData().catch(error => {
-                    console.error('Error in exportData:', error);
+                    this.log.error('Error in exportData:', error);
                     SafetyUtils.showNotification(`Export error: ${error.message}`, 'error');
                 });
             });
@@ -28,7 +31,7 @@ class ExportImportModule {
         if (importBtn && importFile) {
             importBtn.addEventListener('click', () => {
                 this.importData(importFile).catch(error => {
-                    console.error('Error in importData:', error);
+                    this.log.error('Error in importData:', error);
                     SafetyUtils.showNotification(`Import error: ${error.message}`, 'error');
                 });
             });
@@ -40,7 +43,7 @@ class ExportImportModule {
         if (importConciergeBtn && importConciergeFile) {
             importConciergeBtn.addEventListener('click', () => {
                 this.importConciergeData(importConciergeFile).catch(error => {
-                    console.error('Error in importConciergeData:', error);
+                    this.log.error('Error in importConciergeData:', error);
                     SafetyUtils.showNotification(`Concierge import error: ${error.message}`, 'error');
                 });
             });
@@ -53,7 +56,7 @@ class ExportImportModule {
             const self = this;
             
             syncBtn.addEventListener('click', () => {
-                console.log('Sync with server button clicked');
+                this.log.debug('Sync with server button clicked');
                 
                 // Disable button and add syncing class for animation
                 syncBtn.disabled = true;
@@ -62,10 +65,10 @@ class ExportImportModule {
                 // Execute the sync method directly on self (this module instance)
                 self.syncWithServer()
                     .then(() => {
-                        console.log('Sync completed successfully');
+                        this.log.debug('Sync completed successfully');
                     })
                     .catch(error => {
-                        console.error('Error in syncWithServer:', error);
+                        this.log.error('Error in syncWithServer:', error);
                         SafetyUtils.showNotification(`Sync error: ${error.message}`, 'error');
                     })
                     .finally(() => {
@@ -76,7 +79,7 @@ class ExportImportModule {
             });
         }
         
-        console.log('Export/import events set up');
+        this.log.debug('Export/import events set up');
     }
     
     /**
@@ -107,7 +110,7 @@ class ExportImportModule {
         document.body.appendChild(loadingOverlay);
         document.body.style.overflow = 'hidden';
         
-        console.log('Standalone loading overlay shown');
+        this.log.debug('Standalone loading overlay shown');
     }
     
     /**
@@ -118,7 +121,7 @@ class ExportImportModule {
         if (loadingOverlay) {
             document.body.removeChild(loadingOverlay);
             document.body.style.overflow = '';
-            console.log('Standalone loading overlay hidden');
+            this.log.debug('Standalone loading overlay hidden');
         }
     }
     
@@ -238,7 +241,7 @@ class ExportImportModule {
      * @returns {Object} - Data in Concierge format (object with restaurant names as keys)
      */
     convertToConciergeFormat(standardData) {
-        console.log('Converting standard format to Concierge format...');
+        this.log.debug('Converting standard format to Concierge format...');
         
         const conciergeData = {};
         
@@ -318,17 +321,17 @@ class ExportImportModule {
             conciergeData[restaurant.name] = restaurantData;
         });
         
-        console.log(`Converted ${standardData.restaurants.length} restaurants to Concierge format`);
+        this.log.debug(`Converted ${standardData.restaurants.length} restaurants to Concierge format`);
         return conciergeData;
     }
     
     async exportData() {
-        console.log('Export data button clicked');
+        this.log.debug('Export data button clicked');
         try {
             // Ask user which format they want
             const format = await this.promptExportFormat();
             if (!format) {
-                console.log('Export cancelled by user');
+                this.log.debug('Export cancelled by user');
                 return;
             }
             
@@ -342,21 +345,21 @@ class ExportImportModule {
             // Handle different export formats
             if (format === 'v2') {
                 // Use new V2 format with metadata array
-                console.log('Exporting in V2 format (metadata array structure)...');
+                this.log.debug('Exporting in V2 format (metadata array structure)...');
                 exportData = await dataStorage.exportDataV2();
                 fileName = `concierge-v2-${new Date().toISOString().slice(0, 10)}`;
-                console.log("✅ V2 Export data:", JSON.stringify(exportData, null, 2));
+                this.log.debug("✅ V2 Export data:", JSON.stringify(exportData, null, 2));
             } else {
                 // Use legacy export for standard and concierge formats
                 const exportResult = await dataStorage.exportData();
-                console.log("🔥 Export raw localData:", JSON.stringify(exportResult.jsonData, null, 2));
+                this.log.debug("🔥 Export raw localData:", JSON.stringify(exportResult.jsonData, null, 2));
                 
                 exportData = exportResult.jsonData;
                 photos = exportResult.photos || [];
                 
                 // Convert to Concierge V1 format if requested
                 if (format === 'concierge') {
-                    console.log('Converting to Concierge V1 format...');
+                    this.log.debug('Converting to Concierge V1 format...');
                     exportData = this.convertToConciergeFormat(exportResult.jsonData);
                     fileName = `restaurants-${new Date().toISOString().slice(0, 10)}`;
                 }
@@ -429,13 +432,13 @@ class ExportImportModule {
             SafetyUtils.showNotification('Data exported successfully');
         } catch (error) {
             SafetyUtils.hideLoading();
-            console.error('Error exporting data:', error);
+            this.log.error('Error exporting data:', error);
             SafetyUtils.showNotification(`Error exporting data: ${error.message}`, 'error');
         }
     }
     
     async importData(importFile) {
-        console.log('Import data button clicked');
+        this.log.debug('Import data button clicked');
         const file = importFile.files[0];
         
         if (!file) {
@@ -486,10 +489,10 @@ class ExportImportModule {
                 
                 // Detect format type
                 const format = this.detectImportFormat(importData);
-                console.log(`Detected import format: ${format}`);
+                this.log.debug(`Detected import format: ${format}`);
                 
                 if (format === 'v2') {
-                    console.log('Importing V2 format data (metadata array structure)...');
+                    this.log.debug('Importing V2 format data (metadata array structure)...');
                     SafetyUtils.hideLoading();
                     SafetyUtils.showLoading('Importing V2 data...');
                     
@@ -499,7 +502,7 @@ class ExportImportModule {
                     SafetyUtils.hideLoading();
                     SafetyUtils.showNotification('V2 data imported successfully');
                 } else if (format === 'concierge') {
-                    console.log('Detected Concierge V1 format data, using Concierge import handler');
+                    this.log.debug('Detected Concierge V1 format data, using Concierge import handler');
                     SafetyUtils.hideLoading();
                     SafetyUtils.showLoading('Importing Concierge data...');
                     
@@ -523,7 +526,7 @@ class ExportImportModule {
             await this.uiManager.curatorModule.loadCuratorInfo();
         } catch (error) {
             SafetyUtils.hideLoading();
-            console.error('Error importing data:', error);
+            this.log.error('Error importing data:', error);
             SafetyUtils.showNotification(`Error importing data: ${error.message}`, 'error');
         }
     }
@@ -541,7 +544,7 @@ class ExportImportModule {
                 
                 // Check for V2 format (has metadata array)
                 if (first.hasOwnProperty('metadata') && Array.isArray(first.metadata)) {
-                    console.log('Detected V2 format: Array with metadata arrays');
+                    this.log.debug('Detected V2 format: Array with metadata arrays');
                     return 'v2';
                 }
                 
@@ -555,7 +558,7 @@ class ExportImportModule {
                                           first.hasOwnProperty('food_style') ||
                                           first.hasOwnProperty('drinks');
                 if (hasConciergeProps) {
-                    console.log('Detected Concierge V1 format: Array with concept categories');
+                    this.log.debug('Detected Concierge V1 format: Array with concept categories');
                     return 'concierge';
                 }
             }
@@ -568,7 +571,7 @@ class ExportImportModule {
                                    data.hasOwnProperty('restaurants');
         
         if (hasStandardFormat) {
-            console.log('Detected standard export format');
+            this.log.debug('Detected standard export format');
             return 'standard';
         }
         
@@ -588,14 +591,14 @@ class ExportImportModule {
                                               firstValue.hasOwnProperty('food_style') ||
                                               firstValue.hasOwnProperty('drinks');
                     if (hasConciergeProps) {
-                        console.log('Detected Concierge V1 format: Object with restaurant names as keys');
+                        this.log.debug('Detected Concierge V1 format: Object with restaurant names as keys');
                         return 'concierge';
                     }
                 }
             }
         }
         
-        console.log('Unknown format, defaulting to standard');
+        this.log.debug('Unknown format, defaulting to standard');
         return 'standard';
     }
     
@@ -603,7 +606,7 @@ class ExportImportModule {
      * Imports restaurant data from Concierge JSON format
      */
     async importConciergeData(importFile) {
-        console.log('Import Concierge data button clicked');
+        this.log.debug('Import Concierge data button clicked');
         const file = importFile.files[0];
         
         if (!file) {
@@ -638,7 +641,7 @@ class ExportImportModule {
             SafetyUtils.showNotification('Concierge data imported successfully');
         } catch (error) {
             SafetyUtils.hideLoading();
-            console.error('Error importing Concierge data:', error);
+            this.log.error('Error importing Concierge data:', error);
             SafetyUtils.showNotification('Error importing Concierge data: ' + error.message, 'error');
         }
     }
@@ -680,7 +683,7 @@ class ExportImportModule {
             throw new Error('Invalid Concierge data format: expected array or object');
         }
         
-        console.log(`Processing ${restaurantsArray.length} restaurants from Concierge format`);
+        this.log.debug(`Processing ${restaurantsArray.length} restaurants from Concierge format`);
         
         // Process each restaurant
         restaurantsArray.forEach((restaurant, index) => {
@@ -762,7 +765,7 @@ class ExportImportModule {
             }
         });
         
-        console.log(`Conversion complete. Created ${importData.restaurants.length} restaurants, ${importData.concepts.length} unique concepts, ${importData.restaurantConcepts.length} relationships`);
+        this.log.debug(`Conversion complete. Created ${importData.restaurants.length} restaurants, ${importData.concepts.length} unique concepts, ${importData.restaurantConcepts.length} relationships`);
         
         return importData;
     }
@@ -777,41 +780,41 @@ class ExportImportModule {
      * @returns {Promise<void>}
      */
     async syncWithServer() {
-        console.log('🔄 Starting comprehensive bidirectional sync with server...');
+        this.log.debug('🔄 Starting comprehensive bidirectional sync with server...');
         const syncStartTime = performance.now();
         
         try {
             SafetyUtils.showLoading('🔄 Syncing with server...');
             
             // Step 1: Upload all local restaurants to server
-            console.log('🔄 Step 1/4: Uploading local restaurants...');
+            this.log.debug('🔄 Step 1/4: Uploading local restaurants...');
             this.updateLoadingMessage('� Uploading local restaurants (1/4)...');
             
             try {
                 const localRestaurants = await dataStorage.getUnsyncedRestaurants();
                 
                 if (localRestaurants.length > 0) {
-                    console.log(`Found ${localRestaurants.length} local restaurants to upload`);
+                    this.log.debug(`Found ${localRestaurants.length} local restaurants to upload`);
                     
                     // Export using syncManager
                     if (window.syncManager) {
                         await window.syncManager.syncAllPendingWithUI();
-                        console.log('✅ Local restaurants uploaded successfully');
+                        this.log.debug('✅ Local restaurants uploaded successfully');
                     } else {
-                        console.warn('⚠️ SyncManager not available');
+                        this.log.warn('⚠️ SyncManager not available');
                     }
                 } else {
-                    console.log('✅ No local restaurants to upload');
+                    this.log.debug('✅ No local restaurants to upload');
                 }
             } catch (uploadError) {
-                console.error('❌ Upload failed:', uploadError);
+                this.log.error('❌ Upload failed:', uploadError);
                 SafetyUtils.showNotification(`Upload failed: ${uploadError.message}. Continuing...`, 'warning');
             }
             
             await new Promise(resolve => setTimeout(resolve, 500));
             
             // Step 2: Download all restaurants from server
-            console.log('🔄 Step 2/4: Downloading restaurants from server...');
+            this.log.debug('🔄 Step 2/4: Downloading restaurants from server...');
             this.updateLoadingMessage('📥 Downloading from server (2/4)...');
             
             let serverRestaurants = [];
@@ -824,16 +827,16 @@ class ExportImportModule {
                     .equals('remote')
                     .toArray();
                 
-                console.log(`✅ Downloaded ${serverRestaurants.length} restaurants from server`);
+                this.log.debug(`✅ Downloaded ${serverRestaurants.length} restaurants from server`);
             } catch (downloadError) {
-                console.error('❌ Download failed:', downloadError);
+                this.log.error('❌ Download failed:', downloadError);
                 SafetyUtils.showNotification(`Download failed: ${downloadError.message}. Continuing...`, 'warning');
             }
             
             await new Promise(resolve => setTimeout(resolve, 500));
             
             // Step 3: Detect and resolve duplicates/conflicts
-            console.log('🔄 Step 3/4: Detecting duplicates and conflicts...');
+            this.log.debug('🔄 Step 3/4: Detecting duplicates and conflicts...');
             this.updateLoadingMessage('🔍 Resolving conflicts (3/4)...');
             
             try {
@@ -877,9 +880,9 @@ class ExportImportModule {
                         const comparison = dataStorage.compareRestaurants(localRest, serverRest);
                         
                         if (comparison.isDuplicate) {
-                            console.log(`🔍 Duplicate detected: ${localRest.name}`);
-                            console.log(`   Conflict type: ${comparison.conflictType}`);
-                            console.log(`   Strategy: ${comparison.mergeStrategy}`);
+                            this.log.debug(`🔍 Duplicate detected: ${localRest.name}`);
+                            this.log.debug(`   Conflict type: ${comparison.conflictType}`);
+                            this.log.debug(`   Strategy: ${comparison.mergeStrategy}`);
                             
                             if (comparison.mergeStrategy === 'merge-concepts') {
                                 // Merge concepts from both versions
@@ -915,7 +918,7 @@ class ExportImportModule {
                                     action: 'merged concepts'
                                 });
                                 
-                                console.log(`✅ Merged concepts for: ${localRest.name}`);
+                                this.log.debug(`✅ Merged concepts for: ${localRest.name}`);
                             } else if (comparison.mergeStrategy === 'use-server') {
                                 // Identical - mark local as synced with server
                                 if (serverRest.serverId) {
@@ -929,7 +932,7 @@ class ExportImportModule {
                                         action: 'marked as synced'
                                     });
                                     
-                                    console.log(`✅ Marked as synced: ${localRest.name}`);
+                                    this.log.debug(`✅ Marked as synced: ${localRest.name}`);
                                 }
                             } else if (comparison.mergeStrategy === 'manual') {
                                 // Requires manual intervention
@@ -939,7 +942,7 @@ class ExportImportModule {
                                     comparison: comparison
                                 });
                                 
-                                console.log(`⚠️ Manual conflict: ${localRest.name}`);
+                                this.log.debug(`⚠️ Manual conflict: ${localRest.name}`);
                             }
                             // For 'use-local', we keep local as-is
                         }
@@ -948,43 +951,43 @@ class ExportImportModule {
                 
                 // Report results
                 if (merged.length > 0) {
-                    console.log(`✅ Merged/resolved ${merged.length} restaurants`);
+                    this.log.debug(`✅ Merged/resolved ${merged.length} restaurants`);
                 }
                 
                 if (conflicts.length > 0) {
-                    console.warn(`⚠️ Found ${conflicts.length} conflicts requiring manual review`);
+                    this.log.warn(`⚠️ Found ${conflicts.length} conflicts requiring manual review`);
                     SafetyUtils.showNotification(
                         `Sync completed with ${conflicts.length} conflicts requiring manual review`,
                         'warning'
                     );
                 }
             } catch (conflictError) {
-                console.error('❌ Conflict resolution failed:', conflictError);
+                this.log.error('❌ Conflict resolution failed:', conflictError);
                 SafetyUtils.showNotification(`Conflict resolution failed: ${conflictError.message}`, 'warning');
             }
             
             await new Promise(resolve => setTimeout(resolve, 500));
             
             // Step 4: Sync curators from server
-            console.log('🔄 Step 4/4: Syncing curators...');
+            this.log.debug('🔄 Step 4/4: Syncing curators...');
             this.updateLoadingMessage('👥 Syncing curators (4/4)...');
             
             try {
                 if (this.uiManager && this.uiManager.curatorModule && typeof this.uiManager.curatorModule.fetchCurators === 'function') {
                     await this.uiManager.curatorModule.fetchCurators();
-                    console.log('✅ Curators synced successfully');
+                    this.log.debug('✅ Curators synced successfully');
                 } else {
-                    console.warn('⚠️ Curator module not available, skipping curator sync');
+                    this.log.warn('⚠️ Curator module not available, skipping curator sync');
                 }
             } catch (curatorError) {
-                console.error('❌ Curator sync failed:', curatorError);
+                this.log.error('❌ Curator sync failed:', curatorError);
                 SafetyUtils.showNotification(`Warning: Curator sync failed: ${curatorError.message}`, 'warning');
             }
             
             const syncEndTime = performance.now();
             const totalTime = ((syncEndTime - syncStartTime) / 1000).toFixed(2);
             
-            console.log(`✅ Comprehensive bidirectional sync completed in ${totalTime}s`);
+            this.log.debug(`✅ Comprehensive bidirectional sync completed in ${totalTime}s`);
             SafetyUtils.hideLoading();
             SafetyUtils.showNotification(`✅ Sync completed successfully in ${totalTime}s`, 'success');
             
@@ -997,7 +1000,7 @@ class ExportImportModule {
             }
             
         } catch (error) {
-            console.error('❌ Sync failed:', error);
+            this.log.error('❌ Sync failed:', error);
             SafetyUtils.hideLoading();
             SafetyUtils.showNotification(`Sync failed: ${error.message}`, 'error');
             throw error;
@@ -1022,16 +1025,16 @@ class ExportImportModule {
     }
     
     async importFromRemote() {
-        console.log('Starting remote data import operation...');
+        this.log.debug('Starting remote data import operation...');
         
         try {
             // Use our safe method for consistent behavior
             SafetyUtils.showLoading('Importing data from remote server...');
             
-            console.log('Remote import: Sending GET request to https://wsmontes.pythonanywhere.com/api/restaurants');
+            this.log.debug('Remote import: Sending GET request to https://wsmontes.pythonanywhere.com/api/restaurants');
             
             // Log request details
-            console.log('Remote import: Request headers:', {
+            this.log.debug('Remote import: Request headers:', {
                 method: 'GET',
                 headers: {
                     'Accept': 'application/json',
@@ -1045,7 +1048,7 @@ class ExportImportModule {
             const response = await window.apiService.getRestaurants();
             
             if (!response.success) {
-                console.error('Remote import: Server responded with error:', response.error);
+                this.log.error('Remote import: Server responded with error:', response.error);
                 throw new Error(response.error || 'Failed to fetch restaurants from server');
             }
             
@@ -1055,25 +1058,25 @@ class ExportImportModule {
             
             // Log timing and size information
             const dataSize = JSON.stringify(restaurants).length;
-            console.log(`Remote import: Received ${dataSize} bytes in ${(endTime - startTime).toFixed(2)}ms (${(dataSize/(endTime - startTime)*1000/1024).toFixed(2)} KB/s)`);
-            console.log(`Remote import: Received ${restaurants.length} restaurants from server`);
+            this.log.debug(`Remote import: Received ${dataSize} bytes in ${(endTime - startTime).toFixed(2)}ms (${(dataSize/(endTime - startTime)*1000/1024).toFixed(2)} KB/s)`);
+            this.log.debug(`Remote import: Received ${restaurants.length} restaurants from server`);
             
             // Log a sample of the data (just the first restaurant)
             if (restaurants.length > 0) {
-                console.log('Remote import: First restaurant data sample:', restaurants[0]);
+                this.log.debug('Remote import: First restaurant data sample:', restaurants[0]);
             }
             
             if (!Array.isArray(restaurants) || restaurants.length === 0) {
-                console.warn('Remote import: No data or invalid format received');
+                this.log.warn('Remote import: No data or invalid format received');
                 
                 SafetyUtils.showNotification('No data received from remote server or invalid format.', 'error');
                 return;
             }
             
             // Convert the remote data format to our local format
-            console.log('Remote import: Converting remote data to local format...');
+            this.log.debug('Remote import: Converting remote data to local format...');
             const importData = this.convertRemoteDataToLocal(restaurants);
-            console.log('Remote import: Conversion complete', {
+            this.log.debug('Remote import: Conversion complete', {
                 curators: importData.curators.length,
                 concepts: importData.concepts.length,
                 restaurants: importData.restaurants.length,
@@ -1082,20 +1085,20 @@ class ExportImportModule {
             });
             
             // Import into database
-            console.log('Remote import: Starting database import operation...');
+            this.log.debug('Remote import: Starting database import operation...');
             await dataStorage.importData(importData);
-            console.log('Remote import: Database import completed successfully');
+            this.log.debug('Remote import: Database import completed successfully');
             
             // Handle sync inconsistencies - mark restaurants not in server response as local
-            console.log('Remote import: Checking for sync inconsistencies...');
+            this.log.debug('Remote import: Checking for sync inconsistencies...');
             const serverRestaurantIds = new Set(restaurants.map(r => r.id).filter(id => id != null));
             const markedAsLocal = await dataStorage.markMissingRestaurantsAsLocal(serverRestaurantIds);
             if (markedAsLocal > 0) {
-                console.log(`Remote import: Marked ${markedAsLocal} restaurants as local (not found on server)`);
+                this.log.debug(`Remote import: Marked ${markedAsLocal} restaurants as local (not found on server)`);
             }
             
             // Reload curator info safely
-            console.log('Remote import: Reloading curator information...');
+            this.log.debug('Remote import: Reloading curator information...');
             await this.safeReloadCuratorInfo();
             
             SafetyUtils.showNotification('Remote data imported successfully');
@@ -1104,7 +1107,7 @@ class ExportImportModule {
             alert(`Successfully imported ${restaurants.length} restaurants from remote server.`);
             
         } catch (error) {
-            console.error('Error importing remote data:', error);
+            this.log.error('Error importing remote data:', error);
             SafetyUtils.showNotification('Error importing remote data: ' + error.message, 'error');
             throw error; // Re-throw to be caught by the caller
         }
@@ -1120,12 +1123,12 @@ class ExportImportModule {
                 this.uiManager.curatorModule && 
                 typeof this.uiManager.curatorModule.loadCuratorInfo === 'function') {
                 await this.uiManager.curatorModule.loadCuratorInfo();
-                console.log('Curator information reloaded');
+                this.log.debug('Curator information reloaded');
             } else {
-                console.warn('curatorModule not available or loadCuratorInfo not a function');
+                this.log.warn('curatorModule not available or loadCuratorInfo not a function');
             }
         } catch (error) {
-            console.error('Error reloading curator information:', error);
+            this.log.error('Error reloading curator information:', error);
         }
     }
     
@@ -1134,7 +1137,7 @@ class ExportImportModule {
      * @returns {Promise<void>}
      */
     async exportToRemote() {
-        console.log('Starting remote data export operation...');
+        this.log.debug('Starting remote data export operation...');
         
         // Track loading state to ensure we always hide it
         let loadingShown = false;
@@ -1156,14 +1159,14 @@ class ExportImportModule {
                 const pingTime = pingEndTime - pingStartTime;
                 
                 if (!testResponse.success) {
-                    console.warn('Remote export: Server connectivity check failed:', testResponse.error);
+                    this.log.warn('Remote export: Server connectivity check failed:', testResponse.error);
                     this.updateLoadingMessage('Server connectivity issues detected - will try anyway');
                     await new Promise(resolve => setTimeout(resolve, 2000)); // Pause for user to read message
                 } else {
-                    console.log(`Remote export: Server is responsive (ping: ${pingTime.toFixed(0)}ms)`);
+                    this.log.debug(`Remote export: Server is responsive (ping: ${pingTime.toFixed(0)}ms)`);
                 }
             } catch (pingError) {
-                console.warn(`Remote export: Initial connectivity check failed: ${pingError.message}`);
+                this.log.warn(`Remote export: Initial connectivity check failed: ${pingError.message}`);
                 this.updateLoadingMessage('Warning: Server may be unreachable');
                 await new Promise(resolve => setTimeout(resolve, 2000)); // Pause for user to read message
             }
@@ -1173,19 +1176,19 @@ class ExportImportModule {
             try {
                 if (window.dataStorage && typeof window.dataStorage.getLastSyncTime === 'function') {
                     lastSyncTime = await window.dataStorage.getLastSyncTime();
-                    console.log(`Remote export: Last sync time: ${lastSyncTime || 'never'}`);
+                    this.log.debug(`Remote export: Last sync time: ${lastSyncTime || 'never'}`);
                 }
             } catch (syncTimeError) {
-                console.warn('Remote export: Could not get last sync time:', syncTimeError);
+                this.log.warn('Remote export: Could not get last sync time:', syncTimeError);
             }
             
             // Get all data from local storage (without photos)
             this.updateLoadingMessage('Retrieving local data...');
-            console.log('Remote export: Retrieving data from local database...');
+            this.log.debug('Remote export: Retrieving data from local database...');
             const dataStartTime = performance.now();
             const exportResult = await dataStorage.exportData({ includePhotos: false });
             const dataEndTime = performance.now();
-            console.log(`Remote export: Local data retrieved in ${(dataEndTime - dataStartTime).toFixed(2)}ms`);
+            this.log.debug(`Remote export: Local data retrieved in ${(dataEndTime - dataStartTime).toFixed(2)}ms`);
             
             if (!exportResult || !exportResult.jsonData) {
                 throw new Error('Failed to retrieve data from local database');
@@ -1200,24 +1203,24 @@ class ExportImportModule {
             
             // Convert and filter local data to the remote server format
             this.updateLoadingMessage('Processing and filtering data...');
-            console.log('Remote export: Converting and filtering data for export...');
+            this.log.debug('Remote export: Converting and filtering data for export...');
             const conversionStartTime = performance.now();
             
             // Convert and filter in one step for efficiency
             const remoteData = this.prepareRestaurantsForExport(localData, lastSyncTime);
             
             const conversionEndTime = performance.now();
-            console.log(`Remote export: Data conversion completed in ${(conversionEndTime - conversionStartTime).toFixed(2)}ms`);
+            this.log.debug(`Remote export: Data conversion completed in ${(conversionEndTime - conversionStartTime).toFixed(2)}ms`);
             
             if (remoteData.length === 0) {
                 // No changes to export
                 const resultMessage = 'No changes to export. All data already in sync.';
-                console.log(`Remote export: ${resultMessage}`);
+                this.log.debug(`Remote export: ${resultMessage}`);
                 SafetyUtils.showNotification(resultMessage, 'success');
                 return;
             }
             
-            console.log(`Remote export: ${remoteData.length} restaurants prepared for export (filtered from ${localData.restaurants.length} total)`);
+            this.log.debug(`Remote export: ${remoteData.length} restaurants prepared for export (filtered from ${localData.restaurants.length} total)`);
             
             // Split into smaller batches for more reliable processing
             const BATCH_SIZE = 15;
@@ -1226,7 +1229,7 @@ class ExportImportModule {
                 batches.push(remoteData.slice(i, i + BATCH_SIZE));
             }
             
-            console.log(`Remote export: Split data into ${batches.length} batches for processing`);
+            this.log.debug(`Remote export: Split data into ${batches.length} batches for processing`);
             
             // Process batches one at a time for more reliability
             const MAX_CONCURRENT = 1;
@@ -1269,27 +1272,27 @@ class ExportImportModule {
             try {
                 if (window.dataStorage && typeof window.dataStorage.updateLastSyncTime === 'function') {
                     await window.dataStorage.updateLastSyncTime();
-                    console.log('Remote export: Updated last sync time');
+                    this.log.debug('Remote export: Updated last sync time');
                 }
             } catch (syncTimeError) {
-                console.warn('Remote export: Could not update last sync time:', syncTimeError);
+                this.log.warn('Remote export: Could not update last sync time:', syncTimeError);
             }
             
             // Final message for user
             const totalEndTime = performance.now();
             const totalTime = ((totalEndTime - totalStartTime) / 1000).toFixed(1);
             const resultMessage = `Export complete in ${totalTime}s. ${successCount} restaurants successfully exported${failedCount > 0 ? `, ${failedCount} failed` : ''}.`;
-            console.log(`Remote export: ${resultMessage}`);
+            this.log.debug(`Remote export: ${resultMessage}`);
             SafetyUtils.showNotification(resultMessage, failedCount > 0 ? 'warning' : 'success');
             
         } catch (error) {
-            console.error('Error exporting data to remote server:', error);
+            this.log.error('Error exporting data to remote server:', error);
             SafetyUtils.showNotification('Error exporting to remote server: ' + error.message, 'error');
         } finally {
             // Always hide loading indicator
             if (loadingShown) {
                 SafetyUtils.hideLoading();
-                console.log('Remote export: Hiding loading indicator');
+                this.log.debug('Remote export: Hiding loading indicator');
             }
         }
     }
@@ -1360,11 +1363,11 @@ class ExportImportModule {
             try {
                 syncDate = new Date(lastSyncTime);
                 if (isNaN(syncDate.getTime())) {
-                    console.warn(`Invalid last sync time: ${lastSyncTime}`);
+                    this.log.warn(`Invalid last sync time: ${lastSyncTime}`);
                     syncDate = null;
                 }
             } catch (e) {
-                console.warn(`Error parsing sync time: ${lastSyncTime}`, e);
+                this.log.warn(`Error parsing sync time: ${lastSyncTime}`, e);
                 syncDate = null;
             }
         }
@@ -1448,7 +1451,7 @@ class ExportImportModule {
         }
         
         const endTime = performance.now();
-        console.log(`Export preparation: Processed ${totalRestaurants} restaurants, sending ${remoteData.length}, skipped ${skippedRestaurants} unchanged (in ${(endTime-startTime).toFixed(2)}ms)`);
+        this.log.debug(`Export preparation: Processed ${totalRestaurants} restaurants, sending ${remoteData.length}, skipped ${skippedRestaurants} unchanged (in ${(endTime-startTime).toFixed(2)}ms)`);
         
         return remoteData;
     }
@@ -1465,7 +1468,7 @@ class ExportImportModule {
         const payloadJson = JSON.stringify(batch);
         const payloadSize = payloadJson.length;
         
-        console.log(`Remote export: Processing batch ${batchIndex + 1}/${totalBatches} - ${batch.length} restaurants, payload size: ${(payloadSize/1024).toFixed(2)} KB`);
+        this.log.debug(`Remote export: Processing batch ${batchIndex + 1}/${totalBatches} - ${batch.length} restaurants, payload size: ${(payloadSize/1024).toFixed(2)} KB`);
         
         // Parameters for retry logic
         const MAX_RETRIES = 2;
@@ -1480,13 +1483,13 @@ class ExportImportModule {
             // Set a timeout to abort the fetch after specified seconds
             const timeoutId = setTimeout(() => {
                 controller.abort();
-                console.error(`Remote export: Batch ${batchIndex + 1} request timed out after ${TIMEOUT_SECONDS} seconds`);
+                this.log.error(`Remote export: Batch ${batchIndex + 1} request timed out after ${TIMEOUT_SECONDS} seconds`);
             }, TIMEOUT_SECONDS * 1000);
             
             try {
                 // Add retry information to console log
                 if (retryCount > 0) {
-                    console.log(`Remote export: Retry #${retryCount} for batch ${batchIndex + 1}`);
+                    this.log.debug(`Remote export: Retry #${retryCount} for batch ${batchIndex + 1}`);
                     this.updateLoadingMessage(`Retrying batch ${batchIndex + 1} (attempt ${retryCount + 1})...`);
                 }
                 
@@ -1496,17 +1499,17 @@ class ExportImportModule {
                 const response = await window.apiService.batchUploadRestaurants(batch);
                 
                 const endTime = performance.now();
-                console.log(`Remote export: Batch ${batchIndex + 1} request completed in ${(endTime - startTime).toFixed(2)}ms`);
+                this.log.debug(`Remote export: Batch ${batchIndex + 1} request completed in ${(endTime - startTime).toFixed(2)}ms`);
                 
                 if (!response.success) {
-                    console.error(`Remote export: Server error for batch ${batchIndex + 1}:`, response.error);
+                    this.log.error(`Remote export: Server error for batch ${batchIndex + 1}:`, response.error);
                     
                     // Retry on server errors
                     if (retryCount < MAX_RETRIES) {
                         retryCount++;
                         // Wait before retrying - exponential backoff
                         const delay = 2000 * Math.pow(2, retryCount - 1);
-                        console.log(`Remote export: Will retry batch ${batchIndex + 1} in ${delay}ms`);
+                        this.log.debug(`Remote export: Will retry batch ${batchIndex + 1} in ${delay}ms`);
                         await new Promise(resolve => setTimeout(resolve, delay));
                         continue;
                     }
@@ -1530,14 +1533,14 @@ class ExportImportModule {
                     errorMessage = apiError.message;
                 }
                 
-                console.error(`Remote export: Error in batch ${batchIndex + 1}: ${errorMessage}`, apiError);
+                this.log.error(`Remote export: Error in batch ${batchIndex + 1}: ${errorMessage}`, apiError);
                 
                 // Always retry network errors
                 if (isNetworkError && retryCount < MAX_RETRIES) {
                     retryCount++;
                     // Wait longer for network errors - exponential backoff with longer base time
                     const delay = 3000 * Math.pow(2, retryCount - 1);
-                    console.log(`Remote export: Will retry batch ${batchIndex + 1} in ${delay}ms (network error)`);
+                    this.log.debug(`Remote export: Will retry batch ${batchIndex + 1} in ${delay}ms (network error)`);
                     this.updateLoadingMessage(`Network error - retrying in ${Math.round(delay/1000)}s...`);
                     await new Promise(resolve => setTimeout(resolve, delay));
                     continue;
@@ -1583,9 +1586,9 @@ class ExportImportModule {
                 messageElement.textContent = message;
             }
             
-            console.log(`Loading message updated: ${message}`);
+            this.log.debug(`Loading message updated: ${message}`);
         } catch (error) {
-            console.warn('Error updating loading message:', error);
+            this.log.warn('Error updating loading message:', error);
         }
     }
 
@@ -1595,7 +1598,7 @@ class ExportImportModule {
      * @returns {Object} - Data structure compatible with dataStorage.importData()
      */
     convertRemoteDataToLocal(remoteData) {
-        console.log('Converting remote data format to local format...');
+        this.log.debug('Converting remote data format to local format...');
         
         // Initialize the import data structure
         const importData = {
@@ -1616,12 +1619,12 @@ class ExportImportModule {
         let conceptIdCounter = -1;
         let restaurantIdCounter = -1;
         
-        console.log(`Processing ${remoteData.length} restaurants from remote data`);
+        this.log.debug(`Processing ${remoteData.length} restaurants from remote data`);
         
         // Process each restaurant
         remoteData.forEach((remoteRestaurant, index) => {
             if (index % 10 === 0) {
-                console.log(`Converting remote restaurant ${index + 1}/${remoteData.length}`);
+                this.log.debug(`Converting remote restaurant ${index + 1}/${remoteData.length}`);
             }
             
             // 1. Process curator
@@ -1638,7 +1641,7 @@ class ExportImportModule {
                     name: curatorName,
                     lastActive: new Date().toISOString()
                 });
-                console.log(`Created new curator: ${curatorName} with ID: ${curatorId}`);
+                this.log.debug(`Created new curator: ${curatorName} with ID: ${curatorId}`);
             }
             
             // 2. Process restaurant
@@ -1661,11 +1664,11 @@ class ExportImportModule {
             }
             
             importData.restaurants.push(restaurantData);
-            console.log(`Created restaurant: ${remoteRestaurant.name} with ID: ${restaurantId}`);
+            this.log.debug(`Created restaurant: ${remoteRestaurant.name} with ID: ${restaurantId}`);
             
             // 3. Process concepts
             if (Array.isArray(remoteRestaurant.concepts)) {
-                console.log(`Processing ${remoteRestaurant.concepts.length} concepts for restaurant: ${remoteRestaurant.name}`);
+                this.log.debug(`Processing ${remoteRestaurant.concepts.length} concepts for restaurant: ${remoteRestaurant.name}`);
                 
                 remoteRestaurant.concepts.forEach(concept => {
                     if (concept.category && concept.value) {
@@ -1683,7 +1686,7 @@ class ExportImportModule {
                                 value: concept.value,
                                 timestamp: new Date().toISOString()
                             });
-                            console.log(`Created new concept: ${concept.category}:${concept.value} with ID: ${conceptId}`);
+                            this.log.debug(`Created new concept: ${concept.category}:${concept.value} with ID: ${conceptId}`);
                         }
                         
                         // Add relationship between restaurant and concept
@@ -1693,7 +1696,7 @@ class ExportImportModule {
                             restaurantId: restaurantId,
                             conceptId: conceptId
                         });
-                        console.log(`Created restaurant-concept relation with ID: ${relationId}`);
+                        this.log.debug(`Created restaurant-concept relation with ID: ${relationId}`);
                     }
                 });
             }
@@ -1710,12 +1713,12 @@ class ExportImportModule {
                         longitude: location.longitude,
                         address: location.address || null
                     });
-                    console.log(`Created location for restaurant ${remoteRestaurant.name} with ID: ${locationId}`);
+                    this.log.debug(`Created location for restaurant ${remoteRestaurant.name} with ID: ${locationId}`);
                 }
             }
         });
         
-        console.log('Conversion complete. Summary:', {
+        this.log.debug('Conversion complete. Summary:', {
             curators: importData.curators.length,
             concepts: importData.concepts.length,
             restaurants: importData.restaurants.length,
@@ -1734,7 +1737,7 @@ class ExportImportModule {
     convertLocalDataToRemote(localData) {
         // Validate input
         if (!localData || !localData.restaurants || !Array.isArray(localData.restaurants)) {
-            console.error('Invalid local data format');
+            this.log.error('Invalid local data format');
             throw new Error('Invalid local data structure');
         }
 
@@ -1834,7 +1837,7 @@ class ExportImportModule {
 
             return remoteData;
         } catch (error) {
-            console.error('Error converting local data to remote format:', error);
+            this.log.error('Error converting local data to remote format:', error);
             throw new Error(`Data conversion failed: ${error.message}`);
         }
     }

@@ -6,6 +6,9 @@
 // Only define the class if it doesn't already exist
 const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
     constructor() {
+        // Create module logger instance
+        this.log = Logger.module('DataStorage');
+        
         // Initialize the database with a new version number
         this.initializeDatabase();
         this.isResetting = false; // Flag to track database reset state
@@ -13,7 +16,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
 
     initializeDatabase() {
         try {
-            console.log('Initializing database...');
+            this.log.debug('Initializing database...');
             
             // Delete any existing instance
             if (this.db) {
@@ -48,7 +51,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 pendingAudio: '++id, restaurantId, draftId, audioBlob, timestamp, retryCount, lastError, status, isAdditional',
                 draftRestaurants: '++id, curatorId, name, timestamp, lastModified, hasAudio, transcription, description'
             }).upgrade(tx => {
-                console.log('Upgrading database to version 8: Adding soft delete fields');
+                this.log.debug('Upgrading database to version 8: Adding soft delete fields');
                 // Add deletedLocally and deletedAt fields to existing restaurants
                 return tx.restaurants.toCollection().modify(restaurant => {
                     restaurant.deletedLocally = false;
@@ -68,7 +71,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 pendingAudio: '++id, restaurantId, draftId, audioBlob, timestamp, retryCount, lastError, status, isAdditional',
                 draftRestaurants: '++id, curatorId, name, timestamp, lastModified, hasAudio, transcription, description'
             }).upgrade(tx => {
-                console.log('Upgrading database to version 9: Adding shared restaurant fields');
+                this.log.debug('Upgrading database to version 9: Adding shared restaurant fields');
                 // Add sharedRestaurantId and originalCuratorId to existing restaurants
                 return tx.restaurants.toCollection().modify(restaurant => {
                     // Generate UUID for existing restaurants if not present
@@ -95,7 +98,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 draftRestaurants: '++id, curatorId, name, timestamp, lastModified, hasAudio, transcription, description',
                 appMetadata: 'key' // New table for app metadata
             }).upgrade(async tx => {
-                console.log('Upgrading database to version 10: Data cleanup and compatibility check');
+                this.log.debug('Upgrading database to version 10: Data cleanup and compatibility check');
                 
                 // Check if this is a fresh upgrade or needs cleanup
                 const metadata = await tx.table('appMetadata').get('lastMajorVersion');
@@ -103,7 +106,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 
                 // If upgrading from a very old version or corrupted data, clean up
                 if (!metadata || metadata.value < 9) {
-                    console.log('🧹 Performing data cleanup for major version upgrade...');
+                    this.log.debug('🧹 Performing data cleanup for major version upgrade...');
                     
                     // Remove any restaurants with missing required fields
                     const restaurants = await tx.restaurants.toArray();
@@ -132,19 +135,22 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                             cleanedCount++;
                         } else {
                             // Ensure all restaurants have required new fields
+                            // CRITICAL: Determine correct source based on serverId
+                            const correctSource = restaurant.source || (restaurant.serverId ? 'remote' : 'local');
+                            
                             await tx.restaurants.update(restaurant.id, {
                                 sharedRestaurantId: restaurant.sharedRestaurantId || crypto.randomUUID(),
                                 originalCuratorId: restaurant.originalCuratorId || restaurant.curatorId,
                                 deletedLocally: restaurant.deletedLocally ?? false,
                                 deletedAt: restaurant.deletedAt ?? null,
-                                source: restaurant.source || 'local',
+                                source: correctSource,
                                 origin: restaurant.origin || 'local'
                             });
                         }
                     }
                     
                     if (cleanedCount > 0) {
-                        console.log(`🧹 Cleaned up ${cleanedCount} incompatible restaurant(s)`);
+                        this.log.debug(`🧹 Cleaned up ${cleanedCount} incompatible restaurant(s)`);
                     }
                     
                     // Clean up orphaned data
@@ -174,7 +180,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                         }
                     }
                     
-                    console.log('✅ Database cleanup completed successfully');
+                    this.log.debug('✅ Database cleanup completed successfully');
                 }
                 
                 // Store the current version
@@ -184,7 +190,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                     timestamp: new Date().toISOString()
                 });
                 
-                console.log('✅ Database upgraded to version 10');
+                this.log.debug('✅ Database upgraded to version 10');
             });
 
             // Version 11: Add API key field to curators for individual key support
@@ -200,7 +206,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 draftRestaurants: '++id, curatorId, name, timestamp, lastModified, hasAudio, transcription, description',
                 appMetadata: 'key'
             }).upgrade(async tx => {
-                console.log('Upgrading database to version 11: Adding API key field to curators');
+                this.log.debug('Upgrading database to version 11: Adding API key field to curators');
                 // Add apiKey field to existing curators (will be null)
                 return tx.curators.toCollection().modify(curator => {
                     if (!curator.apiKey) {
@@ -222,7 +228,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 draftRestaurants: '++id, curatorId, name, timestamp, lastModified, hasAudio, transcription, description',
                 appMetadata: 'key'
             }).upgrade(async tx => {
-                console.log('🔄 Upgrading database to version 12: Adding intelligent sync fields');
+                this.log.debug('🔄 Upgrading database to version 12: Adding intelligent sync fields');
                 
                 // Add needsSync and lastSynced to all existing restaurants
                 return tx.restaurants.toCollection().modify(restaurant => {
@@ -235,7 +241,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                         restaurant.lastSynced = null;
                     }
                     
-                    console.log(`  Migrated restaurant ${restaurant.name}: needsSync=${restaurant.needsSync}`);
+                    this.log.debug(`  Migrated restaurant ${restaurant.name}: needsSync=${restaurant.needsSync}`);
                 });
             });
 
@@ -249,7 +255,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                         const upgradeTime = new Date(metadata.timestamp).getTime();
                         const now = Date.now();
                         if (now - upgradeTime < 5000) {
-                            console.log('✨ Database upgraded successfully to version 10');
+                            this.log.debug('✨ Database upgraded successfully to version 10');
                             // Show user-friendly notification after a short delay
                             setTimeout(() => {
                                 if (window.SafetyUtils && typeof SafetyUtils.showNotification === 'function') {
@@ -264,27 +270,27 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                     }
                 })
                 .catch(error => {
-                    console.error('Failed to open database:', error);
+                    this.log.error('Failed to open database:', error);
                     
                     // If there's a schema error or corruption, reset the database
                     if (error.name === 'VersionError' || 
                         error.name === 'InvalidStateError' || 
                         error.name === 'NotFoundError') {
-                        console.warn('Database schema issue detected, attempting to reset database...');
+                        this.log.warn('Database schema issue detected, attempting to reset database...');
                         this.resetDatabase();
                     }
                 });
 
-            console.log('Database initialized successfully');
+            this.log.info('Database initialized successfully');
         } catch (error) {
-            console.error('Error initializing database:', error);
+            this.log.error('Error initializing database:', error);
             // Attempt to reset in case of critical error
             this.resetDatabase();
         }
     }
 
     async resetDatabase() {
-        console.warn('Resetting database...');
+        this.log.warn('Resetting database...');
         try {
             // Set resetting flag
             this.isResetting = true;
@@ -337,7 +343,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 pendingAudio: '++id, restaurantId, draftId, audioBlob, timestamp, retryCount, lastError, status, isAdditional',
                 draftRestaurants: '++id, curatorId, name, timestamp, lastModified, hasAudio, transcription, description'
             }).upgrade(tx => {
-                console.log('Upgrading database to version 8: Adding soft delete fields');
+                this.log.debug('Upgrading database to version 8: Adding soft delete fields');
                 return tx.restaurants.toCollection().modify(restaurant => {
                     restaurant.deletedLocally = false;
                     restaurant.deletedAt = null;
@@ -356,7 +362,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 pendingAudio: '++id, restaurantId, draftId, audioBlob, timestamp, retryCount, lastError, status, isAdditional',
                 draftRestaurants: '++id, curatorId, name, timestamp, lastModified, hasAudio, transcription, description'
             }).upgrade(tx => {
-                console.log('Upgrading database to version 9: Adding shared restaurant fields');
+                this.log.debug('Upgrading database to version 9: Adding shared restaurant fields');
                 return tx.restaurants.toCollection().modify(restaurant => {
                     if (!restaurant.sharedRestaurantId) {
                         restaurant.sharedRestaurantId = crypto.randomUUID();
@@ -368,14 +374,14 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             });
             
             await this.db.open();
-            console.log('Database reset and reinitialized successfully');
+            this.log.debug('Database reset and reinitialized successfully');
             
             // Clear reset flag
             this.isResetting = false;
             return true;
         } catch (error) {
             this.isResetting = false;
-            console.error('Failed to reset database:', error);
+            this.log.error('Failed to reset database:', error);
             alert('A critical database error has occurred. Please reload the page or clear your browser data.');
             return false;
         }
@@ -395,7 +401,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             const setting = await this.db.settings.get(key);
             return setting ? setting.value : defaultValue;
         } catch (error) {
-            console.error(`Error getting setting ${key}:`, error);
+            this.log.error(`Error getting setting ${key}:`, error);
             return defaultValue;
         }
     }
@@ -413,7 +419,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             }
             return await this.db.settings.put({ key, value });
         } catch (error) {
-            console.error(`Error updating setting ${key}:`, error);
+            this.log.error(`Error updating setting ${key}:`, error);
             throw error;
         }
     }
@@ -428,11 +434,11 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
      */
     async saveCurator(name, apiKey, origin = 'local', serverId = null) {
         try {
-            console.log(`DataStorage: Saving curator with name: ${name}, origin: ${origin}`);
+            this.log.debug(`DataStorage: Saving curator with name: ${name}, origin: ${origin}`);
             
             // Make sure Dexie is initialized
             if (!this.db || !this.db.isOpen()) {
-                console.warn('Database not initialized or not open, reinitializing...');
+                this.log.warn('Database not initialized or not open, reinitializing...');
                 this.initializeDatabase();
                 await this.db.open();
             }
@@ -449,14 +455,14 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             // Also update global API key in localStorage if provided
             if (apiKey) {
                 localStorage.setItem('openai_api_key', apiKey);
-                console.log('Updated global API key in localStorage');
+                this.log.debug('Updated global API key in localStorage');
             }
             
-            console.log(`DataStorage: Curator saved successfully with ID: ${curatorId}`);
+            this.log.debug(`DataStorage: Curator saved successfully with ID: ${curatorId}`);
             return curatorId;
         } catch (error) {
-            console.error('Error saving curator:', error);
-            console.error('Error details:', {
+            this.log.error('Error saving curator:', error);
+            this.log.error('Error details:', {
                 message: error.message,
                 stack: error.stack,
                 name: error.name
@@ -464,7 +470,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             
             // Try to recover from database errors
             if (error.name === 'NotFoundError' || error.message.includes('object store was not found')) {
-                console.warn('Database schema issue detected, attempting to reset and retry...');
+                this.log.warn('Database schema issue detected, attempting to reset and retry...');
                 await this.resetDatabase();
                 
                 // Retry the operation
@@ -514,7 +520,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 );
             }
         } catch (error) {
-            console.error('Error saving server curator:', error);
+            this.log.error('Error saving server curator:', error);
             throw error;
         }
     }
@@ -531,21 +537,21 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             
             // If curator has individual API key, use it
             if (curator && curator.apiKey) {
-                console.log(`Using individual API key for curator ${curatorId}`);
+                this.log.debug(`Using individual API key for curator ${curatorId}`);
                 return curator.apiKey;
             }
             
             // Otherwise, fall back to global API key from localStorage
             const globalApiKey = localStorage.getItem('openai_api_key');
             if (globalApiKey) {
-                console.log(`Using global API key for curator ${curatorId}`);
+                this.log.debug(`Using global API key for curator ${curatorId}`);
                 return globalApiKey;
             }
             
-            console.log(`No API key found for curator ${curatorId}`);
+            this.log.debug(`No API key found for curator ${curatorId}`);
             return null;
         } catch (error) {
-            console.error('Error getting API key for curator:', error);
+            this.log.error('Error getting API key for curator:', error);
             return null;
         }
     }
@@ -567,7 +573,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             const curators = await this.db.curators.orderBy('lastActive').reverse().limit(1).toArray();
             return curators.length > 0 ? curators[0] : null;
         } catch (error) {
-            console.error('Error getting current curator:', error);
+            this.log.error('Error getting current curator:', error);
             if (error.name === 'NotFoundError' || error.message.includes('object store was not found')) {
                 await this.resetDatabase();
                 return null;
@@ -591,7 +597,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 lastActive: new Date()
             });
         } catch (error) {
-            console.error('Error setting current curator:', error);
+            this.log.error('Error setting current curator:', error);
             throw error;
         }
     }
@@ -605,7 +611,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
         try {
             // Get all curators from the database
             const allCurators = await this.db.curators.toArray();
-            console.log(`Retrieved ${allCurators.length} total curators from database`, 
+            this.log.debug(`Retrieved ${allCurators.length} total curators from database`, 
                 allCurators.map(c => ({id: c.id, name: c.name, origin: c.origin})));
             
             // Map to track all unique curators - prioritize by lastActive date, then local over remote
@@ -615,7 +621,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             // First pass - build map of unique curators by name (case-insensitive)
             allCurators.forEach(curator => {
                 if (!curator.name) {
-                    console.warn(`Skipping curator with empty name, ID: ${curator.id}`);
+                    this.log.warn(`Skipping curator with empty name, ID: ${curator.id}`);
                     return; // Skip curators with no name
                 }
                 
@@ -625,7 +631,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 // Decide which curator to keep when we find duplicates
                 if (existing) {
                     duplicates.push({ existing, duplicate: curator });
-                    console.log(`Found duplicate curator: "${curator.name}" (ID: ${curator.id}) duplicates "${existing.name}" (ID: ${existing.id})`);
+                    this.log.debug(`Found duplicate curator: "${curator.name}" (ID: ${curator.id}) duplicates "${existing.name}" (ID: ${existing.id})`);
                     
                     // Keep the newer one, or local over remote, or the one with a valid ID
                     const existingDate = existing.lastActive ? new Date(existing.lastActive) : new Date(0);
@@ -640,7 +646,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                         // Prefer more recent records
                         (curatorDate > existingDate)
                     ) {
-                        console.log(`Keeping ${curator.name} (ID: ${curator.id}) over ${existing.name} (ID: ${existing.id})`);
+                        this.log.debug(`Keeping ${curator.name} (ID: ${curator.id}) over ${existing.name} (ID: ${existing.id})`);
                         uniqueByName.set(lowerName, curator);
                     }
                 } else {
@@ -650,18 +656,18 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             
             // Remove duplicates from the database if requested
             if (removeDuplicates && duplicates.length > 0) {
-                console.log(`Found ${duplicates.length} duplicate curators, cleaning up database...`);
+                this.log.debug(`Found ${duplicates.length} duplicate curators, cleaning up database...`);
                 await this.cleanupDuplicateCurators(duplicates);
             }
             
             // Convert map values back to array
             const uniqueCurators = Array.from(uniqueByName.values());
-            console.log(`Returning ${uniqueCurators.length} unique curators after deduplication:`, 
+            this.log.debug(`Returning ${uniqueCurators.length} unique curators after deduplication:`, 
                 uniqueCurators.map(c => ({id: c.id, name: c.name, origin: c.origin})));
             
             return uniqueCurators;
         } catch (error) {
-            console.error('Error getting all curators:', error);
+            this.log.error('Error getting all curators:', error);
             throw error;
         }
     }
@@ -697,21 +703,21 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                                 this.db.restaurants.update(restaurant.id, { curatorId: existing.id })
                             ));
                             restaurantsUpdated += restaurantsToUpdate.length;
-                            console.log(`Updated ${restaurantsToUpdate.length} restaurants from curator ${duplicate.id} to ${existing.id}`);
+                            this.log.debug(`Updated ${restaurantsToUpdate.length} restaurants from curator ${duplicate.id} to ${existing.id}`);
                         }
                         
                         // 2. Delete the duplicate curator
                         await this.db.curators.delete(duplicate.id);
                         curatorsRemoved++;
-                        console.log(`Removed duplicate curator: ${duplicate.name} (ID: ${duplicate.id})`);
+                        this.log.debug(`Removed duplicate curator: ${duplicate.name} (ID: ${duplicate.id})`);
                     }
                 }
             );
             
-            console.log(`Database cleanup complete: removed ${curatorsRemoved} duplicate curators, updated ${restaurantsUpdated} restaurants`);
+            this.log.debug(`Database cleanup complete: removed ${curatorsRemoved} duplicate curators, updated ${restaurantsUpdated} restaurants`);
             return curatorsRemoved;
         } catch (error) {
-            console.error('Error cleaning up duplicate curators:', error);
+            this.log.error('Error cleaning up duplicate curators:', error);
             return 0;
         }
     }
@@ -739,7 +745,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 includeDeleted = false  // NEW: Filter out soft-deleted by default
             } = options;
             
-            console.log(`Getting restaurants with options:`, {
+            this.log.debug(`Getting restaurants with options:`, {
                 curatorId: curatorId ? `${curatorId} (${typeof curatorId})` : null,
                 onlyCuratorRestaurants,
                 includeRemote,
@@ -750,11 +756,11 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             
             // Log filtering information
             if (onlyCuratorRestaurants && curatorId) {
-                console.log(`Filtering restaurants by curator ID: ${curatorId}`);
+                this.log.debug(`Filtering restaurants by curator ID: ${curatorId}`);
                 
                 // Get all restaurants without any filtering first
                 const allRestaurants = await this.db.restaurants.toArray();
-                console.log(`Total restaurants in database: ${allRestaurants.length}`);
+                this.log.debug(`Total restaurants in database: ${allRestaurants.length}`);
                 
                 // Convert curatorId to string for consistent comparison
                 const curatorIdStr = String(curatorId);
@@ -783,13 +789,13 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                     
                     // Log rejection reasons for debugging
                     if (!isMatch && restaurantCuratorIdStr !== null) {
-                        console.log(`Restaurant ${restaurant.id} (${restaurant.name}) has curatorId ${restaurantCuratorIdStr}, does not match ${curatorIdStr}`);
+                        this.log.debug(`Restaurant ${restaurant.id} (${restaurant.name}) has curatorId ${restaurantCuratorIdStr}, does not match ${curatorIdStr}`);
                     }
                     
                     return isMatch;
                 });
                 
-                console.log(`After curator filtering: ${filteredRestaurants.length} restaurants match curator ${curatorIdStr}`);
+                this.log.debug(`After curator filtering: ${filteredRestaurants.length} restaurants match curator ${curatorIdStr}`);
                 
                 // Replace restaurants with filtered list
                 const restaurantIds = filteredRestaurants.map(r => r.id);
@@ -799,19 +805,19 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 );
             } else {
                 // No curator filtering
-                console.log(`Getting all restaurants (no curator filter)`);
+                this.log.debug(`Getting all restaurants (no curator filter)`);
                 let allRestaurants = await this.db.restaurants.toArray();
                 
                 // Filter out soft-deleted restaurants unless explicitly requested
                 if (!includeDeleted) {
                     allRestaurants = allRestaurants.filter(r => !r.deletedLocally);
-                    console.log(`Filtered out soft-deleted restaurants. Remaining: ${allRestaurants.length}`);
+                    this.log.debug(`Filtered out soft-deleted restaurants. Remaining: ${allRestaurants.length}`);
                 }
                 
                 return await this.processRestaurants(allRestaurants, deduplicate);
             }
         } catch (error) {
-            console.error("Error getting restaurants:", error);
+            this.log.error("Error getting restaurants:", error);
             throw error;
         }
     }
@@ -823,7 +829,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
      * @returns {Promise<Array>} - Enhanced restaurant objects
      */
     async processRestaurants(restaurants, deduplicate = true) {
-        console.log(`Retrieved ${restaurants.length} raw restaurants from database`);
+        this.log.debug(`Retrieved ${restaurants.length} raw restaurants from database`);
         
         // Load additional data
         const result = [];
@@ -897,7 +903,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             }
         }
         
-        console.log(`After deduplication: ${result.length} restaurants`);
+        this.log.debug(`After deduplication: ${result.length} restaurants`);
         return result;
     }
 
@@ -931,19 +937,19 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
         sharedRestaurantId = null,
         originalCuratorId = null
     ) {
-        console.log(`Saving restaurant: ${name} with curator ID: ${curatorId}, source: ${source}`);
-        console.log(`Concepts count: ${concepts.length}, Has location: ${!!location}, Photos count: ${photos ? photos.length : 0}, Has transcription: ${!!transcription}, Has description: ${!!description}`);
+        this.log.debug(`Saving restaurant: ${name} with curator ID: ${curatorId}, source: ${source}`);
+        this.log.debug(`Concepts count: ${concepts.length}, Has location: ${!!location}, Photos count: ${photos ? photos.length : 0}, Has transcription: ${!!transcription}, Has description: ${!!description}`);
         
         // Generate sharedRestaurantId for new restaurants if not provided
         if (!restaurantId && !sharedRestaurantId) {
             sharedRestaurantId = crypto.randomUUID();
-            console.log(`Generated new sharedRestaurantId: ${sharedRestaurantId}`);
+            this.log.debug(`Generated new sharedRestaurantId: ${sharedRestaurantId}`);
         }
         
         // Set originalCuratorId for new restaurants if not provided
         if (!restaurantId && !originalCuratorId && curatorId) {
             originalCuratorId = curatorId;
-            console.log(`Set originalCuratorId to current curator: ${originalCuratorId}`);
+            this.log.debug(`Set originalCuratorId to current curator: ${originalCuratorId}`);
         }
         
         // Try to save without a transaction first to preload the concepts
@@ -960,7 +966,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                             value: concept.value
                         });
                     } catch (conceptError) {
-                        console.warn(`Error pre-saving concept ${concept.category}:${concept.value}:`, conceptError);
+                        this.log.warn(`Error pre-saving concept ${concept.category}:${concept.value}:`, conceptError);
                         // Continue with other concepts
                     }
                 }
@@ -973,13 +979,13 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 sharedRestaurantId, originalCuratorId
             );
         } catch (error) {
-            console.error('Error in pre-save phase:', error);
+            this.log.error('Error in pre-save phase:', error);
             
             // If we get a database error, try resetting the database
             if (error.name === 'NotFoundError' || 
                 error.message.includes('object store was not found') ||
                 error.name === 'PrematureCommitError') {
-                console.warn('Database error in saveRestaurant, attempting to reset...');
+                this.log.warn('Database error in saveRestaurant, attempting to reset...');
                 if (await this.resetDatabase()) {
                     // Try one more time after reset
                     return this.saveRestaurant(name, curatorId, concepts, location, photos, transcription, description, source, serverId, restaurantId, sharedRestaurantId, originalCuratorId);
@@ -995,7 +1001,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
         transcription, description, source = 'local', serverId = null, restaurantId = null,
         sharedRestaurantId = null, originalCuratorId = null
     ) {
-        console.log(`dataStorage.saveRestaurantWithTransaction: ${name}, source=${source}, serverId=${serverId}`);
+        this.log.debug(`dataStorage.saveRestaurantWithTransaction: ${name}, source=${source}, serverId=${serverId}`);
         
         // Determine if we're working with pre-saved concept IDs or raw concepts
         const areConceptIds = conceptsOrIds.length > 0 && conceptsOrIds[0].conceptId !== undefined;
@@ -1032,7 +1038,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                     ? await this.db.restaurants.put({...restaurantData, id: restaurantId})
                     : await this.db.restaurants.add(restaurantData);
                 
-                console.log(`Restaurant saved with ID: ${savedRestaurantId}, source: ${source}, serverId: ${serverId || 'none'}, sharedId: ${sharedRestaurantId}`);
+                this.log.debug(`Restaurant saved with ID: ${savedRestaurantId}, source: ${source}, serverId: ${serverId || 'none'}, sharedId: ${sharedRestaurantId}`);
                 
                 // Save concept relationships
                 if (conceptsOrIds && conceptsOrIds.length > 0) {
@@ -1077,14 +1083,14 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 return savedRestaurantId;
             });
         } catch (error) {
-            console.error('Error in saveRestaurant transaction:', error);
+            this.log.error('Error in saveRestaurant transaction:', error);
             
             // Handle transaction failures
             if (!this.isResetting && (
                 error.name === 'NotFoundError' || 
                 error.message.includes('object store was not found') ||
                 error.name === 'PrematureCommitError')) {
-                console.warn('Transaction error in saveRestaurantWithTransaction, attempting to reset...');
+                this.log.warn('Transaction error in saveRestaurantWithTransaction, attempting to reset...');
                 if (await this.resetDatabase()) {
                     // Don't retry here, as this is called from saveRestaurant which will retry
                     throw new Error('Database reset, please retry your operation');
@@ -1106,7 +1112,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
         sharedRestaurantId = null, originalCuratorId = null
     ) {
         try {
-            console.log('Saving restaurant with auto-sync...');
+            this.log.debug('Saving restaurant with auto-sync...');
             
             // First save locally
             const savedRestaurantId = await this.saveRestaurant(
@@ -1115,23 +1121,23 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 sharedRestaurantId, originalCuratorId
             );
             
-            console.log(`Restaurant saved locally with ID: ${savedRestaurantId}`);
+            this.log.debug(`Restaurant saved locally with ID: ${savedRestaurantId}`);
             
             // Attempt automatic background sync (non-blocking)
             if (window.backgroundSync) {
-                console.log('Triggering background sync...');
+                this.log.debug('Triggering background sync...');
                 
                 // Fire-and-forget background sync
                 window.backgroundSync.syncRestaurant(savedRestaurantId, false)
                     .then(success => {
                         if (success) {
-                            console.log(`✅ Background sync successful! Restaurant ID: ${savedRestaurantId}`);
+                            this.log.debug(`✅ Background sync successful! Restaurant ID: ${savedRestaurantId}`);
                         } else {
-                            console.log(`⚠️ Background sync pending for restaurant ${savedRestaurantId}`);
+                            this.log.debug(`⚠️ Background sync pending for restaurant ${savedRestaurantId}`);
                         }
                     })
                     .catch(err => {
-                        console.warn('Background sync error (will retry):', err.message);
+                        this.log.warn('Background sync error (will retry):', err.message);
                     });
                 
                 return {
@@ -1140,7 +1146,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                     syncStatus: 'pending'
                 };
             } else {
-                console.warn('BackgroundSync service not available');
+                this.log.warn('BackgroundSync service not available');
                 
                 return {
                     restaurantId: savedRestaurantId,
@@ -1149,7 +1155,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 };
             }
         } catch (error) {
-            console.error('Error in saveRestaurantWithAutoSync:', error);
+            this.log.error('Error in saveRestaurantWithAutoSync:', error);
             throw error;
         }
     }
@@ -1173,12 +1179,12 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 .first();
             
             if (copy) {
-                console.log(`Found existing copy of shared restaurant for curator ${curatorId}`);
+                this.log.debug(`Found existing copy of shared restaurant for curator ${curatorId}`);
             }
             
             return copy || null;
         } catch (error) {
-            console.error('Error finding restaurant copy:', error);
+            this.log.error('Error finding restaurant copy:', error);
             return null;
         }
     }
@@ -1192,7 +1198,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
      */
     async createRestaurantCopy(sourceRestaurantId, newCuratorId) {
         try {
-            console.log(`Creating copy of restaurant ${sourceRestaurantId} for curator ${newCuratorId}`);
+            this.log.debug(`Creating copy of restaurant ${sourceRestaurantId} for curator ${newCuratorId}`);
             
             // Get source restaurant
             const sourceRestaurant = await this.db.restaurants.get(sourceRestaurantId);
@@ -1247,11 +1253,11 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 sourceRestaurant.originalCuratorId               // PRESERVE original creator
             );
             
-            console.log(`Created copy with ID ${copyId}, sharedRestaurantId: ${sourceRestaurant.sharedRestaurantId}`);
+            this.log.debug(`Created copy with ID ${copyId}, sharedRestaurantId: ${sourceRestaurant.sharedRestaurantId}`);
             
             return copyId;
         } catch (error) {
-            console.error('Error creating restaurant copy:', error);
+            this.log.error('Error creating restaurant copy:', error);
             throw error;
         }
     }
@@ -1378,7 +1384,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 .and(r => !r.deletedLocally)
                 .toArray();
                 
-            console.log(`Found ${unsyncedRestaurants.length} unsynced restaurants (source='local' and not deleted)`);
+            this.log.debug(`Found ${unsyncedRestaurants.length} unsynced restaurants (source='local' and not deleted)`);
             
             // Return restaurants with enhanced data including concepts and locations
             const enhancedRestaurants = [];
@@ -1412,7 +1418,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             
             return enhancedRestaurants;
         } catch (error) {
-            console.error('Error getting unsynced restaurants:', error);
+            this.log.error('Error getting unsynced restaurants:', error);
             throw error;
         }
     }
@@ -1430,7 +1436,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 .filter(r => r.serverId != null)
                 .toArray();
             
-            console.log(`Found ${syncedRestaurants.length} synced restaurants locally`);
+            this.log.debug(`Found ${syncedRestaurants.length} synced restaurants locally`);
             
             let markedCount = 0;
             
@@ -1438,7 +1444,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             for (const restaurant of syncedRestaurants) {
                 // If restaurant has serverId but is not in server response, mark as local
                 if (!serverRestaurantIds.has(restaurant.serverId)) {
-                    console.log(`Restaurant "${restaurant.name}" (serverId: ${restaurant.serverId}) not found on server - marking as local`);
+                    this.log.debug(`Restaurant "${restaurant.name}" (serverId: ${restaurant.serverId}) not found on server - marking as local`);
                     
                     await this.db.restaurants.update(restaurant.id, {
                         serverId: null,
@@ -1453,10 +1459,10 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 }
             }
             
-            console.log(`Marked ${markedCount} restaurants as local (server inconsistency detected)`);
+            this.log.debug(`Marked ${markedCount} restaurants as local (server inconsistency detected)`);
             return markedCount;
         } catch (error) {
-            console.error('Error marking missing restaurants as local:', error);
+            this.log.error('Error marking missing restaurants as local:', error);
             throw error;
         }
     }
@@ -1470,7 +1476,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
      */
     async updateRestaurantSyncStatus(restaurantId, serverId, source = 'remote') {
         try {
-            console.log(`Updating sync status for restaurant ${restaurantId} with server ID ${serverId} and source ${source}`);
+            this.log.debug(`Updating sync status for restaurant ${restaurantId} with server ID ${serverId} and source ${source}`);
             
             // Validate parameters
             if (!restaurantId) {
@@ -1489,10 +1495,10 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 source: source
             });
             
-            console.log(`Restaurant ${localId} sync status updated. Server ID: ${serverId}, Source: ${source}`);
+            this.log.debug(`Restaurant ${localId} sync status updated. Server ID: ${serverId}, Source: ${source}`);
             return true;
         } catch (error) {
-            console.error('Error updating restaurant sync status:', error);
+            this.log.error('Error updating restaurant sync status:', error);
             throw error;
         }
     }
@@ -1510,8 +1516,8 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
      * @returns {Promise<number>} - Restaurant ID
      */
     async updateRestaurant(restaurantId, name, curatorId, concepts, location, photos, transcription, description) {
-        console.log(`Updating restaurant: ${name} with ID: ${restaurantId}`);
-        console.log(`Concepts count: ${concepts.length}, Has location: ${!!location}, Photos count: ${photos ? photos.length : 0}, Has transcription: ${!!transcription}, Has description: ${!!description}`);
+        this.log.debug(`Updating restaurant: ${name} with ID: ${restaurantId}`);
+        this.log.debug(`Concepts count: ${concepts.length}, Has location: ${!!location}, Photos count: ${photos ? photos.length : 0}, Has transcription: ${!!transcription}, Has description: ${!!description}`);
         
         try {
             // Get the existing restaurant to preserve serverId and lastSynced
@@ -1525,7 +1531,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             const serverId = existingRestaurant.serverId || null;
             const lastSynced = existingRestaurant.lastSynced || null;
             
-            console.log(`Marking as source='local' (needs sync), preserving serverId: ${serverId}`);
+            this.log.debug(`Marking as source='local' (needs sync), preserving serverId: ${serverId}`);
             
             // Pre-save all concepts outside any transaction
             const conceptIds = [];
@@ -1539,7 +1545,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                             value: concept.value
                         });
                     } catch (conceptError) {
-                        console.warn(`Error pre-saving concept ${concept.category}:${concept.value}:`, conceptError);
+                        this.log.warn(`Error pre-saving concept ${concept.category}:${concept.value}:`, conceptError);
                         // Continue with other concepts
                     }
                 }
@@ -1596,27 +1602,27 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                     }
                 }
                 
-                console.log(`Restaurant updated successfully. ID: ${restaurantId}, Source: 'local' (needs sync)`);
+                this.log.debug(`Restaurant updated successfully. ID: ${restaurantId}, Source: 'local' (needs sync)`);
                 
                 // Trigger background sync (non-blocking)
                 if (window.backgroundSync) {
-                    console.log('Triggering background sync after update...');
+                    this.log.debug('Triggering background sync after update...');
                     window.backgroundSync.syncRestaurant(restaurantId, false).catch(err => {
-                        console.warn('Background sync error after update:', err.message);
+                        this.log.warn('Background sync error after update:', err.message);
                     });
                 }
                 
                 return restaurantId;
             });
         } catch (error) {
-            console.error('Error updating restaurant:', error);
+            this.log.error('Error updating restaurant:', error);
             
             // If this is a database structure issue and we haven't just reset
             if (!this.isResetting && (
                 error.name === 'NotFoundError' || 
                 error.message.includes('object store was not found') ||
                 error.name === 'PrematureCommitError')) {
-                console.warn('Database error in updateRestaurant, attempting to reset...');
+                this.log.warn('Database error in updateRestaurant, attempting to reset...');
                 if (await this.resetDatabase()) {
                     // Try one more time after reset
                     return this.updateRestaurant(restaurantId, name, curatorId, concepts, location, photos, transcription, description);
@@ -1640,7 +1646,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             const curators = await this.db.curators.orderBy('lastActive').reverse().limit(1).toArray();
             return curators.length > 0 ? curators[0] : null;
         } catch (error) {
-            console.error('Error getting current curator:', error);
+            this.log.error('Error getting current curator:', error);
             if (error.name === 'NotFoundError' || error.message.includes('object store was not found')) {
                 await this.resetDatabase();
                 return null;
@@ -1653,7 +1659,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
         try {
             return await this.db.curators.update(curatorId, { lastActive: new Date() });
         } catch (error) {
-            console.error('Error updating curator activity:', error);
+            this.log.error('Error updating curator activity:', error);
             if (error.name === 'NotFoundError' || error.message.includes('object store was not found')) {
                 await this.resetDatabase();
             }
@@ -1706,7 +1712,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 return this.saveConcept(category, value, true);
             }
         } catch (error) {
-            console.error('Error saving concept:', error);
+            this.log.error('Error saving concept:', error);
             throw error;
         }
     }
@@ -1981,13 +1987,13 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
      * @returns {Array} Array of restaurants in V2 format
      */
     async exportDataV2() {
-        console.log('Starting V2 export with metadata array structure...');
+        this.log.debug('Starting V2 export with metadata array structure...');
         
         const restaurants = await this.db.restaurants.toArray();
         const curators = await this.db.curators.toArray();
         const concepts = await this.db.concepts.toArray();
         
-        console.log(`Exporting ${restaurants.length} restaurants in V2 format`);
+        this.log.debug(`Exporting ${restaurants.length} restaurants in V2 format`);
         
         const exportRestaurants = await Promise.all(
             restaurants.map(async restaurant => {
@@ -1995,7 +2001,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             })
         );
         
-        console.log(`V2 export complete: ${exportRestaurants.length} restaurants processed`);
+        this.log.debug(`V2 export complete: ${exportRestaurants.length} restaurants processed`);
         
         // V2 format: Return array of restaurants directly (no wrapper object)
         return exportRestaurants;
@@ -2007,8 +2013,8 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
      * Dependencies: db.restaurants, db.curators, db.concepts, db.restaurantConcepts, db.restaurantLocations, db.restaurantPhotos
      */
     async importDataV2(restaurantsArray) {
-        console.log('Starting V2 import with metadata array structure...');
-        console.log(`Importing ${restaurantsArray.length} restaurants`);
+        this.log.debug('Starting V2 import with metadata array structure...');
+        this.log.debug(`Importing ${restaurantsArray.length} restaurants`);
         
         // Validate input
         if (!Array.isArray(restaurantsArray)) {
@@ -2039,7 +2045,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 const { metadata, ...categories } = restaurantData;
                 
                 if (!metadata || !Array.isArray(metadata)) {
-                    console.warn('Restaurant missing metadata array, skipping:', restaurantData);
+                    this.log.warn('Restaurant missing metadata array, skipping:', restaurantData);
                     continue;
                 }
                 
@@ -2050,7 +2056,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 const googlePlacesMeta = metadata.find(m => m.type === 'google-places');
                 
                 if (!collectorMeta || !collectorMeta.data || !collectorMeta.data.name) {
-                    console.warn('Restaurant missing collector data with name, skipping:', restaurantData);
+                    this.log.warn('Restaurant missing collector data with name, skipping:', restaurantData);
                     continue;
                 }
                 
@@ -2074,7 +2080,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                             id: curatorId,
                             name: curatorName
                         });
-                        console.log(`Created new curator: ${curatorName} (ID: ${curatorId})`);
+                        this.log.debug(`Created new curator: ${curatorName} (ID: ${curatorId})`);
                     }
                 } else {
                     // No curator info in metadata, use default/current curator
@@ -2105,7 +2111,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 
                 // Skip import if restaurant is soft-deleted locally (user deleted it)
                 if (existingRestaurant && existingRestaurant.deletedLocally === true) {
-                    console.log(`Skipping import of "${restaurantName}" - restaurant was deleted by user`);
+                    this.log.debug(`Skipping import of "${restaurantName}" - restaurant was deleted by user`);
                     continue; // Skip this restaurant
                 }
                 
@@ -2149,10 +2155,14 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                     
                     if (Object.keys(updateData).length > 0) {
                         await this.db.restaurants.update(restaurantId, updateData);
-                        console.log(`Updated restaurant: ${restaurantName} (ID: ${restaurantId})`);
+                        this.log.debug(`Updated restaurant: ${restaurantName} (ID: ${restaurantId})`);
                     }
                 } else {
                     // Create new restaurant
+                    // Determine source: if restaurant has serverId, it's from server (remote)
+                    const hasServerId = restaurantMeta && restaurantMeta.serverId;
+                    const determinedSource = hasServerId ? 'remote' : (collectorMeta.source || 'local');
+                    
                     const newRestaurantData = {
                         name: restaurantName,
                         curatorId: curatorId,
@@ -2161,7 +2171,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                             : new Date(),
                         description: collectorMeta.data.description || null,
                         transcription: collectorMeta.data.transcription || null,
-                        source: collectorMeta.source || 'local',
+                        source: determinedSource,
                         origin: 'local'
                     };
                     
@@ -2186,7 +2196,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                     }
                     
                     restaurantId = await this.db.restaurants.add(newRestaurantData);
-                    console.log(`Created new restaurant: ${restaurantName} (ID: ${restaurantId})`);
+                    this.log.debug(`Created new restaurant: ${restaurantName} (ID: ${restaurantId})`);
                 }
                 
                 // Handle location data
@@ -2256,7 +2266,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                                 category: category,
                                 value: value
                             });
-                            console.log(`Created new concept: ${category}:${value} (ID: ${conceptId})`);
+                            this.log.debug(`Created new concept: ${category}:${value} (ID: ${conceptId})`);
                         }
                         
                         // Create restaurant-concept relationship
@@ -2275,7 +2285,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             }
         });
         
-        console.log(`V2 import complete: ${restaurantsArray.length} restaurants processed`);
+        this.log.debug(`V2 import complete: ${restaurantsArray.length} restaurants processed`);
     }
 
     /**
@@ -2317,7 +2327,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
      * Dependencies: None
      */
     convertV2ToV1Format(v2Data) {
-        console.log('Converting V2 format to V1 format for import...');
+        this.log.debug('Converting V2 format to V1 format for import...');
         
         const v1Restaurants = [];
         const v1RestaurantConcepts = [];
@@ -2333,7 +2343,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             const restaurantMeta = v2Restaurant.metadata.find(m => m.type === 'restaurant');
             
             if (!collectorMeta || !collectorMeta.data) {
-                console.warn('Restaurant missing collector data, skipping...');
+                this.log.warn('Restaurant missing collector data, skipping...');
                 return;
             }
             
@@ -2406,7 +2416,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             });
         });
         
-        console.log(`Converted ${v1Restaurants.length} V2 restaurants to V1 format`);
+        this.log.debug(`Converted ${v1Restaurants.length} V2 restaurants to V1 format`);
         
         return {
             curators: v2Data.curators || [],
@@ -2457,10 +2467,10 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
         
         // Detect format and convert if needed
         const format = this.detectImportFormat(importData);
-        console.log(`Detected import format: ${format}`);
+        this.log.debug(`Detected import format: ${format}`);
         
         if (format === 'v2') {
-            console.log('Converting V2 format to V1 for import...');
+            this.log.debug('Converting V2 format to V1 for import...');
             importData = this.convertV2ToV1Format(importData);
         }
         
@@ -2474,7 +2484,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             const conceptMap = new Map();
             const restaurantMap = new Map();
             
-            console.log(`Importing ${importData.curators.length} curators, ${importData.concepts.length} concepts, ${importData.restaurants.length} restaurants`);
+            this.log.debug(`Importing ${importData.curators.length} curators, ${importData.concepts.length} concepts, ${importData.restaurants.length} restaurants`);
             
             // Get existing curators for deduplication check
             const existingCurators = await this.db.curators.toArray();
@@ -2493,7 +2503,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 if (existingCurator) {
                     // Map imported ID to existing ID
                     curatorMap.set(curatorId, existingCurator.id);
-                    console.log(`Mapped imported curator ${curator.name} (ID: ${curatorId}) to existing curator ID: ${existingCurator.id}`);
+                    this.log.debug(`Mapped imported curator ${curator.name} (ID: ${curatorId}) to existing curator ID: ${existingCurator.id}`);
                     
                     // Update lastActive if the imported one is newer
                     if (curator.lastActive && (!existingCurator.lastActive || 
@@ -2513,7 +2523,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                     
                     // Map the old ID to the new ID
                     curatorMap.set(curatorId, newCuratorId);
-                    console.log(`Added new curator ${curator.name} with ID: ${newCuratorId}`);
+                    this.log.debug(`Added new curator ${curator.name} with ID: ${newCuratorId}`);
                     
                     // Add to our existing map to prevent duplicates in subsequent iterations
                     existingCuratorsByName.set(curator.name.toLowerCase(), {
@@ -2542,7 +2552,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 if (existingConcept) {
                     // Map imported ID to existing ID
                     conceptMap.set(conceptId, existingConcept.id);
-                    console.log(`Mapped imported concept ${concept.category}:${concept.value} to existing ID: ${existingConcept.id}`);
+                    this.log.debug(`Mapped imported concept ${concept.category}:${concept.value} to existing ID: ${existingConcept.id}`);
                 } else {
                     // Add new concept
                     const newConceptId = await this.db.concepts.add({
@@ -2627,7 +2637,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             
             // Bulk add concept relations
             if (conceptRelationsBatch.length > 0) {
-                console.log(`Adding ${conceptRelationsBatch.length} unique restaurant-concept relations`);
+                this.log.debug(`Adding ${conceptRelationsBatch.length} unique restaurant-concept relations`);
                 await this.db.restaurantConcepts.bulkAdd(conceptRelationsBatch);
             }
             
@@ -2669,7 +2679,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             }
         });
         
-        console.log('Import completed successfully with deduplication');
+        this.log.debug('Import completed successfully with deduplication');
         return true;
     }
 
@@ -2682,7 +2692,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             const lastSyncTimeStr = await this.getSetting('lastSyncTime', null);
             return lastSyncTimeStr ? new Date(lastSyncTimeStr) : null;
         } catch (error) {
-            console.error('Error getting last sync time:', error);
+            this.log.error('Error getting last sync time:', error);
             return null;
         }
     }
@@ -2694,9 +2704,9 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
     async updateLastSyncTime() {
         try {
             await this.updateSetting('lastSyncTime', new Date().toISOString());
-            console.log('Last sync time updated:', new Date().toISOString());
+            this.log.debug('Last sync time updated:', new Date().toISOString());
         } catch (error) {
-            console.error('Error updating last sync time:', error);
+            this.log.error('Error updating last sync time:', error);
             throw error;
         }
     }
@@ -2718,7 +2728,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             
             return true;
         } catch (error) {
-            console.error('Error deleting restaurant:', error);
+            this.log.error('Error deleting restaurant:', error);
             throw error;
         }
     }
@@ -2737,27 +2747,26 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 throw new Error('Restaurant not found');
             }
             
-            // Determine if this is a local-only restaurant
-            const isLocal = !restaurant.serverId || 
-                           !restaurant.source || 
-                           restaurant.source === 'local';
+            // Determine if this is a truly local-only restaurant (never been on server)
+            // A restaurant is local-only ONLY if it has no serverId
+            const isLocal = !restaurant.serverId;
             
-            console.log(`Smart delete for "${restaurant.name}": isLocal=${isLocal}, serverId=${restaurant.serverId}, source=${restaurant.source}`);
+            this.log.debug(`Smart delete for "${restaurant.name}": isLocal=${isLocal}, serverId=${restaurant.serverId}, source=${restaurant.source}`);
             
             if (isLocal) {
                 // STRATEGY 1: Permanent delete for local-only restaurants
-                console.log('Performing permanent delete (local-only restaurant)');
+                this.log.debug('Performing permanent delete (local-only restaurant)');
                 await this.deleteRestaurant(restaurantId);
                 return { type: 'permanent', id: restaurantId, name: restaurant.name };
             } else {
                 // STRATEGY 2: Soft delete + server delete for synced restaurants (unless forced)
                 if (options.force === true) {
-                    console.log('Performing forced permanent delete (synced restaurant)');
+                    this.log.debug('Performing forced permanent delete (synced restaurant)');
                     await this.deleteRestaurant(restaurantId);
                     return { type: 'permanent', id: restaurantId, name: restaurant.name, forced: true };
                 }
                 
-                console.log('Performing soft delete + server delete (synced restaurant)');
+                this.log.debug('Performing soft delete + server delete (synced restaurant)');
                 
                 // Delegate server delete to syncManager
                 let serverDeleted = false;
@@ -2766,11 +2775,11 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                     serverDeleted = deleteResult.success;
                     
                     if (!serverDeleted) {
-                        console.warn(`Server delete failed: ${deleteResult.error}`);
+                        this.log.warn(`Server delete failed: ${deleteResult.error}`);
                         // Continue with soft delete even if server delete fails
                     }
                 } else {
-                    console.warn('SyncManager not available - skipping server delete');
+                    this.log.warn('SyncManager not available - skipping server delete');
                 }
                 
                 // Soft delete locally (mark as deleted)
@@ -2778,7 +2787,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 return { type: 'soft', id: restaurantId, name: restaurant.name, serverDeleted };
             }
         } catch (error) {
-            console.error('Error in smart delete restaurant:', error);
+            this.log.error('Error in smart delete restaurant:', error);
             throw error;
         }
     }
@@ -2794,10 +2803,10 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 deletedLocally: true,
                 deletedAt: new Date()
             });
-            console.log(`Restaurant ${restaurantId} soft deleted (archived)`);
+            this.log.debug(`Restaurant ${restaurantId} soft deleted (archived)`);
             return 1;
         } catch (error) {
-            console.error('Error soft deleting restaurant:', error);
+            this.log.error('Error soft deleting restaurant:', error);
             throw error;
         }
     }
@@ -2823,10 +2832,10 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 deletedAt: null
             });
             
-            console.log(`Restaurant ${restaurantId} restored`);
+            this.log.debug(`Restaurant ${restaurantId} restored`);
             return { id: restaurantId, name: restaurant.name };
         } catch (error) {
-            console.error('Error restoring restaurant:', error);
+            this.log.error('Error restoring restaurant:', error);
             throw error;
         }
     }

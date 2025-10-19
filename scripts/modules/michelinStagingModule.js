@@ -10,6 +10,9 @@ if (typeof window.MichelinStagingModule === 'undefined') {
      */
     window.MichelinStagingModule = class MichelinStagingModule {
         constructor() {
+            // Create module logger instance
+            this.log = Logger.module('MichelinStagingModule');
+            
             this.apiEndpoint = 'https://wsmontes.pythonanywhere.com/api/restaurants-staging';
             this.searchResults = [];
             this.isLoading = false;
@@ -31,7 +34,7 @@ if (typeof window.MichelinStagingModule === 'undefined') {
             // Create menu button if needed
             this.createMenuButtonIfNeeded();
             
-            console.log('MichelinStagingModule initialized');
+            this.log.debug('MichelinStagingModule initialized');
         }
         
         /**
@@ -176,7 +179,7 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                     }
                 }, 100);
                 
-                console.log('Michelin restaurant search modal created');
+                this.log.debug('Michelin restaurant search modal created');
             }
         }
         
@@ -201,7 +204,7 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                 this.totalPages = 1;
                 this.perPage = 20;
                 
-                console.log('Michelin restaurant search modal opened');
+                this.log.debug('Michelin restaurant search modal opened');
             }
         }
 
@@ -316,7 +319,7 @@ if (typeof window.MichelinStagingModule === 'undefined') {
         createMenuButtonIfNeeded() {
             // Skip button creation - we'll use a dedicated section in the HTML instead
             // The button will be added directly in the HTML structure
-            console.log('Michelin button creation skipped - using dedicated section in HTML');
+            this.log.debug('Michelin button creation skipped - using dedicated section in HTML');
         }
         
         /**
@@ -326,7 +329,7 @@ if (typeof window.MichelinStagingModule === 'undefined') {
             const modal = document.getElementById('restaurant-staging-search-modal');
             if (modal) {
                 modal.classList.add('hidden');
-                console.log('Michelin restaurant search modal closed');
+                this.log.debug('Michelin restaurant search modal closed');
             }
         }
         
@@ -366,7 +369,7 @@ if (typeof window.MichelinStagingModule === 'undefined') {
             this.currentPage = 1;
             this.totalPages = 1;
             
-            console.log('Search form reset');
+            this.log.debug('Search form reset');
         }
         
         /**
@@ -422,12 +425,12 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                 this.currentLongitude = position.coords.longitude;
                 
                 this.showNotification(`Location obtained: ${this.currentLatitude.toFixed(4)}, ${this.currentLongitude.toFixed(4)}`, 'success');
-                console.log('Current location obtained:', this.currentLatitude, this.currentLongitude);
+                this.log.debug('Current location obtained:', this.currentLatitude, this.currentLongitude);
                 
                 // Automatically search with the location
                 this.performSearch();
             } catch (error) {
-                console.error('Error getting location:', error);
+                this.log.error('Error getting location:', error);
                 this.showNotification('Unable to get your location. Please check permissions.', 'error');
                 
                 // Uncheck the location checkbox
@@ -487,7 +490,7 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                 }
                 
                 // Debug the final request parameters
-                console.log('Search parameters:', params);
+                this.log.debug('Search parameters:', params);
                 
                 // Build query string (only include non-empty params)
                 const query = Object.entries(params)
@@ -504,7 +507,7 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                 // Update pagination UI
                 this.updatePaginationUI();
             } catch (error) {
-                console.error('Search error:', error);
+                this.log.error('Search error:', error);
                 this.showSearchError(error.message);
             } finally {
                 this.hideLoading();
@@ -517,7 +520,7 @@ if (typeof window.MichelinStagingModule === 'undefined') {
          * @returns {Promise<Array>} - Search results
          */
         async fetchResults(url) {
-            console.log('Fetching restaurants from:', url);
+            this.log.debug('Fetching restaurants from:', url);
             
             // Add retry functionality for server errors
             const MAX_RETRIES = 2;
@@ -529,19 +532,19 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                     // If we're retrying, add a small delay
                     if (retries > 0) {
                         await new Promise(resolve => setTimeout(resolve, retries * 1000));
-                        console.log(`Retry attempt ${retries}/${MAX_RETRIES}...`);
+                        this.log.debug(`Retry attempt ${retries}/${MAX_RETRIES}...`);
                     }
                     
                     const response = await window.apiService.getMichelinStaging(searchParams);
                     
                     // Handle different error cases with specific messages
                     if (!response.success) {
-                        console.error('API error response:', response.error);
+                        this.log.error('API error response:', response.error);
                         throw new Error(response.error || 'Server error');
                     }
                     
                     const data = response.data;
-                    console.log('API response:', data);
+                    this.log.debug('API response:', data);
                     
                     // Handle different response formats
                     if (data && Array.isArray(data)) {
@@ -568,7 +571,7 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                         }
                         return data.results;
                     } else {
-                        console.warn('Unknown API response format:', data);
+                        this.log.warn('Unknown API response format:', data);
                         return [];
                     }
                 } catch (error) {
@@ -577,7 +580,7 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                     // Only retry on network errors or server errors (500s)
                     if ((error.name === 'TypeError' || error.message.includes('500')) && retries < MAX_RETRIES) {
                         retries++;
-                        console.log(`Server error, retrying (${retries}/${MAX_RETRIES})...`);
+                        this.log.debug(`Server error, retrying (${retries}/${MAX_RETRIES})...`);
                     } else {
                         // Otherwise, throw the error to be handled by the caller
                         throw error;
@@ -596,12 +599,12 @@ if (typeof window.MichelinStagingModule === 'undefined') {
         navigatePage(direction) {
             if (direction === 'prev' && this.currentPage > 1) {
                 this.currentPage--;
-                console.log(`Moving to previous page: ${this.currentPage}`);
+                this.log.debug(`Moving to previous page: ${this.currentPage}`);
             } else if (direction === 'next' && this.currentPage < this.totalPages) {
                 this.currentPage++;
-                console.log(`Moving to next page: ${this.currentPage}`);
+                this.log.debug(`Moving to next page: ${this.currentPage}`);
             } else {
-                console.log('Cannot navigate: already at first/last page');
+                this.log.debug('Cannot navigate: already at first/last page');
                 return;
             }
             
@@ -798,9 +801,9 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                     messageElement.textContent = displayMessage;
                 }
                 
-                console.log(`Loading message updated: ${displayMessage}`);
+                this.log.debug(`Loading message updated: ${displayMessage}`);
             } catch (error) {
-                console.warn('Error updating loading message:', error);
+                this.log.warn('Error updating loading message:', error);
             }
         }
 
@@ -826,7 +829,7 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                     window.uiUtils.showLoading('Preparing restaurant import...');
                 }
                 
-                console.log('Importing restaurant to form:', restaurant);
+                this.log.debug('Importing restaurant to form:', restaurant);
                 
                 // STEP 1: Extract basic concepts from restaurant data
                 this.updateLoadingMessage('Extracting restaurant information', 1, TOTAL_STEPS);
@@ -845,7 +848,7 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                             const extractedConcepts = await window.uiManager.conceptModule.extractConcepts(restaurant.review);
                             
                             if (extractedConcepts && extractedConcepts.length > 0) {
-                                console.log('AI extracted additional concepts from review:', extractedConcepts);
+                                this.log.debug('AI extracted additional concepts from review:', extractedConcepts);
                                 
                                 // Add non-duplicate concepts
                                 this.updateLoadingMessage('Processing extracted concepts', 2, TOTAL_STEPS);
@@ -857,7 +860,7 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                             }
                         }
                     } catch (conceptError) {
-                        console.warn('Error extracting concepts from review:', conceptError);
+                        this.log.warn('Error extracting concepts from review:', conceptError);
                         this.updateLoadingMessage('Continuing with basic information (review analysis failed)', 2, TOTAL_STEPS);
                         await new Promise(resolve => setTimeout(resolve, 800)); // Pause to show the error message
                         // Continue with basic concepts only
@@ -959,7 +962,7 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                     throw new Error('UI Manager not available');
                 }
             } catch (error) {
-                console.error('Error importing restaurant:', error);
+                this.log.error('Error importing restaurant:', error);
                 
                 // Hide loading if shown
                 if (window.uiUtils && typeof window.uiUtils.hideLoading === 'function') {
@@ -1030,7 +1033,7 @@ if (typeof window.MichelinStagingModule === 'undefined') {
             // Try to extract more concepts from the review text
             if (restaurant.review && apiHandler && apiHandler.apiKey) {
                 try {
-                    console.log('Extracting concepts from Michelin review...');
+                    this.log.debug('Extracting concepts from Michelin review...');
                     
                     const extractedConcepts = await apiHandler.extractConceptsFromReview(restaurant.review);
                     
@@ -1049,7 +1052,7 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                         }
                     }
                 } catch (error) {
-                    console.warn('Error extracting concepts from review:', error);
+                    this.log.warn('Error extracting concepts from review:', error);
                     // Continue with what we have
                 }
             }
@@ -1320,7 +1323,7 @@ if (typeof window.MichelinStagingModule === 'undefined') {
             }
             
             // Simple fallback
-            console.log(`[${type.toUpperCase()}] ${message}`);
+            this.log.debug(`[${type.toUpperCase()}] ${message}`);
             
             // For errors, show alert
             if (type === 'error') {
@@ -1358,7 +1361,7 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                 this.setLoadingState(false);
                 
             } catch (error) {
-                console.error('Error loading filter options:', error);
+                this.log.error('Error loading filter options:', error);
                 this.setLoadingState(false);
                 this.filterOptionsLoading = false;
                 
@@ -1374,7 +1377,7 @@ if (typeof window.MichelinStagingModule === 'undefined') {
             try {
                 // Use the new distinct endpoint for better performance
                 const url = `${this.apiEndpoint}/distinct/country`;
-                console.log('Fetching countries from:', url);
+                this.log.debug('Fetching countries from:', url);
                 
                 // Fetch the data
                 const response = await fetch(url);
@@ -1385,7 +1388,7 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                 
                 // Parse the response, with robust error handling
                 const rawData = await response.json();
-                console.log('Country API response format:', typeof rawData, rawData);
+                this.log.debug('Country API response format:', typeof rawData, rawData);
                 
                 // Handle different possible response formats
                 let countries = [];
@@ -1460,10 +1463,10 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                     this.countries = countries;
                 }
                 
-                console.log(`Loaded ${countries.length} countries`);
+                this.log.debug(`Loaded ${countries.length} countries`);
                 
             } catch (error) {
-                console.error('Error loading countries:', error);
+                this.log.error('Error loading countries:', error);
                 // Set an error state in the dropdown
                 const countrySelect = document.getElementById('search-staging-country');
                 if (countrySelect) {
@@ -1488,7 +1491,7 @@ if (typeof window.MichelinStagingModule === 'undefined') {
             try {
                 // Use the new distinct endpoint for better performance
                 const url = `${this.apiEndpoint}/distinct/cuisine`;
-                console.log('Fetching cuisines from:', url);
+                this.log.debug('Fetching cuisines from:', url);
                 
                 // Fetch the data
                 const response = await fetch(url);
@@ -1499,7 +1502,7 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                 
                 // Parse the response, with robust error handling
                 const rawData = await response.json();
-                console.log('Cuisine API response format:', typeof rawData, rawData);
+                this.log.debug('Cuisine API response format:', typeof rawData, rawData);
                 
                 // Handle different possible response formats
                 let cuisines = [];
@@ -1583,10 +1586,10 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                     this.cuisines = uniqueCuisines;
                 }
                 
-                console.log(`Loaded ${uniqueCuisines.length} cuisines`);
+                this.log.debug(`Loaded ${uniqueCuisines.length} cuisines`);
                 
             } catch (error) {
-                console.error('Error loading cuisines:', error);
+                this.log.error('Error loading cuisines:', error);
                 // Set an error state in the dropdown
                 const cuisineSelect = document.getElementById('search-staging-cuisine');
                 if (cuisineSelect) {
@@ -1641,7 +1644,7 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                 // There's no direct distinct endpoint with filtering, so we need to use a search
                 // to get cities for a specific country
                 const searchUrl = `${this.apiEndpoint}?country=${encodeURIComponent(country)}&per_page=100`;
-                console.log('Fetching restaurants to extract cities:', searchUrl);
+                this.log.debug('Fetching restaurants to extract cities:', searchUrl);
                 
                 // Fetch the data
                 const response = await fetch(searchUrl);
@@ -1694,9 +1697,9 @@ if (typeof window.MichelinStagingModule === 'undefined') {
                 // Enable the city dropdown
                 citySelect.disabled = false;
                 
-                console.log(`Loaded ${citiesArray.length} cities for ${country}`);
+                this.log.debug(`Loaded ${citiesArray.length} cities for ${country}`);
             } catch (error) {
-                console.error(`Error loading cities for ${country}:`, error);
+                this.log.error(`Error loading cities for ${country}:`, error);
                 
                 // Set error state in city dropdown
                 const citySelect = document.getElementById('search-staging-city');
@@ -1782,12 +1785,12 @@ if (typeof window.MichelinStagingModule === 'undefined') {
         navigatePage(direction) {
             if (direction === 'prev' && this.currentPage > 1) {
                 this.currentPage--;
-                console.log(`Moving to previous page: ${this.currentPage}`);
+                this.log.debug(`Moving to previous page: ${this.currentPage}`);
             } else if (direction === 'next' && this.currentPage < this.totalPages) {
                 this.currentPage++;
-                console.log(`Moving to next page: ${this.currentPage}`);
+                this.log.debug(`Moving to next page: ${this.currentPage}`);
             } else {
-                console.log('Cannot navigate: already at first/last page');
+                this.log.debug('Cannot navigate: already at first/last page');
                 return;
             }
             

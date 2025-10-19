@@ -16,6 +16,9 @@
 
 const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', class {
     constructor() {
+        // Create module logger instance
+        this.log = Logger.module('PendingAudioManager');
+        
         this.dataStorage = null;
         this.maxAutoRetries = 2;
         this.retryDelays = [5000, 15000]; // 5s, 15s
@@ -27,7 +30,7 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
      */
     init(dataStorage) {
         this.dataStorage = dataStorage;
-        console.log('PendingAudioManager initialized');
+        this.log.debug('PendingAudioManager initialized');
     }
 
     /**
@@ -53,11 +56,11 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
             };
 
             const id = await this.dataStorage.db.pendingAudio.add(audioData);
-            console.log(`Pending audio saved with ID: ${id}`);
+            this.log.debug(`Pending audio saved with ID: ${id}`);
             
             return id;
         } catch (error) {
-            console.error('Error saving pending audio:', error);
+            this.log.error('Error saving pending audio:', error);
             throw error;
         }
     }
@@ -72,7 +75,7 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
             const audio = await this.dataStorage.db.pendingAudio.get(id);
             return audio;
         } catch (error) {
-            console.error('Error retrieving pending audio:', error);
+            this.log.error('Error retrieving pending audio:', error);
             throw error;
         }
     }
@@ -100,7 +103,7 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
             const audios = await query.toArray();
             return audios;
         } catch (error) {
-            console.error('Error retrieving pending audios:', error);
+            this.log.error('Error retrieving pending audios:', error);
             return [];
         }
     }
@@ -114,9 +117,9 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
     async updateAudio(id, updates) {
         try {
             await this.dataStorage.db.pendingAudio.update(id, updates);
-            console.log(`Pending audio ${id} updated`);
+            this.log.debug(`Pending audio ${id} updated`);
         } catch (error) {
-            console.error('Error updating pending audio:', error);
+            this.log.error('Error updating pending audio:', error);
             throw error;
         }
     }
@@ -141,10 +144,10 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
                 status: newRetryCount >= this.maxAutoRetries ? 'failed' : 'retrying'
             });
 
-            console.log(`Pending audio ${id} retry count: ${newRetryCount}`);
+            this.log.debug(`Pending audio ${id} retry count: ${newRetryCount}`);
             return newRetryCount;
         } catch (error) {
-            console.error('Error incrementing retry count:', error);
+            this.log.error('Error incrementing retry count:', error);
             throw error;
         }
     }
@@ -159,28 +162,28 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
         try {
             const audio = await this.getAudio(id);
             if (!audio) {
-                console.error(`Cannot schedule retry: pending audio ${id} not found`);
+                this.log.error(`Cannot schedule retry: pending audio ${id} not found`);
                 return;
             }
 
             const retryCount = audio.retryCount || 0;
             
             if (retryCount >= this.maxAutoRetries) {
-                console.log(`Max retries reached for pending audio ${id}, marking as failed`);
+                this.log.debug(`Max retries reached for pending audio ${id}, marking as failed`);
                 await this.updateAudio(id, { status: 'failed' });
                 return;
             }
 
             const delay = this.retryDelays[retryCount] || this.retryDelays[this.retryDelays.length - 1];
             
-            console.log(`Scheduling retry ${retryCount + 1} for pending audio ${id} in ${delay}ms`);
+            this.log.debug(`Scheduling retry ${retryCount + 1} for pending audio ${id} in ${delay}ms`);
             
             setTimeout(async () => {
                 try {
-                    console.log(`Executing retry ${retryCount + 1} for pending audio ${id}`);
+                    this.log.debug(`Executing retry ${retryCount + 1} for pending audio ${id}`);
                     await retryCallback(id);
                 } catch (error) {
-                    console.error(`Retry ${retryCount + 1} failed for pending audio ${id}:`, error);
+                    this.log.error(`Retry ${retryCount + 1} failed for pending audio ${id}:`, error);
                     await this.incrementRetryCount(id, error.message);
                     
                     // Schedule next retry if not maxed out
@@ -191,7 +194,7 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
                 }
             }, delay);
         } catch (error) {
-            console.error('Error scheduling auto retry:', error);
+            this.log.error('Error scheduling auto retry:', error);
         }
     }
 
@@ -203,9 +206,9 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
     async deleteAudio(id) {
         try {
             await this.dataStorage.db.pendingAudio.delete(id);
-            console.log(`Pending audio ${id} deleted`);
+            this.log.debug(`Pending audio ${id} deleted`);
         } catch (error) {
-            console.error('Error deleting pending audio:', error);
+            this.log.error('Error deleting pending audio:', error);
             throw error;
         }
     }
@@ -221,10 +224,10 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
             const deletePromises = audios.map(audio => this.deleteAudio(audio.id));
             await Promise.all(deletePromises);
             
-            console.log(`Deleted ${audios.length} pending audio records`);
+            this.log.debug(`Deleted ${audios.length} pending audio records`);
             return audios.length;
         } catch (error) {
-            console.error('Error deleting pending audios:', error);
+            this.log.error('Error deleting pending audios:', error);
             return 0;
         }
     }
@@ -240,9 +243,9 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
                 status: 'transcribed',
                 lastError: null
             });
-            console.log(`Pending audio ${id} marked as transcribed`);
+            this.log.debug(`Pending audio ${id} marked as transcribed`);
         } catch (error) {
-            console.error('Error marking audio as transcribed:', error);
+            this.log.error('Error marking audio as transcribed:', error);
             throw error;
         }
     }
@@ -260,7 +263,7 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
                 return await this.dataStorage.db.pendingAudio.count();
             }
         } catch (error) {
-            console.error('Error getting pending audio count:', error);
+            this.log.error('Error getting pending audio count:', error);
             return 0;
         }
     }
@@ -288,7 +291,7 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
                 total: pending + processing + failed + retrying + transcribed
             };
         } catch (error) {
-            console.error('Error getting pending audio counts:', error);
+            this.log.error('Error getting pending audio counts:', error);
             return {
                 pending: 0,
                 processing: 0,
@@ -318,10 +321,10 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
             const deletePromises = oldTranscribed.map(audio => this.deleteAudio(audio.id));
             await Promise.all(deletePromises);
 
-            console.log(`Cleaned up ${oldTranscribed.length} old transcribed audios`);
+            this.log.debug(`Cleaned up ${oldTranscribed.length} old transcribed audios`);
             return oldTranscribed.length;
         } catch (error) {
-            console.error('Error cleaning up old transcribed audios:', error);
+            this.log.error('Error cleaning up old transcribed audios:', error);
             return 0;
         }
     }

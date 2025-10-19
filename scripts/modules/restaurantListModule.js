@@ -6,6 +6,9 @@
 
 const RestaurantListModule = ModuleWrapper.defineClass('RestaurantListModule', class {
         constructor() {
+            // Create module logger instance
+            this.log = Logger.module('RestaurantList');
+            
             this.dataStorage = null;
             this.uiUtils = null;
             this.currentFilter = 'all';
@@ -27,7 +30,7 @@ const RestaurantListModule = ModuleWrapper.defineClass('RestaurantListModule', c
          */
         init(dependencies = {}) {
             try {
-                console.log('Initializing RestaurantListModule...');
+                this.log.debug('Initializing RestaurantListModule...');
                 
                 this.dataStorage = dependencies.dataStorage || window.dataStorage;
                 this.uiUtils = dependencies.uiUtils || window.uiUtils;
@@ -39,10 +42,10 @@ const RestaurantListModule = ModuleWrapper.defineClass('RestaurantListModule', c
                 this.setupEventListeners();
                 this.loadRestaurants();
                 
-                console.log('RestaurantListModule initialized successfully');
+                this.log.debug('RestaurantListModule initialized successfully');
                 return true;
             } catch (error) {
-                console.error('Error initializing RestaurantListModule:', error);
+                this.log.error('Error initializing RestaurantListModule:', error);
                 SafetyUtils.showNotification('Failed to initialize restaurant list', 'error');
                 return false;
             }
@@ -95,15 +98,15 @@ const RestaurantListModule = ModuleWrapper.defineClass('RestaurantListModule', c
                 this.isLoading = true;
                 SafetyUtils.showLoading();
                 
-                console.log('Loading restaurants from database...');
+                this.log.debug('Loading restaurants from database...');
                 this.restaurants = await this.dataStorage.db.restaurants.orderBy('timestamp').reverse().toArray();
                 
-                console.log(`Loaded ${this.restaurants.length} restaurants`);
+                this.log.debug(`Loaded ${this.restaurants.length} restaurants`);
                 this.applyFilters();
                 this.renderRestaurantList();
                 
             } catch (error) {
-                console.error('Error loading restaurants:', error);
+                this.log.error('Error loading restaurants:', error);
                 SafetyUtils.showNotification('Failed to load restaurants', 'error');
             } finally {
                 this.isLoading = false;
@@ -243,7 +246,7 @@ const RestaurantListModule = ModuleWrapper.defineClass('RestaurantListModule', c
         renderRestaurantList() {
             const container = document.getElementById('restaurants-container');
             if (!container) {
-                console.warn('Restaurant list container not found');
+                this.log.warn('Restaurant list container not found');
                 return;
             }
 
@@ -533,7 +536,7 @@ const RestaurantListModule = ModuleWrapper.defineClass('RestaurantListModule', c
                 document.dispatchEvent(event);
                 
             } catch (error) {
-                console.error('Error viewing restaurant details:', error);
+                this.log.error('Error viewing restaurant details:', error);
                 SafetyUtils.showNotification('Failed to load restaurant details', 'error');
             }
         }
@@ -563,7 +566,7 @@ const RestaurantListModule = ModuleWrapper.defineClass('RestaurantListModule', c
                 await this.loadRestaurants();
                 
             } catch (error) {
-                console.error('Error toggling favorite:', error);
+                this.log.error('Error toggling favorite:', error);
                 SafetyUtils.showNotification('Failed to update favorite status', 'error');
             }
         }
@@ -626,7 +629,7 @@ const RestaurantListModule = ModuleWrapper.defineClass('RestaurantListModule', c
                 await this.loadRestaurants();
                 
             } catch (error) {
-                console.error('Error deleting restaurant:', error);
+                this.log.error('Error deleting restaurant:', error);
                 SafetyUtils.showNotification('Failed to delete restaurant: ' + error.message, 'error');
             }
         }
@@ -772,7 +775,7 @@ const RestaurantListModule = ModuleWrapper.defineClass('RestaurantListModule', c
                 SafetyUtils.showNotification(`Exported ${restaurants.length} restaurants`, 'success');
                 
             } catch (error) {
-                console.error('Error exporting selected restaurants:', error);
+                this.log.error('Error exporting selected restaurants:', error);
                 SafetyUtils.showNotification('Failed to export selected restaurants', 'error');
             }
         }
@@ -818,7 +821,7 @@ const RestaurantListModule = ModuleWrapper.defineClass('RestaurantListModule', c
                         await this.dataStorage.smartDeleteRestaurant(id);
                         successCount++;
                     } catch (error) {
-                        console.error(`Error deleting restaurant ${id}:`, error);
+                        this.log.error(`Error deleting restaurant ${id}:`, error);
                         errorCount++;
                     }
                 }
@@ -840,7 +843,7 @@ const RestaurantListModule = ModuleWrapper.defineClass('RestaurantListModule', c
                 await this.loadRestaurants();
                 
             } catch (error) {
-                console.error('Error deleting selected restaurants:', error);
+                this.log.error('Error deleting selected restaurants:', error);
                 SafetyUtils.showNotification('Failed to delete selected restaurants', 'error');
             }
         }

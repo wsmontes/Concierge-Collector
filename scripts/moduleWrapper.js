@@ -4,6 +4,9 @@
  */
 
 const ModuleWrapper = {
+    // Create module logger (inside the object to avoid global scope pollution)
+    _log: Logger ? Logger.module("ModuleWrapper") : console,
+    
     /**
      * Safely defines a JavaScript class in the global scope only if it doesn't already exist
      * @param {string} className - The name of the class to define
@@ -12,10 +15,10 @@ const ModuleWrapper = {
      */
     defineClass: function(className, classDefinition) {
         if (!window[className]) {
-            console.log(`Defining class: ${className}`);
+            this._log.debug(`Defining class: ${className}`);
             window[className] = classDefinition;
         } else {
-            console.log(`Class ${className} already defined, skipping definition`);
+            this._log.debug(`Class ${className} already defined, skipping definition`);
         }
         return window[className];
     },
@@ -29,14 +32,14 @@ const ModuleWrapper = {
      */
     createInstance: function(instanceName, className, ...args) {
         if (!window[instanceName]) {
-            console.log(`Creating instance: ${instanceName}`);
+            this._log.debug(`Creating instance: ${instanceName}`);
             if (window[className]) {
                 window[instanceName] = new window[className](...args);
             } else {
-                console.error(`Cannot create instance of undefined class: ${className}`);
+                this._log.error(`Cannot create instance of undefined class: ${className}`);
             }
         } else {
-            console.log(`Instance ${instanceName} already exists, using existing instance`);
+            this._log.debug(`Instance ${instanceName} already exists, using existing instance`);
         }
         return window[instanceName];
     }

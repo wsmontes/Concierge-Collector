@@ -5,6 +5,9 @@
  */
 class RecordingModule {
     constructor(uiManager) {
+        // Create module logger instance
+        this.log = Logger.module("RecordingModule");
+        
         this.uiManager = uiManager;
         this.isRecording = false;
         this.isAdditionalRecording = false; // New flag to track additional recording state
@@ -45,14 +48,14 @@ class RecordingModule {
         for (const mimeType of mimeTypes) {
             if (MediaRecorder.isTypeSupported(mimeType)) {
                 this.recordingSettings.mimeType = mimeType;
-                console.log(`Selected recording format: ${mimeType}`);
+                this.log.debug(`Selected recording format: ${mimeType}`);
                 break;
             }
         }
         
         // If no supported type is found, let browser use default
         if (!this.recordingSettings.mimeType) {
-            console.warn('No explicit MIME type support detected, using browser default');
+            this.log.warn('No explicit MIME type support detected, using browser default');
         }
     }
 
@@ -61,7 +64,7 @@ class RecordingModule {
      * @returns {void}
      */
     ensureRecordingInterfaceExists() {
-        console.log('Ensuring recording interface exists in the DOM');
+        this.log.debug('Ensuring recording interface exists in the DOM');
         
         // First, check if there are duplicate recording controls and remove them
         this.removeDuplicateRecordingControls();
@@ -71,7 +74,7 @@ class RecordingModule {
         
         // If it doesn't exist, we need to create it
         if (!recordingSection) {
-            console.log('Recording section not found, creating it');
+            this.log.debug('Recording section not found, creating it');
             recordingSection = document.createElement('div');
             recordingSection.id = 'recording-section';
             recordingSection.className = 'mb-6';
@@ -148,16 +151,16 @@ class RecordingModule {
                 mainContainer.appendChild(recordingSection);
             }
             
-            console.log('Recording section created and added to the DOM');
+            this.log.debug('Recording section created and added to the DOM');
         } else {
-            console.log('Recording section already exists');
+            this.log.debug('Recording section already exists');
             
             // Check if the section has the correct structure - if not, repair it
             const startBtn = recordingSection.querySelector('#start-record');
             const stopBtn = recordingSection.querySelector('#stop-record');
             
             if (!startBtn || !stopBtn) {
-                console.log('Recording buttons missing - repairing recording section structure');
+                this.log.debug('Recording buttons missing - repairing recording section structure');
                 
                 // Find the controls container or create one
                 let controlsContainer = recordingSection.querySelector('.recording-controls');
@@ -176,7 +179,7 @@ class RecordingModule {
                 newStartBtn.className = 'bg-red-600 hover:bg-red-700 text-white px-4 py-3 rounded flex items-center text-lg md:text-base';
                 newStartBtn.innerHTML = '<span class="material-icons mr-1">mic</span>Start Recording';
                 controlsContainer.appendChild(newStartBtn);
-                console.log('Added missing start-record button');
+                this.log.debug('Added missing start-record button');
                 
                 // Add stop button with mobile-friendly styling
                 const newStopBtn = document.createElement('button');
@@ -184,7 +187,7 @@ class RecordingModule {
                 newStopBtn.className = 'bg-gray-600 hover:bg-gray-700 text-white px-4 py-3 rounded flex items-center text-lg md:text-base hidden';
                 newStopBtn.innerHTML = '<span class="material-icons mr-1">stop</span>Stop Recording';
                 controlsContainer.appendChild(newStopBtn);
-                console.log('Added missing stop-record button');
+                this.log.debug('Added missing stop-record button');
                 
                 // Add recording time display if missing
                 if (!recordingSection.querySelector('#recording-time')) {
@@ -220,11 +223,11 @@ class RecordingModule {
         
         // Log any remaining issues
         if (!startBtn) {
-            console.warn('Start record button still missing after section creation/repair');
+            this.log.warn('Start record button still missing after section creation/repair');
         }
         
         if (!stopBtn) {
-            console.warn('Stop record button still missing after section creation/repair');
+            this.log.warn('Stop record button still missing after section creation/repair');
         }
     }
 
@@ -246,7 +249,7 @@ class RecordingModule {
         
         // Remove duplicate round buttons
         roundRecordButtons.forEach(btn => {
-            console.log('Removing round button:', btn.outerHTML);
+            this.log.debug('Removing round button:', btn.outerHTML);
             if (btn.parentNode) {
                 btn.parentNode.removeChild(btn);
             }
@@ -254,12 +257,12 @@ class RecordingModule {
         
         // If we have more than one recording controls section, keep only the first one
         if (recordingControlsElements.length > 1) {
-            console.log(`Found ${recordingControlsElements.length} recording control sections, removing duplicates`);
+            this.log.debug(`Found ${recordingControlsElements.length} recording control sections, removing duplicates`);
             
             // Keep the first one, remove the rest
             for (let i = 1; i < recordingControlsElements.length; i++) {
                 const element = recordingControlsElements[i];
-                console.log('Removing duplicate recording controls:', element.outerHTML);
+                this.log.debug('Removing duplicate recording controls:', element.outerHTML);
                 
                 // Only remove if it's not part of the additional recording section
                 const isAdditionalRecording = element.closest('#additional-recording-section');
@@ -276,7 +279,7 @@ class RecordingModule {
      * @returns {HTMLElement|null} - The found button or null
      */
     lookForAlternativeRecordButtons(type) {
-        console.log(`Looking for alternative ${type} record buttons...`);
+        this.log.debug(`Looking for alternative ${type} record buttons...`);
         
         // Try different ID formats and selectors
         const possibleIds = [
@@ -294,7 +297,7 @@ class RecordingModule {
         for (const id of possibleIds) {
             const btn = document.getElementById(id);
             if (btn) {
-                console.log(`Found alternative ${type} button with ID: ${id}`);
+                this.log.debug(`Found alternative ${type} button with ID: ${id}`);
                 // Clone and replace with correct ID
                 this.replaceWithCorrectButton(btn, type);
                 return btn;
@@ -311,7 +314,7 @@ class RecordingModule {
         for (const btn of buttons) {
             const buttonText = btn.textContent.toLowerCase();
             if (textMatches[type].some(match => buttonText.includes(match))) {
-                console.log(`Found ${type} button by text content`);
+                this.log.debug(`Found ${type} button by text content`);
                 this.replaceWithCorrectButton(btn, type);
                 return btn;
             }
@@ -330,17 +333,17 @@ class RecordingModule {
                 if (icon.textContent.includes(type === 'start' ? 'mic' : 'stop')) {
                     const btn = icon.closest('button');
                     if (btn) {
-                        console.log(`Found ${type} button by icon`);
+                        this.log.debug(`Found ${type} button by icon`);
                         this.replaceWithCorrectButton(btn, type);
                         return btn;
                     }
                 }
             }
         } catch (e) {
-            console.warn('Error finding buttons by icon:', e);
+            this.log.warn('Error finding buttons by icon:', e);
         }
         
-        console.log(`No alternative ${type} button found`);
+        this.log.debug(`No alternative ${type} button found`);
         return null;
     }
 
@@ -369,10 +372,10 @@ class RecordingModule {
             // Replace the original button
             if (btn.parentNode) {
                 btn.parentNode.replaceChild(newBtn, btn);
-                console.log(`Replaced ${type} button with correct ID`);
+                this.log.debug(`Replaced ${type} button with correct ID`);
             }
         } catch (e) {
-            console.error(`Error replacing ${type} button:`, e);
+            this.log.error(`Error replacing ${type} button:`, e);
         }
     }
 
@@ -380,7 +383,7 @@ class RecordingModule {
      * Setup event listeners for recording functionality with enhanced button finding
      */
     setupEvents() {
-        console.log('Setting up recording events...');
+        this.log.debug('Setting up recording events...');
         
         // Ensure recording interface exists before trying to attach events
         this.ensureRecordingInterfaceExists();
@@ -404,7 +407,7 @@ class RecordingModule {
             // Setup a mutation observer to catch dynamically added buttons
             this.setupDynamicButtonObserver();
             
-            console.log('Recording events setup completed');
+            this.log.debug('Recording events setup completed');
         }, 100);
     }
 
@@ -420,7 +423,7 @@ class RecordingModule {
         let startBtnFound = false, stopBtnFound = false;
         
         if (startRecordBtn) {
-            console.log('Found start-record button, attaching event listener');
+            this.log.debug('Found start-record button, attaching event listener');
             
             // Remove any existing listeners to prevent duplicates
             startRecordBtn.removeEventListener('click', this.handleStartRecording);
@@ -435,12 +438,12 @@ class RecordingModule {
             startRecordBtn.dataset.hasClickListener = 'true';
             startBtnFound = true;
         } else {
-            console.warn('Start recording button not found in DOM');
+            this.log.warn('Start recording button not found in DOM');
         }
         
         // Stop recording button
         if (stopRecordBtn) {
-            console.log('Found stop-record button, attaching event listener');
+            this.log.debug('Found stop-record button, attaching event listener');
             
             // Remove any existing listeners
             stopRecordBtn.removeEventListener('click', this.handleStopRecording);
@@ -455,7 +458,7 @@ class RecordingModule {
             stopRecordBtn.dataset.hasClickListener = 'true';
             stopBtnFound = true;
         } else {
-            console.warn('Stop recording button not found in DOM');
+            this.log.warn('Stop recording button not found in DOM');
         }
         
         return startBtnFound && stopBtnFound;
@@ -468,21 +471,21 @@ class RecordingModule {
         // Additional recording start button
         const additionalStartBtn = document.getElementById('additional-record-start');
         if (additionalStartBtn) {
-            console.log('Found additional-record-start button, attaching event listener');
+            this.log.debug('Found additional-record-start button, attaching event listener');
             
             // Remove any existing listeners
             additionalStartBtn.removeEventListener('click', this.handleAdditionalStartRecording);
             
             // Create handler that sets the additional flag and calls startRecording
             this.handleAdditionalStartRecording = this.handleAdditionalStartRecording || (async () => {
-                console.log('Additional record start button clicked');
+                this.log.debug('Additional record start button clicked');
                 if (this.uiManager) {
                     this.uiManager.isRecordingAdditional = true;
                 }
                 try {
                     await this.startRecording();
                 } catch (error) {
-                    console.error('Error starting additional recording:', error);
+                    this.log.error('Error starting additional recording:', error);
                     // Reset the state on error using the centralized method
                     this.resetRecordingState();
                     
@@ -503,18 +506,18 @@ class RecordingModule {
         // Additional recording stop button
         const additionalStopBtn = document.getElementById('additional-record-stop');
         if (additionalStopBtn) {
-            console.log('Found additional-record-stop button, attaching event listener');
+            this.log.debug('Found additional-record-stop button, attaching event listener');
             
             // Remove any existing listeners
             additionalStopBtn.removeEventListener('click', this.handleAdditionalStopRecording);
             
             // Create handler that calls stopRecording
             this.handleAdditionalStopRecording = this.handleAdditionalStopRecording || (async () => {
-                console.log('Additional record stop button clicked');
+                this.log.debug('Additional record stop button clicked');
                 try {
                     await this.stopRecording();
                 } catch (error) {
-                    console.error('Error stopping additional recording:', error);
+                    this.log.error('Error stopping additional recording:', error);
                     // Show error notification
                     if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
                         window.uiUtils.showNotification('Error stopping recording: ' + error.message, 'error');
@@ -566,7 +569,7 @@ class RecordingModule {
             
             // If we found relevant buttons, reattach event handlers
             if (shouldAttachEventListeners) {
-                console.log('Recording buttons dynamically added, reattaching event listeners');
+                this.log.debug('Recording buttons dynamically added, reattaching event listeners');
                 setTimeout(() => {
                     this.attachMainRecordingEvents();
                     this.attachAdditionalRecordingEvents();
@@ -583,7 +586,7 @@ class RecordingModule {
         // Set a timeout to prevent memory leaks if page is left open for long periods
         setTimeout(() => {
             if (this.buttonObserver) {
-                console.log('Stopping button observer after timeout');
+                this.log.debug('Stopping button observer after timeout');
                 this.buttonObserver.disconnect();
                 this.buttonObserver = null;
             }
@@ -596,7 +599,7 @@ class RecordingModule {
      * @param {boolean} isAdditional - Whether this is an additional recording
      */
     setRecordingState(isRecording, isAdditional = false) {
-        console.log(`Setting recording state: isRecording=${isRecording}, isAdditional=${isAdditional}`);
+        this.log.debug(`Setting recording state: isRecording=${isRecording}, isAdditional=${isAdditional}`);
         
         // Update module state
         this.isRecording = isRecording;
@@ -615,7 +618,7 @@ class RecordingModule {
      * Resets the recording state completely
      */
     resetRecordingState() {
-        console.log('Resetting recording state');
+        this.log.debug('Resetting recording state');
         
         // Reset module state
         this.isRecording = false;
@@ -628,7 +631,7 @@ class RecordingModule {
                     this.mediaRecorder.stop();
                 }
             } catch (e) {
-                console.warn('Error stopping mediaRecorder during reset:', e);
+                this.log.warn('Error stopping mediaRecorder during reset:', e);
             }
             this.mediaRecorder = null;
         }
@@ -637,7 +640,7 @@ class RecordingModule {
             try {
                 this.mediaStream.getTracks().forEach(track => track.stop());
             } catch (e) {
-                console.warn('Error stopping mediaStream tracks during reset:', e);
+                this.log.warn('Error stopping mediaStream tracks during reset:', e);
             }
             this.mediaStream = null;
         }
@@ -727,7 +730,7 @@ class RecordingModule {
                 if (additionalRecordingStatus) additionalRecordingStatus.textContent = '';
             }
         } catch (error) {
-            console.error('Error updating recording indicators:', error);
+            this.log.error('Error updating recording indicators:', error);
         }
     }
 
@@ -740,11 +743,11 @@ class RecordingModule {
         try {
             // Determine if this is an additional recording
             const isAdditional = this.uiManager && this.uiManager.isRecordingAdditional;
-            console.log(`Starting recording, additional mode: ${isAdditional}`);
+            this.log.debug(`Starting recording, additional mode: ${isAdditional}`);
             
             // Prevent starting a new recording if one is already in progress
             if (this.isRecording) {
-                console.warn('Recording already in progress, cannot start another');
+                this.log.warn('Recording already in progress, cannot start another');
                 return;
             }
             
@@ -768,7 +771,7 @@ class RecordingModule {
             
             // For iOS Safari, we need special handling
             if (this.isIOSSafari()) {
-                console.log('iOS Safari detected, using simplified audio constraints');
+                this.log.debug('iOS Safari detected, using simplified audio constraints');
                 constraints.audio = true; // Simple constraints for iOS
             }
             
@@ -785,12 +788,12 @@ class RecordingModule {
             }
             
             // Debug info for mobile debugging
-            console.log('Creating MediaRecorder with options:', options);
+            this.log.debug('Creating MediaRecorder with options:', options);
             
             try {
                 this.mediaRecorder = new MediaRecorder(stream, options);
             } catch (err) {
-                console.warn(`Error creating MediaRecorder with options: ${err.message}, trying without options`);
+                this.log.warn(`Error creating MediaRecorder with options: ${err.message}, trying without options`);
                 this.mediaRecorder = new MediaRecorder(stream);
             }
             
@@ -805,8 +808,8 @@ class RecordingModule {
             const maxRecordingDuration = this.recordingSettings.maxDuration || 5 * 60 * 1000; // 5 minute default
             setTimeout(() => {
                 if (this.isRecording && this.mediaRecorder && this.mediaRecorder.state === 'recording') {
-                    console.log('Auto-stopping recording due to max duration limit');
-                    this.stopRecording().catch(err => console.error('Error auto-stopping recording:', err));
+                    this.log.debug('Auto-stopping recording due to max duration limit');
+                    this.stopRecording().catch(err => this.log.error('Error auto-stopping recording:', err));
                 }
             }, maxRecordingDuration);
             
@@ -828,7 +831,7 @@ class RecordingModule {
             this.startRecordingTimer();
             
         } catch (error) {
-            console.error('Error starting recording:', error);
+            this.log.error('Error starting recording:', error);
             
             // Reset state on error
             this.resetRecordingState();
@@ -853,19 +856,19 @@ class RecordingModule {
         try {
             // Can't stop if not recording
             if (!this.isRecording || !this.mediaRecorder) {
-                console.log('No active recording to stop');
+                this.log.debug('No active recording to stop');
                 return;
             }
             
             // Only stop if active
             if (this.mediaRecorder.state === 'inactive') {
-                console.log('Media recorder already inactive');
+                this.log.debug('Media recorder already inactive');
                 return;
             }
             
             // Determine recording mode before resetting state
             const isAdditional = this.isAdditionalRecording;
-            console.log(`Stopping recording, additional mode: ${isAdditional}`);
+            this.log.debug(`Stopping recording, additional mode: ${isAdditional}`);
             
             // Get recording status element for updating during processing
             const recordingStatus = isAdditional ?
@@ -918,7 +921,7 @@ class RecordingModule {
                         
                         resolve();
                     } catch (error) {
-                        console.error('Error in stop recording handler:', error);
+                        this.log.error('Error in stop recording handler:', error);
                         
                         // Hide transcription status if in additional mode
                         if (isAdditional) {
@@ -938,7 +941,7 @@ class RecordingModule {
                 this.mediaRecorder.stop();
             });
         } catch (error) {
-            console.error('Error stopping recording:', error);
+            this.log.error('Error stopping recording:', error);
             
             // Reset state on error
             this.resetRecordingState();
@@ -1098,7 +1101,7 @@ class RecordingModule {
             
             draw();
         } catch (error) {
-            console.error('Error setting up visualization:', error);
+            this.log.error('Error setting up visualization:', error);
         }
     }
 
@@ -1152,17 +1155,17 @@ class RecordingModule {
     async convertToMP3(audioBlob) {
         try {
             // Initial checks
-            console.log('Starting MP3 conversion, audio type:', audioBlob.type);
+            this.log.debug('Starting MP3 conversion, audio type:', audioBlob.type);
             
             // If we already have MP3, just return it
             if (audioBlob.type === 'audio/mpeg' || audioBlob.type === 'audio/mp3') {
-                console.log('Audio already in MP3 format, skipping conversion');
+                this.log.debug('Audio already in MP3 format, skipping conversion');
                 return audioBlob;
             }
             
             // For iOS Safari, we need a simpler approach since it may not support certain Web APIs
             if (this.isIOSSafari()) {
-                console.log('Using simplified MP3 conversion for iOS Safari');
+                this.log.debug('Using simplified MP3 conversion for iOS Safari');
                 return await this.simpleMP3Conversion(audioBlob);
             }
             
@@ -1179,7 +1182,7 @@ class RecordingModule {
                         // Check if data is valid
                         const arrayBuffer = event.target.result;
                         if (!arrayBuffer || arrayBuffer.byteLength === 0) {
-                            console.error('Invalid audio data: empty buffer');
+                            this.log.error('Invalid audio data: empty buffer');
                             // Try the simple method as fallback
                             const fallbackResult = await this.simpleMP3Conversion(audioBlob);
                             resolve(fallbackResult);
@@ -1197,25 +1200,25 @@ class RecordingModule {
                             }
                             
                         } catch (decodeError) {
-                            console.warn('Audio decoding failed, trying alternative approach:', decodeError.message);
+                            this.log.warn('Audio decoding failed, trying alternative approach:', decodeError.message);
                             
                             // Try direct WebM to Opus conversion (Whisper can handle Opus)
                             try {
                                 const opusBlob = await this.webmToOpus(audioBlob);
                                 if (opusBlob && opusBlob.size > 0) {
-                                    console.log(`Converted to Opus format: ${opusBlob.size} bytes`);
+                                    this.log.debug(`Converted to Opus format: ${opusBlob.size} bytes`);
                                     resolve(opusBlob);
                                     return;
                                 }
                             } catch (opusError) {
-                                console.warn('Opus conversion failed:', opusError);
+                                this.log.warn('Opus conversion failed:', opusError);
                             }
                             
                             // Then try with audio element as another fallback
                             try {
                                 audioBuffer = await this.decodeAudioUsingElement(audioBlob);
                             } catch (elementError) {
-                                console.error('All decoding approaches failed:', elementError);
+                                this.log.error('All decoding approaches failed:', elementError);
                                 // Try the simple conversion as a last resort
                                 const simpleResult = await this.simpleMP3Conversion(audioBlob);
                                 resolve(simpleResult);
@@ -1257,12 +1260,12 @@ class RecordingModule {
                                 
                                 // Validate the output
                                 if (outputBlob.size === 0) {
-                                    console.warn('Conversion produced an empty blob, using original as fallback');
+                                    this.log.warn('Conversion produced an empty blob, using original as fallback');
                                     resolve(audioBlob);
                                     return;
                                 }
                                 
-                                console.log(`MP3 conversion complete: ${outputBlob.size} bytes, type: ${outputBlob.type}`);
+                                this.log.debug(`MP3 conversion complete: ${outputBlob.size} bytes, type: ${outputBlob.type}`);
                                 resolve(outputBlob);
                             };
                             
@@ -1276,13 +1279,13 @@ class RecordingModule {
                                         recorder.stop();
                                     }
                                 } catch (stopError) {
-                                    console.warn('Error stopping recorder:', stopError);
+                                    this.log.warn('Error stopping recorder:', stopError);
                                     resolve(audioBlob); // Fallback to original
                                 }
                             }, (audioBuffer.duration * 1000) + 500);
                             
                         } catch (processingError) {
-                            console.error('Error processing audio buffer:', processingError);
+                            this.log.error('Error processing audio buffer:', processingError);
                             // Return a specially marked blob to indicate the need for server-side processing
                             resolve(new Blob([arrayBuffer], { 
                                 type: 'audio/wav'  // Use WAV as a more universal format
@@ -1290,13 +1293,13 @@ class RecordingModule {
                         }
                         
                     } catch (err) {
-                        console.error('Error in MP3 conversion:', err);
+                        this.log.error('Error in MP3 conversion:', err);
                         // Simple fallback conversion
                         try {
                             const simpleResult = await this.simpleMP3Conversion(audioBlob);
                             resolve(simpleResult);
                         } catch (fallbackError) {
-                            console.error('Simple conversion failed too:', fallbackError);
+                            this.log.error('Simple conversion failed too:', fallbackError);
                             // Last resort: return original with MP3 mime type for better API compatibility
                             const repackagedBlob = new Blob([await audioBlob.arrayBuffer()], { type: 'audio/mp3' });
                             resolve(repackagedBlob);
@@ -1305,13 +1308,13 @@ class RecordingModule {
                 };
                 
                 fileReader.onerror = async (error) => {
-                    console.error('FileReader error during MP3 conversion:', error);
+                    this.log.error('FileReader error during MP3 conversion:', error);
                     try {
                         // Try simple conversion as fallback
                         const simpleResult = await this.simpleMP3Conversion(audioBlob);
                         resolve(simpleResult);
                     } catch (fallbackError) {
-                        console.error('Simple conversion failed too:', fallbackError);
+                        this.log.error('Simple conversion failed too:', fallbackError);
                         resolve(audioBlob); // Ultimate fallback to original
                     }
                 };
@@ -1319,7 +1322,7 @@ class RecordingModule {
                 fileReader.readAsArrayBuffer(audioBlob);
             });
         } catch (err) {
-            console.error('Exception in convertToMP3:', err);
+            this.log.error('Exception in convertToMP3:', err);
             return new Blob([await audioBlob.arrayBuffer()], { type: 'audio/mp3' });
         }
     }
@@ -1426,7 +1429,7 @@ class RecordingModule {
      */
     async simpleMP3Conversion(audioBlob) {
         try {
-            console.log('Starting simple conversion process');
+            this.log.debug('Starting simple conversion process');
             
             // Create a new blob with MP3 MIME type for better compatibility with Whisper API
             // This isn't actually converting the format, just changing the content type
@@ -1438,10 +1441,10 @@ class RecordingModule {
                 throw new Error('Conversion resulted in empty blob');
             }
             
-            console.log(`Simple conversion complete: ${processedBlob.size} bytes, type: ${processedBlob.type}`);
+            this.log.debug(`Simple conversion complete: ${processedBlob.size} bytes, type: ${processedBlob.type}`);
             return processedBlob;
         } catch (err) {
-            console.error('Error in simple MP3 conversion:', err);
+            this.log.error('Error in simple MP3 conversion:', err);
             // Last resort: return the original blob but with MP3 MIME type
             return new Blob([await audioBlob.arrayBuffer()], { type: 'audio/mp3' });
         }
@@ -1454,7 +1457,7 @@ class RecordingModule {
      * @returns {Promise<string>} - English transcription text
      */
     async transcribeAudio(audioBlob) {
-        console.log('Transcribing audio with Whisper API...');
+        this.log.debug('Transcribing audio with Whisper API...');
         const apiKey = localStorage.getItem('openai_api_key');
         if (!apiKey) throw new Error('OpenAI API key not set');
 
@@ -1491,7 +1494,7 @@ class RecordingModule {
         let audioId = pendingAudioId;
         
         try {
-            console.log('Processing recording, original format:', audioBlob.type);
+            this.log.debug('Processing recording, original format:', audioBlob.type);
             
             // Save audio to IndexedDB first if not already saved
             if (!audioId && window.PendingAudioManager) {
@@ -1519,7 +1522,7 @@ class RecordingModule {
                     await window.DraftRestaurantManager.updateDraft(draftId, { hasAudio: true });
                 }
                 
-                console.log(`Audio saved to IndexedDB with ID: ${audioId}`);
+                this.log.debug(`Audio saved to IndexedDB with ID: ${audioId}`);
             }
             
             // Update status to processing
@@ -1531,11 +1534,11 @@ class RecordingModule {
             let preparedBlob;
             if (window.AudioUtils && typeof window.AudioUtils.convertToMP3 === 'function') {
                 preparedBlob = await window.AudioUtils.convertToMP3(audioBlob);
-                console.log('Using AudioUtils for conversion');
+                this.log.debug('Using AudioUtils for conversion');
             } else {
                 // Fallback to built-in conversion
                 preparedBlob = await this.convertToMP3(audioBlob);
-                console.log('Using built-in conversion');
+                this.log.debug('Using built-in conversion');
             }
             
             const transcription = await this.transcribeAudio(preparedBlob);
@@ -1553,26 +1556,26 @@ class RecordingModule {
                     status: 'completed',
                     completedAt: new Date()
                 });
-                console.log(`Audio ${audioId} marked as completed`);
+                this.log.debug(`Audio ${audioId} marked as completed`);
             }
             
             // Reset recording tool state after successful transcription
             this.resetRecordingToolState();
         } catch (error) {
-            console.error('Error processing recording:', error);
+            this.log.error('Error processing recording:', error);
             this.updateProcessingStatus('transcription', 'error');
             
             // Handle retry logic
             if (audioId && window.PendingAudioManager) {
                 const retryCount = await window.PendingAudioManager.incrementRetryCount(audioId, error.message);
-                console.log(`Transcription failed. Retry count: ${retryCount}`);
+                this.log.debug(`Transcription failed. Retry count: ${retryCount}`);
                 
                 const audio = await window.PendingAudioManager.getAudio(audioId);
                 if (window.PendingAudioManager.canAutoRetry(audio)) {
                     // Schedule automatic retry
-                    console.log('Scheduling automatic retry...');
+                    this.log.debug('Scheduling automatic retry...');
                     await window.PendingAudioManager.scheduleAutoRetry(audioId, async (retryAudioId, retryAudio) => {
-                        console.log(`Retrying transcription for audio ${retryAudioId}`);
+                        this.log.debug(`Retrying transcription for audio ${retryAudioId}`);
                         await this.processRecording(retryAudio.audioBlob, retryAudioId);
                     });
                     
@@ -1585,7 +1588,7 @@ class RecordingModule {
                     }
                 } else {
                     // Max retries reached, show manual retry option
-                    console.log('Max auto-retries reached. Manual retry required.');
+                    this.log.debug('Max auto-retries reached. Manual retry required.');
                     if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
                         window.uiUtils.showNotification(
                             `Transcription failed after ${retryCount} attempts. Please try again manually.`, 
@@ -1616,11 +1619,11 @@ class RecordingModule {
     processTranscription(transcription) {
         try {
             if (!transcription || typeof transcription !== 'string' || transcription.trim() === '') {
-                console.warn('Empty or invalid transcription received');
+                this.log.warn('Empty or invalid transcription received');
                 return;
             }
             
-            console.log('Processing transcription, length:', transcription.length);
+            this.log.debug('Processing transcription, length:', transcription.length);
             
             // Check if this is an additional recording
             const isAdditional = this.isAdditionalRecording;
@@ -1628,7 +1631,7 @@ class RecordingModule {
             // Get the transcription textarea
             const textarea = document.getElementById('restaurant-transcription');
             if (!textarea) {
-                console.error('Transcription textarea not found');
+                this.log.error('Transcription textarea not found');
                 return;
             }
             
@@ -1656,7 +1659,7 @@ class RecordingModule {
                 this.triggerConceptProcessing(transcription);
             }
             
-            console.log('Transcription processing completed successfully');
+            this.log.debug('Transcription processing completed successfully');
             
             // Reset recording tool state after successful transcription
             setTimeout(() => {
@@ -1664,7 +1667,7 @@ class RecordingModule {
             }, 100); // Small delay to ensure other processes finish
             
         } catch (error) {
-            console.error('Error processing transcription:', error);
+            this.log.error('Error processing transcription:', error);
             
             // Still reset recording tool state on error
             setTimeout(() => {
@@ -1678,7 +1681,7 @@ class RecordingModule {
      * This ensures the recorder is ready for the next recording
      */
     resetRecordingToolState() {
-        console.log('Resetting recording tool state');
+        this.log.debug('Resetting recording tool state');
         
         // Reset all state flags
         this.isRecording = false;
@@ -1689,7 +1692,7 @@ class RecordingModule {
             try {
                 this.mediaStream.getTracks().forEach(track => track.stop());
             } catch (e) {
-                console.warn('Error stopping media tracks:', e);
+                this.log.warn('Error stopping media tracks:', e);
             }
             this.mediaStream = null;
         }
@@ -1752,19 +1755,19 @@ class RecordingModule {
      */
     triggerConceptProcessing(transcription) {
         try {
-            console.log('Triggering concept processing for new restaurant');
+            this.log.debug('Triggering concept processing for new restaurant');
             
             // Method 1: Use conceptModule directly if available
             if (this.uiManager && this.uiManager.conceptModule && 
                 typeof this.uiManager.conceptModule.processConcepts === 'function') {
-                console.log('Using uiManager.conceptModule.processConcepts');
+                this.log.debug('Using uiManager.conceptModule.processConcepts');
                 this.uiManager.conceptModule.processConcepts(transcription);
                 return;
             }
             
             // Method 2: Find globally available conceptModule
             if (window.conceptModule && typeof window.conceptModule.processConcepts === 'function') {
-                console.log('Using global conceptModule.processConcepts');
+                this.log.debug('Using global conceptModule.processConcepts');
                 window.conceptModule.processConcepts(transcription);
                 return;
             }
@@ -1772,16 +1775,16 @@ class RecordingModule {
             // Method 3: Use the reprocessConcepts function if available
             const reprocessButton = document.getElementById('reprocess-concepts');
             if (reprocessButton) {
-                console.log('Using reprocess-concepts button click as fallback');
+                this.log.debug('Using reprocess-concepts button click as fallback');
                 reprocessButton.click();
                 return;
             }
             
             // Method 4: Notify the user that manual processing is needed
-            console.warn('No automatic concept processing available, user needs to click "Reprocess Concepts" manually');
+            this.log.warn('No automatic concept processing available, user needs to click "Reprocess Concepts" manually');
             this.showProcessingNotification();
         } catch (error) {
-            console.error('Error triggering concept processing:', error);
+            this.log.error('Error triggering concept processing:', error);
         }
     }
     
@@ -1831,7 +1834,7 @@ class RecordingModule {
                 }, 10000);
             }
         } catch (error) {
-            console.error('Error showing processing notification:', error);
+            this.log.error('Error showing processing notification:', error);
         }
     }
 
@@ -1853,35 +1856,35 @@ class RecordingModule {
         if (this.eventDelegationSetup) return;
         this.eventDelegationSetup = true;
         
-        console.log('Setting up event delegation for recording buttons');
+        this.log.debug('Setting up event delegation for recording buttons');
         
         document.addEventListener('click', async (event) => {
             // Handle start recording button
             if (event.target.id === 'start-record' || 
                 (event.target.parentElement && event.target.parentElement.id === 'start-record')) {
-                console.log('Start recording clicked via delegation');
+                this.log.debug('Start recording clicked via delegation');
                 try {
                     await this.startRecording();
                 } catch (error) {
-                    console.error('Error starting recording via delegation:', error);
+                    this.log.error('Error starting recording via delegation:', error);
                 }
             }
             
             // Handle stop recording button
             if (event.target.id === 'stop-record' || 
                 (event.target.parentElement && event.target.parentElement.id === 'stop-record')) {
-                console.log('Stop recording clicked via delegation');
+                this.log.debug('Stop recording clicked via delegation');
                 try {
                     await this.stopRecording();
                 } catch (error) {
-                    console.error('Error stopping recording via delegation:', error);
+                    this.log.error('Error stopping recording via delegation:', error);
                 }
             }
             
             // Handle additional record start button
             if (event.target.id === 'additional-record-start' || 
                 (event.target.parentElement && event.target.parentElement.id === 'additional-record-start')) {
-                console.log('Additional record start clicked via delegation');
+                this.log.debug('Additional record start clicked via delegation');
                 try {
                     // Set the additional recording flag
                     if (this.uiManager) {
@@ -1889,7 +1892,7 @@ class RecordingModule {
                     }
                     await this.startRecording();
                 } catch (error) {
-                    console.error('Error starting additional recording via delegation:', error);
+                    this.log.error('Error starting additional recording via delegation:', error);
                     if (this.uiManager) {
                         this.uiManager.isRecordingAdditional = false;
                     }
@@ -1899,11 +1902,11 @@ class RecordingModule {
             // Handle additional record stop button
             if (event.target.id === 'additional-record-stop' || 
                 (event.target.parentElement && event.target.parentElement.id === 'additional-record-stop')) {
-                console.log('Additional record stop clicked via delegation');
+                this.log.debug('Additional record stop clicked via delegation');
                 try {
                     await this.stopRecording();
                 } catch (error) {
-                    console.error('Error stopping additional recording via delegation:', error);
+                    this.log.error('Error stopping additional recording via delegation:', error);
                 } finally {
                     // Ensure flag is reset
                     if (this.uiManager) {
@@ -1913,7 +1916,7 @@ class RecordingModule {
             }
         });
         
-        console.log('Event delegation for recording buttons completed');
+        this.log.debug('Event delegation for recording buttons completed');
     }
     
     /**
@@ -1928,7 +1931,7 @@ class RecordingModule {
             // Get the appropriate preview element
             const audioPreviewContainer = document.getElementById(isAdditional ? 'additional-audio-preview' : 'audio-preview');
             if (!audioPreviewContainer) {
-                console.warn(`Audio preview container not found for ${isAdditional ? 'additional' : 'standard'} recording`);
+                this.log.warn(`Audio preview container not found for ${isAdditional ? 'additional' : 'standard'} recording`);
                 return;
             }
             
@@ -1949,9 +1952,9 @@ class RecordingModule {
             const audioUrl = URL.createObjectURL(audioBlob);
             audioElement.src = audioUrl;
             
-            console.log(`Audio preview created for ${isAdditional ? 'additional' : 'standard'} recording`);
+            this.log.debug(`Audio preview created for ${isAdditional ? 'additional' : 'standard'} recording`);
         } catch (error) {
-            console.error('Error displaying audio preview:', error);
+            this.log.error('Error displaying audio preview:', error);
         }
     }
     
@@ -2004,7 +2007,7 @@ class RecordingModule {
                 `;
             }
         } catch (error) {
-            console.error(`Error updating ${type} status:`, error);
+            this.log.error(`Error updating ${type} status:`, error);
         }
     }
     
@@ -2017,7 +2020,7 @@ class RecordingModule {
             // Get the transcription textarea
             const transcriptionTextarea = document.getElementById('restaurant-transcription');
             if (!transcriptionTextarea) {
-                console.error('Transcription textarea not found');
+                this.log.error('Transcription textarea not found');
                 return;
             }
 
@@ -2055,9 +2058,9 @@ class RecordingModule {
                 transcriptionTextarea.classList.remove('highlight-update');
             }, 1000);
             
-            console.log('Additional transcription appended successfully');
+            this.log.debug('Additional transcription appended successfully');
         } catch (error) {
-            console.error('Error appending transcription:', error);
+            this.log.error('Error appending transcription:', error);
         }
     }
 
@@ -2073,7 +2076,7 @@ class RecordingModule {
             const targetContainer = recordingSection || transcriptionContainer;
             
             if (!targetContainer) {
-                console.warn('Cannot show manual retry UI - container not found');
+                this.log.warn('Cannot show manual retry UI - container not found');
                 return;
             }
             
@@ -2142,7 +2145,7 @@ class RecordingModule {
                             retryUI.remove();
                         }
                     } catch (error) {
-                        console.error('Manual retry failed:', error);
+                        this.log.error('Manual retry failed:', error);
                         retryBtn.disabled = false;
                         retryBtn.innerHTML = '<span class="material-icons text-sm mr-1">refresh</span> Retry Transcription';
                     }
@@ -2160,7 +2163,7 @@ class RecordingModule {
                                 window.uiUtils.showNotification('Audio recording deleted', 'success');
                             }
                         } catch (error) {
-                            console.error('Error deleting audio:', error);
+                            this.log.error('Error deleting audio:', error);
                             if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
                                 window.uiUtils.showNotification('Error deleting audio', 'error');
                             }
@@ -2170,7 +2173,7 @@ class RecordingModule {
             }
             
         } catch (error) {
-            console.error('Error showing manual retry UI:', error);
+            this.log.error('Error showing manual retry UI:', error);
         }
     }
 
@@ -2219,7 +2222,7 @@ class RecordingModule {
             
             header.appendChild(badge);
         } catch (error) {
-            console.error('Error showing pending audio badge:', error);
+            this.log.error('Error showing pending audio badge:', error);
         }
     }
 
@@ -2237,7 +2240,7 @@ class RecordingModule {
             
             // TODO: Implement full UI for viewing and managing pending audios
         } catch (error) {
-            console.error('Error showing pending audio list:', error);
+            this.log.error('Error showing pending audio list:', error);
         }
     }
 }

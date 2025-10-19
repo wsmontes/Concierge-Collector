@@ -16,6 +16,9 @@
 
 const DraftRestaurantManager = ModuleWrapper.defineClass('DraftRestaurantManager', class {
     constructor() {
+        // Create module logger instance
+        this.log = Logger.module('DraftRestaurantManager');
+        
         this.dataStorage = null;
         this.autoSaveTimeout = null;
         this.autoSaveDelay = 3000; // 3 seconds
@@ -28,7 +31,7 @@ const DraftRestaurantManager = ModuleWrapper.defineClass('DraftRestaurantManager
      */
     init(dataStorage) {
         this.dataStorage = dataStorage;
-        console.log('DraftRestaurantManager initialized');
+        this.log.debug('DraftRestaurantManager initialized');
     }
 
     /**
@@ -57,11 +60,11 @@ const DraftRestaurantManager = ModuleWrapper.defineClass('DraftRestaurantManager
 
             const id = await this.dataStorage.db.draftRestaurants.add(draftData);
             this.currentDraftId = id;
-            console.log(`Draft restaurant created with ID: ${id}`);
+            this.log.debug(`Draft restaurant created with ID: ${id}`);
             
             return id;
         } catch (error) {
-            console.error('Error creating draft restaurant:', error);
+            this.log.error('Error creating draft restaurant:', error);
             throw error;
         }
     }
@@ -84,7 +87,7 @@ const DraftRestaurantManager = ModuleWrapper.defineClass('DraftRestaurantManager
                 try {
                     metadata = JSON.parse(draft.metadata);
                 } catch (e) {
-                    console.warn('Error parsing draft metadata:', e);
+                    this.log.warn('Error parsing draft metadata:', e);
                 }
             }
 
@@ -95,7 +98,7 @@ const DraftRestaurantManager = ModuleWrapper.defineClass('DraftRestaurantManager
                 photos: metadata.photos || []
             };
         } catch (error) {
-            console.error('Error retrieving draft restaurant:', error);
+            this.log.error('Error retrieving draft restaurant:', error);
             throw error;
         }
     }
@@ -124,7 +127,7 @@ const DraftRestaurantManager = ModuleWrapper.defineClass('DraftRestaurantManager
                     try {
                         metadata = JSON.parse(draft.metadata);
                     } catch (e) {
-                        console.warn('Error parsing draft metadata:', e);
+                        this.log.warn('Error parsing draft metadata:', e);
                     }
                 }
 
@@ -136,7 +139,7 @@ const DraftRestaurantManager = ModuleWrapper.defineClass('DraftRestaurantManager
                 };
             });
         } catch (error) {
-            console.error('Error retrieving draft restaurants:', error);
+            this.log.error('Error retrieving draft restaurants:', error);
             return [];
         }
     }
@@ -171,9 +174,9 @@ const DraftRestaurantManager = ModuleWrapper.defineClass('DraftRestaurantManager
             }
 
             await this.dataStorage.db.draftRestaurants.update(draftId, updates);
-            console.log(`Draft ${draftId} updated`);
+            this.log.debug(`Draft ${draftId} updated`);
         } catch (error) {
-            console.error('Error updating draft restaurant:', error);
+            this.log.error('Error updating draft restaurant:', error);
             throw error;
         }
     }
@@ -194,9 +197,9 @@ const DraftRestaurantManager = ModuleWrapper.defineClass('DraftRestaurantManager
         this.autoSaveTimeout = setTimeout(async () => {
             try {
                 await this.updateDraft(draftId, data);
-                console.log(`Auto-saved draft ${draftId}`);
+                this.log.debug(`Auto-saved draft ${draftId}`);
             } catch (error) {
-                console.error('Error auto-saving draft:', error);
+                this.log.error('Error auto-saving draft:', error);
             }
         }, this.autoSaveDelay);
     }
@@ -256,13 +259,13 @@ const DraftRestaurantManager = ModuleWrapper.defineClass('DraftRestaurantManager
             }
 
             await this.dataStorage.db.draftRestaurants.delete(draftId);
-            console.log(`Draft ${draftId} deleted`);
+            this.log.debug(`Draft ${draftId} deleted`);
 
             if (this.currentDraftId === draftId) {
                 this.currentDraftId = null;
             }
         } catch (error) {
-            console.error('Error deleting draft restaurant:', error);
+            this.log.error('Error deleting draft restaurant:', error);
             throw error;
         }
     }
@@ -285,10 +288,10 @@ const DraftRestaurantManager = ModuleWrapper.defineClass('DraftRestaurantManager
             const deletePromises = oldEmptyDrafts.map(draft => this.deleteDraft(draft.id));
             await Promise.all(deletePromises);
 
-            console.log(`Cleaned up ${oldEmptyDrafts.length} old empty drafts`);
+            this.log.debug(`Cleaned up ${oldEmptyDrafts.length} old empty drafts`);
             return oldEmptyDrafts.length;
         } catch (error) {
-            console.error('Error cleaning up old drafts:', error);
+            this.log.error('Error cleaning up old drafts:', error);
             return 0;
         }
     }
@@ -337,7 +340,7 @@ const DraftRestaurantManager = ModuleWrapper.defineClass('DraftRestaurantManager
             this.currentDraftId = await this.createDraft(curatorId);
             return this.currentDraftId;
         } catch (error) {
-            console.error('Error getting or creating draft:', error);
+            this.log.error('Error getting or creating draft:', error);
             throw error;
         }
     }

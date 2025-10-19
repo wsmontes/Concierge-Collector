@@ -3,11 +3,14 @@
  */
 class TranscriptionModule {
     constructor(uiManager) {
+        // Create module logger instance
+        this.log = Logger.module('TranscriptionModule');
+        
         this.uiManager = uiManager;
     }
 
     setupEvents() {
-        console.log('Setting up transcription events...');
+        this.log.debug('Setting up transcription events...');
         
         // Extract concepts button
         const extractConceptsBtn = document.getElementById('extract-concepts');
@@ -32,11 +35,11 @@ class TranscriptionModule {
             });
         }
         
-        console.log('Transcription events set up');
+        this.log.debug('Transcription events set up');
     }
     
     async extractConcepts() {
-        console.log('Extract concepts button clicked');
+        this.log.debug('Extract concepts button clicked');
         const transcription = this.uiManager.transcriptionText.textContent.trim();
         
         if (!transcription) {
@@ -53,8 +56,8 @@ class TranscriptionModule {
             const translatedText = await apiHandler.translateText(transcription);
             this.uiManager.translatedTranscription = translatedText;
             
-            console.log('Original text:', transcription);
-            console.log('Translated text:', translatedText);
+            this.log.debug('Original text:', transcription);
+            this.log.debug('Translated text:', translatedText);
             
             // Then extract concepts using the translated text
             this.uiManager.showLoading('Extracting concepts from translated text...');
@@ -65,7 +68,7 @@ class TranscriptionModule {
                 promptTemplates.conceptExtraction
             );
             
-            console.log('Extracted concepts:', extractedConcepts);
+            this.log.debug('Extracted concepts:', extractedConcepts);
             
             // Convert to our internal format
             this.uiManager.currentConcepts = [];
@@ -85,7 +88,7 @@ class TranscriptionModule {
             this.uiManager.showConceptsSection();
         } catch (error) {
             this.uiManager.hideLoading();
-            console.error('Error extracting concepts:', error);
+            this.log.error('Error extracting concepts:', error);
             this.uiManager.showNotification(`Error extracting concepts: ${error.message}`, 'error');
         }
     }

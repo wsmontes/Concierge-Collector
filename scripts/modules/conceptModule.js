@@ -16,6 +16,9 @@
  */
 class ConceptModule {
     constructor(uiManager) {
+        // Create module logger instance
+        this.log = Logger.module("ConceptModule");
+        
         this.uiManager = uiManager;
         // New property to handle the queue of images for AI processing
         this.imageProcessingQueue = [];
@@ -23,13 +26,13 @@ class ConceptModule {
     }
 
     setupEvents() {
-        console.log('Setting up concepts events...');
+        this.log.debug('Setting up concepts events...');
         
         // Restaurant name input with auto-save
         const nameInput = document.getElementById('restaurant-name');
         if (nameInput) {
             nameInput.addEventListener('focus', () => {
-                console.log('Restaurant name input focused');
+                this.log.debug('Restaurant name input focused');
             });
             
             // Auto-save draft on name change
@@ -58,7 +61,7 @@ class ConceptModule {
         const getLocationBtn = document.getElementById('get-location');
         if (getLocationBtn) {
             getLocationBtn.addEventListener('click', async () => {
-                console.log('Get location button clicked');
+                this.log.debug('Get location button clicked');
                 try {
                     // Use our safe wrapper method instead of direct call
                     SafetyUtils.showLoading('Getting your location...');
@@ -98,7 +101,7 @@ class ConceptModule {
                     this.autoSaveDraft();
                 } catch (error) {
                     SafetyUtils.hideLoading();
-                    console.error('Error getting location:', error);
+                    this.log.error('Error getting location:', error);
                     SafetyUtils.showNotification('Error getting location: ' + error.message, 'error');
                 }
             });
@@ -153,7 +156,7 @@ class ConceptModule {
         // Record Additional Review button - Only create when in edit mode
         this.setupAdditionalReviewButton();
         
-        console.log('Concepts events set up');
+        this.log.debug('Concepts events set up');
     }
     
     setupPhotoEvents() {
@@ -262,16 +265,16 @@ class ConceptModule {
                 );
                 
                 await window.DraftRestaurantManager.autoSaveDraft(draftId, draftData);
-                console.log('Draft auto-saved');
+                this.log.debug('Draft auto-saved');
             }
         } catch (error) {
-            console.error('Error auto-saving draft:', error);
+            this.log.error('Error auto-saving draft:', error);
             // Don't show error to user - auto-save should be silent
         }
     }
     
     discardRestaurant() {
-        console.log('Discard restaurant button clicked');
+        this.log.debug('Discard restaurant button clicked');
         this.uiManager.currentConcepts = [];
         this.uiManager.currentLocation = null;
         this.uiManager.currentPhotos = [];
@@ -304,7 +307,7 @@ class ConceptModule {
     }
 
     async saveRestaurant() {
-        console.log('Save/update restaurant button clicked');
+        this.log.debug('Save/update restaurant button clicked');
         
         const nameInput = document.getElementById('restaurant-name');
         const name = nameInput ? nameInput.value.trim() : '';
@@ -362,9 +365,9 @@ class ConceptModule {
                 
                 // Show sync status to user
                 if (syncStatus === 'synced') {
-                    console.log('✅ Restaurant synced to server automatically');
+                    this.log.debug('✅ Restaurant synced to server automatically');
                 } else {
-                    console.warn('⚠️ Restaurant saved locally only, sync failed:', result.syncError);
+                    this.log.warn('⚠️ Restaurant saved locally only, sync failed:', result.syncError);
                 }
             }
             
@@ -395,13 +398,13 @@ class ConceptModule {
                     if (draftId) {
                         await window.PendingAudioManager.deleteAudios({ draftId });
                     }
-                    console.log('Pending audio cleaned up after restaurant save');
+                    this.log.debug('Pending audio cleaned up after restaurant save');
                 }
                 
                 // Delete draft restaurant
                 if (draftId && window.DraftRestaurantManager) {
                     await window.DraftRestaurantManager.deleteDraft(draftId);
-                    console.log('Draft restaurant cleaned up after save');
+                    this.log.debug('Draft restaurant cleaned up after save');
                 }
                 
                 // Update pending audio badge
@@ -409,7 +412,7 @@ class ConceptModule {
                     await this.uiManager.recordingModule.showPendingAudioBadge();
                 }
             } catch (cleanupError) {
-                console.error('Error cleaning up after restaurant save:', cleanupError);
+                this.log.error('Error cleaning up after restaurant save:', cleanupError);
                 // Don't throw - the restaurant was saved successfully
             }
             
@@ -442,7 +445,7 @@ class ConceptModule {
             this.uiManager.restaurantModule.loadRestaurantList(this.uiManager.currentCurator.id);
         } catch (error) {
             SafetyUtils.hideLoading();
-            console.error('Error saving restaurant:', error);
+            this.log.error('Error saving restaurant:', error);
             SafetyUtils.showNotification(`Error ${this.uiManager.isEditingRestaurant ? 'updating' : 'saving'} restaurant: ${error.message}`, 'error');
         }
     }
@@ -459,7 +462,7 @@ class ConceptModule {
             photoContainer.parentNode.removeChild(photoContainer);
         }
         
-        console.log('Photo removed, remaining:', this.uiManager.currentPhotos.length);
+        this.log.debug('Photo removed, remaining:', this.uiManager.currentPhotos.length);
     }
     
     async renderConcepts() {
@@ -678,7 +681,7 @@ class ConceptModule {
                 }
             } catch (error) {
                 SafetyUtils.hideLoading();
-                console.error('Error checking for similar concepts:', error);
+                this.log.error('Error checking for similar concepts:', error);
                 SafetyUtils.showNotification('Error checking for similar concepts', 'error');
                 
                 // Fallback: add directly
@@ -713,7 +716,7 @@ class ConceptModule {
             if (dataStorage && typeof dataStorage.getConceptsByCategory === 'function') {
                 concepts = await dataStorage.getConceptsByCategory(category);
             } else {
-                console.warn('DataStorage not available or missing getConceptsByCategory method');
+                this.log.warn('DataStorage not available or missing getConceptsByCategory method');
             }
             
             // Set up input event to show/filter suggestions
@@ -762,7 +765,7 @@ class ConceptModule {
             });
             
         } catch (error) {
-            console.error('Error loading concept suggestions:', error);
+            this.log.error('Error loading concept suggestions:', error);
         }
     }
     
@@ -849,7 +852,7 @@ class ConceptModule {
                 } else if (this.uiManager && typeof this.uiManager.showNotification === 'function') {
                     this.uiManager.showNotification(notification);
                 } else {
-                    console.log(notification);
+                    this.log.debug(notification);
                 }
             } else {
                 // Already in concepts list, show informational message
@@ -859,7 +862,7 @@ class ConceptModule {
                 } else if (this.uiManager && typeof this.uiManager.showNotification === 'function') {
                     this.uiManager.showNotification(notification, 'info');
                 } else {
-                    console.log(notification);
+                    this.log.debug(notification);
                 }
             }
             
@@ -1039,7 +1042,7 @@ class ConceptModule {
 
     // New function to reprocess concepts from edited transcription
     async reprocessConcepts() {
-        console.log('Reprocessing concepts...');
+        this.log.debug('Reprocessing concepts...');
         const transcriptionTextarea = document.getElementById('restaurant-transcription');
         const transcription = transcriptionTextarea ? transcriptionTextarea.value.trim() : '';
         
@@ -1064,7 +1067,7 @@ class ConceptModule {
             SafetyUtils.showNotification('Concepts and description updated successfully');
         } catch (error) {
             SafetyUtils.hideLoading();
-            console.error('Error processing concepts:', error);
+            this.log.error('Error processing concepts:', error);
             SafetyUtils.showNotification('Error processing restaurant details', 'error');
         }
     }
@@ -1073,7 +1076,7 @@ class ConceptModule {
         if (!transcription) return null;
         
         try {
-            console.log('Generating description from transcription...');
+            this.log.debug('Generating description from transcription...');
             const template = promptTemplates.restaurantDescription;
             const userPrompt = template.user.replace('{texto}', transcription);
             
@@ -1111,19 +1114,19 @@ class ConceptModule {
             const descriptionInput = document.getElementById('restaurant-description');
             if (descriptionInput) {
                 descriptionInput.value = description;
-                console.log("Description field auto-populated:", description);
+                this.log.debug("Description field auto-populated:", description);
             }
             
             return description;
         } catch (error) {
-            console.error('Error generating description:', error);
+            this.log.error('Error generating description:', error);
             SafetyUtils.showNotification('Error generating description: ' + error.message, 'error');
             return null;
         }
     }
 
     async extractConcepts(transcription) {
-        console.log('Extracting concepts from transcription...');
+        this.log.debug('Extracting concepts from transcription...');
         
         try {
             const template = promptTemplates.conceptExtraction;
@@ -1175,17 +1178,17 @@ class ConceptModule {
                 }
                 
                 // Here we also run generateDescription explicitly to ensure it happens
-                console.log("Concepts extracted successfully, generating description...");
+                this.log.debug("Concepts extracted successfully, generating description...");
                 await this.generateDescription(transcription);
                 
                 return conceptsArray;
             } catch (parseError) {
-                console.error('Error parsing concepts JSON:', parseError);
-                console.log('Raw concepts text:', conceptsText);
+                this.log.error('Error parsing concepts JSON:', parseError);
+                this.log.debug('Raw concepts text:', conceptsText);
                 throw new Error('Failed to parse concepts from AI response');
             }
         } catch (error) {
-            console.error('Error extracting concepts:', error);
+            this.log.error('Error extracting concepts:', error);
             throw error;
         }
     }
@@ -1200,14 +1203,14 @@ class ConceptModule {
      */
     async extractRestaurantNameFromTranscription(transcriptionText) {
         try {
-            console.log('Extracting restaurant name from transcription...');
+            this.log.debug('Extracting restaurant name from transcription...');
             
             if (!transcriptionText || transcriptionText.trim().length < 10) {
                 return null;
             }
             
             const response = await apiHandler.extractConcepts(transcriptionText, promptTemplates.restaurantNameExtraction);
-            console.log('Restaurant name extracted:', response);
+            this.log.debug('Restaurant name extracted:', response);
             
             // Handle different response formats
             if (response) {
@@ -1230,7 +1233,7 @@ class ConceptModule {
             
             return null;
         } catch (error) {
-            console.error('Error extracting restaurant name from transcription:', error);
+            this.log.error('Error extracting restaurant name from transcription:', error);
             return null;
         }
     }
@@ -1247,7 +1250,7 @@ class ConceptModule {
             try {
                 restaurantName = await this.extractRestaurantNameFromTranscription(transcriptionText);
             } catch (nameError) {
-                console.warn('Restaurant name extraction failed, continuing with concept extraction:', nameError);
+                this.log.warn('Restaurant name extraction failed, continuing with concept extraction:', nameError);
                 // Continue execution - don't let name extraction failure stop concept extraction
             }
             
@@ -1281,7 +1284,7 @@ class ConceptModule {
             
         } catch (error) {
             SafetyUtils.hideLoading();
-            console.error('Error processing concepts:', error);
+            this.log.error('Error processing concepts:', error);
             SafetyUtils.showNotification('Error processing concepts', 'error');
         }
     }
@@ -1425,7 +1428,7 @@ class ConceptModule {
                                 await this.processImageQueue();
                             }
                         } catch (error) {
-                            console.error('Error adding images to AI processing queue:', error);
+                            this.log.error('Error adding images to AI processing queue:', error);
                             SafetyUtils.showNotification('Error setting up AI analysis', 'error');
                         }
                     }
@@ -1499,7 +1502,7 @@ class ConceptModule {
             
         } catch (error) {
             this.removeImageAnalysisOverlay();
-            console.error('Error processing image queue:', error);
+            this.log.error('Error processing image queue:', error);
             SafetyUtils.showNotification('Error during AI analysis', 'error');
         } finally {
             this.isProcessingQueue = false;
@@ -1639,7 +1642,7 @@ class ConceptModule {
             // Extract concepts from the image
             await this.extractConceptsFromImage(resizedImageData);
         } catch (error) {
-            console.error('Error processing image with AI:', error);
+            this.log.error('Error processing image with AI:', error);
             SafetyUtils.showNotification('Error analyzing image', 'error');
         }
     }
@@ -1698,14 +1701,14 @@ class ConceptModule {
     async extractRestaurantNameFromImage(imageData) {
         // Only execute if API handler exists
         if (!apiHandler || !apiHandler.apiKey) {
-            console.warn('API handler not available or API key not set');
+            this.log.warn('API handler not available or API key not set');
             return null;
         }
         
         try {
             // Validate the image data format
             if (!imageData || typeof imageData !== 'string') {
-                console.warn('Invalid image data provided');
+                this.log.warn('Invalid image data provided');
                 return null;
             }
             
@@ -1716,7 +1719,7 @@ class ConceptModule {
             } else if (imageData.match(/^[A-Za-z0-9+/=]+$/)) {
                 baseImage = imageData; // Already a base64 string without prefix
             } else {
-                console.warn('Image data is not in a valid base64 format');
+                this.log.warn('Image data is not in a valid base64 format');
                 return null;
             }
             
@@ -1725,7 +1728,7 @@ class ConceptModule {
             // Updated model name to current version with vision capabilities
             const model = "gpt-4o";
             
-            console.log('Sending image to OpenAI API for restaurant name extraction...');
+            this.log.debug('Sending image to OpenAI API for restaurant name extraction...');
             
             // Important: Ensure the structure follows OpenAI's API requirements for image content
             const payload = {
@@ -1760,7 +1763,7 @@ class ConceptModule {
                 debugPayload.messages[1].content[1].image_url.url = 
                     debugPayload.messages[1].content[1].image_url.url.substring(0, 30) + '... [truncated]';
             }
-            console.log('API request payload structure:', debugPayload);
+            this.log.debug('API request payload structure:', debugPayload);
             
             const response = await fetch('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
@@ -1773,7 +1776,7 @@ class ConceptModule {
             
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
-                console.error('OpenAI API error details:', errorData);
+                this.log.error('OpenAI API error details:', errorData);
                 throw new Error(`API error: ${response.status} - ${errorData.error?.message || 'Unknown error'}`);
             }
             
@@ -1786,7 +1789,7 @@ class ConceptModule {
                 responseText.toLowerCase().includes("cannot determine") ||
                 responseText.toLowerCase().includes("sorry") ||
                 responseText.toLowerCase().includes("unable to")) {
-                console.log('AI could not determine restaurant name from image');
+                this.log.debug('AI could not determine restaurant name from image');
                 return null;
             }
             
@@ -1812,7 +1815,7 @@ class ConceptModule {
             }
             return restaurantName;
         } catch (error) {
-            console.error('Error extracting restaurant name from image:', error);
+            this.log.error('Error extracting restaurant name from image:', error);
             SafetyUtils.showNotification('Failed to extract restaurant name from image', 'error');
             return null;
         }
@@ -1825,7 +1828,7 @@ class ConceptModule {
     async extractConceptsFromImage(imageData) {
         // Only execute if API handler exists
         if (!apiHandler || !apiHandler.apiKey) {
-            console.warn('API handler not available or API key not set');
+            this.log.warn('API handler not available or API key not set');
             return;
         }
         
@@ -1837,7 +1840,7 @@ class ConceptModule {
             } else if (imageData.match(/^[A-Za-z0-9+/=]+$/)) {
                 baseImage = imageData; // Already a base64 string without prefix
             } else {
-                console.warn('Image data is not in a valid base64 format');
+                this.log.warn('Image data is not in a valid base64 format');
                 return;
             }
             
@@ -1846,7 +1849,7 @@ class ConceptModule {
             // Updated model name to current version with vision capabilities
             const model = "gpt-4o";
             
-            console.log('Sending image to OpenAI API for concept extraction...');
+            this.log.debug('Sending image to OpenAI API for concept extraction...');
             
             const response = await fetch('https://api.openai.com/v1/chat/completions', {
                 method: 'POST',
@@ -1883,7 +1886,7 @@ class ConceptModule {
             
             if (!response.ok) {
                 const errorData = await response.json().catch(() => ({}));
-                console.error('OpenAI API error details:', errorData);
+                this.log.error('OpenAI API error details:', errorData);
                 throw new Error(`API error: ${response.status} - ${errorData.error?.message || 'Unknown error'}`);
             }
             
@@ -1917,7 +1920,7 @@ class ConceptModule {
                 }
             }
         } catch (error) {
-            console.error('Error extracting concepts from image:', error);
+            this.log.error('Error extracting concepts from image:', error);
             SafetyUtils.showNotification('Failed to extract concepts from image: ' + (error.message || 'Unknown error'), 'error');
         }
     }
@@ -2045,14 +2048,14 @@ class ConceptModule {
             });
         }
         
-        console.log('Additional recording section added and set to visible for all restaurant creation modes');
+        this.log.debug('Additional recording section added and set to visible for all restaurant creation modes');
     }
 
     /**
      * Sets up an observer to watch for the transcription textarea to appear in the DOM
      */
     setupTranscriptionObserver() {
-        console.log('Setting up mutation observer for transcription textarea');
+        this.log.debug('Setting up mutation observer for transcription textarea');
         
         // Check if observer already exists
         if (this.transcriptionObserver) {
@@ -2070,7 +2073,7 @@ class ConceptModule {
                         
                         // Check if container exists and hasn't been processed yet
                         if (container && !container.dataset.additionalReviewButtonSetup) {
-                            console.log('Transcription textarea found via observer, setting up button');
+                            this.log.debug('Transcription textarea found via observer, setting up button');
                             this.setupAdditionalReviewButton();
                             
                             // Stop observing once we've found and processed it
@@ -2092,7 +2095,7 @@ class ConceptModule {
         // Set a timeout to stop the observer after 10 seconds to prevent memory leaks
         setTimeout(() => {
             if (this.transcriptionObserver) {
-                console.log('Stopping transcription observer (timeout)');
+                this.log.debug('Stopping transcription observer (timeout)');
                 this.transcriptionObserver.disconnect();
                 this.transcriptionObserver = null;
             }
@@ -2104,7 +2107,7 @@ class ConceptModule {
      */
     async startAdditionalRecording() {
         try {
-            console.log('Starting additional review recording...');
+            this.log.debug('Starting additional review recording...');
             
             // Enhanced check for recording module
             let recordingModule = null;
@@ -2116,11 +2119,11 @@ class ConceptModule {
             // Check if recording module is available as a global object
             else if (window.recordingModule) {
                 recordingModule = window.recordingModule;
-                console.log('Using global recordingModule instead of uiManager.recordingModule');
+                this.log.debug('Using global recordingModule instead of uiManager.recordingModule');
             }
             // As a last resort, check if RecordingModule class exists to create a new instance
             else if (typeof RecordingModule !== 'undefined') {
-                console.log('Creating new RecordingModule instance as fallback');
+                this.log.debug('Creating new RecordingModule instance as fallback');
                 recordingModule = new RecordingModule(this.uiManager);
             }
             
@@ -2155,7 +2158,7 @@ class ConceptModule {
             await recordingModule.startRecording();
             
         } catch (error) {
-            console.error('Error starting additional recording:', error);
+            this.log.error('Error starting additional recording:', error);
             SafetyUtils.showNotification('Error starting recording: ' + error.message, 'error');
             
             // Reset UI on error
@@ -2182,7 +2185,7 @@ class ConceptModule {
      */
     handleAdditionalRecordingComplete(newTranscription) {
         try {
-            console.log(`Handling additional recording completion, text length: ${newTranscription?.length || 0}`);
+            this.log.debug(`Handling additional recording completion, text length: ${newTranscription?.length || 0}`);
             
             // Reset UI for recording controls
             const startBtn = document.getElementById('additional-record-start');
@@ -2257,7 +2260,7 @@ class ConceptModule {
             
             // Process concepts from the additional review
             if (typeof this.processConcepts === 'function') {
-                console.log('Processing concepts from additional review');
+                this.log.debug('Processing concepts from additional review');
                 this.processConcepts(newTranscription);
             }
             
@@ -2265,7 +2268,7 @@ class ConceptModule {
             SafetyUtils.showNotification('Additional review added to transcription', 'success');
             
         } catch (error) {
-            console.error('Error handling additional recording completion:', error);
+            this.log.error('Error handling additional recording completion:', error);
             SafetyUtils.showNotification('Error adding additional review: ' + error.message, 'error');
             
             // Reset the flag even if there's an error
@@ -2288,14 +2291,14 @@ class ConceptModule {
             // Only proceed if transcription has enough content
             if (!transcription || transcription.length < 10) return;
             
-            console.log('Attempting to extract restaurant name from additional review...');
+            this.log.debug('Attempting to extract restaurant name from additional review...');
             
             // Use the existing method to extract restaurant name
             const extractedName = await this.extractRestaurantNameFromTranscription(transcription);
             
             // If a name was extracted and it's different from the current name, update it
             if (extractedName && extractedName !== currentName && nameInput) {
-                console.log(`Restaurant name found in additional review: "${extractedName}" (was: "${currentName}")`);
+                this.log.debug(`Restaurant name found in additional review: "${extractedName}" (was: "${currentName}")`);
                 
                 // Update the name field
                 nameInput.value = extractedName;
@@ -2324,7 +2327,7 @@ class ConceptModule {
                 SafetyUtils.showNotification(`Restaurant name updated to "${extractedName}"`, 'info');
             }
         } catch (error) {
-            console.error('Error extracting restaurant name from additional review:', error);
+            this.log.error('Error extracting restaurant name from additional review:', error);
             // Don't show notification to user - silently fail since this is an enhancement
         }
     }

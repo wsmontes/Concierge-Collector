@@ -16,11 +16,14 @@
  */
 class RestaurantModule {
     constructor(uiManager) {
+        // Create module logger instance
+        this.log = Logger.module('RestaurantModule');
+        
         this.uiManager = uiManager;
     }
     
     setupEvents() {
-        console.log('Setting up restaurant list events...');
+        this.log.debug('Setting up restaurant list events...');
         
         // Add restaurant button
         const addRestaurantButton = document.getElementById('add-restaurant');
@@ -36,7 +39,7 @@ class RestaurantModule {
         if (syncRestaurantsBtn) {
             syncRestaurantsBtn.addEventListener('click', async () => {
                 try {
-                    console.log('Manual sync triggered from restaurant list');
+                    this.log.debug('Manual sync triggered from restaurant list');
                     
                     // Show loading state
                     const syncText = document.getElementById('sync-restaurants-text');
@@ -56,7 +59,7 @@ class RestaurantModule {
                         }
                     }
                 } catch (error) {
-                    console.error('Sync failed:', error);
+                    this.log.error('Sync failed:', error);
                     this.uiManager.showNotification('Sync failed: ' + error.message, 'error');
                 } finally {
                     // Restore button state
@@ -70,7 +73,7 @@ class RestaurantModule {
             });
         }
         
-        console.log('Restaurant list events set up');
+        this.log.debug('Restaurant list events set up');
     }
 
     /**
@@ -98,7 +101,7 @@ class RestaurantModule {
                 syncBadge.classList.add('hidden');
             }
         } catch (error) {
-            console.error('Error updating sync button:', error);
+            this.log.error('Error updating sync button:', error);
         }
     }
 
@@ -123,7 +126,7 @@ class RestaurantModule {
         }
         
         try {
-            console.log(`Loading restaurant list for curatorId: ${curatorId} (type: ${typeof curatorId}), filterEnabled: ${filterEnabled}`);
+            this.log.debug(`Loading restaurant list for curatorId: ${curatorId} (type: ${typeof curatorId}), filterEnabled: ${filterEnabled}`);
             
             // Get restaurants with filter options - convert curatorId to string for consistent comparison
             const options = {
@@ -133,7 +136,7 @@ class RestaurantModule {
             };
             
             const restaurants = await dataStorage.getRestaurants(options);
-            console.log(`Retrieved ${restaurants.length} unique restaurants from database`);
+            this.log.debug(`Retrieved ${restaurants.length} unique restaurants from database`);
             
             // Debug: Log source distribution
             const sourceCount = {local: 0, remote: 0, undefined: 0};
@@ -142,11 +145,11 @@ class RestaurantModule {
                 else if (r.source === 'remote') sourceCount.remote++;
                 else sourceCount.undefined++;
             });
-            console.log(`Source distribution - Local: ${sourceCount.local}, Remote: ${sourceCount.remote}, Undefined: ${sourceCount.undefined}`);
+            this.log.debug(`Source distribution - Local: ${sourceCount.local}, Remote: ${sourceCount.remote}, Undefined: ${sourceCount.undefined}`);
             
             // If filtering is enabled but no restaurants found, double-check if the filter is working correctly
             if (filterEnabled && restaurants.length === 0) {
-                console.warn(`No restaurants found with filter. Checking if any restaurants exist with curatorId: ${curatorId}`);
+                this.log.warn(`No restaurants found with filter. Checking if any restaurants exist with curatorId: ${curatorId}`);
                 
                 // Get a raw count of restaurants from this curator to verify data exists
                 const allRestaurantsForCurator = await dataStorage.db.restaurants
@@ -156,7 +159,7 @@ class RestaurantModule {
                     .equals(Number(curatorId))
                     .toArray();
                 
-                console.log(`Direct database query found ${allRestaurantsForCurator.length} restaurants for curatorId: ${curatorId}`);
+                this.log.debug(`Direct database query found ${allRestaurantsForCurator.length} restaurants for curatorId: ${curatorId}`);
             }
             
             this.uiManager.restaurantsContainer.innerHTML = '';
@@ -171,7 +174,7 @@ class RestaurantModule {
             
             for (const restaurant of restaurants) {
                 // Add this debug line to check each restaurant's source and curator
-                console.log(`Restaurant "${restaurant.name}" (ID: ${restaurant.id}) - source: ${restaurant.source}, serverId: ${restaurant.serverId || 'none'}, curatorId: ${restaurant.curatorId}`);
+                this.log.debug(`Restaurant "${restaurant.name}" (ID: ${restaurant.id}) - source: ${restaurant.source}, serverId: ${restaurant.serverId || 'none'}, curatorId: ${restaurant.curatorId}`);
                 
                 const card = document.createElement('div');
                 card.className = 'restaurant-card bg-white p-4 rounded-lg shadow hover:shadow-md transition-all relative flex flex-col';
@@ -344,7 +347,7 @@ class RestaurantModule {
             // Update sync button visibility after loading restaurants
             await this.updateSyncButton();
         } catch (error) {
-            console.error('Error loading restaurant list:', error);
+            this.log.error('Error loading restaurant list:', error);
             SafetyUtils.showNotification('Error loading restaurants', 'error');
         }
     }
@@ -363,7 +366,7 @@ class RestaurantModule {
                 throw new Error('Restaurant not found');
             }
             
-            console.log('Syncing restaurant:', restaurant);
+            this.log.debug('Syncing restaurant:', restaurant);
             
             // Get curator
             const curator = await dataStorage.db.curators.get(restaurant.curatorId);
@@ -392,7 +395,7 @@ class RestaurantModule {
             // Use SyncManager for consistent handling instead of direct fetch API
             if (window.syncManager && typeof window.syncManager.syncRestaurant === 'function') {
                 try {
-                    console.log('Using syncManager.syncRestaurant method');
+                    this.log.debug('Using syncManager.syncRestaurant method');
                     const result = await window.syncManager.syncRestaurant(restaurantId);
                     
                     // Check if export was successful
@@ -400,34 +403,34 @@ class RestaurantModule {
                         throw new Error('Restaurant sync failed');
                     }
                     
-                    console.log('Restaurant synced successfully via syncManager');
+                    this.log.debug('Restaurant synced successfully via syncManager');
                 } catch (syncError) {
-                    console.error('Error using syncManager.syncRestaurant:', syncError);
+                    this.log.error('Error using syncManager.syncRestaurant:', syncError);
                     throw syncError; // Re-throw to be caught by outer try-catch
                 }
             } else {
                 // Fallback to batch endpoint if exportRestaurant isn't available
-                console.log('Using centralized apiService for restaurant batch sync');
+                this.log.debug('Using centralized apiService for restaurant batch sync');
                 
                 try {
                     // Log request payload for debugging
                     const payloadForLog = { ...serverRestaurant };
-                    console.log('Sync request payload:', JSON.stringify(payloadForLog));
+                    this.log.debug('Sync request payload:', JSON.stringify(payloadForLog));
                     
                     const response = await window.apiService.batchUploadRestaurants([serverRestaurant]);
                     
                     // Log response status
-                    console.log('Server response:', response);
+                    this.log.debug('Server response:', response);
                     
                     if (!response.success) {
-                        console.error('Server error response:', response.error);
+                        this.log.error('Server error response:', response.error);
                         throw new Error(response.error || 'Failed to sync restaurant to server');
                     }
                     
                     // Get result data
                     const result = response.data;
                     
-                    console.log('Parsed server response:', result);
+                    this.log.debug('Parsed server response:', result);
                     
                     // Enhanced validation to handle different response formats
                     if (!result) {
@@ -458,13 +461,13 @@ class RestaurantModule {
                         // If server responds with success but no ID, generate a temporary server ID
                         // This is a fallback to prevent sync errors when the server doesn't return an ID
                         serverId = `srv_${Date.now()}_${Math.floor(Math.random() * 10000)}`;
-                        console.warn('No server ID returned, using generated ID:', serverId);
+                        this.log.warn('No server ID returned, using generated ID:', serverId);
                     }
                     
                     // Update restaurant sync status
                     await dataStorage.updateRestaurantSyncStatus(restaurantId, serverId);
                 } catch (fetchError) {
-                    console.error('Error in apiService operation:', fetchError);
+                    this.log.error('Error in apiService operation:', fetchError);
                     throw fetchError; // Re-throw to be caught by outer try-catch
                 }
             }
@@ -479,7 +482,7 @@ class RestaurantModule {
             await this.loadRestaurantList(this.uiManager.currentCurator.id);
         } catch (error) {
             SafetyUtils.hideLoading();
-            console.error('Error syncing restaurant:', error);
+            this.log.error('Error syncing restaurant:', error);
             SafetyUtils.showNotification(`Error syncing restaurant: ${error.message}`, 'error');
         }
     }
@@ -755,7 +758,7 @@ class RestaurantModule {
                         this.loadRestaurantList(this.uiManager.currentCurator.id);
                     } catch (error) {
                         SafetyUtils.hideLoading();
-                        console.error('Error deleting restaurant:', error);
+                        this.log.error('Error deleting restaurant:', error);
                         SafetyUtils.showNotification('Error deleting restaurant: ' + error.message, 'error');
                     }
                 }
@@ -766,18 +769,18 @@ class RestaurantModule {
         } catch (error) {
             // Use our safe methods instead of direct calls
             SafetyUtils.hideLoading();
-            console.error('Error viewing restaurant details:', error);
+            this.log.error('Error viewing restaurant details:', error);
             SafetyUtils.showNotification('Error loading restaurant details', 'error');
         }
     }
     
     async editRestaurant(restaurant) {
-        console.log('Editing restaurant:', restaurant);
+        this.log.debug('Editing restaurant:', restaurant);
         
         // Check if editing another curator's restaurant
         const currentCurator = this.uiManager.currentCurator;
         if (currentCurator && restaurant.curatorId !== currentCurator.id) {
-            console.log(`Cross-curator edit detected: restaurant belongs to curator ${restaurant.curatorId}, current curator is ${currentCurator.id}`);
+            this.log.debug(`Cross-curator edit detected: restaurant belongs to curator ${restaurant.curatorId}, current curator is ${currentCurator.id}`);
             
             // Check if user already has a copy
             const existingCopy = await dataStorage.findRestaurantCopy(
@@ -786,12 +789,12 @@ class RestaurantModule {
             );
             
             if (existingCopy) {
-                console.log(`Found existing copy (ID: ${existingCopy.id}), editing that instead`);
+                this.log.debug(`Found existing copy (ID: ${existingCopy.id}), editing that instead`);
                 SafetyUtils.showNotification(`Editing your copy of this restaurant`, 'info');
                 // Edit the existing copy instead
                 return this.editRestaurant(existingCopy);
             } else {
-                console.log('No existing copy found, creating new copy');
+                this.log.debug('No existing copy found, creating new copy');
                 SafetyUtils.showLoading('Creating your copy of this restaurant...');
                 
                 try {
@@ -811,7 +814,7 @@ class RestaurantModule {
                     return this.editRestaurant(copy);
                 } catch (error) {
                     SafetyUtils.hideLoading();
-                    console.error('Error creating restaurant copy:', error);
+                    this.log.error('Error creating restaurant copy:', error);
                     SafetyUtils.showNotification(`Error creating copy: ${error.message}`, 'error');
                     return;
                 }
@@ -905,7 +908,7 @@ class RestaurantModule {
         // IMPORTANT: Set up additional review button after form is shown
         setTimeout(() => {
             if (this.uiManager.conceptModule) {
-                console.log('Setting up additional review button for edit mode');
+                this.log.debug('Setting up additional review button for edit mode');
                 this.uiManager.conceptModule.setupAdditionalReviewButton();
             }
         }, 300);  // Short delay to ensure the form is fully rendered
@@ -917,7 +920,7 @@ class RestaurantModule {
      */
     async loadRestaurantForEdit(restaurantId) {
         try {
-            console.log(`Loading restaurant ${restaurantId} for editing`);
+            this.log.debug(`Loading restaurant ${restaurantId} for editing`);
             SafetyUtils.showLoading('Loading restaurant details...');
             
             const restaurant = await db.restaurants.get(restaurantId);
@@ -986,7 +989,7 @@ class RestaurantModule {
             // IMPORTANT: Call setupAdditionalReviewButton explicitly after loading restaurant data
             setTimeout(() => {
                 if (this.uiManager.conceptModule) {
-                    console.log('Setting up additional review button for edit mode');
+                    this.log.debug('Setting up additional review button for edit mode');
                     this.uiManager.conceptModule.setupAdditionalReviewButton();
                 }
             }, 300);  // Short delay to ensure the form is fully rendered
@@ -995,7 +998,7 @@ class RestaurantModule {
             this.uiManager.showConceptsSection();
         } catch (error) {
             SafetyUtils.hideLoading();
-            console.error('Error loading restaurant for edit:', error);
+            this.log.error('Error loading restaurant for edit:', error);
             SafetyUtils.showNotification(`Error loading restaurant: ${error.message}`, 'error');
         }
     }
@@ -1029,7 +1032,7 @@ class RestaurantModule {
             // ...existing code...
         } catch (error) {
             SafetyUtils.hideLoading();
-            console.error('Error saving restaurant:', error);
+            this.log.error('Error saving restaurant:', error);
             SafetyUtils.showNotification(`Error saving restaurant: ${error.message}`, 'error');
         }
     }

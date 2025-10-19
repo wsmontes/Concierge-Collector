@@ -69,12 +69,15 @@
     <!-- Sync badges stylesheet -->
     <link rel="stylesheet" href="styles/sync-badges.css">
     
+    <!-- Centralized Configuration (MUST load first) -->
+    <script src="scripts/config.js"></script>
+    
+    <!-- Centralized Logging (loads after config) -->
+    <script src="scripts/logger.js"></script>
+    
     <!-- REFACTORED: New centralized API and Sync services -->
     <script src="scripts/apiService.js" defer></script>
     <script src="scripts/syncManager.js" defer></script>
-    
-    <!-- Add the debug script -->
-    <script src="scripts/displayDebuggingInfo.js" defer></script>
 
     <!-- Add the Michelin staging stylesheet -->
     <link rel="stylesheet" href="styles/michelin-staging.css">
@@ -600,10 +603,6 @@
     <!-- Core application scripts -->
     <script src="scripts/main.js"></script>
     <script src="scripts/syncSettingsManager.js"></script>
-    
-    <!-- Database utilities (for manual cleanup) -->
-    <script src="scripts/dbCleanupUtils.js"></script>
-    <script src="scripts/fixSourceField.js"></script>
 
     <!-- Ensure this appears after all other scripts -->
     <script>

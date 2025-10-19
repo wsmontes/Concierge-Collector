@@ -4,6 +4,9 @@
  */
 
 const AudioUtils = {
+    // Create module logger instance
+    _log: Logger.module('AudioUtils'),
+    
     /**
      * Convert any audio format to MP3 for better compatibility with APIs
      * @param {Blob} audioBlob - Input audio blob in any format
@@ -11,7 +14,7 @@ const AudioUtils = {
      */
     convertToMP3: async function(audioBlob) {
         try {
-            console.log('AudioUtils: Converting audio to MP3, original type:', audioBlob.type);
+            AudioUtils._log.debug('AudioUtils: Converting audio to MP3, original type:', audioBlob.type);
             
             // If already MP3, return as is
             if (audioBlob.type === 'audio/mpeg' || audioBlob.type === 'audio/mp3') {
@@ -27,30 +30,30 @@ const AudioUtils = {
             try {
                 const mp3Blob = await this.webAudioConversion(audioBlob);
                 if (mp3Blob && mp3Blob.size > 0) {
-                    console.log('AudioUtils: Web Audio conversion successful, size:', mp3Blob.size);
+                    AudioUtils._log.debug('AudioUtils: Web Audio conversion successful, size:', mp3Blob.size);
                     return mp3Blob;
                 }
             } catch (webAudioError) {
-                console.warn('AudioUtils: Web Audio conversion failed:', webAudioError);
+                AudioUtils._log.warn('AudioUtils: Web Audio conversion failed:', webAudioError);
             }
             
             // Try the MediaStream approach as fallback
             try {
                 const mediaBlob = await this.mediaStreamConversion(audioBlob);
                 if (mediaBlob && mediaBlob.size > 0) {
-                    console.log('AudioUtils: MediaStream conversion successful, size:', mediaBlob.size);
+                    AudioUtils._log.debug('AudioUtils: MediaStream conversion successful, size:', mediaBlob.size);
                     return mediaBlob;
                 }
             } catch (mediaError) {
-                console.warn('AudioUtils: MediaStream conversion failed:', mediaError);
+                AudioUtils._log.warn('AudioUtils: MediaStream conversion failed:', mediaError);
             }
             
             // Last resort: just repackage with MP3 MIME type
-            console.log('AudioUtils: Using MIME type repackaging as last resort');
+            AudioUtils._log.debug('AudioUtils: Using MIME type repackaging as last resort');
             return new Blob([await audioBlob.arrayBuffer()], { type: 'audio/mp3' });
             
         } catch (error) {
-            console.error('AudioUtils: Error in convertToMP3:', error);
+            AudioUtils._log.error('AudioUtils: Error in convertToMP3:', error);
             // In case of any error, return the original blob with MP3 MIME type
             return new Blob([await audioBlob.arrayBuffer()], { type: 'audio/mp3' });
         }

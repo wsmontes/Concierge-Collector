@@ -18,6 +18,9 @@
 
 const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
     constructor() {
+        // Create module logger instance
+        this.log = Logger.module('ConciergeSync');
+        
         this.isSyncing = false;
         this.syncQueue = new Set();
         this.retryInterval = null;
@@ -27,7 +30,7 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
         // Setup network listeners
         this.setupNetworkListeners();
         
-        console.log('ConciergeSync: Initialized');
+        this.log.info('ConciergeSync initialized');
     }
 
     /**
@@ -35,13 +38,13 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
      */
     setupNetworkListeners() {
         window.addEventListener('online', () => {
-            console.log('📡 Network back online - syncing pending changes...');
+            this.log.info('📡 Network back online - syncing pending changes...');
             this.isOnline = true;
             this.syncAllPending();
         });
         
         window.addEventListener('offline', () => {
-            console.log('📡 Network offline - changes will sync when back online');
+            this.log.info('📡 Network offline - changes will sync when back online');
             this.isOnline = false;
         });
     }
@@ -62,13 +65,17 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
                     .count();
                     
                 if (pendingCount > 0) {
-                    console.log(`🔄 Periodic sync: ${pendingCount} pending restaurants`);
-                    await this.syncAllPending(5); // Sync max 5 at a time
+                    this.log.debug(`🔄 Periodic sync: ${pendingCount} pending restaurants`);
+                    try {
+                        await this.syncAllPending(5); // Sync max 5 at a time
+                    } catch (error) {
+                        this.log.error('🚨 Periodic sync error:', error.message);
+                    }
                 }
             }
         }, this.retryDelay);
         
-        console.log('ConciergeSync: Periodic sync started');
+        this.log.debug('ConciergeSync: Periodic sync started');
     }
 
     /**
@@ -79,7 +86,7 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
             clearInterval(this.retryInterval);
             this.retryInterval = null;
         }
-        console.log('ConciergeSync: Periodic sync stopped');
+        this.log.debug('ConciergeSync: Periodic sync stopped');
     }
 
     // ========================================
@@ -92,7 +99,7 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
      */
     async importRestaurants() {
         try {
-            console.log('ConciergeSync: Importing restaurants from server...');
+            this.log.debug('ConciergeSync: Importing restaurants from server...');
             
             // Get restaurants from server via API service
             const response = await window.apiService.getRestaurants();
@@ -112,7 +119,7 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
                 ...data
             }));
             
-            console.log(`ConciergeSync: Fetched ${remoteRestaurants.length} restaurants from server`);
+            this.log.debug(`ConciergeSync: Fetched ${remoteRestaurants.length} restaurants from server`);
             
             const results = {
                 added: 0,
@@ -161,7 +168,7 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
                     
                     // Skip duplicates in this batch
                     if (processedNames.has(normalizedName)) {
-                        console.log(`ConciergeSync: Skipping duplicate "${remoteRestaurant.name}" in batch`);
+                        this.log.debug(`ConciergeSync: Skipping duplicate "${remoteRestaurant.name}" in batch`);
                         results.skipped++;
                         continue;
                     }
@@ -175,14 +182,14 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
                         // CRITICAL: Skip if restaurant was deleted by user
                         if (existingRestaurant.deletedLocally === true) {
                             results.skipped++;
-                            console.log(`ConciergeSync: Skipping "${remoteRestaurant.name}" - deleted by user`);
+                            this.log.debug(`ConciergeSync: Skipping "${remoteRestaurant.name}" - deleted by user`);
                             continue;
                         }
                         
                         // Skip if has pending local changes
                         if (existingRestaurant.needsSync || existingRestaurant.source === 'local') {
                             results.skipped++;
-                            console.log(`ConciergeSync: Skipping "${remoteRestaurant.name}" - has local changes`);
+                            this.log.debug(`ConciergeSync: Skipping "${remoteRestaurant.name}" - has local changes`);
                             continue;
                         }
                         
@@ -211,7 +218,7 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
                         });
                         
                         results.updated++;
-                        console.log(`ConciergeSync: Updated "${remoteRestaurant.name}"`);
+                        this.log.debug(`ConciergeSync: Updated "${remoteRestaurant.name}"`);
                         continue;
                     }
                     
@@ -222,9 +229,26 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
                         const deletedMatch = matchingRestaurants.find(r => r.deletedLocally === true);
                         if (deletedMatch) {
                             results.skipped++;
-                            console.log(`ConciergeSync: Skipping "${remoteRestaurant.name}" - matching restaurant was deleted by user`);
+                            this.log.debug(`ConciergeSync: Skipping "${remoteRestaurant.name}" - matching restaurant was deleted by user`);
                             continue;
                         }
+                    }
+                    
+                    // ADDITIONAL CHECK: Look for any soft-deleted restaurant with this server ID
+                    // This prevents recreation of restaurants that were deleted but had the same server ID
+                    const deletedByServerId = await dataStorage.db.restaurants
+                        .where('serverId')
+                        .equals(String(remoteRestaurant.id))
+                        .and(r => r.deletedLocally === true)
+                        .first();
+                    
+                    if (deletedByServerId) {
+                        results.skipped++;
+                        this.log.debug(`ConciergeSync: Skipping "${remoteRestaurant.name}" - restaurant with server ID ${remoteRestaurant.id} was deleted by user`);
+                        continue;
+                    }
+                    
+                    if (matchingRestaurants && matchingRestaurants.length > 0) {
                         
                         // Check for local match to link with server ID
                         const localMatch = matchingRestaurants.find(r => r.source === 'local');
@@ -233,7 +257,7 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
                                 serverId: remoteRestaurant.id,
                                 lastSynced: new Date()
                             });
-                            console.log(`ConciergeSync: Linked local restaurant "${localMatch.name}" with server ID ${remoteRestaurant.id}`);
+                            this.log.debug(`ConciergeSync: Linked local restaurant "${localMatch.name}" with server ID ${remoteRestaurant.id}`);
                             results.skipped++;
                             continue;
                         }
@@ -264,19 +288,19 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
                     );
                     
                     results.added++;
-                    console.log(`ConciergeSync: Added "${remoteRestaurant.name}"`);
+                    this.log.debug(`ConciergeSync: Added "${remoteRestaurant.name}"`);
                     
                 } catch (error) {
-                    console.error(`ConciergeSync: Error processing "${remoteRestaurant.name}":`, error);
+                    this.log.error(`ConciergeSync: Error processing "${remoteRestaurant.name}":`, error);
                     results.errors++;
                 }
             }
             
-            console.log(`ConciergeSync: Import complete - Added: ${results.added}, Updated: ${results.updated}, Skipped: ${results.skipped}, Errors: ${results.errors}`);
+            this.log.debug(`ConciergeSync: Import complete - Added: ${results.added}, Updated: ${results.updated}, Skipped: ${results.skipped}, Errors: ${results.errors}`);
             return results;
             
         } catch (error) {
-            console.error('ConciergeSync: Import error:', error);
+            this.log.error('ConciergeSync: Import error:', error);
             throw error;
         }
     }
@@ -288,7 +312,7 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
      */
     async importCurators() {
         try {
-            console.log('ConciergeSync: Importing curators from server...');
+            this.log.debug('ConciergeSync: Importing curators from server...');
             
             // Get restaurants data to extract curator information (since /curators endpoint doesn't exist)
             const response = await window.apiService.getRestaurants();
@@ -298,7 +322,7 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
             }
 
             const restaurants = response.data;
-            console.log(`ConciergeSync: Received ${restaurants.length} restaurants to extract curators from`);
+            this.log.debug(`ConciergeSync: Received ${restaurants.length} restaurants to extract curators from`);
 
             // Extract unique curators from restaurant data
             const curatorsMap = new Map();
@@ -327,18 +351,18 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
             }
 
             const curators = Array.from(curatorsMap.values());
-            console.log(`ConciergeSync: Extracted ${curators.length} unique curators from restaurant data`);
+            this.log.debug(`ConciergeSync: Extracted ${curators.length} unique curators from restaurant data`);
 
             // Process each curator using existing findOrCreateCurator method
             for (const curator of curators) {
                 await this.findOrCreateCurator(curator);
             }
 
-            console.log(`ConciergeSync: Imported ${curators.length} curators`);
+            this.log.debug(`ConciergeSync: Imported ${curators.length} curators`);
             return curators;
             
         } catch (error) {
-            console.error('ConciergeSync: Curator import error:', error);
+            this.log.error('ConciergeSync: Curator import error:', error);
             throw error;
         }
     }
@@ -372,7 +396,7 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
             }
             
             if (!silent) {
-                console.log(`🔄 Syncing: ${restaurant.name}...`);
+                this.log.debug(`🔄 Syncing: ${restaurant.name}...`);
                 this.updateUIBadge(restaurantId, 'syncing');
             }
             
@@ -449,7 +473,7 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
                 this.updateUIBadge(restaurantId, 'remote');
                 
                 if (!silent) {
-                    console.log(`✅ Sync success: ${restaurant.name}`);
+                    this.log.debug(`✅ Sync success: ${restaurant.name}`);
                 }
                 
                 // Update sync button count
@@ -464,7 +488,7 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
             
         } catch (error) {
             if (!silent) {
-                console.log(`⚠️ Sync failed: ${error.message} - will retry later`);
+                this.log.debug(`⚠️ Sync failed: ${error.message} - will retry later`);
             }
             
             this.updateUIBadge(restaurantId, 'local');
@@ -499,7 +523,7 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
                 return results;
             }
             
-            console.log(`🔄 Syncing ${pending.length} pending restaurants...`);
+            this.log.debug(`🔄 Syncing ${pending.length} pending restaurants...`);
             
             for (const restaurant of pending) {
                 const success = await this.syncRestaurant(restaurant.id, true);
@@ -514,11 +538,11 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
             }
             
             if (results.synced > 0) {
-                console.log(`✅ Synced ${results.synced}, failed ${results.failed}`);
+                this.log.debug(`✅ Synced ${results.synced}, failed ${results.failed}`);
             }
             
         } catch (error) {
-            console.error('ConciergeSync: Sync all pending error:', error);
+            this.log.error('ConciergeSync: Sync all pending error:', error);
         } finally {
             this.isSyncing = false;
         }
@@ -607,20 +631,20 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
     async deleteRestaurant(restaurant) {
         try {
             const identifier = restaurant.serverId || restaurant.name;
-            console.log(`ConciergeSync: Deleting restaurant from server: "${restaurant.name}" (${identifier})`);
+            this.log.debug(`ConciergeSync: Deleting restaurant from server: "${restaurant.name}" (${identifier})`);
             
             const response = await window.apiService.deleteRestaurant(identifier);
             
             if (!response.success) {
-                console.error(`ConciergeSync: Server delete failed: ${response.error}`);
+                this.log.error(`ConciergeSync: Server delete failed: ${response.error}`);
                 return { success: false, error: response.error };
             }
             
-            console.log(`ConciergeSync: ✅ Successfully deleted "${restaurant.name}" from server`);
+            this.log.debug(`ConciergeSync: ✅ Successfully deleted "${restaurant.name}" from server`);
             return { success: true };
             
         } catch (error) {
-            console.error('ConciergeSync: Delete error:', error);
+            this.log.error('ConciergeSync: Delete error:', error);
             return { success: false, error: error.message };
         }
     }
@@ -635,7 +659,7 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
      */
     async performFullSync() {
         try {
-            console.log('ConciergeSync: Starting full sync...');
+            this.log.debug('ConciergeSync: Starting full sync...');
             
             // Step 1: Import from server
             const importResults = await this.importRestaurants();
@@ -643,7 +667,7 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
             // Step 2: Export to server
             const exportResults = await this.syncAllPending(50);
             
-            console.log('ConciergeSync: Full sync complete');
+            this.log.debug('ConciergeSync: Full sync complete');
             
             return {
                 import: importResults,
@@ -651,7 +675,7 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
             };
             
         } catch (error) {
-            console.error('ConciergeSync: Full sync error:', error);
+            this.log.error('ConciergeSync: Full sync error:', error);
             throw error;
         }
     }
@@ -759,7 +783,7 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
             return curatorId;
             
         } catch (error) {
-            console.error('ConciergeSync: Error finding/creating curator:', error);
+            this.log.error('ConciergeSync: Error finding/creating curator:', error);
             const defaultCurator = await dataStorage.getCurrentCurator();
             return defaultCurator ? defaultCurator.id : null;
         }

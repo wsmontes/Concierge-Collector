@@ -16,16 +16,25 @@
 
 const ApiService = ModuleWrapper.defineClass('ApiService', class {
     constructor() {
+        // Use centralized configuration from AppConfig
+        this.config = window.AppConfig || {
+            api: {
+                backend: { baseUrl: 'https://wsmontes.pythonanywhere.com/api', timeout: 30000, retryAttempts: 3, retryDelay: 1000 },
+                openai: { baseUrl: 'https://api.openai.com/v1', timeout: 60000 }
+            }
+        };
+        
         // Server configuration
-        this.baseUrl = 'https://wsmontes.pythonanywhere.com/api';
-        this.timeout = 30000; // 30 seconds
-        this.maxRetries = 3;
-        this.retryDelay = 1000; // 1 second between retries
+        this.baseUrl = this.config.api.backend.baseUrl;
+        this.timeout = this.config.api.backend.timeout;
+        this.maxRetries = this.config.api.backend.retryAttempts;
+        this.retryDelay = this.config.api.backend.retryDelay;
         
         // OpenAI configuration (for transcription/analysis)
-        this.openAiKey = localStorage.getItem('openai_api_key') || null;
+        this.openAiKey = this.config.getApiKey ? this.config.getApiKey('openaiApiKey') : localStorage.getItem('openai_api_key');
         
-        console.log('ApiService: Initialized');
+        console.log('ApiService: Initialized with centralized config');
+        console.log('ApiService: Backend URL:', this.baseUrl);
     }
 
     /**
@@ -34,7 +43,11 @@ const ApiService = ModuleWrapper.defineClass('ApiService', class {
      */
     setOpenAiKey(key) {
         this.openAiKey = key;
-        localStorage.setItem('openai_api_key', key);
+        if (this.config.setApiKey) {
+            this.config.setApiKey('openaiApiKey', key);
+        } else {
+            localStorage.setItem('openai_api_key', key);
+        }
         console.log('ApiService: OpenAI API key updated');
     }
 
@@ -364,7 +377,8 @@ const ApiService = ModuleWrapper.defineClass('ApiService', class {
      * @returns {Promise<Object>}
      */
     async batchUploadRestaurants(restaurants) {
-        return this.post('/restaurants/batch', { restaurants });
+        // Server expects direct array, not wrapped in object
+        return this.post('/restaurants/batch', restaurants);
     }
 
     // ========================================

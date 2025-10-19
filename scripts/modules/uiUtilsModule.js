@@ -4,6 +4,9 @@
  */
 class UIUtilsModule {
     constructor(uiManager) {
+        // Create module logger instance
+        this.log = Logger.module('UIUtilsModule');
+        
         this.uiManager = uiManager;
         this.isLoadingVisible = false;
     }
@@ -30,7 +33,7 @@ class UIUtilsModule {
         document.body.appendChild(loadingOverlay);
         document.body.style.overflow = 'hidden';
         this.isLoadingVisible = true;
-        console.log(`Loading shown: ${message}`);
+        this.log.debug(`Loading shown: ${message}`);
     }
 
     /**
@@ -42,7 +45,7 @@ class UIUtilsModule {
             document.body.removeChild(loadingOverlay);
             document.body.style.overflow = '';
             this.isLoadingVisible = false;
-            console.log('Loading hidden');
+            this.log.debug('Loading hidden');
         }
     }
     
@@ -54,7 +57,7 @@ class UIUtilsModule {
         const loadingMessage = document.querySelector('#loading-overlay .loading-message');
         if (loadingMessage) {
             loadingMessage.textContent = message;
-            console.log(`Loading status updated: ${message}`);
+            this.log.debug(`Loading status updated: ${message}`);
         }
     }
 
@@ -93,7 +96,7 @@ class UIUtilsModule {
             }).showToast();
         } else {
             // Fallback if Toastify isn't available
-            console.log(`Notification (${type}): ${message}`);
+            this.log.debug(`Notification (${type}): ${message}`);
             alert(message);
         }
     }
@@ -155,7 +158,7 @@ class UIUtilsModule {
             <span class="status-message">${message}</span>
         `;
         
-        console.log(`Processing status updated for ${processId}: ${status} - ${message}`);
+        this.log.debug(`Processing status updated for ${processId}: ${status} - ${message}`);
     }
     
     /**
@@ -228,6 +231,6 @@ class UIUtilsModule {
 
 // Initialize as global utility when the script loads
 if (!window.uiUtils) {
-    console.log('Initializing global UI utilities');
+    this.log.debug('Initializing global UI utilities');
     window.uiUtils = new UIUtilsModule();
 }

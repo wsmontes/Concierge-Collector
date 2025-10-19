@@ -15,12 +15,15 @@
  */
 class CuratorModule {
     constructor(uiManager) {
+        // Create module logger instance
+        this.log = Logger.module("CuratorModule");
+        
         this.uiManager = uiManager;
         this.curatorSelectorInitialized = false;
     }
     
     setupEvents() {
-        console.log('Setting up curator events...');
+        this.log.debug('Setting up curator events...');
         
         // Setup old button events (for backward compatibility)
         this.setupLegacyEvents();
@@ -31,7 +34,7 @@ class CuratorModule {
         // Setup API visibility toggle
         this.setupAPIVisibilityToggle();
         
-        console.log('Curator events set up');
+        this.log.debug('Curator events set up');
     }
     
     /**
@@ -44,7 +47,7 @@ class CuratorModule {
         if (saveButton) {
             saveButton.addEventListener('click', () => {
                 this.saveCurator().catch(error => {
-                    console.error('Error saving curator:', error);
+                    this.log.error('Error saving curator:', error);
                     SafetyUtils.showNotification(`Error saving curator: ${error.message}`, 'error');
                 });
             });
@@ -76,7 +79,7 @@ class CuratorModule {
         if (saveCompactButton) {
             saveCompactButton.addEventListener('click', () => {
                 this.saveCuratorCompact().catch(error => {
-                    console.error('Error saving curator:', error);
+                    this.log.error('Error saving curator:', error);
                     SafetyUtils.showNotification(`Error saving curator: ${error.message}`, 'error');
                 });
             });
@@ -121,7 +124,7 @@ class CuratorModule {
                 try {
                     await this.toggleCuratorFilter(e.target.checked);
                 } catch (error) {
-                    console.error('Error toggling curator filter:', error);
+                    this.log.error('Error toggling curator filter:', error);
                     SafetyUtils.showNotification(`Error updating filter: ${error.message}`, 'error');
                 }
             });
@@ -134,7 +137,7 @@ class CuratorModule {
         const syncCompactButton = document.getElementById('sync-compact-display');
         if (syncCompactButton) {
             syncCompactButton.addEventListener('click', () => {
-                console.log('Compact display sync button clicked');
+                this.log.debug('Compact display sync button clicked');
                 
                 // Disable button and add syncing class
                 syncCompactButton.disabled = true;
@@ -144,10 +147,10 @@ class CuratorModule {
                 if (this.uiManager.exportImportModule && typeof this.uiManager.exportImportModule.syncWithServer === 'function') {
                     this.uiManager.exportImportModule.syncWithServer()
                         .then(() => {
-                            console.log('Sync completed successfully');
+                            this.log.debug('Sync completed successfully');
                         })
                         .catch(error => {
-                            console.error('Error in syncWithServer:', error);
+                            this.log.error('Error in syncWithServer:', error);
                             SafetyUtils.showNotification(`Sync error: ${error.message}`, 'error');
                         })
                         .finally(() => {
@@ -156,7 +159,7 @@ class CuratorModule {
                             syncCompactButton.classList.remove('syncing', 'opacity-75', 'cursor-not-allowed');
                         });
                 } else {
-                    console.error('exportImportModule or syncWithServer not available');
+                    this.log.error('exportImportModule or syncWithServer not available');
                     SafetyUtils.showNotification('Sync functionality not available', 'error');
                     syncCompactButton.disabled = false;
                     syncCompactButton.classList.remove('syncing', 'opacity-75', 'cursor-not-allowed');
@@ -168,7 +171,7 @@ class CuratorModule {
         const syncSelectorButton = document.getElementById('sync-with-server-selector');
         if (syncSelectorButton) {
             syncSelectorButton.addEventListener('click', () => {
-                console.log('Selector sync button clicked');
+                this.log.debug('Selector sync button clicked');
                 
                 // Disable button and add syncing class
                 syncSelectorButton.disabled = true;
@@ -178,10 +181,10 @@ class CuratorModule {
                 if (this.uiManager.exportImportModule && typeof this.uiManager.exportImportModule.syncWithServer === 'function') {
                     this.uiManager.exportImportModule.syncWithServer()
                         .then(() => {
-                            console.log('Sync completed successfully');
+                            this.log.debug('Sync completed successfully');
                         })
                         .catch(error => {
-                            console.error('Error in syncWithServer:', error);
+                            this.log.error('Error in syncWithServer:', error);
                             SafetyUtils.showNotification(`Sync error: ${error.message}`, 'error');
                         })
                         .finally(() => {
@@ -190,7 +193,7 @@ class CuratorModule {
                             syncSelectorButton.classList.remove('syncing', 'opacity-75', 'cursor-not-allowed');
                         });
                 } else {
-                    console.error('exportImportModule.syncWithServer not available');
+                    this.log.error('exportImportModule.syncWithServer not available');
                     SafetyUtils.showNotification('Sync functionality not available', 'error');
                     syncSelectorButton.disabled = false;
                     syncSelectorButton.classList.remove('syncing', 'opacity-75', 'cursor-not-allowed');
@@ -216,7 +219,7 @@ class CuratorModule {
                         await this.selectCurator(parseInt(selectedValue, 10));
                     }
                 } catch (error) {
-                    console.error('Error handling curator selector change:', error);
+                    this.log.error('Error handling curator selector change:', error);
                     SafetyUtils.showNotification(`Error: ${error.message}`, 'error');
                 }
             });
@@ -237,7 +240,7 @@ class CuratorModule {
                 try {
                     await this.toggleCuratorFilter(e.target.checked);
                 } catch (error) {
-                    console.error('Error toggling curator filter:', error);
+                    this.log.error('Error toggling curator filter:', error);
                     SafetyUtils.showNotification(`Error updating filter: ${error.message}`, 'error');
                 }
             });
@@ -282,7 +285,7 @@ class CuratorModule {
                         await this.selectCurator(parseInt(selectedValue, 10));
                     }
                 } catch (error) {
-                    console.error('Error handling curator selector change:', error);
+                    this.log.error('Error handling curator selector change:', error);
                     SafetyUtils.showNotification(`Error: ${error.message}`, 'error');
                 }
             });
@@ -295,7 +298,7 @@ class CuratorModule {
                 try {
                     await this.fetchCurators();
                 } catch (error) {
-                    console.error('Error fetching curators:', error);
+                    this.log.error('Error fetching curators:', error);
                     SafetyUtils.showNotification(`Error fetching curators: ${error.message}`, 'error');
                 }
             });
@@ -308,7 +311,7 @@ class CuratorModule {
                 try {
                     await this.toggleCuratorFilter(e.target.checked);
                 } catch (error) {
-                    console.error('Error toggling curator filter:', error);
+                    this.log.error('Error toggling curator filter:', error);
                     SafetyUtils.showNotification(`Error updating filter: ${error.message}`, 'error');
                 }
             });
@@ -330,11 +333,11 @@ class CuratorModule {
             const curatorSelector = document.getElementById('curator-selector');
             if (!curatorSelector) return;
             
-            console.log('Initializing curator selector...');
+            this.log.debug('Initializing curator selector...');
             
             // Get all curators from database with cleanup enabled
             const curators = await dataStorage.getAllCurators(true);
-            console.log(`Retrieved ${curators.length} curators from database`);
+            this.log.debug(`Retrieved ${curators.length} curators from database`);
             
             // Clear all existing options except first two default options ("New Curator" and "Fetch from Server")
             while (curatorSelector.options.length > 2) {
@@ -342,7 +345,7 @@ class CuratorModule {
             }
             
             // Log before adding to selector
-            console.log('Adding curators to selector:', curators.map(c => ({
+            this.log.debug('Adding curators to selector:', curators.map(c => ({
                 id: c.id, 
                 name: c.name,
                 origin: c.origin,
@@ -373,9 +376,9 @@ class CuratorModule {
             }
             
             this.curatorSelectorInitialized = true;
-            console.log('Curator selector initialization complete');
+            this.log.debug('Curator selector initialization complete');
         } catch (error) {
-            console.error('Error initializing curator selector:', error);
+            this.log.error('Error initializing curator selector:', error);
             SafetyUtils.showNotification('Error loading curators', 'error');
         }
     }
@@ -394,7 +397,7 @@ class CuratorModule {
             // Set toggle state
             filterToggle.checked = filterEnabled;
         } catch (error) {
-            console.error('Error initializing filter toggle:', error);
+            this.log.error('Error initializing filter toggle:', error);
         }
     }
     
@@ -402,11 +405,11 @@ class CuratorModule {
      * Save curator
      */
     async saveCurator() {
-        console.log('Save curator button clicked');
+        this.log.debug('Save curator button clicked');
         const name = this.uiManager.curatorNameInput.value.trim();
         const apiKey = this.uiManager.apiKeyInput.value.trim();
         
-        console.log(`Name entered: ${name ? 'Yes' : 'No'}, API key entered: ${apiKey ? 'Yes' : 'No'}`);
+        this.log.debug(`Name entered: ${name ? 'Yes' : 'No'}, API key entered: ${apiKey ? 'Yes' : 'No'}`);
         
         if (!name) {
             SafetyUtils.showNotification('Please enter your name', 'error');
@@ -423,7 +426,7 @@ class CuratorModule {
             
             // Check if dataStorage is available
             if (!dataStorage) {
-                console.error('dataStorage is not available!');
+                this.log.error('dataStorage is not available!');
                 throw new Error('Data storage service is not available');
             }
             
@@ -469,7 +472,7 @@ class CuratorModule {
             this.uiManager.showRecordingSection();
         } catch (error) {
             SafetyUtils.hideLoading();
-            console.error('Error saving curator:', error);
+            this.log.error('Error saving curator:', error);
             SafetyUtils.showNotification(`Error saving curator: ${error.message}`, 'error');
         }
     }
@@ -478,7 +481,7 @@ class CuratorModule {
      * Cancel curator editing/creation
      */
     cancelCurator() {
-        console.log('Cancel curator button clicked');
+        this.log.debug('Cancel curator button clicked');
         
         if (this.uiManager.currentCurator) {
             // If we have curator data, hide form and show info
@@ -571,7 +574,7 @@ class CuratorModule {
                 // Fetch curators from server with error handling
                 await window.syncManager.importCurators();
             } catch (syncError) {
-                console.error('Error in sync service:', syncError);
+                this.log.error('Error in sync service:', syncError);
                 
                 // Special handling for 404 errors (no curators endpoint)
                 if (syncError.message && (
@@ -600,7 +603,7 @@ class CuratorModule {
             }
         } catch (error) {
             SafetyUtils.hideLoading();
-            console.error('Error fetching curators:', error);
+            this.log.error('Error fetching curators:', error);
             SafetyUtils.showNotification(`Error fetching curators: ${error.message}`, 'error');
         }
     }
@@ -634,7 +637,7 @@ class CuratorModule {
             SafetyUtils.showNotification(`Selected curator: ${curator.name}`);
         } catch (error) {
             SafetyUtils.hideLoading();
-            console.error('Error selecting curator:', error);
+            this.log.error('Error selecting curator:', error);
             SafetyUtils.showNotification(`Error selecting curator: ${error.message}`, 'error');
         }
     }
@@ -649,13 +652,13 @@ class CuratorModule {
                 typeof this.uiManager.restaurantModule.loadRestaurantList === 'function') {
                 
                 // Pass both parameters explicitly to ensure filter works correctly
-                console.log(`Loading restaurant list with curatorId: ${curatorId}, filter: ${filterEnabled}`);
+                this.log.debug(`Loading restaurant list with curatorId: ${curatorId}, filter: ${filterEnabled}`);
                 await this.uiManager.restaurantModule.loadRestaurantList(curatorId, filterEnabled);
             } else {
-                console.warn('restaurantModule not available or loadRestaurantList not a function');
+                this.log.warn('restaurantModule not available or loadRestaurantList not a function');
             }
         } catch (error) {
-            console.error('Error loading restaurant list:', error);
+            this.log.error('Error loading restaurant list:', error);
         }
     }
     
@@ -665,7 +668,7 @@ class CuratorModule {
      */
     async toggleCuratorFilter(enabled) {
         try {
-            console.log(`Toggling curator filter: ${enabled ? 'enabled' : 'disabled'}`);
+            this.log.debug(`Toggling curator filter: ${enabled ? 'enabled' : 'disabled'}`);
             
             // Update checkbox state to match (in case called programmatically)
             const filterCheckbox = document.getElementById('filter-by-curator-compact');
@@ -676,7 +679,7 @@ class CuratorModule {
             // Reload restaurant list with filter
             if (this.uiManager && this.uiManager.currentCurator) {
                 const curatorId = this.uiManager.currentCurator.id;
-                console.log(`Filter toggled to ${enabled ? 'ON' : 'OFF'} for curator: ${this.uiManager.currentCurator.name} (ID: ${curatorId}, type: ${typeof curatorId})`);
+                this.log.debug(`Filter toggled to ${enabled ? 'ON' : 'OFF'} for curator: ${this.uiManager.currentCurator.name} (ID: ${curatorId}, type: ${typeof curatorId})`);
                 
                 // Always pass curatorId as string for consistent handling
                 await this.safeLoadRestaurantList(
@@ -684,14 +687,14 @@ class CuratorModule {
                     enabled
                 );
             } else {
-                console.warn('Cannot apply filter: No current curator set');
+                this.log.warn('Cannot apply filter: No current curator set');
             }
             
             SafetyUtils.showNotification(
                 enabled ? 'Showing only your restaurants' : 'Showing all restaurants'
             );
         } catch (error) {
-            console.error('Error toggling curator filter:', error);
+            this.log.error('Error toggling curator filter:', error);
             SafetyUtils.showNotification('Error updating filter', 'error');
         }
     }
@@ -721,7 +724,7 @@ class CuratorModule {
             
             return false;
         } catch (error) {
-            console.error('Error loading curator info:', error);
+            this.log.error('Error loading curator info:', error);
             SafetyUtils.showNotification('Error loading curator information', 'error');
             return false;
         }
@@ -738,7 +741,7 @@ class CuratorModule {
         
         // Debug: Check if elements exist
         if (!compactDisplay || !editForm || !selectorSection) {
-            console.error('Compact curator elements missing:', {
+            this.log.error('Compact curator elements missing:', {
                 compactDisplay: !!compactDisplay,
                 editForm: !!editForm,
                 selectorSection: !!selectorSection
@@ -746,14 +749,14 @@ class CuratorModule {
             return;
         }
         
-        console.log('displayCuratorInfoCompact called:', {
+        this.log.debug('displayCuratorInfoCompact called:', {
             hasCurator: !!this.uiManager.currentCurator,
             curatorName: this.uiManager.currentCurator?.name
         });
         
         if (this.uiManager.currentCurator) {
             // Show compact display
-            console.log('Showing compact display for curator:', this.uiManager.currentCurator.name);
+            this.log.debug('Showing compact display for curator:', this.uiManager.currentCurator.name);
             compactDisplay.classList.remove('hidden');
             compactDisplay.classList.add('flex');
             
@@ -775,7 +778,7 @@ class CuratorModule {
             }
         } else {
             // Show selector for new curator
-            console.log('No curator, showing selector');
+            this.log.debug('No curator, showing selector');
             compactDisplay.classList.add('hidden');
             compactDisplay.classList.remove('flex');
             editForm.classList.add('hidden');
@@ -873,11 +876,11 @@ class CuratorModule {
                 this.uiManager.isCreatingNewCurator = false;
                 
                 // Sync new curator to server immediately to avoid conflicts
-                console.log('New curator created, syncing to server...');
+                this.log.debug('New curator created, syncing to server...');
                 try {
                     await this.syncNewCuratorToServer(curatorId);
                 } catch (syncError) {
-                    console.error('Error syncing new curator to server:', syncError);
+                    this.log.error('Error syncing new curator to server:', syncError);
                     SafetyUtils.showNotification(
                         'Curator saved locally. Server sync will be attempted during next full sync.',
                         'warning',
@@ -916,7 +919,7 @@ class CuratorModule {
             this.uiManager.showRecordingSection();
         } catch (error) {
             SafetyUtils.hideLoading();
-            console.error('Error saving curator:', error);
+            this.log.error('Error saving curator:', error);
             SafetyUtils.showNotification(`Error saving curator: ${error.message}`, 'error');
         }
     }
@@ -927,7 +930,7 @@ class CuratorModule {
      */
     async syncNewCuratorToServer(curatorId) {
         try {
-            console.log(`Syncing new curator ${curatorId} to server...`);
+            this.log.debug(`Syncing new curator ${curatorId} to server...`);
             
             // Get curator details
             const curator = await dataStorage.db.curators.get(curatorId);
@@ -949,7 +952,7 @@ class CuratorModule {
             }
             
             const result = response.data;
-            console.log('Curator synced to server successfully:', result);
+            this.log.debug('Curator synced to server successfully:', result);
             
             // Update curator with serverId if provided
             if (result.id || result.curator_id) {
@@ -958,13 +961,13 @@ class CuratorModule {
                     serverId: serverId,
                     origin: 'remote' // Mark as synced with server
                 });
-                console.log(`Updated curator ${curatorId} with serverId: ${serverId}`);
+                this.log.debug(`Updated curator ${curatorId} with serverId: ${serverId}`);
             }
             
             SafetyUtils.showNotification('✅ Curator synced to server', 'success', 3000);
             
         } catch (error) {
-            console.error('Error syncing curator to server:', error);
+            this.log.error('Error syncing curator to server:', error);
             throw error;
         }
     }
@@ -1034,7 +1037,7 @@ class CuratorModule {
      * Create new curator - clears form and shows edit mode
      */
     createNewCurator() {
-        console.log('Creating new curator...');
+        this.log.debug('Creating new curator...');
         
         const compactDisplay = document.getElementById('curator-compact-display');
         const editForm = document.getElementById('curator-edit-form');
@@ -1111,11 +1114,11 @@ class CuratorModule {
         if (!curatorSelector) return;
         
         try {
-            console.log('Populating compact curator selector...');
+            this.log.debug('Populating compact curator selector...');
             
             // Get all curators from database
             const curators = await dataStorage.getAllCurators(true);
-            console.log(`Retrieved ${curators.length} curators for compact selector`);
+            this.log.debug(`Retrieved ${curators.length} curators for compact selector`);
             
             // Clear all existing options except the first one ("+ Create new curator")
             while (curatorSelector.options.length > 1) {
@@ -1144,7 +1147,7 @@ class CuratorModule {
                 curatorSelector.value = this.uiManager.currentCurator.id;
             }
         } catch (error) {
-            console.error('Error populating compact curator selector:', error);
+            this.log.error('Error populating compact curator selector:', error);
         }
     }
 }
