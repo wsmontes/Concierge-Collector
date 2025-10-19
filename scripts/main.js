@@ -285,7 +285,6 @@ function ensureBaseStructureExists() {
     // Ensure minimum required sections exist
     const sections = [
         { id: 'recording-section', title: 'Record Your Restaurant Review', icon: 'mic' },
-        { id: 'restaurant-form', title: 'Restaurant Details', icon: 'restaurant' },
         { id: 'concepts-section', title: 'Restaurant Concepts', icon: 'category' }
     ];
     
