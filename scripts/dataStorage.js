@@ -800,10 +800,15 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             } else {
                 // No curator filtering
                 console.log(`Getting all restaurants (no curator filter)`);
-                return await this.processRestaurants(
-                    await this.db.restaurants.toArray(), 
-                    deduplicate
-                );
+                let allRestaurants = await this.db.restaurants.toArray();
+                
+                // Filter out soft-deleted restaurants unless explicitly requested
+                if (!includeDeleted) {
+                    allRestaurants = allRestaurants.filter(r => !r.deletedLocally);
+                    console.log(`Filtered out soft-deleted restaurants. Remaining: ${allRestaurants.length}`);
+                }
+                
+                return await this.processRestaurants(allRestaurants, deduplicate);
             }
         } catch (error) {
             console.error("Error getting restaurants:", error);
@@ -1366,13 +1371,14 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
     async getUnsyncedRestaurants() {
         try {
             // source='local' means NOT synced (either new or modified)
-            // Remove the filter for !serverId - we want ALL local restaurants
+            // Filter out soft-deleted restaurants - they should NOT be synced
             const unsyncedRestaurants = await this.db.restaurants
                 .where('source')
                 .equals('local')
+                .and(r => !r.deletedLocally)
                 .toArray();
                 
-            console.log(`Found ${unsyncedRestaurants.length} unsynced restaurants (source='local')`);
+            console.log(`Found ${unsyncedRestaurants.length} unsynced restaurants (source='local' and not deleted)`);
             
             // Return restaurants with enhanced data including concepts and locations
             const enhancedRestaurants = [];
@@ -1727,7 +1733,12 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
     }
 
     async getRestaurantsByCurator(curatorId) {
-        const restaurants = await this.db.restaurants.where('curatorId').equals(curatorId).toArray();
+        // Filter out soft-deleted restaurants
+        const restaurants = await this.db.restaurants
+            .where('curatorId')
+            .equals(curatorId)
+            .and(r => !r.deletedLocally)
+            .toArray();
         
         // Enhance restaurants with concepts and location data
         for (const restaurant of restaurants) {
@@ -2083,11 +2094,20 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 
                 // Check if restaurant already exists
                 const restaurantName = collectorMeta.data.name;
+                
+                // CRITICAL FIX: Check if this restaurant was soft-deleted by user
+                // Do NOT re-import restaurants that user explicitly deleted
                 const existingRestaurant = await this.db.restaurants
                     .where('name')
                     .equals(restaurantName)
                     .and(r => r.curatorId === curatorId)
                     .first();
+                
+                // Skip import if restaurant is soft-deleted locally (user deleted it)
+                if (existingRestaurant && existingRestaurant.deletedLocally === true) {
+                    console.log(`Skipping import of "${restaurantName}" - restaurant was deleted by user`);
+                    continue; // Skip this restaurant
+                }
                 
                 let restaurantId;
                 
@@ -2116,10 +2136,12 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                             if (restaurantMeta.sync.lastSyncedAt) {
                                 updateData.lastSyncedAt = new Date(restaurantMeta.sync.lastSyncedAt);
                             }
-                            if (restaurantMeta.sync.deletedLocally !== undefined) {
+                            // CRITICAL FIX: Only update deletedLocally if restaurant is NOT already soft-deleted locally
+                            // This prevents sync from restoring restaurants that user has deleted
+                            if (restaurantMeta.sync.deletedLocally !== undefined && !existingRestaurant.deletedLocally) {
                                 updateData.deletedLocally = restaurantMeta.sync.deletedLocally;
                             }
-                            if (restaurantMeta.sync.deletedAt) {
+                            if (restaurantMeta.sync.deletedAt && !existingRestaurant.deletedLocally) {
                                 updateData.deletedAt = new Date(restaurantMeta.sync.deletedAt);
                             }
                         }
@@ -2737,36 +2759,23 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 
                 console.log('Performing soft delete + server delete (synced restaurant)');
                 
-                // First, try to delete from server
-                // Note: Server API uses restaurant name as identifier, not numeric ID
-                try {
-                    const restaurantIdentifier = restaurant.serverId || restaurant.name;
-                    console.log(`Attempting to delete restaurant from server: name="${restaurant.name}", identifier=${restaurantIdentifier}`);
+                // Delegate server delete to syncManager
+                let serverDeleted = false;
+                if (window.syncManager) {
+                    const deleteResult = await window.syncManager.deleteRestaurant(restaurant);
+                    serverDeleted = deleteResult.success;
                     
-                    const response = await fetch(`https://wsmontes.pythonanywhere.com/api/restaurants/${encodeURIComponent(restaurantIdentifier)}`, {
-                        method: 'DELETE',
-                        headers: {
-                            'Accept': 'application/json',
-                            'Content-Type': 'application/json'
-                        }
-                    });
-                    
-                    if (!response.ok) {
-                        const errorText = await response.text();
-                        console.warn(`Server delete failed with status ${response.status}: ${response.statusText}`, errorText);
+                    if (!serverDeleted) {
+                        console.warn(`Server delete failed: ${deleteResult.error}`);
                         // Continue with soft delete even if server delete fails
-                    } else {
-                        const result = await response.json();
-                        console.log(`Successfully deleted restaurant from server:`, result);
                     }
-                } catch (serverError) {
-                    console.error('Error deleting from server:', serverError);
-                    // Continue with soft delete even if server call fails
+                } else {
+                    console.warn('SyncManager not available - skipping server delete');
                 }
                 
                 // Soft delete locally (mark as deleted)
                 await this.softDeleteRestaurant(restaurantId);
-                return { type: 'soft', id: restaurantId, name: restaurant.name, serverDeleted: true };
+                return { type: 'soft', id: restaurantId, name: restaurant.name, serverDeleted };
             }
         } catch (error) {
             console.error('Error in smart delete restaurant:', error);

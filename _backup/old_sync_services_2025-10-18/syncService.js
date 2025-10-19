@@ -129,6 +129,13 @@ if (!window.SyncService) {
                         
                         // If exists with serverId, check if it needs sync (has local changes)
                         if (existingRestaurant) {
+                            // CRITICAL: Skip if restaurant was deleted by user
+                            if (existingRestaurant.deletedLocally === true) {
+                                results.skipped++;
+                                console.log(`SyncService: Skipping ${remoteRestaurant.name} - restaurant was deleted by user`);
+                                continue;
+                            }
+                            
                             // Check needsSync flag (or source='local' which means the same)
                             if (existingRestaurant.needsSync || existingRestaurant.source === 'local') {
                                 // Has pending local changes - skip update to preserve local data
@@ -175,6 +182,14 @@ if (!window.SyncService) {
                         // Check for restaurants with same name (normalized)
                         const matchingRestaurants = existingByName.get(normalizedName);
                         if (matchingRestaurants && matchingRestaurants.length > 0) {
+                            // CRITICAL: Check if any matching restaurant was deleted by user
+                            const deletedMatch = matchingRestaurants.find(r => r.deletedLocally === true);
+                            if (deletedMatch) {
+                                results.skipped++;
+                                console.log(`SyncService: Skipping ${remoteRestaurant.name} - matching restaurant was deleted by user`);
+                                continue;
+                            }
+                            
                             // Check if any of the matching restaurants has the 'local' source
                             const localMatch = matchingRestaurants.find(r => r.source === 'local');
                             

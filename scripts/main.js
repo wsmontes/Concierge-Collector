@@ -309,7 +309,7 @@ function ensureBaseStructureExists() {
 }
 
 /**
- * Setup manual sync button to use BackgroundSync (Phase 1.3)
+ * Setup manual sync button to use SyncManager
  */
 function setupManualSyncButton() {
     const syncButton = document.getElementById('sync-button');
@@ -324,12 +324,12 @@ function setupManualSyncButton() {
     const newButton = syncButton.cloneNode(true);
     syncButton.parentNode.replaceChild(newButton, syncButton);
 
-    // Add click handler using BackgroundSync
+    // Add click handler using SyncManager
     newButton.addEventListener('click', async () => {
         console.log('🔄 Manual sync triggered');
         
-        if (!window.backgroundSync) {
-            console.error('❌ BackgroundSync not available');
+        if (!window.syncManager) {
+            console.error('❌ SyncManager not available');
             if (window.uiUtils?.showNotification) {
                 window.uiUtils.showNotification('Sync service not available', 'error');
             }
@@ -337,14 +337,14 @@ function setupManualSyncButton() {
         }
 
         try {
-            await window.backgroundSync.syncAllPendingWithUI(true);
+            await window.syncManager.syncAllPendingWithUI(true);
             console.log('✅ Manual sync completed');
         } catch (error) {
             console.error('❌ Manual sync error:', error);
         }
     });
 
-    console.log('✅ Manual sync button configured (using BackgroundSync)');
+    console.log('✅ Manual sync button configured (using SyncManager)');
 }
 
 /**
@@ -525,9 +525,9 @@ function triggerInitialSync() {
     // Give time for other modules to initialize and UI to render
     setTimeout(async () => {
         try {
-            // Check if syncService is available
-            if (!window.syncService) {
-                console.warn('syncService not available, skipping initial sync');
+            // Check if syncManager is available
+            if (!window.syncManager) {
+                console.warn('syncManager not available, skipping initial sync');
                 return;
             }
             
@@ -547,13 +547,13 @@ function triggerInitialSync() {
             
             // Import curators first (quick operation)
             console.log('Importing curators from server...');
-            const curatorResults = await window.syncService.importCurators();
+            const curatorResults = await window.syncManager.importCurators();
             console.log(`Imported ${curatorResults.length} curators from server`);
             
             // Then import restaurants (potentially longer operation)
             console.log('Importing restaurants from server...');
             try {
-                const restaurantResults = await window.syncService.importRestaurants();
+                const restaurantResults = await window.syncManager.importRestaurants();
                 
                 // Log detailed restaurant import results
                 console.log('Restaurant import results:', restaurantResults);

@@ -66,13 +66,12 @@
         }
     </style>
     
-    <!-- Add sync service script -->
+    <!-- Sync badges stylesheet -->
     <link rel="stylesheet" href="styles/sync-badges.css">
     
-    <!-- PHASE 1.3: Keep syncService for initial import, disable AutoSync periodic sync -->
-    <script src="scripts/syncService.js" defer></script>
-    <!-- AutoSync DISABLED - periodic sync replaced by BackgroundSync -->
-    <!-- <script src="scripts/autoSync.js" defer></script> -->
+    <!-- REFACTORED: New centralized API and Sync services -->
+    <script src="scripts/apiService.js" defer></script>
+    <script src="scripts/syncManager.js" defer></script>
     
     <!-- Add the debug script -->
     <script src="scripts/displayDebuggingInfo.js" defer></script>
@@ -576,8 +575,6 @@
     <script src="scripts/dataStorage.js"></script>
     <script src="scripts/conceptMatcher.js"></script>
     <script src="scripts/audioRecorder.js"></script>
-    <script src="scripts/syncService.js"></script>
-    <script src="scripts/backgroundSync.js"></script>
     <script src="scripts/uiManager.js"></script>
     
     <!-- Module implementations - these should NOT duplicate core components -->
