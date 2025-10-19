@@ -25,49 +25,27 @@
     <link href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css" rel="stylesheet">
     <!-- Material Icons -->
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-    <!-- Custom CSS -->
-    <link href="styles/style.css" rel="stylesheet">
+    
+    <!-- Custom CSS - New Architecture -->
+    <!-- 1. Design System Foundation (FIRST - design tokens, base styles) -->
+    <link rel="stylesheet" href="styles/design-system.css">
+    
+    <!-- 2. Component Library (reusable components) -->
+    <link rel="stylesheet" href="styles/components.css">
+    
+    <!-- 3. Application-specific Styles -->
+    <link rel="stylesheet" href="styles/application.css">
+    
+    <!-- 4. Feature-specific Styles -->
     <link rel="stylesheet" href="styles/michelin-section.css">
-    <link rel="stylesheet" href="styles/mobile-enhancements.css">
+    <link rel="stylesheet" href="styles/michelin-staging.css">
     <link rel="stylesheet" href="styles/places-section.css">
     <link rel="stylesheet" href="styles/access-control.css">
-    
-    <!-- Add stylesheets for sync badges and curator selection -->
-    <style>
-        .data-badge {
-            display: inline-flex;
-            align-items: center;
-            font-size: 0.75rem;
-            padding: 0.125rem 0.5rem;
-            border-radius: 9999px;
-        }
-        .data-badge.local {
-            background-color: #FEF3C7;
-            color: #92400E;
-        }
-        .data-badge.remote {
-            background-color: #D1FAE5;
-            color: #065F46;
-        }
-        #curator-selector-container {
-            margin-bottom: 1rem;
-        }
-        .sync-controls {
-            margin-top: 1rem;
-            display: flex;
-            gap: 0.5rem;
-            flex-wrap: wrap;
-        }
-        .curator-filter-toggle {
-            display: flex;
-            align-items: center;
-            margin-top: 0.5rem;
-            font-size: 0.875rem;
-        }
-    </style>
-    
-    <!-- Sync badges stylesheet -->
     <link rel="stylesheet" href="styles/sync-badges.css">
+    <link rel="stylesheet" href="styles/mobile-enhancements.css">
+    
+    <!-- 5. Legacy Support (will be deprecated after migration) -->
+    <link rel="stylesheet" href="styles/style.css">
     
     <!-- Centralized Configuration (MUST load first) -->
     <script src="scripts/config.js"></script>
@@ -78,9 +56,6 @@
     <!-- REFACTORED: New centralized API and Sync services -->
     <script src="scripts/apiService.js" defer></script>
     <script src="scripts/syncManager.js" defer></script>
-
-    <!-- Add the Michelin staging stylesheet -->
-    <link rel="stylesheet" href="styles/michelin-staging.css">
     
     <!-- Add the Michelin staging module script -->
     <script src="scripts/modules/michelinStagingModule.js"></script>
@@ -124,23 +99,23 @@
                 
                 <!-- Right: Actions -->
                 <div class="flex flex-wrap items-center gap-1.5">
-                    <button id="edit-curator-compact" class="text-xs px-2 py-1 text-blue-600 hover:bg-blue-50 rounded flex items-center gap-1 transition-colors">
-                        <span class="material-icons text-sm">edit</span>
+                    <button id="edit-curator-compact" class="btn btn-ghost-primary btn-xs">
+                        <span class="material-icons text-sm" aria-hidden="true">edit</span>
                         <span class="hidden sm:inline">Edit</span>
                     </button>
                     
-                    <button id="new-curator-compact" class="text-xs px-2 py-1 text-purple-600 hover:bg-purple-50 rounded flex items-center gap-1 transition-colors">
-                        <span class="material-icons text-sm">person_add</span>
+                    <button id="new-curator-compact" class="btn btn-ghost-secondary btn-xs">
+                        <span class="material-icons text-sm" aria-hidden="true">person_add</span>
                         <span class="hidden sm:inline">New</span>
                     </button>
                     
-                    <button id="switch-curator-compact" class="text-xs px-2 py-1 text-gray-600 hover:bg-gray-50 rounded flex items-center gap-1 transition-colors">
-                        <span class="material-icons text-sm">swap_horiz</span>
+                    <button id="switch-curator-compact" class="btn btn-ghost btn-xs">
+                        <span class="material-icons text-sm" aria-hidden="true">swap_horiz</span>
                         <span class="hidden sm:inline">Switch</span>
                     </button>
                     
-                    <button id="sync-compact-display" class="text-xs px-2 py-1 text-green-600 hover:bg-green-50 rounded flex items-center gap-1 transition-colors">
-                        <span class="material-icons text-sm">sync</span>
+                    <button id="sync-compact-display" class="btn btn-ghost-success btn-xs">
+                        <span class="material-icons text-sm" aria-hidden="true">sync</span>
                         <span class="hidden sm:inline">Sync</span>
                     </button>
                     
@@ -160,47 +135,58 @@
                         Curator Info
                     </h3>
                     <div class="flex gap-2">
-                        <button id="cancel-curator-compact" class="text-xs px-3 py-1 bg-gray-100 hover:bg-gray-200 rounded transition-colors">
+                        <button id="cancel-curator-compact" class="btn btn-outline btn-xs">
                             Cancel
                         </button>
-                        <button id="save-curator-compact" class="text-xs px-3 py-1 bg-blue-500 text-white hover:bg-blue-600 rounded transition-colors">
+                        <button id="save-curator-compact" class="btn btn-primary btn-xs">
                             Save
                         </button>
                     </div>
                 </div>
                 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div>
-                        <label class="block text-xs font-medium text-gray-700 mb-1">Name</label>
-                        <input type="text" id="curator-name-compact-input" class="text-sm border border-gray-300 p-2 w-full rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="Your name">
+                    <div class="form-group">
+                        <label for="curator-name-compact-input" class="label label-sm">Name</label>
+                        <input type="text" id="curator-name-compact-input" class="input input-sm" placeholder="Your name">
                     </div>
-                    <div>
-                        <label class="block text-xs font-medium text-gray-700 mb-1">API Key</label>
+                    <div class="form-group">
+                        <label for="api-key-compact-input" class="label label-sm">API Key</label>
                         <div class="relative">
-                            <input type="password" id="api-key-compact-input" class="text-sm border border-gray-300 p-2 w-full rounded pr-8 focus:ring-2 focus:ring-blue-500 focus:border-blue-500" placeholder="sk-...">
-                            <button type="button" id="toggle-api-visibility" class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 transition-colors">
-                                <span class="material-icons text-sm">visibility</span>
+                            <input type="password" id="api-key-compact-input" class="input input-sm pr-8" placeholder="sk-...">
+                            <button type="button" 
+                                    id="toggle-api-visibility" 
+                                    class="absolute right-2 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700 transition-colors"
+                                    aria-label="Toggle API key visibility">
+                                <span class="material-icons text-sm" aria-hidden="true">visibility</span>
                             </button>
                         </div>
                     </div>
                 </div>
-                <p class="text-xs text-gray-500">Your API key is stored locally only</p>
+                <p class="helper-text">Your API key is stored locally only</p>
             </div>
             
             <!-- CURATOR SELECTOR (COMPACT) -->
             <div id="curator-selector-compact" class="space-y-2">
-                <label class="block text-xs font-medium text-gray-700">Select Curator:</label>
+                <label for="curator-selector-dropdown" class="label label-sm">Select Curator:</label>
                 <div class="flex gap-2">
-                    <select id="curator-selector-dropdown" class="flex-1 text-sm border border-gray-300 p-2 rounded focus:ring-2 focus:ring-blue-500 focus:border-blue-500">
+                    <select id="curator-selector-dropdown" 
+                            class="select select-sm flex-1"
+                            aria-label="Select curator from list">
                         <option value="new">+ Create new curator</option>
                         <!-- Additional options will be populated by JS -->
                     </select>
-                    <button id="new-curator-selector" class="px-3 py-2 bg-purple-500 text-white rounded hover:bg-purple-600 transition-colors flex items-center gap-1" title="Create New Curator">
-                        <span class="material-icons text-sm">person_add</span>
+                    <button id="new-curator-selector" 
+                            class="btn btn-secondary btn-sm" 
+                            title="Create New Curator"
+                            aria-label="Create new curator">
+                        <span class="material-icons text-sm" aria-hidden="true">person_add</span>
                         <span class="hidden sm:inline text-sm">New</span>
                     </button>
-                    <button id="sync-with-server-selector" class="px-3 py-2 bg-blue-500 text-white rounded hover:bg-blue-600 transition-colors" title="Sync with Server">
-                        <span class="material-icons text-sm">sync</span>
+                    <button id="sync-with-server-selector" 
+                            class="btn btn-primary btn-sm" 
+                            title="Sync with Server"
+                            aria-label="Sync data with server">
+                        <span class="material-icons text-sm" aria-hidden="true">sync</span>
                     </button>
                 </div>
             </div>
@@ -244,12 +230,12 @@
                         </div>
                         
                         <div class="mt-4 flex justify-between">
-                            <button id="discard-recording" class="bg-gray-500 text-white px-4 py-2 rounded flex items-center">
-                                <span class="material-icons mr-1">delete</span>
+                            <button id="discard-recording" class="btn btn-outline btn-md">
+                                <span class="material-icons mr-1" aria-hidden="true">delete</span>
                                 Discard
                             </button>
-                            <button id="transcribe-audio" class="bg-green-500 text-white px-4 py-2 rounded flex items-center hidden">
-                                <span class="material-icons mr-1">description</span>
+                            <button id="transcribe-audio" class="btn btn-success btn-md hidden">
+                                <span class="material-icons mr-1" aria-hidden="true">description</span>
                                 Transcribe
                             </button>
                         </div>
@@ -266,12 +252,12 @@
             </h2>
             <div id="transcription-text" class="border p-4 rounded h-40 overflow-y-auto mb-4"></div>
             <div class="flex justify-between">
-                <button id="discard-transcription" class="bg-gray-500 text-white px-4 py-2 rounded flex items-center">
-                    <span class="material-icons mr-1">arrow_back</span>
+                <button id="discard-transcription" class="btn btn-outline btn-md">
+                    <span class="material-icons mr-1" aria-hidden="true">arrow_back</span>
                     Back
                 </button>
-                <button id="extract-concepts" class="bg-green-500 text-white px-4 py-2 rounded flex items-center">
-                    <span class="material-icons mr-1">category</span>
+                <button id="extract-concepts" class="btn btn-success btn-md">
+                    <span class="material-icons mr-1" aria-hidden="true">category</span>
                     Extract Concepts
                 </button>
             </div>
@@ -284,20 +270,20 @@
                 Restaurant Concepts
             </h2>
                 <div class="mb-6">
-                    <label class="block mb-2 font-medium">
-                        Restaurant Name: <span class="text-red-500">*</span>
+                    <label for="restaurant-name" class="label label-required">
+                        Restaurant Name:
                     </label>
                     <div class="mb-4 flex items-center gap-2">
                         <div class="flex-grow relative">
-                            <input type="text" id="restaurant-name" class="border rounded p-2 w-full" placeholder="Restaurant Name">
+                            <input type="text" id="restaurant-name" class="input input-md" placeholder="Restaurant Name">
                         </div>
-                        <button id="places-lookup-btn" type="button" class="bg-blue-500 text-white px-3 py-2 rounded flex items-center" title="Get from Google Places">
-                            <span class="material-icons mr-1">travel_explore</span>
+                        <button id="places-lookup-btn" type="button" class="btn btn-primary btn-sm" title="Get from Google Places">
+                            <span class="material-icons mr-1" aria-hidden="true">travel_explore</span>
                             Places
                         </button>
                     </div>
                     <div id="places-autocomplete-inline-container" class="mb-2 hidden"></div>
-                    <p class="text-xs text-red-500 mt-1">This field is required</p>
+                    <p class="helper-text error">This field is required</p>
                 </div>
                 
                 <div class="mb-6">
@@ -305,8 +291,8 @@
                         <span class="material-icons mr-2 text-blue-500">location_on</span>
                         Location:
                     </label>
-                    <button id="get-location" class="bg-blue-500 text-white px-4 py-2 rounded mb-3 flex items-center">
-                        <span class="material-icons mr-2">my_location</span>
+                    <button id="get-location" class="btn btn-primary btn-md">
+                        <span class="material-icons mr-2" aria-hidden="true">my_location</span>
                         Get Current Location
                     </button>
                     <div id="location-display" class="text-sm"></div>
@@ -318,31 +304,44 @@
                         Photos:
                     </label>
                     <div class="photo-buttons-container">
-                        <button type="button" id="take-photo" class="bg-green-500 text-white px-4 py-2 rounded-lg mr-2 flex items-center">
-                            <span class="material-icons mr-1">photo_camera</span>
+                        <button type="button" id="take-photo" class="btn btn-success btn-md mr-2">
+                            <span class="material-icons mr-1" aria-hidden="true">photo_camera</span>
                             Take Photo
                         </button>
-                        <button type="button" id="gallery-photo" class="bg-blue-500 text-white px-4 py-2 rounded-lg flex items-center">
-                            <span class="material-icons mr-1">photo_library</span>
+                        <button type="button" id="gallery-photo" class="btn btn-primary btn-md">
+                            <span class="material-icons mr-1" aria-hidden="true">photo_library</span>
                             Gallery
                         </button>
                     </div>
-                    <!-- Hidden file inputs -->
-                    <input type="file" id="camera-input" accept="image/*" capture="environment" multiple class="hidden">
-                    <input type="file" id="gallery-input" accept="image/*" multiple class="hidden">
+                    <!-- Hidden file inputs with labels for accessibility -->
+                    <label for="camera-input" class="sr-only">Take photo with camera</label>
+                    <input type="file" 
+                           id="camera-input" 
+                           accept="image/*" 
+                           capture="environment" 
+                           multiple 
+                           class="hidden"
+                           aria-label="Take photo with camera">
+                    <label for="gallery-input" class="sr-only">Select photos from gallery</label>
+                    <input type="file" 
+                           id="gallery-input" 
+                           accept="image/*" 
+                           multiple 
+                           class="hidden"
+                           aria-label="Select photos from gallery">
                     <div id="photos-preview" class="grid grid-cols-2 gap-2 mt-3"></div>
                 </div>
 
                 <!-- New transcription section -->
                 <div class="mb-8 pb-4 border-b border-gray-200">
-                    <label class="block mb-2 font-medium flex items-center">
-                        <span class="material-icons mr-2 text-purple-500">description</span>
+                    <label for="restaurant-transcription" class="label flex items-center">
+                        <span class="material-icons mr-2 text-purple-500" aria-hidden="true">description</span>
                         Transcription:
                     </label>
-                    <textarea id="restaurant-transcription" class="border p-3 w-full rounded h-32" placeholder="No transcription available" spellcheck="true"></textarea>
+                    <textarea id="restaurant-transcription" class="input input-md h-32" placeholder="No transcription available" spellcheck="true"></textarea>
                     <div class="mt-2 flex justify-end">
-                        <button id="reprocess-concepts" class="bg-purple-500 text-white px-4 py-2 rounded flex items-center">
-                            <span class="material-icons mr-1">refresh</span>
+                        <button id="reprocess-concepts" class="btn btn-secondary btn-md">
+                            <span class="material-icons mr-1" aria-hidden="true">refresh</span>
                             Reprocess Concepts
                         </button>
                     </div>
@@ -350,28 +349,28 @@
                 
                 <!-- Restaurant Description -->
                 <div class="mb-6">
-                    <label class="block mb-2 font-medium">
+                    <label for="restaurant-description" class="label">
                         Description (30 words max):
                     </label>
-                    <textarea id="restaurant-description" class="border p-3 w-full rounded h-20" placeholder="Short restaurant description" maxlength="200"></textarea>
+                    <textarea id="restaurant-description" class="input input-md h-20" placeholder="Short restaurant description" maxlength="200"></textarea>
                     <div class="mt-2 flex justify-end">
-                        <button id="generate-description" class="bg-yellow-500 text-white px-4 py-2 rounded flex items-center">
-                            <span class="material-icons mr-1">auto_awesome</span>
+                        <button id="generate-description" class="btn btn-warning btn-md">
+                            <span class="material-icons mr-1" aria-hidden="true">auto_awesome</span>
                             Generate Description
                         </button>
                     </div>
-                    <p class="text-xs text-gray-500 mt-1">This short description will be displayed in restaurant listings.</p>
+                    <p class="helper-text">This short description will be displayed in restaurant listings.</p>
                 </div>
                 
                 <div id="concepts-container" class="mb-6"></div>
                 
                 <div class="flex justify-between mt-8">
-                    <button id="discard-restaurant" class="bg-gray-500 text-white px-4 py-2 rounded flex items-center">
-                        <span class="material-icons mr-1">clear</span>
+                    <button id="discard-restaurant" class="btn btn-outline btn-md">
+                        <span class="material-icons mr-1" aria-hidden="true">clear</span>
                         Discard
                     </button>
-                    <button id="save-restaurant" class="bg-green-500 text-white px-4 py-2 rounded flex items-center">
-                        <span class="material-icons mr-1">check</span>
+                    <button id="save-restaurant" class="btn btn-success btn-lg">
+                        <span class="material-icons mr-1" aria-hidden="true">check</span>
                         Save Restaurant
                     </button>
                 </div>
@@ -380,12 +379,12 @@
 
         <!-- External Search Actions - Compact -->
         <div class="flex gap-3 mb-6">
-            <button id="open-places-search" class="flex-1 bg-blue-600 text-white px-4 py-3 rounded-lg hover:bg-blue-700 flex items-center justify-center shadow-md transition-all">
-                <span class="material-icons mr-2">place</span>
+            <button id="open-places-search" class="btn btn-primary btn-lg flex-1 shadow-md">
+                <span class="material-icons mr-2" aria-hidden="true">place</span>
                 <span class="font-medium">Google Places</span>
             </button>
-            <button id="open-staging-search" class="flex-1 bg-red-600 text-white px-4 py-3 rounded-lg hover:bg-red-700 flex items-center justify-center shadow-md transition-all">
-                <span class="material-icons mr-2">stars</span>
+            <button id="open-staging-search" class="btn btn-danger btn-lg flex-1 shadow-md">
+                <span class="material-icons mr-2" aria-hidden="true">stars</span>
                 <span class="font-medium">Michelin Guide</span>
             </button>
         </div>
@@ -398,13 +397,13 @@
                     Restaurants
                 </h2>
                 <div class="flex gap-2">
-                    <button id="sync-restaurants-btn" class="bg-blue-500 text-white px-3 py-1 rounded flex items-center hidden">
-                        <span class="material-icons mr-1 text-sm">sync</span>
+                    <button id="sync-restaurants-btn" class="btn btn-primary btn-sm hidden">
+                        <span class="material-icons mr-1 text-sm" aria-hidden="true">sync</span>
                         <span id="sync-restaurants-text">Sync</span>
                         <span id="sync-restaurants-badge" class="ml-2 bg-white text-blue-500 px-2 py-0.5 rounded-full text-xs font-bold hidden"></span>
                     </button>
-                    <button id="add-restaurant" class="bg-green-500 text-white px-3 py-1 rounded flex items-center">
-                        <span class="material-icons mr-1">add</span>
+                    <button id="add-restaurant" class="btn btn-success btn-sm">
+                        <span class="material-icons mr-1" aria-hidden="true">add</span>
                         Add Restaurant
                     </button>
                 </div>
@@ -419,29 +418,39 @@
                 Export/Import Data
             </h2>
             <div class="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
-                <button id="export-data" class="bg-blue-500 text-white px-4 py-2 rounded flex items-center justify-center">
-                    <span class="material-icons mr-1">file_download</span>
+                <button id="export-data" class="btn btn-primary btn-md">
+                    <span class="material-icons mr-1" aria-hidden="true">file_download</span>
                     Export Data
                 </button>
                 <div class="flex-1">
                     <div class="file-input-container mb-3">
-                        <span class="material-icons text-2xl mb-2 text-gray-400">upload_file</span>
-                        <p class="mb-1">Select JSON or ZIP file to import</p>
-                        <input type="file" id="import-file" accept=".json,.zip" class="mb-2">
+                        <span class="material-icons text-2xl mb-2 text-gray-400" aria-hidden="true">upload_file</span>
+                        <label for="import-file" class="mb-1 block">Select JSON or ZIP file to import</label>
+                        <input type="file" 
+                               id="import-file" 
+                               accept=".json,.zip" 
+                               class="mb-2"
+                               aria-describedby="import-file-description">
+                        <span id="import-file-description" class="sr-only">Select a JSON or ZIP file containing restaurant data to import</span>
                     </div>
-                    <button id="import-data" class="bg-green-500 text-white px-4 py-2 rounded flex items-center justify-center w-full">
-                        <span class="material-icons mr-1">file_upload</span>
+                    <button id="import-data" class="btn btn-success btn-md w-full">
+                        <span class="material-icons mr-1" aria-hidden="true">file_upload</span>
                         Import Data
                     </button>
                 </div>
                 <div class="flex-1">
                     <div class="file-input-container mb-3">
-                        <span class="material-icons text-2xl mb-2 text-gray-400">restaurant_menu</span>
-                        <p class="mb-1">Import Concierge restaurant data</p>
-                        <input type="file" id="import-concierge-file" accept=".json" class="mb-2">
+                        <span class="material-icons text-2xl mb-2 text-gray-400" aria-hidden="true">restaurant_menu</span>
+                        <label for="import-concierge-file" class="mb-1 block">Import Concierge restaurant data</label>
+                        <input type="file" 
+                               id="import-concierge-file" 
+                               accept=".json" 
+                               class="mb-2"
+                               aria-describedby="import-concierge-file-description">
+                        <span id="import-concierge-file-description" class="sr-only">Select a JSON file containing Concierge restaurant data</span>
                     </div>
-                    <button id="import-concierge-data" class="bg-purple-500 text-white px-4 py-2 rounded flex items-center justify-center w-full">
-                        <span class="material-icons mr-1">cloud_sync</span>
+                    <button id="import-concierge-data" class="btn btn-secondary btn-md w-full">
+                        <span class="material-icons mr-1" aria-hidden="true">cloud_sync</span>
                         Import Concierge Data
                     </button>
                 </div>
@@ -457,23 +466,23 @@
                     <button id="close-quick-modal" class="text-gray-500 hover:text-gray-800 text-xl">&times;</button>
                 </div>
                 <div class="grid grid-cols-1 gap-4">
-                    <button id="quick-record" class="bg-red-500 text-white px-4 py-4 rounded-lg flex items-center justify-center">
-                        <span class="material-icons mr-2">mic</span>
+                    <button id="quick-record" class="btn btn-danger btn-lg">
+                        <span class="material-icons mr-2" aria-hidden="true">mic</span>
                         Record Review
                     </button>
                     
-                    <button id="quick-location" class="bg-blue-500 text-white px-4 py-4 rounded-lg flex items-center justify-center">
-                        <span class="material-icons mr-2">location_on</span>
+                    <button id="quick-location" class="btn btn-primary btn-lg">
+                        <span class="material-icons mr-2" aria-hidden="true">location_on</span>
                         Get Location
                     </button>
                     
-                    <button id="quick-photo" class="bg-green-500 text-white px-4 py-4 rounded-lg flex items-center justify-center">
-                        <span class="material-icons mr-2">photo_camera</span>
+                    <button id="quick-photo" class="btn btn-success btn-lg">
+                        <span class="material-icons mr-2" aria-hidden="true">photo_camera</span>
                         Take Photos
                     </button>
                     
-                    <button id="quick-manual" class="bg-purple-500 text-white px-4 py-4 rounded-lg flex items-center justify-center">
-                        <span class="material-icons mr-2">edit</span>
+                    <button id="quick-manual" class="btn btn-secondary btn-lg">
+                        <span class="material-icons mr-2" aria-hidden="true">edit</span>
                         Manual Entry
                     </button>
                 </div>
@@ -490,16 +499,16 @@
             <h3 class="text-sm font-semibold uppercase text-gray-500 pl-4 mb-2">Synchronization</h3>
             
             <div class="px-4">
-                <button id="sync-button" class="w-full mb-2 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded flex items-center justify-center relative">
-                    <span class="material-icons mr-2">sync</span>
+                <button id="sync-button" class="btn btn-primary btn-md w-full mb-2">
+                    <span class="material-icons mr-2" aria-hidden="true">sync</span>
                     Sync Data
                 </button>
                 <div id="sync-status" class="text-xs text-center text-gray-500">Last sync: Never</div>
             </div>
             
             <div class="px-4 mt-2">
-                <button id="open-sync-settings" class="w-full mb-2 px-3 py-1 bg-gray-200 hover:bg-gray-300 text-gray-700 text-sm rounded flex items-center">
-                    <span class="material-icons text-sm mr-1">settings</span>
+                <button id="open-sync-settings" class="btn btn-outline btn-sm w-full mb-2">
+                    <span class="material-icons text-sm mr-1" aria-hidden="true">settings</span>
                     Sync Settings
                 </button>
             </div>
@@ -527,9 +536,9 @@
                 <h3 class="text-lg font-medium mb-4">Auto-Sync Configuration</h3>
                 
                 <div class="mb-4">
-                    <label for="sync-interval" class="block mb-2">Sync Interval (minutes)</label>
-                    <input type="number" id="sync-interval" min="5" value="30" class="border rounded p-2 w-full">
-                    <p class="text-xs text-gray-500 mt-1">Minimum: 5 minutes</p>
+                    <label for="sync-interval" class="label">Sync Interval (minutes)</label>
+                    <input type="number" id="sync-interval" min="5" value="30" class="input input-md">
+                    <p class="helper-text">Minimum: 5 minutes</p>
                 </div>
                 
                 <div class="flex items-center mb-4">
@@ -550,12 +559,12 @@
             </div>
             
             <div class="flex justify-between">
-                <button id="save-sync-settings" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                <button id="save-sync-settings" class="btn btn-primary btn-md">
                     Save Settings
                 </button>
                 
-                <button id="manual-sync" class="bg-green-500 text-white px-4 py-2 rounded hover:bg-green-600 flex items-center">
-                    <span class="material-icons mr-1">sync</span>
+                <button id="manual-sync" class="btn btn-success btn-md">
+                    <span class="material-icons mr-1" aria-hidden="true">sync</span>
                     Sync Now
                 </button>
             </div>
@@ -571,6 +580,14 @@
     <!-- Core utilities - load before any other scripts -->
     <script src="scripts/uiUtils.js"></script>
     <script src="scripts/moduleWrapper.js"></script>
+    
+    <!-- NEW: Architectural Managers (load early - other modules depend on these) -->
+    <script src="scripts/modalManager.js"></script>
+    <script src="scripts/stateStore.js"></script>
+    <script src="scripts/progressManager.js"></script>
+    <script src="scripts/navigationManager.js"></script>
+    <script src="scripts/errorManager.js"></script>
+    <script src="scripts/formManager.js"></script>
     
     <!-- Application modules - core components -->
     <script src="scripts/promptTemplate.js"></script>

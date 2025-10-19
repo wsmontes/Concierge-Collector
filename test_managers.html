@@ -1,0 +1,607 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manager Test Suite - Concierge Collector</title>
+    
+    <!-- Material Icons -->
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    
+    <!-- Design System CSS -->
+    <link rel="stylesheet" href="styles/design-system.css">
+    <link rel="stylesheet" href="styles/components.css">
+    
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 2rem;
+            background: #f9fafb;
+        }
+        
+        .test-section {
+            background: white;
+            border-radius: 0.5rem;
+            padding: 2rem;
+            margin-bottom: 2rem;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        .test-section h2 {
+            margin-top: 0;
+            color: #111827;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+        
+        .test-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 1rem;
+            margin-top: 1rem;
+        }
+        
+        .status-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            padding: 0.25rem 0.75rem;
+            border-radius: 9999px;
+            font-size: 0.75rem;
+            font-weight: 500;
+        }
+        
+        .status-badge.success {
+            background: #d1fae5;
+            color: #065f46;
+        }
+        
+        .status-badge.error {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+        
+        .code-example {
+            background: #1f2937;
+            color: #f9fafb;
+            padding: 1rem;
+            border-radius: 0.375rem;
+            font-family: 'Courier New', monospace;
+            font-size: 0.875rem;
+            overflow-x: auto;
+            margin-top: 1rem;
+        }
+        
+        #state-display {
+            background: #f3f4f6;
+            padding: 1rem;
+            border-radius: 0.375rem;
+            margin-top: 1rem;
+            font-family: 'Courier New', monospace;
+            font-size: 0.875rem;
+        }
+    </style>
+</head>
+<body>
+    <h1>🧪 Manager Test Suite</h1>
+    <p>Testing all 6 architectural managers</p>
+    
+    <!-- Manager Status -->
+    <div class="test-section">
+        <h2>
+            <span class="material-icons">check_circle</span>
+            Manager Status
+        </h2>
+        <div id="manager-status"></div>
+    </div>
+    
+    <!-- ModalManager Tests -->
+    <div class="test-section">
+        <h2>
+            <span class="material-icons">open_in_new</span>
+            1. ModalManager
+        </h2>
+        <p>Test centralized modal system with ARIA compliance</p>
+        <div class="test-buttons">
+            <button class="btn btn-primary" onclick="testSimpleModal()">
+                <span class="material-icons">open_in_new</span>
+                Simple Modal
+            </button>
+            <button class="btn btn-secondary" onclick="testConfirmModal()">
+                <span class="material-icons">help</span>
+                Confirm Dialog
+            </button>
+            <button class="btn btn-outline" onclick="testStackedModals()">
+                <span class="material-icons">layers</span>
+                Stacked Modals
+            </button>
+            <button class="btn btn-ghost" onclick="testLargeModal()">
+                <span class="material-icons">fullscreen</span>
+                Large Modal
+            </button>
+        </div>
+    </div>
+    
+    <!-- StateStore Tests -->
+    <div class="test-section">
+        <h2>
+            <span class="material-icons">storage</span>
+            2. StateStore
+        </h2>
+        <p>Test observable state management with pub/sub</p>
+        <div class="test-buttons">
+            <button class="btn btn-primary" onclick="testSetState()">
+                <span class="material-icons">edit</span>
+                Set State
+            </button>
+            <button class="btn btn-secondary" onclick="testSubscribe()">
+                <span class="material-icons">notifications</span>
+                Subscribe
+            </button>
+            <button class="btn btn-outline" onclick="testUndo()">
+                <span class="material-icons">undo</span>
+                Undo
+            </button>
+            <button class="btn btn-ghost" onclick="testExport()">
+                <span class="material-icons">download</span>
+                Export State
+            </button>
+        </div>
+        <div id="state-display"></div>
+    </div>
+    
+    <!-- ProgressManager Tests -->
+    <div class="test-section">
+        <h2>
+            <span class="material-icons">hourglass_empty</span>
+            3. ProgressManager
+        </h2>
+        <p>Test unified loading system with progress bars</p>
+        <div class="test-buttons">
+            <button class="btn btn-primary" onclick="testProgress()">
+                <span class="material-icons">play_arrow</span>
+                Progress Bar
+            </button>
+            <button class="btn btn-secondary" onclick="testIndeterminate()">
+                <span class="material-icons">sync</span>
+                Indeterminate
+            </button>
+            <button class="btn btn-outline" onclick="testCancellable()">
+                <span class="material-icons">cancel</span>
+                Cancellable
+            </button>
+            <button class="btn btn-ghost" onclick="testError()">
+                <span class="material-icons">error</span>
+                Error State
+            </button>
+        </div>
+    </div>
+    
+    <!-- NavigationManager Tests -->
+    <div class="test-section">
+        <h2>
+            <span class="material-icons">navigation</span>
+            4. NavigationManager
+        </h2>
+        <p>Test routing with breadcrumbs (check console for route changes)</p>
+        <div id="breadcrumbs"></div>
+        <div class="test-buttons">
+            <button class="btn btn-primary" onclick="testNavigation()">
+                <span class="material-icons">arrow_forward</span>
+                Navigate
+            </button>
+            <button class="btn btn-secondary" onclick="testBreadcrumbs()">
+                <span class="material-icons">menu</span>
+                Show Breadcrumbs
+            </button>
+            <button class="btn btn-outline" onclick="testGoBack()">
+                <span class="material-icons">arrow_back</span>
+                Go Back
+            </button>
+        </div>
+    </div>
+    
+    <!-- ErrorManager Tests -->
+    <div class="test-section">
+        <h2>
+            <span class="material-icons">error_outline</span>
+            5. ErrorManager
+        </h2>
+        <p>Test error handling with categorization</p>
+        <div class="test-buttons">
+            <button class="btn btn-danger" onclick="testNetworkError()">
+                <span class="material-icons">cloud_off</span>
+                Network Error
+            </button>
+            <button class="btn btn-warning" onclick="testValidationError()">
+                <span class="material-icons">warning</span>
+                Validation Error
+            </button>
+            <button class="btn btn-outline" onclick="testRetryable()">
+                <span class="material-icons">replay</span>
+                Retryable Error
+            </button>
+            <button class="btn btn-ghost" onclick="testOffline()">
+                <span class="material-icons">wifi_off</span>
+                Toggle Offline
+            </button>
+        </div>
+    </div>
+    
+    <!-- FormManager Tests -->
+    <div class="test-section">
+        <h2>
+            <span class="material-icons">edit_note</span>
+            6. FormManager
+        </h2>
+        <p>Test form validation with inline feedback</p>
+        
+        <form id="test-form">
+            <div class="form-field">
+                <label class="label" for="test-name">
+                    Name <span class="required-indicator">*</span>
+                </label>
+                <input 
+                    type="text" 
+                    id="test-name" 
+                    name="name" 
+                    class="input"
+                    placeholder="Enter your name"
+                >
+            </div>
+            
+            <div class="form-field">
+                <label class="label" for="test-email">
+                    Email <span class="required-indicator">*</span>
+                </label>
+                <input 
+                    type="email" 
+                    id="test-email" 
+                    name="email" 
+                    class="input"
+                    placeholder="your@email.com"
+                >
+            </div>
+            
+            <div class="form-field">
+                <label class="label" for="test-description">
+                    Description
+                </label>
+                <textarea 
+                    id="test-description" 
+                    name="description" 
+                    class="input"
+                    rows="4"
+                    maxlength="200"
+                    placeholder="Enter description (max 200 chars)"
+                ></textarea>
+            </div>
+            
+            <div class="test-buttons">
+                <button type="submit" class="btn btn-primary">
+                    <span class="material-icons">save</span>
+                    Submit Form
+                </button>
+                <button type="button" class="btn btn-secondary" onclick="testAutoSave()">
+                    <span class="material-icons">cloud_upload</span>
+                    Test Auto-Save
+                </button>
+                <button type="button" class="btn btn-outline" onclick="testDraft()">
+                    <span class="material-icons">restore</span>
+                    Save Draft
+                </button>
+            </div>
+        </form>
+    </div>
+    
+    <!-- Load all managers -->
+    <script src="scripts/modalManager.js"></script>
+    <script src="scripts/stateStore.js"></script>
+    <script src="scripts/progressManager.js"></script>
+    <script src="scripts/navigationManager.js"></script>
+    <script src="scripts/errorManager.js"></script>
+    <script src="scripts/formManager.js"></script>
+    
+    <!-- Test Scripts -->
+    <script>
+        // Check manager status
+        function checkManagerStatus() {
+            const managers = [
+                { name: 'modalManager', obj: window.modalManager },
+                { name: 'stateStore', obj: window.stateStore },
+                { name: 'progressManager', obj: window.progressManager },
+                { name: 'navigationManager', obj: window.navigationManager },
+                { name: 'errorManager', obj: window.errorManager },
+                { name: 'formManager', obj: window.formManager }
+            ];
+            
+            const statusDiv = document.getElementById('manager-status');
+            statusDiv.innerHTML = managers.map(m => `
+                <span class="status-badge ${m.obj ? 'success' : 'error'}">
+                    <span class="material-icons" style="font-size: 1rem;">
+                        ${m.obj ? 'check_circle' : 'error'}
+                    </span>
+                    ${m.name}
+                </span>
+            `).join(' ');
+        }
+        
+        // ModalManager Tests
+        function testSimpleModal() {
+            modalManager.open({
+                title: 'Hello World',
+                content: '<p>This is a simple modal test!</p>',
+                footer: '<button class="btn btn-primary" onclick="modalManager.closeAll()">Close</button>',
+                size: 'md'
+            });
+        }
+        
+        function testConfirmModal() {
+            const modalId = modalManager.open({
+                title: 'Confirm Action',
+                content: '<p>Are you sure you want to proceed?</p>',
+                footer: `
+                    <button class="btn btn-outline" onclick="modalManager.close('${modalId}')">Cancel</button>
+                    <button class="btn btn-danger" onclick="modalManager.close('${modalId}'); alert('Confirmed!')">Confirm</button>
+                `,
+                size: 'sm'
+            });
+        }
+        
+        function testStackedModals() {
+            modalManager.open({
+                title: 'First Modal',
+                content: '<p>Click button to open another modal on top</p>',
+                footer: '<button class="btn btn-primary" onclick="testSimpleModal()">Open Another</button>',
+                size: 'md'
+            });
+        }
+        
+        function testLargeModal() {
+            modalManager.open({
+                title: 'Large Content Modal',
+                content: '<p>' + 'Lorem ipsum dolor sit amet. '.repeat(50) + '</p>',
+                size: 'lg'
+            });
+        }
+        
+        // StateStore Tests
+        function testSetState() {
+            stateStore.set('test.count', (stateStore.get('test.count') || 0) + 1);
+            stateStore.set('test.timestamp', new Date().toLocaleTimeString());
+            updateStateDisplay();
+        }
+        
+        function testSubscribe() {
+            stateStore.subscribe('test.*', (newValue, oldValue, path) => {
+                console.log(`State changed: ${path}`, { oldValue, newValue });
+            });
+            alert('Subscribed to test.* - check console when you set state!');
+        }
+        
+        function testUndo() {
+            if (stateStore.undo()) {
+                alert('Undid last state change!');
+                updateStateDisplay();
+            } else {
+                alert('Nothing to undo');
+            }
+        }
+        
+        function testExport() {
+            const exported = stateStore.exportState();
+            console.log('Exported state:', exported);
+            modalManager.open({
+                title: 'Exported State',
+                content: `<pre style="background: #1f2937; color: #f9fafb; padding: 1rem; border-radius: 0.375rem; overflow-x: auto;">${exported}</pre>`,
+                size: 'lg'
+            });
+        }
+        
+        function updateStateDisplay() {
+            const display = document.getElementById('state-display');
+            display.textContent = JSON.stringify(stateStore.get('test'), null, 2);
+        }
+        
+        // ProgressManager Tests
+        async function testProgress() {
+            const progressId = progressManager.start({
+                title: 'Processing...',
+                progress: 0
+            });
+            
+            for (let i = 0; i <= 100; i += 10) {
+                await new Promise(resolve => setTimeout(resolve, 200));
+                progressManager.update(progressId, { progress: i });
+            }
+            
+            progressManager.complete(progressId, { message: 'Complete!' });
+        }
+        
+        async function testIndeterminate() {
+            const progressId = progressManager.start({
+                title: 'Loading...',
+                indeterminate: true
+            });
+            
+            await new Promise(resolve => setTimeout(resolve, 3000));
+            progressManager.complete(progressId);
+        }
+        
+        async function testCancellable() {
+            let cancelled = false;
+            
+            const progressId = progressManager.start({
+                title: 'Long operation...',
+                progress: 0,
+                cancellable: true,
+                onCancel: () => {
+                    cancelled = true;
+                    alert('Operation cancelled!');
+                }
+            });
+            
+            for (let i = 0; i <= 100 && !cancelled; i += 5) {
+                await new Promise(resolve => setTimeout(resolve, 200));
+                progressManager.update(progressId, { progress: i });
+            }
+            
+            if (!cancelled) {
+                progressManager.complete(progressId);
+            }
+        }
+        
+        async function testError() {
+            const progressId = progressManager.start({
+                title: 'Processing...',
+                progress: 0
+            });
+            
+            for (let i = 0; i < 50; i += 10) {
+                await new Promise(resolve => setTimeout(resolve, 200));
+                progressManager.update(progressId, { progress: i });
+            }
+            
+            progressManager.error(progressId, { message: 'Something went wrong!' });
+        }
+        
+        // NavigationManager Tests
+        function testNavigation() {
+            // Register test routes
+            navigationManager.register('/', {
+                handler: () => console.log('Home'),
+                breadcrumb: 'Home'
+            });
+            
+            navigationManager.register('/restaurants', {
+                handler: () => console.log('Restaurants'),
+                breadcrumb: 'Restaurants'
+            });
+            
+            navigationManager.register('/restaurants/:id', {
+                handler: (params) => console.log('Restaurant:', params.id),
+                breadcrumb: (params) => `Restaurant ${params.id}`
+            });
+            
+            navigationManager.goTo('/restaurants/123');
+            alert('Navigated to /restaurants/123 - check console and breadcrumbs!');
+        }
+        
+        function testBreadcrumbs() {
+            navigationManager.setBreadcrumbsEnabled(true);
+            navigationManager.updateBreadcrumbs();
+        }
+        
+        function testGoBack() {
+            navigationManager.goBack();
+        }
+        
+        // ErrorManager Tests
+        function testNetworkError() {
+            const error = new Error('Failed to fetch');
+            error.name = 'NetworkError';
+            
+            errorManager.handleError(error, {
+                title: 'Connection Failed',
+                retryable: false
+            });
+        }
+        
+        function testValidationError() {
+            const error = new Error('Email is required');
+            error.status = 400;
+            
+            errorManager.handleError(error, {
+                title: 'Invalid Input',
+                retryable: false
+            });
+        }
+        
+        function testRetryable() {
+            let attempts = 0;
+            
+            const error = new Error('Server timeout');
+            error.status = 504;
+            
+            errorManager.handleError(error, {
+                title: 'Server Timeout',
+                retryable: true,
+                onRetry: () => {
+                    attempts++;
+                    alert(`Retry attempt ${attempts}`);
+                }
+            });
+        }
+        
+        function testOffline() {
+            if (errorManager.isOffline) {
+                errorManager.hideOfflineBanner();
+                errorManager.isOffline = false;
+                alert('Simulated: Back online');
+            } else {
+                errorManager.showOfflineBanner();
+                errorManager.isOffline = true;
+                alert('Simulated: Going offline');
+            }
+        }
+        
+        // FormManager Tests
+        let testForm;
+        
+        function initTestForm() {
+            testForm = formManager.createForm('test-form', {
+                autoSave: false,
+                validateOnBlur: true,
+                onSubmit: async (data) => {
+                    console.log('Form submitted:', data);
+                    alert('Form submitted! Check console.');
+                }
+            });
+            
+            testForm.addValidator('name', 'required');
+            testForm.addValidator('email', 'required');
+            testForm.addValidator('email', 'email');
+            testForm.addValidator('description', (value) => {
+                if (value && value.length < 10) {
+                    return 'Description must be at least 10 characters';
+                }
+            });
+        }
+        
+        function testAutoSave() {
+            const data = testForm.getData();
+            testForm.saveDraft();
+            alert('Draft saved! Refresh the page to see draft recovery.');
+        }
+        
+        function testDraft() {
+            const draft = testForm.loadDraft();
+            if (draft) {
+                alert('Draft found: ' + JSON.stringify(draft.data));
+            } else {
+                alert('No draft found');
+            }
+        }
+        
+        // Initialize on load
+        document.addEventListener('DOMContentLoaded', () => {
+            checkManagerStatus();
+            updateStateDisplay();
+            initTestForm();
+            
+            console.log('%c🎉 All managers loaded!', 'color: #10b981; font-size: 16px; font-weight: bold;');
+            console.log('Available managers:', {
+                modalManager,
+                stateStore,
+                progressManager,
+                navigationManager,
+                errorManager,
+                formManager
+            });
+        });
+    </script>
+</body>
+</html>
