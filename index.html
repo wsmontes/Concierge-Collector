@@ -98,31 +98,31 @@
                 </div>
                 
                 <!-- Right: Actions -->
-                <div class="flex flex-wrap items-center gap-1.5">
-                    <button id="edit-curator-compact" class="btn btn-ghost-primary btn-xs">
-                        <span class="material-icons text-sm" aria-hidden="true">edit</span>
+                <div class="flex flex-wrap items-center gap-2">
+                    <button id="edit-curator-compact" class="btn btn-ghost-primary btn-sm">
+                        <span class="material-icons" aria-hidden="true">edit</span>
                         <span class="hidden sm:inline">Edit</span>
                     </button>
                     
-                    <button id="new-curator-compact" class="btn btn-ghost-secondary btn-xs">
-                        <span class="material-icons text-sm" aria-hidden="true">person_add</span>
+                    <button id="new-curator-compact" class="btn btn-ghost-secondary btn-sm">
+                        <span class="material-icons" aria-hidden="true">person_add</span>
                         <span class="hidden sm:inline">New</span>
                     </button>
                     
-                    <button id="switch-curator-compact" class="btn btn-ghost btn-xs">
-                        <span class="material-icons text-sm" aria-hidden="true">swap_horiz</span>
+                    <button id="switch-curator-compact" class="btn btn-ghost btn-sm">
+                        <span class="material-icons" aria-hidden="true">swap_horiz</span>
                         <span class="hidden sm:inline">Switch</span>
                     </button>
                     
-                    <button id="sync-compact-display" class="btn btn-ghost-success btn-xs">
-                        <span class="material-icons text-sm" aria-hidden="true">sync</span>
+                    <button id="sync-compact-display" class="btn btn-ghost-success btn-sm">
+                        <span class="material-icons" aria-hidden="true">sync</span>
                         <span class="hidden sm:inline">Sync</span>
                     </button>
                     
-                    <label class="flex items-center gap-1 text-xs cursor-pointer hover:bg-gray-50 px-2 py-1 rounded transition-colors">
-                        <input type="checkbox" id="filter-by-curator-compact" class="w-3.5 h-3.5" checked>
-                        <span class="hidden sm:inline">My Restaurants</span>
-                        <span class="sm:hidden">Mine</span>
+                    <label class="flex items-center gap-2 text-xs cursor-pointer hover:bg-gray-50 px-2 py-1 rounded transition-colors">
+                        <input type="checkbox" id="filter-by-curator-compact" class="checkbox" checked>
+                        <span class="hidden sm:inline">This curator only</span>
+                        <span class="sm:hidden">This curator only</span>
                     </label>
                 </div>
             </div>
@@ -134,14 +134,6 @@
                         <span class="material-icons text-base">person</span>
                         Curator Info
                     </h3>
-                    <div class="flex gap-2">
-                        <button id="cancel-curator-compact" class="btn btn-outline btn-xs">
-                            Cancel
-                        </button>
-                        <button id="save-curator-compact" class="btn btn-primary btn-xs">
-                            Save
-                        </button>
-                    </div>
                 </div>
                 
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -363,17 +355,6 @@
                 </div>
                 
                 <div id="concepts-container" class="mb-6"></div>
-                
-                <div class="flex justify-between mt-8">
-                    <button id="discard-restaurant" class="btn btn-outline btn-md">
-                        <span class="material-icons mr-1" aria-hidden="true">clear</span>
-                        Discard
-                    </button>
-                    <button id="save-restaurant" class="btn btn-success btn-lg">
-                        <span class="material-icons mr-1" aria-hidden="true">check</span>
-                        Save Restaurant
-                    </button>
-                </div>
             </div>
         </section>
 
@@ -524,6 +505,44 @@
         </div>
     </div>
 
+    <!-- Restaurant Edit Mode Fixed Toolbar -->
+    <div id="restaurant-edit-toolbar" class="toolbar-fixed-bottom hidden">
+        <div class="toolbar-container">
+            <div class="toolbar-info">
+                <span class="toolbar-info-title">Edit Restaurant</span>
+            </div>
+            <div class="toolbar-actions">
+                <button id="discard-restaurant" class="btn btn-outline btn-md">
+                    <span class="material-icons" aria-hidden="true">close</span>
+                    <span>Discard</span>
+                </button>
+                <button id="save-restaurant" class="btn btn-success btn-md">
+                    <span class="material-icons" aria-hidden="true">check</span>
+                    <span>Save</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Curator Edit Mode Fixed Toolbar -->
+    <div id="curator-edit-toolbar" class="toolbar-fixed-bottom hidden">
+        <div class="toolbar-container">
+            <div class="toolbar-info">
+                <span class="toolbar-info-title">Edit Curator</span>
+            </div>
+            <div class="toolbar-actions">
+                <button id="cancel-curator-compact" class="btn btn-outline btn-md">
+                    <span class="material-icons" aria-hidden="true">close</span>
+                    <span>Cancel</span>
+                </button>
+                <button id="save-curator-compact" class="btn btn-primary btn-md">
+                    <span class="material-icons" aria-hidden="true">check</span>
+                    <span>Save</span>
+                </button>
+            </div>
+        </div>
+    </div>
+
     <!-- Add the sync settings modal elements -->
     <div id="sync-settings-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
         <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
@@ -542,7 +561,7 @@
                 </div>
                 
                 <div class="flex items-center mb-4">
-                    <input type="checkbox" id="sync-on-startup" class="mr-2" checked>
+                    <input type="checkbox" id="sync-on-startup" class="checkbox mr-2" checked>
                     <label for="sync-on-startup">Sync on application startup</label>
                 </div>
             </div>

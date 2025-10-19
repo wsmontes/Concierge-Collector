@@ -568,10 +568,14 @@ function triggerInitialSync() {
                     }
                     
                     // Refresh restaurant list if available
-                    if (window.uiManager.restaurantListModule && 
-                        typeof window.uiManager.restaurantListModule.loadRestaurants === 'function') {
+                    if (window.uiManager.restaurantModule && 
+                        typeof window.uiManager.restaurantModule.loadRestaurantList === 'function') {
                         console.log('Refreshing restaurant list to display newly imported data...');
-                        await window.uiManager.restaurantListModule.loadRestaurants();
+                        const currentCurator = await dataStorage.getCurrentCurator();
+                        if (currentCurator) {
+                            const filterEnabled = window.uiManager.restaurantModule.getCurrentFilterState();
+                            await window.uiManager.restaurantModule.loadRestaurantList(currentCurator.id, filterEnabled);
+                        }
                     }
                     
                     // Show notification only if there were changes

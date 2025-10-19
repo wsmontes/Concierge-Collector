@@ -48,6 +48,9 @@ if (typeof window.UIManager === 'undefined') {
             this.restaurantListSection = document.getElementById('restaurant-list-section');
             this.exportImportSection = document.getElementById('export-import-section');
             
+            // Fixed toolbars
+            this.restaurantEditToolbar = document.getElementById('restaurant-edit-toolbar');
+            
             // Form elements
             this.transcriptionText = document.getElementById('transcription-text');
         }
@@ -151,6 +154,11 @@ if (typeof window.UIManager === 'undefined') {
             this.conceptsSection.classList.add('hidden');
             this.restaurantListSection.classList.add('hidden');
             this.exportImportSection.classList.add('hidden');
+            
+            // Hide restaurant edit toolbar
+            if (this.restaurantEditToolbar) {
+                this.restaurantEditToolbar.classList.add('hidden');
+            }
         }
 
         // Core UI visibility functions
@@ -190,6 +198,11 @@ if (typeof window.UIManager === 'undefined') {
             this.hideAllSections();
             this.curatorSection.classList.remove('hidden');
             this.conceptsSection.classList.remove('hidden');
+            
+            // Show restaurant edit toolbar
+            if (this.restaurantEditToolbar) {
+                this.restaurantEditToolbar.classList.remove('hidden');
+            }
             
             // Only set transcription if we're coming from transcription screen
             // AND we're not editing an existing restaurant
@@ -499,9 +512,13 @@ if (typeof window.UIManager === 'undefined') {
             }
             
             // Refresh restaurant list if available
-            if (this.restaurantModule && typeof this.restaurantModule.loadRestaurants === 'function') {
-                await this.restaurantModule.loadRestaurants();
-                console.log('Restaurant list refreshed');
+            if (this.restaurantModule && typeof this.restaurantModule.loadRestaurantList === 'function') {
+                const currentCurator = await dataStorage.getCurrentCurator();
+                if (currentCurator) {
+                    const filterEnabled = this.restaurantModule.getCurrentFilterState();
+                    await this.restaurantModule.loadRestaurantList(currentCurator.id, filterEnabled);
+                    console.log('Restaurant list refreshed');
+                }
             }
             
             // Update any sync status indicators

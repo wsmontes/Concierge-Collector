@@ -792,9 +792,15 @@ class CuratorModule {
     async editCuratorCompact() {
         const compactDisplay = document.getElementById('curator-compact-display');
         const editForm = document.getElementById('curator-edit-form');
+        const editToolbar = document.getElementById('curator-edit-toolbar');
         const section = document.getElementById('curator-section');
         const curatorNameInput = document.getElementById('curator-name-compact-input');
         const apiKeyInput = document.getElementById('api-key-compact-input');
+        
+        this.log.debug('editCuratorCompact called', {
+            editToolbar: !!editToolbar,
+            editToolbarClasses: editToolbar?.className
+        });
         
         if (!editForm || !compactDisplay) return;
         
@@ -821,6 +827,31 @@ class CuratorModule {
         // Toggle sections
         compactDisplay.classList.add('hidden');
         editForm.classList.remove('hidden');
+        if (editToolbar) {
+            editToolbar.classList.remove('hidden');
+            
+            // Enhanced debugging
+            const computedStyle = window.getComputedStyle(editToolbar);
+            this.log.debug('Toolbar visibility after removing hidden class:', {
+                hasHiddenClass: editToolbar.classList.contains('hidden'),
+                computedDisplay: computedStyle.display,
+                computedPosition: computedStyle.position,
+                computedZIndex: computedStyle.zIndex,
+                computedBottom: computedStyle.bottom,
+                computedVisibility: computedStyle.visibility,
+                computedOpacity: computedStyle.opacity,
+                boundingRect: editToolbar.getBoundingClientRect(),
+                offsetParent: editToolbar.offsetParent,
+                className: editToolbar.className
+            });
+            
+            // Force a reflow to ensure styles are applied
+            editToolbar.offsetHeight;
+            
+            console.warn('🚨 TOOLBAR DEBUG: Should be visible now! Check element in DevTools:', editToolbar);
+        } else {
+            this.log.error('editToolbar element not found!');
+        }
         if (section) {
             section.classList.add('editing');
         }
@@ -832,6 +863,7 @@ class CuratorModule {
     async saveCuratorCompact() {
         const curatorNameInput = document.getElementById('curator-name-compact-input');
         const apiKeyInput = document.getElementById('api-key-compact-input');
+        const editToolbar = document.getElementById('curator-edit-toolbar');
         
         const name = curatorNameInput?.value?.trim();
         const apiKey = apiKeyInput?.value?.trim();
@@ -899,6 +931,11 @@ class CuratorModule {
             
             // Update UI manager state
             this.uiManager.currentCurator = await dataStorage.db.curators.get(curatorId);
+            
+            // Hide the toolbar
+            if (editToolbar) {
+                editToolbar.classList.add('hidden');
+            }
             
             // Update compact UI display
             this.displayCuratorInfoCompact();
@@ -982,8 +1019,14 @@ class CuratorModule {
     cancelCuratorCompact() {
         const compactDisplay = document.getElementById('curator-compact-display');
         const editForm = document.getElementById('curator-edit-form');
+        const editToolbar = document.getElementById('curator-edit-toolbar');
         const selectorSection = document.getElementById('curator-selector-compact');
         const section = document.getElementById('curator-section');
+        
+        // Hide the toolbar
+        if (editToolbar) {
+            editToolbar.classList.add('hidden');
+        }
         
         if (this.uiManager.currentCurator) {
             // If we have curator data, show compact display
@@ -1041,9 +1084,16 @@ class CuratorModule {
         
         const compactDisplay = document.getElementById('curator-compact-display');
         const editForm = document.getElementById('curator-edit-form');
+        const editToolbar = document.getElementById('curator-edit-toolbar');
         const selectorSection = document.getElementById('curator-selector-compact');
         const curatorNameInput = document.getElementById('curator-name-compact-input');
         const apiKeyInput = document.getElementById('api-key-compact-input');
+        
+        this.log.debug('createNewCurator - Elements found:', {
+            editToolbar: !!editToolbar,
+            editForm: !!editForm,
+            compactDisplay: !!compactDisplay
+        });
         
         // Clear the name field
         if (curatorNameInput) curatorNameInput.value = '';
@@ -1057,7 +1107,7 @@ class CuratorModule {
         // Clear current curator temporarily to indicate we're creating new
         this.uiManager.isCreatingNewCurator = true;
         
-        // Hide compact display and selector, show edit form
+        // Hide compact display and selector, show edit form and toolbar
         if (compactDisplay) {
             compactDisplay.classList.add('hidden');
             compactDisplay.classList.remove('flex');
@@ -1067,6 +1117,15 @@ class CuratorModule {
         }
         if (editForm) {
             editForm.classList.remove('hidden');
+        }
+        if (editToolbar) {
+            editToolbar.classList.remove('hidden');
+            this.log.debug('Toolbar shown in createNewCurator', {
+                hasHiddenClass: editToolbar.classList.contains('hidden'),
+                display: editToolbar.style.display
+            });
+        } else {
+            this.log.error('editToolbar not found in createNewCurator!');
         }
         
         // Focus on name input

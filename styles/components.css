@@ -96,6 +96,29 @@
   }
 }
 
+/* Material Icons in Buttons - Proper Sizing */
+.btn .material-icons {
+  font-size: inherit;
+  line-height: 1;
+}
+
+.btn-xs .material-icons {
+  font-size: 1rem; /* 16px */
+}
+
+.btn-sm .material-icons {
+  font-size: 1.125rem; /* 18px */
+}
+
+.btn-md .material-icons,
+.btn-lg .material-icons {
+  font-size: 1.25rem; /* 20px */
+}
+
+.btn-xl .material-icons {
+  font-size: 1.5rem; /* 24px */
+}
+
 /* Button Variants */
 .btn-primary {
   background-color: var(--color-primary);
@@ -980,3 +1003,66 @@
   height: 1px;
   background-color: var(--color-neutral-200);
 }
+
+/* ========================================================================
+   FIXED BOTTOM TOOLBAR COMPONENT
+   ======================================================================== */
+
+.toolbar-fixed-bottom {
+  display: block; /* Ensure it has a display value when not hidden */
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  z-index: var(--z-fixed);
+  background-color: white;
+  border-top: 2px solid var(--color-primary);
+  box-shadow: var(--shadow-xl);
+  padding: var(--spacing-4);
+}
+
+.toolbar-container {
+  max-width: 1280px; /* 7xl */
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--spacing-4);
+}
+
+.toolbar-info {
+  flex: 1;
+  font-size: var(--text-sm);
+  color: var(--color-neutral-600);
+}
+
+.toolbar-info-title {
+  font-weight: var(--font-semibold);
+}
+
+.toolbar-actions {
+  display: flex;
+  gap: var(--spacing-2);
+  align-items: center;
+}
+
+/* Responsive behavior */
+@media (max-width: 640px) {
+  .toolbar-fixed-bottom {
+    padding: var(--spacing-3);
+  }
+  
+  .toolbar-container {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .toolbar-actions {
+    justify-content: stretch;
+  }
+  
+  .toolbar-actions .btn {
+    flex: 1;
+  }
+}
+

@@ -96,6 +96,12 @@
     display: flex;
     flex-direction: column;
     background-color: var(--color-neutral-50);
+    padding-bottom: var(--spacing-20); /* Add padding for fixed toolbars */
+}
+
+/* Add extra padding when fixed toolbars are visible */
+body:has(.toolbar-fixed-bottom:not(.hidden)) #app {
+    padding-bottom: 90px;
 }
 
 /* Content sections */
