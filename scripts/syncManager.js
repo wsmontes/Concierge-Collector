@@ -419,19 +419,29 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
                 originalCuratorId: restaurant.originalCuratorId
             };
             
-            // Create restaurant on server
-            const response = await window.apiService.createRestaurant(serverData);
+            // Create restaurant on server using batch endpoint (supports complex format)
+            const response = await window.apiService.batchUploadRestaurants([serverData]);
             
             if (!response.success) {
                 throw new Error(response.error || 'Failed to create restaurant on server');
             }
             
-            const restaurantData = response.data;
-            if (restaurantData && restaurantData.id) {
+            // Handle batch response format
+            const batchData = response.data;
+            let serverId = null;
+            
+            // Extract ID from batch response
+            if (batchData && Array.isArray(batchData.restaurants) && batchData.restaurants.length > 0) {
+                serverId = batchData.restaurants[0].id;
+            } else if (batchData && batchData.id) {
+                serverId = batchData.id;
+            }
+            
+            if (serverId) {
                 // Update to remote status
                 await dataStorage.db.restaurants.update(restaurantId, {
                     source: 'remote',
-                    serverId: restaurantData.id,
+                    serverId: serverId,
                     needsSync: false,
                     lastSynced: new Date()
                 });
