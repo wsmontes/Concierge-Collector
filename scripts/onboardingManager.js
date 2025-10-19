@@ -454,17 +454,18 @@
         description: 'Your collection stays in sync across all your devices. Start on your phone, finish on your computer.'
     });
 
-    // Auto-start on first visit (after a delay to let page load)
-    document.addEventListener('DOMContentLoaded', () => {
-        setTimeout(() => {
-            if (!OnboardingManager.completed) {
-                OnboardingManager.start();
-            }
-        }, 1000);
-    });
+    // Auto-start disabled by default
+    // To manually trigger: onboardingManager.start()
+    // document.addEventListener('DOMContentLoaded', () => {
+    //     setTimeout(() => {
+    //         if (!OnboardingManager.completed) {
+    //             OnboardingManager.start();
+    //         }
+    //     }, 1000);
+    // });
 
     // Expose to global scope
     window.onboardingManager = OnboardingManager;
 
-    console.log('✅ OnboardingManager initialized');
+    console.log('✅ OnboardingManager initialized (auto-start disabled)');
 })();
