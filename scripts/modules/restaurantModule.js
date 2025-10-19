@@ -44,9 +44,9 @@ class RestaurantModule {
                     if (syncText) syncText.textContent = 'Syncing...';
                     syncRestaurantsBtn.disabled = true;
                     
-                    // Trigger sync via syncService
-                    if (window.syncService) {
-                        await window.syncService.syncUnsyncedRestaurants();
+                    // Trigger sync via syncManager
+                    if (window.syncManager) {
+                        await window.syncManager.syncAllPendingWithUI();
                         this.uiManager.showNotification('Restaurants synced successfully!', 'success');
                         
                         // Reload restaurant list
@@ -389,21 +389,20 @@ class RestaurantModule {
                 } : null
             };
             
-            // Use SyncService for consistent handling instead of direct fetch API
-            if (window.syncService && typeof window.syncService.exportRestaurant === 'function') {
+            // Use SyncManager for consistent handling instead of direct fetch API
+            if (window.syncManager && typeof window.syncManager.syncRestaurant === 'function') {
                 try {
-                    console.log('Using syncService.exportRestaurant method');
-                    const result = await window.syncService.exportRestaurant(restaurant);
+                    console.log('Using syncManager.syncRestaurant method');
+                    const result = await window.syncManager.syncRestaurant(restaurantId);
                     
                     // Check if export was successful
-                    if (!result || !result.id) {
-                        throw new Error('Server response missing restaurant ID');
+                    if (!result || !result.success) {
+                        throw new Error('Restaurant sync failed');
                     }
                     
-                    // Update restaurant sync status
-                    await dataStorage.updateRestaurantSyncStatus(restaurantId, result.id);
+                    console.log('Restaurant synced successfully via syncManager');
                 } catch (syncError) {
-                    console.error('Error using syncService.exportRestaurant:', syncError);
+                    console.error('Error using syncManager.syncRestaurant:', syncError);
                     throw syncError; // Re-throw to be caught by outer try-catch
                 }
             } else {

@@ -793,12 +793,12 @@ class ExportImportModule {
                 if (localRestaurants.length > 0) {
                     console.log(`Found ${localRestaurants.length} local restaurants to upload`);
                     
-                    // Export using syncService
-                    if (window.syncService) {
-                        await window.syncService.syncUnsyncedRestaurants();
+                    // Export using syncManager
+                    if (window.syncManager) {
+                        await window.syncManager.syncAllPendingWithUI();
                         console.log('✅ Local restaurants uploaded successfully');
                     } else {
-                        console.warn('⚠️ SyncService not available');
+                        console.warn('⚠️ SyncManager not available');
                     }
                 } else {
                     console.log('✅ No local restaurants to upload');

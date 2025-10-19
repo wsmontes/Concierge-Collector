@@ -11,7 +11,7 @@
  * - Manage curator-specific data and permissions
  * - Integration with restaurant review workflows
  * 
- * Dependencies: SafetyUtils, uiManager, dataStorage, syncService
+ * Dependencies: SafetyUtils, uiManager, dataStorage, syncManager, apiService
  */
 class CuratorModule {
     constructor(uiManager) {
@@ -569,7 +569,7 @@ class CuratorModule {
                 await dataStorage.getAllCurators(true);
                 
                 // Fetch curators from server with error handling
-                await syncService.importCurators();
+                await window.syncManager.importCurators();
             } catch (syncError) {
                 console.error('Error in sync service:', syncError);
                 
