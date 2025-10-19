@@ -167,6 +167,11 @@ if (typeof window.UIManager === 'undefined') {
             this.curatorSection.classList.remove('hidden');
             this.conceptsSection.classList.remove('hidden');
             
+            // Show restaurant edit toolbar (same as edit mode)
+            if (this.restaurantEditToolbar) {
+                this.restaurantEditToolbar.classList.remove('hidden');
+            }
+            
             // Reset the current concepts if coming from manual entry
             if (!this.currentConcepts || this.currentConcepts.length === 0) {
                 this.currentConcepts = [];
