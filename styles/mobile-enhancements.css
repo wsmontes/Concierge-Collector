@@ -604,19 +604,49 @@
     width: 100%;
     height: 100%;
     text-align: center;
+    /* Removed position and z-index to avoid creating stacking context */
 }
 
-/* Fix z-index for recording overlay to prevent clock appearing on top */
-#recording-section {
-    position: relative;
-    z-index: 1;
+/* 
+ * IMPORTANT: Recording section should NOT create a stacking context
+ * Removed #recording-section, #circular-timer-container, #processing-status, 
+ * #audio-preview z-index rules to fix overlay issues.
+ * These elements now use normal document flow, allowing notifications and
+ * overlays to appear above them correctly.
+ */
+
+/* Fix empty space issue - remove excessive padding from #app container */
+/* Apply to all screen sizes, not just mobile */
+#app {
+    min-height: 0 !important; /* Remove viewport height constraint */
+    padding-bottom: var(--spacing-4) !important; /* Reduce from 80px to 16px */
 }
 
-/* Ensure loading overlay and notifications appear above recording */
-#loading-overlay,
+/* Previous mobile-only version removed - now applies globally */
+
+/* Ensure loading overlay and notifications appear above EVERYTHING */
+#loading-overlay {
+    z-index: 10000 !important; /* Highest priority - uses design system value + buffer */
+}
+
 .toastify,
+.toastify-container,
 [class*="toast"] {
-    z-index: 9999 !important;
+    z-index: 9999 !important; /* Just below loading overlay */
+}
+
+/* Modals should be above content */
+.modal,
+[id*="modal"],
+.fixed.inset-0.bg-black.bg-opacity-50 {
+    z-index: 1050 !important; /* --z-modal from design system */
+}
+
+/* Toolbars should float above content */
+.toolbar-fixed-bottom,
+#restaurant-edit-toolbar,
+#curator-edit-toolbar {
+    z-index: 1030 !important; /* --z-fixed from design system */
 }
 
 /* Pulsating effect should not interfere with other elements */

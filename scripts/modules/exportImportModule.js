@@ -784,7 +784,8 @@ class ExportImportModule {
         const syncStartTime = performance.now();
         
         try {
-            SafetyUtils.showLoading('🔄 Syncing with server...');
+            // Removed loading overlay - notifications and process overlays are sufficient
+            // SafetyUtils.showLoading('🔄 Syncing with server...');
             
             // Step 1: Upload all local restaurants to server
             this.log.debug('🔄 Step 1/4: Uploading local restaurants...');
@@ -988,7 +989,8 @@ class ExportImportModule {
             const totalTime = ((syncEndTime - syncStartTime) / 1000).toFixed(2);
             
             this.log.debug(`✅ Comprehensive bidirectional sync completed in ${totalTime}s`);
-            SafetyUtils.hideLoading();
+            // Removed loading overlay hide - not needed anymore
+            // SafetyUtils.hideLoading();
             SafetyUtils.showNotification(`✅ Sync completed successfully in ${totalTime}s`, 'success');
             
             // Refresh the restaurant list to show any imported changes
@@ -1001,7 +1003,8 @@ class ExportImportModule {
             
         } catch (error) {
             this.log.error('❌ Sync failed:', error);
-            SafetyUtils.hideLoading();
+            // Removed loading overlay hide - not needed anymore
+            // SafetyUtils.hideLoading();
             SafetyUtils.showNotification(`Sync failed: ${error.message}`, 'error');
             throw error;
         }
@@ -1028,8 +1031,8 @@ class ExportImportModule {
         this.log.debug('Starting remote data import operation...');
         
         try {
-            // Use our safe method for consistent behavior
-            SafetyUtils.showLoading('Importing data from remote server...');
+            // Removed loading overlay - notifications and process overlays are sufficient
+            // SafetyUtils.showLoading('Importing data from remote server...');
             
             this.log.debug('Remote import: Sending GET request to https://wsmontes.pythonanywhere.com/api/restaurants');
             
@@ -1101,10 +1104,10 @@ class ExportImportModule {
             this.log.debug('Remote import: Reloading curator information...');
             await this.safeReloadCuratorInfo();
             
-            SafetyUtils.showNotification('Remote data imported successfully');
+            SafetyUtils.showNotification(`Successfully imported ${restaurants.length} restaurants from remote server`, 'success');
             
-            // Show alert as fallback notification
-            alert(`Successfully imported ${restaurants.length} restaurants from remote server.`);
+            // Removed alert - notification is sufficient
+            // alert(`Successfully imported ${restaurants.length} restaurants from remote server.`);
             
         } catch (error) {
             this.log.error('Error importing remote data:', error);

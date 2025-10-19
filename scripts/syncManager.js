@@ -556,16 +556,17 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
      * @returns {Promise<Object>}
      */
     async syncAllPendingWithUI(showUI = true) {
-        if (this.isSyncing) {
+        if (this.syncing) {
             if (showUI && window.uiUtils?.showNotification) {
                 window.uiUtils.showNotification('Sync already in progress', 'info');
             }
             return { alreadyRunning: true, synced: 0, failed: 0, total: 0 };
         }
 
-        if (showUI && window.uiUtils?.showLoading) {
-            window.uiUtils.showLoading('Syncing restaurants with server...');
-        }
+        // Removed loading overlay - notifications and process overlays are sufficient
+        // if (showUI && window.uiUtils?.showLoading) {
+        //     window.uiUtils.showLoading('Syncing restaurants with server...');
+        // }
 
         try {
             // Get total count
@@ -577,9 +578,10 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
             // Sync all (up to 50 at once)
             const result = await this.syncAllPending(50);
             
-            if (showUI && window.uiUtils?.hideLoading) {
-                window.uiUtils.hideLoading();
-            }
+            // Removed loading overlay hide - not needed anymore
+            // if (showUI && window.uiUtils?.hideLoading) {
+            //     window.uiUtils.hideLoading();
+            // }
             
             // Show result notification
             if (showUI && window.uiUtils?.showNotification) {
@@ -607,13 +609,14 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
             };
             
         } catch (error) {
-            if (showUI) {
-                if (window.uiUtils?.hideLoading) {
-                    window.uiUtils.hideLoading();
-                }
-                if (window.uiUtils?.showNotification) {
-                    window.uiUtils.showNotification('Sync failed: ' + error.message, 'error');
-                }
+            // Removed loading overlay hide - not needed anymore
+            // if (showUI) {
+            //     if (window.uiUtils?.hideLoading) {
+            //         window.uiUtils.hideLoading();
+            //     }
+            // }
+            if (showUI && window.uiUtils?.showNotification) {
+                window.uiUtils.showNotification('Sync failed: ' + error.message, 'error');
             }
             throw error;
         }
