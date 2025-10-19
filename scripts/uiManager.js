@@ -170,6 +170,12 @@ if (typeof window.UIManager === 'undefined') {
             // Show restaurant edit toolbar (same as edit mode)
             if (this.restaurantEditToolbar) {
                 this.restaurantEditToolbar.classList.remove('hidden');
+                
+                // Update toolbar title based on mode
+                const toolbarTitle = this.restaurantEditToolbar.querySelector('.toolbar-info-title');
+                if (toolbarTitle) {
+                    toolbarTitle.textContent = this.isEditingRestaurant ? 'Edit Restaurant' : 'New Restaurant';
+                }
             }
             
             // Reset the current concepts if coming from manual entry
@@ -207,6 +213,12 @@ if (typeof window.UIManager === 'undefined') {
             // Show restaurant edit toolbar
             if (this.restaurantEditToolbar) {
                 this.restaurantEditToolbar.classList.remove('hidden');
+                
+                // Update toolbar title based on mode
+                const toolbarTitle = this.restaurantEditToolbar.querySelector('.toolbar-info-title');
+                if (toolbarTitle) {
+                    toolbarTitle.textContent = this.isEditingRestaurant ? 'Edit Restaurant' : 'New Restaurant';
+                }
             }
             
             // Only set transcription if we're coming from transcription screen

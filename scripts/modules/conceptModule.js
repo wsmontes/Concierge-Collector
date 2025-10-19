@@ -290,9 +290,12 @@ class ConceptModule {
             `;
         }
         
-        // Clear fields
+        // Clear all form fields
         const nameInput = document.getElementById('restaurant-name');
         if (nameInput) nameInput.value = '';
+        
+        const descriptionInput = document.getElementById('restaurant-description');
+        if (descriptionInput) descriptionInput.value = '';
         
         const transcriptionTextarea = document.getElementById('restaurant-transcription');
         if (transcriptionTextarea) transcriptionTextarea.value = '';
