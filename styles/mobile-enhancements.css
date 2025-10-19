@@ -315,6 +315,392 @@
     }
 }
 
+/* ========================================================================
+   MOBILE BUTTON SIZE ADJUSTMENTS
+   Added: October 19, 2025
+   Purpose: Prevent oversized buttons on mobile for better UX
+   IMPORTANT: These rules override components.css mobile touch target rules
+   ======================================================================== */
+
+/* Target both viewport width AND touch devices for maximum compatibility */
+@media (max-width: 768px), (hover: none) and (pointer: coarse) {
+    /* Convert large buttons to medium on mobile - External search buttons */
+    #open-places-search,
+    #open-staging-search {
+        padding: 0.625rem 1rem !important; /* 10px 16px */
+        font-size: 0.875rem !important; /* 14px */
+        min-height: 44px !important;
+    }
+    
+    /* Quick action buttons (FAB menu) - reduce from lg to md */
+    #quick-record,
+    #quick-location,
+    #quick-photo {
+        padding: 0.625rem 1rem !important;
+        font-size: 0.875rem !important;
+        min-height: 44px !important;
+    }
+    
+    /* Restaurant list action buttons - these are btn-sm but need to meet 44px touch target */
+    #sync-button,
+    #add-restaurant,
+    #sync-restaurants-btn,
+    #manual-sync {
+        padding: 0.625rem 1rem !important;
+        font-size: 0.875rem !important;
+        min-height: 44px !important;
+        line-height: 1.25 !important;
+    }
+    
+    /* Photo and location buttons in concepts section */
+    #take-photo,
+    #gallery-photo,
+    #get-location {
+        padding: 0.5rem 1rem !important;
+        font-size: 0.875rem !important;
+        min-height: 44px !important;
+    }
+    
+    /* Concept processing buttons */
+    #extract-concepts,
+    #reprocess-concepts,
+    #generate-description,
+    #transcribe-audio,
+    #discard-recording,
+    #discard-transcription {
+        padding: 0.5rem 1rem !important;
+        font-size: 0.875rem !important;
+        min-height: 44px !important;
+    }
+    
+    /* Import/Export buttons */
+    #export-data,
+    #import-data {
+        padding: 0.5rem 1rem !important;
+        font-size: 0.875rem !important;
+        min-height: 44px !important;
+    }
+    
+    /* Save buttons in toolbars and forms */
+    #save-restaurant,
+    #save-curator-compact,
+    #save-sync-settings,
+    #discard-restaurant,
+    #cancel-curator-compact {
+        padding: 0.5rem 1rem !important;
+        font-size: 0.875rem !important;
+        min-height: 44px !important;
+    }
+    
+    /* Toolbar buttons - ensure they're appropriately sized */
+    .toolbar-fixed-bottom .btn,
+    .toolbar-actions .btn {
+        padding: 0.5rem 0.75rem !important;
+        font-size: 0.875rem !important;
+        min-height: 44px !important;
+    }
+    
+    /* Modal buttons */
+    .modal .btn,
+    [id*="modal"] .btn {
+        padding: 0.5rem 1rem !important;
+        font-size: 0.875rem !important;
+        min-height: 44px !important;
+    }
+    
+    /* Global rule for all btn-lg buttons on mobile */
+    .btn.btn-lg,
+    button.btn-lg,
+    .btn-lg {
+        padding: 0.625rem 1rem !important;
+        font-size: 0.875rem !important;
+        min-height: 44px !important;
+        max-height: 48px !important;
+    }
+    
+    /* Ensure btn-md buttons are also appropriately sized */
+    .btn.btn-md,
+    button.btn-md,
+    .btn-md {
+        padding: 0.5rem 1rem !important;
+        font-size: 0.875rem !important;
+        min-height: 44px !important;
+        max-height: 48px !important;
+    }
+    
+    /* Override btn-sm to meet 44px touch target on mobile */
+    .btn.btn-sm,
+    button.btn-sm,
+    .btn-sm {
+        padding: 0.625rem 1rem !important;
+        font-size: 0.875rem !important;
+        min-height: 44px !important;
+        max-height: 48px !important;
+    }
+    
+    /* Buttons with full width should maintain padding */
+    .btn.w-full,
+    .btn-md.w-full,
+    .btn-sm.w-full {
+        padding-left: 1rem !important;
+        padding-right: 1rem !important;
+    }
+    
+    /* Reduce spacing in button groups on mobile to prevent overflow */
+    .flex.gap-2 button,
+    .flex.gap-3 button,
+    .flex.space-x-4 button {
+        margin-right: 0.25rem !important;
+    }
+    
+    /* Icon-only buttons can be slightly smaller but still meet touch target */
+    .btn-icon {
+        min-width: 44px !important;
+        min-height: 44px !important;
+        padding: 0.5rem !important;
+    }
+}
+
+/* ========================================================================
+   RESPONSIVE BUTTON LABELS - ICON-ONLY ON SMALL SCREENS
+   Added: October 19, 2025
+   Purpose: Show only icons on very small screens, full labels on larger screens
+   ======================================================================== */
+
+/* On very small screens (< 400px), show icon only for specific buttons */
+@media (max-width: 400px) {
+    /* Restaurant action buttons - show icon only */
+    #add-restaurant span:not(.material-icons),
+    #sync-restaurants-btn span:not(.material-icons):not(#sync-restaurants-badge),
+    #sync-button span:not(.material-icons) {
+        display: none;
+    }
+    
+    /* External search buttons - show icon only */
+    #open-places-search span:not(.material-icons),
+    #open-staging-search span:not(.material-icons) {
+        display: none;
+    }
+    
+    /* Quick action buttons - show icon only */
+    #quick-record span:not(.material-icons),
+    #quick-location span:not(.material-icons),
+    #quick-photo span:not(.material-icons) {
+        display: none;
+    }
+    
+    /* Toolbar buttons - show icon only */
+    #save-restaurant span:not(.material-icons),
+    #discard-restaurant span:not(.material-icons),
+    #save-curator-compact span:not(.material-icons),
+    #cancel-curator-compact span:not(.material-icons) {
+        display: none;
+    }
+    
+    /* Import/Export buttons - show icon only */
+    #export-data span:not(.material-icons),
+    #import-data span:not(.material-icons) {
+        display: none;
+    }
+    
+    /* Ensure buttons maintain square aspect ratio when icon-only */
+    #add-restaurant,
+    #sync-restaurants-btn,
+    #sync-button,
+    #open-places-search,
+    #open-staging-search,
+    #quick-record,
+    #quick-location,
+    #quick-photo,
+    #export-data,
+    #import-data {
+        padding: 0.625rem !important;
+        min-width: 44px !important;
+    }
+    
+    /* Toolbar buttons can be slightly more compact */
+    #save-restaurant,
+    #discard-restaurant,
+    #save-curator-compact,
+    #cancel-curator-compact {
+        padding: 0.5rem !important;
+        min-width: 44px !important;
+    }
+    
+    /* Keep the icon centered - remove margin */
+    #add-restaurant .material-icons,
+    #sync-restaurants-btn .material-icons,
+    #sync-button .material-icons,
+    #open-places-search .material-icons,
+    #open-staging-search .material-icons,
+    #quick-record .material-icons,
+    #quick-location .material-icons,
+    #quick-photo .material-icons,
+    #save-restaurant .material-icons,
+    #discard-restaurant .material-icons,
+    #export-data .material-icons,
+    #import-data .material-icons {
+        margin: 0 !important;
+    }
+    
+    /* Keep sync badge visible but repositioned */
+    #sync-restaurants-badge {
+        display: inline-block !important;
+        margin-left: 0 !important;
+        position: absolute;
+        top: -4px;
+        right: -4px;
+    }
+}
+
+/* On small screens (400px - 640px), use abbreviated labels */
+@media (min-width: 400px) and (max-width: 640px) {
+    /* Add data attributes for shortened text in HTML, or use CSS content */
+    #add-restaurant {
+        font-size: 0.8125rem; /* Slightly smaller text */
+    }
+    
+    #sync-restaurants-btn {
+        font-size: 0.8125rem;
+    }
+    
+    /* Make external search buttons more compact */
+    #open-places-search,
+    #open-staging-search {
+        padding-left: 0.75rem !important;
+        padding-right: 0.75rem !important;
+    }
+}
+
+/* Medium screens and up (> 640px) - show full labels */
+@media (min-width: 641px) {
+    /* Ensure full labels are visible */
+    #add-restaurant span,
+    #sync-restaurants-btn span,
+    #open-places-search span,
+    #open-staging-search span {
+        display: inline !important;
+    }
+}
+
+/* ========================================================================
+   RECORDING SECTION IMPROVEMENTS
+   Added: October 19, 2025
+   Purpose: Fix circular timer alignment and z-index issues
+   ======================================================================== */
+
+/* Circular timer container should be centered */
+#circular-timer-container {
+    width: 100%;
+    margin-left: 0;
+    margin-right: 0;
+}
+
+/* Timer display should be properly aligned inside the circle */
+#timer {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    text-align: center;
+}
+
+/* Fix z-index for recording overlay to prevent clock appearing on top */
+#recording-section {
+    position: relative;
+    z-index: 1;
+}
+
+/* Ensure loading overlay and notifications appear above recording */
+#loading-overlay,
+.toastify,
+[class*="toast"] {
+    z-index: 9999 !important;
+}
+
+/* Pulsating effect should not interfere with other elements */
+.pulsate {
+    animation: pulsate-effect 2s ease-in-out infinite;
+    pointer-events: none;
+}
+
+@keyframes pulsate-effect {
+    0%, 100% {
+        opacity: 0.3;
+        transform: scale(1);
+    }
+    50% {
+        opacity: 0.6;
+        transform: scale(1.05);
+    }
+}
+
+/* Processing status steps should be clearly visible */
+.processing-step {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem;
+    margin-bottom: 0.5rem;
+    border-radius: 0.375rem;
+    background-color: rgba(249, 250, 251, 0.8);
+}
+
+.processing-step .material-icons {
+    font-size: 1.25rem;
+}
+
+/* ========================================================================
+   CURATOR SECTION ENHANCEMENTS
+   Added: October 19, 2025
+   Purpose: Improve curator section UX - clickable name, better transitions
+   ======================================================================== */
+
+/* Make curator name appear clickable */
+#curator-name-compact {
+    cursor: pointer;
+    transition: color 0.2s ease, transform 0.1s ease;
+    user-select: none;
+}
+
+#curator-name-compact:hover {
+    color: var(--color-primary-700);
+    text-decoration: underline;
+    text-decoration-style: dotted;
+}
+
+#curator-name-compact:active {
+    transform: scale(0.98);
+}
+
+/* Smooth transitions for curator section state changes */
+#curator-section {
+    transition: all 0.3s ease;
+}
+
+#curator-compact-display,
+#curator-edit-form,
+#curator-selector-compact {
+    transition: opacity 0.2s ease, transform 0.2s ease;
+}
+
+/* Add visual feedback when switching views */
+#curator-selector-compact:not(.hidden) {
+    animation: slideIn 0.3s ease;
+}
+
+@keyframes slideIn {
+    from {
+        opacity: 0;
+        transform: translateY(-10px);
+    }
+    to {
+        opacity: 1;
+        transform: translateY(0);
+    }
+}
+
 /* Horizontal scroll snap */
 .scroll-snap-x {
     display: flex;

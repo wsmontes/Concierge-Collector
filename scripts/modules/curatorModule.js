@@ -117,6 +117,18 @@ class CuratorModule {
             });
         }
         
+        // Make curator name clickable to switch
+        const curatorNameCompact = document.getElementById('curator-name-compact');
+        if (curatorNameCompact) {
+            curatorNameCompact.style.cursor = 'pointer';
+            curatorNameCompact.addEventListener('click', () => {
+                this.switchCuratorCompact();
+            });
+        }
+        
+        // Setup click-outside-to-close for curator selector
+        this.setupClickOutsideClose();
+        
         // Filter toggle (compact)
         const filterCompactToggle = document.getElementById('filter-by-curator-compact');
         if (filterCompactToggle) {
@@ -317,12 +329,53 @@ class CuratorModule {
             });
             
             // Initialize toggle from settings
-            this.initializeFilterToggle();
+            this.initializeFilterToggle(filterToggle);
         }
+    }
+    
+    /**
+     * Setup click-outside-to-close functionality for curator selector
+     */
+    setupClickOutsideClose() {
+        const curatorSection = document.getElementById('curator-section');
+        const selectorSection = document.getElementById('curator-selector-compact');
         
-        // Initialize curator selectors (both old and new)
-        this.initializeCuratorSelector();
-        this.populateCuratorSelectorCompact();
+        if (!curatorSection || !selectorSection) return;
+        
+        // Create a click handler for document
+        const handleClickOutside = (event) => {
+            // Check if selector is visible
+            if (selectorSection.classList.contains('hidden')) return;
+            
+            // Check if click is outside curator section
+            if (!curatorSection.contains(event.target)) {
+                // Close the selector and return to compact display
+                this.closeCuratorSelector();
+            }
+        };
+        
+        // Add event listener with slight delay to prevent immediate closing
+        setTimeout(() => {
+            document.addEventListener('click', handleClickOutside);
+        }, 100);
+        
+        // Store reference to remove listener if needed
+        this.clickOutsideHandler = handleClickOutside;
+    }
+    
+    /**
+     * Close curator selector and return to compact display
+     */
+    closeCuratorSelector() {
+        const compactDisplay = document.getElementById('curator-compact-display');
+        const selectorSection = document.getElementById('curator-selector-compact');
+        
+        if (!compactDisplay || !selectorSection) return;
+        
+        // Hide selector and show compact display
+        selectorSection.classList.add('hidden');
+        compactDisplay.classList.remove('hidden');
+        compactDisplay.classList.add('flex');
     }
     
     /**

@@ -234,6 +234,39 @@
   color: var(--color-primary-700);
 }
 
+.btn-ghost-secondary {
+  background-color: transparent;
+  color: var(--color-secondary-600);
+  border-color: transparent;
+}
+
+.btn-ghost-secondary:hover:not(:disabled) {
+  background-color: var(--color-secondary-50);
+  color: var(--color-secondary-700);
+}
+
+.btn-ghost-success {
+  background-color: transparent;
+  color: var(--color-success);
+  border-color: transparent;
+}
+
+.btn-ghost-success:hover:not(:disabled) {
+  background-color: #d1fae5;
+  color: #059669;
+}
+
+.btn-ghost-danger {
+  background-color: transparent;
+  color: var(--color-error);
+  border-color: transparent;
+}
+
+.btn-ghost-danger:hover:not(:disabled) {
+  background-color: #fee2e2;
+  color: #dc2626;
+}
+
 /* Icon Button */
 .btn-icon {
   padding: var(--spacing-2);
