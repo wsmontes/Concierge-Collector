@@ -315,12 +315,28 @@ const ApiService = ModuleWrapper.defineClass('ApiService', class {
     }
 
     /**
-     * Create new restaurant on server
+     * Create new restaurant on server (deprecated - use batchUploadRestaurants instead)
      * @param {Object} restaurantData - Restaurant data
      * @returns {Promise<Object>}
      */
     async createRestaurant(restaurantData) {
-        return this.post('/restaurants', restaurantData);
+        // Use batch endpoint for better compatibility with complex data
+        const batchResponse = await this.batchUploadRestaurants([restaurantData]);
+        
+        if (!batchResponse.success) {
+            return batchResponse;
+        }
+        
+        // Return format compatible with old createRestaurant usage
+        const batchData = batchResponse.data;
+        if (batchData && Array.isArray(batchData.restaurants) && batchData.restaurants.length > 0) {
+            return {
+                success: true,
+                data: batchData.restaurants[0]
+            };
+        }
+        
+        return batchResponse;
     }
 
     /**
