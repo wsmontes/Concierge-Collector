@@ -158,6 +158,12 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
             SafetyUtils.hideLoading();
             SafetyUtils.showNotification('Location saved successfully');
             
+            // Reset editing state to ensure we're in "new restaurant" mode
+            if (this.uiManager) {
+                this.uiManager.isEditingRestaurant = false;
+                this.uiManager.editingRestaurantId = null;
+            }
+            
             // Safely show restaurant form section
             if (this.uiManager && typeof this.uiManager.showRestaurantFormSection === 'function') {
                 this.uiManager.showRestaurantFormSection();
@@ -191,6 +197,12 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
         // Hide the quick action modal if it exists
         if (this.uiManager.quickActionModal) {
             SafetyUtils.elementClassSafely(this.uiManager.quickActionModal, 'add', 'hidden', 'QuickActionModule');
+        }
+        
+        // Reset editing state to ensure we're in "new restaurant" mode
+        if (this.uiManager) {
+            this.uiManager.isEditingRestaurant = false;
+            this.uiManager.editingRestaurantId = null;
         }
         
         // Safely show restaurant form section
@@ -281,6 +293,12 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
         // Hide the quick action modal if it exists
         if (this.uiManager.quickActionModal) {
             SafetyUtils.elementClassSafely(this.uiManager.quickActionModal, 'add', 'hidden', 'QuickActionModule');
+        }
+        
+        // Reset editing state to ensure we're in "new restaurant" mode
+        if (this.uiManager) {
+            this.uiManager.isEditingRestaurant = false;
+            this.uiManager.editingRestaurantId = null;
         }
         
         // Safely show restaurant form section

@@ -19,6 +19,8 @@ The `showRestaurantFormSection()` method in `uiManager.js` was not showing the b
 
 Added code to show the toolbar and set the correct title based on mode (New vs Edit):
 
+**CRITICAL:** This alone was not enough! The toolbar was appearing on desktop but not on mobile because the `isEditingRestaurant` flag was not being reset.
+
 ```javascript
 showRestaurantFormSection() {
     this.hideAllSections();
@@ -66,7 +68,27 @@ showConceptsSection() {
 }
 ```
 
-### 3. Enhanced `discardRestaurant()`
+### 3. Reset Editing State in Quick Actions (THE KEY FIX!)
+**File:** `scripts/modules/quickActionModule.js`
+
+Added reset of `isEditingRestaurant` and `editingRestaurantId` flags in all quick action methods BEFORE calling `showRestaurantFormSection()`. This was the missing piece that caused the toolbar to not appear on mobile.
+
+```javascript
+// In quickManual(), quickLocation(), and quickPhoto():
+
+// Reset editing state to ensure we're in "new restaurant" mode
+if (this.uiManager) {
+    this.uiManager.isEditingRestaurant = false;
+    this.uiManager.editingRestaurantId = null;
+}
+
+// Then show restaurant form section
+this.uiManager.showRestaurantFormSection();
+```
+
+**Why this was critical:** Without resetting these flags, if a user had previously edited a restaurant, the flags would still be set to the previous restaurant's ID, causing `showRestaurantFormSection()` to use the wrong title and potentially causing issues with the toolbar display logic on mobile devices.
+
+### 4. Enhanced `discardRestaurant()`
 **File:** `scripts/modules/conceptModule.js`
 
 Added clearing of the description field to ensure complete form reset:
@@ -117,10 +139,15 @@ discardRestaurant() {
 ## Files Modified
 
 1. **scripts/uiManager.js**
-   - `showRestaurantFormSection()` - Added toolbar display logic
+   - `showRestaurantFormSection()` - Added toolbar display logic and dynamic title
    - `showConceptsSection()` - Added dynamic title logic
 
-2. **scripts/modules/conceptModule.js**
+2. **scripts/modules/quickActionModule.js** ⭐ **CRITICAL FIX**
+   - `quickManual()` - Added reset of editing state flags
+   - `quickLocation()` - Added reset of editing state flags
+   - `quickPhoto()` - Added reset of editing state flags
+
+3. **scripts/modules/conceptModule.js**
    - `discardRestaurant()` - Added description field clearing
 
 ## Related Files
