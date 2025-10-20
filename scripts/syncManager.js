@@ -111,14 +111,11 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
             
             const remoteRestaurantsData = response.data;
             
-            // Convert object format to array format
-            // API returns: { "RestaurantName": { cuisine: [...], ... }, ... }
-            // We need: [{ name: "RestaurantName", id: "RestaurantName", ... }]
-            const remoteRestaurants = Object.entries(remoteRestaurantsData).map(([name, data]) => ({
-                name: name,
-                id: name, // Use name as ID since API doesn't provide numeric IDs
-                ...data
-            }));
+            // API returns array of restaurant objects directly:
+            // [{ id: 123, name: "Restaurant", curator: {...}, concepts: [...], server_id: X }]
+            const remoteRestaurants = Array.isArray(remoteRestaurantsData) 
+                ? remoteRestaurantsData 
+                : [];
             
             this.log.debug(`ConciergeSync: Fetched ${remoteRestaurants.length} restaurants from server`);
             
@@ -469,8 +466,17 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
             let serverId = null;
             
             // Extract ID from batch response (multiple possible formats)
+            // API returns: { status: "success", count: X, restaurants: [{ localId, serverId, name, status }] }
             if (batchData && Array.isArray(batchData.restaurants) && batchData.restaurants.length > 0) {
-                serverId = batchData.restaurants[0].id;
+                // Check for serverId field first (new API format)
+                if (batchData.restaurants[0].serverId) {
+                    serverId = batchData.restaurants[0].serverId;
+                    this.log.debug(`✓ Got serverId from batch response: ${serverId}`);
+                } else if (batchData.restaurants[0].id) {
+                    // Fallback to id field (legacy format)
+                    serverId = batchData.restaurants[0].id;
+                    this.log.debug(`✓ Got id from batch response: ${serverId}`);
+                }
             } else if (batchData && batchData.id) {
                 serverId = batchData.id;
             } else if (restaurant.serverId) {
