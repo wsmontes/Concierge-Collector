@@ -32,6 +32,81 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
         this.setupNetworkListeners();
         
         this.log.info('ConciergeSync initialized');
+        
+        // Run data integrity check on startup (after a short delay to let DB initialize)
+        setTimeout(() => this.checkDataIntegrity(), 2000);
+    }
+
+    /**
+     * Check data integrity and fix inconsistent sync states
+     */
+    async checkDataIntegrity() {
+        try {
+            this.log.debug('Running data integrity check...');
+            
+            const restaurants = await dataStorage.db.restaurants.toArray();
+            let fixedCount = 0;
+            
+            for (const restaurant of restaurants) {
+                let needsUpdate = false;
+                const updates = {};
+                
+                // Fix 1: If has serverId but source is 'local' and needsSync is false, fix it
+                if (restaurant.serverId && restaurant.source === 'local' && !restaurant.needsSync) {
+                    updates.source = 'remote';
+                    needsUpdate = true;
+                    this.log.debug(`Fixing: ${restaurant.name} - has serverId but marked as local without needsSync`);
+                }
+                
+                // Fix 2: If source is 'remote' but no serverId, fix it
+                if (restaurant.source === 'remote' && !restaurant.serverId) {
+                    updates.source = 'local';
+                    updates.needsSync = true;
+                    needsUpdate = true;
+                    this.log.debug(`Fixing: ${restaurant.name} - marked remote but no serverId`);
+                }
+                
+                // Fix 3: If has serverId but needsSync is undefined, set it
+                if (restaurant.serverId && restaurant.needsSync === undefined) {
+                    updates.needsSync = false;
+                    needsUpdate = true;
+                    this.log.debug(`Fixing: ${restaurant.name} - has serverId but needsSync undefined`);
+                }
+                
+                // Fix 4: If no serverId and needsSync is undefined, set it
+                if (!restaurant.serverId && restaurant.needsSync === undefined) {
+                    updates.needsSync = true;
+                    needsUpdate = true;
+                    this.log.debug(`Fixing: ${restaurant.name} - no serverId but needsSync undefined`);
+                }
+                
+                // Apply fixes
+                if (needsUpdate) {
+                    await dataStorage.db.restaurants.update(restaurant.id, updates);
+                    fixedCount++;
+                }
+            }
+            
+            if (fixedCount > 0) {
+                this.log.info(`✅ Data integrity check complete: Fixed ${fixedCount} inconsistent state(s)`);
+            } else {
+                this.log.debug('✅ Data integrity check complete: No issues found');
+            }
+            
+            // Log summary stats
+            const stats = {
+                total: restaurants.length,
+                local: restaurants.filter(r => r.source === 'local').length,
+                remote: restaurants.filter(r => r.source === 'remote').length,
+                needsSync: restaurants.filter(r => r.needsSync).length,
+                hasServerId: restaurants.filter(r => r.serverId).length
+            };
+            
+            this.log.debug('Data summary:', stats);
+            
+        } catch (error) {
+            this.log.error('Error in data integrity check:', error);
+        }
     }
 
     /**
@@ -184,10 +259,10 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
                             continue;
                         }
                         
-                        // Skip if has pending local changes
-                        if (existingRestaurant.needsSync || existingRestaurant.source === 'local') {
+                        // Skip if has pending local changes (use needsSync flag, not source)
+                        if (existingRestaurant.needsSync) {
                             results.skipped++;
-                            this.log.debug(`ConciergeSync: Skipping "${remoteRestaurant.name}" - has local changes`);
+                            this.log.debug(`ConciergeSync: Skipping "${remoteRestaurant.name}" - has pending local changes`);
                             continue;
                         }
                         
@@ -400,8 +475,8 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
             // Get restaurant from database
             const restaurant = await dataStorage.db.restaurants.get(restaurantId);
             
-            // Skip if not found or already synced
-            if (!restaurant || restaurant.source === 'remote') {
+            // Skip if not found or already synced (has serverId and doesn't need sync)
+            if (!restaurant || (!restaurant.needsSync && restaurant.serverId)) {
                 this.syncQueue.delete(restaurantId);
                 return false;
             }
@@ -496,7 +571,8 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
                 const updateData = {
                     source: 'remote',
                     needsSync: false,
-                    lastSynced: new Date()
+                    lastSynced: new Date(),
+                    lastError: null  // Clear any previous sync errors
                 };
                 
                 // Only update serverId if we got a real ID (not placeholder)
@@ -561,6 +637,14 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
             
             this.log.debug(`🔄 Syncing ${pending.length} pending restaurants...`);
             
+            // Use bulk sync if multiple restaurants
+            if (pending.length > 1) {
+                this.log.debug('📦 Using bulk sync for multiple restaurants');
+                const bulkResult = await this.bulkSyncRestaurants(pending);
+                return bulkResult;
+            }
+            
+            // Single restaurant - use individual sync
             for (const restaurant of pending) {
                 const success = await this.syncRestaurant(restaurant.id, true);
                 
@@ -584,6 +668,187 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
         }
         
         return results;
+    }
+
+    /**
+     * Bulk sync multiple restaurants in a single atomic transaction
+     * @param {Array} restaurants - Array of restaurant objects to sync
+     * @returns {Promise<Object>} - { synced, failed, skipped, errors }
+     */
+    async bulkSyncRestaurants(restaurants) {
+        const results = { synced: 0, failed: 0, skipped: 0, errors: [] };
+        
+        try {
+            this.log.debug(`📦 Preparing bulk sync for ${restaurants.length} restaurants...`);
+            
+            const operations = {
+                create: [],
+                update: [],
+                delete: []
+            };
+            
+            // Collect all restaurant data for bulk operation
+            for (const restaurant of restaurants) {
+                try {
+                    // Skip if already synced (has serverId and doesn't need sync)
+                    if (restaurant.serverId && !restaurant.needsSync) {
+                        results.skipped++;
+                        continue;
+                    }
+                    
+                    // Get related data
+                    const curator = await dataStorage.db.curators.get(restaurant.curatorId);
+                    
+                    const conceptRelations = await dataStorage.db.restaurantConcepts
+                        .where('restaurantId')
+                        .equals(restaurant.id)
+                        .toArray();
+                    
+                    const conceptIds = conceptRelations.map(rel => rel.conceptId);
+                    const concepts = await dataStorage.db.concepts
+                        .where('id')
+                        .anyOf(conceptIds)
+                        .toArray();
+                    
+                    const locations = await dataStorage.db.restaurantLocations
+                        .where('restaurantId')
+                        .equals(restaurant.id)
+                        .toArray();
+                    
+                    const location = locations.length > 0 ? locations[0] : null;
+                    
+                    // Prepare server data
+                    const serverData = {
+                        localId: restaurant.id, // Track for response mapping
+                        name: restaurant.name,
+                        curator: {
+                            name: curator ? curator.name : 'Unknown',
+                            id: curator && curator.serverId ? curator.serverId : null
+                        },
+                        description: restaurant.description || '',
+                        transcription: restaurant.transcription || '',
+                        concepts: concepts.map(c => ({
+                            category: c.category,
+                            value: c.value
+                        })),
+                        location: location ? {
+                            latitude: location.latitude,
+                            longitude: location.longitude,
+                            address: location.address
+                        } : null,
+                        sharedRestaurantId: restaurant.sharedRestaurantId,
+                        originalCuratorId: restaurant.originalCuratorId
+                    };
+                    
+                    // Determine if this is create or update
+                    if (restaurant.serverId) {
+                        serverData.id = restaurant.serverId;
+                        operations.update.push(serverData);
+                    } else {
+                        operations.create.push(serverData);
+                    }
+                    
+                } catch (error) {
+                    this.log.error(`Error preparing restaurant "${restaurant.name}" for bulk sync:`, error);
+                    results.errors.push({
+                        restaurant: restaurant.name,
+                        error: error.message
+                    });
+                    results.failed++;
+                }
+            }
+            
+            // Send bulk sync request
+            if (operations.create.length > 0 || operations.update.length > 0 || operations.delete.length > 0) {
+                this.log.debug(`📤 Sending bulk sync: ${operations.create.length} creates, ${operations.update.length} updates, ${operations.delete.length} deletes`);
+                
+                const response = await window.apiService.bulkSync(operations);
+                
+                if (!response.success) {
+                    throw new Error(response.error || 'Bulk sync failed');
+                }
+                
+                // Process results and update local database
+                const bulkData = response.data;
+                this.log.debug('📥 Bulk sync response:', bulkData);
+                
+                // Update local restaurants with server IDs
+                if (bulkData.created && Array.isArray(bulkData.created)) {
+                    for (const created of bulkData.created) {
+                        const localId = created.localId || this.findLocalIdByName(restaurants, created.name);
+                        if (localId && created.serverId) {
+                            await dataStorage.db.restaurants.update(localId, {
+                                source: 'remote',
+                                serverId: created.serverId,
+                                needsSync: false,
+                                lastSynced: new Date()
+                            });
+                            
+                            this.updateUIBadge(localId, 'synced');
+                            results.synced++;
+                            this.log.debug(`✅ Created and linked: ${created.name} (ID: ${created.serverId})`);
+                        }
+                    }
+                }
+                
+                if (bulkData.updated && Array.isArray(bulkData.updated)) {
+                    for (const updated of bulkData.updated) {
+                        const localId = updated.localId || this.findLocalIdByServerId(restaurants, updated.serverId);
+                        if (localId) {
+                            await dataStorage.db.restaurants.update(localId, {
+                                needsSync: false,
+                                lastSynced: new Date()
+                            });
+                            
+                            this.updateUIBadge(localId, 'synced');
+                            results.synced++;
+                            this.log.debug(`✅ Updated: ${updated.name}`);
+                        }
+                    }
+                }
+                
+                if (bulkData.failed && Array.isArray(bulkData.failed)) {
+                    for (const failed of bulkData.failed) {
+                        this.log.error(`❌ Failed: ${failed.name} - ${failed.error}`);
+                        results.errors.push(failed);
+                        results.failed++;
+                    }
+                }
+                
+            } else {
+                this.log.debug('📦 No operations to sync');
+            }
+            
+            this.log.debug(`✅ Bulk sync complete: ${results.synced} synced, ${results.failed} failed, ${results.skipped} skipped`);
+            return results;
+            
+        } catch (error) {
+            this.log.error('❌ Bulk sync error:', error);
+            results.errors.push({ error: error.message });
+            throw error;
+        }
+    }
+
+    /**
+     * Helper: Find local restaurant ID by name
+     * @param {Array} restaurants - Array of restaurant objects
+     * @param {string} name - Restaurant name
+     * @returns {number|null}
+     */
+    findLocalIdByName(restaurants, name) {
+        const restaurant = restaurants.find(r => r.name === name);
+        return restaurant ? restaurant.id : null;
+    }
+
+    /**
+     * Helper: Find local restaurant ID by server ID
+     * @param {Array} restaurants - Array of restaurant objects
+     * @param {number} serverId - Server restaurant ID
+     * @returns {number|null}
+     */
+    findLocalIdByServerId(restaurants, serverId) {
+        const restaurant = restaurants.find(r => r.serverId === serverId);
+        return restaurant ? restaurant.id : null;
     }
 
     /**

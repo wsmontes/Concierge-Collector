@@ -381,6 +381,27 @@ const ApiService = ModuleWrapper.defineClass('ApiService', class {
         return this.post('/restaurants/batch', restaurants);
     }
 
+    /**
+     * Bulk sync operations - atomic create/update/delete in single transaction
+     * @param {Object} operations - { create: [], update: [], delete: [] }
+     * @returns {Promise<Object>}
+     */
+    async bulkSync(operations) {
+        const payload = {
+            create: operations.create || [],
+            update: operations.update || [],
+            delete: operations.delete || []
+        };
+        
+        console.log('ApiService: Bulk sync operation', {
+            createCount: payload.create.length,
+            updateCount: payload.update.length,
+            deleteCount: payload.delete.length
+        });
+        
+        return this.post('/restaurants/sync', payload);
+    }
+
     // ========================================
     // CURATOR OPERATIONS
     // ========================================
