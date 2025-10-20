@@ -148,31 +148,31 @@ class CuratorModule {
         // Sync button in compact display
         const syncCompactButton = document.getElementById('sync-compact-display');
         if (syncCompactButton) {
-            syncCompactButton.addEventListener('click', () => {
+            syncCompactButton.addEventListener('click', async () => {
                 this.log.debug('Compact display sync button clicked');
                 
                 // Disable button and add syncing class
                 syncCompactButton.disabled = true;
                 syncCompactButton.classList.add('syncing', 'opacity-75', 'cursor-not-allowed');
                 
-                // Call the sync method from exportImportModule through uiManager
-                if (this.uiManager.exportImportModule && typeof this.uiManager.exportImportModule.syncWithServer === 'function') {
-                    this.uiManager.exportImportModule.syncWithServer()
-                        .then(() => {
-                            this.log.debug('Sync completed successfully');
-                        })
-                        .catch(error => {
-                            this.log.error('Error in syncWithServer:', error);
-                            SafetyUtils.showNotification(`Sync error: ${error.message}`, 'error');
-                        })
-                        .finally(() => {
-                            // Re-enable button and remove syncing class
-                            syncCompactButton.disabled = false;
-                            syncCompactButton.classList.remove('syncing', 'opacity-75', 'cursor-not-allowed');
-                        });
-                } else {
-                    this.log.error('exportImportModule or syncWithServer not available');
-                    SafetyUtils.showNotification('Sync functionality not available', 'error');
+                try {
+                    // Call the unified sync method from syncManager
+                    if (window.syncManager && window.syncManager.performComprehensiveSync) {
+                        await window.syncManager.performComprehensiveSync(true);
+                        this.log.debug('Sync completed successfully');
+                        
+                        // Refresh restaurant list if available
+                        if (this.uiManager && this.uiManager.restaurantModule && this.uiManager.currentCurator) {
+                            await this.uiManager.restaurantModule.loadRestaurantList(this.uiManager.currentCurator.id);
+                        }
+                    } else {
+                        throw new Error('Sync manager not available');
+                    }
+                } catch (error) {
+                    this.log.error('Error in sync:', error);
+                    SafetyUtils.showNotification(`Sync error: ${error.message}`, 'error');
+                } finally {
+                    // Re-enable button and remove syncing class
                     syncCompactButton.disabled = false;
                     syncCompactButton.classList.remove('syncing', 'opacity-75', 'cursor-not-allowed');
                 }
@@ -182,31 +182,31 @@ class CuratorModule {
         // Sync with server button (selector section)
         const syncSelectorButton = document.getElementById('sync-with-server-selector');
         if (syncSelectorButton) {
-            syncSelectorButton.addEventListener('click', () => {
+            syncSelectorButton.addEventListener('click', async () => {
                 this.log.debug('Selector sync button clicked');
                 
                 // Disable button and add syncing class
                 syncSelectorButton.disabled = true;
                 syncSelectorButton.classList.add('syncing', 'opacity-75', 'cursor-not-allowed');
                 
-                // Call the sync method from exportImportModule through uiManager
-                if (this.uiManager.exportImportModule && typeof this.uiManager.exportImportModule.syncWithServer === 'function') {
-                    this.uiManager.exportImportModule.syncWithServer()
-                        .then(() => {
-                            this.log.debug('Sync completed successfully');
-                        })
-                        .catch(error => {
-                            this.log.error('Error in syncWithServer:', error);
-                            SafetyUtils.showNotification(`Sync error: ${error.message}`, 'error');
-                        })
-                        .finally(() => {
-                            // Re-enable button
-                            syncSelectorButton.disabled = false;
-                            syncSelectorButton.classList.remove('syncing', 'opacity-75', 'cursor-not-allowed');
-                        });
-                } else {
-                    this.log.error('exportImportModule.syncWithServer not available');
-                    SafetyUtils.showNotification('Sync functionality not available', 'error');
+                try {
+                    // Call the unified sync method from syncManager
+                    if (window.syncManager && window.syncManager.performComprehensiveSync) {
+                        await window.syncManager.performComprehensiveSync(true);
+                        this.log.debug('Sync completed successfully');
+                        
+                        // Refresh restaurant list if available
+                        if (this.uiManager && this.uiManager.restaurantModule && this.uiManager.currentCurator) {
+                            await this.uiManager.restaurantModule.loadRestaurantList(this.uiManager.currentCurator.id);
+                        }
+                    } else {
+                        throw new Error('Sync manager not available');
+                    }
+                } catch (error) {
+                    this.log.error('Error in sync:', error);
+                    SafetyUtils.showNotification(`Sync error: ${error.message}`, 'error');
+                } finally {
+                    // Re-enable button
                     syncSelectorButton.disabled = false;
                     syncSelectorButton.classList.remove('syncing', 'opacity-75', 'cursor-not-allowed');
                 }

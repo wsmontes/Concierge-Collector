@@ -325,7 +325,7 @@ function setupManualSyncButton() {
 
     // Add click handler using SyncManager
     newButton.addEventListener('click', async () => {
-        console.log('🔄 Manual sync triggered');
+        console.log('🔄 Manual sync triggered from sidebar');
         
         if (!window.syncManager) {
             console.error('❌ SyncManager not available');
@@ -335,11 +335,34 @@ function setupManualSyncButton() {
             return;
         }
 
+        // Disable button and add syncing state
+        newButton.disabled = true;
+        newButton.classList.add('syncing', 'opacity-75');
+        
+        // Get button text element
+        const buttonText = newButton.querySelector('.btn-text') || newButton;
+        const originalText = buttonText.textContent;
+        buttonText.textContent = 'Syncing...';
+
         try {
-            await window.syncManager.syncAllPendingWithUI(true);
-            console.log('✅ Manual sync completed');
+            // Use the unified comprehensive sync method
+            await window.syncManager.performComprehensiveSync(true);
+            console.log('✅ Manual sync completed from sidebar');
+            
+            // Refresh restaurant list if available
+            if (window.restaurantModule && window.uiManager?.currentCurator) {
+                await window.restaurantModule.loadRestaurantList(window.uiManager.currentCurator.id);
+            }
         } catch (error) {
             console.error('❌ Manual sync error:', error);
+            if (window.uiUtils?.showNotification) {
+                window.uiUtils.showNotification(`Sync failed: ${error.message}`, 'error');
+            }
+        } finally {
+            // Re-enable button and restore state
+            newButton.disabled = false;
+            newButton.classList.remove('syncing', 'opacity-75');
+            buttonText.textContent = originalText;
         }
     });
 
@@ -359,22 +382,22 @@ function initializeBackgroundServices() {
         }
     }, 2000);
     
-    // PHASE 1.3: AutoSync DISABLED - using BackgroundSync only
+    // PHASE 1.3: AutoSync DISABLED - using SyncManager only
     // Previously: AutoSync periodic sync every 30min
-    // Now: BackgroundSync handles all sync (60s retry + manual sync)
-    // Manual sync via sync-button → backgroundSync.syncAllPendingWithUI()
+    // Now: SyncManager handles all sync (60s retry + manual comprehensive sync)
+    // Manual sync via sync-button → syncManager.performComprehensiveSync()
     setTimeout(() => {
         console.log('⚠️ AutoSync periodic sync disabled (Phase 1.3)');
-        console.log('✅ Using BackgroundSync for all sync operations');
+        console.log('✅ Using SyncManager for all sync operations');
         
-        // Setup manual sync button to use BackgroundSync
+        // Setup manual sync button to use SyncManager's comprehensive sync
         setupManualSyncButton();
     }, 3000);
     
     // PHASE 1.3: SyncSettingsManager DISABLED (no longer needed)
     // Previously: Managed AutoSync interval settings
-    // Now: BackgroundSync has fixed 60s retry, no user configuration needed
-    // Manual sync via button, no settings UI required
+    // Now: SyncManager has fixed 60s retry + unified performComprehensiveSync()
+    // All sync buttons use the same comprehensive sync method
     
     console.log('Background services scheduled for initialization');
 }

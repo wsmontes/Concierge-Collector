@@ -523,6 +523,9 @@ window.NavigationManager = (function() {
 })();
 
 // Initialize when DOM is ready
+// NOTE: Auto-initialization disabled - NavigationManager is available but not active
+// To enable: uncomment the initialization code below and register routes in main.js
+/*
 if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', () => {
         window.navigationManager = window.NavigationManager;
@@ -532,3 +535,7 @@ if (document.readyState === 'loading') {
     window.navigationManager = window.NavigationManager;
     window.navigationManager.init();
 }
+*/
+
+// Make NavigationManager available globally without auto-initializing
+window.navigationManager = window.NavigationManager;

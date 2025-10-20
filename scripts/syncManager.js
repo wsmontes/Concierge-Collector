@@ -22,6 +22,7 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
         this.log = Logger.module('ConciergeSync');
         
         this.isSyncing = false;
+        this.syncing = false; // For comprehensive sync flag
         this.syncQueue = new Set();
         this.retryInterval = null;
         this.isOnline = navigator.onLine;
@@ -673,30 +674,231 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
     // ========================================
 
     /**
-     * Perform full bidirectional sync
+     * Notification templates for consistent user feedback
+     */
+    static SYNC_NOTIFICATIONS = {
+        START: '🔄 Syncing restaurants with server...',
+        SUCCESS: (stats) => `✅ Sync complete: ${stats.uploaded || 0} uploaded, ${stats.downloaded || 0} downloaded`,
+        ALREADY_SYNCED: '✅ All restaurants are already synced',
+        PARTIAL: (stats) => `⚠️ Partial sync: ${stats.success || 0} succeeded, ${stats.failed || 0} failed`,
+        OFFLINE: '📡 Offline - changes will sync when back online',
+        ERROR: (message) => `❌ Sync failed: ${message}`,
+        CONFLICTS: (count) => `⚠️ Sync completed with ${count} conflict${count !== 1 ? 's' : ''} requiring manual review`,
+        PROGRESS_UPLOAD: '📤 Uploading local restaurants (1/4)...',
+        PROGRESS_DOWNLOAD: '📥 Downloading from server (2/4)...',
+        PROGRESS_CONFLICTS: '🔍 Resolving conflicts (3/4)...',
+        PROGRESS_CURATORS: '👥 Syncing curators (4/4)...'
+    };
+
+    /**
+     * Show standardized sync notification
+     * @param {string} type - Notification type (key from SYNC_NOTIFICATIONS)
+     * @param {*} data - Data to pass to notification template function
+     */
+    showSyncNotification(type, data = null) {
+        const notificationDef = ConciergeSync.SYNC_NOTIFICATIONS[type];
+        if (!notificationDef) {
+            this.log.warn(`Unknown notification type: ${type}`);
+            return;
+        }
+
+        const message = typeof notificationDef === 'function' 
+            ? notificationDef(data)
+            : notificationDef;
+        
+        const notificationType = 
+            type === 'SUCCESS' || type === 'ALREADY_SYNCED' ? 'success' :
+            type === 'ERROR' ? 'error' :
+            type === 'PARTIAL' || type === 'CONFLICTS' ? 'warning' :
+            'info';
+        
+        if (window.uiUtils && window.uiUtils.showNotification) {
+            window.uiUtils.showNotification(message, notificationType);
+        } else {
+            this.log.warn('uiUtils not available for notification');
+            console.log(`[${notificationType.toUpperCase()}] ${message}`);
+        }
+    }
+
+    /**
+     * Perform comprehensive bidirectional sync with full UI feedback
+     * This is the main entry point for all manual sync operations
+     * @param {boolean} showUI - Show user notifications and feedback
+     * @returns {Promise<Object>} - Comprehensive sync results
+     */
+    async performComprehensiveSync(showUI = true) {
+        if (this.syncing) {
+            if (showUI) {
+                this.showSyncNotification('START');
+            }
+            return { alreadyRunning: true };
+        }
+
+        this.syncing = true;
+        const syncStartTime = performance.now();
+        const results = {
+            uploaded: 0,
+            downloaded: 0,
+            conflicts: [],
+            merged: [],
+            errors: []
+        };
+
+        try {
+            this.log.debug('🔄 Starting comprehensive bidirectional sync...');
+            
+            // Show start notification
+            if (showUI) {
+                this.showSyncNotification('START');
+            }
+
+            // Check if online
+            if (!this.isOnline) {
+                if (showUI) {
+                    this.showSyncNotification('OFFLINE');
+                }
+                return results;
+            }
+
+            // Step 1: Upload local restaurants to server
+            this.log.debug('📤 Step 1/4: Uploading local restaurants...');
+            try {
+                const localRestaurants = await window.dataStorage.getRestaurantsNeedingSync();
+                
+                if (localRestaurants.length > 0) {
+                    this.log.debug(`Found ${localRestaurants.length} local restaurants to upload`);
+                    
+                    const uploadResult = await this.syncAllPending(50);
+                    results.uploaded = uploadResult.synced;
+                    results.errors.push(...(uploadResult.errors || []));
+                    
+                    this.log.debug(`✅ Uploaded ${results.uploaded} restaurants`);
+                } else {
+                    this.log.debug('✅ No local restaurants to upload');
+                }
+            } catch (uploadError) {
+                this.log.error('❌ Upload failed:', uploadError);
+                results.errors.push({ step: 'upload', error: uploadError.message });
+            }
+
+            // Step 2: Download restaurants from server
+            this.log.debug('📥 Step 2/4: Downloading restaurants from server...');
+            try {
+                const importResult = await this.importRestaurants();
+                results.downloaded = importResult.added + importResult.updated;
+                
+                this.log.debug(`✅ Downloaded ${results.downloaded} restaurants`);
+            } catch (downloadError) {
+                this.log.error('❌ Download failed:', downloadError);
+                results.errors.push({ step: 'download', error: downloadError.message });
+            }
+
+            // Step 3: Detect and resolve conflicts (if exportImportModule is available)
+            this.log.debug('🔍 Step 3/4: Detecting conflicts...');
+            try {
+                // Get potential conflicts between local and remote restaurants
+                const localRestaurants = await window.dataStorage.db.restaurants
+                    .where('source')
+                    .equals('local')
+                    .toArray();
+                
+                const remoteRestaurants = await window.dataStorage.db.restaurants
+                    .where('source')
+                    .equals('remote')
+                    .toArray();
+
+                for (const localRest of localRestaurants) {
+                    for (const remoteRest of remoteRestaurants) {
+                        if (window.dataStorage.compareRestaurants) {
+                            const comparison = window.dataStorage.compareRestaurants(localRest, remoteRest);
+                            
+                            if (comparison.isDuplicate) {
+                                if (comparison.conflictType === 'requires-manual-review') {
+                                    results.conflicts.push({
+                                        local: localRest.name,
+                                        remote: remoteRest.name,
+                                        type: comparison.conflictType
+                                    });
+                                } else {
+                                    results.merged.push({
+                                        name: localRest.name,
+                                        strategy: comparison.mergeStrategy
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+                
+                this.log.debug(`✅ Conflict detection complete: ${results.conflicts.length} conflicts, ${results.merged.length} merged`);
+            } catch (conflictError) {
+                this.log.error('❌ Conflict detection failed:', conflictError);
+                results.errors.push({ step: 'conflicts', error: conflictError.message });
+            }
+
+            // Step 4: Sync curators
+            this.log.debug('👥 Step 4/4: Syncing curators...');
+            try {
+                await this.importCurators();
+                this.log.debug('✅ Curators synced');
+            } catch (curatorError) {
+                this.log.error('❌ Curator sync failed:', curatorError);
+                results.errors.push({ step: 'curators', error: curatorError.message });
+            }
+
+            // Calculate total time
+            const syncEndTime = performance.now();
+            const totalTime = ((syncEndTime - syncStartTime) / 1000).toFixed(2);
+            results.duration = totalTime;
+
+            // Show appropriate notification
+            if (showUI) {
+                if (results.uploaded === 0 && results.downloaded === 0 && results.errors.length === 0) {
+                    this.showSyncNotification('ALREADY_SYNCED');
+                } else if (results.errors.length > 0) {
+                    this.showSyncNotification('PARTIAL', {
+                        success: results.uploaded + results.downloaded,
+                        failed: results.errors.length
+                    });
+                } else if (results.conflicts.length > 0) {
+                    this.showSyncNotification('CONFLICTS', results.conflicts.length);
+                } else {
+                    this.showSyncNotification('SUCCESS', results);
+                }
+            }
+
+            this.log.debug(`✅ Comprehensive sync completed in ${totalTime}s`);
+            this.log.debug('Sync results:', results);
+
+            // Update last sync time
+            if (window.dataStorage && window.dataStorage.updateLastSyncTime) {
+                await window.dataStorage.updateLastSyncTime();
+            }
+
+            // Refresh UI if available
+            if (window.restaurantModule && window.restaurantModule.updateSyncButton) {
+                await window.restaurantModule.updateSyncButton();
+            }
+
+            return results;
+
+        } catch (error) {
+            this.log.error('ConciergeSync: Comprehensive sync error:', error);
+            if (showUI) {
+                this.showSyncNotification('ERROR', error.message);
+            }
+            throw error;
+        } finally {
+            this.syncing = false;
+        }
+    }
+
+    /**
+     * Perform full bidirectional sync (Legacy method - now delegates to performComprehensiveSync)
      * @returns {Promise<Object>} - Combined results
      */
     async performFullSync() {
-        try {
-            this.log.debug('ConciergeSync: Starting full sync...');
-            
-            // Step 1: Import from server
-            const importResults = await this.importRestaurants();
-            
-            // Step 2: Export to server
-            const exportResults = await this.syncAllPending(50);
-            
-            this.log.debug('ConciergeSync: Full sync complete');
-            
-            return {
-                import: importResults,
-                export: exportResults
-            };
-            
-        } catch (error) {
-            this.log.error('ConciergeSync: Full sync error:', error);
-            throw error;
-        }
+        return this.performComprehensiveSync(false);
     }
 
     // ========================================

@@ -41,22 +41,24 @@ class RestaurantModule {
                 try {
                     this.log.debug('Manual sync triggered from restaurant list');
                     
-                    // Show loading state
+                    // Disable button and show syncing state
                     const syncText = document.getElementById('sync-restaurants-text');
                     const originalText = syncText ? syncText.textContent : 'Sync';
                     if (syncText) syncText.textContent = 'Syncing...';
                     syncRestaurantsBtn.disabled = true;
+                    syncRestaurantsBtn.classList.add('syncing', 'opacity-75');
                     
-                    // Trigger sync via syncManager
-                    if (window.syncManager) {
-                        await window.syncManager.syncAllPendingWithUI();
-                        this.uiManager.showNotification('Restaurants synced successfully!', 'success');
+                    // Trigger comprehensive sync via syncManager
+                    if (window.syncManager && window.syncManager.performComprehensiveSync) {
+                        await window.syncManager.performComprehensiveSync(true);
                         
-                        // Reload restaurant list
+                        // Reload restaurant list to show updated data
                         const currentCurator = await dataStorage.getCurrentCurator();
                         if (currentCurator) {
                             await this.loadRestaurantList(currentCurator.id);
                         }
+                    } else {
+                        throw new Error('Sync manager not available');
                     }
                 } catch (error) {
                     this.log.error('Sync failed:', error);
@@ -66,6 +68,7 @@ class RestaurantModule {
                     const syncText = document.getElementById('sync-restaurants-text');
                     if (syncText) syncText.textContent = 'Sync';
                     syncRestaurantsBtn.disabled = false;
+                    syncRestaurantsBtn.classList.remove('syncing', 'opacity-75');
                     
                     // Update button visibility
                     await this.updateSyncButton();
