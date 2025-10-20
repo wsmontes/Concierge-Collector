@@ -273,9 +273,12 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
                     
                     // Create new restaurant
                     const curatorId = await this.findOrCreateCurator(remoteRestaurant.curator);
+                    this.log.debug(`🔍 Creating restaurant "${remoteRestaurant.name}" with curatorId: ${curatorId}`);
+                    
                     const concepts = this.processRemoteConcepts(remoteRestaurant.concepts);
                     const location = this.processRemoteLocation(remoteRestaurant.location);
                     
+                    this.log.debug(`📝 Calling saveRestaurant for "${remoteRestaurant.name}"...`);
                     const restaurantId = await dataStorage.saveRestaurant(
                         remoteRestaurant.name,
                         curatorId,
@@ -287,6 +290,16 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
                         'remote',
                         remoteRestaurant.id
                     );
+                    
+                    this.log.debug(`✅ Restaurant "${remoteRestaurant.name}" saved with ID: ${restaurantId}, curatorId: ${curatorId}`);
+                    
+                    // VERIFY: Immediately read back the restaurant to confirm it's in the database
+                    const savedRestaurant = await dataStorage.db.restaurants.get(restaurantId);
+                    if (savedRestaurant) {
+                        this.log.debug(`✓ VERIFIED: Restaurant ${restaurantId} exists in DB with curatorId: ${savedRestaurant.curatorId}, source: ${savedRestaurant.source}`);
+                    } else {
+                        this.log.error(`❌ CRITICAL: Restaurant ${restaurantId} NOT FOUND in database after save!`);
+                    }
                     
                     results.added++;
                     this.log.debug(`ConciergeSync: Added "${remoteRestaurant.name}"`);
@@ -840,6 +853,18 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
             this.log.debug('👥 Step 4/4: Syncing curators...');
             try {
                 await this.importCurators();
+                
+                // CRITICAL: Ensure there's a current curator set
+                const currentCurator = await window.dataStorage.getCurrentCurator();
+                if (!currentCurator) {
+                    this.log.warn('⚠️ No current curator set - selecting first available curator');
+                    const allCurators = await window.dataStorage.getAllCurators();
+                    if (allCurators && allCurators.length > 0) {
+                        await window.dataStorage.setCurrentCurator(allCurators[0].id);
+                        this.log.debug(`✓ Set current curator to: ${allCurators[0].name} (ID: ${allCurators[0].id})`);
+                    }
+                }
+                
                 this.log.debug('✅ Curators synced');
             } catch (curatorError) {
                 this.log.error('❌ Curator sync failed:', curatorError);
@@ -877,44 +902,58 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
 
             // Refresh restaurant list to show downloaded/updated restaurants
             this.log.debug('🔄 Attempting to refresh UI...');
-            this.log.debug(`showUI: ${showUI}, uiManager: ${!!window.uiManager}, currentCurator: ${!!window.uiManager?.currentCurator}`);
             
-            if (showUI) {
-                // Try to get current curator from multiple sources
-                let curatorId = null;
-                
-                if (window.uiManager && window.uiManager.currentCurator) {
-                    curatorId = window.uiManager.currentCurator.id;
-                    this.log.debug(`Using curator from uiManager: ${curatorId}`);
-                } else if (localStorage.getItem('current_curator_id')) {
-                    curatorId = parseInt(localStorage.getItem('current_curator_id'));
-                    this.log.debug(`Using curator from localStorage: ${curatorId}`);
-                }
-                
-                if (curatorId && window.restaurantModule && typeof window.restaurantModule.loadRestaurantList === 'function') {
-                    this.log.debug(`Refreshing restaurant list for curator ${curatorId}...`);
-                    try {
+            if (showUI && window.restaurantModule && typeof window.restaurantModule.loadRestaurantList === 'function') {
+                try {
+                    // Get current curator from database
+                    const currentCurator = await window.dataStorage.getCurrentCurator();
+                    
+                    if (currentCurator) {
+                        // Reload restaurant list for current curator
+                        const curatorId = currentCurator.id;
+                        this.log.debug(`✓ Refreshing for curator: ${currentCurator.name} (ID: ${curatorId})`);
+                        
+                        // Count restaurants for debugging
+                        const totalRestaurants = await window.dataStorage.db.restaurants.count();
+                        const restaurantsForCurator = await window.dataStorage.db.restaurants
+                            .where('curatorId')
+                            .equals(curatorId)
+                            .count();
+                        
+                        this.log.debug(`📊 Database: ${totalRestaurants} total, ${restaurantsForCurator} for curator ${curatorId}`);
+                        
                         await window.restaurantModule.loadRestaurantList(curatorId);
-                        this.log.debug('✅ Restaurant list refreshed successfully');
-                    } catch (refreshError) {
-                        this.log.error('❌ Error refreshing restaurant list:', refreshError);
+                        this.log.debug('✅ Restaurant list refreshed');
+                    } else {
+                        // No current curator - this shouldn't happen but handle it
+                        this.log.warn('⚠️ No current curator set - attempting to load first available curator');
+                        
+                        const allCurators = await window.dataStorage.getAllCurators();
+                        if (allCurators && allCurators.length > 0) {
+                            const firstCurator = allCurators[0];
+                            this.log.debug(`Using first available curator: ${firstCurator.name} (ID: ${firstCurator.id})`);
+                            await window.restaurantModule.loadRestaurantList(firstCurator.id);
+                            this.log.debug('✅ Restaurant list refreshed with first curator');
+                        } else {
+                            this.log.error('❌ No curators found in database');
+                        }
                     }
-                } else {
-                    this.log.warn('⚠️ Cannot refresh restaurant list - missing curatorId or restaurantModule');
-                    this.log.debug(`curatorId: ${curatorId}, restaurantModule: ${!!window.restaurantModule}`);
+                } catch (refreshError) {
+                    this.log.error('❌ Error refreshing restaurant list:', refreshError);
                 }
                 
                 // Update sync button badge
-                if (window.restaurantModule && window.restaurantModule.updateSyncButton) {
-                    try {
+                try {
+                    if (window.restaurantModule.updateSyncButton) {
                         await window.restaurantModule.updateSyncButton();
                         this.log.debug('✅ Sync button badge updated');
-                    } catch (badgeError) {
-                        this.log.error('❌ Error updating sync badge:', badgeError);
                     }
+                } catch (badgeError) {
+                    this.log.error('❌ Error updating sync badge:', badgeError);
                 }
             } else {
-                this.log.debug('⚠️ UI refresh skipped (showUI = false)');
+                this.log.debug('⚠️ UI refresh skipped - missing dependencies');
+                this.log.debug(`showUI: ${showUI}, restaurantModule: ${!!window.restaurantModule}`);
             }
 
             return results;
