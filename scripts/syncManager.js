@@ -192,7 +192,23 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
                 throw new Error(response.error || 'Failed to fetch restaurants from server');
             }
             
-            const remoteRestaurantsData = response.data;
+            let remoteRestaurantsData = response.data;
+            
+            // Handle nested data structure from backend
+            // Backend may return: {data: {...}, status: "success", timestamp: "..."}
+            if (remoteRestaurantsData && remoteRestaurantsData.data && typeof remoteRestaurantsData.data === 'object') {
+                remoteRestaurantsData = remoteRestaurantsData.data;
+            }
+            
+            // If data is wrapped in entities property
+            if (remoteRestaurantsData && remoteRestaurantsData.entities && Array.isArray(remoteRestaurantsData.entities)) {
+                remoteRestaurantsData = remoteRestaurantsData.entities;
+            }
+            
+            // If data has a 'data' array property
+            if (remoteRestaurantsData && remoteRestaurantsData.data && Array.isArray(remoteRestaurantsData.data)) {
+                remoteRestaurantsData = remoteRestaurantsData.data;
+            }
             
             // API returns array of restaurant objects directly:
             // [{ id: 123, name: "Restaurant", curator: {...}, concepts: [...], server_id: X }]
@@ -415,32 +431,100 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
                 throw new Error(response.error || 'Failed to fetch restaurants to extract curator data');
             }
 
-            const restaurants = response.data;
+            // Defensive check: ensure response.data exists and is iterable
+            let restaurants = response.data;
+            
+            // Handle different response formats
+            if (!restaurants) {
+                this.log.warn('ConciergeSync: No data returned from getRestaurants, returning empty array');
+                return [];
+            }
+            
+            // If response has nested data property (backend wrapper format)
+            // e.g., {data: {...}, status: "success", timestamp: "..."}
+            if (restaurants.data && typeof restaurants.data === 'object') {
+                restaurants = restaurants.data;
+            }
+            
+            // If data is wrapped in an object with a restaurants property
+            if (restaurants.restaurants && Array.isArray(restaurants.restaurants)) {
+                restaurants = restaurants.restaurants;
+            }
+            
+            // If data is wrapped in an entities property
+            if (restaurants.entities && Array.isArray(restaurants.entities)) {
+                restaurants = restaurants.entities;
+            }
+            
+            // If data has a 'data' array property
+            if (restaurants.data && Array.isArray(restaurants.data)) {
+                restaurants = restaurants.data;
+            }
+            
+            // Ensure we have an array
+            if (!Array.isArray(restaurants)) {
+                this.log.error('ConciergeSync: Received undefined restaurants to extract curators from');
+                this.log.error('Response data structure:', restaurants);
+                this.log.warn('ConciergeSync: Expected array of restaurants, got:', typeof restaurants);
+                return [];
+            }
+            
             this.log.debug(`ConciergeSync: Received ${restaurants.length} restaurants to extract curators from`);
 
             // Extract unique curators from restaurant data
             const curatorsMap = new Map();
             
             for (const restaurant of restaurants) {
-                if (restaurant.curator && restaurant.curator.name) {
-                    const curatorName = restaurant.curator.name.toLowerCase().trim();
+                // Handle different curator data formats
+                let curatorName = null;
+                let curatorId = null;
+                let curatorCreated = null;
+                let curatorLastActive = null;
+                
+                // Format 1: MySQL entity format (entity_data.curatorName)
+                if (restaurant.entity_data) {
+                    curatorName = restaurant.entity_data.curatorName;
+                    curatorId = restaurant.entity_data.curatorId;
+                    curatorCreated = restaurant.entity_data.timestamp || restaurant.created_at;
+                    curatorLastActive = restaurant.updated_at || restaurant.created_at;
+                }
+                // Format 2: Old format (nested curator object)
+                else if (restaurant.curator && restaurant.curator.name) {
+                    curatorName = restaurant.curator.name;
+                    curatorId = restaurant.curator.id;
+                    curatorCreated = restaurant.curator.created;
+                    curatorLastActive = restaurant.curator.lastActive || restaurant.timestamp;
+                }
+                // Format 3: Flat format (curatorName at root level)
+                else if (restaurant.curatorName) {
+                    curatorName = restaurant.curatorName;
+                    curatorId = restaurant.curatorId;
+                    curatorCreated = restaurant.timestamp || restaurant.created_at;
+                    curatorLastActive = restaurant.timestamp || restaurant.updated_at;
+                }
+                
+                if (curatorName && curatorName.trim()) {
+                    const curatorKey = curatorName.toLowerCase().trim();
                     
-                    if (!curatorsMap.has(curatorName)) {
-                        curatorsMap.set(curatorName, {
-                            name: restaurant.curator.name,
+                    if (!curatorsMap.has(curatorKey)) {
+                        curatorsMap.set(curatorKey, {
+                            name: curatorName,
+                            id: curatorId,
                             origin: 'remote',
-                            created: restaurant.curator.created || new Date().toISOString(),
-                            lastActive: restaurant.curator.lastActive || restaurant.timestamp || new Date().toISOString()
+                            created: curatorCreated || new Date().toISOString(),
+                            lastActive: curatorLastActive || new Date().toISOString()
                         });
                     } else {
                         // Update lastActive if this restaurant is newer
-                        const curator = curatorsMap.get(curatorName);
-                        const restaurantDate = new Date(restaurant.timestamp || new Date());
+                        const curator = curatorsMap.get(curatorKey);
+                        const restaurantDate = new Date(curatorLastActive || new Date());
                         const lastActiveDate = new Date(curator.lastActive);
                         if (restaurantDate > lastActiveDate) {
-                            curator.lastActive = restaurant.timestamp;
+                            curator.lastActive = curatorLastActive || new Date().toISOString();
                         }
                     }
+                } else {
+                    this.log.warn('ConciergeSync: Restaurant missing curator information:', restaurant.name || restaurant.id);
                 }
             }
 

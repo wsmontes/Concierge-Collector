@@ -569,8 +569,17 @@ function triggerInitialSync() {
             
             // Import curators first (quick operation)
             console.log('Importing curators from server...');
-            const curatorResults = await window.syncManager.importCurators();
-            console.log(`Imported ${curatorResults.length} curators from server`);
+            try {
+                const curatorResults = await window.syncManager.importCurators();
+                if (curatorResults && Array.isArray(curatorResults)) {
+                    console.log(`Imported ${curatorResults.length} curators from server`);
+                } else {
+                    console.log('No curators to import or curator import returned unexpected result');
+                }
+            } catch (curatorError) {
+                console.error('Curator import error:', curatorError);
+                // Continue with restaurant import even if curator import fails
+            }
             
             // Then import restaurants (potentially longer operation)
             console.log('Importing restaurants from server...');

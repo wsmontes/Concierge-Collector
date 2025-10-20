@@ -465,7 +465,7 @@ const ApiService = ModuleWrapper.defineClass('ApiService', class {
 
     /**
      * Batch upload restaurants using /api/import/concierge-v2
-     * This is the correct bulk import endpoint for the MySQL backend
+     * Backend expects V2 format (metadata array structure)
      * Handles both V2 export format and flat format
      * @param {Array} restaurants - Array of restaurant objects (V2 or flat format)
      * @returns {Promise<Object>}
@@ -477,53 +477,78 @@ const ApiService = ModuleWrapper.defineClass('ApiService', class {
         
         console.log(`ApiService: Batch upload ${restaurants.length} restaurants (V2 format: ${isV2Format})`);
         
-        // Transform V2 format to flat format if needed
-        const flatRestaurants = isV2Format
-            ? restaurants.map(r => this.transformV2ToFlatFormat(r))
-            : restaurants;
+        // If already in V2 format, use directly
+        if (isV2Format) {
+            console.log('ApiService: Using V2 format directly');
+            return this.post('/import/concierge-v2', restaurants);
+        }
         
-        // Transform restaurants to entities format for import
-        const entities = flatRestaurants.map(restaurant => ({
-            entity_type: 'restaurant',
-            name: restaurant.name,
-            entity_data: {
-                description: restaurant.description || '',
-                transcription: restaurant.transcription || '',
-                location: restaurant.location || null,
-                notes: restaurant.notes || { private: '', public: '' },
-                photos: restaurant.photos || [],
-                concepts: restaurant.concepts || [],
-                michelinData: restaurant.michelinData || null,
-                googlePlacesData: restaurant.googlePlacesData || null,
-                curatorId: restaurant.curatorId || null,
-                curatorName: restaurant.curatorName || null,
-                timestamp: restaurant.timestamp || new Date().toISOString()
-            }
-        }));
-        
-        // Extract unique curators
-        const curatorsMap = new Map();
-        flatRestaurants.forEach(restaurant => {
-            if (restaurant.curatorId && restaurant.curatorName) {
-                curatorsMap.set(restaurant.curatorId, {
-                    id: restaurant.curatorId,
-                    name: restaurant.curatorName
+        // Transform flat format to V2 format for import
+        console.log('ApiService: Transforming flat format to V2 format');
+        const v2Restaurants = restaurants.map(restaurant => {
+            const metadata = [];
+            
+            // Add restaurant metadata if needed (optional)
+            if (restaurant.serverId || restaurant.id) {
+                metadata.push({
+                    type: 'restaurant',
+                    id: restaurant.id,
+                    serverId: restaurant.serverId
                 });
             }
+            
+            // Add collector data (required)
+            const collectorData = {
+                type: 'collector',
+                source: 'local',
+                data: {
+                    name: restaurant.name
+                }
+            };
+            
+            // Add optional fields if they exist
+            if (restaurant.description && restaurant.description.trim()) {
+                collectorData.data.description = restaurant.description;
+            }
+            if (restaurant.transcription && restaurant.transcription.trim()) {
+                collectorData.data.transcription = restaurant.transcription;
+            }
+            if (restaurant.location && (restaurant.location.latitude || restaurant.location.longitude)) {
+                collectorData.data.location = restaurant.location;
+            }
+            if (restaurant.photos && restaurant.photos.length > 0) {
+                collectorData.data.photos = restaurant.photos;
+            }
+            
+            metadata.push(collectorData);
+            
+            // Build V2 restaurant object
+            const v2Restaurant = { metadata };
+            
+            // Add concepts as root-level categories
+            if (restaurant.concepts && Array.isArray(restaurant.concepts)) {
+                const categorizedConcepts = {};
+                restaurant.concepts.forEach(concept => {
+                    if (concept.category && concept.value) {
+                        if (!categorizedConcepts[concept.category]) {
+                            categorizedConcepts[concept.category] = [];
+                        }
+                        categorizedConcepts[concept.category].push(concept.value);
+                    }
+                });
+                Object.assign(v2Restaurant, categorizedConcepts);
+            }
+            
+            return v2Restaurant;
         });
         
-        const payload = {
-            entities: entities,
-            curators: Array.from(curatorsMap.values())
-        };
-        
-        console.log('ApiService: Transformed payload:', {
-            entitiesCount: entities.length,
-            curatorsCount: payload.curators.length,
-            sampleEntity: entities[0]
+        console.log('ApiService: Transformed to V2 format:', {
+            restaurantCount: v2Restaurants.length,
+            sampleRestaurant: v2Restaurants[0]
         });
         
-        return this.post('/import/concierge-v2', payload);
+        // Backend expects array of V2 format restaurants
+        return this.post('/import/concierge-v2', v2Restaurants);
     }
 
     /**
