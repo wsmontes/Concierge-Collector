@@ -38,3 +38,4 @@ Ask me questions in case of ambiguity or uncertainty. I will provide clarificati
 
 Always write the whole code. Don't leave it incomplete. If you can't finish the code, explain why and suggest alternatives.
 
+Don't create documentation if not requested. Focus on code only unless I specifically ask for docs.

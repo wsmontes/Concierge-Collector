@@ -14,21 +14,36 @@ const AppConfig = {
      */
     api: {
         /**
-         * Concierge Parser API (Backend)
-         * MySQL restaurant database API
+         * MySQL API Backend (Concierge Analyzer)
+         * Entity-based restaurant database API
+         * IMPORTANT: This backend uses /api/entities endpoints, NOT /api/restaurants
          */
         backend: {
-            baseUrl: 'https://wsmontes.pythonanywhere.com/api',
+            baseUrl: 'https://wsmontes.pythonanywhere.com/api',  // TODO: Update to MySQL API URL when available
             timeout: 30000,        // 30 seconds
             retryAttempts: 3,      // Number of retry attempts
             retryDelay: 1000,      // Delay between retries (ms)
             endpoints: {
-                restaurants: '/restaurants',
-                restaurantsBatch: '/restaurants/batch',
-                restaurantById: '/restaurants/{id}',
-                curators: '/curators',
-                staging: '/restaurants-staging',
-                stagingApprove: '/restaurants-staging/{name}/approve'
+                // Correct endpoints for MySQL API backend
+                entities: '/entities',                      // GET, POST - Main entity endpoint
+                entityById: '/entities/{id}',              // GET, PUT, DELETE - Single entity by ID
+                entitiesQuery: '/entities?entity_type=restaurant',  // Query restaurants
+                importBulk: '/import/concierge-v2',       // POST - Bulk import
+                health: '/health',                         // GET - Health check
+                info: '/info',                            // GET - API info
+                curators: '/curators',                     // GET - List curators
+                
+                // Legacy endpoints (NO LONGER SUPPORTED by MySQL backend)
+                // Kept for reference only - DO NOT USE
+                restaurantsLegacy: '/restaurants',         // ❌ NOT SUPPORTED
+                restaurantsBatchLegacy: '/restaurants/batch',  // ❌ NOT SUPPORTED
+                restaurantsSyncLegacy: '/restaurants/sync'     // ❌ NOT SUPPORTED
+            },
+            // Sync settings for entity-based backend
+            sync: {
+                useImportEndpoint: true,     // Use /api/import/concierge-v2 for bulk operations
+                validateBeforeUpload: true,  // Validate data before upload
+                preserveMetadata: true       // Ensure all metadata is included
             }
         },
 

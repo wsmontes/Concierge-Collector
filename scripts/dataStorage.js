@@ -2172,7 +2172,11 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                         description: collectorMeta.data.description || null,
                         transcription: collectorMeta.data.transcription || null,
                         source: determinedSource,
-                        origin: 'local'
+                        origin: 'local',
+                        // CRITICAL FIX: Mark imported restaurants for sync if they don't have serverId
+                        // This ensures imported Michelin/external data gets uploaded to server
+                        needsSync: !hasServerId,
+                        lastSynced: hasServerId ? new Date() : null
                     };
                     
                     if (restaurantMeta) {
@@ -2192,11 +2196,15 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                             if (restaurantMeta.sync.deletedAt) {
                                 newRestaurantData.deletedAt = new Date(restaurantMeta.sync.deletedAt);
                             }
+                            // Override needsSync from metadata if provided
+                            if (restaurantMeta.sync.needsSync !== undefined) {
+                                newRestaurantData.needsSync = restaurantMeta.sync.needsSync;
+                            }
                         }
                     }
                     
                     restaurantId = await this.db.restaurants.add(newRestaurantData);
-                    this.log.debug(`Created new restaurant: ${restaurantName} (ID: ${restaurantId})`);
+                    this.log.debug(`Created new restaurant: ${restaurantName} (ID: ${restaurantId}), needsSync=${newRestaurantData.needsSync}`);
                 }
                 
                 // Handle location data

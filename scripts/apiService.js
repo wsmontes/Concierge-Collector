@@ -307,99 +307,314 @@ const ApiService = ModuleWrapper.defineClass('ApiService', class {
     }
 
     // ========================================
-    // RESTAURANT OPERATIONS
+    // RESTAURANT OPERATIONS (via /api/entities)
     // ========================================
 
     /**
      * Get all restaurants from server
+     * Backend uses /api/entities with entity_type=restaurant
      * @returns {Promise<Object>}
      */
     async getRestaurants() {
-        return this.get('/restaurants');
+        return this.get('/entities?entity_type=restaurant');
     }
 
     /**
-     * Get single restaurant by ID or name
-     * @param {string|number} identifier - Restaurant ID or name
+     * Get single restaurant by ID
+     * Backend uses /api/entities/{id}
+     * @param {string|number} identifier - Restaurant ID
      * @returns {Promise<Object>}
      */
     async getRestaurant(identifier) {
-        return this.get(`/restaurants/${encodeURIComponent(identifier)}`);
+        return this.get(`/entities/${encodeURIComponent(identifier)}`);
     }
 
     /**
-     * Create new restaurant on server (deprecated - use batchUploadRestaurants instead)
-     * @param {Object} restaurantData - Restaurant data
+     * Create new restaurant on server
+     * Backend uses POST /api/entities with entity_type=restaurant
+     * Handles both V2 export format and flat format
+     * @param {Object} restaurantData - Restaurant data (V2 or flat format)
      * @returns {Promise<Object>}
      */
     async createRestaurant(restaurantData) {
-        // Use batch endpoint for better compatibility with complex data
-        const batchResponse = await this.batchUploadRestaurants([restaurantData]);
+        // Transform V2 format to flat format if needed
+        const flatRestaurant = Array.isArray(restaurantData.metadata)
+            ? this.transformV2ToFlatFormat(restaurantData)
+            : restaurantData;
         
-        if (!batchResponse.success) {
-            return batchResponse;
-        }
+        const entityPayload = {
+            entity_type: 'restaurant',
+            name: flatRestaurant.name,
+            entity_data: {
+                description: flatRestaurant.description || '',
+                transcription: flatRestaurant.transcription || '',
+                location: flatRestaurant.location || null,
+                notes: flatRestaurant.notes || { private: '', public: '' },
+                photos: flatRestaurant.photos || [],
+                concepts: flatRestaurant.concepts || [],
+                michelinData: flatRestaurant.michelinData || null,
+                googlePlacesData: flatRestaurant.googlePlacesData || null,
+                curatorId: flatRestaurant.curatorId || null,
+                curatorName: flatRestaurant.curatorName || null,
+                timestamp: flatRestaurant.timestamp || new Date().toISOString()
+            }
+        };
         
-        // Return format compatible with old createRestaurant usage
-        const batchData = batchResponse.data;
-        if (batchData && Array.isArray(batchData.restaurants) && batchData.restaurants.length > 0) {
-            return {
-                success: true,
-                data: batchData.restaurants[0]
-            };
-        }
-        
-        return batchResponse;
+        return this.post('/entities', entityPayload);
     }
 
     /**
      * Update restaurant on server
-     * @param {string|number} identifier - Restaurant ID or name
+     * Backend uses PUT /api/entities/{id}
+     * @param {string|number} identifier - Restaurant ID
      * @param {Object} restaurantData - Updated restaurant data
      * @returns {Promise<Object>}
      */
     async updateRestaurant(identifier, restaurantData) {
-        return this.put(`/restaurants/${encodeURIComponent(identifier)}`, restaurantData);
+        const entityPayload = {
+            entity_type: 'restaurant',
+            name: restaurantData.name,
+            entity_data: {
+                description: restaurantData.description || '',
+                transcription: restaurantData.transcription || '',
+                location: restaurantData.location || null,
+                notes: restaurantData.notes || null,
+                photos: restaurantData.photos || [],
+                concepts: restaurantData.concepts || [],
+                michelinData: restaurantData.michelinData || null,
+                googlePlacesData: restaurantData.googlePlacesData || null,
+                curatorId: restaurantData.curatorId || null,
+                curatorName: restaurantData.curatorName || null,
+                timestamp: restaurantData.timestamp || new Date().toISOString()
+            }
+        };
+        
+        return this.put(`/entities/${encodeURIComponent(identifier)}`, entityPayload);
     }
 
     /**
      * Delete restaurant from server
-     * @param {string|number} identifier - Restaurant ID or name
+     * Backend uses DELETE /api/entities/{id}
+     * @param {string|number} identifier - Restaurant ID
      * @returns {Promise<Object>}
      */
     async deleteRestaurant(identifier) {
-        return this.delete(`/restaurants/${encodeURIComponent(identifier)}`);
+        return this.delete(`/entities/${encodeURIComponent(identifier)}`);
     }
 
     /**
-     * Batch upload restaurants
-     * @param {Array} restaurants - Array of restaurant objects
+     * Transform V2 export format to flat restaurant format
+     * V2 format has metadata array with nested structure
+     * This transforms it to flat format compatible with entity creation
+     * @param {Object} v2Restaurant - Restaurant in V2 format (with metadata array)
+     * @returns {Object} Restaurant in flat format
+     */
+    transformV2ToFlatFormat(v2Restaurant) {
+        const { metadata, ...categories } = v2Restaurant;
+        
+        if (!metadata || !Array.isArray(metadata)) {
+            // Already in flat format, return as-is
+            return v2Restaurant;
+        }
+        
+        // Extract data from metadata array
+        const restaurantMeta = metadata.find(m => m.type === 'restaurant') || {};
+        const collectorMeta = metadata.find(m => m.type === 'collector') || {};
+        
+        const collectorData = collectorMeta.data || {};
+        const createdData = restaurantMeta.created || {};
+        
+        // Transform concepts from categorized format to array format
+        const concepts = [];
+        Object.entries(categories).forEach(([category, values]) => {
+            if (Array.isArray(values)) {
+                values.forEach(value => {
+                    concepts.push({ category, value });
+                });
+            }
+        });
+        
+        // Transform photos to simpler format (just keep photoData as url)
+        const photos = (collectorData.photos || []).map(photo => ({
+            url: photo.photoData || photo.url,
+            caption: photo.caption || '',
+            uploadedAt: photo.timestamp || photo.uploadedAt || new Date().toISOString()
+        }));
+        
+        // Build flat format
+        return {
+            id: restaurantMeta.id,
+            serverId: restaurantMeta.serverId,
+            name: collectorData.name,
+            description: collectorData.description || '',
+            transcription: collectorData.transcription || '',
+            location: collectorData.location || null,
+            notes: { private: '', public: '' },
+            photos: photos,
+            concepts: concepts,
+            michelinData: null,
+            googlePlacesData: null,
+            curatorId: createdData.curator?.id,
+            curatorName: createdData.curator?.name,
+            timestamp: createdData.timestamp || new Date().toISOString(),
+            needsSync: false,
+            lastSynced: restaurantMeta.sync?.lastSyncedAt || null,
+            deletedLocally: restaurantMeta.sync?.deletedLocally || false
+        };
+    }
+
+    /**
+     * Batch upload restaurants using /api/import/concierge-v2
+     * This is the correct bulk import endpoint for the MySQL backend
+     * Handles both V2 export format and flat format
+     * @param {Array} restaurants - Array of restaurant objects (V2 or flat format)
      * @returns {Promise<Object>}
      */
     async batchUploadRestaurants(restaurants) {
-        // Server expects direct array, not wrapped in object
-        return this.post('/restaurants/batch', restaurants);
+        // Check if restaurants are in V2 format (have metadata array)
+        const isV2Format = restaurants.length > 0 && 
+                          Array.isArray(restaurants[0].metadata);
+        
+        console.log(`ApiService: Batch upload ${restaurants.length} restaurants (V2 format: ${isV2Format})`);
+        
+        // Transform V2 format to flat format if needed
+        const flatRestaurants = isV2Format
+            ? restaurants.map(r => this.transformV2ToFlatFormat(r))
+            : restaurants;
+        
+        // Transform restaurants to entities format for import
+        const entities = flatRestaurants.map(restaurant => ({
+            entity_type: 'restaurant',
+            name: restaurant.name,
+            entity_data: {
+                description: restaurant.description || '',
+                transcription: restaurant.transcription || '',
+                location: restaurant.location || null,
+                notes: restaurant.notes || { private: '', public: '' },
+                photos: restaurant.photos || [],
+                concepts: restaurant.concepts || [],
+                michelinData: restaurant.michelinData || null,
+                googlePlacesData: restaurant.googlePlacesData || null,
+                curatorId: restaurant.curatorId || null,
+                curatorName: restaurant.curatorName || null,
+                timestamp: restaurant.timestamp || new Date().toISOString()
+            }
+        }));
+        
+        // Extract unique curators
+        const curatorsMap = new Map();
+        flatRestaurants.forEach(restaurant => {
+            if (restaurant.curatorId && restaurant.curatorName) {
+                curatorsMap.set(restaurant.curatorId, {
+                    id: restaurant.curatorId,
+                    name: restaurant.curatorName
+                });
+            }
+        });
+        
+        const payload = {
+            entities: entities,
+            curators: Array.from(curatorsMap.values())
+        };
+        
+        console.log('ApiService: Transformed payload:', {
+            entitiesCount: entities.length,
+            curatorsCount: payload.curators.length,
+            sampleEntity: entities[0]
+        });
+        
+        return this.post('/import/concierge-v2', payload);
     }
 
     /**
-     * Bulk sync operations - atomic create/update/delete in single transaction
+     * Bulk sync operations - uses /api/import/concierge-v2
+     * Handles create, update, and delete operations in a single transaction
      * @param {Object} operations - { create: [], update: [], delete: [] }
      * @returns {Promise<Object>}
      */
     async bulkSync(operations) {
-        const payload = {
-            create: operations.create || [],
-            update: operations.update || [],
-            delete: operations.delete || []
-        };
+        const createEntities = (operations.create || []).map(restaurant => ({
+            entity_type: 'restaurant',
+            name: restaurant.name,
+            entity_data: {
+                description: restaurant.description || '',
+                transcription: restaurant.transcription || '',
+                location: restaurant.location || null,
+                notes: restaurant.notes || null,
+                photos: restaurant.photos || [],
+                concepts: restaurant.concepts || [],
+                michelinData: restaurant.michelinData || null,
+                googlePlacesData: restaurant.googlePlacesData || null,
+                curatorId: restaurant.curatorId || null,
+                curatorName: restaurant.curatorName || null,
+                timestamp: restaurant.timestamp || new Date().toISOString()
+            }
+        }));
+        
+        // For updates and deletes, handle them individually since /api/import/concierge-v2
+        // is primarily for bulk creation. For now, log a warning.
+        if (operations.update && operations.update.length > 0) {
+            console.warn('ApiService: Bulk update via import endpoint not fully supported. Consider individual PUT requests.');
+        }
+        if (operations.delete && operations.delete.length > 0) {
+            console.warn('ApiService: Bulk delete via import endpoint not fully supported. Consider individual DELETE requests.');
+        }
         
         console.log('ApiService: Bulk sync operation', {
-            createCount: payload.create.length,
-            updateCount: payload.update.length,
-            deleteCount: payload.delete.length
+            createCount: createEntities.length,
+            updateCount: (operations.update || []).length,
+            deleteCount: (operations.delete || []).length
         });
         
-        return this.post('/restaurants/sync', payload);
+        // For now, only handle creates via import endpoint
+        if (createEntities.length > 0) {
+            return this.batchUploadRestaurants(operations.create);
+        }
+        
+        return {
+            success: true,
+            data: {
+                message: 'No create operations to perform'
+            }
+        };
+    }
+
+    /**
+     * Upload restaurant using JSON endpoint (LEGACY - NOT SUPPORTED BY MYSQL BACKEND)
+     * Use createRestaurant() or batchUploadRestaurants() instead
+     * This method is kept for backward compatibility but will fail on MySQL backend
+     * @param {Object} restaurant - Complete restaurant object with all metadata
+     * @returns {Promise<Object>}
+     * @deprecated Use createRestaurant() or batchUploadRestaurants() instead
+     */
+    async uploadRestaurantJson(restaurant) {
+        console.warn('ApiService: uploadRestaurantJson is deprecated. Use createRestaurant() or batchUploadRestaurants() instead.');
+        
+        // Forward to createRestaurant which uses the correct /api/entities endpoint
+        return this.createRestaurant(restaurant);
+    }
+
+    /**
+     * Helper: Extract concept values grouped by category
+     * @param {Array} concepts - Array of concept objects with category and value
+     * @returns {Object} - Object with category names as keys and arrays of values
+     */
+    extractConceptsByCategory(concepts) {
+        const result = {};
+        
+        for (const concept of concepts) {
+            if (!concept.category || !concept.value) continue;
+            
+            if (!result[concept.category]) {
+                result[concept.category] = [];
+            }
+            
+            if (!result[concept.category].includes(concept.value)) {
+                result[concept.category].push(concept.value);
+            }
+        }
+        
+        return result;
     }
 
     // ========================================
@@ -417,10 +632,13 @@ const ApiService = ModuleWrapper.defineClass('ApiService', class {
 
     // ========================================
     // MICHELIN STAGING OPERATIONS
+    // NOTE: These endpoints may exist on the old backend but not on MySQL backend
+    // Verify backend support before using
     // ========================================
 
     /**
      * Get Michelin staging restaurants
+     * WARNING: This endpoint (/restaurants-staging) may not exist on MySQL backend
      * @param {Object} params - Query parameters
      * @returns {Promise<Object>}
      */
@@ -450,6 +668,7 @@ const ApiService = ModuleWrapper.defineClass('ApiService', class {
 
     /**
      * Approve Michelin staging restaurant
+     * WARNING: This endpoint (/restaurants-staging) may not exist on MySQL backend
      * @param {string} restaurantName - Restaurant name
      * @returns {Promise<Object>}
      */

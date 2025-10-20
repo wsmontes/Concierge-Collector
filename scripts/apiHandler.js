@@ -25,7 +25,7 @@ if (typeof window.ApiHandler === 'undefined') {
         
         /**
          * Generic POST request to server API
-         * @param {string} endpoint - API endpoint (e.g., '/api/restaurants')
+         * @param {string} endpoint - API endpoint (e.g., '/api/entities')
          * @param {Object} data - Data to send
          * @returns {Promise<Object>} - { success: boolean, data: Object, error: string }
          */

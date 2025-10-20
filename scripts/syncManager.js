@@ -80,6 +80,14 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
                     this.log.debug(`Fixing: ${restaurant.name} - no serverId but needsSync undefined`);
                 }
                 
+                // Fix 5: CRITICAL - If source is 'local' but needsSync is false/undefined and no serverId
+                // This fixes imported restaurants that weren't properly marked for sync
+                if (restaurant.source === 'local' && !restaurant.serverId && !restaurant.needsSync) {
+                    updates.needsSync = true;
+                    needsUpdate = true;
+                    this.log.debug(`Fixing: ${restaurant.name} - local source without serverId but needsSync was false`);
+                }
+                
                 // Apply fixes
                 if (needsUpdate) {
                     await dataStorage.db.restaurants.update(restaurant.id, updates);
@@ -507,15 +515,25 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
             
             const location = locations.length > 0 ? locations[0] : null;
             
-            // Prepare server data
-            const serverData = {
+            // Get photos if available
+            const photos = await dataStorage.db.restaurantPhotos
+                .where('restaurantId')
+                .equals(restaurantId)
+                .toArray();
+            
+            // Build complete restaurant object for upload
+            const restaurantData = {
+                id: restaurant.id,
+                serverId: restaurant.serverId,
                 name: restaurant.name,
-                curator: {
-                    name: curator ? curator.name : 'Unknown',
-                    id: curator && curator.serverId ? curator.serverId : null
-                },
                 description: restaurant.description || '',
                 transcription: restaurant.transcription || '',
+                timestamp: restaurant.timestamp || new Date().toISOString(),
+                curatorId: curator ? curator.id : null,
+                curatorName: curator ? curator.name : 'Unknown',
+                needsSync: restaurant.needsSync,
+                lastSynced: restaurant.lastSynced,
+                deletedLocally: restaurant.deletedLocally,
                 concepts: concepts.map(c => ({
                     category: c.category,
                     value: c.value
@@ -525,45 +543,102 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
                     longitude: location.longitude,
                     address: location.address
                 } : null,
+                notes: restaurant.notes || null,
+                photos: photos.map(p => ({
+                    url: p.url,
+                    data: p.data,
+                    caption: p.caption,
+                    uploadedAt: p.uploadedAt
+                })),
+                michelinData: restaurant.michelinData || null,
+                googlePlacesData: restaurant.googlePlacesData || null,
                 sharedRestaurantId: restaurant.sharedRestaurantId,
                 originalCuratorId: restaurant.originalCuratorId
             };
             
-            // Create restaurant on server using batch endpoint (supports complex format)
-            const response = await window.apiService.batchUploadRestaurants([serverData]);
+            // Check configuration to determine which endpoint to use
+            const useJsonEndpoint = window.AppConfig?.api?.backend?.sync?.useJsonEndpoint || false;
             
-            if (!response.success) {
-                throw new Error(response.error || 'Failed to create restaurant on server');
-            }
-            
-            // Handle batch response format
-            const batchData = response.data;
+            let response;
             let serverId = null;
             
-            // Extract ID from batch response (multiple possible formats)
-            // API returns: { status: "success", count: X, restaurants: [{ localId, serverId, name, status }] }
-            if (batchData && Array.isArray(batchData.restaurants) && batchData.restaurants.length > 0) {
-                // Check for serverId field first (new API format)
-                if (batchData.restaurants[0].serverId) {
-                    serverId = batchData.restaurants[0].serverId;
-                    this.log.debug(`✓ Got serverId from batch response: ${serverId}`);
-                } else if (batchData.restaurants[0].id) {
-                    // Fallback to id field (legacy format)
-                    serverId = batchData.restaurants[0].id;
-                    this.log.debug(`✓ Got id from batch response: ${serverId}`);
+            if (useJsonEndpoint) {
+                // Use new JSON endpoint for complete metadata preservation
+                if (window.AppConfig?.api?.backend?.sync?.validateBeforeUpload) {
+                    const validation = window.restaurantValidator?.validateForUpload(restaurantData);
+                    if (validation && !validation.valid) {
+                        this.log.warn(`Validation warnings for "${restaurant.name}":`, validation.issues);
+                    }
                 }
-            } else if (batchData && batchData.id) {
-                serverId = batchData.id;
-            } else if (restaurant.serverId) {
-                // Restaurant was already synced previously, use existing serverId
-                serverId = restaurant.serverId;
-                this.log.debug('Restaurant already has serverId, using existing:', serverId);
-            } else if (batchData && batchData.status === 'success') {
-                // Server confirmed success but didn't return ID
-                // This can happen when the restaurant already exists on server
-                // We'll mark it as synced without a serverId
-                this.log.debug('Server confirmed success without returning ID, marking as synced');
-                serverId = 'confirmed'; // Use placeholder to indicate sync success
+                
+                this.log.debug(`📤 Uploading via JSON endpoint: ${restaurant.name}`);
+                response = await window.apiService.uploadRestaurantJson(restaurantData);
+                
+                if (!response.success) {
+                    throw new Error(response.error || 'Failed to upload restaurant via JSON endpoint');
+                }
+                
+                // JSON endpoint doesn't return serverId, mark as synced
+                serverId = 'json-synced';
+                
+            } else {
+                // Use legacy batch endpoint (current implementation)
+                const serverData = {
+                    name: restaurant.name,
+                    curator: {
+                        name: curator ? curator.name : 'Unknown',
+                        id: curator && curator.serverId ? curator.serverId : null
+                    },
+                    description: restaurant.description || '',
+                    transcription: restaurant.transcription || '',
+                    concepts: concepts.map(c => ({
+                        category: c.category,
+                        value: c.value
+                    })),
+                    location: location ? {
+                        latitude: location.latitude,
+                        longitude: location.longitude,
+                        address: location.address
+                    } : null,
+                    sharedRestaurantId: restaurant.sharedRestaurantId,
+                    originalCuratorId: restaurant.originalCuratorId
+                };
+                
+                this.log.debug(`📤 Uploading via batch endpoint: ${restaurant.name}`);
+                response = await window.apiService.batchUploadRestaurants([serverData]);
+            
+                if (!response.success) {
+                    throw new Error(response.error || 'Failed to create restaurant on server');
+                }
+            
+                // Handle batch response format
+                const batchData = response.data;
+            
+                // Extract ID from batch response (multiple possible formats)
+                // API returns: { status: "success", count: X, restaurants: [{ localId, serverId, name, status }] }
+                if (batchData && Array.isArray(batchData.restaurants) && batchData.restaurants.length > 0) {
+                    // Check for serverId field first (new API format)
+                    if (batchData.restaurants[0].serverId) {
+                        serverId = batchData.restaurants[0].serverId;
+                        this.log.debug(`✓ Got serverId from batch response: ${serverId}`);
+                    } else if (batchData.restaurants[0].id) {
+                        // Fallback to id field (legacy format)
+                        serverId = batchData.restaurants[0].id;
+                        this.log.debug(`✓ Got id from batch response: ${serverId}`);
+                    }
+                } else if (batchData && batchData.id) {
+                    serverId = batchData.id;
+                } else if (restaurant.serverId) {
+                    // Restaurant was already synced previously, use existing serverId
+                    serverId = restaurant.serverId;
+                    this.log.debug('Restaurant already has serverId, using existing:', serverId);
+                } else if (batchData && batchData.status === 'success') {
+                    // Server confirmed success but didn't return ID
+                    // This can happen when the restaurant already exists on server
+                    // We'll mark it as synced without a serverId
+                    this.log.debug('Server confirmed success without returning ID, marking as synced');
+                    serverId = 'confirmed'; // Use placeholder to indicate sync success
+                }
             }
             
             if (serverId) {
@@ -576,7 +651,7 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
                 };
                 
                 // Only update serverId if we got a real ID (not placeholder)
-                if (serverId !== 'confirmed') {
+                if (serverId !== 'confirmed' && serverId !== 'json-synced') {
                     updateData.serverId = serverId;
                 }
                 
@@ -771,10 +846,20 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
                 // Process results and update local database
                 const bulkData = response.data;
                 this.log.debug('📥 Bulk sync response:', bulkData);
+                this.log.debug('📥 Response structure:', {
+                    hasCreated: !!bulkData.created,
+                    hasUpdated: !!bulkData.updated,
+                    hasFailed: !!bulkData.failed,
+                    hasResults: !!bulkData.results,
+                    responseKeys: Object.keys(bulkData)
+                });
+                
+                // Handle different response structures from server
+                const responseData = bulkData.results || bulkData;
                 
                 // Update local restaurants with server IDs
-                if (bulkData.created && Array.isArray(bulkData.created)) {
-                    for (const created of bulkData.created) {
+                if (responseData.created && Array.isArray(responseData.created)) {
+                    for (const created of responseData.created) {
                         const localId = created.localId || this.findLocalIdByName(restaurants, created.name);
                         if (localId && created.serverId) {
                             await dataStorage.db.restaurants.update(localId, {
@@ -791,8 +876,8 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
                     }
                 }
                 
-                if (bulkData.updated && Array.isArray(bulkData.updated)) {
-                    for (const updated of bulkData.updated) {
+                if (responseData.updated && Array.isArray(responseData.updated)) {
+                    for (const updated of responseData.updated) {
                         const localId = updated.localId || this.findLocalIdByServerId(restaurants, updated.serverId);
                         if (localId) {
                             await dataStorage.db.restaurants.update(localId, {
@@ -807,8 +892,8 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
                     }
                 }
                 
-                if (bulkData.failed && Array.isArray(bulkData.failed)) {
-                    for (const failed of bulkData.failed) {
+                if (responseData.failed && Array.isArray(responseData.failed)) {
+                    for (const failed of responseData.failed) {
                         this.log.error(`❌ Failed: ${failed.name} - ${failed.error}`);
                         results.errors.push(failed);
                         results.failed++;
