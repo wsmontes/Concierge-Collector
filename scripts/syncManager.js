@@ -876,22 +876,45 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
             }
 
             // Refresh restaurant list to show downloaded/updated restaurants
-            if (showUI && window.uiManager && window.uiManager.currentCurator) {
-                this.log.debug('Refreshing restaurant list after sync...');
+            this.log.debug('🔄 Attempting to refresh UI...');
+            this.log.debug(`showUI: ${showUI}, uiManager: ${!!window.uiManager}, currentCurator: ${!!window.uiManager?.currentCurator}`);
+            
+            if (showUI) {
+                // Try to get current curator from multiple sources
+                let curatorId = null;
                 
-                if (window.restaurantModule && typeof window.restaurantModule.loadRestaurantList === 'function') {
+                if (window.uiManager && window.uiManager.currentCurator) {
+                    curatorId = window.uiManager.currentCurator.id;
+                    this.log.debug(`Using curator from uiManager: ${curatorId}`);
+                } else if (localStorage.getItem('current_curator_id')) {
+                    curatorId = parseInt(localStorage.getItem('current_curator_id'));
+                    this.log.debug(`Using curator from localStorage: ${curatorId}`);
+                }
+                
+                if (curatorId && window.restaurantModule && typeof window.restaurantModule.loadRestaurantList === 'function') {
+                    this.log.debug(`Refreshing restaurant list for curator ${curatorId}...`);
                     try {
-                        await window.restaurantModule.loadRestaurantList(window.uiManager.currentCurator.id);
-                        this.log.debug('✅ Restaurant list refreshed');
+                        await window.restaurantModule.loadRestaurantList(curatorId);
+                        this.log.debug('✅ Restaurant list refreshed successfully');
                     } catch (refreshError) {
-                        this.log.error('Error refreshing restaurant list:', refreshError);
+                        this.log.error('❌ Error refreshing restaurant list:', refreshError);
                     }
+                } else {
+                    this.log.warn('⚠️ Cannot refresh restaurant list - missing curatorId or restaurantModule');
+                    this.log.debug(`curatorId: ${curatorId}, restaurantModule: ${!!window.restaurantModule}`);
                 }
                 
                 // Update sync button badge
                 if (window.restaurantModule && window.restaurantModule.updateSyncButton) {
-                    await window.restaurantModule.updateSyncButton();
+                    try {
+                        await window.restaurantModule.updateSyncButton();
+                        this.log.debug('✅ Sync button badge updated');
+                    } catch (badgeError) {
+                        this.log.error('❌ Error updating sync badge:', badgeError);
+                    }
                 }
+            } else {
+                this.log.debug('⚠️ UI refresh skipped (showUI = false)');
             }
 
             return results;
