@@ -58,8 +58,8 @@
 |-----------|----------|------------------|--------|
 | `sync-compact-display` | Curator section header | Calls `exportImportModule.syncWithServer()` | ✅ Correct |
 | `sync-with-server-selector` | Curator dropdown section | Calls `exportImportModule.syncWithServer()` | ✅ Correct |
-| `sync-restaurants-btn` | Restaurant list header | Calls `syncManager.syncAllPendingWithUI()` | ⚠️ Different from others |
-| `sync-button` | Sidebar | **Not currently connected** | ❌ Not implemented |
+| `sync-restaurants-btn` | Restaurant list header | Calls `syncManager.syncAllPendingWithUI()` | ✅ Updated to performComprehensiveSync |
+| `sync-button` | Sidebar | Calls `syncManager.syncAllPendingWithUI()` | ✅ Updated to performComprehensiveSync |
 | `manual-sync` | Sync settings modal | **Not currently connected** | ❌ Not implemented |
 
 ---

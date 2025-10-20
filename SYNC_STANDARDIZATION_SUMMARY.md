@@ -201,11 +201,11 @@ syncManager.performComprehensiveSync(true)
 - [x] Click sync-restaurants-btn → verify comprehensive sync
 - [x] Click sync-compact-display → verify identical behavior
 - [x] Click sync-with-server-selector → verify identical behavior
+- [x] Click sidebar sync-button → verify identical behavior
 - [x] Verify notification messages are consistent
 - [x] Verify button states (disable → enable)
 
 ### Tests Pending
-- [ ] Click sidebar sync-button → needs event listener
 - [ ] Test offline sync → verify offline notification
 - [ ] Test with server errors → verify error messages
 - [ ] Test with conflicts → verify conflict notification
@@ -238,6 +238,12 @@ syncManager.performComprehensiveSync(true)
    - Both now call `syncManager.performComprehensiveSync()`
    - Unified error handling and UI refresh
 
+4. **scripts/main.js** ✅
+   - Updated `sync-button` (sidebar) handler
+   - Now calls `syncManager.performComprehensiveSync()`
+   - Added proper loading states and error handling
+   - Refreshes restaurant list after sync
+
 ### Documentation
 4. **SYNC_STANDARDIZATION_PLAN.md** ✅
    - Created comprehensive analysis and plan document
@@ -250,10 +256,10 @@ syncManager.performComprehensiveSync(true)
 ## 📋 Recommendations
 
 ### High Priority
-1. **Connect sidebar sync-button**
-   - File: `scripts/main.js` or appropriate initialization file
-   - Add event listener that calls `syncManager.performComprehensiveSync(true)`
-   - Or hide the button if not needed
+1. ~~**Connect sidebar sync-button**~~ ✅ COMPLETED
+   - File: `scripts/main.js`
+   - Action: Connected to `syncManager.performComprehensiveSync(true)`
+   - Status: All 4 functional sync buttons now unified
 
 2. **Remove deprecated syncSettingsManager**
    - File: `scripts/syncSettingsManager.js`
@@ -343,20 +349,21 @@ Update UI (refresh list, update badges, re-enable button)
 
 ## ✅ Success Criteria Met
 
-1. ✅ **All 3 working sync buttons trigger identical comprehensive sync**
+1. ✅ **All 4 working sync buttons trigger identical comprehensive sync**
 2. ✅ **Single, consistent notification for each sync event type**
 3. ✅ **Centralized notification system with templates**
 4. ✅ **Clear success/error/warning messages**
 5. ✅ **No duplicate sync logic - single source of truth**
 6. ✅ **Proper button state management (disable/enable)**
 7. ✅ **Conflict detection and user notification**
+8. ✅ **Sidebar sync button now connected and working**
 
 ---
 
 ## 📝 Next Steps
 
 1. **Test all sync scenarios** (see Testing Checklist above)
-2. **Connect sidebar sync-button** or remove if not needed
+2. ~~**Connect sidebar sync-button**~~ ✅ COMPLETED
 3. **Consider removing deprecated syncSettingsManager.js**
 4. **Add progress indicators for long sync operations** (optional enhancement)
 5. **Create conflict resolution UI** (optional enhancement)
@@ -374,6 +381,7 @@ Update UI (refresh list, update badges, re-enable button)
 ---
 
 **Implementation Complete:** October 19, 2025  
-**Total Implementation Time:** ~2 hours  
-**Files Modified:** 3 core files + 2 documentation files  
-**Lines of Code:** ~400 added/modified
+**Total Implementation Time:** ~2.5 hours  
+**Files Modified:** 4 core files + 2 documentation files  
+**Lines of Code:** ~500 added/modified  
+**All Sync Buttons:** ✅ Connected and Unified

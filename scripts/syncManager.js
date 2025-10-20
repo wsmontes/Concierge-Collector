@@ -875,9 +875,23 @@ const ConciergeSync = ModuleWrapper.defineClass('ConciergeSync', class {
                 await window.dataStorage.updateLastSyncTime();
             }
 
-            // Refresh UI if available
-            if (window.restaurantModule && window.restaurantModule.updateSyncButton) {
-                await window.restaurantModule.updateSyncButton();
+            // Refresh restaurant list to show downloaded/updated restaurants
+            if (showUI && window.uiManager && window.uiManager.currentCurator) {
+                this.log.debug('Refreshing restaurant list after sync...');
+                
+                if (window.restaurantModule && typeof window.restaurantModule.loadRestaurantList === 'function') {
+                    try {
+                        await window.restaurantModule.loadRestaurantList(window.uiManager.currentCurator.id);
+                        this.log.debug('✅ Restaurant list refreshed');
+                    } catch (refreshError) {
+                        this.log.error('Error refreshing restaurant list:', refreshError);
+                    }
+                }
+                
+                // Update sync button badge
+                if (window.restaurantModule && window.restaurantModule.updateSyncButton) {
+                    await window.restaurantModule.updateSyncButton();
+                }
             }
 
             return results;
