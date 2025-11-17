@@ -1,0 +1,933 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Collector V3 API Test Suite</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 20px;
+            min-height: 100vh;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+        
+        .header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 30px;
+            text-align: center;
+        }
+        
+        .header h1 {
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+        
+        .header p {
+            opacity: 0.9;
+            font-size: 1.1em;
+        }
+        
+        .content {
+            padding: 30px;
+        }
+        
+        .section {
+            margin-bottom: 30px;
+            padding: 20px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .section h2 {
+            color: #333;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .section-icon {
+            font-size: 1.5em;
+        }
+        
+        .test-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 15px;
+            margin-top: 15px;
+        }
+        
+        .test-button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 1em;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .test-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+        }
+        
+        .test-button:active {
+            transform: translateY(0);
+        }
+        
+        .test-button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+        
+        .run-all-button {
+            background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
+            font-size: 1.1em;
+            padding: 15px 30px;
+            margin-bottom: 20px;
+        }
+        
+        .clear-button {
+            background: linear-gradient(135deg, #fa709a 0%, #fee140 100%);
+            margin-left: 10px;
+        }
+        
+        .results {
+            margin-top: 20px;
+            padding: 20px;
+            background: #fff;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+            max-height: 600px;
+            overflow-y: auto;
+        }
+        
+        .result-item {
+            padding: 15px;
+            margin-bottom: 10px;
+            border-radius: 6px;
+            border-left: 4px solid #ccc;
+            background: #f8f9fa;
+        }
+        
+        .result-item.success {
+            border-left-color: #28a745;
+            background: #d4edda;
+        }
+        
+        .result-item.error {
+            border-left-color: #dc3545;
+            background: #f8d7da;
+        }
+        
+        .result-item.info {
+            border-left-color: #17a2b8;
+            background: #d1ecf1;
+        }
+        
+        .result-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+        
+        .result-title {
+            font-weight: 600;
+            font-size: 1.1em;
+        }
+        
+        .result-timestamp {
+            font-size: 0.85em;
+            opacity: 0.7;
+        }
+        
+        .result-content {
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            white-space: pre-wrap;
+            word-break: break-word;
+            background: rgba(0,0,0,0.05);
+            padding: 10px;
+            border-radius: 4px;
+            margin-top: 10px;
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+        
+        .stat-card {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        
+        .stat-value {
+            font-size: 2em;
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .stat-label {
+            font-size: 0.9em;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        
+        .stat-card.success .stat-value { color: #28a745; }
+        .stat-card.error .stat-value { color: #dc3545; }
+        .stat-card.total .stat-value { color: #667eea; }
+        
+        .spinner {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(255,255,255,.3);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        .config-section {
+            background: #fff3cd;
+            border-left-color: #ffc107;
+            margin-bottom: 20px;
+        }
+        
+        .config-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 10px;
+            margin-top: 10px;
+        }
+        
+        .config-item {
+            display: flex;
+            flex-direction: column;
+            gap: 5px;
+        }
+        
+        .config-label {
+            font-weight: 600;
+            font-size: 0.9em;
+            color: #666;
+        }
+        
+        .config-value {
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            padding: 8px;
+            background: white;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🧪 Collector V3 API Test Suite</h1>
+            <p>Comprehensive testing for Entity-Curation API integration</p>
+        </div>
+        
+        <div class="content">
+            <!-- Configuration Section -->
+            <div class="section config-section">
+                <h2><span class="section-icon">⚙️</span>API Configuration</h2>
+                <div class="config-grid">
+                    <div class="config-item">
+                        <span class="config-label">Base URL</span>
+                        <span class="config-value" id="apiBaseUrl">Loading...</span>
+                    </div>
+                    <div class="config-item">
+                        <span class="config-label">Status</span>
+                        <span class="config-value" id="apiStatus">Checking...</span>
+                    </div>
+                    <div class="config-item">
+                        <span class="config-label">Auth Token</span>
+                        <span class="config-value" id="authToken">Not set</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Statistics -->
+            <div class="stats">
+                <div class="stat-card total">
+                    <div class="stat-value" id="totalTests">0</div>
+                    <div class="stat-label">Total Tests</div>
+                </div>
+                <div class="stat-card success">
+                    <div class="stat-value" id="passedTests">0</div>
+                    <div class="stat-label">Passed</div>
+                </div>
+                <div class="stat-card error">
+                    <div class="stat-value" id="failedTests">0</div>
+                    <div class="stat-label">Failed</div>
+                </div>
+            </div>
+            
+            <!-- Control Buttons -->
+            <div style="display: flex; gap: 10px; margin-bottom: 20px;">
+                <button class="test-button run-all-button" onclick="runAllTests()">
+                    🚀 Run All Tests
+                </button>
+                <button class="test-button clear-button" onclick="clearResults()">
+                    🗑️ Clear Results
+                </button>
+            </div>
+
+            <!-- System Tests -->
+            <div class="section">
+                <h2><span class="section-icon">🏥</span>System Health Tests</h2>
+                <div class="test-grid">
+                    <button class="test-button" onclick="testHealthEndpoint()">Health Check</button>
+                    <button class="test-button" onclick="testApiInfo()">API Info</button>
+                    <button class="test-button" onclick="testNetworkConnectivity()">Network Test</button>
+                </div>
+            </div>
+
+            <!-- Entity Tests -->
+            <div class="section">
+                <h2><span class="section-icon">📦</span>Entity CRUD Tests</h2>
+                <div class="test-grid">
+                    <button class="test-button" onclick="testCreateEntity()">Create Entity</button>
+                    <button class="test-button" onclick="testGetEntities()">List Entities</button>
+                    <button class="test-button" onclick="testGetEntityById()">Get by ID</button>
+                    <button class="test-button" onclick="testUpdateEntity()">Update Entity</button>
+                    <button class="test-button" onclick="testDeleteEntity()">Delete Entity</button>
+                    <button class="test-button" onclick="testEntityFiltering()">Filter Entities</button>
+                </div>
+            </div>
+
+            <!-- Curation Tests -->
+            <div class="section">
+                <h2><span class="section-icon">✨</span>Curation CRUD Tests</h2>
+                <div class="test-grid">
+                    <button class="test-button" onclick="testCreateCuration()">Create Curation</button>
+                    <button class="test-button" onclick="testSearchCurations()">Search Curations</button>
+                    <button class="test-button" onclick="testGetCurationById()">Get by ID</button>
+                    <button class="test-button" onclick="testUpdateCuration()">Update Curation</button>
+                    <button class="test-button" onclick="testDeleteCuration()">Delete Curation</button>
+                    <button class="test-button" onclick="testEntityCurations()">Entity Curations</button>
+                </div>
+            </div>
+
+            <!-- Advanced Tests -->
+            <div class="section">
+                <h2><span class="section-icon">🔬</span>Advanced Tests</h2>
+                <div class="test-grid">
+                    <button class="test-button" onclick="testOptimisticLocking()">Optimistic Locking</button>
+                    <button class="test-button" onclick="testPagination()">Pagination</button>
+                    <button class="test-button" onclick="testErrorHandling()">Error Handling</button>
+                    <button class="test-button" onclick="testBulkOperations()">Bulk Operations</button>
+                </div>
+            </div>
+
+            <!-- Results -->
+            <div class="section">
+                <h2><span class="section-icon">📊</span>Test Results</h2>
+                <div class="results" id="results">
+                    <p style="text-align: center; color: #999; padding: 40px;">
+                        No tests run yet. Click "Run All Tests" or individual test buttons to start.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Load Scripts -->
+    <script src="scripts/config.js"></script>
+    <script src="scripts/logger.js"></script>
+    <script src="scripts/moduleWrapper.js"></script>
+    <script src="scripts/apiService.js"></script>
+
+    <script>
+        // Test Suite State
+        let testResults = {
+            total: 0,
+            passed: 0,
+            failed: 0,
+            results: []
+        };
+
+        let createdEntities = [];
+        let createdCurations = [];
+        let apiService;
+
+        // Initialize on page load
+        document.addEventListener('DOMContentLoaded', async () => {
+            try {
+                // Initialize API Service
+                apiService = new ApiService();
+                await apiService.initialize();
+                
+                // Update UI with config
+                document.getElementById('apiBaseUrl').textContent = apiService.baseUrl;
+                document.getElementById('apiStatus').textContent = '✅ Connected';
+                document.getElementById('apiStatus').style.color = '#28a745';
+                
+                const token = apiService.getAuthToken();
+                document.getElementById('authToken').textContent = token ? '✓ Set' : '✗ Not set';
+                
+                logInfo('Test suite initialized successfully');
+            } catch (error) {
+                logError('Failed to initialize test suite', error);
+                document.getElementById('apiStatus').textContent = '❌ Failed';
+                document.getElementById('apiStatus').style.color = '#dc3545';
+            }
+        });
+
+        // Logging Functions
+        function logSuccess(title, data = null) {
+            const result = {
+                type: 'success',
+                title,
+                data,
+                timestamp: new Date().toLocaleTimeString()
+            };
+            testResults.results.push(result);
+            testResults.total++;
+            testResults.passed++;
+            updateStats();
+            renderResults();
+        }
+
+        function logError(title, error) {
+            const result = {
+                type: 'error',
+                title,
+                data: error.message || error.toString(),
+                timestamp: new Date().toLocaleTimeString()
+            };
+            testResults.results.push(result);
+            testResults.total++;
+            testResults.failed++;
+            updateStats();
+            renderResults();
+        }
+
+        function logInfo(title, data = null) {
+            const result = {
+                type: 'info',
+                title,
+                data,
+                timestamp: new Date().toLocaleTimeString()
+            };
+            testResults.results.push(result);
+            renderResults();
+        }
+
+        function updateStats() {
+            document.getElementById('totalTests').textContent = testResults.total;
+            document.getElementById('passedTests').textContent = testResults.passed;
+            document.getElementById('failedTests').textContent = testResults.failed;
+        }
+
+        function renderResults() {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = testResults.results.map(result => `
+                <div class="result-item ${result.type}">
+                    <div class="result-header">
+                        <div class="result-title">
+                            ${result.type === 'success' ? '✅' : result.type === 'error' ? '❌' : 'ℹ️'} 
+                            ${result.title}
+                        </div>
+                        <div class="result-timestamp">${result.timestamp}</div>
+                    </div>
+                    ${result.data ? `<div class="result-content">${JSON.stringify(result.data, null, 2)}</div>` : ''}
+                </div>
+            `).reverse().join('');
+            
+            // Auto-scroll to top
+            resultsDiv.scrollTop = 0;
+        }
+
+        function clearResults() {
+            testResults = {
+                total: 0,
+                passed: 0,
+                failed: 0,
+                results: []
+            };
+            updateStats();
+            document.getElementById('results').innerHTML = `
+                <p style="text-align: center; color: #999; padding: 40px;">
+                    Results cleared. Ready for new tests.
+                </p>
+            `;
+        }
+
+        // ============================================
+        // SYSTEM HEALTH TESTS
+        // ============================================
+
+        async function testHealthEndpoint() {
+            try {
+                logInfo('Testing health endpoint...');
+                const response = await apiService.get('/health');
+                logSuccess('Health Check', response);
+            } catch (error) {
+                logError('Health Check Failed', error);
+            }
+        }
+
+        async function testApiInfo() {
+            try {
+                logInfo('Testing API info endpoint...');
+                const response = await apiService.get('/info');
+                logSuccess('API Info', response);
+            } catch (error) {
+                logError('API Info Failed', error);
+            }
+        }
+
+        async function testNetworkConnectivity() {
+            try {
+                logInfo('Testing network connectivity...');
+                const start = performance.now();
+                await apiService.get('/health');
+                const latency = Math.round(performance.now() - start);
+                logSuccess('Network Test', { 
+                    status: 'Connected', 
+                    latency: `${latency}ms` 
+                });
+            } catch (error) {
+                logError('Network Test Failed', error);
+            }
+        }
+
+        // ============================================
+        // ENTITY CRUD TESTS
+        // ============================================
+
+        async function testCreateEntity() {
+            try {
+                logInfo('Creating test entity...');
+                const timestamp = Date.now();
+                const entityId = `rest_test_${timestamp}`;
+                const entity = {
+                    entity_id: entityId,
+                    type: 'restaurant',
+                    name: `Test Restaurant ${timestamp}`,
+                    createdBy: 'test_suite',
+                    metadata: [{
+                        type: 'test',
+                        source: 'test_suite',
+                        data: {
+                            description: 'Test entity created by test suite',
+                            city: 'Test City',
+                            country: 'Test Country'
+                        }
+                    }]
+                };
+                
+                const response = await apiService.createEntity(entity);
+                createdEntities.push(response._id);
+                logSuccess('Create Entity', response);
+            } catch (error) {
+                logError('Create Entity Failed', error);
+            }
+        }
+
+        async function testGetEntities() {
+            try {
+                logInfo('Fetching entities list...');
+                const response = await apiService.getEntities({ limit: 10 });
+                logSuccess('Get Entities', {
+                    count: response.entities?.length || 0,
+                    total: response.pagination?.total || 0
+                });
+            } catch (error) {
+                logError('Get Entities Failed', error);
+            }
+        }
+
+        async function testGetEntityById() {
+            try {
+                if (createdEntities.length === 0) {
+                    await testCreateEntity();
+                }
+                
+                logInfo('Fetching entity by ID...');
+                const entityId = createdEntities[createdEntities.length - 1];
+                const response = await apiService.getEntity(entityId);
+                logSuccess('Get Entity by ID', response);
+            } catch (error) {
+                logError('Get Entity by ID Failed', error);
+            }
+        }
+
+        async function testUpdateEntity() {
+            try {
+                if (createdEntities.length === 0) {
+                    await testCreateEntity();
+                }
+                
+                logInfo('Updating entity...');
+                const entityId = createdEntities[createdEntities.length - 1];
+                
+                // Get current entity to get ETag
+                const current = await apiService.getEntity(entityId);
+                const etag = current._version;
+                
+                const update = {
+                    data: {
+                        ...current.data,
+                        description: 'Updated by test suite',
+                        updatedAt: new Date().toISOString()
+                    }
+                };
+                
+                const response = await apiService.updateEntity(entityId, update, etag);
+                logSuccess('Update Entity', response);
+            } catch (error) {
+                logError('Update Entity Failed', error);
+            }
+        }
+
+        async function testDeleteEntity() {
+            try {
+                if (createdEntities.length === 0) {
+                    await testCreateEntity();
+                }
+                
+                logInfo('Deleting entity...');
+                const entityId = createdEntities.pop();
+                await apiService.deleteEntity(entityId);
+                logSuccess('Delete Entity', { deleted: entityId });
+            } catch (error) {
+                logError('Delete Entity Failed', error);
+            }
+        }
+
+        async function testEntityFiltering() {
+            try {
+                logInfo('Testing entity filtering...');
+                const response = await apiService.getEntities({ 
+                    type: 'restaurant',
+                    limit: 5 
+                });
+                logSuccess('Entity Filtering', {
+                    filters: { type: 'restaurant' },
+                    results: response.entities?.length || 0
+                });
+            } catch (error) {
+                logError('Entity Filtering Failed', error);
+            }
+        }
+
+        // ============================================
+        // CURATION CRUD TESTS
+        // ============================================
+
+        async function testCreateCuration() {
+            try {
+                // Need an entity first
+                if (createdEntities.length === 0) {
+                    await testCreateEntity();
+                }
+                
+                logInfo('Creating test curation...');
+                const entityId = createdEntities[createdEntities.length - 1];
+                const timestamp = Date.now();
+                const curationId = `cur_test_suite_${timestamp}`;
+                
+                const curation = {
+                    curation_id: curationId,
+                    entity_id: entityId,
+                    curator: {
+                        id: 'test_suite',
+                        name: 'Test Suite Curator',
+                        email: 'test@example.com'
+                    },
+                    categories: {
+                        cuisine: ['test'],
+                        mood: ['testing'],
+                        occasion: ['automated_testing']
+                    },
+                    notes: {
+                        public: 'Excellent test restaurant!',
+                        private: 'Created by automated test suite'
+                    },
+                    sources: ['test_suite_automated']
+                };
+                
+                const response = await apiService.createCuration(curation);
+                createdCurations.push(response._id);
+                logSuccess('Create Curation', response);
+            } catch (error) {
+                logError('Create Curation Failed', error);
+            }
+        }
+
+        async function testSearchCurations() {
+            try {
+                logInfo('Searching curations...');
+                const response = await apiService.searchCurations({ limit: 10 });
+                logSuccess('Search Curations', {
+                    count: response.curations?.length || 0,
+                    total: response.pagination?.total || 0
+                });
+            } catch (error) {
+                logError('Search Curations Failed', error);
+            }
+        }
+
+        async function testGetCurationById() {
+            try {
+                if (createdCurations.length === 0) {
+                    await testCreateCuration();
+                }
+                
+                logInfo('Fetching curation by ID...');
+                const curationId = createdCurations[createdCurations.length - 1];
+                const response = await apiService.getCuration(curationId);
+                logSuccess('Get Curation by ID', response);
+            } catch (error) {
+                logError('Get Curation by ID Failed', error);
+            }
+        }
+
+        async function testUpdateCuration() {
+            try {
+                if (createdCurations.length === 0) {
+                    await testCreateCuration();
+                }
+                
+                logInfo('Updating curation...');
+                const curationId = createdCurations[createdCurations.length - 1];
+                
+                // Get current curation to get ETag
+                const current = await apiService.getCuration(curationId);
+                const etag = current._version;
+                
+                const update = {
+                    data: {
+                        ...current.data,
+                        rating: 4,
+                        review: 'Updated review by test suite'
+                    }
+                };
+                
+                const response = await apiService.updateCuration(curationId, update, etag);
+                logSuccess('Update Curation', response);
+            } catch (error) {
+                logError('Update Curation Failed', error);
+            }
+        }
+
+        async function testDeleteCuration() {
+            try {
+                if (createdCurations.length === 0) {
+                    await testCreateCuration();
+                }
+                
+                logInfo('Deleting curation...');
+                const curationId = createdCurations.pop();
+                await apiService.deleteCuration(curationId);
+                logSuccess('Delete Curation', { deleted: curationId });
+            } catch (error) {
+                logError('Delete Curation Failed', error);
+            }
+        }
+
+        async function testEntityCurations() {
+            try {
+                if (createdEntities.length === 0) {
+                    await testCreateEntity();
+                }
+                if (createdCurations.length === 0) {
+                    await testCreateCuration();
+                }
+                
+                logInfo('Fetching entity curations...');
+                const entityId = createdEntities[createdEntities.length - 1];
+                const response = await apiService.getEntityCurations(entityId);
+                logSuccess('Entity Curations', {
+                    entityId,
+                    curations: response.curations?.length || 0
+                });
+            } catch (error) {
+                logError('Entity Curations Failed', error);
+            }
+        }
+
+        // ============================================
+        // ADVANCED TESTS
+        // ============================================
+
+        async function testOptimisticLocking() {
+            try {
+                logInfo('Testing optimistic locking...');
+                
+                // Create entity
+                const entity = {
+                    type: 'restaurant',
+                    name: `Lock Test ${Date.now()}`,
+                    data: { version: 1 }
+                };
+                const created = await apiService.createEntity(entity);
+                createdEntities.push(created._id);
+                
+                // Try to update with wrong version
+                try {
+                    await apiService.updateEntity(created._id, { 
+                        data: { version: 2 } 
+                    }, 'wrong-etag');
+                    logError('Optimistic Locking', new Error('Should have failed with wrong ETag'));
+                } catch (error) {
+                    // Expected to fail
+                    logSuccess('Optimistic Locking', { 
+                        message: 'Correctly rejected update with wrong ETag'
+                    });
+                }
+            } catch (error) {
+                logError('Optimistic Locking Failed', error);
+            }
+        }
+
+        async function testPagination() {
+            try {
+                logInfo('Testing pagination...');
+                
+                // Get first page
+                const page1 = await apiService.getEntities({ limit: 5, offset: 0 });
+                
+                // Get second page
+                const page2 = await apiService.getEntities({ limit: 5, offset: 5 });
+                
+                logSuccess('Pagination', {
+                    page1Count: page1.entities?.length || 0,
+                    page2Count: page2.entities?.length || 0,
+                    total: page1.pagination?.total || 0
+                });
+            } catch (error) {
+                logError('Pagination Failed', error);
+            }
+        }
+
+        async function testErrorHandling() {
+            try {
+                logInfo('Testing error handling...');
+                
+                // Try to get non-existent entity
+                try {
+                    await apiService.getEntity('nonexistent-id-12345');
+                    logError('Error Handling', new Error('Should have returned 404'));
+                } catch (error) {
+                    logSuccess('Error Handling', {
+                        message: 'Correctly handled 404 error',
+                        error: error.message
+                    });
+                }
+            } catch (error) {
+                logError('Error Handling Failed', error);
+            }
+        }
+
+        async function testBulkOperations() {
+            try {
+                logInfo('Testing bulk operations...');
+                
+                // Create multiple entities
+                const entities = [];
+                for (let i = 0; i < 3; i++) {
+                    const entity = {
+                        type: 'restaurant',
+                        name: `Bulk Test ${i} ${Date.now()}`,
+                        data: { index: i }
+                    };
+                    const created = await apiService.createEntity(entity);
+                    entities.push(created);
+                    createdEntities.push(created._id);
+                }
+                
+                logSuccess('Bulk Operations', {
+                    created: entities.length,
+                    ids: entities.map(e => e._id)
+                });
+            } catch (error) {
+                logError('Bulk Operations Failed', error);
+            }
+        }
+
+        // ============================================
+        // RUN ALL TESTS
+        // ============================================
+
+        async function runAllTests() {
+            logInfo('🚀 Starting comprehensive test suite...');
+            
+            // System tests
+            await testHealthEndpoint();
+            await testApiInfo();
+            await testNetworkConnectivity();
+            
+            // Entity tests
+            await testCreateEntity();
+            await testGetEntities();
+            await testGetEntityById();
+            await testUpdateEntity();
+            await testEntityFiltering();
+            
+            // Curation tests
+            await testCreateCuration();
+            await testSearchCurations();
+            await testGetCurationById();
+            await testUpdateCuration();
+            await testEntityCurations();
+            
+            // Advanced tests
+            await testOptimisticLocking();
+            await testPagination();
+            await testErrorHandling();
+            await testBulkOperations();
+            
+            // Cleanup tests
+            await testDeleteCuration();
+            await testDeleteEntity();
+            
+            logInfo('✨ Test suite completed!', {
+                total: testResults.total,
+                passed: testResults.passed,
+                failed: testResults.failed,
+                successRate: `${Math.round((testResults.passed / testResults.total) * 100)}%`
+            });
+        }
+    </script>
+</body>
+</html>

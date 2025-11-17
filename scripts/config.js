@@ -28,7 +28,7 @@ const AppConfig = {
          * - Soft Delete: Via is_deleted field (curations) and status=deleted (entities)
          */
         backend: {
-            baseUrl: 'http://localhost:8001',  // V4 doesn't use /api/v4 prefix
+            baseUrl: 'http://localhost:8000/api/v3',  // V3 API with prefix
             timeout: 30000,        // 30 seconds
             retryAttempts: 3,      // Number of retry attempts
             retryDelay: 1000,      // Delay between retries (ms)
