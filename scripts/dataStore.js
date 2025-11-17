@@ -40,14 +40,27 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
         try {
             this.log.debug('🚀 Initializing V3 Entity Store...');
             
-            // Clean slate - delete any legacy databases
-            await this.cleanLegacyDatabases();
+            // DISABLED: Do not delete legacy databases - MigrationManager handles this
+            // await this.cleanLegacyDatabases();
             
-            // Create V3 database with unique version to prevent conflicts
-            const dbName = 'ConciergeCollectorV3_Clean';
+            // Use final database name (no version suffix - Dexie handles versioning)
+            // This allows seamless upgrades from V3 → V4 → V5 without data loss
+            const dbName = 'ConciergeCollector';
             this.db = new Dexie(dbName);
             
-            // V3 Entity-Curation Schema - Use a higher version number for clean start
+            // Define all schema versions for automatic migration
+            // Version 3: Original V3 Entity-Curation Schema
+            this.db.version(3).stores({
+                entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt',
+                curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt',
+                drafts: '++id, type, curator_id, createdAt, lastModified',
+                curators: '++id, curator_id, name, email, status, createdAt, lastActive',
+                pendingSync: '++id, type, local_id, action, createdAt, retryCount',
+                settings: 'key',
+                appMetadata: 'key'
+            });
+            
+            // Version 4: V4 API Schema (adds etag, syncQueue, cache)
             this.db.version(4).stores({
                 // Core V3 Tables
                 entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt, etag',
@@ -95,24 +108,24 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
 
     /**
      * Clean up legacy database versions
+     * 
+     * ⚠️ DISABLED: Do not delete legacy databases automatically!
+     * Migration must be handled by MigrationManager to preserve user data.
+     * Only delete databases AFTER successful migration confirmation.
      */
     async cleanLegacyDatabases() {
-        const legacyDbs = [
-            'RestaurantCurator',
-            'RestaurantCuratorV2', 
-            'ConciergeCollectorV2',
-            'ConciergeCollectorV3',  // Previous attempt
-            'ConciergeCollectorV3_V3' // Previous attempt with suffix
-        ];
+        // DISABLED: Preservation of user data is critical
+        // The MigrationManager in main.js handles V1 → V3 → V4 migration
+        // Only after migration is complete and verified should old databases be removed
         
-        for (const dbName of legacyDbs) {
-            try {
-                await Dexie.delete(dbName);
-                this.log.debug(`🗑️ Deleted legacy database: ${dbName}`);
-            } catch (error) {
-                // Ignore errors - database might not exist
-            }
-        }
+        this.log.debug('🔒 Legacy database cleanup DISABLED - preserving user data for migration');
+        
+        // Future: Add cleanup logic ONLY after migration success confirmation
+        // Example:
+        // const migrationComplete = localStorage.getItem('migration_v4_complete');
+        // if (migrationComplete === 'true') {
+        //     // Safe to delete old databases
+        // }
     }
 
     /**

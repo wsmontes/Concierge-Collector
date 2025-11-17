@@ -1,0 +1,174 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Manual Sync Queue Test</title>
+    <style>
+        body { font-family: monospace; padding: 20px; }
+        button { margin: 10px; padding: 10px; font-size: 16px; }
+        pre { background: #f0f0f0; padding: 15px; border-radius: 5px; }
+        .error { color: red; }
+        .success { color: green; }
+    </style>
+</head>
+<body>
+    <h1>Manual Sync Queue Test</h1>
+    
+    <button onclick="checkQueue()">1. Check Current Queue</button>
+    <button onclick="checkEntities()">2. Check Entities 29 & 30</button>
+    <button onclick="manuallyAddToQueue()">3. Manually Add Entity 29 to Queue</button>
+    <button onclick="manuallyAddToQueue30()">4. Manually Add Entity 30 to Queue</button>
+    <button onclick="clearQueue()">5. Clear Queue</button>
+    
+    <h2>Output:</h2>
+    <pre id="output"></pre>
+    
+    <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.2/dist/dexie.min.js"></script>
+    <script>
+        const db = new Dexie('ConciergeCollectorV3_V4');
+        db.version(1).stores({
+            entities: '++id, entity_id, type, curator_id, created_at, updated_at, source',
+            curations: '++id, entity_id, curator_id, created_at, updated_at',
+            curators: '++id, name, created_at',
+            syncQueue: '++id, type, action, local_id, entity_id, createdAt',
+            settings: 'key'
+        });
+        
+        function log(message, isError = false) {
+            const output = document.getElementById('output');
+            const className = isError ? 'error' : 'success';
+            output.innerHTML += `<span class="${className}">${message}</span>\n`;
+        }
+        
+        async function checkQueue() {
+            document.getElementById('output').innerHTML = '';
+            log('=== CHECKING SYNC QUEUE ===');
+            
+            try {
+                const queue = await db.syncQueue.toArray();
+                log(`Total items in queue: ${queue.length}`);
+                
+                if (queue.length === 0) {
+                    log('⚠️ Queue is EMPTY!', true);
+                } else {
+                    queue.forEach((item, idx) => {
+                        log(`\nItem ${idx + 1}:`);
+                        log(`  ID: ${item.id}`);
+                        log(`  Type: ${item.type}`);
+                        log(`  Action: ${item.action}`);
+                        log(`  Local ID: ${item.local_id}`);
+                        log(`  Entity ID: ${item.entity_id}`);
+                        log(`  Created At: ${item.createdAt}`);
+                        log(`  Retry Count: ${item.retryCount}`);
+                    });
+                }
+            } catch (error) {
+                log(`❌ Error checking queue: ${error.message}`, true);
+            }
+        }
+        
+        async function checkEntities() {
+            document.getElementById('output').innerHTML = '';
+            log('=== CHECKING ENTITIES 29 & 30 ===');
+            
+            try {
+                const entity29 = await db.entities.get(29);
+                const entity30 = await db.entities.get(30);
+                
+                if (entity29) {
+                    log('\n✅ Entity 29 exists:');
+                    log(`  Name: ${entity29.name}`);
+                    log(`  Source: ${entity29.source}`);
+                    log(`  Entity ID: ${entity29.entity_id || 'none'}`);
+                    log(`  Curator ID: ${entity29.curator_id}`);
+                } else {
+                    log('❌ Entity 29 NOT FOUND', true);
+                }
+                
+                if (entity30) {
+                    log('\n✅ Entity 30 exists:');
+                    log(`  Name: ${entity30.name}`);
+                    log(`  Source: ${entity30.source}`);
+                    log(`  Entity ID: ${entity30.entity_id || 'none'}`);
+                    log(`  Curator ID: ${entity30.curator_id}`);
+                } else {
+                    log('❌ Entity 30 NOT FOUND', true);
+                }
+            } catch (error) {
+                log(`❌ Error checking entities: ${error.message}`, true);
+            }
+        }
+        
+        async function manuallyAddToQueue() {
+            document.getElementById('output').innerHTML = '';
+            log('=== MANUALLY ADDING ENTITY 29 TO QUEUE ===');
+            
+            try {
+                const entity = await db.entities.get(29);
+                if (!entity) {
+                    log('❌ Entity 29 not found!', true);
+                    return;
+                }
+                
+                const queueItem = {
+                    type: 'entity',
+                    action: 'create',
+                    local_id: 29,
+                    entity_id: null,
+                    data: entity,
+                    createdAt: new Date(),
+                    retryCount: 0,
+                    lastError: null
+                };
+                
+                const queueId = await db.syncQueue.add(queueItem);
+                log(`✅ Entity 29 added to queue with ID: ${queueId}`);
+                log('Now click "1. Check Current Queue" to verify');
+            } catch (error) {
+                log(`❌ Error adding to queue: ${error.message}`, true);
+            }
+        }
+        
+        async function manuallyAddToQueue30() {
+            document.getElementById('output').innerHTML = '';
+            log('=== MANUALLY ADDING ENTITY 30 TO QUEUE ===');
+            
+            try {
+                const entity = await db.entities.get(30);
+                if (!entity) {
+                    log('❌ Entity 30 not found!', true);
+                    return;
+                }
+                
+                const queueItem = {
+                    type: 'entity',
+                    action: 'create',
+                    local_id: 30,
+                    entity_id: null,
+                    data: entity,
+                    createdAt: new Date(),
+                    retryCount: 0,
+                    lastError: null
+                };
+                
+                const queueId = await db.syncQueue.add(queueItem);
+                log(`✅ Entity 30 added to queue with ID: ${queueId}`);
+                log('Now click "1. Check Current Queue" to verify');
+            } catch (error) {
+                log(`❌ Error adding to queue: ${error.message}`, true);
+            }
+        }
+        
+        async function clearQueue() {
+            document.getElementById('output').innerHTML = '';
+            log('=== CLEARING QUEUE ===');
+            
+            try {
+                await db.syncQueue.clear();
+                log('✅ Queue cleared successfully');
+            } catch (error) {
+                log(`❌ Error clearing queue: ${error.message}`, true);
+            }
+        }
+    </script>
+</body>
+</html>

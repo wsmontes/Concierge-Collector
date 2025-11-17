@@ -141,8 +141,8 @@ const MigrationManager = ModuleWrapper.defineClass('MigrationManager', class {
             });
             await legacyDb.open();
 
-            // Open V3 database directly (don't depend on DataStore being initialized)
-            const v3Db = new Dexie('ConciergeCollectorV3');
+            // Open V3 database (using consistent name for all versions)
+            const v3Db = new Dexie('ConciergeCollector');
             v3Db.version(3).stores({
                 entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt',
                 curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt',

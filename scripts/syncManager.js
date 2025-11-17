@@ -178,15 +178,27 @@ window.SyncManager = {
      * Sync a single item to server (V4 API)
      */
     async syncSingleItem(item) {
-        const { operation, type, entity_id, data } = item;
+        const { action, type, entity_id, data } = item;
+        const operation = action; // Support both 'action' and 'operation' field names
 
         switch (type) {
             case 'entity':
                 switch (operation) {
                     case 'create':
-                        await window.ApiService.createEntityV4(data);
+                        // createEntityV4 handles transformation internally
+                        const response = await window.ApiService.createEntityV4(data);
+                        
+                        // Update local entity with server entity_id
+                        if (response && response.entity_id && item.local_id) {
+                            await window.dataStore.db.entities.update(item.local_id, {
+                                entity_id: response.entity_id,
+                                etag: response.etag || `v${response.version || 1}`
+                            });
+                            this.log.debug(`✅ Updated local entity ${item.local_id} with server ID: ${response.entity_id}`);
+                        }
                         break;
                     case 'update':
+                        // updateEntityV4 handles transformation internally
                         await window.ApiService.updateEntityV4(entity_id, data, data.version || 1);
                         break;
                     case 'delete':
@@ -198,9 +210,19 @@ window.SyncManager = {
             case 'curation':
                 switch (operation) {
                     case 'create':
-                        await window.ApiService.createCurationV4(data);
+                        // createCurationV4 handles transformation internally
+                        const curationResponse = await window.ApiService.createCurationV4(data);
+                        
+                        // Update local curation with server curation_id
+                        if (curationResponse && curationResponse.curation_id && item.local_id) {
+                            await window.dataStore.db.curations.update(item.local_id, {
+                                curation_id: curationResponse.curation_id,
+                                etag: curationResponse.etag || `v${curationResponse.version || 1}`
+                            });
+                        }
                         break;
                     case 'update':
+                        // updateCurationV4 handles transformation internally
                         await window.ApiService.updateCurationV4(entity_id, data, data.version || 1);
                         break;
                     case 'delete':

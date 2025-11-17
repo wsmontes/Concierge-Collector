@@ -25,19 +25,10 @@ window.SyncAdapterV4 = {
             status: v3Entity.status || 'active',
             
             // Location (adapt if needed)
-            location: v3Entity.location || {
-                address: v3Entity.address || '',
-                city: v3Entity.city || '',
-                country: v3Entity.country || '',
-                coordinates: v3Entity.coordinates || null
-            },
+            location: this.adaptLocationToV4(v3Entity.location, v3Entity),
             
-            // Contact (adapt if needed)
-            contact: v3Entity.contact || {
-                phone: v3Entity.phone || '',
-                email: v3Entity.email || '',
-                website: v3Entity.website || ''
-            },
+            // Contact (adapt if needed) - use null for empty strings (API validation)
+            contact: this.adaptContactToV4(v3Entity.contact, v3Entity),
             
             // Metadata - V4 expects array, V3 might be object or array
             metadata: this.adaptMetadataToV4(v3Entity.metadata || v3Entity.data),
@@ -173,6 +164,50 @@ window.SyncAdapterV4 = {
             
             // Soft delete
             is_deleted: v4Curation.is_deleted || false
+        };
+    },
+
+    /**
+     * Adapt location for V4 format
+     * @param {Object} location - V3 location object
+     * @param {Object} entity - Full entity (fallback for lat/lng in root)
+     * @returns {Object|null} - V4 location format or null
+     */
+    adaptLocationToV4(location, entity) {
+        if (!location) return null;
+        
+        // Check if location has lat/lng directly
+        const lat = location.latitude || location.lat;
+        const lng = location.longitude || location.lng || location.lon;
+        
+        return {
+            address: location.address || '',
+            city: location.city || '',
+            state: location.state || '',
+            country: location.country || '',
+            postal_code: location.postal_code || location.postalCode || '',
+            coordinates: (lat && lng) ? {
+                latitude: lat,
+                longitude: lng
+            } : null
+        };
+    },
+
+    /**
+     * Adapt contact for V4 format
+     * @param {Object} contact - V3 contact object
+     * @param {Object} entity - Full entity (fallback)
+     * @returns {Object} - V4 contact format with null for empty values
+     */
+    adaptContactToV4(contact, entity) {
+        const phone = contact?.phone || entity?.phone || '';
+        const email = contact?.email || entity?.email || '';
+        const website = contact?.website || entity?.website || '';
+        
+        return {
+            phone: phone || null,
+            email: email || null,  // null instead of empty string for validation
+            website: website || null
         };
     },
 

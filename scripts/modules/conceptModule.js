@@ -377,6 +377,8 @@ class ConceptModule {
                     type: 'restaurant',
                     name: name,
                     curator_id: this.uiManager.currentCurator.id,
+                    created_by: this.uiManager.currentCurator.id.toString(),
+                    createdBy: this.uiManager.currentCurator.id.toString(),
                     data: {
                         concepts: this.uiManager.currentConcepts || [],
                         transcription: transcription || '',

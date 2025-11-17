@@ -16,9 +16,14 @@ from typing import List
 class Settings(BaseSettings):
     """Application settings loaded from environment variables"""
 
+    # Environment
+    environment: str = "development"
+
     # MongoDB
     mongodb_url: str = "mongodb://localhost:27017"
     mongodb_db_name: str = "concierge_collector_v4"
+    mongodb_atlas_username: str = ""
+    mongodb_atlas_password: str = ""
 
     # API
     api_v4_url: str = "http://localhost:8000"
@@ -38,6 +43,11 @@ class Settings(BaseSettings):
     def cors_origins_list(self) -> List[str]:
         """Parse CORS origins from comma-separated string"""
         return [origin.strip() for origin in self.cors_origins.split(",")]
+
+    # Development Mode
+    dev_mode: bool = False
+    dev_user_id: str = "dev_curator"
+    dev_user_email: str = "dev@example.com"
 
     # Logging
     log_level: str = "INFO"

@@ -148,15 +148,17 @@ class RestaurantModule {
             if (filterEnabled && restaurants.length === 0) {
                 this.log.warn(`No restaurants found with filter. Checking if any restaurants exist with curatorId: ${curatorId}`);
                 
-                // Get a raw count of restaurants from this curator to verify data exists
-                const allRestaurantsForCurator = await dataStorage.db.restaurants
-                    .where('curatorId')
-                    .equals(curatorId)
-                    .or('curatorId')
-                    .equals(Number(curatorId))
-                    .toArray();
-                
-                this.log.debug(`Direct database query found ${allRestaurantsForCurator.length} restaurants for curatorId: ${curatorId}`);
+                // V4: Use dataStore.db.entities instead of dataStorage.db.restaurants
+                try {
+                    const allRestaurantsForCurator = await window.dataStore.db.entities
+                        .where('type').equals('restaurant')
+                        .and(e => e.curator_id === curatorId || e.curator_id === Number(curatorId))
+                        .toArray();
+                    
+                    this.log.debug(`Direct database query found ${allRestaurantsForCurator.length} restaurants for curatorId: ${curatorId}`);
+                } catch (error) {
+                    this.log.error('Error checking restaurant count:', error);
+                }
             }
             
             this.uiManager.restaurantsContainer.innerHTML = '';

@@ -15,7 +15,7 @@ from fastapi import APIRouter, HTTPException, status, Query, Depends
 from typing import Optional, List
 
 from app.models import Entity, EntityCreate, EntityUpdate, TokenData, EntityListResponse
-from app.auth import get_current_user
+from app.auth import get_current_user, get_current_user_dev
 from app import database
 
 router = APIRouter(prefix="/entities", tags=["entities"])
@@ -24,12 +24,12 @@ router = APIRouter(prefix="/entities", tags=["entities"])
 @router.post("/", response_model=Entity, status_code=status.HTTP_201_CREATED)
 async def create_entity_endpoint(
     entity: EntityCreate,
-    current_user: TokenData = Depends(get_current_user),
+    current_user: TokenData = Depends(get_current_user_dev),
 ) -> Entity:
     """
     Create a new entity
     
-    Requires authentication
+    Requires authentication (bypassed in DEV_MODE)
     """
     try:
         created_entity = await database.create_entity(entity)
@@ -120,12 +120,12 @@ async def list_entities_endpoint(
 async def update_entity_endpoint(
     entity_id: str,
     entity_update: EntityUpdate,
-    current_user: TokenData = Depends(get_current_user),
+    current_user: TokenData = Depends(get_current_user_dev),
 ) -> Entity:
     """
     Update an entity with optimistic locking
     
-    Requires authentication
+    Requires authentication (bypassed in DEV_MODE)
     Returns 409 if version conflict occurs
     version field is required in body for optimistic locking
     """
@@ -154,12 +154,12 @@ async def update_entity_endpoint(
 async def delete_entity_endpoint(
     entity_id: str,
     hard_delete: bool = Query(False, description="Permanently delete (default: soft delete)"),
-    current_user: TokenData = Depends(get_current_user),
+    current_user: TokenData = Depends(get_current_user_dev),
 ):
     """
     Delete an entity
     
-    Requires authentication
+    Requires authentication (bypassed in DEV_MODE)
     Default: soft delete (status = 'deleted')
     hard_delete=true: permanently remove from database
     """

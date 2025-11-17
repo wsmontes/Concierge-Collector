@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Check All Entities</title>
+    <style>
+        body { font-family: monospace; padding: 20px; }
+        button { margin: 10px; padding: 10px; font-size: 16px; }
+        pre { background: #f0f0f0; padding: 15px; border-radius: 5px; max-height: 600px; overflow-y: auto; }
+        .error { color: red; }
+        .success { color: green; }
+    </style>
+</head>
+<body>
+    <h1>Check All Entities in Database</h1>
+    
+    <button onclick="checkAll()">Check All Entities</button>
+    <button onclick="checkBySource()">Check By Source</button>
+    
+    <h2>Output:</h2>
+    <pre id="output"></pre>
+    
+    <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.2/dist/dexie.min.js"></script>
+    <script>
+        const db = new Dexie('ConciergeCollectorV3_V4');
+        db.version(4).stores({
+            entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt, etag',
+            curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt, updatedAt, etag',
+            curators: '++id, curator_id, name, email, status, createdAt, lastActive',
+            drafts: '++id, type, data, curator_id, createdAt, lastModified',
+            syncQueue: '++id, type, action, local_id, entity_id, data, createdAt, retryCount, lastError',
+            settings: 'key',
+            cache: 'key, expires'
+        });
+        
+        function log(message, isError = false) {
+            const output = document.getElementById('output');
+            const className = isError ? 'error' : 'success';
+            output.innerHTML += `<span class="${className}">${message}</span>\n`;
+        }
+        
+        async function checkAll() {
+            document.getElementById('output').innerHTML = '';
+            log('=== CHECKING ALL ENTITIES ===');
+            
+            try {
+                await db.open();
+                const entities = await db.entities.toArray();
+                
+                log(`\n✅ Total entities in database: ${entities.length}`);
+                
+                if (entities.length === 0) {
+                    log('❌ DATABASE IS EMPTY!', true);
+                    log('\n⚠️ All data was lost - database was recreated', true);
+                    log('Need to re-sync from server', true);
+                    return;
+                }
+                
+                // Show first 10 entities
+                log('\n--- First 10 Entities ---');
+                entities.slice(0, 10).forEach(e => {
+                    log(`ID: ${e.id}, Name: ${e.name || 'unnamed'}, Source: ${e.source || 'undefined'}, Entity_ID: ${e.entity_id || 'none'}`);
+                });
+                
+                if (entities.length > 10) {
+                    log(`\n... and ${entities.length - 10} more entities`);
+                }
+                
+            } catch (error) {
+                log(`❌ Error: ${error.message}`, true);
+            }
+        }
+        
+        async function checkBySource() {
+            document.getElementById('output').innerHTML = '';
+            log('=== ENTITIES BY SOURCE ===');
+            
+            try {
+                await db.open();
+                const entities = await db.entities.toArray();
+                
+                const bySource = {
+                    local: entities.filter(e => e.source === 'local'),
+                    remote: entities.filter(e => e.source === 'remote'),
+                    undefined: entities.filter(e => !e.source)
+                };
+                
+                log(`\nTotal: ${entities.length} entities`);
+                log(`  Local: ${bySource.local.length}`);
+                log(`  Remote: ${bySource.remote.length}`);
+                log(`  Undefined: ${bySource.undefined.length}`);
+                
+                if (bySource.local.length > 0) {
+                    log('\n--- Local Entities ---');
+                    bySource.local.forEach(e => {
+                        log(`ID: ${e.id}, Name: ${e.name}`);
+                    });
+                }
+                
+            } catch (error) {
+                log(`❌ Error: ${error.message}`, true);
+            }
+        }
+    </script>
+</body>
+</html>

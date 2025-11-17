@@ -1,0 +1,46 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Check Sync Queue</title>
+</head>
+<body>
+    <h1>Sync Queue Inspector</h1>
+    <button onclick="checkQueue()">Check Queue</button>
+    <button onclick="checkEntities()">Check Entities</button>
+    <pre id="output"></pre>
+    
+    <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.2/dist/dexie.min.js"></script>
+    <script>
+        const db = new Dexie('ConciergeCollectorV3_V4');
+        db.version(1).stores({
+            entities: '++id, entity_id, type, curator_id, created_at, updated_at, source',
+            curations: '++id, entity_id, curator_id, created_at, updated_at',
+            curators: '++id, name, created_at',
+            syncQueue: '++id, type, action, local_id, entity_id, createdAt',
+            settings: 'key'
+        });
+        
+        async function checkQueue() {
+            const queue = await db.syncQueue.toArray();
+            document.getElementById('output').textContent = 
+                '=== SYNC QUEUE ===\n' +
+                'Total items: ' + queue.length + '\n\n' +
+                JSON.stringify(queue, null, 2);
+        }
+        
+        async function checkEntities() {
+            const entities = await db.entities.where('id').between(29, 30).toArray();
+            document.getElementById('output').textContent = 
+                '=== ENTITIES 29 & 30 ===\n' +
+                'Total: ' + entities.length + '\n\n' +
+                JSON.stringify(entities.map(e => ({
+                    id: e.id,
+                    entity_id: e.entity_id,
+                    name: e.name,
+                    source: e.source,
+                    curator_id: e.curator_id
+                })), null, 2);
+        }
+    </script>
+</body>
+</html>

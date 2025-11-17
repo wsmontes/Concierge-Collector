@@ -15,7 +15,7 @@ from fastapi import APIRouter, HTTPException, status, Query, Depends
 from typing import Optional, List
 
 from app.models import Curation, CurationCreate, CurationUpdate, TokenData, CurationListResponse
-from app.auth import get_current_user
+from app.auth import get_current_user, get_current_user_dev
 from app import database
 
 router = APIRouter(prefix="/curations", tags=["curations"])
@@ -24,7 +24,7 @@ router = APIRouter(prefix="/curations", tags=["curations"])
 @router.post("/", response_model=Curation, status_code=status.HTTP_201_CREATED)
 async def create_curation_endpoint(
     curation: CurationCreate,
-    current_user: TokenData = Depends(get_current_user),
+    current_user: TokenData = Depends(get_current_user_dev),
 ) -> Curation:
     """
     Create a new curation
@@ -117,7 +117,7 @@ async def list_curations_endpoint(
 async def update_curation_endpoint(
     curation_id: str,
     curation_update: CurationUpdate,
-    current_user: TokenData = Depends(get_current_user),
+    current_user: TokenData = Depends(get_current_user_dev),
 ) -> Curation:
     """
     Update a curation with optimistic locking
@@ -151,7 +151,7 @@ async def update_curation_endpoint(
 async def delete_curation_endpoint(
     curation_id: str,
     hard_delete: bool = Query(False, description="Permanently delete (default: soft delete)"),
-    current_user: TokenData = Depends(get_current_user),
+    current_user: TokenData = Depends(get_current_user_dev),
 ):
     """
     Delete a curation

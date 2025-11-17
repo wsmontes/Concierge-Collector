@@ -179,8 +179,8 @@ const AppConfig = {
      * V3 Format: Entity-Curation model with local storage for offline capabilities
      */
     database: {
-        name: 'ConciergeCollectorV3',
-        version: 3,
+        name: 'ConciergeCollector',  // Single database name (Dexie handles versioning)
+        version: 4,  // Current schema version (V4 API compatibility)
         tables: {
             entities: 'entities',            // V3: Restaurants, users, admins, system objects
             curations: 'curations',          // V3: Reviews, recommendations, analysis
