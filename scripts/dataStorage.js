@@ -16,7 +16,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
 
     initializeDatabase() {
         try {
-            this.log.debug('Initializing database...');
+            this.log.debug('Initializing V3 database...');
             
             // Delete any existing instance
             if (this.db) {
@@ -24,264 +24,81 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 this.db = null;
             }
             
-            this.db = new Dexie('RestaurantCurator');
+            // V3: Check schema version in localStorage to force reset if needed
+            const expectedSchemaVersion = 'v3.0';
+            const currentSchemaVersion = localStorage.getItem('dbSchemaVersion');
             
-            // Version 7: Added pending audio and draft restaurants
-            this.db.version(7).stores({
-                curators: '++id, name, lastActive, serverId, origin',
-                concepts: '++id, category, value, timestamp, [category+value]',
-                restaurants: '++id, name, curatorId, timestamp, transcription, description, origin, source, serverId',
-                restaurantConcepts: '++id, restaurantId, conceptId',
-                restaurantPhotos: '++id, restaurantId, photoData',
-                restaurantLocations: '++id, restaurantId, latitude, longitude, address',
-                settings: 'key',
-                pendingAudio: '++id, restaurantId, draftId, audioBlob, timestamp, retryCount, lastError, status, isAdditional',
-                draftRestaurants: '++id, curatorId, name, timestamp, lastModified, hasAudio, transcription, description'
-            });
+            if (currentSchemaVersion !== expectedSchemaVersion) {
+                this.log.warn(`⚠️ Schema version mismatch (current: ${currentSchemaVersion}, expected: ${expectedSchemaVersion})`);
+                this.log.warn('🔄 Forcing database reset...');
+                
+                // Delete all previous database versions
+                Dexie.delete('RestaurantCuratorV2').catch(() => {});
+                Dexie.delete('RestaurantCurator').catch(() => {});
+                Dexie.delete('ConciergeCollectorV3').catch(() => {});
+                
+                // Mark as updated
+                localStorage.setItem('dbSchemaVersion', expectedSchemaVersion);
+            }
             
-            // Version 8: Add soft delete fields for restaurants
-            this.db.version(8).stores({
-                curators: '++id, name, lastActive, serverId, origin',
-                concepts: '++id, category, value, timestamp, [category+value]',
-                restaurants: '++id, name, curatorId, timestamp, transcription, description, origin, source, serverId, deletedLocally, deletedAt',
-                restaurantConcepts: '++id, restaurantId, conceptId',
-                restaurantPhotos: '++id, restaurantId, photoData',
-                restaurantLocations: '++id, restaurantId, latitude, longitude, address',
+            // V3: Use the database name from config
+            this.db = new Dexie(AppConfig.database.name);
+            
+            // Version 3: V3 Entity-Curation Schema
+            this.db.version(AppConfig.database.version).stores({
+                // V3 Entity-Curation Model
+                entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt',
+                curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt',
+                drafts: '++id, type, curator_id, createdAt, lastModified',
+                curators: '++id, curator_id, name, email, status, createdAt, lastActive',
+                pendingSync: '++id, type, local_id, action, createdAt, retryCount',
                 settings: 'key',
-                pendingAudio: '++id, restaurantId, draftId, audioBlob, timestamp, retryCount, lastError, status, isAdditional',
-                draftRestaurants: '++id, curatorId, name, timestamp, lastModified, hasAudio, transcription, description'
-            }).upgrade(tx => {
-                this.log.debug('Upgrading database to version 8: Adding soft delete fields');
-                // Add deletedLocally and deletedAt fields to existing restaurants
-                return tx.restaurants.toCollection().modify(restaurant => {
-                    restaurant.deletedLocally = false;
-                    restaurant.deletedAt = null;
-                });
-            });
-
-            // Version 9: Add shared restaurant fields for collaborative editing
-            this.db.version(9).stores({
-                curators: '++id, name, lastActive, serverId, origin',
-                concepts: '++id, category, value, timestamp, [category+value]',
-                restaurants: '++id, name, curatorId, timestamp, transcription, description, origin, source, serverId, deletedLocally, deletedAt, sharedRestaurantId, originalCuratorId',
-                restaurantConcepts: '++id, restaurantId, conceptId',
-                restaurantPhotos: '++id, restaurantId, photoData',
-                restaurantLocations: '++id, restaurantId, latitude, longitude, address',
-                settings: 'key',
-                pendingAudio: '++id, restaurantId, draftId, audioBlob, timestamp, retryCount, lastError, status, isAdditional',
-                draftRestaurants: '++id, curatorId, name, timestamp, lastModified, hasAudio, transcription, description'
-            }).upgrade(tx => {
-                this.log.debug('Upgrading database to version 9: Adding shared restaurant fields');
-                // Add sharedRestaurantId and originalCuratorId to existing restaurants
-                return tx.restaurants.toCollection().modify(restaurant => {
-                    // Generate UUID for existing restaurants if not present
-                    if (!restaurant.sharedRestaurantId) {
-                        restaurant.sharedRestaurantId = crypto.randomUUID();
-                    }
-                    // Set originalCuratorId for existing restaurants
-                    if (!restaurant.originalCuratorId) {
-                        restaurant.originalCuratorId = restaurant.curatorId;
-                    }
-                });
-            });
-
-            // Version 10: Data cleanup and compatibility check
-            this.db.version(10).stores({
-                curators: '++id, name, lastActive, serverId, origin',
-                concepts: '++id, category, value, timestamp, [category+value]',
-                restaurants: '++id, name, curatorId, timestamp, transcription, description, origin, source, serverId, deletedLocally, deletedAt, sharedRestaurantId, originalCuratorId',
-                restaurantConcepts: '++id, restaurantId, conceptId',
-                restaurantPhotos: '++id, restaurantId, photoData',
-                restaurantLocations: '++id, restaurantId, latitude, longitude, address',
-                settings: 'key',
-                pendingAudio: '++id, restaurantId, draftId, audioBlob, timestamp, retryCount, lastError, status, isAdditional',
-                draftRestaurants: '++id, curatorId, name, timestamp, lastModified, hasAudio, transcription, description',
-                appMetadata: 'key' // New table for app metadata
-            }).upgrade(async tx => {
-                this.log.debug('Upgrading database to version 10: Data cleanup and compatibility check');
-                
-                // Check if this is a fresh upgrade or needs cleanup
-                const metadata = await tx.table('appMetadata').get('lastMajorVersion');
-                const currentVersion = 10;
-                
-                // If upgrading from a very old version or corrupted data, clean up
-                if (!metadata || metadata.value < 9) {
-                    this.log.debug('🧹 Performing data cleanup for major version upgrade...');
-                    
-                    // Remove any restaurants with missing required fields
-                    const restaurants = await tx.restaurants.toArray();
-                    let cleanedCount = 0;
-                    
-                    for (const restaurant of restaurants) {
-                        let needsCleaning = false;
-                        
-                        // Check for missing critical fields
-                        if (!restaurant.curatorId || 
-                            typeof restaurant.curatorId !== 'number' ||
-                            !restaurant.name ||
-                            !restaurant.timestamp) {
-                            needsCleaning = true;
-                        }
-                        
-                        if (needsCleaning) {
-                            // Remove the problematic restaurant
-                            await tx.restaurants.delete(restaurant.id);
-                            
-                            // Clean up related data
-                            await tx.restaurantConcepts.where('restaurantId').equals(restaurant.id).delete();
-                            await tx.restaurantPhotos.where('restaurantId').equals(restaurant.id).delete();
-                            await tx.restaurantLocations.where('restaurantId').equals(restaurant.id).delete();
-                            
-                            cleanedCount++;
-                        } else {
-                            // Ensure all restaurants have required new fields
-                            // CRITICAL: Determine correct source based on serverId
-                            const correctSource = restaurant.source || (restaurant.serverId ? 'remote' : 'local');
-                            
-                            await tx.restaurants.update(restaurant.id, {
-                                sharedRestaurantId: restaurant.sharedRestaurantId || crypto.randomUUID(),
-                                originalCuratorId: restaurant.originalCuratorId || restaurant.curatorId,
-                                deletedLocally: restaurant.deletedLocally ?? false,
-                                deletedAt: restaurant.deletedAt ?? null,
-                                source: correctSource,
-                                origin: restaurant.origin || 'local'
-                            });
-                        }
-                    }
-                    
-                    if (cleanedCount > 0) {
-                        this.log.debug(`🧹 Cleaned up ${cleanedCount} incompatible restaurant(s)`);
-                    }
-                    
-                    // Clean up orphaned data
-                    const allRestaurantIds = (await tx.restaurants.toArray()).map(r => r.id);
-                    
-                    // Remove orphaned concepts
-                    const concepts = await tx.restaurantConcepts.toArray();
-                    for (const concept of concepts) {
-                        if (!allRestaurantIds.includes(concept.restaurantId)) {
-                            await tx.restaurantConcepts.delete(concept.id);
-                        }
-                    }
-                    
-                    // Remove orphaned photos
-                    const photos = await tx.restaurantPhotos.toArray();
-                    for (const photo of photos) {
-                        if (!allRestaurantIds.includes(photo.restaurantId)) {
-                            await tx.restaurantPhotos.delete(photo.id);
-                        }
-                    }
-                    
-                    // Remove orphaned locations
-                    const locations = await tx.restaurantLocations.toArray();
-                    for (const location of locations) {
-                        if (!allRestaurantIds.includes(location.restaurantId)) {
-                            await tx.restaurantLocations.delete(location.id);
-                        }
-                    }
-                    
-                    this.log.debug('✅ Database cleanup completed successfully');
-                }
-                
-                // Store the current version
-                await tx.table('appMetadata').put({
-                    key: 'lastMajorVersion',
-                    value: currentVersion,
-                    timestamp: new Date().toISOString()
-                });
-                
-                this.log.debug('✅ Database upgraded to version 10');
-            });
-
-            // Version 11: Add API key field to curators for individual key support
-            this.db.version(11).stores({
-                curators: '++id, name, lastActive, serverId, origin, apiKey',
-                concepts: '++id, category, value, timestamp, [category+value]',
-                restaurants: '++id, name, curatorId, timestamp, transcription, description, origin, source, serverId, deletedLocally, deletedAt, sharedRestaurantId, originalCuratorId',
-                restaurantConcepts: '++id, restaurantId, conceptId',
-                restaurantPhotos: '++id, restaurantId, photoData',
-                restaurantLocations: '++id, restaurantId, latitude, longitude, address',
-                settings: 'key',
-                pendingAudio: '++id, restaurantId, draftId, audioBlob, timestamp, retryCount, lastError, status, isAdditional',
-                draftRestaurants: '++id, curatorId, name, timestamp, lastModified, hasAudio, transcription, description',
                 appMetadata: 'key'
-            }).upgrade(async tx => {
-                this.log.debug('Upgrading database to version 11: Adding API key field to curators');
-                // Add apiKey field to existing curators (will be null)
-                return tx.curators.toCollection().modify(curator => {
-                    if (!curator.apiKey) {
-                        curator.apiKey = null;
-                    }
-                });
-            });
-
-            // Version 12: Add needsSync and lastSynced fields for intelligent sync management
-            this.db.version(12).stores({
-                curators: '++id, name, lastActive, serverId, origin, apiKey',
-                concepts: '++id, category, value, timestamp, [category+value]',
-                restaurants: '++id, name, curatorId, timestamp, transcription, description, origin, source, serverId, deletedLocally, deletedAt, sharedRestaurantId, originalCuratorId, needsSync, lastSynced',
-                restaurantConcepts: '++id, restaurantId, conceptId',
-                restaurantPhotos: '++id, restaurantId, photoData',
-                restaurantLocations: '++id, restaurantId, latitude, longitude, address',
-                settings: 'key',
-                pendingAudio: '++id, restaurantId, draftId, audioBlob, timestamp, retryCount, lastError, status, isAdditional',
-                draftRestaurants: '++id, curatorId, name, timestamp, lastModified, hasAudio, transcription, description',
-                appMetadata: 'key'
-            }).upgrade(async tx => {
-                this.log.debug('🔄 Upgrading database to version 12: Adding intelligent sync fields');
-                
-                // Add needsSync and lastSynced to all existing restaurants
-                return tx.restaurants.toCollection().modify(restaurant => {
-                    // If restaurant has serverId, it was synced at some point
-                    if (restaurant.serverId) {
-                        restaurant.needsSync = false; // Assume synced if has serverId
-                        restaurant.lastSynced = restaurant.timestamp; // Use timestamp as fallback
-                    } else {
-                        restaurant.needsSync = true; // Never synced, needs sync
-                        restaurant.lastSynced = null;
-                    }
-                    
-                    this.log.debug(`  Migrated restaurant ${restaurant.name}: needsSync=${restaurant.needsSync}`);
-                });
             });
 
             // Open the database to ensure it's properly initialized
             this.db.open()
                 .then(async () => {
-                    // Check if we just upgraded
-                    const metadata = await this.db.appMetadata.get('lastMajorVersion');
-                    if (metadata && metadata.value === 10) {
-                        // Check if this was a recent upgrade (within last 5 seconds)
-                        const upgradeTime = new Date(metadata.timestamp).getTime();
-                        const now = Date.now();
-                        if (now - upgradeTime < 5000) {
-                            this.log.debug('✨ Database upgraded successfully to version 10');
-                            // Show user-friendly notification after a short delay
-                            setTimeout(() => {
-                                if (window.SafetyUtils && typeof SafetyUtils.showNotification === 'function') {
-                                    SafetyUtils.showNotification(
-                                        '✨ App updated! Your data has been optimized for the new version.',
-                                        'success',
-                                        5000
-                                    );
-                                }
-                            }, 1000);
-                        }
+                    this.log.debug('✅ V3 Database opened successfully');
+                    
+                    // V3: Create default curator if none exists
+                    const curatorCount = await this.db.curators.count();
+                    if (curatorCount === 0) {
+                        this.log.debug('Creating default curator for V3...');
+                        const defaultCuratorId = await this.db.curators.add({
+                            curator_id: 'default_curator_v3',
+                            name: 'Default Curator',
+                            email: 'default@concierge.com',
+                            status: 'active',
+                            createdAt: new Date(),
+                            lastActive: new Date()
+                        });
+                        
+                        // Set as current curator
+                        await this.db.settings.put({
+                            key: 'currentCuratorId',
+                            value: 'default_curator_v3'
+                        });
+                        
+                        this.log.debug(`✅ Created default curator (ID: default_curator_v3)`);
                     }
                 })
                 .catch(error => {
                     this.log.error('Failed to open database:', error);
                     
-                    // If there's a schema error or corruption, reset the database
+                    // If there's a schema error or corruption, reset the database automatically
                     if (error.name === 'VersionError' || 
                         error.name === 'InvalidStateError' || 
-                        error.name === 'NotFoundError') {
-                        this.log.warn('Database schema issue detected, attempting to reset database...');
+                        error.name === 'NotFoundError' ||
+                        error.name === 'SchemaError' ||
+                        error.message.includes('not indexed') ||
+                        error.message.includes('object store')) {
+                        this.log.warn('⚠️ Database schema mismatch detected - auto-resetting database...');
                         this.resetDatabase();
                     }
                 });
 
-            this.log.info('Database initialized successfully');
+            this.log.info('V2 Database initialized successfully');
         } catch (error) {
             this.log.error('Error initializing database:', error);
             // Attempt to reset in case of critical error
@@ -289,8 +106,11 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
         }
     }
 
+    /**
+     * V2: Reset database to clean V2 schema
+     */
     async resetDatabase() {
-        this.log.warn('Resetting database...');
+        this.log.warn('Resetting V2 database...');
         try {
             // Set resetting flag
             this.isResetting = true;
@@ -301,13 +121,20 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 this.db = null;
             }
             
-            // Delete the database
-            await Dexie.delete('RestaurantCurator');
+            // Delete the V2 database
+            await Dexie.delete('RestaurantCuratorV2');
+            
+            // Also delete old V1 database if it exists
+            try {
+                await Dexie.delete('RestaurantCurator');
+            } catch (e) {
+                // Ignore if V1 doesn't exist
+            }
             
             // Show notification to the user
             if (typeof Toastify !== 'undefined') {
                 Toastify({
-                    text: "Database has been reset due to schema issues. Your data has been cleared.",
+                    text: "Database has been reset to V2 schema. Your data has been cleared.",
                     duration: 5000,
                     gravity: "top",
                     position: "center",
@@ -315,66 +142,10 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 }).showToast();
             }
             
-            // Reinitialize with fresh schema
-            this.db = new Dexie('RestaurantCurator');
+            // Reinitialize with V2 schema
+            this.initializeDatabase();
             
-            // Version 7: Added pending audio and draft restaurants  
-            this.db.version(7).stores({
-                curators: '++id, name, lastActive, serverId, origin',
-                concepts: '++id, category, value, timestamp, [category+value]',
-                restaurants: '++id, name, curatorId, timestamp, transcription, description, origin, source, serverId',
-                restaurantConcepts: '++id, restaurantId, conceptId',
-                restaurantPhotos: '++id, restaurantId, photoData',
-                restaurantLocations: '++id, restaurantId, latitude, longitude, address',
-                settings: 'key',
-                pendingAudio: '++id, restaurantId, draftId, audioBlob, timestamp, retryCount, lastError, status, isAdditional',
-                draftRestaurants: '++id, curatorId, name, timestamp, lastModified, hasAudio, transcription, description'
-            });
-            
-            // Version 8: Add soft delete fields
-            this.db.version(8).stores({
-                curators: '++id, name, lastActive, serverId, origin',
-                concepts: '++id, category, value, timestamp, [category+value]',
-                restaurants: '++id, name, curatorId, timestamp, transcription, description, origin, source, serverId, deletedLocally, deletedAt',
-                restaurantConcepts: '++id, restaurantId, conceptId',
-                restaurantPhotos: '++id, restaurantId, photoData',
-                restaurantLocations: '++id, restaurantId, latitude, longitude, address',
-                settings: 'key',
-                pendingAudio: '++id, restaurantId, draftId, audioBlob, timestamp, retryCount, lastError, status, isAdditional',
-                draftRestaurants: '++id, curatorId, name, timestamp, lastModified, hasAudio, transcription, description'
-            }).upgrade(tx => {
-                this.log.debug('Upgrading database to version 8: Adding soft delete fields');
-                return tx.restaurants.toCollection().modify(restaurant => {
-                    restaurant.deletedLocally = false;
-                    restaurant.deletedAt = null;
-                });
-            });
-
-            // Version 9: Add shared restaurant fields
-            this.db.version(9).stores({
-                curators: '++id, name, lastActive, serverId, origin',
-                concepts: '++id, category, value, timestamp, [category+value]',
-                restaurants: '++id, name, curatorId, timestamp, transcription, description, origin, source, serverId, deletedLocally, deletedAt, sharedRestaurantId, originalCuratorId',
-                restaurantConcepts: '++id, restaurantId, conceptId',
-                restaurantPhotos: '++id, restaurantId, photoData',
-                restaurantLocations: '++id, restaurantId, latitude, longitude, address',
-                settings: 'key',
-                pendingAudio: '++id, restaurantId, draftId, audioBlob, timestamp, retryCount, lastError, status, isAdditional',
-                draftRestaurants: '++id, curatorId, name, timestamp, lastModified, hasAudio, transcription, description'
-            }).upgrade(tx => {
-                this.log.debug('Upgrading database to version 9: Adding shared restaurant fields');
-                return tx.restaurants.toCollection().modify(restaurant => {
-                    if (!restaurant.sharedRestaurantId) {
-                        restaurant.sharedRestaurantId = crypto.randomUUID();
-                    }
-                    if (!restaurant.originalCuratorId) {
-                        restaurant.originalCuratorId = restaurant.curatorId;
-                    }
-                });
-            });
-            
-            await this.db.open();
-            this.log.debug('Database reset and reinitialized successfully');
+            this.log.debug('V2 Database reset and reinitialized successfully');
             
             // Clear reset flag
             this.isResetting = false;
@@ -384,6 +155,26 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             this.log.error('Failed to reset database:', error);
             alert('A critical database error has occurred. Please reload the page or clear your browser data.');
             return false;
+        }
+    }
+
+    /**
+     * V2: Wrap database operations with automatic schema error handling
+     * @param {Function} operation - Database operation to execute
+     * @returns {Promise<any>} - Operation result
+     */
+    async safeDbOperation(operation) {
+        try {
+            return await operation();
+        } catch (error) {
+            // Check if it's a schema error
+            if (error.name === 'SchemaError' || 
+                error.message.includes('not indexed') ||
+                error.message.includes('object store')) {
+                this.log.error('⚠️ Schema error detected:', error.message);
+                this.log.warn('Please clear IndexedDB manually: RestaurantCuratorV2');
+            }
+            throw error;
         }
     }
 
@@ -828,78 +619,53 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
      * @param {boolean} deduplicate - Whether to deduplicate by name
      * @returns {Promise<Array>} - Enhanced restaurant objects
      */
+    /**
+     * V2: Process restaurants (simplified - data already in V2 format)
+     * @param {Array} restaurants - Array of restaurant objects
+     * @param {boolean} deduplicate - Whether to remove duplicates
+     * @returns {Promise<Array>} - Processed restaurants
+     */
     async processRestaurants(restaurants, deduplicate = true) {
         this.log.debug(`Retrieved ${restaurants.length} raw restaurants from database`);
         
-        // Load additional data
         const result = [];
         const processedNames = new Set();
         
         for (const restaurant of restaurants) {
             // Skip duplicates if deduplicate is enabled
-            if (deduplicate && restaurant.name && processedNames.has(restaurant.name.toLowerCase())) {
+            const restaurantName = restaurant.Name || restaurant.name || '';
+            if (deduplicate && restaurantName && processedNames.has(restaurantName.toLowerCase())) {
                 continue;
             }
             
-            // Get curator name
-            let curatorName = "Unknown";
-            if (restaurant.curatorId) {
-                const curator = await this.db.curators.get(restaurant.curatorId);
-                if (curator) {
-                    curatorName = curator.name;
+            // V2: Get curator name if needed
+            let curatorName = "Default Curator";
+            if (restaurant.curatorId && this.db.curators) {
+                try {
+                    const curator = await this.db.curators.get(restaurant.curatorId);
+                    if (curator) {
+                        curatorName = curator.name;
+                    }
+                } catch (e) {
+                    // Curator table might not exist yet
                 }
             }
             
-            // Get original curator name (for shared restaurants)
-            let originalCuratorName = null;
-            if (restaurant.originalCuratorId) {
-                const originalCurator = await this.db.curators.get(restaurant.originalCuratorId);
-                if (originalCurator) {
-                    originalCuratorName = originalCurator.name;
-                }
-            }
-            
-            // Get concepts
-            const restaurantConcepts = await this.db.restaurantConcepts
-                .where("restaurantId")
-                .equals(restaurant.id)
-                .toArray();
-            
-            const concepts = [];
-            for (const rc of restaurantConcepts) {
-                const concept = await this.db.concepts.get(rc.conceptId);
-                if (concept) {
-                    concepts.push({
-                        category: concept.category,
-                        value: concept.value
-                    });
-                }
-            }
-            
-            // Get location
-            const location = await this.db.restaurantLocations
-                .where("restaurantId")
-                .equals(restaurant.id)
-                .first();
-            
-            // Get photo count
-            const photoCount = await this.db.restaurantPhotos
-                .where("restaurantId")
-                .equals(restaurant.id)
-                .count();
-            
-            // Add to result
+            // V2: Data is already in the restaurant object
+            // - Cuisine array contains concepts
+            // - Location object contains location data
+            // - metadata array contains additional info
             result.push({
                 ...restaurant,
                 curatorName,
-                originalCuratorName,
-                concepts,
-                location,
-                photoCount
+                // For UI compatibility, map V2 fields to V1 expected fields
+                name: restaurant.Name || restaurant.name,
+                concepts: restaurant.Cuisine || [],
+                location: restaurant.Location || null
             });
             
-            if (deduplicate && restaurant.name) {
-                processedNames.add(restaurant.name.toLowerCase());
+            if (deduplicate && restaurantName) {
+                processedNames.add(restaurantName.toLowerCase());
             }
         }
         
@@ -996,7 +762,22 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
         }
     }
     
+    /**
+     * V2: DEPRECATED - Local restaurant creation not supported in V2
+     */
     async saveRestaurantWithTransaction(
+        name, curatorId, conceptsOrIds, location, photos, 
+        transcription, description, source = 'local', serverId = null, restaurantId = null,
+        sharedRestaurantId = null, originalCuratorId = null
+    ) {
+        this.log.warn('saveRestaurantWithTransaction is deprecated in V2 - local restaurant creation not supported');
+        throw new Error('V2: Local restaurant creation is not supported. Restaurants must be imported from server.');
+    }
+
+    /**
+     * V2: DEPRECATED (old V1 code kept for reference only)
+     */
+    async _saveRestaurantWithTransaction_V1(
         name, curatorId, conceptsOrIds, location, photos, 
         transcription, description, source = 'local', serverId = null, restaurantId = null,
         sharedRestaurantId = null, originalCuratorId = null
@@ -1190,13 +971,17 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
     }
 
     /**
-     * Create a copy of a restaurant for a different curator
-     * Preserves sharedRestaurantId and originalCuratorId while creating a new instance
-     * @param {number} sourceRestaurantId - ID of the restaurant to copy
-     * @param {number} newCuratorId - ID of the curator who will own the copy
-     * @returns {Promise<number>} - ID of the newly created copy
+     * V2: DEPRECATED - Restaurant copying not supported
      */
     async createRestaurantCopy(sourceRestaurantId, newCuratorId) {
+        this.log.warn('createRestaurantCopy is deprecated in V2 - restaurant copying not supported');
+        throw new Error('V2: Restaurant copying is not supported.');
+    }
+
+    /**
+     * V2: DEPRECATED (old V1 code kept for reference only)
+     */
+    async _createRestaurantCopy_V1(sourceRestaurantId, newCuratorId) {
         try {
             this.log.debug(`Creating copy of restaurant ${sourceRestaurantId} for curator ${newCuratorId}`);
             
@@ -1361,161 +1146,55 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
     }
 
     /**
-     * Get restaurants that need to be synced with server
-     * Alias for getUnsyncedRestaurants() for clarity
-     * @returns {Promise<Array>} - Array of restaurants needing sync
+     * V2: No longer needed - server is source of truth
+     * @deprecated Use importRestaurants from syncManager instead
+     * @returns {Promise<Array>} - Empty array
      */
     async getRestaurantsNeedingSync() {
-        return this.getUnsyncedRestaurants();
+        this.log.warn('getRestaurantsNeedingSync is deprecated in V2');
+        return [];
     }
 
     /**
-     * Get restaurants that need to be synced with server
-     * Uses source='local' which means "not synced" (new OR modified)
-     * @returns {Promise<Array>} - Array of unsynced restaurant objects
+     * V2: No longer needed - server is source of truth
+     * @deprecated Use importRestaurants from syncManager instead
+     * @returns {Promise<Array>} - Empty array
      */
     async getUnsyncedRestaurants() {
-        try {
-            // source='local' means NOT synced (either new or modified)
-            // Filter out soft-deleted restaurants - they should NOT be synced
-            const unsyncedRestaurants = await this.db.restaurants
-                .where('source')
-                .equals('local')
-                .and(r => !r.deletedLocally)
-                .toArray();
-                
-            this.log.debug(`Found ${unsyncedRestaurants.length} unsynced restaurants (source='local' and not deleted)`);
-            
-            // Return restaurants with enhanced data including concepts and locations
-            const enhancedRestaurants = [];
-            for (const restaurant of unsyncedRestaurants) {
-                // Get concepts
-                const restaurantConcepts = await this.db.restaurantConcepts
-                    .where('restaurantId')
-                    .equals(restaurant.id)
-                    .toArray();
-                    
-                const conceptIds = restaurantConcepts.map(rc => rc.conceptId);
-                restaurant.concepts = await this.db.concepts
-                    .where('id')
-                    .anyOf(conceptIds)
-                    .toArray();
-                    
-                // Get location
-                const locations = await this.db.restaurantLocations
-                    .where('restaurantId')
-                    .equals(restaurant.id)
-                    .toArray();
-                restaurant.location = locations.length > 0 ? locations[0] : null;
-                
-                // Get curator
-                if (restaurant.curatorId) {
-                    restaurant.curator = await this.db.curators.get(restaurant.curatorId);
-                }
-                
-                enhancedRestaurants.push(restaurant);
-            }
-            
-            return enhancedRestaurants;
-        } catch (error) {
-            this.log.error('Error getting unsynced restaurants:', error);
-            throw error;
-        }
+        this.log.warn('getUnsyncedRestaurants is deprecated in V2');
+        return [];
     }
 
     /**
-     * Mark restaurants that have serverId but are not in server response as local-only
-     * Purpose: Handle sync inconsistencies when restaurants are deleted from server
-     * @param {Set<number>} serverRestaurantIds - Set of restaurant IDs from server
-     * @returns {Promise<number>} - Number of restaurants marked as local
+     * V2: No longer needed - mark restaurants operation deprecated
+     * @deprecated Not applicable in V2
      */
     async markMissingRestaurantsAsLocal(serverRestaurantIds) {
-        try {
-            // Get all local restaurants that have a serverId
-            const syncedRestaurants = await this.db.restaurants
-                .filter(r => r.serverId != null)
-                .toArray();
-            
-            this.log.debug(`Found ${syncedRestaurants.length} synced restaurants locally`);
-            
-            let markedCount = 0;
-            
-            // Check each synced restaurant
-            for (const restaurant of syncedRestaurants) {
-                // If restaurant has serverId but is not in server response, mark as local
-                if (!serverRestaurantIds.has(restaurant.serverId)) {
-                    this.log.debug(`Restaurant "${restaurant.name}" (serverId: ${restaurant.serverId}) not found on server - marking as local`);
-                    
-                    await this.db.restaurants.update(restaurant.id, {
-                        serverId: null,
-                        source: 'local',
-                        origin: 'local',
-                        deletedLocally: false,
-                        deletedAt: null,
-                        lastSyncedAt: null
-                    });
-                    
-                    markedCount++;
-                }
-            }
-            
-            this.log.debug(`Marked ${markedCount} restaurants as local (server inconsistency detected)`);
-            return markedCount;
-        } catch (error) {
-            this.log.error('Error marking missing restaurants as local:', error);
-            throw error;
-        }
+        this.log.warn('markMissingRestaurantsAsLocal is deprecated in V2');
+        return 0;
     }
 
     /**
-     * Update restaurant sync status after successful server sync
-     * @param {number} restaurantId - Local restaurant ID
-     * @param {string|number} serverId - Server-assigned ID
-     * @param {string} source - Data source ('remote' by default)
-     * @returns {Promise<void>} - Promise that resolves when update completes
+     * V2: No longer needed - sync status is not tracked
+     * @deprecated Not applicable in V2
      */
     async updateRestaurantSyncStatus(restaurantId, serverId, source = 'remote') {
-        try {
-            this.log.debug(`Updating sync status for restaurant ${restaurantId} with server ID ${serverId} and source ${source}`);
-            
-            // Validate parameters
-            if (!restaurantId) {
-                throw new Error('Missing required parameter: restaurantId');
-            }
-            if (!serverId) {
-                throw new Error('Missing required parameter: serverId');
-            }
-            
-            // Convert ID types for consistency
-            const localId = Number(restaurantId);
-            
-            // Update restaurant record
-            await this.db.restaurants.update(localId, { 
-                serverId: String(serverId),
-                source: source
-            });
-            
-            this.log.debug(`Restaurant ${localId} sync status updated. Server ID: ${serverId}, Source: ${source}`);
-            return true;
-        } catch (error) {
-            this.log.error('Error updating restaurant sync status:', error);
-            throw error;
-        }
+        this.log.warn('updateRestaurantSyncStatus is deprecated in V2');
+        return;
     }
 
     /**
-     * Update a restaurant with source tracking
-     * @param {number} restaurantId - Restaurant ID to update
-     * @param {string} name - Restaurant name
-     * @param {number} curatorId - Curator ID
-     * @param {Array} concepts - Array of concept objects
-     * @param {Object|null} location - Location data
-     * @param {Array} photos - Array of photo data
-     * @param {string} transcription - Transcription text
-     * @param {string} description - Restaurant description
-     * @returns {Promise<number>} - Restaurant ID
+     * V2: DEPRECATED - Local restaurant updates not supported
      */
     async updateRestaurant(restaurantId, name, curatorId, concepts, location, photos, transcription, description) {
+        this.log.warn('updateRestaurant is deprecated in V2 - local restaurant updates not supported');
+        throw new Error('V2: Local restaurant updates are not supported. Changes must be made on server.');
+    }
+
+    /**
+     * V2: DEPRECATED (old V1 code kept for reference only)
+     */
+    async _updateRestaurant_V1(restaurantId, name, curatorId, concepts, location, photos, transcription, description) {
         this.log.debug(`Updating restaurant: ${name} with ID: ${restaurantId}`);
         this.log.debug(`Concepts count: ${concepts.length}, Has location: ${!!location}, Photos count: ${photos ? photos.length : 0}, Has transcription: ${!!transcription}, Has description: ${!!description}`);
         
@@ -1738,93 +1417,59 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
         return await this.db.concepts.where('category').equals(category).toArray();
     }
 
+    /**
+     * V2: Get restaurants by curator (simplified - data already in V2 format)
+     */
     async getRestaurantsByCurator(curatorId) {
-        // Filter out soft-deleted restaurants
+        // V2: Just get restaurants - data is already embedded
         const restaurants = await this.db.restaurants
             .where('curatorId')
             .equals(curatorId)
-            .and(r => !r.deletedLocally)
             .toArray();
         
-        // Enhance restaurants with concepts and location data
+        // Map V2 fields to V1-style fields for UI compatibility
         for (const restaurant of restaurants) {
-            // Get concept IDs for this restaurant
-            const restaurantConcepts = await this.db.restaurantConcepts
-                .where('restaurantId')
-                .equals(restaurant.id)
-                .toArray();
-                
-            // Get full concept data
-            const conceptIds = restaurantConcepts.map(rc => rc.conceptId);
-            restaurant.concepts = await this.db.concepts
-                .where('id')
-                .anyOf(conceptIds)
-                .toArray();
-                
-            // Get location data
-            const locations = await this.db.restaurantLocations
-                .where('restaurantId')
-                .equals(restaurant.id)
-                .toArray();
-            restaurant.location = locations.length > 0 ? locations[0] : null;
-            
-            // Get photo references
-            const photos = await this.db.restaurantPhotos
-                .where('restaurantId')
-                .equals(restaurant.id)
-                .toArray();
-            restaurant.photoCount = photos.length;
+            restaurant.name = restaurant.Name || restaurant.name;
+            restaurant.concepts = restaurant.Cuisine || [];
+            restaurant.location = restaurant.Location || null;
+            restaurant.photoCount = 0; // V2 doesn't have photos yet
         }
         
         return restaurants;
     }
 
+    /**
+     * V2: Get restaurant details (simplified - data already in V2 format)
+     * @param {number} restaurantId - Restaurant ID
+     * @returns {Promise<Object>} - Restaurant with curator name added
+     */
     async getRestaurantDetails(restaurantId) {
         const restaurant = await this.db.restaurants.get(restaurantId);
         if (!restaurant) return null;
         
-        // Get curator name
-        if (restaurant.curatorId) {
-            const curator = await this.db.curators.get(restaurant.curatorId);
-            if (curator) {
-                restaurant.curatorName = curator.name;
+        // V2: Get curator name if needed
+        if (restaurant.curatorId && this.db.curators) {
+            try {
+                const curator = await this.db.curators.get(restaurant.curatorId);
+                if (curator) {
+                    restaurant.curatorName = curator.name;
+                }
+            } catch (e) {
+                this.log.debug('Curator lookup failed:', e);
             }
         }
         
-        // Get original curator name (for shared restaurants)
-        if (restaurant.originalCuratorId) {
-            const originalCurator = await this.db.curators.get(restaurant.originalCuratorId);
-            if (originalCurator) {
-                restaurant.originalCuratorName = originalCurator.name;
-            }
-        }
+        // V2: Data is already in the restaurant object
+        // - Cuisine array contains concepts
+        // - Location object contains location data  
+        // - metadata array contains additional info
         
-        // Get concept IDs for this restaurant
-        const restaurantConcepts = await this.db.restaurantConcepts
-            .where('restaurantId')
-            .equals(restaurantId)
-            .toArray();
-            
-        // Get full concept data
-        const conceptIds = restaurantConcepts.map(rc => rc.conceptId);
-        restaurant.concepts = await this.db.concepts
-            .where('id')
-            .anyOf(conceptIds)
-            .toArray();
-            
-        // Get location data
-        const locations = await this.db.restaurantLocations
-            .where('restaurantId')
-            .equals(restaurantId)
-            .toArray();
-        restaurant.location = locations.length > 0 ? locations[0] : null;
+        // Map V2 fields to V1-style fields for UI compatibility
+        restaurant.name = restaurant.Name || restaurant.name;
+        restaurant.concepts = restaurant.Cuisine || [];
+        restaurant.location = restaurant.Location || null;
+        restaurant.photos = []; // V2 doesn't have photos yet
         
-        // Get photos
-        restaurant.photos = await this.db.restaurantPhotos
-            .where('restaurantId')
-            .equals(restaurantId)
-            .toArray();
-            
         return restaurant;
     }
 
@@ -1834,14 +1479,28 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
      * Dependencies: db.restaurants, db.curators, db.restaurantLocations, db.restaurantPhotos, db.restaurantConcepts, db.concepts
      */
     /**
-     * Transform a single restaurant to V2 format
-     * Purpose: Convert a single restaurant with its related data to V2 metadata array structure
-     * Dependencies: db.curators, db.concepts, db.restaurantConcepts, db.restaurantLocations, db.restaurantPhotos
-     * @param {Object} restaurant - Restaurant object to transform
-     * @param {Object} options - Optional related data (curator, location, photos, concepts)
-     * @returns {Object} Restaurant in V2 format
+     * V2: Transform restaurant for export (data is already in V2 format)
+     * @param {Object} restaurant - Restaurant object (already V2 format)
+     * @returns {Object} Restaurant in V2 export format
      */
-    async transformToV2Format(restaurant, options = {}) {
+    async transformToV2Format(restaurant) {
+        // V2: Data is already in the correct format from server
+        // Just return it with any necessary cleanup
+        const exportData = {
+            Name: restaurant.Name || restaurant.name,
+            Type: restaurant.Type || 'Restaurant',
+            Cuisine: restaurant.Cuisine || [],
+            Location: restaurant.Location || null,
+            metadata: restaurant.metadata || []
+        };
+        
+        return exportData;
+    }
+
+    /**
+     * V2: DEPRECATED (old V1 transform code kept for reference only)
+     */
+    async _transformToV2Format_V1(restaurant, options = {}) {
         // Get related data if not provided
         const curator = options.curator || 
             await this.db.curators.get(restaurant.curatorId);
@@ -2008,11 +1667,18 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
     }
 
     /**
-     * Import data in V2 format (metadata array structure)
-     * Purpose: Import restaurants from V2 format with metadata arrays
-     * Dependencies: db.restaurants, db.curators, db.concepts, db.restaurantConcepts, db.restaurantLocations, db.restaurantPhotos
+     * V2: DEPRECATED - File import not supported in V2
+     * Use server sync instead
      */
     async importDataV2(restaurantsArray) {
+        this.log.warn('importDataV2 is deprecated in V2 - file import not supported');
+        throw new Error('V2: File import is not supported. Please use server sync to import restaurants.');
+    }
+
+    /**
+     * V2: DEPRECATED (old V1 import code kept for reference only)
+     */
+    async _importDataV2_V1(restaurantsArray) {
         this.log.debug('Starting V2 import with metadata array structure...');
         this.log.debug(`Importing ${restaurantsArray.length} restaurants`);
         
@@ -2459,8 +2125,86 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
     }
 
     /**
-     * Import data with duplicate handling (supports both V1 and V2 formats)
-     * @param {Object} data - Import data (V1 or V2 format)
+     * Convert Concierge format to V3 entity-curation format
+     * @param {Object} conciergeData - Concierge format data (restaurant names as keys)
+     * @returns {Object} - V3 formatted data
+     */
+    convertConciergeToV3(conciergeData) {
+        const v3Data = {
+            entities: [],
+            curations: [],
+            curators: []
+        };
+        
+        // Get current curator or create default
+        const curatorId = 'default_curator_v3';
+        v3Data.curators.push({
+            curator_id: curatorId,
+            name: 'Import Curator',
+            email: 'import@concierge.com',
+            status: 'active',
+            createdAt: new Date(),
+            lastActive: new Date()
+        });
+        
+        // Process each restaurant
+        Object.keys(conciergeData).forEach((restaurantName, index) => {
+            const restaurantData = conciergeData[restaurantName];
+            const entityId = `rest_${Date.now()}_${index}`;
+            
+            // Create entity
+            v3Data.entities.push({
+                entity_id: entityId,
+                type: 'restaurant',
+                name: restaurantName,
+                status: 'active',
+                createdBy: curatorId,
+                createdAt: new Date(),
+                updatedAt: new Date()
+            });
+            
+            // Create curation with concepts
+            const items = [];
+            
+            // Process all concept categories
+            ['cuisine', 'menu', 'food_style', 'drinks', 'setting', 'mood', 'crowd', 
+             'suitable_for', 'special_features', 'covid_specials', 'price_and_payment', 'price_range'].forEach(category => {
+                if (restaurantData[category] && Array.isArray(restaurantData[category])) {
+                    restaurantData[category].forEach(item => {
+                        if (item && item.trim()) {
+                            items.push({
+                                name: item.trim(),
+                                description: `${category} from import`,
+                                rating: 3,
+                                metadata: { category, imported_from: 'concierge' }
+                            });
+                        }
+                    });
+                }
+            });
+            
+            if (items.length > 0) {
+                v3Data.curations.push({
+                    curation_id: `curation_${entityId}`,
+                    entity_id: entityId,
+                    curator_id: curatorId,
+                    category: 'dining',
+                    concept: 'import',
+                    items: items,
+                    notes: {
+                        general: 'Imported from Concierge format'
+                    },
+                    createdAt: new Date()
+                });
+            }
+        });
+        
+        return v3Data;
+    }
+
+    /**
+     * Import data in V3 entity-curation format
+     * @param {Object} data - The data to import (supports Concierge format)
      * @param {Object} photoFiles - Photo files (optional)
      * @returns {Promise<boolean>} - Success flag
      */
@@ -2468,24 +2212,21 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
         // If data contains jsonData, it came from a ZIP import
         let importData = data.jsonData || data;
         
-        // Basic validation
-        if (!importData.curators || !importData.concepts || !importData.restaurants) {
-            throw new Error("Invalid import data format");
+        this.log.debug('Starting V3 import process...');
+        
+        // Handle Concierge format (object with restaurant names as keys)
+        let v3Data;
+        if (!importData.restaurants && !importData.curators && !importData.concepts) {
+            v3Data = this.convertConciergeToV3(importData);
+        } else {
+            throw new Error("Only Concierge format is supported in V3");
         }
         
-        // Detect format and convert if needed
-        const format = this.detectImportFormat(importData);
-        this.log.debug(`Detected import format: ${format}`);
-        
-        if (format === 'v2') {
-            this.log.debug('Converting V2 format to V1 for import...');
-            importData = this.convertV2ToV1Format(importData);
-        }
+        this.log.debug(`Converting to V3: ${v3Data.entities.length} entities, ${v3Data.curations.length} curations, ${v3Data.curators.length} curators`);
         
         // Transaction to ensure all data is imported together
         await this.db.transaction('rw', 
-            [this.db.curators, this.db.concepts, this.db.restaurants,
-             this.db.restaurantConcepts, this.db.restaurantLocations, this.db.restaurantPhotos], 
+            [this.db.entities, this.db.curations, this.db.curators], 
         async () => {
             // Import each table with ID mapping and deduplication
             const curatorMap = new Map();

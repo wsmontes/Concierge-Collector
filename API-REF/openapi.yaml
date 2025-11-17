@@ -1,0 +1,645 @@
+openapi: 3.0.3
+info:
+  title: Concierge API V3
+  description: Document-oriented REST API for restaurant/hotel curation management
+  version: "3.0"
+  contact:
+    name: API Support
+    url: https://github.com/wsmontes/concierge-api
+servers:
+  - url: https://wsmontes.pythonanywhere.com/api/v3
+    description: Production server
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      tags: [System]
+      responses:
+        '200':
+          description: API is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: healthy
+                  timestamp:
+                    type: string
+                    format: date-time
+                  database:
+                    type: string
+                    example: connected
+                  version:
+                    type: string
+                    example: "3.0"
+
+  /info:
+    get:
+      summary: API information
+      tags: [System]
+      responses:
+        '200':
+          description: API metadata
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  version:
+                    type: string
+                  description:
+                    type: string
+                  features:
+                    type: array
+                    items:
+                      type: string
+                  endpoints:
+                    type: object
+
+  /entities:
+    post:
+      summary: Create entity
+      tags: [Entities]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EntityCreate'
+      responses:
+        '201':
+          description: Entity created
+          headers:
+            ETag:
+              schema:
+                type: string
+              description: Entity version for optimistic locking
+            Location:
+              schema:
+                type: string
+              description: Entity resource URL
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Entity'
+        '400':
+          $ref: '#/components/responses/ValidationError'
+
+    get:
+      summary: List/search entities
+      tags: [Entities]
+      parameters:
+        - name: type
+          in: query
+          schema:
+            type: string
+            enum: [restaurant, user, admin, system]
+          description: Filter by entity type
+        - name: name
+          in: query
+          schema:
+            type: string
+          description: Search by name (partial match)
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 50
+        - name: offset
+          in: query
+          schema:
+            type: integer
+            minimum: 0
+            default: 0
+      responses:
+        '200':
+          description: Entity list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entities:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Entity'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+  /entities/{entity_id}:
+    get:
+      summary: Get entity
+      tags: [Entities]
+      parameters:
+        - $ref: '#/components/parameters/EntityId'
+      responses:
+        '200':
+          description: Entity found
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Entity'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+    patch:
+      summary: Update entity (partial)
+      tags: [Entities]
+      parameters:
+        - $ref: '#/components/parameters/EntityId'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/EntityUpdate'
+      responses:
+        '200':
+          description: Entity updated
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Entity'
+        '409':
+          $ref: '#/components/responses/Conflict'
+
+    delete:
+      summary: Delete entity
+      tags: [Entities]
+      parameters:
+        - $ref: '#/components/parameters/EntityId'
+      responses:
+        '204':
+          description: Entity deleted
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /curations:
+    post:
+      summary: Create curation
+      tags: [Curations]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CurationCreate'
+      responses:
+        '201':
+          description: Curation created
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Curation'
+
+  /curations/{curation_id}:
+    get:
+      summary: Get curation
+      tags: [Curations]
+      parameters:
+        - $ref: '#/components/parameters/CurationId'
+      responses:
+        '200':
+          description: Curation found
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Curation'
+
+    patch:
+      summary: Update curation (partial)
+      tags: [Curations]
+      parameters:
+        - $ref: '#/components/parameters/CurationId'
+        - $ref: '#/components/parameters/IfMatch'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CurationUpdate'
+      responses:
+        '200':
+          description: Curation updated
+          headers:
+            ETag:
+              schema:
+                type: string
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Curation'
+
+    delete:
+      summary: Delete curation
+      tags: [Curations]
+      parameters:
+        - $ref: '#/components/parameters/CurationId'
+      responses:
+        '204':
+          description: Curation deleted
+
+  /entities/{entity_id}/curations:
+    get:
+      summary: Get entity curations
+      tags: [Curations]
+      parameters:
+        - $ref: '#/components/parameters/EntityId'
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: concept
+          in: query
+          schema:
+            type: string
+        - name: curator_id
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Entity curations
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  entity_id:
+                    type: string
+                  curations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Curation'
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+  /curations/search:
+    get:
+      summary: Search curations
+      tags: [Curations]
+      parameters:
+        - name: category
+          in: query
+          schema:
+            type: string
+        - name: concept
+          in: query
+          schema:
+            type: string
+        - name: curator_id
+          in: query
+          schema:
+            type: string
+        - name: rating_min
+          in: query
+          schema:
+            type: number
+            minimum: 1
+            maximum: 5
+        - name: rating_max
+          in: query
+          schema:
+            type: number
+            minimum: 1
+            maximum: 5
+      responses:
+        '200':
+          description: Search results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  curations:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Curation'
+                  filters:
+                    type: object
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+  /query:
+    post:
+      summary: Execute flexible query
+      tags: [Query]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/QueryRequest'
+      responses:
+        '200':
+          description: Query results
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  results:
+                    type: array
+                  query:
+                    type: object
+                  pagination:
+                    $ref: '#/components/schemas/Pagination'
+
+components:
+  parameters:
+    EntityId:
+      name: entity_id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Unique entity identifier
+
+    CurationId:
+      name: curation_id
+      in: path
+      required: true
+      schema:
+        type: string
+      description: Unique curation identifier
+
+    IfMatch:
+      name: If-Match
+      in: header
+      required: true
+      schema:
+        type: string
+      description: ETag value for optimistic locking
+
+  schemas:
+    Entity:
+      type: object
+      required:
+        - entity_id
+        - type
+        - name
+      properties:
+        entity_id:
+          type: string
+          minLength: 1
+        type:
+          type: string
+          enum: [restaurant, user, admin, system]
+        name:
+          type: string
+          minLength: 1
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    EntityCreate:
+      type: object
+      required:
+        - entity_id
+        - type
+        - name
+      properties:
+        entity_id:
+          type: string
+          minLength: 1
+        type:
+          type: string
+          enum: [restaurant, user, admin, system]
+        name:
+          type: string
+          minLength: 1
+        metadata:
+          type: object
+          additionalProperties: true
+
+    EntityUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        metadata:
+          type: object
+          additionalProperties: true
+
+    Curation:
+      type: object
+      required:
+        - curation_id
+        - entity_id
+        - curator
+        - category
+        - concept
+      properties:
+        curation_id:
+          type: string
+        entity_id:
+          type: string
+        curator:
+          type: object
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+            email:
+              type: string
+              format: email
+        category:
+          type: string
+        concept:
+          type: string
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              name:
+                type: string
+              description:
+                type: string
+              rating:
+                type: integer
+                minimum: 1
+                maximum: 5
+              price:
+                type: number
+              metadata:
+                type: object
+        notes:
+          type: object
+          properties:
+            general:
+              type: string
+            recommendations:
+              type: string
+            warnings:
+              type: string
+        metadata:
+          type: object
+          additionalProperties: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    CurationCreate:
+      type: object
+      required:
+        - curation_id
+        - entity_id
+        - curator
+        - category
+        - concept
+      properties:
+        curation_id:
+          type: string
+        entity_id:
+          type: string
+        curator:
+          type: object
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+            email:
+              type: string
+        category:
+          type: string
+        concept:
+          type: string
+        items:
+          type: array
+          items:
+            type: object
+        notes:
+          type: object
+        metadata:
+          type: object
+
+    CurationUpdate:
+      type: object
+      properties:
+        category:
+          type: string
+        concept:
+          type: string
+        items:
+          type: array
+        notes:
+          type: object
+        metadata:
+          type: object
+
+    QueryRequest:
+      type: object
+      required:
+        - type
+      properties:
+        type:
+          type: string
+          enum: [entities, curations]
+        filters:
+          type: object
+        sort:
+          type: array
+          items:
+            type: object
+            properties:
+              field:
+                type: string
+              order:
+                type: string
+                enum: [asc, desc]
+        limit:
+          type: integer
+          minimum: 1
+          maximum: 100
+        offset:
+          type: integer
+          minimum: 0
+
+    Pagination:
+      type: object
+      properties:
+        total:
+          type: integer
+        limit:
+          type: integer
+        offset:
+          type: integer
+        has_more:
+          type: boolean
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+
+  responses:
+    ValidationError:
+      description: Validation error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+    Conflict:
+      description: Optimistic locking conflict
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+
+tags:
+  - name: System
+    description: System endpoints
+  - name: Entities
+    description: Entity management
+  - name: Curations
+    description: Curation management
+  - name: Query
+    description: Advanced querying

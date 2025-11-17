@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Database Initialization Test</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .status { padding: 10px; margin: 10px 0; border-radius: 5px; }
+        .success { background: #d4edda; color: #155724; }
+        .error { background: #f8d7da; color: #721c24; }
+        .warning { background: #fff3cd; color: #856404; }
+        .log { background: #f8f9fa; padding: 10px; margin: 10px 0; border-left: 4px solid #007bff; font-family: monospace; }
+    </style>
+</head>
+<body>
+    <h1>🧪 Database Initialization Test</h1>
+    <div id="status">Initializing...</div>
+    <div id="logs"></div>
+    <div id="results"></div>
+
+    <!-- Required dependencies -->
+    <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.2/dist/dexie.min.js"></script>
+    
+    <!-- Core system -->
+    <script src="scripts/config.js"></script>
+    <script src="scripts/logger.js"></script>
+    <script src="scripts/moduleWrapper.js"></script>
+    
+    <!-- Just the DataStore for isolated testing -->
+    <script src="scripts/dataStore.js"></script>
+
+    <script>
+        const statusDiv = document.getElementById('status');
+        const logsDiv = document.getElementById('logs');
+        const resultsDiv = document.getElementById('results');
+
+        function addLog(message, type = 'info') {
+            const logDiv = document.createElement('div');
+            logDiv.className = `log`;
+            logDiv.innerHTML = `<strong>[${new Date().toLocaleTimeString()}]</strong> ${message}`;
+            logsDiv.appendChild(logDiv);
+            console.log(message);
+        }
+
+        function updateStatus(message, type = 'info') {
+            statusDiv.className = `status ${type}`;
+            statusDiv.textContent = message;
+        }
+
+        async function testDatabaseInitialization() {
+            try {
+                addLog('🚀 Starting database initialization test...', 'info');
+                
+                // Test 1: Check if DataStore is available
+                addLog('📦 Checking DataStore availability...', 'info');
+                if (!window.DataStore) {
+                    throw new Error('DataStore not loaded');
+                }
+                addLog('✅ DataStore class available', 'success');
+                
+                // Test 2: Initialize DataStore
+                addLog('🔄 Initializing DataStore...', 'info');
+                await window.DataStore.initialize();
+                
+                if (!window.DataStore.isInitialized) {
+                    throw new Error('DataStore initialization failed');
+                }
+                addLog('✅ DataStore initialized successfully', 'success');
+                
+                // Test 3: Test all table operations
+                addLog('🔄 Testing all table operations...', 'info');
+                
+                // Test entities table
+                const entityCount = await window.DataStore.db.entities.count();
+                addLog(`✅ Entities table: ${entityCount} records`, 'success');
+                
+                // Test curations table
+                const curationCount = await window.DataStore.db.curations.count();
+                addLog(`✅ Curations table: ${curationCount} records`, 'success');
+                
+                // Test curators table  
+                const curatorCount = await window.DataStore.db.curators.count();
+                addLog(`✅ Curators table: ${curatorCount} records`, 'success');
+                
+                // Test syncQueue table (this was the problematic one)
+                const syncCount = await window.DataStore.db.syncQueue.count();
+                addLog(`✅ SyncQueue table: ${syncCount} records`, 'success');
+                
+                // Test settings table
+                const settingsCount = await window.DataStore.db.settings.count();
+                addLog(`✅ Settings table: ${settingsCount} records`, 'success');
+                
+                // Test 4: Test getPendingSyncItems (this was failing before)
+                addLog('🔄 Testing getPendingSyncItems...', 'info');
+                const pendingItems = await window.DataStore.getPendingSyncItems();
+                addLog(`✅ getPendingSyncItems returned ${pendingItems.length} items`, 'success');
+                
+                // Test 5: Test creating an entity
+                addLog('🔄 Testing entity creation...', 'info');
+                const testEntity = await window.DataStore.createEntity({
+                    type: 'restaurant',
+                    name: 'Test Restaurant DB Init',
+                    data: {
+                        cuisine: ['Test'],
+                        location: 'Test Location'
+                    }
+                });
+                addLog(`✅ Created entity: ${testEntity.entity_id}`, 'success');
+                
+                // Summary
+                updateStatus('🎉 All database initialization tests passed!', 'success');
+                
+                resultsDiv.innerHTML = `
+                    <h2>✅ Database Initialization Test Results</h2>
+                    <ul>
+                        <li>✅ DataStore class loaded and initialized</li>
+                        <li>✅ All 5 database tables accessible (entities, curations, curators, syncQueue, settings)</li>
+                        <li>✅ getPendingSyncItems working without NotFoundError</li>
+                        <li>✅ Entity creation working</li>
+                        <li>✅ Database fully ready for sync operations</li>
+                    </ul>
+                    <p><strong>Result:</strong> Database initialization is now robust and error-free!</p>
+                `;
+                
+            } catch (error) {
+                addLog(`❌ Test failed: ${error.message}`, 'error');
+                updateStatus(`❌ Test failed: ${error.message}`, 'error');
+                
+                resultsDiv.innerHTML = `
+                    <h2>❌ Database Initialization Test Failed</h2>
+                    <p><strong>Error:</strong> ${error.message}</p>
+                    <p><strong>Stack:</strong> <code>${error.stack}</code></p>
+                `;
+            }
+        }
+
+        // Wait for DOM to load, then run tests
+        document.addEventListener('DOMContentLoaded', () => {
+            setTimeout(testDatabaseInitialization, 100);
+        });
+    </script>
+</body>
+</html>

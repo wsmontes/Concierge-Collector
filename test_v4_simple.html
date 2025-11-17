@@ -1,0 +1,199 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>V4 Simple Test</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        /* Prevent any reload/blink */
+        body { opacity: 1 !important; }
+    </style>
+</head>
+<body class="bg-gray-900 text-white p-8">
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-3xl font-bold mb-6">🧪 API V4 Simple Test <span id="timestamp" class="text-sm text-gray-500"></span></h1>
+        
+        <!-- Status -->
+        <div class="bg-gray-800 rounded p-4 mb-4">
+            <h2 class="text-xl mb-2">API Status</h2>
+            <div id="status" class="text-green-400">Checking...</div>
+        </div>
+
+        <!-- Auth -->
+        <div class="bg-gray-800 rounded p-4 mb-4">
+            <h2 class="text-xl mb-2">Authentication</h2>
+            <button onclick="testLogin()" class="bg-blue-500 px-4 py-2 rounded mr-2">Login</button>
+            <button onclick="testLogout()" class="bg-gray-500 px-4 py-2 rounded">Logout</button>
+            <div id="auth-status" class="mt-2 text-sm text-gray-400">Not authenticated</div>
+        </div>
+
+        <!-- Entities -->
+        <div class="bg-gray-800 rounded p-4 mb-4">
+            <h2 class="text-xl mb-2">Entities</h2>
+            <button onclick="testCreateEntity()" class="bg-green-500 px-4 py-2 rounded mr-2">Create Entity</button>
+            <button onclick="testListEntities()" class="bg-blue-500 px-4 py-2 rounded">List Entities</button>
+            <pre id="entity-result" class="mt-2 text-xs bg-gray-900 p-2 rounded overflow-auto max-h-64"></pre>
+        </div>
+
+        <!-- Console -->
+        <div class="bg-gray-800 rounded p-4">
+            <h2 class="text-xl mb-2">Console</h2>
+            <div id="console" class="text-xs font-mono bg-black p-2 rounded h-48 overflow-auto"></div>
+        </div>
+    </div>
+
+    <script>
+        // Simple logger
+        function log(msg, type = 'info') {
+            const colors = { info: 'text-blue-400', success: 'text-green-400', error: 'text-red-400' };
+            const time = new Date().toLocaleTimeString();
+            const div = document.getElementById('console');
+            div.innerHTML += `<div class="${colors[type]}">[${time}] ${msg}</div>`;
+            div.scrollTop = div.scrollHeight;
+            console.log(msg);
+        }
+
+        // Global token storage
+        let authToken = null;
+
+        // API helper
+        async function apiCall(endpoint, method = 'GET', body = null) {
+            const url = `http://localhost:8001${endpoint}`;
+            const options = {
+                method,
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            };
+
+            if (authToken) {
+                options.headers['Authorization'] = `Bearer ${authToken}`;
+            }
+
+            if (body) {
+                options.body = JSON.stringify(body);
+            }
+
+            log(`${method} ${endpoint}`);
+            const response = await fetch(url, options);
+            
+            if (!response.ok) {
+                const error = await response.text();
+                throw new Error(`${response.status}: ${error}`);
+            }
+
+            return response.json();
+        }
+
+        // Check API health
+        async function checkHealth() {
+            try {
+                const data = await fetch('http://localhost:8001/health').then(r => r.json());
+                document.getElementById('status').textContent = `✅ ${data.status} - v${data.version} - DB: ${data.database}`;
+                log('API is healthy', 'success');
+            } catch (error) {
+                document.getElementById('status').textContent = `❌ Offline: ${error.message}`;
+                log(`API check failed: ${error.message}`, 'error');
+            }
+        }
+
+        // Login
+        async function testLogin() {
+            try {
+                log('Logging in as test...');
+                const formData = new URLSearchParams();
+                formData.append('username', 'test');
+                formData.append('password', 'test123');
+
+                const response = await fetch('http://localhost:8001/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+                    body: formData
+                });
+
+                if (!response.ok) throw new Error(`Login failed: ${response.status}`);
+
+                const data = await response.json();
+                authToken = data.access_token;
+                document.getElementById('auth-status').textContent = `✅ Authenticated - Token: ${authToken.substring(0, 30)}...`;
+                log('Login successful!', 'success');
+            } catch (error) {
+                log(`Login failed: ${error.message}`, 'error');
+            }
+        }
+
+        // Logout
+        function testLogout() {
+            authToken = null;
+            document.getElementById('auth-status').textContent = '❌ Not authenticated';
+            log('Logged out', 'success');
+        }
+
+        // Create Entity
+        async function testCreateEntity() {
+            try {
+                if (!authToken) {
+                    log('Please login first!', 'error');
+                    return;
+                }
+
+                const entityData = {
+                    entity_id: `test-${Date.now()}`,
+                    type: 'restaurant',
+                    name: `Test Restaurant ${Date.now()}`,
+                    status: 'active',
+                    location: {
+                        address: '123 Test St',
+                        city: 'Test City',
+                        country: 'US'
+                    },
+                    contact: {
+                        phone: '+1234567890',
+                        email: 'test@test.com'
+                    },
+                    metadata: [],
+                    tags: ['test'],
+                    created_by: 'test',
+                    version: 1
+                };
+
+                log('Creating entity...');
+                const result = await apiCall('/entities', 'POST', entityData);
+                document.getElementById('entity-result').textContent = JSON.stringify(result, null, 2);
+                log(`✅ Entity created: ${result.entity_id}`, 'success');
+            } catch (error) {
+                log(`Create failed: ${error.message}`, 'error');
+                document.getElementById('entity-result').textContent = error.message;
+            }
+        }
+
+        // List Entities
+        async function testListEntities() {
+            try {
+                if (!authToken) {
+                    log('⚠️ Not authenticated - listing may return empty', 'error');
+                }
+                
+                log('Fetching entities...');
+                const result = await apiCall('/entities?limit=5');
+                document.getElementById('entity-result').textContent = JSON.stringify(result, null, 2);
+                log(`✅ Fetched ${result.entities?.length || result.items?.length || 0} entities`, 'success');
+            } catch (error) {
+                log(`List failed: ${error.message}`, 'error');
+                document.getElementById('entity-result').textContent = error.message;
+            }
+        }
+
+        // Init
+        document.getElementById('timestamp').textContent = `Loaded at ${new Date().toLocaleTimeString()}`;
+        log('🚀 Starting V4 Simple Test');
+        checkHealth();
+        
+        // Prevent any auto-reload
+        window.addEventListener('beforeunload', (e) => {
+            console.log('Page is reloading...');
+        });
+    </script>
+</body>
+</html>

@@ -1047,8 +1047,8 @@ class ExportImportModule {
             
             const startTime = performance.now();
             
-            // Fetch data from remote API using centralized apiService
-            const response = await window.apiService.getRestaurants();
+            // Fetch data from remote API using V3 entities endpoint
+            const response = await window.apiService.getEntities({ type: 'restaurant' });
             
             if (!response.success) {
                 this.log.error('Remote import: Server responded with error:', response.error);
@@ -1156,7 +1156,7 @@ class ExportImportModule {
                 const pingStartTime = performance.now();
                 
                 // Try to fetch a small amount of data first to verify connectivity
-                const testResponse = await window.apiService.getRestaurants({ limit: 1 });
+                const testResponse = await window.apiService.getEntities({ type: 'restaurant', limit: 1 });
                 
                 const pingEndTime = performance.now();
                 const pingTime = pingEndTime - pingStartTime;
@@ -1496,10 +1496,34 @@ class ExportImportModule {
                     this.updateLoadingMessage(`Retrying batch ${batchIndex + 1} (attempt ${retryCount + 1})...`);
                 }
                 
-                // Send data to remote server using centralized apiService
+                // Send data to remote server using V3 entities (individual creates)
                 const startTime = performance.now();
                 
-                const response = await window.apiService.batchUploadRestaurants(batch);
+                // V3 doesn't have batch operations, create entities individually
+                const results = [];
+                for (const restaurant of batch) {
+                    try {
+                        const entityData = { type: 'restaurant', data: restaurant };
+                        const entityResponse = await window.apiService.createEntity(entityData);
+                        if (entityResponse.success) {
+                            results.push({ success: true, id: entityResponse.data.id });
+                        } else {
+                            results.push({ success: false, error: entityResponse.error });
+                        }
+                    } catch (error) {
+                        results.push({ success: false, error: error.message });
+                    }
+                }
+                const successCount = results.filter(r => r.success).length;
+                const response = { 
+                    success: successCount > 0, 
+                    data: { 
+                        ids: results.filter(r => r.success).map(r => r.id),
+                        total: batch.length,
+                        successful: successCount,
+                        failed: results.length - successCount
+                    } 
+                };
                 
                 const endTime = performance.now();
                 this.log.debug(`Remote export: Batch ${batchIndex + 1} request completed in ${(endTime - startTime).toFixed(2)}ms`);

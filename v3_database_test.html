@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>V3 Database Fix Test</title>
+</head>
+<body>
+    <h1>V3 Database Initialization Test</h1>
+    <div id="log"></div>
+
+    <script src="https://unpkg.com/dexie@3.2.4/dist/dexie.js"></script>
+    <script src="scripts/config.js"></script>
+    <script src="scripts/moduleWrapper.js"></script>
+    <script src="scripts/logger.js"></script>
+    <script src="scripts/v3/entityStore.js"></script>
+    <script src="scripts/deprecated/legacyModules.js"></script>
+
+    <script>
+        const logDiv = document.getElementById('log');
+        
+        function log(message, type = 'info') {
+            const p = document.createElement('p');
+            p.style.color = type === 'error' ? 'red' : type === 'success' ? 'green' : 'black';
+            p.textContent = `[${new Date().toLocaleTimeString()}] ${message}`;
+            logDiv.appendChild(p);
+            console.log(message);
+        }
+
+        async function testV3Database() {
+            try {
+                log('🧪 Starting V3 Database Test...');
+                
+                // Test 1: EntityStore availability
+                if (!window.EntityStore) {
+                    throw new Error('EntityStore not available');
+                }
+                log('✅ EntityStore is available', 'success');
+                
+                // Test 2: Initialize EntityStore
+                log('🔄 Initializing EntityStore...');
+                await window.EntityStore.initialize();
+                log('✅ EntityStore initialized successfully', 'success');
+                
+                // Test 3: Test basic database operations
+                log('🔄 Testing database operations...');
+                
+                // Test creating an entity
+                const testEntity = {
+                    entityType: 'restaurant',
+                    data: { name: 'Test Restaurant', location: 'Test City' }
+                };
+                
+                const entity = await window.EntityStore.createEntity(testEntity);
+                if (entity) {
+                    log(`✅ Created entity: ${entity.id}`, 'success');
+                } else {
+                    throw new Error('Failed to create entity');
+                }
+                
+                // Test 4: Test getPendingSyncItems (the problematic method)
+                log('🔄 Testing getPendingSyncItems...');
+                const pendingItems = await window.EntityStore.getPendingSyncItems();
+                log(`✅ getPendingSyncItems returned ${pendingItems.length} items`, 'success');
+                
+                // Test 5: Test legacy compatibility
+                log('🔄 Testing legacy compatibility...');
+                if (window.dataStorage) {
+                    const restaurants = await window.dataStorage.getRestaurants();
+                    log(`✅ Legacy getRestaurants returned ${restaurants.restaurants?.length || 0} restaurants`, 'success');
+                } else {
+                    log('⚠️ Legacy compatibility not active', 'error');
+                }
+                
+                log('🎉 All tests passed!', 'success');
+                
+            } catch (error) {
+                log(`❌ Test failed: ${error.message}`, 'error');
+                console.error('Full error:', error);
+            }
+        }
+        
+        // Run test when page loads
+        document.addEventListener('DOMContentLoaded', testV3Database);
+    </script>
+</body>
+</html>

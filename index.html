@@ -53,10 +53,8 @@
     <!-- Centralized Logging (loads after config) -->
     <script src="scripts/logger.js"></script>
     
-    <!-- REFACTORED: New centralized API and Sync services -->
-    <script src="scripts/apiService.js" defer></script>
+    <!-- Restaurant validator utility -->
     <script src="scripts/utils/restaurantValidator.js" defer></script>
-    <script src="scripts/syncManager.js" defer></script>
     
     <!-- Add the Michelin staging module script -->
     <script src="scripts/modules/michelinStagingModule.js"></script>
@@ -618,15 +616,25 @@
     <script src="scripts/emptyStateManager.js"></script>
     <script src="scripts/accessibilityChecker.js"></script>
     
-    <!-- Application modules - core components -->
+    <!-- Entity-Curation Backend - Core Data Layer -->
+    <script src="scripts/migrationManager.js"></script>
+    <script src="scripts/dataStore.js"></script>
+    <script src="scripts/apiService.js"></script>
+    <script src="scripts/syncAdapterV4.js"></script>
+    <script src="scripts/apiServiceV4Extensions.js"></script>
+    <script src="scripts/syncManager.js"></script>
+    <script src="scripts/importManager.js"></script>
+    
+    <!-- Compatibility Layer for Legacy UI Modules -->
+    <script src="scripts/dataStorageWrapper.js"></script>
+    
+    <!-- Application modules - keeping essential ones -->
     <script src="scripts/promptTemplate.js"></script>
-    <script src="scripts/apiHandler.js"></script>
-    <script src="scripts/dataStorage.js"></script>
     <script src="scripts/conceptMatcher.js"></script>
     <script src="scripts/audioRecorder.js"></script>
     <script src="scripts/uiManager.js"></script>
     
-    <!-- Module implementations - these should NOT duplicate core components -->
+    <!-- Module implementations - V3 Compatible -->
     <script src="scripts/modules/safetyUtils.js"></script>
     <script src="scripts/modules/uiUtilsModule.js"></script>
     <script src="scripts/modules/pendingAudioManager.js"></script>
@@ -634,10 +642,10 @@
     <script src="scripts/modules/curatorModule.js"></script>
     <script src="scripts/modules/recordingModule.js"></script>
     <script src="scripts/modules/transcriptionModule.js"></script>
-    <script src="scripts/modules/conceptModule.js"></script>
+    <script src="scripts/modules/conceptModule.js?v=20251116-1820"></script>
     <script src="scripts/modules/restaurantModule.js"></script>
     <script src="scripts/modules/restaurantListModule.js"></script>
-    <script src="scripts/modules/exportImportModule.js"></script>
+    <!-- DEPRECATED: <script src="scripts/modules/exportImportModule.js"></script> -->
     <script src="scripts/modules/quickActionModule.js"></script>
     <script src="scripts/modules/michelinStagingModule.js"></script>
     <script src="scripts/modules/placesModule.js"></script>

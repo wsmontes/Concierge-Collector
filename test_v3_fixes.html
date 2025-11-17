@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>V3 Enhanced Collector - Error Fix Test</title>
+    <style>
+        body { 
+            font-family: Arial, sans-serif; 
+            max-width: 800px; 
+            margin: 20px auto; 
+            padding: 20px; 
+        }
+        .test { 
+            margin: 15px 0; 
+            padding: 15px; 
+            border: 1px solid #ddd; 
+            border-radius: 5px; 
+        }
+        .pass { background: #d4edda; border-color: #28a745; }
+        .fail { background: #f8d7da; border-color: #dc3545; }
+        .loading { background: #fff3cd; border-color: #ffc107; }
+        .log { 
+            background: #f8f9fa; 
+            padding: 10px; 
+            margin: 10px 0; 
+            border-radius: 3px; 
+            font-family: monospace; 
+            max-height: 200px; 
+            overflow-y: auto; 
+        }
+    </style>
+</head>
+<body>
+    <h1>🔧 V3 Enhanced Collector - Error Fix Verification</h1>
+    <p>Testing the fixes for logger and V3 integration issues</p>
+    
+    <div id="tests"></div>
+    
+    <div class="test">
+        <h3>Console Output</h3>
+        <div id="console-log" class="log">Loading...</div>
+    </div>
+
+    <!-- Load required scripts -->
+    <script src="scripts/moduleWrapper.js"></script>
+    <script src="scripts/config.js"></script>
+    <script src="scripts/logger.js"></script>
+    <script src="scripts/apiService.js"></script>
+    <script src="scripts/dataStorage.js"></script>
+    <script src="scripts/syncManager.js"></script>
+
+    <script>
+        let logOutput = [];
+        
+        // Capture console output
+        const originalLog = console.log;
+        const originalWarn = console.warn;
+        const originalError = console.error;
+        
+        function captureLog(...args) {
+            logOutput.push(['LOG', new Date().toLocaleTimeString(), ...args]);
+            originalLog(...args);
+            updateConsoleDisplay();
+        }
+        
+        function captureWarn(...args) {
+            logOutput.push(['WARN', new Date().toLocaleTimeString(), ...args]);
+            originalWarn(...args);
+            updateConsoleDisplay();
+        }
+        
+        function captureError(...args) {
+            logOutput.push(['ERROR', new Date().toLocaleTimeString(), ...args]);
+            originalError(...args);
+            updateConsoleDisplay();
+        }
+        
+        console.log = captureLog;
+        console.warn = captureWarn;
+        console.error = captureError;
+        
+        function updateConsoleDisplay() {
+            const consoleDiv = document.getElementById('console-log');
+            consoleDiv.innerHTML = logOutput.slice(-10).map(entry => 
+                `[${entry[1]}] ${entry[0]}: ${entry.slice(2).join(' ')}`
+            ).join('\n');
+        }
+        
+        function addTest(name, status, details) {
+            const div = document.createElement('div');
+            div.className = `test ${status}`;
+            div.innerHTML = `<h3>${name}</h3><p>${details}</p>`;
+            document.getElementById('tests').appendChild(div);
+        }
+        
+        async function runTests() {
+            // Test 1: Logger initialization
+            try {
+                addTest('Logger Loading', 'loading', 'Testing logger availability...');
+                
+                const hasLogger = window.Logger && typeof window.Logger.module === 'function';
+                addTest('Logger Availability', hasLogger ? 'pass' : 'fail', 
+                    hasLogger ? 'Logger module loaded successfully' : 'Logger module not available');
+                
+                // Test 2: ApiService initialization
+                addTest('ApiService Loading', 'loading', 'Testing ApiService initialization...');
+                
+                const hasApiService = window.apiService && typeof window.apiService === 'object';
+                addTest('ApiService Availability', hasApiService ? 'pass' : 'fail',
+                    hasApiService ? 'ApiService loaded successfully' : 'ApiService not available');
+                
+                // Test 3: Logger in ApiService
+                if (hasApiService) {
+                    const hasApiLogger = window.apiService.log && typeof window.apiService.log.debug === 'function';
+                    addTest('ApiService Logger', hasApiLogger ? 'pass' : 'fail',
+                        hasApiLogger ? 'ApiService has functional logger' : 'ApiService logger not working');
+                    
+                    // Test the logger
+                    try {
+                        window.apiService.log.debug('Test debug message');
+                        addTest('Logger Function Test', 'pass', 'Logger debug method executed without errors');
+                    } catch (error) {
+                        addTest('Logger Function Test', 'fail', `Logger error: ${error.message}`);
+                    }
+                }
+                
+                // Test 4: V3 methods
+                if (hasApiService) {
+                    const v3Methods = ['createEntity', 'getEntity', 'updateEntity', 'deleteEntity', 'getEntities'];
+                    const availableMethods = v3Methods.filter(method => 
+                        typeof window.apiService[method] === 'function'
+                    );
+                    
+                    addTest('V3 Methods Available', availableMethods.length === v3Methods.length ? 'pass' : 'fail',
+                        `${availableMethods.length}/${v3Methods.length} V3 methods available`);
+                }
+                
+                // Test 5: getEntities method (the one that was failing)
+                try {
+                    addTest('getEntities Test', 'loading', 'Testing getEntities method...');
+                    
+                    const result = await window.apiService.getEntities({ type: 'restaurant' });
+                    addTest('getEntities Execution', 'pass', 
+                        `getEntities executed successfully. Success: ${result.success}`);
+                } catch (error) {
+                    addTest('getEntities Execution', 'fail', 
+                        `getEntities failed: ${error.message}`);
+                }
+                
+                // Test 6: DataStorage
+                addTest('DataStorage Test', 'loading', 'Testing DataStorage...');
+                
+                const hasDataStorage = window.dataStorage && typeof window.dataStorage === 'object';
+                addTest('DataStorage Availability', hasDataStorage ? 'pass' : 'fail',
+                    hasDataStorage ? 'DataStorage loaded successfully' : 'DataStorage not available');
+                
+                if (hasDataStorage) {
+                    try {
+                        const curator = await window.dataStorage.getCurrentCurator();
+                        addTest('getCurrentCurator Test', 'pass', 
+                            `getCurrentCurator executed. Result: ${curator ? curator.name : 'null'}`);
+                    } catch (error) {
+                        addTest('getCurrentCurator Test', 'fail', 
+                            `getCurrentCurator failed: ${error.message}`);
+                    }
+                }
+                
+                // Test 7: SyncManager
+                const hasSyncManager = window.syncManager && typeof window.syncManager === 'object';
+                addTest('SyncManager Availability', hasSyncManager ? 'pass' : 'fail',
+                    hasSyncManager ? 'SyncManager loaded successfully' : 'SyncManager not available');
+                
+                if (hasSyncManager) {
+                    try {
+                        // Test the method that was failing
+                        const result = await window.syncManager.importRestaurants();
+                        addTest('SyncManager Import Test', 'pass', 
+                            `importRestaurants executed successfully. Added: ${result.added || 0}`);
+                    } catch (error) {
+                        addTest('SyncManager Import Test', 'fail', 
+                            `importRestaurants failed: ${error.message}`);
+                    }
+                }
+                
+            } catch (error) {
+                addTest('Test Suite Error', 'fail', `Test suite failed: ${error.message}`);
+            }
+        }
+        
+        // Run tests when page loads
+        window.addEventListener('load', () => {
+            setTimeout(runTests, 1000); // Give scripts time to load
+        });
+    </script>
+</body>
+</html>

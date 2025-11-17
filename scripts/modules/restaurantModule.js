@@ -82,6 +82,10 @@ class RestaurantModule {
     /**
      * Update sync button visibility and badge based on restaurants needing sync
      */
+    /**
+     * V2: Sync button no longer shows count badge since server is source of truth
+     * Just show sync button for importing from server
+     */
     async updateSyncButton() {
         try {
             const syncBtn = document.getElementById('sync-restaurants-btn');
@@ -89,20 +93,10 @@ class RestaurantModule {
             
             if (!syncBtn || !syncBadge) return;
             
-            // Get restaurants needing sync (uses indexed needsSync field)
-            const restaurantsNeedingSync = await dataStorage.getRestaurantsNeedingSync();
-            const needsSyncCount = restaurantsNeedingSync.length;
-            
-            if (needsSyncCount > 0) {
-                // Show button with badge
-                syncBtn.classList.remove('hidden');
-                syncBadge.classList.remove('hidden');
-                syncBadge.textContent = needsSyncCount.toString();
-            } else {
-                // Hide button
-                syncBtn.classList.add('hidden');
-                syncBadge.classList.add('hidden');
-            }
+            // In V2, always show sync button (for importing from server)
+            // No badge count needed since we don't track local changes
+            syncBtn.classList.remove('hidden');
+            syncBadge.classList.add('hidden');
         } catch (error) {
             this.log.error('Error updating sync button:', error);
         }
@@ -258,7 +252,7 @@ class RestaurantModule {
                 }
                 
                 // Add location if available
-                if (restaurant.location) {
+                if (restaurant.location && restaurant.location.latitude != null && restaurant.location.longitude != null) {
                     cardHTML += `
                         <p class="text-sm mb-2">
                             <span class="font-semibold">Location:</span> 
@@ -438,7 +432,9 @@ class RestaurantModule {
                     const payloadForLog = { ...serverRestaurant };
                     this.log.debug('Sync request payload:', JSON.stringify(payloadForLog));
                     
-                    const response = await window.apiService.batchUploadRestaurants([serverRestaurant]);
+                    // Create as V3 entity
+                    const entityData = { type: 'restaurant', data: serverRestaurant };
+                    const response = await window.apiService.createEntity(entityData);
                     
                     // Log response status
                     this.log.debug('Server response:', response);
@@ -1056,5 +1052,228 @@ class RestaurantModule {
             this.log.error('Error saving restaurant:', error);
             SafetyUtils.showNotification(`Error saving restaurant: ${error.message}`, 'error');
         }
+    }
+
+    // ========================================
+    // V3 INTEGRATION METHODS
+    // ========================================
+
+    /**
+     * Save restaurant with V3 entity-curation structure
+     * @param {Object} restaurantData - Restaurant information
+     * @param {Object} concepts - Categorized concepts  
+     * @param {Object} curator - Curator information
+     * @returns {Promise<Object>} - Save result with entity and curation IDs
+     */
+    async saveRestaurantV3(restaurantData, concepts = {}, curator = null) {
+        try {
+            this.log.debug('Saving restaurant with V3 structure', { restaurantData, concepts });
+            
+            // Get current curator if not provided
+            if (!curator) {
+                curator = await window.dataStorage.getCurrentCurator() || {
+                    id: 'default_curator',
+                    name: 'Anonymous Curator'
+                };
+            }
+            
+            // Create V3 entity structure
+            const entityId = `rest_${Date.now()}`;
+            const v3Entity = window.apiService.createV3Entity({
+                id: entityId,
+                name: restaurantData.name || restaurantData.Name,
+                status: 'active'
+            }, {
+                type: 'collector',
+                source: 'concierge_collector',
+                createdBy: curator.id
+            });
+            
+            // Save entity to server
+            let serverEntityId = null;
+            if (window.navigator.onLine) {
+                try {
+                    const entityResponse = await window.apiService.createEntity(v3Entity);
+                    if (entityResponse.success) {
+                        serverEntityId = entityResponse.data.id;
+                        this.log.debug('Entity saved to server:', serverEntityId);
+                    }
+                } catch (error) {
+                    this.log.warn('Could not save entity to server:', error.message);
+                }
+            }
+            
+            // Create V3 curation if concepts are provided
+            let curationId = null;
+            if (Object.keys(concepts).length > 0) {
+                const v3Curation = window.apiService.createV3Curation(
+                    serverEntityId || entityId,
+                    curator,
+                    concepts
+                );
+                
+                // Save curation to server
+                if (window.navigator.onLine && serverEntityId) {
+                    try {
+                        const curationResponse = await window.apiService.createCuration(v3Curation);
+                        if (curationResponse.success) {
+                            curationId = curationResponse.data.id;
+                            this.log.debug('Curation saved to server:', curationId);
+                        }
+                    } catch (error) {
+                        this.log.warn('Could not save curation to server:', error.message);
+                    }
+                }
+                
+                // Save curation locally for offline support
+                curationId = curationId || v3Curation.id;
+            }
+            
+            // Save locally in V2 format for compatibility
+            const v2Restaurant = this.convertV3ToV2(v3Entity, concepts);
+            const localId = await window.dataStorage.createRestaurant(
+                v2Restaurant.Name,
+                curator.id,
+                v2Restaurant.Cuisine || [],
+                v2Restaurant.Location || '',
+                v2Restaurant.Photos || [],
+                v2Restaurant.Transcription || '',
+                v2Restaurant.Description || ''
+            );
+            
+            return {
+                success: true,
+                localId: localId,
+                entityId: serverEntityId || entityId,
+                curationId: curationId,
+                v3Entity: v3Entity
+            };
+            
+        } catch (error) {
+            this.log.error('Error saving restaurant with V3 structure:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Convert V3 entity back to V2 format for local storage compatibility
+     * @param {Object} v3Entity - V3 entity structure
+     * @param {Object} concepts - Concept data
+     * @returns {Object} - V2 restaurant format
+     */
+    convertV3ToV2(v3Entity, concepts = {}) {
+        return {
+            Name: v3Entity.doc.name,
+            Cuisine: concepts.cuisine || [],
+            Menu: concepts.menu || [],
+            Location: concepts.location?.[0] || '',
+            Photos: [],
+            Transcription: '',
+            Description: `V3 Entity: ${v3Entity.id}`,
+            entityId: v3Entity.id,
+            createdAt: v3Entity.doc.createdAt,
+            createdBy: v3Entity.doc.createdBy
+        };
+    }
+
+    /**
+     * Search restaurants using V3 API capabilities
+     * @param {Object} searchCriteria - Advanced search criteria
+     * @returns {Promise<Array>} - Search results
+     */
+    async searchRestaurantsV3(searchCriteria) {
+        try {
+            this.log.debug('Searching restaurants with V3 API', searchCriteria);
+            
+            // Use advanced entity search
+            const entityResults = await window.apiService.searchEntitiesAdvanced({
+                type: 'restaurant',
+                ...searchCriteria
+            });
+            
+            if (entityResults.success) {
+                return entityResults.data.items || entityResults.data.entities || [];
+            }
+            
+            return [];
+            
+        } catch (error) {
+            this.log.error('Error searching restaurants with V3 API:', error);
+            return [];
+        }
+    }
+
+    /**
+     * Get restaurant with its curations using V3 API
+     * @param {string} entityId - Entity ID
+     * @returns {Promise<Object>} - Restaurant with curations
+     */
+    async getRestaurantWithCurationsV3(entityId) {
+        try {
+            // Get entity
+            const entityResponse = await window.apiService.getEntity(entityId);
+            if (!entityResponse.success) {
+                throw new Error(`Entity not found: ${entityId}`);
+            }
+            
+            // Get curations for this entity
+            const curationsResponse = await window.apiService.getEntityCurations(entityId);
+            const curations = curationsResponse.success ? curationsResponse.data.curations || [] : [];
+            
+            return {
+                entity: entityResponse.data,
+                curations: curations,
+                combinedData: this.mergeCurations(entityResponse.data, curations)
+            };
+            
+        } catch (error) {
+            this.log.error('Error getting restaurant with curations:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Merge multiple curations into a single concept set
+     * @param {Object} entity - V3 entity
+     * @param {Array} curations - Array of curations
+     * @returns {Object} - Merged restaurant data
+     */
+    mergeCurations(entity, curations) {
+        const merged = {
+            id: entity.id,
+            name: entity.doc.name,
+            status: entity.doc.status,
+            concepts: {
+                cuisine: new Set(),
+                menu: new Set(), 
+                location: new Set()
+            },
+            curators: [],
+            metadata: entity.doc.metadata || []
+        };
+        
+        // Merge concepts from all curations
+        curations.forEach(curation => {
+            if (curation.doc.categories) {
+                Object.keys(curation.doc.categories).forEach(category => {
+                    if (merged.concepts[category]) {
+                        curation.doc.categories[category].forEach(concept => {
+                            merged.concepts[category].add(concept);
+                        });
+                    }
+                });
+            }
+            
+            if (curation.doc.curator) {
+                merged.curators.push(curation.doc.curator);
+            }
+        });
+        
+        // Convert sets back to arrays
+        Object.keys(merged.concepts).forEach(category => {
+            merged.concepts[category] = Array.from(merged.concepts[category]);
+        });
+        
+        return merged;
     }
 }

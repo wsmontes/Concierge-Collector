@@ -14,36 +14,52 @@ const AppConfig = {
      */
     api: {
         /**
-         * MySQL API Backend (Concierge Analyzer)
-         * Entity-based restaurant database API
-         * IMPORTANT: This backend uses /api/entities endpoints, NOT /api/restaurants
+         * V4 API Backend (Concierge API V4) - CURRENT (LOCAL)
+         * FastAPI + MongoDB async backend
+         * Modern features: JWT auth, optimistic locking via version field, pagination
+         * 
+         * MIGRATION V3→V4:
+         * - baseUrl: Remote V3 → Local V4 (localhost:8001)
+         * - Auth: None → JWT Bearer tokens required
+         * - Updates: PATCH (partial) → PUT (full document with version)
+         * - Query: DSL → Simple filters (type, status, city, tags, etc)
+         * - Pagination: None → items/total/skip/limit format
+         * - IDs: entity.id → entity.entity_id / curation.id → curation.curation_id
+         * - Soft Delete: Via is_deleted field (curations) and status=deleted (entities)
          */
         backend: {
-            baseUrl: 'https://wsmontes.pythonanywhere.com/api',  // TODO: Update to MySQL API URL when available
+            baseUrl: 'http://localhost:8001',  // V4 doesn't use /api/v4 prefix
             timeout: 30000,        // 30 seconds
             retryAttempts: 3,      // Number of retry attempts
             retryDelay: 1000,      // Delay between retries (ms)
-            endpoints: {
-                // Correct endpoints for MySQL API backend
-                entities: '/entities',                      // GET, POST - Main entity endpoint
-                entityById: '/entities/{id}',              // GET, PUT, DELETE - Single entity by ID
-                entitiesQuery: '/entities?entity_type=restaurant',  // Query restaurants
-                importBulk: '/import/concierge-v2',       // POST - Bulk import
-                health: '/health',                         // GET - Health check
-                info: '/info',                            // GET - API info
-                curators: '/curators',                     // GET - List curators
-                
-                // Legacy endpoints (NO LONGER SUPPORTED by MySQL backend)
-                // Kept for reference only - DO NOT USE
-                restaurantsLegacy: '/restaurants',         // ❌ NOT SUPPORTED
-                restaurantsBatchLegacy: '/restaurants/batch',  // ❌ NOT SUPPORTED
-                restaurantsSyncLegacy: '/restaurants/sync'     // ❌ NOT SUPPORTED
+            features: {
+                optimisticLocking: true,     // V4: version field (int) instead of ETags
+                partialUpdates: false,       // V4: PUT with full document (not PATCH)
+                flexibleQuery: false,        // V4: simple filters (not query DSL)
+                documentOriented: true,      // Still document-oriented (MongoDB)
+                requiresAuth: true           // V4: JWT Bearer tokens required
             },
-            // Sync settings for entity-based backend
-            sync: {
-                useImportEndpoint: true,     // Use /api/import/concierge-v2 for bulk operations
-                validateBeforeUpload: true,  // Validate data before upload
-                preserveMetadata: true       // Ensure all metadata is included
+            endpoints: {
+                // Auth endpoints (NEW in V4)
+                register: '/auth/register',      // POST - Create user
+                login: '/auth/login',            // POST - Get JWT token
+                
+                // System endpoints
+                health: '/health',               // GET - Health check (no auth)
+                root: '/',                       // GET - API info (no auth)
+                
+                // Entity endpoints
+                entities: '/entities',           // GET list (filters), POST create (auth)
+                entityById: '/entities/{id}',    // GET (no auth), PUT (auth), DELETE (auth)
+                
+                // Curation endpoints
+                curations: '/curations',         // GET list (filters), POST create (auth)
+                curationById: '/curations/{id}', // GET (no auth), PUT (auth), DELETE (auth)
+                
+                // Sync endpoints (NEW in V4)
+                syncPull: '/sync/pull',          // POST - Pull changes (auth)
+                syncPush: '/sync/push',          // POST - Push changes (auth)
+                syncFromConcierge: '/sync/from-concierge'  // POST - Receive embeddings (auth)
             }
         },
 
@@ -93,6 +109,40 @@ const AppConfig = {
     },
 
     /**
+     * API Version Configuration
+     * Using V4 API (FastAPI + MongoDB)
+     */
+    apiVersion: {
+        // Current API version (V4)
+        current: 'v4',
+        
+        // Migration settings (V3→V4 notes)
+        migration: {
+            enabled: false,          // No auto-migration from V3 to V4
+            notes: [
+                'V3→V4 changes:',
+                '- Auth: Added JWT authentication (all writes require token)',
+                '- IDs: entity.id → entity.entity_id',
+                '- Version: ETag → version (integer)',
+                '- Updates: PATCH → PUT (full document)',
+                '- Query: DSL → simple filters',
+                '- Pagination: Added (items/total/skip/limit)',
+                '- Sync: New endpoints (/sync/pull, /sync/push)'
+            ]
+        },
+        
+        // API V4 features
+        features: {
+            optimisticLocking: true,     // Via version field (integer)
+            partialUpdates: false,       // PUT only (no PATCH)
+            flexibleQuery: false,        // Simple filters
+            entityCurations: true,       // Entity-curation model maintained
+            authentication: true,        // JWT required
+            pagination: true             // All list endpoints paginated
+        }
+    },
+
+    /**
      * Local Storage Keys
      * Centralized definition of all localStorage keys used in the application
      */
@@ -106,6 +156,10 @@ const AppConfig = {
             currentCurator: 'current_curator_id',
             theme: 'app_theme',
             language: 'app_language',
+            
+            // Migration Status
+            v2MigrationStatus: 'v2_migration_status',
+            lastMigrationTime: 'last_migration_time',
             
             // Feature Flags
             debugMode: 'debug_mode',
@@ -122,21 +176,19 @@ const AppConfig = {
 
     /**
      * IndexedDB Configuration
+     * V3 Format: Entity-Curation model with local storage for offline capabilities
      */
     database: {
-        name: 'RestaurantCurator',
-        version: 13,
+        name: 'ConciergeCollectorV3',
+        version: 3,
         tables: {
-            restaurants: 'restaurants',
-            concepts: 'concepts',
-            restaurantConcepts: 'restaurantConcepts',
-            curators: 'curators',
-            pendingAudio: 'pendingAudio',
-            draftRestaurants: 'draftRestaurants',
-            restaurantPhotos: 'restaurantPhotos',
-            restaurantLocations: 'restaurantLocations',
-            settings: 'settings',
-            appMetadata: 'appMetadata'
+            entities: 'entities',            // V3: Restaurants, users, admins, system objects
+            curations: 'curations',          // V3: Reviews, recommendations, analysis
+            drafts: 'drafts',               // V3: Unsaved entity/curation drafts
+            curators: 'curators',           // V3: Curator management
+            syncQueue: 'syncQueue',         // V3: Items pending server sync
+            settings: 'settings',           // V3: User settings and preferences
+            cache: 'cache'                  // V3: Cached data with expiration
         }
     },
 
@@ -145,15 +197,32 @@ const AppConfig = {
      */
     app: {
         name: 'Concierge Collector',
-        version: '2.0.0',
+        version: '3.0.0',         // V3 API only
+        dataFormat: 'v3',         // V3 entity-curation format
         
         // Feature Flags
         features: {
-            audioRecording: true,
-            googlePlaces: true,
-            michelinStaging: true,
-            backgroundSync: true,
-            bulkOperations: true
+            // V3 API features (all enabled)
+            optimisticLocking: true,      // ETag-based updates
+            partialUpdates: true,         // JSON Merge Patch
+            flexibleQuery: true,          // Advanced query DSL
+            entityCurations: true,        // Entity-curation model
+            
+            // Application features
+            audioRecording: true,         // Record restaurant reviews
+            transcription: true,          // Auto-transcribe audio
+            conceptExtraction: true,      // AI concept extraction
+            imageAnalysis: true,          // Extract from photos
+            offlineMode: true,           // Work offline with local storage
+            exportImport: true,          // Data export/import
+            
+            // Optional integrations
+            placesIntegration: false,    // Google Places integration (disabled by default)
+            googlePlaces: true,          // Google Places search
+            michelinStaging: true,       // Michelin data staging
+            backgroundSync: true,        // Background synchronization
+            bulkOperations: true,        // Bulk operations support
+            debug: false                 // Debug mode (disabled by default)
         },
         
         // UI Settings
@@ -177,23 +246,22 @@ const AppConfig = {
      */
     
     /**
-     * Get full URL for backend endpoint
+     * Get full URL for API endpoint
      * @param {string} endpoint - Endpoint key or path
      * @returns {string} - Full URL
      */
-    getBackendUrl(endpoint) {
+    getApiUrl(endpoint) {
         const endpointPath = this.api.backend.endpoints[endpoint] || endpoint;
         return `${this.api.backend.baseUrl}${endpointPath}`;
     },
 
     /**
-     * Get full URL for OpenAI endpoint
+     * Get full URL for backend endpoint (alias for getApiUrl for compatibility)
      * @param {string} endpoint - Endpoint key or path
      * @returns {string} - Full URL
      */
-    getOpenAIUrl(endpoint) {
-        const endpointPath = this.api.openai.endpoints[endpoint] || endpoint;
-        return `${this.api.openai.baseUrl}${endpointPath}`;
+    getBackendUrl(endpoint) {
+        return this.getApiUrl(endpoint);
     },
 
     /**
@@ -256,6 +324,42 @@ const AppConfig = {
             hostname: window.location.hostname,
             protocol: window.location.protocol
         };
+    },
+
+    /**
+     * Get full URL for V3 API endpoint
+     * @param {string} endpoint - Endpoint key or path
+     * @returns {string} - Full URL
+     */
+    getV3Url(endpoint) {
+        const endpointPath = this.api.v3.endpoints[endpoint] || endpoint;
+        return `${this.api.v3.baseUrl}${endpointPath}`;
+    },
+
+    /**
+     * Get current API version
+     * @returns {string} - Always 'v3'
+     */
+    getApiVersion() {
+        return this.apiVersion.current;
+    },
+
+    /**
+     * Check if migration from V2 local data is needed
+     * @returns {boolean}
+     */
+    needsV2Migration() {
+        const migrationStatus = localStorage.getItem(this.storage.keys.v2MigrationStatus);
+        return !migrationStatus || migrationStatus !== 'completed';
+    },
+
+    /**
+     * Mark V2 migration as completed
+     */
+    markV2MigrationCompleted() {
+        localStorage.setItem(this.storage.keys.v2MigrationStatus, 'completed');
+        localStorage.setItem(this.storage.keys.lastMigrationTime, new Date().toISOString());
+        console.log('V2 migration marked as completed');
     }
 };
 
@@ -268,9 +372,11 @@ Object.freeze(AppConfig.api);
 Object.freeze(AppConfig.api.backend);
 Object.freeze(AppConfig.api.openai);
 Object.freeze(AppConfig.api.googlePlaces);
+Object.freeze(AppConfig.apiVersion);
 Object.freeze(AppConfig.storage);
 Object.freeze(AppConfig.database);
 Object.freeze(AppConfig.app);
 
 console.log('✅ AppConfig loaded successfully');
 console.log('Environment:', AppConfig.getEnvironment());
+console.log('API Version:', AppConfig.getApiVersion());

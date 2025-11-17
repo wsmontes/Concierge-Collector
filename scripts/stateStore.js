@@ -442,11 +442,17 @@ window.StateStore = (function() {
     /**
      * Deep clone an object
      * @param {*} obj - Object to clone
+     * @param {WeakMap} seen - Track visited objects to handle circular references
      * @returns {*} Cloned object
      */
-    function deepClone(obj) {
+    function deepClone(obj, seen = new WeakMap()) {
         if (obj === null || typeof obj !== 'object') {
             return obj;
+        }
+
+        // Handle circular references
+        if (seen.has(obj)) {
+            return seen.get(obj);
         }
 
         if (obj instanceof Date) {
@@ -454,18 +460,26 @@ window.StateStore = (function() {
         }
 
         if (obj instanceof Array) {
-            return obj.map(item => this.deepClone(item));
+            const cloned = [];
+            seen.set(obj, cloned);
+            for (let i = 0; i < obj.length; i++) {
+                cloned[i] = deepClone(obj[i], seen);
+            }
+            return cloned;
         }
 
         if (obj instanceof Object) {
             const cloned = {};
+            seen.set(obj, cloned);
             for (const key in obj) {
                 if (obj.hasOwnProperty(key)) {
-                    cloned[key] = this.deepClone(obj[key]);
+                    cloned[key] = deepClone(obj[key], seen);
                 }
             }
             return cloned;
         }
+        
+        return obj;
     }
 
     /**

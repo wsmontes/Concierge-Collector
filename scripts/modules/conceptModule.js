@@ -259,6 +259,9 @@ class ConceptModule {
                 return; // Nothing to save
             }
             
+            // DISABLED: DraftRestaurantManager uses old database schema
+            // Will be re-enabled after migration to V4 schema
+            /*
             if (window.DraftRestaurantManager) {
                 const draftId = await window.DraftRestaurantManager.getOrCreateCurrentDraft(
                     this.uiManager.currentCurator.id
@@ -267,6 +270,7 @@ class ConceptModule {
                 await window.DraftRestaurantManager.autoSaveDraft(draftId, draftData);
                 this.log.debug('Draft auto-saved');
             }
+            */
         } catch (error) {
             this.log.error('Error auto-saving draft:', error);
             // Don't show error to user - auto-save should be silent
@@ -311,6 +315,7 @@ class ConceptModule {
 
     async saveRestaurant() {
         this.log.debug('Save/update restaurant button clicked');
+        console.log('🔧 conceptModule V4: Using addToSyncQueue (2025-11-16 18:20)');
         
         const nameInput = document.getElementById('restaurant-name');
         const name = nameInput ? nameInput.value.trim() : '';
@@ -341,36 +346,60 @@ class ConceptModule {
             
             if (this.uiManager.isEditingRestaurant) {
                 // Update existing restaurant
-                restaurantId = await dataStorage.updateRestaurant(
-                    this.uiManager.editingRestaurantId,
-                    name,
-                    this.uiManager.currentCurator.id,
-                    this.uiManager.currentConcepts,
-                    this.uiManager.currentLocation,
-                    this.uiManager.currentPhotos,
-                    transcription,
-                    description
-                );
+                const entity = await window.dataStore.db.entities.get(this.uiManager.editingRestaurantId);
+                if (!entity) throw new Error('Entity not found');
+                
+                // Update entity fields
+                entity.name = name;
+                entity.curator_id = this.uiManager.currentCurator.id;
+                entity.data = {
+                    concepts: this.uiManager.currentConcepts || [],
+                    transcription: transcription || '',
+                    description: description || ''
+                };
+                entity.location = this.uiManager.currentLocation || {};
+                entity.photos = this.uiManager.currentPhotos || [];
+                entity.updated_at = new Date();
+                entity.updatedAt = new Date();
+                
+                // Save to IndexedDB
+                await window.dataStore.db.entities.put(entity);
+                restaurantId = entity.id;
+                
+                // Queue for sync
+                if (window.dataStore) {
+                    await window.dataStore.addToSyncQueue('entity', 'update', entity.id, entity.entity_id, entity);
+                    syncStatus = 'pending';
+                }
             } else {
-                // Save new restaurant with auto-sync
-                const result = await dataStorage.saveRestaurantWithAutoSync(
-                    name,
-                    this.uiManager.currentCurator.id,
-                    this.uiManager.currentConcepts,
-                    this.uiManager.currentLocation,
-                    this.uiManager.currentPhotos,
-                    transcription,
-                    description
-                );
+                // Create new entity
+                const entity = {
+                    type: 'restaurant',
+                    name: name,
+                    curator_id: this.uiManager.currentCurator.id,
+                    data: {
+                        concepts: this.uiManager.currentConcepts || [],
+                        transcription: transcription || '',
+                        description: description || ''
+                    },
+                    location: this.uiManager.currentLocation || {},
+                    photos: this.uiManager.currentPhotos || [],
+                    created_at: new Date(),
+                    createdAt: new Date(),
+                    updated_at: new Date(),
+                    updatedAt: new Date(),
+                    source: 'local'
+                };
                 
-                restaurantId = result.restaurantId;
-                syncStatus = result.syncStatus;
+                // Save to IndexedDB (id auto-incremented by Dexie)
+                restaurantId = await window.dataStore.db.entities.add(entity);
+                this.log.debug(`✅ Restaurant saved locally with ID: ${restaurantId}`);
                 
-                // Log sync status (background sync is fire-and-forget)
-                if (syncStatus === 'pending') {
-                    this.log.debug('✅ Restaurant saved locally, background sync in progress');
-                } else if (syncStatus === 'local-only') {
-                    this.log.debug('⚠️ Restaurant saved locally, sync manager not available');
+                // Queue for sync
+                if (window.dataStore) {
+                    await window.dataStore.addToSyncQueue('entity', 'create', restaurantId, null, entity);
+                    syncStatus = 'pending';
+                    this.log.debug('✅ Restaurant queued for sync to server');
                 }
             }
             
@@ -393,6 +422,8 @@ class ConceptModule {
             SafetyUtils.showNotification(message);
             
             // Clean up pending audio and draft data for this restaurant
+            // DISABLED: Draft and PendingAudio managers use old database schema
+            /*
             try {
                 const draftId = window.DraftRestaurantManager?.currentDraftId;
                 
@@ -421,6 +452,7 @@ class ConceptModule {
                 this.log.error('Error cleaning up after restaurant save:', cleanupError);
                 // Don't throw - the restaurant was saved successfully
             }
+            */
             
             // Reset state
             this.uiManager.isEditingRestaurant = false;
@@ -631,64 +663,21 @@ class ConceptModule {
             }
             
             try {
-                SafetyUtils.showLoading('Checking for similar concepts...');
+                // SIMPLIFIED: Direct add without similarity check
+                // (concept matching requires full entity data model migration)
+                this.uiManager.currentConcepts.push({ category, value });
+                this.renderConcepts();
+                this.autoSaveDraft(); // Auto-save when concept added
+                document.body.removeChild(modalContainer);
+                document.body.style.overflow = '';
+                SafetyUtils.showNotification(`Concept added: ${category} - ${value}`, 'success');
                 
-                const existingConcepts = await dataStorage.getAllConcepts();
-                const newConcept = { category, value };
-                const similarConcepts = await conceptMatcher.findSimilarConcepts(
-                    newConcept, 
-                    existingConcepts
-                );
-                
-                SafetyUtils.hideLoading();
-                
-                // Lower the similarity threshold to catch plurals, minor typos, and other small variations
-                // A threshold of 0.7 (70%) will be more sensitive to small differences like adding an 's'
-                const SIMILARITY_THRESHOLD = 0.7; // Lower threshold to catch pluralization and minor typos
-                const highSimilarityConcepts = similarConcepts.filter(
-                    concept => concept.similarity >= SIMILARITY_THRESHOLD
-                );
-                
-                // Add special handling for potential plurals/singulars that might be missed by similarity calculation
-                const potentialPluralOrSingular = similarConcepts.filter(concept => {
-                    // Check for plural/singular variations that might have lower similarity scores
-                    const newValue = newConcept.value.toLowerCase();
-                    const existingValue = concept.value.toLowerCase();
-                    
-                    // Common plural variations: adding 's', 'es', changing 'y' to 'ies'
-                    return (
-                        (newValue + 's' === existingValue) || 
-                        (existingValue + 's' === newValue) ||
-                        (newValue + 'es' === existingValue) || 
-                        (existingValue + 'es' === newValue) ||
-                        (newValue.endsWith('y') && existingValue === newValue.slice(0, -1) + 'ies') ||
-                        (existingValue.endsWith('y') && newValue === existingValue.slice(0, -1) + 'ies')
-                    );
-                });
-                
-                // Combine both high similarity concepts and potential plurals without duplicates
-                const combinedConcepts = [...highSimilarityConcepts];
-                potentialPluralOrSingular.forEach(concept => {
-                    if (!combinedConcepts.some(c => c.value === concept.value)) {
-                        combinedConcepts.push(concept);
-                    }
-                });
-                
-                if (combinedConcepts.length > 0) {
-                    this.showConceptDisambiguationDialog(newConcept, combinedConcepts);
-                    document.body.removeChild(modalContainer);
-                    document.body.style.overflow = '';
-                } else {
-                    this.uiManager.currentConcepts.push(newConcept);
-                    this.renderConcepts();
-                    this.autoSaveDraft(); // Auto-save when concept added
-                    document.body.removeChild(modalContainer);
-                    document.body.style.overflow = '';
-                }
+                /* DISABLED: Requires old dataStorage API
+                ... similarity check code ...
+                */
             } catch (error) {
-                SafetyUtils.hideLoading();
-                this.log.error('Error checking for similar concepts:', error);
-                SafetyUtils.showNotification('Error checking for similar concepts', 'error');
+                this.log.error('Error adding concept:', error);
+                SafetyUtils.showNotification('Error adding concept', 'error');
                 
                 // Fallback: add directly
                 this.uiManager.currentConcepts.push({ category, value });

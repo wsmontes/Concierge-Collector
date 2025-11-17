@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>V3 Architecture Test - Concierge Collector</title>
+    
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- Material Icons -->
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    
+    <style>
+        .test-status { 
+            padding: 0.5rem; 
+            margin: 0.25rem 0; 
+            border-radius: 0.25rem; 
+        }
+        .test-pass { 
+            background-color: #d4edda; 
+            color: #155724; 
+            border: 1px solid #c3e6cb; 
+        }
+        .test-fail { 
+            background-color: #f8d7da; 
+            color: #721c24; 
+            border: 1px solid #f5c6cb; 
+        }
+        .test-info { 
+            background-color: #d1ecf1; 
+            color: #0c5460; 
+            border: 1px solid #bee5eb; 
+        }
+        .loading { 
+            color: #856404; 
+            background-color: #fff3cd; 
+            border: 1px solid #ffeaa7; 
+        }
+    </style>
+</head>
+<body class="bg-gray-100 p-4">
+    <!-- V3 Architecture Test Header -->
+    <div class="max-w-4xl mx-auto">
+        <h1 class="text-3xl font-bold mb-6 text-center">V3 Architecture Test</h1>
+        
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4">Module Loading Test</h2>
+            <div id="module-tests"></div>
+        </div>
+        
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4">V3 Database Test</h2>
+            <div id="database-tests"></div>
+        </div>
+        
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4">V3 API Test</h2>
+            <div id="api-tests"></div>
+        </div>
+        
+        <div class="bg-white rounded-lg shadow-md p-6 mb-6">
+            <h2 class="text-xl font-semibold mb-4">Import Test</h2>
+            <div id="import-tests"></div>
+            <div class="mt-4">
+                <input type="file" id="test-file-input" accept=".json" class="mb-2">
+                <button id="test-import-btn" class="bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
+                    Test Import
+                </button>
+            </div>
+        </div>
+        
+        <div class="bg-white rounded-lg shadow-md p-6">
+            <h2 class="text-xl font-semibold mb-4">Console Output</h2>
+            <div id="console-output" class="bg-gray-900 text-green-400 p-4 rounded font-mono text-sm h-64 overflow-y-auto"></div>
+        </div>
+    </div>
+
+    <!-- Scripts in proper V3 dependency order -->
+    <!-- Core dependencies -->
+    <script src="https://unpkg.com/dexie@3.2.4/dist/dexie.js"></script>
+    
+    <!-- Configuration and utilities -->
+    <script src="scripts/config.js"></script>
+    <script src="scripts/moduleWrapper.js"></script>
+    <script src="scripts/logger.js"></script>
+    
+    <!-- V3 Core Modules -->
+    <script src="scripts/v3/entityStore.js"></script>
+    <script src="scripts/v3/apiService.js"></script>
+    <script src="scripts/v3/syncManager.js"></script>
+    <script src="scripts/v3/importExportManager.js"></script>
+    
+    <!-- Compatibility layer for gradual migration -->
+    <script src="scripts/deprecated/legacyModules.js"></script>
+    
+    <!-- Test script -->
+    <script>
+        // Capture console output
+        const originalConsoleLog = console.log;
+        const originalConsoleError = console.error;
+        const originalConsoleWarn = console.warn;
+        const consoleOutput = document.getElementById('console-output');
+        
+        function addToConsole(message, type = 'log') {
+            const timestamp = new Date().toLocaleTimeString();
+            const color = type === 'error' ? 'text-red-400' : 
+                         type === 'warn' ? 'text-yellow-400' : 'text-green-400';
+            consoleOutput.innerHTML += `<div class="${color}">[${timestamp}] ${message}</div>`;
+            consoleOutput.scrollTop = consoleOutput.scrollHeight;
+        }
+        
+        console.log = function(...args) {
+            originalConsoleLog.apply(console, args);
+            addToConsole(args.join(' '), 'log');
+        };
+        
+        console.error = function(...args) {
+            originalConsoleError.apply(console, args);
+            addToConsole(args.join(' '), 'error');
+        };
+        
+        console.warn = function(...args) {
+            originalConsoleWarn.apply(console, args);
+            addToConsole(args.join(' '), 'warn');
+        };
+        
+        // Test utilities
+        function addTestResult(containerId, testName, passed, message = '') {
+            const container = document.getElementById(containerId);
+            const statusClass = passed ? 'test-pass' : 'test-fail';
+            const icon = passed ? '✅' : '❌';
+            container.innerHTML += `<div class="test-status ${statusClass}">${icon} ${testName}: ${message}</div>`;
+        }
+        
+        function addTestInfo(containerId, message) {
+            const container = document.getElementById(containerId);
+            container.innerHTML += `<div class="test-status test-info">ℹ️ ${message}</div>`;
+        }
+        
+        function addTestLoading(containerId, message) {
+            const container = document.getElementById(containerId);
+            container.innerHTML += `<div class="test-status loading">⏳ ${message}</div>`;
+        }
+        
+        // Run tests when page loads
+        document.addEventListener('DOMContentLoaded', async () => {
+            console.log('V3 Architecture Test Starting...');
+            
+            // Test 1: Module Loading
+            addTestInfo('module-tests', 'Testing module availability...');
+            
+            // Check core dependencies
+            addTestResult('module-tests', 'Dexie Library', typeof Dexie !== 'undefined', 
+                         typeof Dexie !== 'undefined' ? 'Available' : 'Missing');
+            
+            addTestResult('module-tests', 'ModuleWrapper', typeof ModuleWrapper !== 'undefined', 
+                         typeof ModuleWrapper !== 'undefined' ? 'Available' : 'Missing');
+            
+            addTestResult('module-tests', 'AppConfig', typeof AppConfig !== 'undefined', 
+                         typeof AppConfig !== 'undefined' ? 'Available' : 'Missing');
+            
+            // Check V3 modules
+            addTestResult('module-tests', 'V3 EntityStore', typeof window.EntityStore !== 'undefined', 
+                         typeof window.EntityStore !== 'undefined' ? 'Available' : 'Missing');
+            
+            addTestResult('module-tests', 'V3 ApiService', typeof window.V3ApiService !== 'undefined', 
+                         typeof window.V3ApiService !== 'undefined' ? 'Available' : 'Missing');
+            
+            addTestResult('module-tests', 'V3 SyncManager', typeof window.V3SyncManager !== 'undefined', 
+                         typeof window.V3SyncManager !== 'undefined' ? 'Available' : 'Missing');
+            
+            addTestResult('module-tests', 'V3 ImportExportManager', typeof window.V3ImportExportManager !== 'undefined', 
+                         typeof window.V3ImportExportManager !== 'undefined' ? 'Available' : 'Missing');
+            
+            // Test 2: Database initialization
+            if (typeof window.EntityStore !== 'undefined') {
+                addTestLoading('database-tests', 'Initializing V3 EntityStore...');
+                try {
+                    await window.EntityStore.initialize();
+                    addTestResult('database-tests', 'EntityStore Initialization', true, 'Successfully initialized');
+                    
+                    // Test basic database operations
+                    addTestLoading('database-tests', 'Testing basic database operations...');
+                    
+                    // Test entity creation
+                    const testEntity = {
+                        entityType: 'restaurant',
+                        data: {
+                            name: 'Test Restaurant V3',
+                            location: 'Test City'
+                        }
+                    };
+                    
+                    const createdEntity = await window.EntityStore.createEntity(testEntity);
+                    addTestResult('database-tests', 'Entity Creation', !!createdEntity, 
+                                 createdEntity ? `Entity ID: ${createdEntity.id}` : 'Failed');
+                    
+                    if (createdEntity) {
+                        // Test entity retrieval
+                        const retrievedEntity = await window.EntityStore.getEntity(createdEntity.id);
+                        addTestResult('database-tests', 'Entity Retrieval', !!retrievedEntity, 
+                                     retrievedEntity ? 'Entity found' : 'Entity not found');
+                        
+                        // Test curation creation
+                        const testCuration = {
+                            entityId: createdEntity.id,
+                            curatorId: 'test-curator',
+                            curationData: {
+                                concepts: ['test-concept'],
+                                notes: 'V3 test curation'
+                            }
+                        };
+                        
+                        const createdCuration = await window.EntityStore.createCuration(testCuration);
+                        addTestResult('database-tests', 'Curation Creation', !!createdCuration, 
+                                     createdCuration ? `Curation ID: ${createdCuration.id}` : 'Failed');
+                    }
+                    
+                } catch (error) {
+                    console.error('EntityStore initialization failed:', error);
+                    addTestResult('database-tests', 'EntityStore Initialization', false, error.message);
+                }
+            } else {
+                addTestResult('database-tests', 'EntityStore Module', false, 'Module not available');
+            }
+            
+            // Test 3: API Service
+            if (typeof window.V3ApiService !== 'undefined') {
+                addTestLoading('api-tests', 'Testing V3 API Service...');
+                try {
+                    await window.V3ApiService.initialize();
+                    addTestResult('api-tests', 'V3ApiService Initialization', true, 'Successfully initialized');
+                    
+                    // Test API health check (without making actual API calls)
+                    addTestResult('api-tests', 'V3ApiService Methods', 
+                                 typeof window.V3ApiService.getEntities === 'function' &&
+                                 typeof window.V3ApiService.createEntity === 'function' &&
+                                 typeof window.V3ApiService.updateEntity === 'function', 
+                                 'Core methods available');
+                    
+                } catch (error) {
+                    console.error('V3ApiService initialization failed:', error);
+                    addTestResult('api-tests', 'V3ApiService Initialization', false, error.message);
+                }
+            } else {
+                addTestResult('api-tests', 'V3ApiService Module', false, 'Module not available');
+            }
+            
+            // Test 4: Import functionality setup
+            if (typeof window.V3ImportExportManager !== 'undefined') {
+                addTestLoading('import-tests', 'Testing V3 Import/Export Manager...');
+                try {
+                    await window.V3ImportExportManager.initialize();
+                    addTestResult('import-tests', 'V3ImportExportManager Initialization', true, 'Successfully initialized');
+                    
+                    // Setup file import test
+                    const fileInput = document.getElementById('test-file-input');
+                    const importBtn = document.getElementById('test-import-btn');
+                    
+                    importBtn.addEventListener('click', async () => {
+                        const file = fileInput.files[0];
+                        if (!file) {
+                            addTestResult('import-tests', 'File Import', false, 'No file selected');
+                            return;
+                        }
+                        
+                        addTestLoading('import-tests', `Importing file: ${file.name}...`);
+                        try {
+                            const result = await window.V3ImportExportManager.importConciergeFile(file);
+                            addTestResult('import-tests', 'File Import', !!result.success, 
+                                         result.success ? 
+                                         `Imported ${result.entitiesCreated || 0} entities, ${result.curationsCreated || 0} curations` : 
+                                         result.error || 'Import failed');
+                        } catch (error) {
+                            console.error('Import test failed:', error);
+                            addTestResult('import-tests', 'File Import', false, error.message);
+                        }
+                    });
+                    
+                    addTestInfo('import-tests', 'File import test ready - select a JSON file and click "Test Import"');
+                    
+                } catch (error) {
+                    console.error('V3ImportExportManager initialization failed:', error);
+                    addTestResult('import-tests', 'V3ImportExportManager Initialization', false, error.message);
+                }
+            } else {
+                addTestResult('import-tests', 'V3ImportExportManager Module', false, 'Module not available');
+            }
+            
+            console.log('V3 Architecture Test Completed');
+        });
+    </script>
+</body>
+</html>

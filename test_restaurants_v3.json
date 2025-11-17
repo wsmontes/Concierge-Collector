@@ -1,0 +1,23 @@
+{
+  "Test Restaurant Alpha": {
+    "cuisine": ["Mediterranean", "French"],
+    "menu": ["Seafood Specialties", "Vegetarian Options", "Wine Selection"],
+    "mood": ["Romantic", "Intimate"],
+    "service": ["Attentive", "Professional"],
+    "atmosphere": ["Elegant", "Cozy"]
+  },
+  "Test Restaurant Beta": {
+    "cuisine": ["Italian", "Modern"],
+    "menu": ["Pasta", "Pizza", "Craft Cocktails"],
+    "mood": ["Casual", "Lively"],
+    "service": ["Friendly", "Quick"],
+    "atmosphere": ["Modern", "Vibrant"]
+  },
+  "Test Restaurant Gamma": {
+    "cuisine": ["Japanese", "Contemporary"],
+    "menu": ["Sushi", "Ramen", "Sake Selection"],
+    "mood": ["Zen", "Sophisticated"],
+    "service": ["Precise", "Knowledgeable"],
+    "atmosphere": ["Minimalist", "Refined"]
+  }
+}

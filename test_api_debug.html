@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Test Debug</title>
+</head>
+<body>
+    <div id="app">
+        <h1>API Debug Test</h1>
+        <div id="results"></div>
+        <button onclick="runTests()">Run API Tests</button>
+    </div>
+
+    <!-- Load required scripts -->
+    <script src="scripts/config.js"></script>
+    <script src="scripts/logger.js"></script>
+    <script src="scripts/apiService.js"></script>
+
+    <script>
+        async function runTests() {
+            const resultsDiv = document.getElementById('results');
+            resultsDiv.innerHTML = '<h2>Running API Tests...</h2>';
+            
+            try {
+                // Initialize API Service
+                window.ApiService = new ApiService();
+                
+                // Test 1: Health Check
+                try {
+                    resultsDiv.innerHTML += '<h3>1. Health Check</h3>';
+                    const health = await window.ApiService.checkApiHealth();
+                    resultsDiv.innerHTML += `<p style="color: green;">✅ Health Check: ${JSON.stringify(health)}</p>`;
+                } catch (error) {
+                    resultsDiv.innerHTML += `<p style="color: red;">❌ Health Check Failed: ${error.message}</p>`;
+                }
+                
+                // Test 2: API Info
+                try {
+                    resultsDiv.innerHTML += '<h3>2. API Info</h3>';
+                    const info = await window.ApiService.getApiInfo();
+                    resultsDiv.innerHTML += `<p style="color: green;">✅ API Info: ${JSON.stringify(info, null, 2)}</p>`;
+                } catch (error) {
+                    resultsDiv.innerHTML += `<p style="color: red;">❌ API Info Failed: ${error.message}</p>`;
+                }
+                
+                // Test 3: Get Entities (minimal params)
+                try {
+                    resultsDiv.innerHTML += '<h3>3. Get Entities (minimal)</h3>';
+                    const entities = await window.ApiService.getEntities({ limit: 10 });
+                    resultsDiv.innerHTML += `<p style="color: green;">✅ Get Entities: ${JSON.stringify(entities)}</p>`;
+                } catch (error) {
+                    resultsDiv.innerHTML += `<p style="color: red;">❌ Get Entities Failed: ${error.message}</p>`;
+                }
+                
+                // Test 4: Search Curations (using search endpoint)
+                try {
+                    resultsDiv.innerHTML += '<h3>4. Search Curations</h3>';
+                    const curations = await window.ApiService.searchCurations({ limit: 10 });
+                    resultsDiv.innerHTML += `<p style="color: green;">✅ Search Curations: ${JSON.stringify(curations)}</p>`;
+                } catch (error) {
+                    resultsDiv.innerHTML += `<p style="color: red;">❌ Search Curations Failed: ${error.message}</p>`;
+                }
+                
+            } catch (error) {
+                resultsDiv.innerHTML += `<p style="color: red;">❌ Overall Test Failed: ${error.message}</p>`;
+            }
+        }
+    </script>
+</body>
+</html>

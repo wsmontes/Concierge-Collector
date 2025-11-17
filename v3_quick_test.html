@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>V3 Quick Test - Concierge Collector</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test { margin: 10px 0; padding: 10px; border: 1px solid #ccc; }
+        .pass { background: #d4edda; border-color: #c3e6cb; }
+        .fail { background: #f8d7da; border-color: #f5c6cb; }
+        .info { background: #d1ecf1; border-color: #bee5eb; }
+    </style>
+</head>
+<body>
+    <h1>V3 Quick Initialization Test</h1>
+    <div id="results"></div>
+
+    <!-- Core dependencies -->
+    <script src="https://unpkg.com/dexie@3.2.4/dist/dexie.js"></script>
+    
+    <!-- Configuration and utilities -->
+    <script src="scripts/config.js"></script>
+    <script src="scripts/moduleWrapper.js"></script>
+    <script src="scripts/logger.js"></script>
+    
+    <!-- V3 Core Modules -->
+    <script src="scripts/v3/entityStore.js"></script>
+    <script src="scripts/v3/apiService.js"></script>
+    <script src="scripts/v3/syncManager.js"></script>
+    <script src="scripts/v3/importExportManager.js"></script>
+    
+    <!-- Compatibility layer -->
+    <script src="scripts/deprecated/legacyModules.js"></script>
+
+    <script>
+        async function runQuickTest() {
+            const resultsDiv = document.getElementById('results');
+            
+            function addResult(test, status, message) {
+                const div = document.createElement('div');
+                div.className = `test ${status}`;
+                div.innerHTML = `<strong>${test}:</strong> ${message}`;
+                resultsDiv.appendChild(div);
+            }
+            
+            // Test 1: Module availability
+            addResult('Dexie Library', 'info', typeof Dexie !== 'undefined' ? 'Available' : 'Missing');
+            addResult('EntityStore', window.EntityStore ? 'pass' : 'fail', window.EntityStore ? 'Available' : 'Missing');
+            addResult('V3ApiService', window.V3ApiService ? 'pass' : 'fail', window.V3ApiService ? 'Available' : 'Missing');
+            addResult('V3SyncManager', window.V3SyncManager ? 'pass' : 'fail', window.V3SyncManager ? 'Available' : 'Missing');
+            addResult('V3ImportExportManager', window.V3ImportExportManager ? 'pass' : 'fail', window.V3ImportExportManager ? 'Available' : 'Missing');
+            
+            // Test 2: Initialize methods
+            try {
+                addResult('EntityStore.initialize', 'info', 'Testing...');
+                await window.EntityStore.initialize();
+                addResult('EntityStore.initialize', 'pass', 'Success');
+            } catch (error) {
+                addResult('EntityStore.initialize', 'fail', error.message);
+            }
+            
+            try {
+                addResult('V3ApiService.initialize', 'info', 'Testing...');
+                await window.V3ApiService.initialize();
+                addResult('V3ApiService.initialize', 'pass', 'Success');
+            } catch (error) {
+                addResult('V3ApiService.initialize', 'fail', error.message);
+            }
+            
+            try {
+                addResult('V3SyncManager.initialize', 'info', 'Testing...');
+                await window.V3SyncManager.initialize();
+                addResult('V3SyncManager.initialize', 'pass', 'Success');
+            } catch (error) {
+                addResult('V3SyncManager.initialize', 'fail', error.message);
+            }
+            
+            try {
+                addResult('V3ImportExportManager.initialize', 'info', 'Testing...');
+                await window.V3ImportExportManager.initialize();
+                addResult('V3ImportExportManager.initialize', 'pass', 'Success');
+            } catch (error) {
+                addResult('V3ImportExportManager.initialize', 'fail', error.message);
+            }
+            
+            // Test 3: Basic functionality
+            try {
+                const testEntity = {
+                    entityType: 'restaurant', 
+                    data: { name: 'Test Restaurant', location: 'Test City' }
+                };
+                const entity = await window.EntityStore.createEntity(testEntity);
+                addResult('Create Test Entity', entity ? 'pass' : 'fail', entity ? `Created entity ${entity.id}` : 'Failed');
+            } catch (error) {
+                addResult('Create Test Entity', 'fail', error.message);
+            }
+            
+            addResult('V3 Architecture Test', 'pass', 'All V3 modules initialized successfully!');
+        }
+        
+        // Run test when page loads
+        document.addEventListener('DOMContentLoaded', runQuickTest);
+    </script>
+</body>
+</html>

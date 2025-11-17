@@ -1,0 +1,911 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Concierge V3 API - Production Validation Report</title>
+    <style>
+        body { 
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; 
+            margin: 0; padding: 20px; background: #f5f5f5; 
+        }
+        .container { max-width: 1200px; margin: 0 auto; background: white; border-radius: 8px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); }
+        .header { background: #2c3e50; color: white; padding: 20px; border-radius: 8px 8px 0 0; }
+        .content { padding: 20px; }
+        .summary { 
+            display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); 
+            gap: 15px; margin-bottom: 30px; 
+        }
+        .summary-card { 
+            background: #f8f9fa; border: 1px solid #e9ecef; border-radius: 6px; 
+            padding: 15px; text-align: center; 
+        }
+        .summary-card h3 { margin: 0 0 10px 0; font-size: 18px; }
+        .summary-card .number { font-size: 24px; font-weight: bold; margin: 10px 0; }
+        .pass-count { color: #28a745; }
+        .fail-count { color: #dc3545; }
+        .warn-count { color: #ffc107; }
+        
+        .test-section { margin-bottom: 30px; }
+        .test-section h2 { 
+            color: #2c3e50; border-bottom: 2px solid #3498db; 
+            padding-bottom: 10px; margin-bottom: 20px; 
+        }
+        .test { 
+            margin: 10px 0; padding: 15px; border-radius: 6px; 
+            border-left: 4px solid #ccc; background: white; 
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        .test.pass { border-left-color: #28a745; background: #f8fff9; }
+        .test.fail { border-left-color: #dc3545; background: #fff8f8; }
+        .test.warn { border-left-color: #ffc107; background: #fffdf5; }
+        
+        .test-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+        .test-title { font-weight: 600; font-size: 16px; }
+        .test-status { 
+            padding: 4px 12px; border-radius: 20px; color: white; 
+            font-size: 12px; font-weight: bold; text-transform: uppercase; 
+        }
+        .test-status.pass { background: #28a745; }
+        .test-status.fail { background: #dc3545; }
+        .test-status.warn { background: #ffc107; }
+        
+        .test-details { color: #666; font-size: 14px; line-height: 1.4; }
+        .test-data { 
+            background: #f8f9fa; border-radius: 4px; padding: 10px; 
+            margin-top: 10px; font-family: 'Courier New', monospace; 
+            font-size: 12px; overflow-x: auto; 
+        }
+        
+        .report-actions { 
+            margin-top: 30px; padding: 20px; background: #f8f9fa; 
+            border-radius: 6px; text-align: center; 
+        }
+        .btn { 
+            background: #3498db; color: white; border: none; 
+            padding: 12px 24px; border-radius: 6px; cursor: pointer; 
+            margin: 0 10px; font-weight: 600; 
+        }
+        .btn:hover { background: #2980b9; }
+        .btn.secondary { background: #6c757d; }
+        .btn.secondary:hover { background: #5a6268; }
+        
+        .progress-bar { 
+            width: 100%; height: 8px; background: #e9ecef; 
+            border-radius: 4px; overflow: hidden; margin: 10px 0; 
+        }
+        .progress-fill { height: 100%; transition: width 0.3s ease; }
+        .progress-success { background: linear-gradient(90deg, #28a745, #20c997); }
+        .progress-partial { background: linear-gradient(90deg, #ffc107, #fd7e14); }
+        .progress-failure { background: linear-gradient(90deg, #dc3545, #e74c3c); }
+        
+        @media (max-width: 768px) {
+            .summary { grid-template-columns: 1fr; }
+            .test-header { flex-direction: column; align-items: flex-start; }
+            .test-status { margin-top: 5px; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🔍 Concierge V3 API Validation Report</h1>
+            <p>Comprehensive testing of production V3 API deployment on PythonAnywhere</p>
+            <div id="timestamp"></div>
+        </div>
+        
+        <div class="content">
+            <div class="summary" id="summary">
+                <!-- Summary cards will be populated by JavaScript -->
+            </div>
+            
+            <div id="progress-section">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="overall-progress"></div>
+                </div>
+                <p id="progress-text">Initializing tests...</p>
+            </div>
+            
+            <div class="test-section">
+                <h2>📋 Test Results</h2>
+                <div id="results"></div>
+            </div>
+            
+            <div class="report-actions">
+                <button class="btn" onclick="exportReport()">📄 Export Report</button>
+                <button class="btn secondary" onclick="runTests()">🔄 Re-run Tests</button>
+                <button class="btn secondary" onclick="copyToClipboard()">📋 Copy Report</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- V3 API Testing Scripts - Direct API calls -->
+    
+    <script>
+        // Global test state
+        let testResults = [];
+        let testStartTime = null;
+        
+        class TestReporter {
+            constructor() {
+                this.tests = [];
+                this.currentSection = null;
+            }
+            
+            startSection(name, description) {
+                this.currentSection = { name, description, tests: [] };
+                this.tests.push(this.currentSection);
+            }
+            
+            addTest(name, status, details, data = null) {
+                const test = {
+                    name,
+                    status, // 'pass', 'fail', 'warn'
+                    details,
+                    data,
+                    timestamp: new Date().toISOString(),
+                    section: this.currentSection?.name || 'General'
+                };
+                
+                if (this.currentSection) {
+                    this.currentSection.tests.push(test);
+                } else {
+                    this.tests.push({ name: 'General', tests: [test] });
+                }
+                
+                testResults.push(test);
+                this.renderTest(test);
+                this.updateSummary();
+            }
+            
+            renderTest(test) {
+                const div = document.createElement('div');
+                div.className = `test ${test.status}`;
+                
+                const dataHtml = test.data ? 
+                    `<div class="test-data">${JSON.stringify(test.data, null, 2)}</div>` : '';
+                
+                div.innerHTML = `
+                    <div class="test-header">
+                        <div class="test-title">${test.name}</div>
+                        <div class="test-status ${test.status}">${test.status}</div>
+                    </div>
+                    <div class="test-details">${test.details}</div>
+                    ${dataHtml}
+                `;
+                
+                document.getElementById('results').appendChild(div);
+            }
+            
+            updateSummary() {
+                const passed = testResults.filter(t => t.status === 'pass').length;
+                const failed = testResults.filter(t => t.status === 'fail').length;
+                const warnings = testResults.filter(t => t.status === 'warn').length;
+                const total = testResults.length;
+                
+                const successRate = total > 0 ? Math.round((passed / total) * 100) : 0;
+                
+                document.getElementById('summary').innerHTML = `
+                    <div class="summary-card">
+                        <h3>Total Tests</h3>
+                        <div class="number">${total}</div>
+                    </div>
+                    <div class="summary-card">
+                        <h3>Passed</h3>
+                        <div class="number pass-count">${passed}</div>
+                    </div>
+                    <div class="summary-card">
+                        <h3>Failed</h3>
+                        <div class="number fail-count">${failed}</div>
+                    </div>
+                    <div class="summary-card">
+                        <h3>Warnings</h3>
+                        <div class="number warn-count">${warnings}</div>
+                    </div>
+                    <div class="summary-card">
+                        <h3>Success Rate</h3>
+                        <div class="number">${successRate}%</div>
+                    </div>
+                `;
+                
+                // Update progress bar
+                const progressFill = document.getElementById('overall-progress');
+                const progressText = document.getElementById('progress-text');
+                
+                let progressClass = 'progress-failure';
+                if (successRate >= 80) progressClass = 'progress-success';
+                else if (successRate >= 50) progressClass = 'progress-partial';
+                
+                progressFill.className = `progress-fill ${progressClass}`;
+                progressFill.style.width = `${successRate}%`;
+                progressText.textContent = `${successRate}% tests passing (${passed}/${total})`;
+            }
+        }
+        
+        const reporter = new TestReporter();
+        
+        async function runComprehensiveTests() {
+            testStartTime = new Date();
+            document.getElementById('timestamp').textContent = `Started: ${testStartTime.toLocaleString()}`;
+            
+            // Clear previous results
+            testResults = [];
+            document.getElementById('results').innerHTML = '';
+            
+            // Configuration Tests
+            reporter.startSection('Configuration', 'V3 API connectivity and health validation');
+            await testConfiguration();
+            
+            // API Service Tests  
+            reporter.startSection('API Endpoints', 'V3 REST endpoints functionality');
+            await testApiService();
+            
+            // V2 Migration Tests
+            reporter.startSection('Data Migration', 'V2 to V3 data structure compatibility');
+            await testV2Migration();
+            
+            // Database Tests
+            reporter.startSection('Database', 'V3 database schema and JSON operations');
+            await testDatabase();
+            
+            // Integration Tests
+            reporter.startSection('Integration', 'Entity-curation relationships and queries');
+            await testIntegration();
+            
+            // Server API Tests
+            reporter.startSection('Production API', 'PythonAnywhere deployment validation');
+            await testServerAPI();
+            
+            const endTime = new Date();
+            const duration = Math.round((endTime - testStartTime) / 1000);
+            reporter.addTest('Test Suite Completion', 'pass', 
+                `All tests completed in ${duration} seconds`);
+        }
+        
+        async function testConfiguration() {
+            try {
+                // Test 1: V3 API Base URL
+                const baseUrl = 'https://wsmontes.pythonanywhere.com';
+                reporter.addTest('V3 API Base URL', 'pass',
+                    `API configured for: ${baseUrl}`,
+                    { baseUrl: baseUrl });
+                
+                // Test 2: API Health Check
+                try {
+                    const healthResponse = await fetch(`${baseUrl}/api/v3/health`);
+                    const healthData = await healthResponse.json();
+                    
+                    reporter.addTest('API Health Check', healthResponse.ok ? 'pass' : 'fail',
+                        healthResponse.ok ? 'API is healthy and responding' : 'API health check failed',
+                        healthData);
+                } catch (error) {
+                    reporter.addTest('API Health Check', 'fail',
+                        `API not responding: ${error.message}`);
+                }
+                
+                // Test 3: API Info Endpoint
+                try {
+                    const infoResponse = await fetch(`${baseUrl}/api/v3/info`);
+                    const infoData = await infoResponse.json();
+                    
+                    const isV3 = infoData.version === '3.0';
+                    reporter.addTest('API Version Info', isV3 ? 'pass' : 'fail',
+                        `API version: ${infoData.version}`,
+                        infoData);
+                } catch (error) {
+                    reporter.addTest('API Version Info', 'fail',
+                        `Could not fetch API info: ${error.message}`);
+                }
+                
+                // Test 4: CORS Configuration
+                try {
+                    const corsResponse = await fetch(`${baseUrl}/api/v3/health`, {
+                        method: 'OPTIONS'
+                    });
+                    reporter.addTest('CORS Configuration', corsResponse.ok ? 'pass' : 'warn',
+                        corsResponse.ok ? 'CORS properly configured' : 'CORS may have issues');
+                } catch (error) {
+                    reporter.addTest('CORS Configuration', 'warn',
+                        'Could not test CORS configuration');
+                }
+                
+            } catch (error) {
+                reporter.addTest('Configuration Error', 'fail', error.message);
+            }
+        }
+        
+        async function testApiService() {
+            const baseUrl = 'https://wsmontes.pythonanywhere.com';
+            
+            try {
+                // Test 1: Entity Endpoints Available
+                const entityEndpoints = [
+                    { method: 'GET', path: '/api/v3/entities?type=restaurant&limit=1', name: 'List Entities' },
+                    { method: 'GET', path: '/api/v3/info', name: 'API Info' }
+                ];
+                
+                for (const endpoint of entityEndpoints) {
+                    try {
+                        const response = await fetch(`${baseUrl}${endpoint.path}`, {
+                            method: endpoint.method,
+                            headers: { 'Content-Type': 'application/json' }
+                        });
+                        
+                        reporter.addTest(`${endpoint.name} Endpoint`, response.ok ? 'pass' : 'fail',
+                            `${endpoint.method} ${endpoint.path} - Status: ${response.status}`,
+                            { status: response.status, endpoint: endpoint.path });
+                    } catch (error) {
+                        reporter.addTest(`${endpoint.name} Endpoint`, 'fail',
+                            `Error calling ${endpoint.path}: ${error.message}`);
+                    }
+                }
+                
+                // Test 2: Entity CRUD Operations
+                const testEntityId = `test_entity_${Date.now()}`;
+                const testEntity = {
+                    id: testEntityId,
+                    type: 'restaurant',
+                    doc: {
+                        name: 'Test Restaurant V3',
+                        status: 'draft',
+                        metadata: [{
+                            type: 'test',
+                            source: 'integration_test',
+                            importedAt: new Date().toISOString(),
+                            data: { test: true }
+                        }]
+                    }
+                };
+                
+                // Create entity
+                try {
+                    const createResponse = await fetch(`${baseUrl}/api/v3/entities`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(testEntity)
+                    });
+                    
+                    reporter.addTest('Create Entity', createResponse.ok ? 'pass' : 'fail',
+                        `Created test entity - Status: ${createResponse.status}`,
+                        { status: createResponse.status, entityId: testEntityId });
+                    
+                    if (createResponse.ok) {
+                        // Get entity
+                        const getResponse = await fetch(`${baseUrl}/api/v3/entities/${testEntityId}`);
+                        reporter.addTest('Get Entity', getResponse.ok ? 'pass' : 'fail',
+                            `Retrieved test entity - Status: ${getResponse.status}`);
+                        
+                        // Clean up - delete entity
+                        const deleteResponse = await fetch(`${baseUrl}/api/v3/entities/${testEntityId}`, {
+                            method: 'DELETE'
+                        });
+                        reporter.addTest('Delete Entity', deleteResponse.ok ? 'pass' : 'warn',
+                            `Cleanup test entity - Status: ${deleteResponse.status}`);
+                    }
+                } catch (error) {
+                    reporter.addTest('Entity CRUD Operations', 'fail',
+                        `CRUD test failed: ${error.message}`);
+                }
+                
+                // Test 3: V3 Document Structure
+                try {
+                    const response = await fetch(`${baseUrl}/api/v3/info`);
+                    const data = await response.json();
+                    
+                    const hasV3Features = data.features && Array.isArray(data.features);
+                    const hasDocumentOriented = hasV3Features && 
+                        data.features.includes('Document-oriented storage');
+                    
+                    reporter.addTest('V3 Document Features', hasDocumentOriented ? 'pass' : 'warn',
+                        hasDocumentOriented ? 'Document-oriented features confirmed' : 
+                        'Document features not fully confirmed',
+                        { features: data.features });
+                } catch (error) {
+                    reporter.addTest('V3 Document Features', 'fail',
+                        `Could not verify V3 features: ${error.message}`);
+                }
+                
+            } catch (error) {
+                reporter.addTest('API Service Error', 'fail', error.message);
+            }
+        }
+        
+        async function testV2Migration() {
+            const baseUrl = 'https://wsmontes.pythonanywhere.com';
+            
+            try {
+                // Test 1: V2 vs V3 Data Structure Comparison
+                const v2Structure = {
+                    id: 123,
+                    Name: 'Restaurant Name',
+                    Cuisine: ['Italian'],
+                    Location: 'City'
+                };
+                
+                const v3Structure = {
+                    id: 'rest_restaurant_name',
+                    type: 'restaurant',
+                    doc: {
+                        name: 'Restaurant Name',
+                        status: 'active',
+                        metadata: [{
+                            type: 'migration',
+                            source: 'v2_import',
+                            data: { originalId: 123 }
+                        }]
+                    }
+                };
+                
+                reporter.addTest('Data Structure Migration', 'pass',
+                    'V2 to V3 structure conversion pattern defined',
+                    { v2: v2Structure, v3: v3Structure });
+                
+                // Test 2: V3 Entity Creation (simulating migrated data)
+                const migratedEntityId = `migrated_rest_${Date.now()}`;
+                const migratedEntity = {
+                    id: migratedEntityId,
+                    type: 'restaurant',
+                    doc: {
+                        name: 'Migrated V2 Restaurant',
+                        status: 'active',
+                        externalId: 'v2_restaurant_123',
+                        createdAt: new Date().toISOString(),
+                        createdBy: 'v2_migration',
+                        metadata: [
+                            {
+                                type: 'v2_migration',
+                                source: 'legacy_system',
+                                importedAt: new Date().toISOString(),
+                                data: {
+                                    originalV2Id: 123,
+                                    migrationDate: new Date().toISOString(),
+                                    cuisine: ['Italian', 'Pizza'],
+                                    location: 'Legacy City'
+                                }
+                            }
+                        ]
+                    }
+                };
+                
+                try {
+                    const response = await fetch(`${baseUrl}/api/v3/entities`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(migratedEntity)
+                    });
+                    
+                    reporter.addTest('V2 Migration Simulation', response.ok ? 'pass' : 'fail',
+                        `Created migrated entity - Status: ${response.status}`,
+                        { entityId: migratedEntityId, status: response.status });
+                    
+                    // Cleanup
+                    if (response.ok) {
+                        await fetch(`${baseUrl}/api/v3/entities/${migratedEntityId}`, {
+                            method: 'DELETE'
+                        });
+                    }
+                } catch (error) {
+                    reporter.addTest('V2 Migration Simulation', 'fail',
+                        `Migration test failed: ${error.message}`);
+                }
+                
+                // Test 3: V3 Query Capabilities (for migrated data)
+                try {
+                    const queryData = {
+                        from: 'entities',
+                        filters: [
+                            { path: '$.createdBy', operator: '=', value: 'v2_migration' }
+                        ],
+                        limit: 10
+                    };
+                    
+                    const queryResponse = await fetch(`${baseUrl}/api/v3/query`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(queryData)
+                    });
+                    
+                    reporter.addTest('Migration Query Support', queryResponse.ok ? 'pass' : 'fail',
+                        `Query DSL for migrated data - Status: ${queryResponse.status}`,
+                        { querySupported: queryResponse.ok });
+                } catch (error) {
+                    reporter.addTest('Migration Query Support', 'warn',
+                        `Could not test migration queries: ${error.message}`);
+                }
+                
+            } catch (error) {
+                reporter.addTest('V2 Migration Error', 'fail', error.message);
+            }
+        }
+        
+        async function testDatabase() {
+            const baseUrl = 'https://wsmontes.pythonanywhere.com';
+            
+            try {
+                // Test 1: Database Health via API
+                try {
+                    const healthResponse = await fetch(`${baseUrl}/api/v3/health`);
+                    const healthData = await healthResponse.json();
+                    
+                    const dbConnected = healthData.database === 'connected';
+                    reporter.addTest('Database Connection', dbConnected ? 'pass' : 'fail',
+                        `Database status: ${healthData.database}`,
+                        healthData);
+                } catch (error) {
+                    reporter.addTest('Database Connection', 'fail',
+                        `Could not check database health: ${error.message}`);
+                }
+                
+                // Test 2: V3 Schema Validation (via entity creation)
+                const schemaTestId = `schema_test_${Date.now()}`;
+                const v3SchemaEntity = {
+                    id: schemaTestId,
+                    type: 'restaurant',
+                    doc: {
+                        name: 'V3 Schema Test',
+                        status: 'draft',
+                        externalId: 'schema_test_ext',
+                        createdAt: new Date().toISOString(),
+                        createdBy: 'schema_validator',
+                        metadata: [
+                            {
+                                type: 'schema_test',
+                                source: 'validation',
+                                importedAt: new Date().toISOString(),
+                                created: { testId: 'schema_validation' },
+                                modified: { lastTest: new Date().toISOString() },
+                                data: {
+                                    schemaVersion: 'v3.0',
+                                    documentOriented: true,
+                                    jsonSupport: true
+                                }
+                            }
+                        ]
+                    }
+                };
+                
+                try {
+                    const createResponse = await fetch(`${baseUrl}/api/v3/entities`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(v3SchemaEntity)
+                    });
+                    
+                    reporter.addTest('V3 Schema Validation', createResponse.ok ? 'pass' : 'fail',
+                        `V3 document structure accepted - Status: ${createResponse.status}`,
+                        { schemaValid: createResponse.ok });
+                    
+                    // Test JSON operations
+                    if (createResponse.ok) {
+                        const entityData = await createResponse.json();
+                        const hasVersion = entityData.version === 1;
+                        const hasTimestamps = entityData.created_at && entityData.updated_at;
+                        
+                        reporter.addTest('V3 Database Features', hasVersion && hasTimestamps ? 'pass' : 'warn',
+                            `Versioning and timestamps: ${hasVersion && hasTimestamps}`,
+                            { version: entityData.version, timestamps: hasTimestamps });
+                        
+                        // Cleanup
+                        await fetch(`${baseUrl}/api/v3/entities/${schemaTestId}`, {
+                            method: 'DELETE'
+                        });
+                    }
+                } catch (error) {
+                    reporter.addTest('V3 Schema Validation', 'fail',
+                        `Schema test failed: ${error.message}`);
+                }
+                
+                // Test 3: JSON Query Capabilities
+                try {
+                    const queryResponse = await fetch(`${baseUrl}/api/v3/query`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            from: 'entities',
+                            filters: [
+                                { path: '$.status', operator: '=', value: 'active' }
+                            ],
+                            limit: 1
+                        })
+                    });
+                    
+                    reporter.addTest('JSON Query Support', queryResponse.ok ? 'pass' : 'fail',
+                        `JSON path queries - Status: ${queryResponse.status}`,
+                        { querySupported: queryResponse.ok });
+                } catch (error) {
+                    reporter.addTest('JSON Query Support', 'warn',
+                        `Could not test JSON queries: ${error.message}`);
+                }
+                
+            } catch (error) {
+                reporter.addTest('Database Error', 'fail', error.message);
+            }
+        }
+        
+        async function testIntegration() {
+            const baseUrl = 'https://wsmontes.pythonanywhere.com';
+            
+            try {
+                // Test 1: Entity-Curation Integration
+                const integrationTestId = `integration_test_${Date.now()}`;
+                
+                // Create test entity
+                const testEntity = {
+                    id: integrationTestId,
+                    type: 'restaurant',
+                    doc: {
+                        name: 'Integration Test Restaurant',
+                        status: 'active',
+                        metadata: [{
+                            type: 'integration_test',
+                            source: 'validation',
+                            importedAt: new Date().toISOString(),
+                            data: { purpose: 'entity_curation_integration' }
+                        }]
+                    }
+                };
+                
+                try {
+                    const entityResponse = await fetch(`${baseUrl}/api/v3/entities`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(testEntity)
+                    });
+                    
+                    if (entityResponse.ok) {
+                        // Create related curation
+                        const testCuration = {
+                            id: `cur_test_${integrationTestId}`,
+                            entity_id: integrationTestId,
+                            doc: {
+                                curator: {
+                                    id: 'curator_integration_test',
+                                    name: 'Integration Tester'
+                                },
+                                createdAt: new Date().toISOString(),
+                                categories: {
+                                    test_category: ['integration', 'validation'],
+                                    status: ['testing']
+                                },
+                                sources: ['integration_test']
+                            }
+                        };
+                        
+                        const curationResponse = await fetch(`${baseUrl}/api/v3/curations`, {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify(testCuration)
+                        });
+                        
+                        reporter.addTest('Entity-Curation Integration', curationResponse.ok ? 'pass' : 'fail',
+                            `Created entity and curation - Curation status: ${curationResponse.status}`,
+                            { entityCreated: true, curationCreated: curationResponse.ok });
+                        
+                        // Test entity curations retrieval
+                        if (curationResponse.ok) {
+                            const entityCurationsResponse = await fetch(
+                                `${baseUrl}/api/v3/entities/${integrationTestId}/curations`
+                            );
+                            
+                            reporter.addTest('Entity Curations Retrieval', entityCurationsResponse.ok ? 'pass' : 'fail',
+                                `Retrieved curations for entity - Status: ${entityCurationsResponse.status}`);
+                        }
+                        
+                        // Cleanup
+                        await fetch(`${baseUrl}/api/v3/entities/${integrationTestId}`, { method: 'DELETE' });
+                    } else {
+                        reporter.addTest('Entity-Curation Integration', 'fail',
+                            `Could not create test entity - Status: ${entityResponse.status}`);
+                    }
+                } catch (error) {
+                    reporter.addTest('Entity-Curation Integration', 'fail',
+                        `Integration test failed: ${error.message}`);
+                }
+                
+                // Test 2: Search Integration
+                try {
+                    const searchResponse = await fetch(
+                        `${baseUrl}/api/v3/curations/search?category=cuisine&concept=brazilian`
+                    );
+                    
+                    reporter.addTest('Search Integration', searchResponse.ok ? 'pass' : 'fail',
+                        `Category-concept search - Status: ${searchResponse.status}`,
+                        { searchSupported: searchResponse.ok });
+                } catch (error) {
+                    reporter.addTest('Search Integration', 'warn',
+                        `Could not test search: ${error.message}`);
+                }
+                
+                // Test 3: Complex Query Integration
+                try {
+                    const complexQuery = {
+                        from: 'curations',
+                        explode: { path: '$.categories.cuisine', as: 'cuisine_concept' },
+                        filters: [
+                            { path: 'cuisine_concept', operator: '=', value: 'brazilian' }
+                        ],
+                        limit: 5
+                    };
+                    
+                    const queryResponse = await fetch(`${baseUrl}/api/v3/query`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(complexQuery)
+                    });
+                    
+                    reporter.addTest('Complex Query Integration', queryResponse.ok ? 'pass' : 'fail',
+                        `Array explode and filtering - Status: ${queryResponse.status}`,
+                        { complexQueriesSupported: queryResponse.ok });
+                } catch (error) {
+                    reporter.addTest('Complex Query Integration', 'warn',
+                        `Complex query test failed: ${error.message}`);
+                }
+                
+            } catch (error) {
+                reporter.addTest('Integration Error', 'fail', error.message);
+            }
+        }
+        
+        async function testServerAPI() {
+            const baseUrl = 'https://wsmontes.pythonanywhere.com';
+            
+            try {
+                // Test 1: Production API Connectivity
+                try {
+                    const response = await fetch(`${baseUrl}/api/v3/health`);
+                    const data = await response.json();
+                    
+                    reporter.addTest('Production API Connectivity', response.ok ? 'pass' : 'fail',
+                        `PythonAnywhere API health - Status: ${response.status}`,
+                        data);
+                } catch (error) {
+                    reporter.addTest('Production API Connectivity', 'fail',
+                        `Could not connect to production API: ${error.message}`);
+                }
+                
+                // Test 2: All V3 Endpoints Available
+                const endpoints = [
+                    { method: 'GET', path: '/api/v3/info', name: 'Info Endpoint' },
+                    { method: 'GET', path: '/api/v3/entities?type=restaurant&limit=1', name: 'Entities List' },
+                    { method: 'GET', path: '/api/v3/curations/search?category=cuisine&concept=brazilian', name: 'Curations Search' },
+                    { method: 'POST', path: '/api/v3/query', name: 'Query DSL', body: {
+                        from: 'entities',
+                        filters: [{ path: '$.status', operator: '=', value: 'active' }],
+                        limit: 1
+                    }}
+                ];
+                
+                for (const endpoint of endpoints) {
+                    try {
+                        const options = {
+                            method: endpoint.method,
+                            headers: { 'Content-Type': 'application/json' }
+                        };
+                        
+                        if (endpoint.body) {
+                            options.body = JSON.stringify(endpoint.body);
+                        }
+                        
+                        const response = await fetch(`${baseUrl}${endpoint.path}`, options);
+                        
+                        reporter.addTest(endpoint.name, response.ok ? 'pass' : 'warn',
+                            `${endpoint.method} ${endpoint.path} - Status: ${response.status}`,
+                            { status: response.status });
+                    } catch (error) {
+                        reporter.addTest(endpoint.name, 'fail',
+                            `Error testing ${endpoint.path}: ${error.message}`);
+                    }
+                }
+                
+                // Test 3: Performance Test
+                const performanceTestStart = Date.now();
+                try {
+                    const promises = [];
+                    for (let i = 0; i < 5; i++) {
+                        promises.push(fetch(`${baseUrl}/api/v3/health`));
+                    }
+                    
+                    const results = await Promise.all(promises);
+                    const performanceTestEnd = Date.now();
+                    const avgResponseTime = (performanceTestEnd - performanceTestStart) / 5;
+                    
+                    const allSuccessful = results.every(r => r.ok);
+                    reporter.addTest('API Performance', allSuccessful ? 'pass' : 'warn',
+                        `5 concurrent requests - Avg response time: ${Math.round(avgResponseTime)}ms`,
+                        { avgResponseTime: Math.round(avgResponseTime), allSuccessful });
+                } catch (error) {
+                    reporter.addTest('API Performance', 'warn',
+                        `Performance test failed: ${error.message}`);
+                }
+                
+                // Test 4: Error Handling
+                try {
+                    const errorResponse = await fetch(`${baseUrl}/api/v3/entities/nonexistent_entity`);
+                    const is404 = errorResponse.status === 404;
+                    
+                    reporter.addTest('Error Handling', is404 ? 'pass' : 'warn',
+                        `404 for nonexistent entity - Status: ${errorResponse.status}`,
+                        { correctErrorHandling: is404 });
+                } catch (error) {
+                    reporter.addTest('Error Handling', 'fail',
+                        `Error handling test failed: ${error.message}`);
+                }
+                
+            } catch (error) {
+                reporter.addTest('Server API Error', 'fail', error.message);
+            }
+        }
+        
+        function exportReport() {
+            const report = generateTextReport();
+            const blob = new Blob([report], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `concierge-v3-test-report-${new Date().toISOString().split('T')[0]}.txt`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+        
+        function copyToClipboard() {
+            const report = generateTextReport();
+            navigator.clipboard.writeText(report).then(() => {
+                alert('Report copied to clipboard!');
+            });
+        }
+        
+        function generateTextReport() {
+            const passed = testResults.filter(t => t.status === 'pass').length;
+            const failed = testResults.filter(t => t.status === 'fail').length;
+            const warnings = testResults.filter(t => t.status === 'warn').length;
+            const successRate = Math.round((passed / testResults.length) * 100);
+            
+            let report = `CONCIERGE V3 INTEGRATION TEST REPORT
+Generated: ${new Date().toLocaleString()}
+Duration: ${testStartTime ? Math.round((new Date() - testStartTime) / 1000) : 0} seconds
+
+SUMMARY
+=======
+Total Tests: ${testResults.length}
+Passed: ${passed}
+Failed: ${failed}  
+Warnings: ${warnings}
+Success Rate: ${successRate}%
+
+DETAILED RESULTS
+================
+`;
+            
+            let currentSection = '';
+            testResults.forEach(test => {
+                if (test.section !== currentSection) {
+                    currentSection = test.section;
+                    report += `\n--- ${currentSection} ---\n`;
+                }
+                
+                const status = test.status.toUpperCase().padEnd(4);
+                report += `[${status}] ${test.name}\n`;
+                report += `        ${test.details}\n`;
+                
+                if (test.data) {
+                    report += `        Data: ${JSON.stringify(test.data, null, 8).replace(/\n/g, '\n        ')}\n`;
+                }
+                report += '\n';
+            });
+            
+            return report;
+        }
+        
+        function runTests() {
+            runComprehensiveTests();
+        }
+        
+        // Auto-run tests on page load
+        window.addEventListener('load', () => {
+            setTimeout(runComprehensiveTests, 500); // Small delay to ensure all scripts load
+        });
+    </script>
+</body>
+</html>

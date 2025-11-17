@@ -44,3 +44,6 @@ const ModuleWrapper = {
         return window[instanceName];
     }
 };
+
+// Expose ModuleWrapper globally
+window.ModuleWrapper = ModuleWrapper;

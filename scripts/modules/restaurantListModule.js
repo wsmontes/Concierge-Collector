@@ -194,27 +194,14 @@ const RestaurantListModule = ModuleWrapper.defineClass('RestaurantListModule', c
             try {
                 const selectedIds = Array.from(this.selectedRestaurants);
                 
-                // Get selected restaurants to count synced vs local
+                // Get selected restaurants count
                 const restaurants = await this.dataStorage.db.restaurants
                     .where('id')
                     .anyOf(selectedIds)
                     .toArray();
                 
-                const syncedCount = restaurants.filter(r => r.serverId != null).length;
-                const localCount = restaurants.length - syncedCount;
-                
                 // Build confirmation message
-                let confirmMessage = `Delete ${restaurants.length} restaurants?\n\n`;
-                
-                if (localCount > 0 && syncedCount > 0) {
-                    confirmMessage += `${localCount} are local (cannot be undone)\n${syncedCount} are synced\n\n`;
-                } else if (localCount > 0) {
-                    confirmMessage += `All are local and the operation cannot be undone.\n\n`;
-                } else {
-                    confirmMessage += `All are synced.\n\n`;
-                }
-                
-                confirmMessage += 'Are you sure?';
+                let confirmMessage = `Delete ${restaurants.length} restaurants?\n\nAre you sure?`;
                 
                 const confirmed = confirm(confirmMessage);
                 if (!confirmed) return;

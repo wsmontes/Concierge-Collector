@@ -1,22 +1,21 @@
 /**
- * Main application initialization
- * Dependencies: Dexie.js, ModuleWrapper, AccessControl
+ * Main application initialization - Clean Entity-Curation Backend
+ * Dependencies: Dexie.js, ModuleWrapper, AccessControl, DataStore, ApiService, SyncManager, ImportManager
  */
 
 // Expose startApplication function for AccessControl to call after unlock
 window.startApplication = function() {
-    console.log('Starting application after access control...');
+    console.log('🚀 Starting Concierge Collector application...');
     
-    // Check if required libraries and components exist
+    // Check if required libraries exist
     if (typeof Dexie === 'undefined') {
-        console.error('Dexie.js library not loaded!');
+        console.error('❌ Dexie.js library not loaded!');
         showFatalError('Required library Dexie.js not loaded. Please check your internet connection and reload the page.');
         return;
     }
     
-    // Check if our module wrapper is loaded
     if (typeof ModuleWrapper === 'undefined') {
-        console.error('ModuleWrapper not loaded! This is required for proper initialization');
+        console.error('❌ ModuleWrapper not loaded!');
         showFatalError('Required module wrapper not loaded. Please check if all script files are properly included.');
         return;
     }
@@ -24,17 +23,17 @@ window.startApplication = function() {
     // Cleanup browser data before initialization
     cleanupBrowserData();
     
-    // Initialize the application components in the correct order using our wrapper
+    // Initialize the application with clean entity-curation backend
     initializeApp()
         .then(() => {
-            // Check if API key exists after initialization
-            window.checkAndPromptForApiKey();
+            console.log('✅ Application initialization completed');
             
-            // After initialization, trigger initial sync
+            // Check API key and trigger initial sync
+            window.checkAndPromptForApiKey();
             triggerInitialSync();
         })
         .catch(error => {
-            console.error('Error during application initialization:', error);
+            console.error('❌ Error during application initialization:', error);
             console.error('Stack trace:', error.stack);
             showFatalError('There was an error initializing the application. Please check the console for details.');
         });
@@ -218,54 +217,118 @@ function showFatalError(message) {
 }
 
 /**
- * Initialize the application with improved UI component creation
- * Makes sure HTML components are created before event listeners are attached
+ * Initialize the application with clean entity-curation backend
  */
 async function initializeApp() {
-    console.log('Initializing application...');
+    console.log('🔄 Initializing entity-curation backend...');
     
     try {
-        // Create base DOM structure if it doesn't exist
+        // Create base DOM structure
         ensureBaseStructureExists();
         
-        // Initialize data storage first (database needs to be ready)
-        if (!window.dataStorage) {
-            console.error('DataStorage not initialized!');
-            throw new Error('DataStorage is required but not initialized');
-        }
-        
-        // Initialize pending audio manager
-        if (window.PendingAudioManager) {
-            window.PendingAudioManager.init(window.dataStorage);
-            console.log('PendingAudioManager initialized');
+        // STEP 1: Run migration from V1 to V3 (if needed) - BEFORE initializing DataStore
+        if (window.MigrationManager) {
+            console.log('🔄 Checking for V1 legacy data migration...');
+            try {
+                const migrationManager = new window.MigrationManager();
+                const migrationResult = await migrationManager.initialize();
+                
+                if (migrationResult.needsMigration) {
+                    console.log('⏳ Migration in progress - this may take a moment...');
+                    // Migration runs in background, we can continue
+                } else {
+                    console.log(`✅ No migration needed: ${migrationResult.reason}`);
+                }
+            } catch (migrationError) {
+                console.error('⚠️ Migration check failed:', migrationError);
+                console.warn('⚠️ Continuing with DataStore initialization...');
+            }
         } else {
-            console.warn('PendingAudioManager not available');
+            console.warn('⚠️ MigrationManager not available - skipping migration check');
         }
         
-        // Initialize draft restaurant manager
-        if (window.DraftRestaurantManager) {
-            window.DraftRestaurantManager.init(window.dataStorage);
-            console.log('DraftRestaurantManager initialized');
+        // STEP 2: Initialize DataStore (core database layer)
+        if (!window.DataStore) {
+            throw new Error('DataStore not available - check script loading order');
+        }
+        
+        console.log('🔄 Initializing DataStore...');
+        await window.DataStore.initialize();
+        
+        if (!window.DataStore.isInitialized) {
+            throw new Error('DataStore failed to initialize properly');
+        }
+        console.log('✅ DataStore initialized successfully');
+        
+        // Initialize API Service
+        if (window.ApiService) {
+            console.log('🔄 Initializing API Service...');
+            await window.ApiService.initialize();
+            console.log('✅ API Service initialized');
         } else {
-            console.warn('DraftRestaurantManager not available');
+            console.warn('⚠️ API Service not available');
         }
         
-        // Initialize UI Manager
+        // Initialize Sync Manager (depends on DataStore and ApiService)
+        if (window.SyncManager) {
+            console.log('🔄 Initializing Sync Manager...');
+            try {
+                await window.SyncManager.initialize();
+                console.log('✅ Sync Manager initialized');
+            } catch (syncError) {
+                console.error('❌ Sync Manager initialization failed:', syncError);
+                console.warn('⚠️ Continuing without sync functionality');
+            }
+        } else {
+            console.warn('⚠️ Sync Manager not available');
+        }
+        
+        // Initialize Import Manager
+        if (window.ImportManager) {
+            console.log('🔄 Initializing Import Manager...');
+            await window.ImportManager.initialize();
+            console.log('✅ Import Manager initialized');
+        } else {
+            console.warn('⚠️ Import Manager not available');
+        }
+        
+        // Initialize UI Manager with clean DataStore integration
         window.uiManager = new UIManager();
         window.uiManager.init();
         
-        // Load curator info
-        await window.uiManager.curatorModule.loadCuratorInfo();
+        // Ensure recording module is properly initialized
+        console.log('🔍 Checking RecordingModule availability:', {
+            RecordingModuleExists: typeof RecordingModule !== 'undefined',
+            uiManagerRecordingModule: !!window.uiManager.recordingModule,
+            uiManagerExists: !!window.uiManager
+        });
         
-        // Show pending audio badge if there are pending recordings
-        if (window.uiManager.recordingModule && typeof window.uiManager.recordingModule.showPendingAudioBadge === 'function') {
-            await window.uiManager.recordingModule.showPendingAudioBadge();
+        if (!window.uiManager.recordingModule && typeof RecordingModule !== 'undefined') {
+            console.log('📦 Manually initializing recording module');
+            try {
+                window.uiManager.recordingModule = new RecordingModule(window.uiManager);
+                if (typeof window.uiManager.recordingModule.setupEvents === 'function') {
+                    window.uiManager.recordingModule.setupEvents();
+                }
+                console.log('✅ Recording module manually initialized successfully');
+            } catch (error) {
+                console.error('❌ Failed to manually initialize recording module:', error);
+            }
+        } else if (typeof RecordingModule === 'undefined') {
+            console.error('❌ RecordingModule class not found - check if script is loaded properly');
         }
         
-        console.log('Application initialization complete');
+        // Load curator info using DataStore
+        if (window.uiManager.curatorModule) {
+            await window.uiManager.curatorModule.loadCuratorInfo();
+        }
+        
+        console.log('✅ Entity-curation backend initialization complete');
+        
     } catch (error) {
-        console.error('Error during application initialization:', error);
-        throw new Error('Failed to initialize application: ' + error.message);
+        console.error('❌ Error during backend initialization:', error);
+        console.error('Stack trace:', error.stack);
+        throw error; // Re-throw to trigger fatal error handling
     }
 }
 
@@ -308,7 +371,7 @@ function ensureBaseStructureExists() {
 }
 
 /**
- * Setup manual sync button to use SyncManager
+ * Setup manual sync button to use V3 SyncManager
  */
 function setupManualSyncButton() {
     const syncButton = document.getElementById('sync-button');
@@ -317,20 +380,21 @@ function setupManualSyncButton() {
         return;
     }
 
-    console.log('🔧 Configuring manual sync button...');
+    console.log('🔧 V3: Configuring manual sync button...');
 
     // Remove existing listeners (clone and replace)
     const newButton = syncButton.cloneNode(true);
     syncButton.parentNode.replaceChild(newButton, syncButton);
 
-    // Add click handler using SyncManager
+    // Add click handler using V3 SyncManager
     newButton.addEventListener('click', async () => {
-        console.log('🔄 Manual sync triggered from sidebar');
+        console.log('🔄 V3: Manual sync triggered from sidebar');
         
-        if (!window.syncManager) {
-            console.error('❌ SyncManager not available');
+        const syncManager = window.V3SyncManager || window.syncManager;
+        if (!syncManager) {
+            console.error('❌ V3: SyncManager not available');
             if (window.uiUtils?.showNotification) {
-                window.uiUtils.showNotification('Sync service not available', 'error');
+                window.uiUtils.showNotification('V3 Sync service not available', 'error');
             }
             return;
         }
@@ -342,21 +406,69 @@ function setupManualSyncButton() {
         // Get button text element
         const buttonText = newButton.querySelector('.btn-text') || newButton;
         const originalText = buttonText.textContent;
-        buttonText.textContent = 'Syncing...';
+        buttonText.textContent = 'V3 Syncing...';
 
         try {
-            // Use the unified comprehensive sync method
-            await window.syncManager.performComprehensiveSync(true);
-            console.log('✅ Manual sync completed from sidebar');
+            let syncResults;
+            // Use V3 SyncManager if available, otherwise fallback to legacy
+            if (window.V3SyncManager && typeof window.V3SyncManager.fullSync === 'function') {
+                console.log('🔄 V3: Using V3SyncManager for manual sync');
+                syncResults = await window.V3SyncManager.fullSync();
+            } else if (syncManager && typeof syncManager.performComprehensiveSync === 'function') {
+                console.log('🔄 V3: Fallback to legacy syncManager for manual sync');
+                syncResults = await syncManager.performComprehensiveSync(true);
+            } else {
+                throw new Error('No compatible sync method available');
+            }
+            
+            console.log('✅ V3: Manual sync completed from sidebar');
+            console.log('V3: Sync results:', syncResults);
+            
+            // Show success notification with results
+            if (window.uiUtils?.showNotification) {
+                if (syncResults && typeof syncResults === 'object') {
+                    const added = syncResults.entitiesAdded || syncResults.added || 0;
+                    const updated = syncResults.entitiesUpdated || syncResults.updated || 0;
+                    const message = `V3 Sync complete: ${added} added, ${updated} updated`;
+                    window.uiUtils.showNotification(message, 'success');
+                } else {
+                    window.uiUtils.showNotification('V3 Sync completed successfully', 'success');
+                }
+            }
             
             // Refresh restaurant list if available
             if (window.restaurantModule && window.uiManager?.currentCurator) {
                 await window.restaurantModule.loadRestaurantList(window.uiManager.currentCurator.id);
             }
+            
+            // Refresh UI components
+            if (window.uiManager) {
+                // Refresh curator selector if available
+                if (window.uiManager.curatorModule && 
+                    typeof window.uiManager.curatorModule.initializeCuratorSelector === 'function') {
+                    window.uiManager.curatorModule.curatorSelectorInitialized = false;
+                    await window.uiManager.curatorModule.initializeCuratorSelector();
+                }
+                
+                // Refresh restaurant list if available
+                if (window.uiManager.restaurantModule && 
+                    typeof window.uiManager.restaurantModule.loadRestaurantList === 'function') {
+                    const entityStore = window.EntityStore || window.dataStorage;
+                    const currentCurator = entityStore && entityStore.getCurrentCurator ? 
+                        await entityStore.getCurrentCurator() : 
+                        (window.dataStorage ? await window.dataStorage.getCurrentCurator() : null);
+                    
+                    if (currentCurator) {
+                        const filterEnabled = window.uiManager.restaurantModule.getCurrentFilterState();
+                        await window.uiManager.restaurantModule.loadRestaurantList(currentCurator.id, filterEnabled);
+                    }
+                }
+            }
+            
         } catch (error) {
-            console.error('❌ Manual sync error:', error);
+            console.error('❌ V3: Manual sync error:', error);
             if (window.uiUtils?.showNotification) {
-                window.uiUtils.showNotification(`Sync failed: ${error.message}`, 'error');
+                window.uiUtils.showNotification(`V3 Sync failed: ${error.message}`, 'error');
             }
         } finally {
             // Re-enable button and restore state
@@ -366,7 +478,7 @@ function setupManualSyncButton() {
         }
     });
 
-    console.log('✅ Manual sync button configured (using SyncManager)');
+    console.log('✅ V3: Manual sync button configured (using V3SyncManager)');
 }
 
 /**
@@ -471,19 +583,39 @@ function ensureRecordingModuleInitialized(uiManager) {
     // Wait for DOM to be fully ready
     setTimeout(() => {
         try {
-            console.log('Ensuring recording module is properly initialized');
+            console.log('🔄 Final check - ensuring recording module is properly initialized');
             
             if (uiManager && uiManager.recordingModule) {
                 // Make sure recording module has setup its events
                 if (typeof uiManager.recordingModule.setupEvents === 'function') {
                     uiManager.recordingModule.setupEvents();
-                    console.log('Recording module event setup reinforced');
+                    console.log('✅ Recording module event setup reinforced');
                     
                     // Make module available globally for debugging if needed
                     window.recordingModule = uiManager.recordingModule;
                 }
             } else {
-                console.warn('Recording module not found in UI Manager');
+                console.warn('⚠️ Recording module STILL not found in UI Manager after initialization attempts');
+                console.log('🔍 Final debug info:', {
+                    uiManagerExists: !!uiManager,
+                    recordingModuleExists: !!(uiManager && uiManager.recordingModule),
+                    RecordingModuleClassExists: typeof RecordingModule !== 'undefined'
+                });
+                
+                // Last resort: try to initialize it here
+                if (uiManager && !uiManager.recordingModule && typeof RecordingModule !== 'undefined') {
+                    console.log('🚨 Last resort: attempting to initialize recording module in ensureRecordingModuleInitialized');
+                    try {
+                        uiManager.recordingModule = new RecordingModule(uiManager);
+                        if (typeof uiManager.recordingModule.setupEvents === 'function') {
+                            uiManager.recordingModule.setupEvents();
+                        }
+                        window.recordingModule = uiManager.recordingModule;
+                        console.log('✅ Recording module successfully initialized as last resort');
+                    } catch (error) {
+                        console.error('❌ Last resort initialization also failed:', error);
+                    }
+                }
             }
             
             // Try to attach handlers to any existing buttons regardless
@@ -540,21 +672,36 @@ function ensureRecordingModuleInitialized(uiManager) {
  * Triggers initial synchronization with the server after application initialization
  * This ensures we have the latest data from the server upon startup
  * OPTIMIZED: Only syncs if needed, doesn't block app startup
+ * UPDATED FOR V3: Uses V3SyncManager and EntityStore
  */
 function triggerInitialSync() {
-    console.log('Checking if sync is needed...');
+    console.log('🔄 Checking if sync is needed...');
     
-    // Give time for other modules to initialize and UI to render
+    // Give time for modules to initialize and UI to render
     setTimeout(async () => {
         try {
-            // Check if syncManager is available
-            if (!window.syncManager) {
-                console.warn('syncManager not available, skipping initial sync');
+            // Check if SyncManager is available
+            if (!window.SyncManager) {
+                console.warn('⚠️ SyncManager not available, skipping initial sync');
                 return;
             }
             
-            // Check last sync time - only sync if it's been a while
-            const lastSyncTime = await dataStorage.getLastSyncTime();
+            // Check if DataStore is available
+            if (!window.DataStore) {
+                console.warn('⚠️ DataStore not available, skipping sync timing check');
+                return;
+            }
+            
+            // Check last sync time
+            let lastSyncTime;
+            try {
+                if (typeof window.DataStore.getLastSyncTime === 'function') {
+                    lastSyncTime = await window.DataStore.getLastSyncTime();
+                }
+            } catch (syncTimeError) {
+                console.log('Could not retrieve last sync time, proceeding with sync');
+            }
+            
             const now = new Date();
             const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
             
@@ -564,34 +711,37 @@ function triggerInitialSync() {
                 return;
             }
             
-            // Show a subtle notification that sync is starting (non-blocking)
-            console.log('Starting background sync...');
+            // Show notification that sync is starting
+            console.log('🔄 Starting background sync...');
             
-            // Import curators first (quick operation)
-            console.log('Importing curators from server...');
+            // Perform full sync with entity-curation model
             try {
-                const curatorResults = await window.syncManager.importCurators();
-                if (curatorResults && Array.isArray(curatorResults)) {
-                    console.log(`Imported ${curatorResults.length} curators from server`);
+                let syncResults;
+                if (window.SyncManager && typeof window.SyncManager.fullSync === 'function') {
+                    console.log('🔄 Using SyncManager for full sync...');
+                    syncResults = await window.SyncManager.fullSync();
                 } else {
-                    console.log('No curators to import or curator import returned unexpected result');
+                    throw new Error('SyncManager fullSync method not available');
                 }
-            } catch (curatorError) {
-                console.error('Curator import error:', curatorError);
-                // Continue with restaurant import even if curator import fails
-            }
-            
-            // Then import restaurants (potentially longer operation)
-            console.log('Importing restaurants from server...');
-            try {
-                const restaurantResults = await window.syncManager.importRestaurants();
                 
-                // Log detailed restaurant import results
-                console.log('Restaurant import results:', restaurantResults);
-                console.log(`Imported ${restaurantResults.added} restaurants, updated ${restaurantResults.updated}, skipped ${restaurantResults.skipped}`);
+                // Log detailed sync results
+                console.log('✅ Sync results:', syncResults);
+                if (syncResults && typeof syncResults === 'object') {
+                    const added = syncResults.entitiesAdded || syncResults.added || 0;
+                    const updated = syncResults.entitiesUpdated || syncResults.updated || 0;
+                    const curationCount = syncResults.curationsAdded || 0;
+                    console.log(`V3: Synced ${added} entities, updated ${updated}, ${curationCount} curations`);
+                }
                 
                 // Update UI to reflect new data if UI manager exists (only if there are changes)
-                if (window.uiManager && (restaurantResults.added > 0 || restaurantResults.updated > 0)) {
+                const hasChanges = syncResults && (
+                    (syncResults.entitiesAdded && syncResults.entitiesAdded > 0) ||
+                    (syncResults.entitiesUpdated && syncResults.entitiesUpdated > 0) ||
+                    (syncResults.added && syncResults.added > 0) ||
+                    (syncResults.updated && syncResults.updated > 0)
+                );
+                
+                if (window.uiManager && hasChanges) {
                     // Refresh curator selector if available
                     if (window.uiManager.curatorModule && 
                         typeof window.uiManager.curatorModule.initializeCuratorSelector === 'function') {
@@ -602,8 +752,11 @@ function triggerInitialSync() {
                     // Refresh restaurant list if available
                     if (window.uiManager.restaurantModule && 
                         typeof window.uiManager.restaurantModule.loadRestaurantList === 'function') {
-                        console.log('Refreshing restaurant list to display newly imported data...');
-                        const currentCurator = await dataStorage.getCurrentCurator();
+                        console.log('V3: Refreshing restaurant list to display newly synced data...');
+                        const currentCurator = window.dataStore.getCurrentCurator ? 
+                            await window.dataStore.getCurrentCurator() : 
+                            (window.dataStorage ? await window.dataStorage.getCurrentCurator() : null);
+                        
                         if (currentCurator) {
                             const filterEnabled = window.uiManager.restaurantModule.getCurrentFilterState();
                             await window.uiManager.restaurantModule.loadRestaurantList(currentCurator.id, filterEnabled);
@@ -612,26 +765,34 @@ function triggerInitialSync() {
                     
                     // Show notification only if there were changes
                     if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
-                        const notificationMessage = `Background sync: ${restaurantResults.added} added, ${restaurantResults.updated} updated`;
+                        const added = syncResults.entitiesAdded || syncResults.added || 0;
+                        const updated = syncResults.entitiesUpdated || syncResults.updated || 0;
+                        const notificationMessage = `V3 Background sync: ${added} added, ${updated} updated`;
                         window.uiUtils.showNotification(notificationMessage, 'success');
                     }
                 } else {
-                    console.log('No changes from sync, UI update skipped');
+                    console.log('V3: No changes from sync, UI update skipped');
                 }
                 
-            } catch (restaurantError) {
-                console.error('Background sync error:', restaurantError);
+            } catch (syncError) {
+                console.error('V3: Background sync error:', syncError);
                 // Don't show error notification on background sync - it's non-critical
                 // The user can manually sync later if needed
             }
             
-            // Update last sync time even with partial success
-            if (window.dataStorage && typeof window.dataStorage.updateLastSyncTime === 'function') {
-                await window.dataStorage.updateLastSyncTime();
+            // Update last sync time using appropriate data store
+            try {
+                if (window.EntityStore && typeof window.EntityStore.updateLastSyncTime === 'function') {
+                    await window.EntityStore.updateLastSyncTime();
+                } else if (window.dataStorage && typeof window.dataStorage.updateLastSyncTime === 'function') {
+                    await window.dataStorage.updateLastSyncTime();
+                }
+            } catch (updateTimeError) {
+                console.warn('V3: Could not update last sync time:', updateTimeError);
             }
             
         } catch (error) {
-            console.error('Background sync error:', error);
+            console.error('V3: Background sync error:', error);
             // Silent fail - user can manually sync if needed
         }
     }, 3000); // Wait 3 seconds to ensure UI is fully loaded before background sync
