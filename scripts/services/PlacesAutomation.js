@@ -89,7 +89,7 @@ const PlacesAutomation = ModuleWrapper.defineClass('PlacesAutomation', class {
     }
 
     /**
-     * Transform Google Place to Entity (V4 schema)
+     * Transform Google Place to Entity (V3 schema)
      * 
      * @param {Object} place - Google Places API result
      * @returns {Object} Entity object
@@ -140,9 +140,10 @@ const PlacesAutomation = ModuleWrapper.defineClass('PlacesAutomation', class {
         };
         
         // Build entity for DataStore.createEntity()
-        // DataStore will add entity_id, sync queue, etc.
+        // Use place_id as entity_id for automatic deduplication
+        // Backend will upsert based on entity_id
         return {
-            entity_id: this.generateEntityId(),
+            entity_id: place.place_id ? `place_${place.place_id}` : this.generateEntityId(),
             type: 'restaurant',
             name: place.name || 'Unknown',
             status: 'active',

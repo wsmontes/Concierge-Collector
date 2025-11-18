@@ -148,7 +148,7 @@ class RestaurantModule {
             if (filterEnabled && restaurants.length === 0) {
                 this.log.warn(`No restaurants found with filter. Checking if any restaurants exist with curatorId: ${curatorId}`);
                 
-                // V4: Use dataStore.db.entities instead of dataStorage.db.restaurants
+                // Use dataStore.db.entities for restaurant queries
                 try {
                     const allRestaurantsForCurator = await window.dataStore.db.entities
                         .where('type').equals('restaurant')

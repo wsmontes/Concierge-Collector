@@ -22,26 +22,53 @@ async def create_entity(
     entity: EntityCreate,
     db: AsyncIOMotorDatabase = Depends(get_database)
 ):
-    """Create a new entity"""
-    # Prepare document
-    doc = entity.model_dump()
-    doc["_id"] = entity.entity_id
-    doc["createdAt"] = datetime.now(timezone.utc)
-    doc["updatedAt"] = datetime.now(timezone.utc)
-    doc["version"] = 1
+    """Create a new entity or update if exists (upsert with merge)"""
+    # Check if entity already exists
+    existing = await db.entities.find_one({"_id": entity.entity_id})
     
-    # Insert
-    try:
-        await db.entities.insert_one(doc)
-    except DuplicateKeyError:
-        raise HTTPException(
-            status_code=500,
-            detail=f"Entity {entity.entity_id} already exists"
+    if existing:
+        # Entity exists - merge data intelligently
+        doc = entity.model_dump(exclude_unset=True)
+        
+        # Merge data field if both have it
+        if "data" in doc and "data" in existing:
+            # Deep merge data objects
+            merged_data = {**existing.get("data", {}), **doc.get("data", {})}
+            doc["data"] = merged_data
+        
+        # Update timestamps
+        doc["updatedAt"] = datetime.now(timezone.utc)
+        doc["version"] = existing.get("version", 1) + 1
+        
+        # Don't overwrite creation metadata
+        doc.pop("createdAt", None)
+        doc.pop("createdBy", None)
+        
+        # Update existing entity
+        await db.entities.update_one(
+            {"_id": entity.entity_id},
+            {"$set": doc}
         )
+        
+        # Return updated entity
+        result = await db.entities.find_one({"_id": entity.entity_id})
+        return Entity(**result)
     
-    # Return created entity
-    result = await db.entities.find_one({"_id": entity.entity_id})
-    return Entity(**result)
+    else:
+        # Entity doesn't exist - create new
+        doc = entity.model_dump()
+        doc["_id"] = entity.entity_id
+        doc["createdAt"] = datetime.now(timezone.utc)
+        doc["updatedAt"] = datetime.now(timezone.utc)
+        doc["version"] = 1
+        
+        # Insert
+        await db.entities.insert_one(doc)
+        
+        # Return created entity
+        result = await db.entities.find_one({"_id": entity.entity_id})
+        return Entity(**result)
+
 
 
 @router.get("/{entity_id}", response_model=Entity)

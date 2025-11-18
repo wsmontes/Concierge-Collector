@@ -527,7 +527,7 @@ function cleanupBrowserData() {
             'filter_by_curator',
             'debug_mode',
             'concierge_access_granted',  // CRITICAL: Preserve password access
-            'auth_token'  // CRITICAL: Preserve V4 API authentication token
+            'auth_token'  // CRITICAL: Preserve API authentication token
         ];
         
         // Clean localStorage (preserve only essential keys)

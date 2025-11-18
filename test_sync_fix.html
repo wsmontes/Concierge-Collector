@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Sync Fix - V3 Only</title>
+    <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.4/dist/dexie.min.js"></script>
+</head>
+<body>
+    <h1>Test Sync Fix</h1>
+    <div id="output"></div>
+    
+    <script>
+        const output = document.getElementById('output');
+        
+        async function test() {
+            try {
+                output.innerHTML = '<h2>Opening database...</h2>';
+                
+                const db = new Dexie('ConciergeCollector');
+                db.version(6).stores({
+                    entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt, etag',
+                    syncQueue: '++id, type, action, local_id, entity_id, data, createdAt, retryCount, lastError'
+                });
+                
+                await db.open();
+                
+                // Check entities
+                const entityCount = await db.entities.count();
+                output.innerHTML += `<p>✅ Entities in IndexedDB: ${entityCount}</p>`;
+                
+                // List first 5 entities
+                const entities = await db.entities.limit(5).toArray();
+                output.innerHTML += '<h3>First 5 Entities:</h3><ul>';
+                entities.forEach(e => {
+                    output.innerHTML += `<li>${e.name} (${e.entity_id || e.id})</li>`;
+                });
+                output.innerHTML += '</ul>';
+                
+                // Check sync queue
+                const syncCount = await db.syncQueue.count();
+                output.innerHTML += `<p>📤 Items in sync queue: ${syncCount}</p>`;
+                
+                // List sync queue items
+                if (syncCount > 0) {
+                    const syncItems = await db.syncQueue.toArray();
+                    output.innerHTML += '<h3>Sync Queue:</h3><ul>';
+                    syncItems.forEach(item => {
+                        output.innerHTML += `<li>${item.type} - ${item.action} - ${item.data?.name || 'N/A'} (retries: ${item.retryCount || 0})</li>`;
+                    });
+                    output.innerHTML += '</ul>';
+                    
+                    // Show clear button
+                    output.innerHTML += '<button onclick="clearQueue()">Clear Sync Queue</button>';
+                }
+                
+                // Check MongoDB via API
+                output.innerHTML += '<h2>Checking MongoDB via API...</h2>';
+                const response = await fetch('http://localhost:8000/api/v3/entities?limit=100');
+                const data = await response.json();
+                output.innerHTML += `<p>✅ Entities in MongoDB: ${data.total}</p>`;
+                
+                if (data.items.length > 0) {
+                    output.innerHTML += '<h3>MongoDB Entities:</h3><ul>';
+                    data.items.forEach(e => {
+                        output.innerHTML += `<li>${e.name} (${e.entity_id})</li>`;
+                    });
+                    output.innerHTML += '</ul>';
+                }
+                
+            } catch (error) {
+                output.innerHTML += `<p style="color: red;">❌ Error: ${error.message}</p>`;
+                console.error(error);
+            }
+        }
+        
+        async function clearQueue() {
+            try {
+                const db = new Dexie('ConciergeCollector');
+                db.version(6).stores({
+                    syncQueue: '++id, type, action, local_id, entity_id, data, createdAt, retryCount, lastError'
+                });
+                
+                await db.open();
+                await db.syncQueue.clear();
+                output.innerHTML += '<p style="color: green;">✅ Sync queue cleared!</p>';
+                setTimeout(() => location.reload(), 1000);
+            } catch (error) {
+                output.innerHTML += `<p style="color: red;">❌ Error clearing queue: ${error.message}</p>`;
+            }
+        }
+        
+        test();
+    </script>
+</body>
+</html>

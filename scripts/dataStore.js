@@ -44,7 +44,7 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
             // await this.cleanLegacyDatabases();
             
             // Use final database name (no version suffix - Dexie handles versioning)
-            // This allows seamless upgrades from V3 → V4 → V5 without data loss
+            // This allows seamless upgrades without data loss
             const dbName = 'ConciergeCollector';
             this.db = new Dexie(dbName);
             
@@ -60,10 +60,10 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
                 appMetadata: 'key'
             });
             
-            // Version 6: V4 API Schema (Sprint 2 - Multi-Curator + Entity-Agnostic)
+            // Version 6: Multi-Curator + Entity-Agnostic Schema
             // Note: Using version 6 to be higher than any existing versions
             this.db.version(6).stores({
-                // Core V3 Tables with V4 enhancements
+                // Core V3 Tables with enhancements
                 entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt, etag',
                 curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt, updatedAt, etag',
                 curators: '++id, curator_id, name, email, status, createdAt, lastActive',
@@ -116,14 +116,14 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
      */
     async cleanLegacyDatabases() {
         // DISABLED: Preservation of user data is critical
-        // The MigrationManager in main.js handles V1 → V3 → V4 migration
+        // The MigrationManager in main.js handles V1 → V3 migration
         // Only after migration is complete and verified should old databases be removed
         
         this.log.debug('🔒 Legacy database cleanup DISABLED - preserving user data for migration');
         
         // Future: Add cleanup logic ONLY after migration success confirmation
         // Example:
-        // const migrationComplete = localStorage.getItem('migration_v4_complete');
+        // const migrationComplete = localStorage.getItem('migration_v3_complete');
         // if (migrationComplete === 'true') {
         //     // Safe to delete old databases
         // }

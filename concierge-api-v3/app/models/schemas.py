@@ -43,6 +43,7 @@ class EntityBase(BaseModel):
     externalId: Optional[str] = None
     metadata: List[Metadata] = Field(default_factory=list)
     sync: Optional[SyncInfo] = None
+    data: Optional[Dict[str, Any]] = Field(default=None, description="Flexible data storage (location, contacts, media, attributes, etc.)")
 
 
 class EntityCreate(EntityBase):
@@ -59,6 +60,7 @@ class EntityUpdate(BaseModel):
     externalId: Optional[str] = None
     metadata: Optional[List[Metadata]] = None
     sync: Optional[SyncInfo] = None
+    data: Optional[Dict[str, Any]] = Field(None, description="Flexible data storage")
     updatedBy: Optional[str] = Field(None, description="Curator ID who updated this")
 
 

@@ -260,7 +260,7 @@ class ConceptModule {
             }
             
             // DISABLED: DraftRestaurantManager uses old database schema
-            // Will be re-enabled after migration to V4 schema
+            // Will be re-enabled after schema migration
             /*
             if (window.DraftRestaurantManager) {
                 const draftId = await window.DraftRestaurantManager.getOrCreateCurrentDraft(
@@ -315,7 +315,6 @@ class ConceptModule {
 
     async saveRestaurant() {
         this.log.debug('Save/update restaurant button clicked');
-        console.log('🔧 conceptModule V4: Using addToSyncQueue (2025-11-16 18:20)');
         
         const nameInput = document.getElementById('restaurant-name');
         const name = nameInput ? nameInput.value.trim() : '';
