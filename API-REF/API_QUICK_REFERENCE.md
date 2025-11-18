@@ -50,6 +50,12 @@ X-API-Key: your-api-key-here
 | GET | `/places/details/{place_id}` | ❌ | Get place details |
 | GET | `/places/health` | ❌ | Places API health check |
 
+### Concepts (Dynamic Categories)
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/concepts/{entity_type}` | ❌ | Get categories for entity type |
+| GET | `/concepts/` | ❌ | List all concept configurations |
+
 ### AI Services 🤖
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|

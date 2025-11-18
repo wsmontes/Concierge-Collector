@@ -639,6 +639,96 @@ GET /api/v3/places/health
 
 ---
 
+## Concepts API (Dynamic Categories)
+
+Public endpoints for querying concept categories from MongoDB.
+
+### Get Concepts for Entity Type
+
+```http
+GET /api/v3/concepts/{entity_type}
+```
+
+**Description:** Get concept categories for a specific entity type.
+
+**Path Parameters:**
+- `entity_type` - Entity type (restaurant, hotel, bar, cafe, venue, etc.)
+
+**Example:**
+```bash
+GET /api/v3/concepts/restaurant
+```
+
+**Response:** `200 OK`
+```json
+{
+  "_id": "691c1321beaa1c61c09ad87a",
+  "entity_type": "restaurant",
+  "categories": [
+    "cuisine",
+    "menu",
+    "food_style",
+    "drinks",
+    "setting",
+    "mood",
+    "crowd",
+    "suitable_for",
+    "special_features",
+    "covid_specials",
+    "price_and_payment",
+    "price_range"
+  ],
+  "description": "Concept categories for restaurant entities",
+  "version": 2,
+  "active": true,
+  "updated_at": "2025-11-18T12:00:00Z",
+  "updated_by": "system_seed"
+}
+```
+
+**Fallback Behavior:**
+- If entity_type not found, falls back to "restaurant" categories
+- Returns 404 if no categories exist at all
+
+### List All Concepts
+
+```http
+GET /api/v3/concepts/
+```
+
+**Description:** List all available concept configurations.
+
+**Response:** `200 OK`
+```json
+{
+  "concepts": [
+    {
+      "_id": "691c1321beaa1c61c09ad87a",
+      "entity_type": "restaurant",
+      "categories": ["cuisine", "menu", "food_style", ...],
+      "version": 2,
+      "active": true
+    },
+    {
+      "_id": "691c1322beaa1c61c09ad87b",
+      "entity_type": "hotel",
+      "categories": ["amenities", "room_type", "location", ...],
+      "version": 1,
+      "active": true
+    }
+  ],
+  "count": 2
+}
+```
+
+**Notes:**
+- Only returns active concepts (`active: true`)
+- Categories are loaded from MongoDB and cached (1h TTL)
+- Frontend should query this on startup to know available categories
+- Dynamic system - add/remove categories without code changes
+
+---
+
 ## AI Services 🤖
 
 AI endpoints require API key authentication and use OpenAI services.

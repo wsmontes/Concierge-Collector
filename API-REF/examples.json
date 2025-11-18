@@ -453,6 +453,59 @@
       }
     },
     
+    "concepts": {
+      "get_restaurant_concepts": {
+        "description": "Get concept categories for restaurant entity type",
+        "endpoint": "GET /api/v3/concepts/restaurant",
+        "response": {
+          "status": 200,
+          "body": {
+            "_id": "691c1321beaa1c61c09ad87a",
+            "entity_type": "restaurant",
+            "categories": [
+              "cuisine",
+              "menu",
+              "food_style",
+              "drinks",
+              "setting",
+              "mood",
+              "crowd",
+              "suitable_for",
+              "special_features",
+              "covid_specials",
+              "price_and_payment",
+              "price_range"
+            ],
+            "description": "Concept categories for restaurant entities",
+            "version": 2,
+            "active": true,
+            "updated_at": "2025-11-18T12:00:00Z",
+            "updated_by": "system_seed"
+          }
+        }
+      },
+      
+      "list_all_concepts": {
+        "description": "List all available concept configurations",
+        "endpoint": "GET /api/v3/concepts/",
+        "response": {
+          "status": 200,
+          "body": {
+            "concepts": [
+              {
+                "_id": "691c1321beaa1c61c09ad87a",
+                "entity_type": "restaurant",
+                "categories": ["cuisine", "menu", "food_style", "drinks", "setting", "mood", "crowd", "suitable_for", "special_features", "covid_specials", "price_and_payment", "price_range"],
+                "version": 2,
+                "active": true
+              }
+            ],
+            "count": 1
+          }
+        }
+      }
+    },
+    
     "errors": {
       "validation_error": {
         "description": "Request validation error",
