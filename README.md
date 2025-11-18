@@ -40,13 +40,15 @@ Concierge Collector is a modern restaurant curation platform that helps users di
    cd Concierge-Collector
    ```
 
-2. **Set up API V3**
+2. **Set up API V3 (Backend)**
    ```bash
    cd concierge-api-v3
    python -m venv venv
    source venv/bin/activate  # On Windows: venv\Scripts\activate
    pip install -r requirements.txt
    ```
+   
+   > **Note:** Only the backend (`concierge-api-v3/`) needs Python/venv. The frontend is pure HTML+JavaScript.
 
 3. **Configure environment**
    ```bash
