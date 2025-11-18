@@ -52,10 +52,15 @@ python scripts/generate_api_key.py
 ```
 
 **AI Endpoints:**
-- `/ai/orchestrate` - Intelligent workflow orchestration
-- `/ai/transcribe` - Audio transcription (Whisper)
-- `/ai/extract-concepts` - Concept extraction (GPT-4)
-- `/ai/analyze-image` - Vision analysis (GPT-4 Vision)
+- `/ai/orchestrate` - Intelligent workflow orchestration (all-in-one)
+- `/ai/usage-stats` - AI usage statistics
+- `/ai/health` - AI services health check
+
+> **Note:** AI services use a single `/orchestrate` endpoint with `workflow_type` parameter:
+> - `audio_only` - Transcribe audio + extract concepts
+> - `image_only` - Analyze image
+> - `auto` - Smart detection based on inputs
+> - `place_id_with_audio` - Full workflow: Place → Entity + Curation
 
 ⚠️ **Important:** AI endpoints use OpenAI API and cost money. Monitor your usage.
 
@@ -615,32 +620,22 @@ GET /api/v3/places/details/ChIJExample123
 }
 ```
 
-### Place Autocomplete
+### Places Health Check
 
 ```http
-GET /api/v3/places/autocomplete
+GET /api/v3/places/health
 ```
 
-**Query Parameters:**
-- `input` (required): Search text
-- `latitude` (optional): Bias results near location
-- `longitude` (optional): Bias results near location
-- `radius` (optional): Bias radius in meters
+**Description:** Check Google Places API connectivity and configuration.
 
-**Example:**
-```bash
-GET /api/v3/places/autocomplete?input=pizza&latitude=37.7749&longitude=-122.4194
+**Response:** `200 OK`
+```json
+{
+  "status": "healthy",
+  "service": "google_places_api",
+  "api_key_configured": true
+}
 ```
-
-### Get Place Photo
-
-```http
-GET /api/v3/places/photo/{photo_reference}
-```
-
-**Query Parameters:**
-- `maxwidth` (optional): Maximum width in pixels (default: 400)
-- `maxheight` (optional): Maximum height in pixels
 
 ---
 
@@ -724,82 +719,42 @@ POST /api/v3/ai/orchestrate
 }
 ```
 
-### Transcribe Audio
+### AI Usage Statistics
 
 ```http
-POST /api/v3/ai/transcribe
+GET /api/v3/ai/usage-stats
 ```
 
-**Request Body:**
-```json
-{
-  "audio_file": "base64_encoded_audio...",
-  "language": "pt-BR",
-  "prompt": "Restaurant review"
-}
-```
+**Description:** Get AI usage statistics and cost tracking.
 
 **Response:** `200 OK`
 ```json
 {
-  "text": "Transcribed text from audio...",
-  "language": "pt-BR"
+  "total_requests": 1234,
+  "total_cost": 45.67,
+  "by_model": {
+    "gpt-4": {"requests": 500, "cost": 30.50},
+    "whisper-1": {"requests": 734, "cost": 15.17}
+  }
 }
 ```
 
-### Extract Concepts
+### AI Health Check
 
 ```http
-POST /api/v3/ai/extract-concepts
+GET /api/v3/ai/health
 ```
 
-**Request Body:**
-```json
-{
-  "text": "Had amazing pasta at Mario's Italian Restaurant. The carbonara was perfect, service was excellent. Highly recommend!",
-  "entity_type": "restaurant"
-}
-```
+**Description:** Check AI services availability.
 
 **Response:** `200 OK`
 ```json
 {
-  "concepts": [
-    {
-      "type": "restaurant",
-      "name": "Mario's Italian Restaurant",
-      "attributes": {
-        "cuisine": "Italian",
-        "dishes": ["pasta", "carbonara"],
-        "rating": 5,
-        "service_quality": "excellent"
-      }
-    }
-  ]
-}
-```
-
-### Analyze Image
-
-```http
-POST /api/v3/ai/analyze-image
-```
-
-**Request Body:**
-```json
-{
-  "image_file": "base64_encoded_image...",
-  "prompt": "Describe this restaurant menu and identify dishes"
-}
-```
-
-**Response:** `200 OK`
-```json
-{
-  "analysis": {
-    "description": "The image shows a restaurant menu with Italian dishes...",
-    "identified_items": ["Pizza Margherita", "Spaghetti Carbonara", "Tiramisu"],
-    "details": {...}
+  "status": "healthy",
+  "services": {
+    "openai": "available",
+    "whisper": "available",
+    "vision": "available"
   }
 }
 ```

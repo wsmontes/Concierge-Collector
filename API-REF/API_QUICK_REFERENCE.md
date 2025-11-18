@@ -48,16 +48,20 @@ X-API-Key: your-api-key-here
 |--------|----------|------|-------------|
 | GET | `/places/nearby` | ❌ | Search nearby places |
 | GET | `/places/details/{place_id}` | ❌ | Get place details |
-| GET | `/places/autocomplete` | ❌ | Place autocomplete |
-| GET | `/places/photo/{photo_reference}` | ❌ | Get place photo |
+| GET | `/places/health` | ❌ | Places API health check |
 
 ### AI Services 🤖
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| POST | `/ai/orchestrate` | ✅ | Intelligent AI workflow |
-| POST | `/ai/transcribe` | ✅ | Audio transcription |
-| POST | `/ai/extract-concepts` | ✅ | Extract concepts from text |
-| POST | `/ai/analyze-image` | ✅ | Vision analysis |
+| POST | `/ai/orchestrate` | ✅ | Intelligent AI workflow (all-in-one) |
+| GET | `/ai/usage-stats` | ✅ | AI usage statistics |
+| GET | `/ai/health` | ❌ | AI services health check |
+
+> **Note:** AI services use a single `/orchestrate` endpoint with different `workflow_type` values:
+> - `audio_only` - Transcribe audio + extract concepts
+> - `image_only` - Analyze image
+> - `auto` - Smart detection based on inputs
+> - `place_id_with_audio` - Full workflow: Place → Entity + Curation
 
 ### Advanced
 | Method | Endpoint | Auth | Description |
