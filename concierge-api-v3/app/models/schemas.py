@@ -95,17 +95,11 @@ class CurationNotes(BaseModel):
 
 
 class CurationCategories(BaseModel):
-    """Concept categories"""
-    cuisine: List[str] = Field(default_factory=list)
-    mood: List[str] = Field(default_factory=list)
-    occasion: List[str] = Field(default_factory=list)
-    price_range: List[str] = Field(default_factory=list)
-    setting: List[str] = Field(default_factory=list)
-    crowd: List[str] = Field(default_factory=list)
-    food_style: List[str] = Field(default_factory=list)
-    drinks: List[str] = Field(default_factory=list)
-    menu: List[str] = Field(default_factory=list)
-    suitable_for: List[str] = Field(default_factory=list)
+    """
+    Concept categories - flexible structure loaded from MongoDB concepts collection
+    Categories are NOT hardcoded - they come from database and can change dynamically
+    """
+    model_config = ConfigDict(extra='allow')  # Allow any additional fields from MongoDB
 
 
 class CurationBase(BaseModel):

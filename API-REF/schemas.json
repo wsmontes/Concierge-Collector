@@ -299,37 +299,17 @@
     "CurationCategories": {
       "type": "object",
       "title": "Curation Categories",
-      "description": "Concept categories extracted from reviews",
+      "description": "Concept categories (matches MongoDB concepts collection)",
       "properties": {
         "cuisine": {
           "type": "array",
           "items": {"type": "string"},
           "description": "Cuisine types (Italian, Japanese, etc.)"
         },
-        "mood": {
+        "menu": {
           "type": "array",
           "items": {"type": "string"},
-          "description": "Atmosphere/mood (romantic, casual, etc.)"
-        },
-        "occasion": {
-          "type": "array",
-          "items": {"type": "string"},
-          "description": "Suitable occasions (date night, business, etc.)"
-        },
-        "price_range": {
-          "type": "array",
-          "items": {"type": "string"},
-          "description": "Price indicators ($, $$, $$$, $$$$)"
-        },
-        "setting": {
-          "type": "array",
-          "items": {"type": "string"},
-          "description": "Setting type (outdoor, rooftop, etc.)"
-        },
-        "crowd": {
-          "type": "array",
-          "items": {"type": "string"},
-          "description": "Typical crowd (families, couples, etc.)"
+          "description": "Menu items or highlights"
         },
         "food_style": {
           "type": "array",
@@ -341,15 +321,45 @@
           "items": {"type": "string"},
           "description": "Drink offerings (craft cocktails, wine, etc.)"
         },
-        "menu": {
+        "setting": {
           "type": "array",
           "items": {"type": "string"},
-          "description": "Menu items or highlights"
+          "description": "Setting type (outdoor, rooftop, etc.)"
+        },
+        "mood": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Atmosphere/mood (romantic, casual, etc.)"
+        },
+        "crowd": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Typical crowd (families, couples, etc.)"
         },
         "suitable_for": {
           "type": "array",
           "items": {"type": "string"},
           "description": "Suitable for (vegetarians, groups, etc.)"
+        },
+        "special_features": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Special features (live music, outdoor seating, etc.)"
+        },
+        "covid_specials": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "COVID-19 related measures (legacy)"
+        },
+        "price_and_payment": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Payment methods and pricing info"
+        },
+        "price_range": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Price indicators ($, $$, $$$, $$$$)"
         }
       }
     },
