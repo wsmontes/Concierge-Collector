@@ -3,10 +3,18 @@
 ############################
 # macOS
 .DS_Store
+.AppleDouble
+.LSOverride
+._*
 
 # Windows
 Thumbs.db
 desktop.ini
+ehthumbs.db
+
+# Linux
+*~
+.directory
 
 ############################
 # EDITORES / IDEs
@@ -15,6 +23,116 @@ desktop.ini
 .idea/
 *.swp
 *.swo
+*~
+.project
+.classpath
+.settings/
+
+############################
+# PYTHON / FASTAPI
+############################
+# Ambientes virtuais
+venv/
+.venv/
+env/
+.env/
+ENV/
+virtualenv/
+
+# Cache / compilados
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Distribuição / pacotes
+build/
+dist/
+*.egg-info/
+.eggs/
+*.egg
+wheels/
+
+# PyInstaller
+*.manifest
+*.spec
+
+# Unit test / coverage
+.pytest_cache/
+.tox/
+.nox/
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+.hypothesis/
+*.cover
+
+# MyPy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+
+# Pyre type checker
+.pyre/
+
+# Pylance
+.pylance/
+
+############################
+# FASTAPI ESPECÍFICO
+############################
+# PID files
+*.pid
+api.pid
+
+# Uvicorn logs
+uvicorn.log
+
+############################
+# MONGODB
+############################
+# MongoDB dump files
+dump/
+*.bson
+*.json.gz
+
+############################
+# CONFIGS / SEGREDOS
+############################
+# Arquivos de ambiente
+.env
+.env.*
+!.env.example
+.env.local
+.env.development
+.env.production
+.env.test
+
+# Chaves e configs sensíveis
+*.pem
+*.key
+*.crt
+secrets/
+credentials/
+
+# OpenAI keys
+openai_key.txt
+
+############################
+# NODE / JAVASCRIPT
+############################
+node_modules/
+bower_components/
+package-lock.json
+yarn.lock
+
+# Builds de frontend
+dist/
+build/
+.out/
+.next/
+.nuxt/
 
 ############################
 # LOGS
@@ -25,61 +143,39 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 pip-log.txt
+debug.log
 
 ############################
-# NODE / JAVASCRIPT
+# DADOS DE DESENVOLVIMENTO
 ############################
-node_modules/
-bower_components/
+# Backups locais
+backup/
+*.backup
 
-# Builds de frontend / bundlers
-dist/
-build/
-.out/
-.next/
-.nuxt/
-coverage/
+# Exports de teste
+exports/
+test_data/
 
-############################
-# PYTHON
-############################
-# Ambientes virtuais
-venv/
-.venv/
-env/
-.env/
-ENV/
-
-# Cache / compilados
-__pycache__/
-*.py[cod]
-*$py.class
-
-# Distribuição / pacotes
-build/
-dist/
-*.egg-info/
-.eggs/
+# Screenshots de debug
+screenshots/
 
 ############################
-# CONFIGS / SEGREDOS
+# DOCUMENTAÇÃO TEMPORÁRIA
 ############################
-# Arquivos de ambiente
-.env
-.env.local
-.env.*.local
-
-# Chaves e configs sensíveis
-*.pem
-*.key
-*.crt
+# Arquivos de rascunho
+*.draft.md
+*.temp.md
+NOTES.md
+TODO_LOCAL.md
 
 ############################
-# TESTES
+# JUPYTER / NOTEBOOKS
 ############################
-.pytest_cache/
-.tox/
-.nox/
-.coverage
-coverage.xml
-htmlcov/
+.ipynb_checkpoints/
+*.ipynb
+
+############################
+# DOCKER
+############################
+docker-compose.override.yml
+.dockerignore

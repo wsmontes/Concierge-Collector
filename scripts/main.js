@@ -323,6 +323,33 @@ async function initializeApp() {
             await window.uiManager.curatorModule.loadCuratorInfo();
         }
         
+        // Initialize Entity Module (NEW - V3 Architecture)
+        if (window.EntityModule) {
+            console.log('🔄 Initializing Entity Module...');
+            try {
+                window.entityModule = new window.EntityModule();
+                const initialized = await window.entityModule.init({
+                    dataStore: window.DataStore
+                });
+                
+                if (initialized) {
+                    console.log('✅ Entity Module initialized');
+                    
+                    // Show entities section
+                    const entitiesSection = document.getElementById('entities-section');
+                    if (entitiesSection) {
+                        entitiesSection.classList.remove('hidden');
+                    }
+                } else {
+                    console.warn('⚠️ Entity Module initialization failed');
+                }
+            } catch (error) {
+                console.error('❌ Entity Module error:', error);
+            }
+        } else {
+            console.warn('⚠️ Entity Module not available');
+        }
+        
         console.log('✅ Entity-curation backend initialization complete');
         
     } catch (error) {
@@ -436,9 +463,9 @@ function setupManualSyncButton() {
                 }
             }
             
-            // Refresh restaurant list if available
-            if (window.restaurantModule && window.uiManager?.currentCurator) {
-                await window.restaurantModule.loadRestaurantList(window.uiManager.currentCurator.id);
+            // Refresh entity list if available
+            if (window.entityModule) {
+                await window.entityModule.refresh();
             }
             
             // Refresh UI components
@@ -448,20 +475,6 @@ function setupManualSyncButton() {
                     typeof window.uiManager.curatorModule.initializeCuratorSelector === 'function') {
                     window.uiManager.curatorModule.curatorSelectorInitialized = false;
                     await window.uiManager.curatorModule.initializeCuratorSelector();
-                }
-                
-                // Refresh restaurant list if available
-                if (window.uiManager.restaurantModule && 
-                    typeof window.uiManager.restaurantModule.loadRestaurantList === 'function') {
-                    const entityStore = window.EntityStore || window.dataStorage;
-                    const currentCurator = entityStore && entityStore.getCurrentCurator ? 
-                        await entityStore.getCurrentCurator() : 
-                        (window.dataStorage ? await window.dataStorage.getCurrentCurator() : null);
-                    
-                    if (currentCurator) {
-                        const filterEnabled = window.uiManager.restaurantModule.getCurrentFilterState();
-                        await window.uiManager.restaurantModule.loadRestaurantList(currentCurator.id, filterEnabled);
-                    }
                 }
             }
             
