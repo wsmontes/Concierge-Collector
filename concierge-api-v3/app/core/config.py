@@ -29,6 +29,12 @@ class Settings(BaseSettings):
     # Google Places API
     google_places_api_key: str = ""
     
+    # OpenAI API
+    openai_api_key: str = ""
+    
+    # API Security
+    api_secret_key: str = ""
+    
     @property
     def cors_origins_list(self) -> List[str]:
         """Parse CORS origins from comma-separated string or JSON"""

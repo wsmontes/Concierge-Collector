@@ -22,6 +22,7 @@ Features:
 import argparse
 import asyncio
 import sys
+import os
 from typing import List, Dict, Any, Optional
 from pathlib import Path
 import json
@@ -43,9 +44,16 @@ console = Console()
 class RestaurantFinder:
     """CLI tool for finding and importing restaurants via API V3"""
     
-    def __init__(self, api_base: str = API_BASE_URL):
+    def __init__(self, api_base: str = API_BASE_URL, api_key: Optional[str] = None):
         self.api_base = api_base
-        self.client = httpx.AsyncClient(timeout=TIMEOUT)
+        self.api_key = api_key
+        
+        # Setup headers with API key if provided
+        headers = {}
+        if api_key:
+            headers["X-API-Key"] = api_key
+        
+        self.client = httpx.AsyncClient(timeout=TIMEOUT, headers=headers)
         self.stats = {
             "found": 0,
             "created": 0,
@@ -70,32 +78,47 @@ class RestaurantFinder:
     
     async def search_places(
         self,
-        city: str,
+        city: Optional[str] = None,
+        coordinates: Optional[tuple] = None,
         place_type: str = "restaurant",
+        radius: int = 5000,
         limit: int = 10,
         min_rating: float = 4.0
     ) -> List[Dict[str, Any]]:
-        """Search for places using Google Places API via our proxy"""
+        """Search for places using Google Places API via our proxy
         
-        console.print(f"\n🔍 Searching for [cyan]{place_type}s[/cyan] in [yellow]{city}[/yellow]...")
+        Args:
+            city: City name to search in (uses hardcoded coordinates)
+            coordinates: Tuple of (latitude, longitude) for custom search
+            place_type: Type of place to search for
+            radius: Search radius in meters (1-50000)
+            limit: Maximum results to return
+            min_rating: Minimum rating filter
+        """
         
-        # First, we need to geocode the city to get coordinates
-        # For now, using hardcoded coordinates for major cities
-        # In production, you'd use a geocoding API
-        city_coords = self._get_city_coordinates(city)
-        
-        if not city_coords:
-            console.print(f"[red]❌ City '{city}' not found in database. Please provide coordinates.[/red]")
+        # Determine coordinates
+        if coordinates:
+            lat, lng = coordinates
+            location_desc = f"coordinates ({lat:.4f}, {lng:.4f})"
+        elif city:
+            city_coords = self._get_city_coordinates(city)
+            if not city_coords:
+                console.print(f"[red]❌ City '{city}' not found in database. Use --coordinates instead.[/red]")
+                return []
+            lat, lng = city_coords
+            location_desc = f"[yellow]{city}[/yellow]"
+        else:
+            console.print("[red]❌ Must provide either --city or --coordinates[/red]")
             return []
         
-        lat, lng = city_coords
+        console.print(f"\n🔍 Searching for [cyan]{place_type}s[/cyan] at {location_desc} (radius: {radius}m)...")
         
         # Search via Places API proxy
         try:
             params = {
                 "latitude": lat,
                 "longitude": lng,
-                "radius": 5000,  # 5km radius
+                "radius": radius,
                 "type": place_type
             }
             
@@ -181,10 +204,19 @@ class RestaurantFinder:
         self,
         place: Dict[str, Any],
         details: Optional[Dict[str, Any]],
-        city: str,
+        city: Optional[str] = None,
+        coordinates: Optional[tuple] = None,
         dry_run: bool = False
     ) -> Dict[str, Any]:
-        """Create entity from place data"""
+        """Create entity from place data
+        
+        Args:
+            place: Place data from Google Places API
+            details: Detailed place information (optional)
+            city: City name (used for location in entity data)
+            coordinates: Tuple of (lat, lng) if searching by coordinates
+            dry_run: If True, don't actually create the entity
+        """
         
         name = place.get("name", "Unknown")
         place_id = place.get("place_id")
@@ -207,8 +239,16 @@ class RestaurantFinder:
                 "entity_id": existing_id
             }
         
+        # Determine location for entity data
+        if city:
+            location = city
+        elif coordinates:
+            location = f"{coordinates[0]:.4f}, {coordinates[1]:.4f}"
+        else:
+            location = "Unknown"
+        
         # Build entity data
-        entity_data = self._build_entity_data(place, details, city)
+        entity_data = self._build_entity_data(place, details, location)
         
         if dry_run:
             self.stats["created"] += 1
@@ -443,6 +483,9 @@ Examples:
   # Find top 20 restaurants in New York with min rating 4.5
   python scripts/find_restaurants.py --city "New York" --limit 20 --min-rating 4.5
   
+  # Search at specific coordinates in São Paulo
+  python scripts/find_restaurants.py --coordinates -23.5505 -46.6333 --limit 20 --radius 3000
+  
   # Dry run (don't create entities)
   python scripts/find_restaurants.py --city "Paris" --limit 15 --dry-run
   
@@ -451,10 +494,25 @@ Examples:
         """
     )
     
-    parser.add_argument(
+    # Location arguments - either city OR coordinates
+    location_group = parser.add_mutually_exclusive_group(required=True)
+    location_group.add_argument(
         "--city",
-        required=True,
         help="City name (e.g., 'Rio de Janeiro', 'New York', 'Paris')"
+    )
+    location_group.add_argument(
+        "--coordinates",
+        nargs=2,
+        type=float,
+        metavar=("LAT", "LNG"),
+        help="Coordinates to search at (e.g., --coordinates -23.5505 -46.6333)"
+    )
+    
+    parser.add_argument(
+        "--radius",
+        type=int,
+        default=5000,
+        help="Search radius in meters (1-50000, default: 5000)"
     )
     
     parser.add_argument(
@@ -484,6 +542,12 @@ Examples:
     )
     
     parser.add_argument(
+        "--api-key",
+        default=None,
+        help="API key for authentication (or set API_SECRET_KEY env var)"
+    )
+    
+    parser.add_argument(
         "--dry-run",
         action="store_true",
         help="Test mode - don't create entities"
@@ -497,6 +561,15 @@ Examples:
     
     args = parser.parse_args()
     
+    # Get API key from args or environment
+    api_key = args.api_key or os.getenv("API_SECRET_KEY")
+    
+    if not api_key:
+        console.print("[red]❌ API key required![/red]")
+        console.print("   Provide via --api-key argument or API_SECRET_KEY environment variable")
+        console.print("   Generate a key: python scripts/generate_api_key.py")
+        return 1
+    
     # Validate arguments
     if args.min_rating < 1.0 or args.min_rating > 5.0:
         console.print("[red]❌ Rating must be between 1.0 and 5.0[/red]")
@@ -506,11 +579,22 @@ Examples:
         console.print("[red]❌ Limit must be between 1 and 100[/red]")
         return 1
     
+    if args.radius < 1 or args.radius > 50000:
+        console.print("[red]❌ Radius must be between 1 and 50000 meters[/red]")
+        return 1
+    
+    # Determine location for display
+    if args.coordinates:
+        location_display = f"Coords: ({args.coordinates[0]:.4f}, {args.coordinates[1]:.4f})"
+    else:
+        location_display = f"City: {args.city}"
+    
     # Display header
     console.print("\n")
     console.print(Panel.fit(
         f"[bold cyan]🍽️  Restaurant Finder CLI[/bold cyan]\n"
-        f"City: [yellow]{args.city}[/yellow] | "
+        f"{location_display} | "
+        f"Radius: [blue]{args.radius}m[/blue] | "
         f"Limit: [green]{args.limit}[/green] | "
         f"Min Rating: [magenta]{args.min_rating}[/magenta]",
         border_style="cyan"
@@ -519,7 +603,7 @@ Examples:
     if args.dry_run:
         console.print("[yellow]🧪 DRY RUN MODE - No entities will be created[/yellow]\n")
     
-    async with RestaurantFinder(api_base=args.api_url) as finder:
+    async with RestaurantFinder(api_base=args.api_url, api_key=api_key) as finder:
         # Check API health
         if not await finder.check_api_health():
             console.print("\n[red]💡 Make sure the API is running:[/red]")
@@ -532,7 +616,9 @@ Examples:
         # Search for places
         places = await finder.search_places(
             city=args.city,
+            coordinates=tuple(args.coordinates) if args.coordinates else None,
             place_type=args.type,
+            radius=args.radius,
             limit=args.limit,
             min_rating=args.min_rating
         )
@@ -579,7 +665,13 @@ Examples:
                         details = await finder.get_place_details(place_id)
                     
                     # Create entity
-                    result = await finder.create_entity(place, details, args.city, args.dry_run)
+                    result = await finder.create_entity(
+                        place, 
+                        details, 
+                        city=args.city,
+                        coordinates=tuple(args.coordinates) if args.coordinates else None,
+                        dry_run=args.dry_run
+                    )
                     
                     # Display result
                     status = result.get("status")

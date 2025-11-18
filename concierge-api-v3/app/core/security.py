@@ -9,6 +9,8 @@ from typing import Optional
 from fastapi import Security, HTTPException, status
 from fastapi.security import APIKeyHeader
 
+from app.core.config import settings
+
 
 # API Key header configuration
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
@@ -16,7 +18,7 @@ api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
 def get_api_secret_key() -> str:
     """
-    Get API secret key from environment variable.
+    Get API secret key from settings.
     
     Returns:
         str: API secret key
@@ -24,7 +26,7 @@ def get_api_secret_key() -> str:
     Raises:
         RuntimeError: If API_SECRET_KEY is not configured
     """
-    api_key = os.getenv("API_SECRET_KEY")
+    api_key = settings.api_secret_key
     if not api_key:
         raise RuntimeError(
             "API_SECRET_KEY not configured. "
