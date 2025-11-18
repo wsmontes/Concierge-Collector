@@ -37,8 +37,10 @@ async def create_entity(
         
         # Merge data field if both have it
         if "data" in doc and "data" in existing:
-            # Deep merge data objects
-            merged_data = {**existing.get("data", {}), **doc.get("data", {})}
+            # Deep merge data objects (handle None values)
+            existing_data = existing.get("data") or {}
+            new_data = doc.get("data") or {}
+            merged_data = {**existing_data, **new_data}
             doc["data"] = merged_data
         
         # Update timestamps
