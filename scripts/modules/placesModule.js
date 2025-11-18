@@ -1,21 +1,22 @@
 /**
  * Enhanced Google Places Module - Restaurant Search and Import System
  * 
- * Purpose: Provides comprehensive restaurant search, import, and management functionality
- * using Google Places API with enhanced error handling, performance optimization,
- * and seamless integration with SafetyUtils patterns.
+ * Purpose: UI and workflow management for Google Places restaurant search and import
  * 
  * Main Responsibilities:
- * - Google Places API integration with robust error handling and retry mechanisms
- * - Enhanced restaurant search with advanced filtering and caching
- * - Intelligent concept extraction from place data and reviews
- * - Photo processing with lazy loading and compression
- * - Progressive loading with detailed step-by-step feedback
- * - Comprehensive database integration with SafetyUtils patterns
- * - Performance optimization through caching and request throttling
- * - User experience enhancements with improved UI feedback
+ * - UI initialization and event handling for Places search modal
+ * - User interaction management (search, filters, import)
+ * - Results display and formatting
+ * - Integration with dataStorage for entity persistence
+ * - Delegation to service layer for all API operations
  * 
- * Dependencies: dataStorage, SafetyUtils, window.uiUtils, Google Maps Places API
+ * Architecture (Sprint 1, Day 2 - Service-based refactoring):
+ * - PlacesService: All Google Places API calls
+ * - PlacesCache: Intelligent caching with TTL
+ * - PlacesFormatter: Data transformation and formatting
+ * - PlacesModule (this): UI/UX and workflow orchestration
+ * 
+ * Dependencies: PlacesService, PlacesCache, PlacesFormatter, dataStorage, SafetyUtils
  */
 
 // Only declare the class if it doesn't already exist
@@ -28,52 +29,49 @@ if (typeof window.PlacesModule === 'undefined') {
             // Create module logger instance
             this.log = Logger.module('PlacesModule');
             
-            // Core module properties
-            this.apiEndpoint = 'https://maps.googleapis.com/maps/api/place';
-            this.apiLoaded = false;
-            this.placesService = null;
+            // Ensure services are available
+            if (!window.PlacesService || !window.PlacesCache || !window.PlacesFormatter) {
+                this.log.error('Required services not loaded. Ensure PlacesService, PlacesCache, and PlacesFormatter are loaded before PlacesModule.');
+                throw new Error('Missing required Google Places services');
+            }
+            
+            // Service references (delegation pattern)
+            this.placesService = window.PlacesService;
+            this.placesCache = window.PlacesCache;
+            this.placesFormatter = window.PlacesFormatter;
+            
+            // UI state
             this.autocompleteWidget = null;
             this.modalAutocompleteWidget = null;
             this.selectedPlace = null;
             this.searchResults = [];
-            this.apiKey = '';
             this.isLoading = false;
             this.modalPlacesInitialized = false;
             this.currentLatitude = null;
             this.currentLongitude = null;
             this.dropdownObserver = null;
             this.repositionTimer = null;
-            
-            // Enhanced error handling and retry properties
-            this.retryAttempts = 0;
-            this.maxRetries = 3;
-            this.retryDelay = 1000; // 1 second base delay
-            this.apiRequestCount = 0;
-            this.lastApiCall = 0;
-            this.minApiInterval = 100; // Minimum 100ms between API calls
-            
-            // Performance optimization properties
-            this.placesCache = new Map();
-            this.cacheExpiry = 15 * 60 * 1000; // 15 minutes
             this.searchThrottle = null;
-            this.photoCache = new Map();
-            this.lastSearchQuery = '';
-            this.searchHistory = [];
             
-            // Enhanced filtering and search properties
+            // API key management
+            this.apiKey = '';
+            this.apiLoaded = false;
+            
+            // UI filters
             this.filterFoodPlacesOnly = this.safeGetStorageItem('places_filter_food_only', 'true') !== 'false';
             this.priceRangeFilter = this.safeGetStorageItem('places_price_range', 'all');
             this.ratingFilter = this.safeGetStorageItem('places_rating_filter', '0');
             this.cuisineFilter = this.safeGetStorageItem('places_cuisine_filter', 'all');
             this.sortBy = this.safeGetStorageItem('places_sort_by', 'distance');
             
-            // Debug and logging properties
+            // Debug mode
             this.debugEnabled = this.safeGetStorageItem('places_debug_enabled', 'true') !== 'false';
+            
+            // Performance metrics tracking
             this.performanceMetrics = {
-                apiCalls: 0,
                 cacheHits: 0,
                 cacheMisses: 0,
-                averageResponseTime: 0,
+                apiCalls: 0,
                 errors: 0
             };
             
@@ -86,25 +84,81 @@ if (typeof window.PlacesModule === 'undefined') {
          */
         async safeInitialize() {
             try {
-                this.debugLog('Initializing Enhanced Places module');
+                this.debugLog('Initializing Places Module (service-based architecture)');
                 
-                // Initialize core components
+                // Initialize UI components
                 await this.initializeUI();
                 
-                // Load API key with retry mechanism
-                await this.loadApiKeyWithRetry();
-                
-                // Initialize performance monitoring
-                this.initializePerformanceMonitoring();
+                // Load API key
+                await this.loadApiKey();
                 
                 // Setup cleanup handlers
                 this.setupCleanupHandlers();
                 
-                this.debugLog('Enhanced Places module initialized successfully');
+                this.debugLog('Places Module initialized successfully');
             } catch (error) {
                 this.log.error('Error initializing Places module:', error);
-                this.safeShowNotification('Error initializing Places module. Some features may not work correctly.', 'warning');
+                this.showNotification('Error initializing Places module. Some features may not work correctly.', 'warning');
             }
+        }
+        
+        /**
+         * Load API key and initialize services
+         */
+        async loadApiKey() {
+            try {
+                // Try to load from localStorage
+                const savedKey = this.safeGetStorageItem('googlePlacesApiKey');
+                
+                if (savedKey && savedKey.trim() !== '') {
+                    this.apiKey = savedKey;
+                    
+                    // Initialize PlacesService with the API key
+                    await this.placesService.initialize(this.apiKey);
+                    this.apiLoaded = true;
+                    
+                    this.debugLog('API key loaded and service initialized');
+                    this.showNotification('Google Places API loaded successfully', 'success');
+                } else {
+                    this.debugLog('No API key found in storage');
+                }
+            } catch (error) {
+                this.log.error('Error loading API key:', error);
+                this.showNotification('Error loading API key: ' + error.message, 'error');
+            }
+        }
+        
+        /**
+         * Setup cleanup handlers for memory management
+         */
+        setupCleanupHandlers() {
+            // Cleanup on page unload
+            window.addEventListener('beforeunload', () => {
+                this.cleanup();
+            });
+        }
+        
+        /**
+         * General cleanup method
+         */
+        cleanup() {
+            // Clear timers
+            if (this.searchThrottle) {
+                clearTimeout(this.searchThrottle);
+            }
+            if (this.repositionTimer) {
+                clearTimeout(this.repositionTimer);
+            }
+            
+            // Clear observers
+            if (this.dropdownObserver) {
+                this.dropdownObserver.disconnect();
+            }
+            
+            // Stop cache cleanup timer
+            this.placesCache.stopCleanupTimer();
+            
+            this.debugLog('Module cleanup completed');
         }
         
         /**
@@ -136,68 +190,6 @@ if (typeof window.PlacesModule === 'undefined') {
         }
         
         /**
-         * Enhanced API key loading with retry mechanism
-         */
-        async loadApiKeyWithRetry() {
-            const maxRetries = 3;
-            let attempts = 0;
-            
-            while (attempts < maxRetries) {
-                try {
-                    await this.loadApiKey();
-                    return; // Success, exit retry loop
-                } catch (error) {
-                    attempts++;
-                    this.debugLog(`API key loading attempt ${attempts} failed:`, error);
-                    
-                    if (attempts >= maxRetries) {
-                        throw new Error(`Failed to load API key after ${maxRetries} attempts: ${error.message}`);
-                    }
-                    
-                    // Wait before retrying with exponential backoff
-                    await this.delay(this.retryDelay * Math.pow(2, attempts - 1));
-                }
-            }
-        }
-        
-        /**
-         * Initialize performance monitoring
-         */
-        initializePerformanceMonitoring() {
-            // Reset metrics
-            this.performanceMetrics = {
-                apiCalls: 0,
-                cacheHits: 0,
-                cacheMisses: 0,
-                averageResponseTime: 0,
-                errors: 0,
-                startTime: Date.now()
-            };
-            
-            // Log performance metrics periodically in debug mode
-            if (this.debugEnabled) {
-                setInterval(() => {
-                    this.logPerformanceMetrics();
-                }, 30000); // Every 30 seconds
-            }
-        }
-        
-        /**
-         * Setup cleanup handlers for memory management
-         */
-        setupCleanupHandlers() {
-            // Clean cache periodically
-            setInterval(() => {
-                this.cleanupCache();
-            }, 5 * 60 * 1000); // Every 5 minutes
-            
-            // Cleanup on page unload
-            window.addEventListener('beforeunload', () => {
-                this.cleanup();
-            });
-        }
-        
-        /**
          * Enhanced logging with performance tracking
          * @param {string} message - The message to log
          * @param {...any} args - Additional arguments to log
@@ -210,70 +202,11 @@ if (typeof window.PlacesModule === 'undefined') {
         }
         
         /**
-         * Log performance metrics
+         * Check if in development mode
+         * @returns {boolean}
          */
-        logPerformanceMetrics() {
-            if (!this.debugEnabled) return;
-            
-            const runtime = Date.now() - this.performanceMetrics.startTime;
-            const cacheHitRate = this.performanceMetrics.cacheHits / 
-                (this.performanceMetrics.cacheHits + this.performanceMetrics.cacheMisses) * 100;
-                
-            this.debugLog('Performance Metrics:', {
-                runtime: `${Math.round(runtime / 1000)}s`,
-                apiCalls: this.performanceMetrics.apiCalls,
-                cacheHitRate: `${Math.round(cacheHitRate)}%`,
-                averageResponseTime: `${Math.round(this.performanceMetrics.averageResponseTime)}ms`,
-                errors: this.performanceMetrics.errors,
-                cacheSize: this.placesCache.size
-            });
-        }
-        
-        /**
-         * Clean expired cache entries
-         */
-        cleanupCache() {
-            const now = Date.now();
-            let cleanedCount = 0;
-            
-            for (const [key, entry] of this.placesCache.entries()) {
-                if (now - entry.timestamp > this.cacheExpiry) {
-                    this.placesCache.delete(key);
-                    cleanedCount++;
-                }
-            }
-            
-            // Also clean photo cache
-            for (const [key, entry] of this.photoCache.entries()) {
-                if (now - entry.timestamp > this.cacheExpiry) {
-                    this.photoCache.delete(key);
-                    cleanedCount++;
-                }
-            }
-            
-            if (cleanedCount > 0) {
-                this.debugLog(`Cleaned ${cleanedCount} expired cache entries`);
-            }
-        }
-        
-        /**
-         * General cleanup method
-         */
-        cleanup() {
-            // Clear timers
-            if (this.searchThrottle) {
-                clearTimeout(this.searchThrottle);
-            }
-            if (this.repositionTimer) {
-                clearTimeout(this.repositionTimer);
-            }
-            
-            // Clear observers
-            if (this.dropdownObserver) {
-                this.dropdownObserver.disconnect();
-            }
-            
-            this.debugLog('Module cleanup completed');
+        isDevelopmentMode() {
+            return window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
         }
         
         /**
@@ -286,39 +219,28 @@ if (typeof window.PlacesModule === 'undefined') {
         }
         
         /**
-         * Enhanced notification display using SafetyUtils patterns
+         * Show notification using available notification system
          * @param {string} message - Notification message
          * @param {string} type - Notification type (success, error, warning, info)
          */
-        safeShowNotification(message, type = 'success') {
+        showNotification(message, type = 'success') {
             try {
-                // First try SafetyUtils for consistency
+                // Try SafetyUtils first
                 if (window.SafetyUtils && typeof window.SafetyUtils.safeShowNotification === 'function') {
                     window.SafetyUtils.safeShowNotification(message, type, 'PlacesModule');
                     return;
                 }
                 
-                // Fallback to direct SafetyUtils
-                if (window.SafetyUtils && typeof window.SafetyUtils.showNotification === 'function') {
-                    window.SafetyUtils.showNotification(message, type);
-                    return;
-                }
-                
-                // Then try uiUtils
+                // Fallback to uiUtils
                 if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
                     window.uiUtils.showNotification(message, type);
                     return;
                 }
                 
-                // Console fallback with error tracking
+                // Console fallback
                 this.log.debug(`[${type.toUpperCase()}] ${message}`);
-                if (type === 'error') {
-                    this.performanceMetrics.errors++;
-                    alert(message);
-                }
             } catch (error) {
                 this.log.error('Error showing notification:', error);
-                this.log.debug(`[${type.toUpperCase()}] ${message}`);
             }
         }
         
@@ -390,7 +312,7 @@ if (typeof window.PlacesModule === 'undefined') {
                 this.debugLog('Enhanced Places module UI initialized');
             } catch (error) {
                 this.log.error('Error initializing UI:', error);
-                this.safeShowNotification('Error initializing Places UI', 'error');
+                this.showNotification('Error initializing Places UI', 'error');
             }
         }
         
@@ -621,7 +543,7 @@ if (typeof window.PlacesModule === 'undefined') {
                 this.debugLog('Enhanced event listeners set up successfully');
             } catch (error) {
                 this.log.error('Error setting up event listeners:', error);
-                this.safeShowNotification('Error setting up interface', 'warning');
+                this.showNotification('Error setting up interface', 'warning');
             }
         }
         
@@ -994,7 +916,7 @@ if (typeof window.PlacesModule === 'undefined') {
                 
             } catch (error) {
                 this.log.error('Error opening modal:', error);
-                this.safeShowNotification('Error opening search modal', 'error');
+                this.showNotification('Error opening search modal', 'error');
             }
         }
         
@@ -1105,7 +1027,7 @@ if (typeof window.PlacesModule === 'undefined') {
             try {
                 const input = document.getElementById(inputId);
                 if (!input || !input.value.trim()) {
-                    this.safeShowNotification('Please enter a valid API key', 'error');
+                    this.showNotification('Please enter a valid API key', 'error');
                     return;
                 }
                 
@@ -1114,7 +1036,7 @@ if (typeof window.PlacesModule === 'undefined') {
                 // Enhanced validation
                 const validationResult = this.validateApiKeyFormat(apiKey);
                 if (!validationResult.isValid) {
-                    this.safeShowNotification(validationResult.message, 'error');
+                    this.showNotification(validationResult.message, 'error');
                     return;
                 }
                 
@@ -1126,7 +1048,7 @@ if (typeof window.PlacesModule === 'undefined') {
                     const isValidKey = await this.testApiKey(apiKey);
                     if (!isValidKey) {
                         this.safeHideLoading();
-                        this.safeShowNotification('API key test failed. Please check your key and ensure Places API is enabled.', 'error');
+                        this.showNotification('API key test failed. Please check your key and ensure Places API is enabled.', 'error');
                         return;
                     }
                     
@@ -1154,7 +1076,7 @@ if (typeof window.PlacesModule === 'undefined') {
                     // Update UI
                     this.updateUIForApiKey();
                     
-                    this.safeShowNotification('API key validated and saved successfully!', 'success');
+                    this.showNotification('API key validated and saved successfully!', 'success');
                     
                     // Initialize or reinitialize the Places API if needed
                     if (!this.apiLoaded || (window.google && window.google.maps && window.google.maps.places)) {
@@ -1171,7 +1093,7 @@ if (typeof window.PlacesModule === 'undefined') {
                     
                 } catch (testError) {
                     this.log.error('Error testing API key:', testError);
-                    this.safeShowNotification('Error validating API key. Please try again.', 'error');
+                    this.showNotification('Error validating API key. Please try again.', 'error');
                 } finally {
                     this.safeHideLoading();
                 }
@@ -1179,7 +1101,7 @@ if (typeof window.PlacesModule === 'undefined') {
             } catch (error) {
                 this.log.error('Error saving API key:', error);
                 this.safeHideLoading();
-                this.safeShowNotification('Error saving API key: ' + error.message, 'error');
+                this.showNotification('Error saving API key: ' + error.message, 'error');
                 this.performanceMetrics.errors++;
             }
         }
@@ -1341,7 +1263,7 @@ if (typeof window.PlacesModule === 'undefined') {
                         this.apiLoaded = true;
                         this.initializeModalPlacesAutocomplete();
                         this.injectDropdownFixStyles();
-                        this.safeShowNotification('Google Places API ready', 'success');
+                        this.showNotification('Google Places API ready', 'success');
                         resolve();
                         return;
                     }
@@ -1395,14 +1317,14 @@ if (typeof window.PlacesModule === 'undefined') {
                             this.updatePerformanceIndicator();
                             
                             // Show success notification
-                            this.safeShowNotification('Google Places API loaded successfully', 'success');
+                            this.showNotification('Google Places API loaded successfully', 'success');
                             
                             resolve();
                             
                         } catch (error) {
                             clearTimeout(timeoutId);
                             this.log.error('Error in Places API callback:', error);
-                            this.safeShowNotification('Error initializing Places API: ' + error.message, 'error');
+                            this.showNotification('Error initializing Places API: ' + error.message, 'error');
                             this.apiLoaded = false;
                             this.performanceMetrics.errors++;
                             reject(error);
@@ -1416,7 +1338,7 @@ if (typeof window.PlacesModule === 'undefined') {
                             delete window[callbackName];
                         }
                         this.log.error('Error loading Google Places API script:', error);
-                        this.safeShowNotification('Error loading Google Places API. Please check your API key and internet connection.', 'error');
+                        this.showNotification('Error loading Google Places API. Please check your API key and internet connection.', 'error');
                         this.apiLoaded = false;
                         this.performanceMetrics.errors++;
                         reject(new Error('Failed to load Places API script'));
@@ -1427,7 +1349,7 @@ if (typeof window.PlacesModule === 'undefined') {
                     
                 } catch (error) {
                     this.log.error('Error in initializePlacesApi:', error);
-                    this.safeShowNotification('Error initializing Places API: ' + error.message, 'error');
+                    this.showNotification('Error initializing Places API: ' + error.message, 'error');
                     this.performanceMetrics.errors++;
                     reject(error);
                 }
@@ -1526,7 +1448,7 @@ if (typeof window.PlacesModule === 'undefined') {
             } catch (error) {
                 this.log.error('Error initializing modal places autocomplete:', error);
                 this.performanceMetrics.errors++;
-                this.safeShowNotification('Error setting up search autocomplete', 'warning');
+                this.showNotification('Error setting up search autocomplete', 'warning');
             }
         }
         
@@ -1608,7 +1530,7 @@ if (typeof window.PlacesModule === 'undefined') {
                 this.debugLog('Enhanced place selected:', place);
                 
                 if (!place || !place.geometry) {
-                    this.safeShowNotification('No place details available for this selection', 'warning');
+                    this.showNotification('No place details available for this selection', 'warning');
                     return;
                 }
                 
@@ -1645,7 +1567,7 @@ if (typeof window.PlacesModule === 'undefined') {
             } catch (error) {
                 this.log.error('Error handling selected place:', error);
                 this.hideSearchProgress();
-                this.safeShowNotification('Error processing selected place', 'error');
+                this.showNotification('Error processing selected place', 'error');
                 this.performanceMetrics.errors++;
             }
         }
@@ -1681,12 +1603,12 @@ if (typeof window.PlacesModule === 'undefined') {
          */
         async enhancedSearchPlaces() {
             if (!this.apiLoaded) {
-                this.safeShowNotification('Places API not loaded. Please enter your API key first.', 'warning');
+                this.showNotification('Places API not loaded. Please enter your API key first.', 'warning');
                 return;
             }
             
             if (!this.apiKey || this.apiKey.trim() === '') {
-                this.safeShowNotification('Please enter a valid Google Places API key first.', 'warning');
+                this.showNotification('Please enter a valid Google Places API key first.', 'warning');
                 return;
             }
             
@@ -1709,7 +1631,7 @@ if (typeof window.PlacesModule === 'undefined') {
                         this.debugLog('Failed to get current location, using default location');
                         this.currentLatitude = 37.7749;
                         this.currentLongitude = -122.4194;
-                        this.safeShowNotification('Using default location. Enable location access for better results.', 'warning');
+                        this.showNotification('Using default location. Enable location access for better results.', 'warning');
                     }
                 }
                 
@@ -1717,7 +1639,7 @@ if (typeof window.PlacesModule === 'undefined') {
                 if (!this.validateCoordinates(this.currentLatitude, this.currentLongitude)) {
                     this.hideSearchProgress();
                     this.isLoading = false;
-                    this.safeShowNotification('Invalid location coordinates. Please try again.', 'error');
+                    this.showNotification('Invalid location coordinates. Please try again.', 'error');
                     return;
                 }
                 
@@ -1776,7 +1698,7 @@ if (typeof window.PlacesModule === 'undefined') {
             } catch (error) {
                 this.log.error('Error in enhanced search:', error);
                 this.hideSearchProgress();
-                this.safeShowNotification(`Search error: ${error.message}`, 'error');
+                this.showNotification(`Search error: ${error.message}`, 'error');
                 this.performanceMetrics.errors++;
             } finally {
                 this.isLoading = false;
@@ -2556,13 +2478,13 @@ if (typeof window.PlacesModule === 'undefined') {
         getCurrentLocationEnhanced() {
             return new Promise((resolve, reject) => {
                 if (!navigator.geolocation) {
-                    this.safeShowNotification('Geolocation is not supported by your browser', 'error');
+                    this.showNotification('Geolocation is not supported by your browser', 'error');
                     reject(new Error('Geolocation not supported'));
                     return;
                 }
                 
                 // Show location permission request guidance
-                this.safeShowNotification('Please allow location access for better search results', 'info');
+                this.showNotification('Please allow location access for better search results', 'info');
                 
                 navigator.geolocation.getCurrentPosition(
                     (position) => {
@@ -2570,7 +2492,7 @@ if (typeof window.PlacesModule === 'undefined') {
                         const lng = position.coords.longitude;
                         
                         if (!this.validateCoordinates(lat, lng)) {
-                            this.safeShowNotification('Invalid location coordinates received', 'error');
+                            this.showNotification('Invalid location coordinates received', 'error');
                             reject(new Error('Invalid coordinates'));
                             return;
                         }
@@ -2584,7 +2506,7 @@ if (typeof window.PlacesModule === 'undefined') {
                     (error) => {
                         this.log.error('Error getting location:', error);
                         const message = this.getGeolocationErrorMessage(error);
-                        this.safeShowNotification('Location error: ' + message, 'error');
+                        this.showNotification('Location error: ' + message, 'error');
                         reject(error);
                     },
                     { 
@@ -2607,7 +2529,7 @@ if (typeof window.PlacesModule === 'undefined') {
                 await this.enhancedSearchPlaces();
             } catch (error) {
                 this.hideSearchProgress();
-                this.safeShowNotification('Failed to get location: ' + error.message, 'error');
+                this.showNotification('Failed to get location: ' + error.message, 'error');
             }
         }
         

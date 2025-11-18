@@ -1,6 +1,11 @@
 /**
  * Database handling using Dexie.js for IndexedDB
- * Supports local and remote data synchronization
+ * Supports local and remote data synchronization with MongoDB V3 API
+ * 
+ * Architecture (Sprint 1, Day 3):
+ * - Uses V3DataTransformer for MongoDB ↔ IndexedDB compatibility
+ * - All entities/curations transformed before save/load
+ * - 100% field compatibility with MongoDB V3 schema
  */
 
 // Only define the class if it doesn't already exist
@@ -8,6 +13,15 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
     constructor() {
         // Create module logger instance
         this.log = Logger.module('DataStorage');
+        
+        // Reference to V3DataTransformer (loaded before this file)
+        if (window.V3DataTransformer) {
+            this.transformer = window.V3DataTransformer;
+            this.log.debug('V3DataTransformer connected');
+        } else {
+            this.log.warn('⚠️ V3DataTransformer not available - transformation disabled');
+            this.transformer = null;
+        }
         
         // Initialize the database with a new version number
         this.initializeDatabase();
@@ -24,31 +38,91 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 this.db = null;
             }
             
-            // V3: Check schema version in localStorage to force reset if needed
+            // Check schema version in localStorage to force reset if needed
             const expectedSchemaVersion = 'v3.0';
             const currentSchemaVersion = localStorage.getItem('dbSchemaVersion');
             
             if (currentSchemaVersion !== expectedSchemaVersion) {
                 this.log.warn(`⚠️ Schema version mismatch (current: ${currentSchemaVersion}, expected: ${expectedSchemaVersion})`);
-                this.log.warn('🔄 Forcing database reset...');
+                this.log.warn('🔄 Forcing database reset to V3...');
                 
-                // Delete all previous database versions
-                Dexie.delete('RestaurantCuratorV2').catch(() => {});
-                Dexie.delete('RestaurantCurator').catch(() => {});
-                Dexie.delete('ConciergeCollectorV3').catch(() => {});
+                // Close any existing connection
+                if (this.db) {
+                    this.db.close();
+                    this.db = null;
+                }
+                
+                // Delete old database to start fresh (synchronous approach)
+                try {
+                    Dexie.delete('ConciergeCollector').catch(() => {});
+                    Dexie.delete('ConciergeCollectorV3').catch(() => {});
+                    this.log.debug('✅ Old databases deleted');
+                } catch (e) {
+                    this.log.debug('No old databases to delete');
+                }
+                
+                // Clear migration flag
+                localStorage.removeItem('v3MigrationComplete');
                 
                 // Mark as updated
                 localStorage.setItem('dbSchemaVersion', expectedSchemaVersion);
             }
             
-            // V3: Use the database name from config
+            // Use the database name from config
             this.db = new Dexie(AppConfig.database.name);
             
-            // Version 3: V3 Entity-Curation Schema
-            this.db.version(AppConfig.database.version).stores({
-                // V3 Entity-Curation Model
-                entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt',
-                curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt',
+            // Version 6: Multi-Curator + Entity-Agnostic Schema
+            // Note: Using version 6 to be higher than any existing versions
+            this.db.version(6).stores({
+                // Entity-Agnostic Model
+                entities: `
+                    ++id, 
+                    entity_id, 
+                    google_place_id,
+                    entity_type,
+                    source,
+                    [entity_type+city],
+                    createdAt,
+                    synced
+                `,
+                
+                // Multi-Curator Curations
+                curations: `
+                    ++id, 
+                    curation_id,
+                    entity_id,
+                    curator_id,
+                    [curator_id+entity_id],
+                    [entity_id+curator_id],
+                    source,
+                    forked_from,
+                    visibility,
+                    createdAt,
+                    synced
+                `,
+                
+                // Concept Suggestions (Supervised AI)
+                conceptSuggestions: `
+                    ++id,
+                    suggestion_id,
+                    entity_id,
+                    [entity_id+status],
+                    status,
+                    source,
+                    createdAt
+                `,
+                
+                // Import Queue (Bulk Operations)
+                importQueue: `
+                    ++id,
+                    import_id,
+                    status,
+                    type,
+                    createdAt,
+                    processedAt
+                `,
+                
+                // Existing tables (unchanged)
                 drafts: '++id, type, curator_id, createdAt, lastModified',
                 curators: '++id, curator_id, name, email, status, createdAt, lastActive',
                 pendingSync: '++id, type, local_id, action, createdAt, retryCount',
@@ -59,14 +133,17 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             // Open the database to ensure it's properly initialized
             this.db.open()
                 .then(async () => {
-                    this.log.debug('✅ V3 Database opened successfully');
+                    this.log.debug('✅ Database opened successfully');
                     
-                    // V3: Create default curator if none exists
+                    // Run migration if needed
+                    await this.migrateToV3();
+                    
+                    // Create default curator if none exists
                     const curatorCount = await this.db.curators.count();
                     if (curatorCount === 0) {
-                        this.log.debug('Creating default curator for V3...');
+                        this.log.debug('Creating default curator...');
                         const defaultCuratorId = await this.db.curators.add({
-                            curator_id: 'default_curator_v3',
+                            curator_id: 'default_curator',
                             name: 'Default Curator',
                             email: 'default@concierge.com',
                             status: 'active',
@@ -77,10 +154,10 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                         // Set as current curator
                         await this.db.settings.put({
                             key: 'currentCuratorId',
-                            value: 'default_curator_v3'
+                            value: 'default_curator'
                         });
                         
-                        this.log.debug(`✅ Created default curator (ID: default_curator_v3)`);
+                        this.log.debug(`✅ Created default curator (ID: default_curator)`);
                     }
                 })
                 .catch(error => {
@@ -98,7 +175,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                     }
                 });
 
-            this.log.info('V2 Database initialized successfully');
+            this.log.info('Database initialized successfully');
         } catch (error) {
             this.log.error('Error initializing database:', error);
             // Attempt to reset in case of critical error
@@ -107,10 +184,126 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
     }
 
     /**
-     * V2: Reset database to clean V2 schema
+     * Migrate existing data to V3 schema
+     * Adds multi-curator and entity-agnostic fields
+     */
+    async migrateToV3() {
+        try {
+            // Check if migration already done
+            const migrationDone = localStorage.getItem('v3MigrationComplete');
+            if (migrationDone === 'true') {
+                this.log.debug('V3 migration already completed, skipping...');
+                return;
+            }
+            
+            this.log.info('🔄 Starting V3 migration (multi-curator + entity-agnostic)...');
+            
+            // 1. Migrate entities: Add entity_type field
+            const entities = await this.db.entities.toArray();
+            let entitiesUpdated = 0;
+            
+            for (const entity of entities) {
+                const updates = {};
+                
+                // Add entity_type if missing (default to restaurant)
+                if (!entity.entity_type) {
+                    updates.entity_type = 'restaurant';
+                }
+                
+                // Add synced flag if missing
+                if (entity.synced === undefined) {
+                    updates.synced = 0;
+                }
+                
+                // Add city to location if missing (for compound index)
+                if (entity.location && !entity.location.city) {
+                    updates.city = entity.location.address?.split(',')[1]?.trim() || 'Unknown';
+                }
+                
+                if (Object.keys(updates).length > 0) {
+                    await this.db.entities.update(entity.id, updates);
+                    entitiesUpdated++;
+                }
+            }
+            
+            this.log.debug(`✅ Migrated ${entitiesUpdated} entities to V3`);
+            
+            // 2. Migrate curations: Add curator fields
+            const curations = await this.db.curations.toArray();
+            let curationsUpdated = 0;
+            
+            for (const curation of curations) {
+                const updates = {};
+                
+                // Add curator_id if missing
+                if (!curation.curator_id) {
+                    updates.curator_id = 'default_curator';
+                }
+                
+                // Add curator_name if missing
+                if (!curation.curator_name) {
+                    updates.curator_name = 'Legacy Curator';
+                }
+                
+                // Add curator_email if missing
+                if (!curation.curator_email) {
+                    updates.curator_email = '';
+                }
+                
+                // Add source if missing
+                if (!curation.source) {
+                    updates.source = 'curator';
+                }
+                
+                // Add visibility if missing
+                if (!curation.visibility) {
+                    updates.visibility = 'public';
+                }
+                
+                // Add allow_fork if missing
+                if (curation.allow_fork === undefined) {
+                    updates.allow_fork = true;
+                }
+                
+                // Add forked_from if missing
+                if (curation.forked_from === undefined) {
+                    updates.forked_from = null;
+                }
+                
+                // Add fork_count if missing
+                if (curation.fork_count === undefined) {
+                    updates.fork_count = 0;
+                }
+                
+                // Add synced flag if missing
+                if (curation.synced === undefined) {
+                    updates.synced = 0;
+                }
+                
+                if (Object.keys(updates).length > 0) {
+                    await this.db.curations.update(curation.id, updates);
+                    curationsUpdated++;
+                }
+            }
+            
+            this.log.debug(`✅ Migrated ${curationsUpdated} curations to V3`);
+            
+            // Mark migration as complete
+            localStorage.setItem('v3MigrationComplete', 'true');
+            
+            this.log.info(`✅ V3 migration complete! Updated ${entitiesUpdated} entities and ${curationsUpdated} curations`);
+            
+        } catch (error) {
+            this.log.error('V3 migration failed:', error);
+            // Don't throw - allow app to continue
+        }
+    }
+
+    /**
+     * Reset database to clean V3 schema
      */
     async resetDatabase() {
-        this.log.warn('Resetting V2 database...');
+        this.log.warn('Resetting database...');
         try {
             // Set resetting flag
             this.isResetting = true;
@@ -121,20 +314,22 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 this.db = null;
             }
             
-            // Delete the V2 database
-            await Dexie.delete('RestaurantCuratorV2');
+            // Delete the database
+            await Dexie.delete('ConciergeCollector');
+            await Dexie.delete('ConciergeCollectorV3');
             
-            // Also delete old V1 database if it exists
+            // Also delete old databases if they exist
             try {
+                await Dexie.delete('RestaurantCuratorV2');
                 await Dexie.delete('RestaurantCurator');
             } catch (e) {
-                // Ignore if V1 doesn't exist
+                // Ignore if old versions don't exist
             }
             
             // Show notification to the user
             if (typeof Toastify !== 'undefined') {
                 Toastify({
-                    text: "Database has been reset to V2 schema. Your data has been cleared.",
+                    text: "Database has been reset. Your data has been cleared.",
                     duration: 5000,
                     gravity: "top",
                     position: "center",
@@ -142,10 +337,14 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 }).showToast();
             }
             
-            // Reinitialize with V2 schema
+            // Clear migration flag
+            localStorage.removeItem('v3MigrationComplete');
+            localStorage.setItem('dbSchemaVersion', 'v3.0');
+            
+            // Reinitialize database
             this.initializeDatabase();
             
-            this.log.debug('V2 Database reset and reinitialized successfully');
+            this.log.debug('Database reset and reinitialized successfully');
             
             // Clear reset flag
             this.isResetting = false;
@@ -510,6 +709,164 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
         } catch (error) {
             this.log.error('Error cleaning up duplicate curators:', error);
             return 0;
+        }
+    }
+
+    // ============================================================================
+    // V3 DATA TRANSFORMATION METHODS (Sprint 1, Day 3)
+    // ============================================================================
+    
+    /**
+     * Save entity from MongoDB API format to IndexedDB
+     * @param {Object} mongoEntity - Entity in MongoDB format
+     * @returns {Promise<number>} - IndexedDB entity ID
+     */
+    async saveEntityFromAPI(mongoEntity) {
+        try {
+            if (!this.transformer) {
+                throw new Error('V3DataTransformer not available');
+            }
+            
+            // Transform MongoDB → IndexedDB
+            const localEntity = this.transformer.mongoEntityToLocal(mongoEntity);
+            
+            // Save to IndexedDB
+            const entityId = await this.db.entities.put(localEntity);
+            
+            this.log.debug(`Saved entity from API: ${localEntity.name} (ID: ${entityId})`);
+            return entityId;
+        } catch (error) {
+            this.log.error('Error saving entity from API:', error);
+            throw error;
+        }
+    }
+    
+    /**
+     * Get entity from IndexedDB and transform to MongoDB format
+     * @param {number} entityId - IndexedDB entity ID
+     * @returns {Promise<Object>} - Entity in MongoDB format
+     */
+    async getEntityForAPI(entityId) {
+        try {
+            if (!this.transformer) {
+                throw new Error('V3DataTransformer not available');
+            }
+            
+            // Get from IndexedDB
+            const localEntity = await this.db.entities.get(entityId);
+            
+            if (!localEntity) {
+                throw new Error(`Entity not found: ${entityId}`);
+            }
+            
+            // Transform IndexedDB → MongoDB
+            const mongoEntity = this.transformer.localEntityToMongo(localEntity);
+            
+            return mongoEntity;
+        } catch (error) {
+            this.log.error('Error getting entity for API:', error);
+            throw error;
+        }
+    }
+    
+    /**
+     * Save multiple entities from MongoDB API format
+     * @param {Array<Object>} mongoEntities - Array of MongoDB entities
+     * @returns {Promise<Array<number>>} - Array of IndexedDB entity IDs
+     */
+    async saveEntitiesFromAPI(mongoEntities) {
+        try {
+            if (!this.transformer) {
+                throw new Error('V3DataTransformer not available');
+            }
+            
+            // Transform all entities MongoDB → IndexedDB
+            const localEntities = this.transformer.mongoEntitiesToLocal(mongoEntities);
+            
+            // Bulk save to IndexedDB
+            const entityIds = await this.db.entities.bulkPut(localEntities);
+            
+            this.log.debug(`Saved ${localEntities.length} entities from API`);
+            return entityIds;
+        } catch (error) {
+            this.log.error('Error saving entities from API:', error);
+            throw error;
+        }
+    }
+    
+    /**
+     * Get all entities from IndexedDB and transform to MongoDB format
+     * @returns {Promise<Array<Object>>} - Array of entities in MongoDB format
+     */
+    async getAllEntitiesForAPI() {
+        try {
+            if (!this.transformer) {
+                throw new Error('V3DataTransformer not available');
+            }
+            
+            // Get all from IndexedDB
+            const localEntities = await this.db.entities.toArray();
+            
+            // Transform all IndexedDB → MongoDB
+            const mongoEntities = this.transformer.localEntitiesToMongo(localEntities);
+            
+            return mongoEntities;
+        } catch (error) {
+            this.log.error('Error getting all entities for API:', error);
+            throw error;
+        }
+    }
+    
+    /**
+     * Save curation from MongoDB API format to IndexedDB
+     * @param {Object} mongoCuration - Curation in MongoDB format
+     * @returns {Promise<number>} - IndexedDB curation ID
+     */
+    async saveCurationFromAPI(mongoCuration) {
+        try {
+            if (!this.transformer) {
+                throw new Error('V3DataTransformer not available');
+            }
+            
+            // Transform MongoDB → IndexedDB
+            const localCuration = this.transformer.mongoCurationToLocal(mongoCuration);
+            
+            // Save to IndexedDB
+            const curationId = await this.db.curations.put(localCuration);
+            
+            this.log.debug(`Saved curation from API (ID: ${curationId})`);
+            return curationId;
+        } catch (error) {
+            this.log.error('Error saving curation from API:', error);
+            throw error;
+        }
+    }
+    
+    /**
+     * Get curation from IndexedDB and transform to MongoDB format
+     * @param {number} curationId - IndexedDB curation ID
+     * @returns {Promise<Object>} - Curation in MongoDB format
+     */
+    async getCurationForAPI(curationId) {
+        try {
+            if (!this.transformer) {
+                throw new Error('V3DataTransformer not available');
+            }
+            
+            // Get from IndexedDB
+            const localCuration = await this.db.curations.get(curationId);
+            
+            if (!localCuration) {
+                throw new Error(`Curation not found: ${curationId}`);
+            }
+            
+            // Transform IndexedDB → MongoDB
+            const mongoCuration = this.transformer.localCurationToMongo(localCuration);
+            
+            return mongoCuration;
+        } catch (error) {
+            this.log.error('Error getting curation for API:', error);
+            throw error;
         }
     }
 

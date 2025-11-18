@@ -849,4 +849,113 @@ document.addEventListener('DOMContentLoaded', () => {
     if (window.uiManager) {
         ensureRecordingModuleInitialized(window.uiManager);
     }
+    
+    // Sprint 2, Day 4: Quick Import Nearby button handler
+    const importNearbyBtn = document.getElementById('import-nearby-btn');
+    if (importNearbyBtn) {
+        importNearbyBtn.addEventListener('click', handleQuickImportNearby);
+    }
 });
+
+/**
+ * Sprint 2, Day 4: Handle "Import 20 Nearby" button click
+ * Imports restaurants from Google Places in user's vicinity
+ */
+async function handleQuickImportNearby() {
+    const logger = Logger.module('QuickImport');
+    logger.info('🚀 Quick Import Nearby initiated');
+    
+    const button = document.getElementById('import-nearby-btn');
+    const originalText = button.innerHTML;
+    
+    try {
+        // Disable button during operation
+        button.disabled = true;
+        button.innerHTML = '<span class="material-icons text-sm mr-1 animate-spin">refresh</span> Importing...';
+        
+        // Initialize PlacesAutomation if not already done
+        if (!window.placesAutomation) {
+            window.placesAutomation = new PlacesAutomation();
+        }
+        
+        // 1. Get user location
+        logger.debug('📍 Getting user location...');
+        const location = await window.placesAutomation.getUserLocation();
+        logger.debug(`✅ Location: ${location.lat}, ${location.lng}`);
+        
+        // 2. Search Google Places via Backend API
+        logger.debug('🔍 Searching Google Places via backend...');
+        const radius = 5000; // 5km
+        const maxResults = 20;
+        
+        // Call backend /api/v3/places/nearby endpoint
+        const backendUrl = `${AppConfig.api.backend.baseUrl}/places/nearby`;
+        const params = new URLSearchParams({
+            latitude: location.lat.toString(),
+            longitude: location.lng.toString(),
+            radius: radius.toString(),
+            type: 'restaurant',
+            max_results: maxResults.toString()
+        });
+        
+        const response = await fetch(`${backendUrl}?${params.toString()}`);
+        
+        if (!response.ok) {
+            throw new Error(`Backend API error: ${response.status} ${response.statusText}`);
+        }
+        
+        const data = await response.json();
+        
+        if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
+            throw new Error(`Google Places API error: ${data.error_message || data.status}`);
+        }
+        
+        const places = data.results || [];
+        
+        logger.debug(`✅ Found ${places.length} places`);
+        
+        // Limit to 20 results
+        const limitedPlaces = places.slice(0, maxResults);
+        
+        // 3. Import as entities (automated)
+        logger.debug('💾 Importing entities...');
+        const imported = await window.placesAutomation.autoImportEntities(limitedPlaces);
+        
+        logger.info(`✅ Import complete: ${imported.count} imported, ${imported.duplicates} duplicates`);
+        
+        // 4. Show success notification
+        if (typeof Toastify !== 'undefined') {
+            Toastify({
+                text: `✅ Imported ${imported.count} restaurants. Skipped ${imported.duplicates} duplicates.`,
+                duration: 5000,
+                gravity: "top",
+                position: "center",
+                style: { background: "linear-gradient(to right, #00b09b, #96c93d)" }
+            }).showToast();
+        }
+        
+        // 5. Refresh UI (if entity list exists)
+        if (window.uiManager && window.uiManager.refreshEntityList) {
+            await window.uiManager.refreshEntityList();
+        }
+        
+    } catch (error) {
+        logger.error('❌ Import failed:', error);
+        
+        // Show error notification
+        if (typeof Toastify !== 'undefined') {
+            Toastify({
+                text: `❌ Import failed: ${error.message}`,
+                duration: 5000,
+                gravity: "top",
+                position: "center",
+                style: { background: "linear-gradient(to right, #ff5f6d, #ffc371)" }
+            }).showToast();
+        }
+        
+    } finally {
+        // Re-enable button
+        button.disabled = false;
+        button.innerHTML = originalText;
+    }
+}

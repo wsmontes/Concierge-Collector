@@ -60,9 +60,10 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
                 appMetadata: 'key'
             });
             
-            // Version 4: V4 API Schema (adds etag, syncQueue, cache)
-            this.db.version(4).stores({
-                // Core V3 Tables
+            // Version 6: V4 API Schema (Sprint 2 - Multi-Curator + Entity-Agnostic)
+            // Note: Using version 6 to be higher than any existing versions
+            this.db.version(6).stores({
+                // Core V3 Tables with V4 enhancements
                 entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt, etag',
                 curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt, updatedAt, etag',
                 curators: '++id, curator_id, name, email, status, createdAt, lastActive',

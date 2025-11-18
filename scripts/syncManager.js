@@ -175,7 +175,7 @@ window.SyncManager = {
     },
 
     /**
-     * Sync a single item to server (V4 API)
+     * Sync a single item to server (V3 API)
      */
     async syncSingleItem(item) {
         const { action, type, entity_id, data } = item;
@@ -185,8 +185,7 @@ window.SyncManager = {
             case 'entity':
                 switch (operation) {
                     case 'create':
-                        // createEntityV4 handles transformation internally
-                        const response = await window.ApiService.createEntityV4(data);
+                        const response = await window.ApiService.createEntity(data);
                         
                         // Update local entity with server entity_id
                         if (response && response.entity_id && item.local_id) {
@@ -198,8 +197,7 @@ window.SyncManager = {
                         }
                         break;
                     case 'update':
-                        // updateEntityV4 handles transformation internally
-                        await window.ApiService.updateEntityV4(entity_id, data, data.version || 1);
+                        await window.ApiService.updateEntity(entity_id, data, data.version || 1);
                         break;
                     case 'delete':
                         await window.ApiService.deleteEntity(entity_id);
@@ -210,8 +208,7 @@ window.SyncManager = {
             case 'curation':
                 switch (operation) {
                     case 'create':
-                        // createCurationV4 handles transformation internally
-                        const curationResponse = await window.ApiService.createCurationV4(data);
+                        const curationResponse = await window.ApiService.createCuration(data);
                         
                         // Update local curation with server curation_id
                         if (curationResponse && curationResponse.curation_id && item.local_id) {
@@ -222,8 +219,7 @@ window.SyncManager = {
                         }
                         break;
                     case 'update':
-                        // updateCurationV4 handles transformation internally
-                        await window.ApiService.updateCurationV4(entity_id, data, data.version || 1);
+                        await window.ApiService.updateCuration(entity_id, data, data.version || 1);
                         break;
                     case 'delete':
                         await window.ApiService.deleteCuration(entity_id);
@@ -342,7 +338,7 @@ window.SyncManager = {
     },
 
     /**
-     * Download changes from server (V4 API)
+     * Download changes from server (V3 API)
      */
     async downloadServerChanges(options = {}) {
         const results = {
@@ -353,7 +349,6 @@ window.SyncManager = {
         };
 
         try {
-            // V4: Use adapted methods
             const queryParams = {
                 limit: options.limit || 100
             };
@@ -361,17 +356,16 @@ window.SyncManager = {
                 queryParams.since = options.since;
             }
             
-            // Download entities using V4 method
+            // Download entities using V3 API
             try {
-                this.log.debug('📥 Downloading entities (V4)...');
-                const entitiesResponse = await window.ApiService.getEntitiesV4(queryParams);
-                this.log.debug('✅ V4 entities received:', entitiesResponse.entities.length);
+                this.log.debug('📥 Downloading entities from V3 API...');
+                const entitiesResponse = await window.ApiService.getEntities(queryParams);
+                this.log.debug('✅ V3 entities received:', entitiesResponse);
 
-                if (entitiesResponse?.entities) {
-                    for (const v4Entity of entitiesResponse.entities) {
-                        // Transform V4 entity to local format before merging
-                        const localEntity = window.SyncAdapterV4.entityFromV4(v4Entity);
-                        const merged = await this.mergeServerEntity(localEntity);
+                // V3 API returns paginated response with 'items' field
+                if (entitiesResponse?.items) {
+                    for (const entity of entitiesResponse.items) {
+                        const merged = await this.mergeServerEntity(entity);
                         if (merged === 'added') results.entitiesAdded++;
                         if (merged === 'updated') results.entitiesUpdated++;
                     }
@@ -380,14 +374,15 @@ window.SyncManager = {
                 this.log.error('❌ Failed to download entities:', entitiesError);
             }
 
-            // Download curations using V4 method
+            // Download curations using V3 API
             try {
-                this.log.debug('📥 Downloading curations (V4)...');
-                const curationsResponse = await window.ApiService.getCurationsV4(queryParams);
-                this.log.debug('✅ V4 curations received:', curationsResponse.curations.length);
+                this.log.debug('📥 Downloading curations from V3 API...');
+                const curationsResponse = await window.ApiService.getCurations(queryParams);
+                this.log.debug('✅ V3 curations received:', curationsResponse);
 
-                if (curationsResponse?.curations) {
-                    for (const curation of curationsResponse.curations) {
+                // V3 API returns paginated response with 'items' field
+                if (curationsResponse?.items) {
+                    for (const curation of curationsResponse.items) {
                         const merged = await this.mergeServerCuration(curation);
                         if (merged === 'added') results.curationsAdded++;
                         if (merged === 'updated') results.curationsUpdated++;

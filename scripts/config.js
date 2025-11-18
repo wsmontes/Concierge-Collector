@@ -14,18 +14,9 @@ const AppConfig = {
      */
     api: {
         /**
-         * V4 API Backend (Concierge API V4) - CURRENT (LOCAL)
+         * V3 API Backend - CURRENT (LOCAL)
          * FastAPI + MongoDB async backend
-         * Modern features: JWT auth, optimistic locking via version field, pagination
-         * 
-         * MIGRATION V3→V4:
-         * - baseUrl: Remote V3 → Local V4 (localhost:8001)
-         * - Auth: None → JWT Bearer tokens required
-         * - Updates: PATCH (partial) → PUT (full document with version)
-         * - Query: DSL → Simple filters (type, status, city, tags, etc)
-         * - Pagination: None → items/total/skip/limit format
-         * - IDs: entity.id → entity.entity_id / curation.id → curation.curation_id
-         * - Soft Delete: Via is_deleted field (curations) and status=deleted (entities)
+         * Features: JWT auth, optimistic locking via version field, pagination
          */
         backend: {
             baseUrl: 'http://localhost:8000/api/v3',  // V3 API with prefix
@@ -33,14 +24,14 @@ const AppConfig = {
             retryAttempts: 3,      // Number of retry attempts
             retryDelay: 1000,      // Delay between retries (ms)
             features: {
-                optimisticLocking: true,     // V4: version field (int) instead of ETags
-                partialUpdates: false,       // V4: PUT with full document (not PATCH)
-                flexibleQuery: false,        // V4: simple filters (not query DSL)
-                documentOriented: true,      // Still document-oriented (MongoDB)
-                requiresAuth: true           // V4: JWT Bearer tokens required
+                optimisticLocking: true,     // version field (int)
+                partialUpdates: true,        // PATCH for partial updates
+                flexibleQuery: false,        // simple filters (not query DSL)
+                documentOriented: true,      // document-oriented (MongoDB)
+                requiresAuth: false          // Optional auth
             },
             endpoints: {
-                // Auth endpoints (NEW in V4)
+                // Auth endpoints
                 register: '/auth/register',      // POST - Create user
                 login: '/auth/login',            // POST - Get JWT token
                 
@@ -56,7 +47,7 @@ const AppConfig = {
                 curations: '/curations',         // GET list (filters), POST create (auth)
                 curationById: '/curations/{id}', // GET (no auth), PUT (auth), DELETE (auth)
                 
-                // Sync endpoints (NEW in V4)
+                // Sync endpoints
                 syncPull: '/sync/pull',          // POST - Pull changes (auth)
                 syncPush: '/sync/push',          // POST - Push changes (auth)
                 syncFromConcierge: '/sync/from-concierge'  // POST - Receive embeddings (auth)
@@ -110,34 +101,33 @@ const AppConfig = {
 
     /**
      * API Version Configuration
-     * Using V4 API (FastAPI + MongoDB)
+     * Using V3 API (FastAPI + MongoDB)
      */
     apiVersion: {
-        // Current API version (V4)
-        current: 'v4',
+        // Current API version
+        current: 'v3',
         
-        // Migration settings (V3→V4 notes)
+        // Migration settings
         migration: {
-            enabled: false,          // No auto-migration from V3 to V4
+            enabled: false,
             notes: [
-                'V3→V4 changes:',
-                '- Auth: Added JWT authentication (all writes require token)',
-                '- IDs: entity.id → entity.entity_id',
-                '- Version: ETag → version (integer)',
-                '- Updates: PATCH → PUT (full document)',
-                '- Query: DSL → simple filters',
-                '- Pagination: Added (items/total/skip/limit)',
-                '- Sync: New endpoints (/sync/pull, /sync/push)'
+                'V3 API features:',
+                '- Optional JWT authentication',
+                '- Entity IDs: entity_id',
+                '- Version: integer for optimistic locking',
+                '- Updates: PATCH for partial updates',
+                '- Query: simple filters',
+                '- Pagination: items/total/skip/limit'
             ]
         },
         
-        // API V4 features
+        // API features
         features: {
             optimisticLocking: true,     // Via version field (integer)
-            partialUpdates: false,       // PUT only (no PATCH)
+            partialUpdates: true,        // PATCH supported
             flexibleQuery: false,        // Simple filters
-            entityCurations: true,       // Entity-curation model maintained
-            authentication: true,        // JWT required
+            entityCurations: true,       // Entity-curation model
+            authentication: false,       // JWT optional
             pagination: true             // All list endpoints paginated
         }
     },
@@ -180,15 +170,15 @@ const AppConfig = {
      */
     database: {
         name: 'ConciergeCollector',  // Single database name (Dexie handles versioning)
-        version: 4,  // Current schema version (V4 API compatibility)
+        version: 6,  // Current schema version
         tables: {
-            entities: 'entities',            // V3: Restaurants, users, admins, system objects
-            curations: 'curations',          // V3: Reviews, recommendations, analysis
-            drafts: 'drafts',               // V3: Unsaved entity/curation drafts
-            curators: 'curators',           // V3: Curator management
-            syncQueue: 'syncQueue',         // V3: Items pending server sync
-            settings: 'settings',           // V3: User settings and preferences
-            cache: 'cache'                  // V3: Cached data with expiration
+            entities: 'entities',            // Restaurants, users, admins, system objects
+            curations: 'curations',          // Reviews, recommendations, analysis
+            drafts: 'drafts',               // Unsaved entity/curation drafts
+            curators: 'curators',           // Curator management
+            syncQueue: 'syncQueue',         // Items pending server sync
+            settings: 'settings',           // User settings and preferences
+            cache: 'cache'                  // Cached data with expiration
         }
     },
 
@@ -197,15 +187,15 @@ const AppConfig = {
      */
     app: {
         name: 'Concierge Collector',
-        version: '3.0.0',         // V3 API only
+        version: '3.0.0',         // V3 API
         dataFormat: 'v3',         // V3 entity-curation format
         
         // Feature Flags
         features: {
             // V3 API features (all enabled)
-            optimisticLocking: true,      // ETag-based updates
-            partialUpdates: true,         // JSON Merge Patch
-            flexibleQuery: true,          // Advanced query DSL
+            optimisticLocking: true,      // Version-based updates
+            partialUpdates: true,         // PATCH support
+            flexibleQuery: true,          // Query filters
             entityCurations: true,        // Entity-curation model
             
             // Application features
@@ -219,7 +209,7 @@ const AppConfig = {
             // Optional integrations
             placesIntegration: false,    // Google Places integration (disabled by default)
             googlePlaces: true,          // Google Places search
-            michelinStaging: true,       // Michelin data staging
+            // michelinStaging: REMOVED - Michelin data will be batch imported via separate script
             backgroundSync: true,        // Background synchronization
             bulkOperations: true,        // Bulk operations support
             debug: false                 // Debug mode (disabled by default)

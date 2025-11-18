@@ -404,17 +404,8 @@ const MigrationManager = ModuleWrapper.defineClass('MigrationManager', class {
             });
         }
 
-        // Add Michelin metadata if available
-        if (restaurant.michelinStars || restaurant.michelinData) {
-            entity.metadata.push({
-                type: 'michelin',
-                source: 'michelin_guide',
-                data: {
-                    stars: restaurant.michelinStars || 0,
-                    ...restaurant.michelinData
-                }
-            });
-        }
+        // REMOVED: Michelin metadata - Michelin module removed from project
+        // Michelin data will be batch imported later via separate script
 
         return entity;
     }

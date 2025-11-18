@@ -26,13 +26,19 @@ class Settings(BaseSettings):
     # Environment
     environment: str = "development"
     
+    # Google Places API
+    google_places_api_key: str = ""
+    
     @property
     def cors_origins_list(self) -> List[str]:
-        """Parse CORS origins from JSON string"""
+        """Parse CORS origins from comma-separated string or JSON"""
         try:
+            # Try JSON first
             return json.loads(self.cors_origins)
         except:
-            return ["http://localhost:3000"]
+            # Fall back to comma-separated string
+            origins = [origin.strip() for origin in self.cors_origins.split(',')]
+            return origins if origins else ["http://localhost:3000"]
     
     class Config:
         env_file = ".env"

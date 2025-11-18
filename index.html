@@ -56,8 +56,7 @@
     <!-- Restaurant validator utility -->
     <script src="scripts/utils/restaurantValidator.js" defer></script>
     
-    <!-- Add the Michelin staging module script -->
-    <script src="scripts/modules/michelinStagingModule.js"></script>
+    <!-- Michelin module removed - data will be imported via batch script -->
     <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.0/lame.min.js"></script>
     
     <!-- Add iOS detection script -->
@@ -182,6 +181,20 @@
                 </div>
             </div>
             
+        </section>
+
+        <!-- Quick Actions Section (Sprint 2, Day 4) -->
+        <section id="quick-actions-section" class="mb-4 p-3 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg shadow-sm border border-blue-100">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div class="flex-1">
+                    <h3 class="text-sm font-semibold text-gray-800 mb-1">Quick Import</h3>
+                    <p class="text-xs text-gray-600">Automatically add nearby restaurants as entities</p>
+                </div>
+                <button id="import-nearby-btn" class="btn btn-primary btn-sm w-full sm:w-auto">
+                    <span class="material-icons text-sm mr-1">location_on</span>
+                    Import 20 Nearby
+                </button>
+            </div>
         </section>
 
         <!-- Audio Recording Section -->
@@ -645,7 +658,20 @@
     <script src="scripts/modules/restaurantListModule.js"></script>
     <!-- DEPRECATED: <script src="scripts/modules/exportImportModule.js"></script> -->
     <script src="scripts/modules/quickActionModule.js"></script>
-    <script src="scripts/modules/michelinStagingModule.js"></script>
+    <!-- REMOVED: michelinStagingModule.js - Michelin data will be batch imported -->
+    
+    <!-- V3 Data Services (Sprint 1, Day 3 - MongoDB ↔ IndexedDB compatibility) -->
+    <script src="scripts/services/V3DataTransformer.js"></script>
+    
+    <!-- Google Places Services (Sprint 1, Day 2 - Service-based architecture) -->
+    <script src="scripts/services/googlePlaces/PlacesCache.js"></script>
+    <script src="scripts/services/googlePlaces/PlacesFormatter.js"></script>
+    <script src="scripts/services/googlePlaces/PlacesService.js"></script>
+    
+    <!-- Places Automation (Sprint 2, Day 4 - Entity automation) -->
+    <script src="scripts/services/PlacesAutomation.js"></script>
+    
+    <!-- Google Places Module (refactored to use services) -->
     <script src="scripts/modules/placesModule.js"></script>
     <script src="scripts/modules/audioUtils.js"></script>
 

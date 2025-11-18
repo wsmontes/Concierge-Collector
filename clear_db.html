@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Clear Database</title>
+</head>
+<body>
+    <h1>Database Cleanup</h1>
+    <button id="clear">Clear All Databases</button>
+    <div id="status"></div>
+    
+    <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.2/dist/dexie.min.js"></script>
+    <script>
+        document.getElementById('clear').addEventListener('click', async () => {
+            const status = document.getElementById('status');
+            status.innerHTML = 'Clearing...';
+            
+            try {
+                // Clear localStorage
+                localStorage.clear();
+                status.innerHTML += '<br>✅ localStorage cleared';
+                
+                // Delete all possible database versions
+                await Dexie.delete('ConciergeCollector');
+                status.innerHTML += '<br>✅ ConciergeCollector deleted';
+                
+                await Dexie.delete('ConciergeCollectorV3');
+                status.innerHTML += '<br>✅ ConciergeCollectorV3 deleted';
+                
+                await Dexie.delete('ConciergeCollectorV4');
+                status.innerHTML += '<br>✅ ConciergeCollectorV4 deleted';
+                
+                await Dexie.delete('RestaurantCuratorV2');
+                status.innerHTML += '<br>✅ RestaurantCuratorV2 deleted';
+                
+                await Dexie.delete('RestaurantCurator');
+                status.innerHTML += '<br>✅ RestaurantCurator deleted';
+                
+                status.innerHTML += '<br><br><strong>✅ All databases cleared!</strong>';
+                status.innerHTML += '<br><br>You can now close this window and reload the main app.';
+                
+            } catch (error) {
+                status.innerHTML += '<br>❌ Error: ' + error.message;
+            }
+        });
+    </script>
+</body>
+</html>

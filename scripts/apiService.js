@@ -28,11 +28,11 @@ const ApiService = ModuleWrapper.defineClass('ApiService', class {
     }
 
     /**
-     * Initialize V4 API Service
+     * Initialize V3 API Service
      */
     async initialize() {
         try {
-            this.log.debug('🚀 Initializing V4 API Service...');
+            this.log.debug('🚀 Initializing V3 API Service...');
             
             // Validate configuration
             if (!this.baseUrl) {
@@ -44,21 +44,21 @@ const ApiService = ModuleWrapper.defineClass('ApiService', class {
             if (token) {
                 this.log.debug('✅ Found existing auth token');
             } else {
-                this.log.warn('⚠️ No auth token found - authentication required for write operations');
+                this.log.warn('⚠️ No auth token found - authentication optional for V3 API');
             }
             
             this.isInitialized = true;
-            this.log.debug('✅ V4 API Service initialized successfully');
+            this.log.debug('✅ V3 API Service initialized successfully');
             return this;
             
         } catch (error) {
-            this.log.error('❌ Failed to initialize V4 API Service:', error);
+            this.log.error('❌ Failed to initialize V3 API Service:', error);
             throw error;
         }
     }
 
     // ========================================
-    // AUTHENTICATION (V4 ONLY)
+    // AUTHENTICATION
     // ========================================
 
     /**
@@ -96,7 +96,7 @@ const ApiService = ModuleWrapper.defineClass('ApiService', class {
         try {
             this.log.debug(`🔐 Logging in user: ${username}`);
             
-            // V4 uses form data for OAuth2 compatibility
+            // Use form data for OAuth2 compatibility
             const formData = new URLSearchParams();
             formData.append('username', username);
             formData.append('password', password);
@@ -161,7 +161,7 @@ const ApiService = ModuleWrapper.defineClass('ApiService', class {
     setupDefaultInterceptors() {
         // Default request interceptor
         this.addRequestInterceptor(async (config) => {
-            // V4: Add JWT Bearer token if available
+            // Add JWT Bearer token if available
             const authToken = this.getAuthToken();
             if (authToken) {
                 config.headers = config.headers || {};

@@ -54,10 +54,16 @@ window.dataStorage = {
     get db() {
         if (window.dataStore?.db) {
             return {
+                entities: window.dataStore.db.entities,
                 restaurants: window.dataStore.db.entities.where('type').equals('restaurant')
             };
         }
         return {
+            entities: {
+                toArray: async () => [],
+                add: async () => null,
+                where: () => ({ equals: () => ({ toArray: async () => [] }) })
+            },
             restaurants: {
                 where: () => ({ 
                     equals: () => ({ 
@@ -70,5 +76,3 @@ window.dataStorage = {
         };
     }
 };
-
-console.log('📦 DataStorage compatibility wrapper loaded');

@@ -1,0 +1,39 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Force Refresh</title>
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+</head>
+<body>
+    <h1>Force Browser Cache Clear</h1>
+    <button id="clear">Clear Cache & Reload</button>
+    <div id="status"></div>
+    
+    <script>
+        document.getElementById('clear').addEventListener('click', async () => {
+            const status = document.getElementById('status');
+            status.innerHTML = 'Clearing cache...';
+            
+            try {
+                // Clear all caches
+                if ('caches' in window) {
+                    const cacheNames = await caches.keys();
+                    for (const name of cacheNames) {
+                        await caches.delete(name);
+                        status.innerHTML += `<br>✅ Cache ${name} deleted`;
+                    }
+                }
+                
+                status.innerHTML += '<br><br><strong>✅ Cache cleared!</strong>';
+                status.innerHTML += '<br><br>Press Cmd+Shift+R (Mac) or Ctrl+Shift+R (Windows) on index.html to hard refresh';
+                status.innerHTML += '<br><br><a href="index.html" target="_blank">Or click here to open index.html</a>';
+                
+            } catch (error) {
+                status.innerHTML += '<br>❌ Error: ' + error.message;
+            }
+        });
+    </script>
+</body>
+</html>
