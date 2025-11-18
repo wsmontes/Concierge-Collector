@@ -15,9 +15,10 @@ Comprehensive API documentation with detailed explanations.
 Perfect for: Learning the API, integration planning, reference.
 
 ### OpenAPI Schema
-**[openapi.yaml](./openapi.yaml)**  
-Machine-readable API specification (OpenAPI 3.0).  
-Perfect for: Code generation, API testing tools, validation.
+**[openapi.yaml](./openapi.yaml)** | **[openapi.json](./openapi.json)**  
+Auto-generated OpenAPI 3.1.0 specification from FastAPI.  
+Perfect for: Code generation, API testing tools, validation.  
+📖 [How to update](./OPENAPI_README.md)
 
 ---
 
