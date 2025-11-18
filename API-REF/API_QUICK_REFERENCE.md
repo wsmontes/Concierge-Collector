@@ -1,51 +1,150 @@
 # Concierge API V3 - Quick Reference
 
-**Base URL**: `https://wsmontes.pythonanywhere.com/api/v3`
+**Base URL**: `https://wsmontes.pythonanywhere.com/api/v3`  
+**Local Dev**: `http://localhost:8000/api/v3`
 
 ## Quick Links
 - [Full Documentation](./API_DOCUMENTATION_V3.md)
+- [Interactive Docs](https://wsmontes.pythonanywhere.com/api/v3/docs) 🔗 Swagger UI
+- [ReDoc](https://wsmontes.pythonanywhere.com/api/v3/redoc) 📚 Alternative docs
 - [Health Check](https://wsmontes.pythonanywhere.com/api/v3/health)
-- [API Info](https://wsmontes.pythonanywhere.com/api/v3/info)
+
+## 🔑 Authentication
+
+Most endpoints are public. AI endpoints require API key:
+```
+X-API-Key: your-api-key-here
+```
 
 ## Endpoints Summary
 
 ### System
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| GET | `/health` | Health check |
-| GET | `/info` | API information |
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/health` | ❌ | Health check |
+| GET | `/info` | ❌ | API information |
 
 ### Entities
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/entities` | Create entity |
-| GET | `/entities/{id}` | Get entity |
-| PATCH | `/entities/{id}` | Update entity (requires ETag) |
-| DELETE | `/entities/{id}` | Delete entity |
-| GET | `/entities?type=X&name=Y` | Search entities |
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/entities` | ❌ | Create entity |
+| GET | `/entities/{id}` | ❌ | Get entity |
+| PATCH | `/entities/{id}` | ❌ | Update entity (requires ETag) |
+| DELETE | `/entities/{id}` | ❌ | Delete entity |
+| GET | `/entities?type=X&name=Y` | ❌ | Search entities |
 
 ### Curations
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/curations` | Create curation |
-| GET | `/curations/{id}` | Get curation |
-| PATCH | `/curations/{id}` | Update curation (requires ETag) |
-| DELETE | `/curations/{id}` | Delete curation |
-| GET | `/entities/{id}/curations` | Get entity curations |
-| GET | `/curations/search?category=X` | Search curations |
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/curations` | ❌ | Create curation |
+| GET | `/curations/{id}` | ❌ | Get curation |
+| PATCH | `/curations/{id}` | ❌ | Update curation (requires ETag) |
+| DELETE | `/curations/{id}` | ❌ | Delete curation |
+| GET | `/entities/{id}/curations` | ❌ | Get entity curations |
+| GET | `/curations/search?category=X` | ❌ | Search curations |
+
+### Places (Google Places API Proxy)
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| GET | `/places/nearby` | ❌ | Search nearby places |
+| GET | `/places/details/{place_id}` | ❌ | Get place details |
+| GET | `/places/autocomplete` | ❌ | Place autocomplete |
+| GET | `/places/photo/{photo_reference}` | ❌ | Get place photo |
+
+### AI Services 🤖
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/ai/orchestrate` | ✅ | Intelligent AI workflow |
+| POST | `/ai/transcribe` | ✅ | Audio transcription |
+| POST | `/ai/extract-concepts` | ✅ | Extract concepts from text |
+| POST | `/ai/analyze-image` | ✅ | Vision analysis |
 
 ### Advanced
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| POST | `/query` | Flexible query DSL |
+| Method | Endpoint | Auth | Description |
+|--------|----------|------|-------------|
+| POST | `/query` | ❌ | Flexible query DSL |
 
 ## Common Headers
 ```
 Content-Type: application/json
 If-Match: "etag-value"  // Required for updates
+X-API-Key: your-key     // Required for AI endpoints
 ```
 
-## Entity Example
+## 📍 Places API Examples
+
+### Search Nearby Places
+```bash
+GET /places/nearby?latitude=37.7749&longitude=-122.4194&radius=1000&type=restaurant
+```
+
+### Get Place Details
+```bash
+GET /places/details/ChIJ... 
+```
+
+## 🤖 AI Services Examples
+
+### Orchestrate (Smart Workflow)
+```bash
+POST /ai/orchestrate
+X-API-Key: your-key
+
+{
+  "audio_file": "base64_encoded_audio...",
+  "entity_type": "restaurant",
+  "workflow_type": "auto"
+}
+```
+
+**Response:**
+```json
+{
+  "workflow": "audio_to_entity",
+  "results": {
+    "transcription": "...",
+    "concepts": [...],
+    "entity_created": true
+  },
+  "saved_to_db": true,
+  "processing_time_ms": 2500
+}
+```
+
+### Transcribe Audio
+```bash
+POST /ai/transcribe
+X-API-Key: your-key
+
+{
+  "audio_file": "base64_encoded_audio...",
+  "language": "pt-BR"
+}
+```
+
+### Extract Concepts
+```bash
+POST /ai/extract-concepts
+X-API-Key: your-key
+
+{
+  "text": "Had amazing pasta at Mario's Italian Restaurant...",
+  "entity_type": "restaurant"
+}
+```
+
+### Analyze Image
+```bash
+POST /ai/analyze-image
+X-API-Key: your-key
+
+{
+  "image_file": "base64_encoded_image...",
+  "prompt": "Describe this restaurant menu"
+}
+```
+
+## 📦 Entity Example
 ```json
 {
   "entity_id": "restaurant_123",
