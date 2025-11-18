@@ -10,6 +10,7 @@ from typing import Optional, Dict, Any, List
 import os
 
 from app.core.database import get_database
+from app.core.security import verify_api_key
 from app.services.openai_service import OpenAIService
 from app.services.ai_orchestrator import AIOrchestrator
 
@@ -88,10 +89,14 @@ async def get_ai_orchestrator(
 @router.post("/orchestrate", response_model=OrchestrateResponse)
 async def orchestrate(
     request: OrchestrateRequest,
-    orchestrator: AIOrchestrator = Depends(get_ai_orchestrator)
+    orchestrator: AIOrchestrator = Depends(get_ai_orchestrator),
+    _: str = Depends(verify_api_key)  # Require API key
 ):
     """
     Intelligent AI workflow orchestration.
+    
+    **Authentication Required:** Include `X-API-Key` header
+    **⚠️  Costs Money:** Uses OpenAI API - monitor usage
     
     Combines multiple AI services (transcription, concept extraction, image analysis)
     in smart workflows with flexible output control.

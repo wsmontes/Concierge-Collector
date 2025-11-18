@@ -8,9 +8,9 @@ from httpx import AsyncClient
 
 
 @pytest.mark.asyncio
-async def test_create_entity(client: AsyncClient, sample_entity_data):
-    """Test entity creation"""
-    response = await client.post("/entities", json=sample_entity_data)
+async def test_create_entity(client: AsyncClient, sample_entity_data, auth_headers):
+    """Test entity creation with authentication"""
+    response = await client.post("/api/v3/entities", json=sample_entity_data, headers=auth_headers)
     
     assert response.status_code == 201
     data = response.json()
@@ -24,25 +24,34 @@ async def test_create_entity(client: AsyncClient, sample_entity_data):
 
 
 @pytest.mark.asyncio
-async def test_create_duplicate_entity(client: AsyncClient, sample_entity_data):
+async def test_create_entity_without_auth(client: AsyncClient, sample_entity_data):
+    """Test entity creation fails without API key"""
+    response = await client.post("/api/v3/entities", json=sample_entity_data)
+    
+    assert response.status_code == 403
+    assert "API key" in response.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_create_duplicate_entity(client: AsyncClient, sample_entity_data, auth_headers):
     """Test creating duplicate entity fails"""
     # Create first entity
-    await client.post("/entities", json=sample_entity_data)
+    await client.post("/api/v3/entities", json=sample_entity_data, headers=auth_headers)
     
     # Try to create duplicate
-    response = await client.post("/entities", json=sample_entity_data)
+    response = await client.post("/api/v3/entities", json=sample_entity_data, headers=auth_headers)
     
     assert response.status_code == 500  # MongoDB duplicate key error
 
 
 @pytest.mark.asyncio
-async def test_get_entity(client: AsyncClient, sample_entity_data):
-    """Test retrieving entity by ID"""
+async def test_get_entity(client: AsyncClient, sample_entity_data, auth_headers):
+    """Test retrieving entity by ID (no auth required for GET)"""
     # Create entity
-    await client.post("/entities", json=sample_entity_data)
+    await client.post("/api/v3/entities", json=sample_entity_data, headers=auth_headers)
     
-    # Get entity
-    response = await client.get(f"/entities/{sample_entity_data['entity_id']}")
+    # Get entity (no auth required)
+    response = await client.get(f"/api/v3/entities/{sample_entity_data['entity_id']}")
     
     assert response.status_code == 200
     data = response.json()

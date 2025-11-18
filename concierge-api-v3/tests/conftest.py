@@ -9,9 +9,17 @@ from httpx import AsyncClient
 from motor.motor_asyncio import AsyncIOMotorClient
 from datetime import datetime
 import asyncio
+import os
 
 from main import app
 from app.core.config import settings
+
+
+# Test API key - should match .env for tests
+TEST_API_KEY = "test_api_key_for_testing_only"
+
+# Set test API key in environment for tests
+os.environ["API_SECRET_KEY"] = TEST_API_KEY
 
 
 @pytest.fixture(scope="session")
@@ -88,4 +96,12 @@ def sample_curation_data():
             "public": "Excellent restaurant",
             "private": "Test notes"
         }
+    }
+
+
+@pytest.fixture
+def auth_headers():
+    """Authentication headers with API key for protected endpoints"""
+    return {
+        "X-API-Key": TEST_API_KEY
     }

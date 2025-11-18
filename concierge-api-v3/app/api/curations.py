@@ -12,6 +12,7 @@ from app.models.schemas import (
     Curation, CurationCreate, CurationUpdate, PaginatedResponse
 )
 from app.core.database import get_database
+from app.core.security import verify_api_key
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 router = APIRouter(prefix="/curations", tags=["curations"])
@@ -20,9 +21,13 @@ router = APIRouter(prefix="/curations", tags=["curations"])
 @router.post("", response_model=Curation, status_code=201)
 async def create_curation(
     curation: CurationCreate,
-    db: AsyncIOMotorDatabase = Depends(get_database)
+    db: AsyncIOMotorDatabase = Depends(get_database),
+    _: str = Depends(verify_api_key)  # Require API key
 ):
-    """Create a new curation"""
+    """Create a new curation
+    
+    **Authentication Required:** Include `X-API-Key` header
+    """
     # Verify entity exists
     entity = await db.entities.find_one({"_id": curation.entity_id})
     if not entity:
@@ -130,9 +135,13 @@ async def update_curation(
     curation_id: str,
     updates: CurationUpdate,
     if_match: Optional[str] = Header(None, alias="If-Match"),
-    db: AsyncIOMotorDatabase = Depends(get_database)
+    db: AsyncIOMotorDatabase = Depends(get_database),
+    _: str = Depends(verify_api_key)  # Require API key
 ):
-    """Update curation with optimistic locking"""
+    """Update curation with optimistic locking
+    
+    **Authentication Required:** Include `X-API-Key` header
+    """
     # Check If-Match header
     if not if_match:
         raise HTTPException(
@@ -170,9 +179,13 @@ async def update_curation(
 @router.delete("/{curation_id}", status_code=204)
 async def delete_curation(
     curation_id: str,
-    db: AsyncIOMotorDatabase = Depends(get_database)
+    db: AsyncIOMotorDatabase = Depends(get_database),
+    _: str = Depends(verify_api_key)  # Require API key
 ):
-    """Delete curation"""
+    """Delete curation
+    
+    **Authentication Required:** Include `X-API-Key` header
+    """
     result = await db.curations.delete_one({"_id": curation_id})
     
     if result.deleted_count == 0:

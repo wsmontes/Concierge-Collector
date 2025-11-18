@@ -12,6 +12,7 @@ from app.models.schemas import (
     Entity, EntityCreate, EntityUpdate, PaginatedResponse, ErrorResponse
 )
 from app.core.database import get_database
+from app.core.security import verify_api_key
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 router = APIRouter(prefix="/entities", tags=["entities"])
@@ -20,9 +21,13 @@ router = APIRouter(prefix="/entities", tags=["entities"])
 @router.post("", response_model=Entity, status_code=201)
 async def create_entity(
     entity: EntityCreate,
-    db: AsyncIOMotorDatabase = Depends(get_database)
+    db: AsyncIOMotorDatabase = Depends(get_database),
+    _: str = Depends(verify_api_key)  # Require API key
 ):
-    """Create a new entity or update if exists (upsert with merge)"""
+    """Create a new entity or update if exists (upsert with merge)
+    
+    **Authentication Required:** Include `X-API-Key` header
+    """
     # Check if entity already exists
     existing = await db.entities.find_one({"_id": entity.entity_id})
     
@@ -90,9 +95,13 @@ async def update_entity(
     entity_id: str,
     updates: EntityUpdate,
     if_match: Optional[str] = Header(None, alias="If-Match"),
-    db: AsyncIOMotorDatabase = Depends(get_database)
+    db: AsyncIOMotorDatabase = Depends(get_database),
+    _: str = Depends(verify_api_key)  # Require API key
 ):
-    """Update entity with optimistic locking"""
+    """Update entity with optimistic locking
+    
+    **Authentication Required:** Include `X-API-Key` header
+    """
     # Check If-Match header
     if not if_match:
         raise HTTPException(
@@ -130,9 +139,13 @@ async def update_entity(
 @router.delete("/{entity_id}", status_code=204)
 async def delete_entity(
     entity_id: str,
-    db: AsyncIOMotorDatabase = Depends(get_database)
+    db: AsyncIOMotorDatabase = Depends(get_database),
+    _: str = Depends(verify_api_key)  # Require API key
 ):
-    """Delete entity"""
+    """Delete entity
+    
+    **Authentication Required:** Include `X-API-Key` header
+    """
     result = await db.entities.delete_one({"_id": entity_id})
     
     if result.deleted_count == 0:
