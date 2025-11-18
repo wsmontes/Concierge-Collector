@@ -55,7 +55,7 @@ class TestAIOrchestrateEndpoint:
     """Tests for POST /api/v3/ai/orchestrate"""
     
     @pytest.mark.asyncio
-    async def test_orchestrate_audio_only(self, client, test_db):
+    async def test_orchestrate_audio_only(self, client, auth_headers, test_db):
         """Test orchestrate with audio-only workflow"""
         # Seed test data
         await test_db.categories.insert_one({
@@ -111,7 +111,8 @@ class TestAIOrchestrateEndpoint:
                 "/api/v3/ai/orchestrate",
                 json={
                     "text": "Modern restaurant with great atmosphere"
-                }
+                },
+                headers=auth_headers
             )
         
         assert response.status_code == 200
@@ -123,7 +124,7 @@ class TestAIOrchestrateEndpoint:
         assert data["saved_to_db"] is False  # Smart default
     
     @pytest.mark.asyncio
-    async def test_orchestrate_with_save(self, client, test_db):
+    async def test_orchestrate_with_save(self, client, auth_headers, test_db):
         """Test orchestrate with save_to_db=True"""
         # Seed test data
         await test_db.categories.insert_one({
@@ -163,7 +164,8 @@ class TestAIOrchestrateEndpoint:
                         "return_results": False,
                         "format": "ids_only"
                     }
-                }
+                },
+                headers=auth_headers
             )
         
         assert response.status_code == 200
@@ -173,18 +175,19 @@ class TestAIOrchestrateEndpoint:
         assert data["workflow"] == "audio_only"
     
     @pytest.mark.asyncio
-    async def test_orchestrate_invalid_input(self, client):
+    async def test_orchestrate_invalid_input(self, client, auth_headers):
         """Test orchestrate with invalid input"""
         response = await client.post(
             "/api/v3/ai/orchestrate",
-            json={}  # No inputs
+            json={},  # No inputs
+            headers=auth_headers
         )
         
         # Should return validation error or 400
         assert response.status_code in [400, 422]
     
     @pytest.mark.asyncio
-    async def test_orchestrate_image_workflow(self, client, test_db):
+    async def test_orchestrate_image_workflow(self, client, auth_headers, test_db):
         """Test orchestrate with image-only workflow"""
         # Seed test data
         await test_db.categories.insert_one({
@@ -219,7 +222,8 @@ class TestAIOrchestrateEndpoint:
                 "/api/v3/ai/orchestrate",
                 json={
                     "image_url": "https://example.com/restaurant.jpg"
-                }
+                },
+                headers=auth_headers
             )
         
         assert response.status_code == 200
