@@ -18,8 +18,8 @@ class TestAIHealthEndpoint:
         """Test health check returns correct status"""
         # Seed categories
         await test_db.categories.insert_many([
-            {"entity_type": "restaurant", "categories": ["modern"], "version": 1, "updated_at": datetime.utcnow()},
-            {"entity_type": "bar", "categories": ["cocktail"], "version": 1, "updated_at": datetime.utcnow()}
+            {"entity_type": "restaurant", "categories": ["modern"], "active": True, "version": 1, "updated_at": datetime.utcnow()},
+            {"entity_type": "bar", "categories": ["cocktail"], "active": True, "version": 1, "updated_at": datetime.utcnow()}
         ])
         
         # Seed configs
@@ -61,6 +61,7 @@ class TestAIOrchestrateEndpoint:
         await test_db.categories.insert_one({
             "entity_type": "restaurant",
             "categories": ["modern", "traditional"],
+            "active": True,
             "version": 1,
             "updated_at": datetime.utcnow()
         })
@@ -130,6 +131,7 @@ class TestAIOrchestrateEndpoint:
         await test_db.categories.insert_one({
             "entity_type": "restaurant",
             "categories": ["modern"],
+            "active": True,
             "version": 1,
             "updated_at": datetime.utcnow()
         })
@@ -193,6 +195,7 @@ class TestAIOrchestrateEndpoint:
         await test_db.categories.insert_one({
             "entity_type": "restaurant",
             "categories": ["elegant", "modern"],
+            "active": True,
             "version": 1,
             "updated_at": datetime.utcnow()
         })
@@ -244,8 +247,14 @@ class TestAIUsageStatsEndpoint:
         assert response.status_code == 200
         data = response.json()
         
-        assert "total_requests" in data
-        assert "by_service" in data
+        # Check actual format from OpenAIService.get_usage_stats
+        assert "transcriptions" in data
+        assert "concept_extractions" in data
+        assert "image_analyses" in data
+        assert "days" in data
+        assert data["transcriptions"] == 0
+        assert data["concept_extractions"] == 0
+        assert data["image_analyses"] == 0
     
     @pytest.mark.asyncio
     async def test_usage_stats_with_data(self, client, test_db):
@@ -278,5 +287,7 @@ class TestAIUsageStatsEndpoint:
         assert response.status_code == 200
         data = response.json()
         
-        assert data["total_requests"] >= 3
-        assert "by_service" in data
+        # Check actual format
+        assert data["transcriptions"] >= 2
+        assert data["concept_extractions"] >= 1
+        assert "days" in data

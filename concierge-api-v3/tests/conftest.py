@@ -20,6 +20,8 @@ TEST_API_KEY = "test_api_key_for_testing_only"
 
 # Set test API key in environment for tests
 os.environ["API_SECRET_KEY"] = TEST_API_KEY
+# Set test OpenAI key (mock key for testing)
+os.environ["OPENAI_API_KEY"] = "sk-test-mock-openai-key-for-testing-only"
 
 
 @pytest.fixture(scope="session")

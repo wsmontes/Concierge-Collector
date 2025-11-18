@@ -24,12 +24,14 @@ async def category_service(test_db):
         {
             "entity_type": "restaurant",
             "categories": ["modern", "traditional", "michelin_star"],
+            "active": True,
             "version": 1,
             "updated_at": datetime.utcnow()
         },
         {
             "entity_type": "bar",
             "categories": ["cocktail_bar", "wine_bar", "brewery"],
+            "active": True,
             "version": 1,
             "updated_at": datetime.utcnow()
         }
