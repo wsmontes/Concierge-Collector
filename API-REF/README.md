@@ -14,6 +14,12 @@ Perfect for: Quick lookups, during development, troubleshooting.
 Comprehensive API documentation with detailed explanations.  
 Perfect for: Learning the API, integration planning, reference.
 
+### JSON Schemas & Examples 🆕
+**[schemas.json](./schemas.json)** - JSON Schema Draft-07 definitions  
+**[examples.json](./examples.json)** - Complete request/response examples  
+**[JSON_SCHEMAS_README.md](./JSON_SCHEMAS_README.md)** - Usage guide  
+Perfect for: Type generation, validation, testing, mocking.
+
 ### OpenAPI Schema
 **[openapi.yaml](./openapi.yaml)** | **[openapi.json](./openapi.json)**  
 Auto-generated OpenAPI 3.1.0 specification from FastAPI.  

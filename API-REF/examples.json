@@ -1,0 +1,585 @@
+{
+  "title": "Concierge API V3 - Complete Examples",
+  "description": "Real-world examples for all API endpoints",
+  "version": "3.0.0",
+  "base_url": "https://wsmontes.pythonanywhere.com/api/v3",
+  
+  "examples": {
+    "entities": {
+      "create": {
+        "description": "Create a new restaurant entity",
+        "endpoint": "POST /api/v3/entities",
+        "headers": {
+          "Content-Type": "application/json",
+          "X-API-Key": "your-api-key"
+        },
+        "request": {
+          "entity_id": "rest_marios_italian_downtown",
+          "type": "restaurant",
+          "name": "Mario's Italian Restaurant",
+          "status": "active",
+          "externalId": "ChIJN1t_tDeuEmsRUsoyG83frY4",
+          "metadata": [
+            {
+              "type": "google_places",
+              "source": "Google Places API",
+              "importedAt": "2025-11-18T10:30:00Z",
+              "data": {
+                "place_id": "ChIJN1t_tDeuEmsRUsoyG83frY4",
+                "rating": 4.5,
+                "user_ratings_total": 1234,
+                "price_level": 2,
+                "types": ["restaurant", "food", "point_of_interest"]
+              }
+            }
+          ],
+          "data": {
+            "location": {
+              "address": "123 Main Street",
+              "city": "San Francisco",
+              "state": "CA",
+              "zip": "94102",
+              "country": "USA",
+              "coordinates": {
+                "lat": 37.7749,
+                "lng": -122.4194
+              }
+            },
+            "contacts": {
+              "phone": "+1-415-555-0123",
+              "email": "info@mariositalian.com",
+              "website": "https://mariositalian.com"
+            },
+            "media": {
+              "logo": "https://example.com/logo.jpg",
+              "photos": [
+                "https://example.com/photo1.jpg",
+                "https://example.com/photo2.jpg"
+              ]
+            },
+            "attributes": {
+              "cuisine": ["Italian", "Mediterranean"],
+              "dietary": ["vegetarian_options", "gluten_free"],
+              "features": ["outdoor_seating", "wifi", "parking"],
+              "price_range": "$$",
+              "reservations": true
+            },
+            "hours": {
+              "monday": "11:00-22:00",
+              "tuesday": "11:00-22:00",
+              "wednesday": "11:00-22:00",
+              "thursday": "11:00-22:00",
+              "friday": "11:00-23:00",
+              "saturday": "10:00-23:00",
+              "sunday": "10:00-21:00"
+            }
+          },
+          "createdBy": "user_john_doe"
+        },
+        "response": {
+          "status": 201,
+          "headers": {
+            "ETag": "\"1\"",
+            "Location": "/api/v3/entities/rest_marios_italian_downtown"
+          },
+          "body": {
+            "_id": "673abcd1234567890abcdef0",
+            "entity_id": "rest_marios_italian_downtown",
+            "type": "restaurant",
+            "name": "Mario's Italian Restaurant",
+            "status": "active",
+            "externalId": "ChIJN1t_tDeuEmsRUsoyG83frY4",
+            "metadata": [],
+            "data": {},
+            "createdAt": "2025-11-18T10:30:00Z",
+            "updatedAt": "2025-11-18T10:30:00Z",
+            "createdBy": "user_john_doe",
+            "updatedBy": null,
+            "version": 1
+          }
+        }
+      },
+      
+      "get": {
+        "description": "Get entity by ID",
+        "endpoint": "GET /api/v3/entities/rest_marios_italian_downtown",
+        "response": {
+          "status": 200,
+          "headers": {
+            "ETag": "\"1\""
+          },
+          "body": {
+            "_id": "673abcd1234567890abcdef0",
+            "entity_id": "rest_marios_italian_downtown",
+            "type": "restaurant",
+            "name": "Mario's Italian Restaurant",
+            "status": "active",
+            "data": {
+              "location": {
+                "address": "123 Main Street",
+                "city": "San Francisco"
+              }
+            },
+            "createdAt": "2025-11-18T10:30:00Z",
+            "updatedAt": "2025-11-18T10:30:00Z",
+            "version": 1
+          }
+        }
+      },
+      
+      "update": {
+        "description": "Update entity (partial)",
+        "endpoint": "PATCH /api/v3/entities/rest_marios_italian_downtown",
+        "headers": {
+          "Content-Type": "application/json",
+          "If-Match": "\"1\"",
+          "X-API-Key": "your-api-key"
+        },
+        "request": {
+          "name": "Mario's Italian Bistro",
+          "data": {
+            "location": {
+              "address": "456 New Street"
+            }
+          },
+          "updatedBy": "user_jane_smith"
+        },
+        "response": {
+          "status": 200,
+          "headers": {
+            "ETag": "\"2\""
+          },
+          "body": {
+            "_id": "673abcd1234567890abcdef0",
+            "entity_id": "rest_marios_italian_downtown",
+            "name": "Mario's Italian Bistro",
+            "data": {
+              "location": {
+                "address": "456 New Street"
+              }
+            },
+            "updatedAt": "2025-11-18T11:00:00Z",
+            "updatedBy": "user_jane_smith",
+            "version": 2
+          }
+        }
+      },
+      
+      "list": {
+        "description": "List entities with filters",
+        "endpoint": "GET /api/v3/entities?type=restaurant&limit=10&offset=0",
+        "response": {
+          "status": 200,
+          "body": {
+            "items": [
+              {
+                "_id": "673abcd1234567890abcdef0",
+                "entity_id": "rest_marios_italian_downtown",
+                "type": "restaurant",
+                "name": "Mario's Italian Restaurant"
+              }
+            ],
+            "total": 156,
+            "limit": 10,
+            "offset": 0
+          }
+        }
+      }
+    },
+    
+    "curations": {
+      "create": {
+        "description": "Create a curation with AI-extracted concepts",
+        "endpoint": "POST /api/v3/curations",
+        "headers": {
+          "Content-Type": "application/json",
+          "X-API-Key": "your-api-key"
+        },
+        "request": {
+          "curation_id": "cur_john_marios_2025_11_18",
+          "entity_id": "rest_marios_italian_downtown",
+          "curator": {
+            "id": "user_john_doe",
+            "name": "John Doe",
+            "email": "john@example.com"
+          },
+          "notes": {
+            "public": "Amazing carbonara! Best I've had in SF. The ambiance is perfect for date night.",
+            "private": "Ask for table by the window. Chef recommends the house wine."
+          },
+          "categories": {
+            "cuisine": ["Italian", "Pasta", "Mediterranean"],
+            "mood": ["Romantic", "Intimate", "Cozy"],
+            "occasion": ["Date Night", "Anniversary", "Special Occasion"],
+            "price_range": ["$$", "Mid-range"],
+            "setting": ["Indoor", "Candlelit"],
+            "crowd": ["Couples", "Adults"],
+            "food_style": ["Traditional", "Homemade"],
+            "drinks": ["Wine", "Italian Wine"],
+            "menu": ["Carbonara", "Pasta", "Tiramisu"],
+            "suitable_for": ["Romantic Dinner", "Wine Lovers"]
+          },
+          "sources": ["audio", "manual"]
+        },
+        "response": {
+          "status": 201,
+          "headers": {
+            "ETag": "\"1\"",
+            "Location": "/api/v3/curations/cur_john_marios_2025_11_18"
+          },
+          "body": {
+            "_id": "673abcd9876543210fedcba0",
+            "curation_id": "cur_john_marios_2025_11_18",
+            "entity_id": "rest_marios_italian_downtown",
+            "curator": {
+              "id": "user_john_doe",
+              "name": "John Doe",
+              "email": "john@example.com"
+            },
+            "notes": {
+              "public": "Amazing carbonara!...",
+              "private": "Ask for table by the window..."
+            },
+            "categories": {
+              "cuisine": ["Italian", "Pasta", "Mediterranean"],
+              "mood": ["Romantic", "Intimate", "Cozy"]
+            },
+            "sources": ["audio", "manual"],
+            "createdAt": "2025-11-18T12:00:00Z",
+            "updatedAt": "2025-11-18T12:00:00Z",
+            "version": 1
+          }
+        }
+      },
+      
+      "search": {
+        "description": "Search curations by entity",
+        "endpoint": "GET /api/v3/curations/search?entity_id=rest_marios_italian_downtown",
+        "response": {
+          "status": 200,
+          "body": {
+            "items": [
+              {
+                "_id": "673abcd9876543210fedcba0",
+                "curation_id": "cur_john_marios_2025_11_18",
+                "entity_id": "rest_marios_italian_downtown",
+                "curator": {
+                  "id": "user_john_doe",
+                  "name": "John Doe"
+                }
+              }
+            ],
+            "total": 3,
+            "limit": 50,
+            "offset": 0
+          }
+        }
+      }
+    },
+    
+    "places": {
+      "nearby": {
+        "description": "Search nearby restaurants",
+        "endpoint": "GET /api/v3/places/nearby?latitude=37.7749&longitude=-122.4194&radius=2000&type=restaurant",
+        "response": {
+          "status": 200,
+          "body": {
+            "results": [
+              {
+                "place_id": "ChIJN1t_tDeuEmsRUsoyG83frY4",
+                "name": "Mario's Italian Restaurant",
+                "vicinity": "123 Main St, San Francisco",
+                "rating": 4.5,
+                "user_ratings_total": 1234,
+                "price_level": 2,
+                "types": ["restaurant", "food"],
+                "geometry": {
+                  "location": {
+                    "lat": 37.7749,
+                    "lng": -122.4194
+                  }
+                },
+                "business_status": "OPERATIONAL",
+                "opening_hours": {
+                  "open_now": true
+                }
+              }
+            ],
+            "status": "OK"
+          }
+        }
+      },
+      
+      "details": {
+        "description": "Get place details",
+        "endpoint": "GET /api/v3/places/details/ChIJN1t_tDeuEmsRUsoyG83frY4",
+        "response": {
+          "status": 200,
+          "body": {
+            "result": {
+              "place_id": "ChIJN1t_tDeuEmsRUsoyG83frY4",
+              "name": "Mario's Italian Restaurant",
+              "formatted_address": "123 Main St, San Francisco, CA 94102",
+              "formatted_phone_number": "+1 415-555-0123",
+              "website": "https://mariositalian.com",
+              "rating": 4.5,
+              "user_ratings_total": 1234,
+              "price_level": 2,
+              "opening_hours": {
+                "open_now": true,
+                "weekday_text": [
+                  "Monday: 11:00 AM – 10:00 PM",
+                  "Tuesday: 11:00 AM – 10:00 PM"
+                ]
+              },
+              "photos": [
+                {
+                  "photo_reference": "ATtYBwI...",
+                  "height": 3024,
+                  "width": 4032
+                }
+              ],
+              "reviews": [
+                {
+                  "author_name": "John Doe",
+                  "rating": 5,
+                  "text": "Best carbonara in SF!",
+                  "time": 1700323200
+                }
+              ]
+            },
+            "status": "OK"
+          }
+        }
+      }
+    },
+    
+    "ai": {
+      "orchestrate_audio_only": {
+        "description": "Transcribe audio and extract concepts",
+        "endpoint": "POST /api/v3/ai/orchestrate",
+        "headers": {
+          "Content-Type": "application/json",
+          "X-API-Key": "your-api-key"
+        },
+        "request": {
+          "workflow_type": "audio_only",
+          "audio_file": "data:audio/mp3;base64,SUQzBAAAAAAAI1RTU0UAAAAPAAADTGF2ZjU4Ljc2LjEwMAAAAAAAAAAAAAAA...",
+          "language": "pt-BR",
+          "entity_type": "restaurant"
+        },
+        "response": {
+          "status": 200,
+          "body": {
+            "workflow": "audio_only",
+            "results": {
+              "transcription": {
+                "text": "Ontem fui no Mario's Italian Restaurant e a experiência foi incrível. O carbonara estava perfeito, muito cremoso. O ambiente é super romântico, ideal para um jantar a dois. O atendimento foi excelente e o preço justo.",
+                "language": "pt-BR"
+              },
+              "concepts": [
+                {
+                  "type": "restaurant",
+                  "name": "Mario's Italian Restaurant",
+                  "attributes": {
+                    "cuisine": ["Italian", "Pasta"],
+                    "dishes": ["Carbonara"],
+                    "mood": ["Romantic", "Intimate"],
+                    "occasion": ["Date Night"],
+                    "service_quality": "excellent",
+                    "price_perception": "fair"
+                  }
+                }
+              ]
+            },
+            "saved_to_db": false,
+            "processing_time_ms": 2847
+          }
+        }
+      },
+      
+      "orchestrate_full_workflow": {
+        "description": "Complete workflow: Place ID + Audio → Entity + Curation",
+        "endpoint": "POST /api/v3/ai/orchestrate",
+        "headers": {
+          "Content-Type": "application/json",
+          "X-API-Key": "your-api-key"
+        },
+        "request": {
+          "workflow_type": "auto",
+          "place_id": "ChIJN1t_tDeuEmsRUsoyG83frY4",
+          "audio_file": "data:audio/mp3;base64,...",
+          "language": "pt-BR",
+          "curator_id": "user_john_doe",
+          "entity_type": "restaurant",
+          "output": {
+            "save_to_db": true,
+            "return_results": true,
+            "format": "full"
+          }
+        },
+        "response": {
+          "status": 200,
+          "body": {
+            "workflow": "place_id_with_audio",
+            "results": {
+              "place_details": {
+                "place_id": "ChIJN1t_tDeuEmsRUsoyG83frY4",
+                "name": "Mario's Italian Restaurant",
+                "rating": 4.5
+              },
+              "entity_created": true,
+              "entity_id": "rest_marios_italian_ChIJN1t",
+              "transcription": {
+                "text": "Ontem fui no Mario's...",
+                "language": "pt-BR"
+              },
+              "concepts": [
+                {
+                  "type": "restaurant",
+                  "attributes": {
+                    "cuisine": ["Italian"],
+                    "mood": ["Romantic"]
+                  }
+                }
+              ],
+              "curation_created": true,
+              "curation_id": "cur_user_john_doe_2025_11_18_120530"
+            },
+            "saved_to_db": true,
+            "processing_time_ms": 4521
+          }
+        }
+      },
+      
+      "transcribe": {
+        "description": "Transcribe audio file",
+        "endpoint": "POST /api/v3/ai/transcribe",
+        "headers": {
+          "Content-Type": "application/json",
+          "X-API-Key": "your-api-key"
+        },
+        "request": {
+          "audio_file": "data:audio/mp3;base64,...",
+          "language": "pt-BR",
+          "prompt": "Restaurant review in Portuguese"
+        },
+        "response": {
+          "status": 200,
+          "body": {
+            "text": "Ontem fui no Mario's Italian Restaurant...",
+            "language": "pt-BR"
+          }
+        }
+      },
+      
+      "extract_concepts": {
+        "description": "Extract concepts from text",
+        "endpoint": "POST /api/v3/ai/extract-concepts",
+        "headers": {
+          "Content-Type": "application/json",
+          "X-API-Key": "your-api-key"
+        },
+        "request": {
+          "text": "Had amazing pasta at Mario's Italian Restaurant. The carbonara was perfect, service was excellent. Highly recommend for date nights!",
+          "entity_type": "restaurant"
+        },
+        "response": {
+          "status": 200,
+          "body": {
+            "concepts": [
+              {
+                "type": "restaurant",
+                "name": "Mario's Italian Restaurant",
+                "attributes": {
+                  "cuisine": ["Italian", "Pasta"],
+                  "dishes": ["Carbonara"],
+                  "service_quality": "excellent",
+                  "recommendation": "highly_recommended",
+                  "suitable_for": ["date_nights"]
+                }
+              }
+            ]
+          }
+        }
+      },
+      
+      "analyze_image": {
+        "description": "Analyze restaurant image",
+        "endpoint": "POST /api/v3/ai/analyze-image",
+        "headers": {
+          "Content-Type": "application/json",
+          "X-API-Key": "your-api-key"
+        },
+        "request": {
+          "image_file": "data:image/jpeg;base64,/9j/4AAQSkZJRgABAQAAAQABAAD...",
+          "prompt": "Describe this restaurant menu and identify the dishes"
+        },
+        "response": {
+          "status": 200,
+          "body": {
+            "analysis": {
+              "description": "The image shows a restaurant menu featuring Italian cuisine. Visible dishes include Pizza Margherita, Spaghetti Carbonara, Fettuccine Alfredo, and Tiramisu for dessert. The menu has a rustic, traditional Italian design with warm colors.",
+              "identified_items": [
+                "Pizza Margherita",
+                "Spaghetti Carbonara",
+                "Fettuccine Alfredo",
+                "Tiramisu"
+              ],
+              "cuisine_type": "Italian",
+              "price_range": "Mid-range ($$)",
+              "visual_style": "Traditional, Rustic"
+            }
+          }
+        }
+      }
+    },
+    
+    "errors": {
+      "validation_error": {
+        "description": "Request validation error",
+        "status": 422,
+        "body": {
+          "error": "Validation Error",
+          "message": "Invalid request data",
+          "details": {
+            "loc": ["body", "name"],
+            "msg": "field required",
+            "type": "value_error.missing"
+          }
+        }
+      },
+      
+      "not_found": {
+        "description": "Resource not found",
+        "status": 404,
+        "body": {
+          "error": "Not Found",
+          "message": "Entity with ID 'invalid_id' not found"
+        }
+      },
+      
+      "conflict": {
+        "description": "Optimistic locking conflict",
+        "status": 409,
+        "body": {
+          "error": "Conflict",
+          "message": "Entity was modified by another user. Please refresh and try again.",
+          "details": {
+            "current_version": 5,
+            "provided_version": 3
+          }
+        }
+      },
+      
+      "unauthorized": {
+        "description": "Missing or invalid API key",
+        "status": 401,
+        "body": {
+          "error": "Unauthorized",
+          "message": "Invalid or missing API key"
+        }
+      }
+    }
+  }
+}

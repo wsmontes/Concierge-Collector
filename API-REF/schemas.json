@@ -1,0 +1,544 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Concierge API V3 Schemas",
+  "description": "Complete JSON schemas for all API entities",
+  "version": "3.0.0",
+  
+  "definitions": {
+    "Entity": {
+      "type": "object",
+      "title": "Entity",
+      "description": "Complete entity with system fields",
+      "required": ["_id", "entity_id", "type", "name", "createdAt", "updatedAt"],
+      "properties": {
+        "_id": {
+          "type": "string",
+          "description": "MongoDB ObjectId"
+        },
+        "entity_id": {
+          "type": "string",
+          "description": "Unique entity identifier"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["restaurant", "hotel", "venue", "bar", "cafe", "other"],
+          "description": "Entity type"
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500,
+          "description": "Entity name"
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "inactive", "draft"],
+          "default": "active",
+          "description": "Entity status"
+        },
+        "externalId": {
+          "type": ["string", "null"],
+          "description": "External system ID (e.g., Google Place ID)"
+        },
+        "metadata": {
+          "type": "array",
+          "description": "Metadata from multiple sources",
+          "items": {
+            "$ref": "#/definitions/Metadata"
+          }
+        },
+        "sync": {
+          "anyOf": [
+            {"$ref": "#/definitions/SyncInfo"},
+            {"type": "null"}
+          ]
+        },
+        "data": {
+          "type": ["object", "null"],
+          "description": "Flexible data storage (location, contacts, media, attributes)"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "createdBy": {
+          "type": ["string", "null"],
+          "description": "Curator ID who created this"
+        },
+        "updatedBy": {
+          "type": ["string", "null"],
+          "description": "Curator ID who last updated this"
+        },
+        "version": {
+          "type": "integer",
+          "default": 1,
+          "description": "Optimistic locking version"
+        }
+      }
+    },
+    
+    "EntityCreate": {
+      "type": "object",
+      "title": "Entity Creation Request",
+      "required": ["entity_id", "type", "name"],
+      "properties": {
+        "entity_id": {
+          "type": "string",
+          "description": "Unique entity identifier"
+        },
+        "type": {
+          "type": "string",
+          "enum": ["restaurant", "hotel", "venue", "bar", "cafe", "other"]
+        },
+        "name": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 500
+        },
+        "status": {
+          "type": "string",
+          "enum": ["active", "inactive", "draft"],
+          "default": "active"
+        },
+        "externalId": {
+          "type": ["string", "null"]
+        },
+        "metadata": {
+          "type": "array",
+          "items": {
+            "$ref": "#/definitions/Metadata"
+          }
+        },
+        "sync": {
+          "anyOf": [
+            {"$ref": "#/definitions/SyncInfo"},
+            {"type": "null"}
+          ]
+        },
+        "data": {
+          "type": ["object", "null"]
+        },
+        "createdBy": {
+          "type": ["string", "null"]
+        }
+      }
+    },
+    
+    "Metadata": {
+      "type": "object",
+      "title": "Metadata",
+      "description": "Extensible metadata from multiple sources",
+      "required": ["type", "source"],
+      "properties": {
+        "type": {
+          "type": "string",
+          "description": "Metadata type (e.g., 'google_places', 'michelin', 'manual')"
+        },
+        "source": {
+          "type": "string",
+          "description": "Data source identifier"
+        },
+        "importedAt": {
+          "type": ["string", "null"],
+          "format": "date-time",
+          "description": "Import timestamp"
+        },
+        "data": {
+          "type": "object",
+          "description": "Flexible data storage"
+        }
+      }
+    },
+    
+    "SyncInfo": {
+      "type": "object",
+      "title": "Sync Info",
+      "description": "Client-server synchronization metadata",
+      "properties": {
+        "serverId": {
+          "type": ["integer", "null"],
+          "description": "Server-side ID"
+        },
+        "status": {
+          "type": "string",
+          "default": "pending",
+          "description": "Sync status"
+        },
+        "lastSyncedAt": {
+          "type": ["string", "null"],
+          "format": "date-time",
+          "description": "Last sync timestamp"
+        }
+      }
+    },
+    
+    "Curation": {
+      "type": "object",
+      "title": "Curation",
+      "description": "Complete curation with system fields",
+      "required": ["_id", "curation_id", "entity_id", "curator", "createdAt", "updatedAt"],
+      "properties": {
+        "_id": {
+          "type": "string",
+          "description": "MongoDB ObjectId"
+        },
+        "curation_id": {
+          "type": "string",
+          "description": "Unique curation identifier"
+        },
+        "entity_id": {
+          "type": "string",
+          "description": "Entity this curation is about"
+        },
+        "curator": {
+          "$ref": "#/definitions/CuratorInfo"
+        },
+        "notes": {
+          "anyOf": [
+            {"$ref": "#/definitions/CurationNotes"},
+            {"type": "null"}
+          ]
+        },
+        "categories": {
+          "$ref": "#/definitions/CurationCategories"
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          },
+          "description": "Data sources (audio, image, text, manual)"
+        },
+        "createdAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "updatedAt": {
+          "type": "string",
+          "format": "date-time"
+        },
+        "version": {
+          "type": "integer",
+          "default": 1
+        }
+      }
+    },
+    
+    "CurationCreate": {
+      "type": "object",
+      "title": "Curation Creation Request",
+      "required": ["curation_id", "entity_id", "curator"],
+      "properties": {
+        "curation_id": {
+          "type": "string"
+        },
+        "entity_id": {
+          "type": "string"
+        },
+        "curator": {
+          "$ref": "#/definitions/CuratorInfo"
+        },
+        "notes": {
+          "anyOf": [
+            {"$ref": "#/definitions/CurationNotes"},
+            {"type": "null"}
+          ]
+        },
+        "categories": {
+          "$ref": "#/definitions/CurationCategories"
+        },
+        "sources": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    
+    "CuratorInfo": {
+      "type": "object",
+      "title": "Curator Info",
+      "required": ["id", "name"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "description": "Curator ID"
+        },
+        "name": {
+          "type": "string",
+          "description": "Curator name"
+        },
+        "email": {
+          "type": ["string", "null"],
+          "format": "email",
+          "description": "Curator email"
+        }
+      }
+    },
+    
+    "CurationNotes": {
+      "type": "object",
+      "title": "Curation Notes",
+      "properties": {
+        "public": {
+          "type": ["string", "null"],
+          "description": "Public notes visible to all"
+        },
+        "private": {
+          "type": ["string", "null"],
+          "description": "Private notes only for curator"
+        }
+      }
+    },
+    
+    "CurationCategories": {
+      "type": "object",
+      "title": "Curation Categories",
+      "description": "Concept categories extracted from reviews",
+      "properties": {
+        "cuisine": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Cuisine types (Italian, Japanese, etc.)"
+        },
+        "mood": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Atmosphere/mood (romantic, casual, etc.)"
+        },
+        "occasion": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Suitable occasions (date night, business, etc.)"
+        },
+        "price_range": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Price indicators ($, $$, $$$, $$$$)"
+        },
+        "setting": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Setting type (outdoor, rooftop, etc.)"
+        },
+        "crowd": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Typical crowd (families, couples, etc.)"
+        },
+        "food_style": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Food style (fine dining, casual, etc.)"
+        },
+        "drinks": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Drink offerings (craft cocktails, wine, etc.)"
+        },
+        "menu": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Menu items or highlights"
+        },
+        "suitable_for": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Suitable for (vegetarians, groups, etc.)"
+        }
+      }
+    },
+    
+    "PlaceResult": {
+      "type": "object",
+      "title": "Google Place Result",
+      "required": ["place_id", "name", "geometry"],
+      "properties": {
+        "place_id": {
+          "type": "string",
+          "description": "Google Place ID"
+        },
+        "name": {
+          "type": "string",
+          "description": "Place name"
+        },
+        "vicinity": {
+          "type": ["string", "null"],
+          "description": "Address or vicinity"
+        },
+        "rating": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "maximum": 5,
+          "description": "Average rating (0-5)"
+        },
+        "user_ratings_total": {
+          "type": ["integer", "null"],
+          "description": "Total number of ratings"
+        },
+        "price_level": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "maximum": 4,
+          "description": "Price level (0-4)"
+        },
+        "types": {
+          "type": "array",
+          "items": {"type": "string"},
+          "description": "Place types"
+        },
+        "geometry": {
+          "type": "object",
+          "required": ["location"],
+          "properties": {
+            "location": {
+              "type": "object",
+              "required": ["lat", "lng"],
+              "properties": {
+                "lat": {"type": "number"},
+                "lng": {"type": "number"}
+              }
+            }
+          }
+        },
+        "business_status": {
+          "type": ["string", "null"],
+          "description": "Business status (OPERATIONAL, etc.)"
+        },
+        "opening_hours": {
+          "type": ["object", "null"],
+          "properties": {
+            "open_now": {"type": "boolean"}
+          }
+        },
+        "photos": {
+          "type": ["array", "null"],
+          "items": {"type": "object"}
+        }
+      }
+    },
+    
+    "AIOrchestrationRequest": {
+      "type": "object",
+      "title": "AI Orchestration Request",
+      "properties": {
+        "workflow_type": {
+          "type": "string",
+          "default": "auto",
+          "enum": ["auto", "place_id", "entity_id", "audio_only", "image_only"],
+          "description": "Workflow type"
+        },
+        "place_id": {
+          "type": ["string", "null"],
+          "description": "Google Place ID"
+        },
+        "entity_id": {
+          "type": ["string", "null"],
+          "description": "Existing entity ID"
+        },
+        "audio_file": {
+          "type": ["string", "null"],
+          "description": "Base64 encoded audio file"
+        },
+        "audio_url": {
+          "type": ["string", "null"],
+          "description": "Audio file URL"
+        },
+        "image_file": {
+          "type": ["string", "null"],
+          "description": "Base64 encoded image file"
+        },
+        "image_url": {
+          "type": ["string", "null"],
+          "description": "Image URL"
+        },
+        "text": {
+          "type": ["string", "null"],
+          "description": "Direct text input"
+        },
+        "output": {
+          "type": ["object", "null"],
+          "properties": {
+            "save_to_db": {
+              "type": "boolean",
+              "default": false
+            },
+            "return_results": {
+              "type": "boolean",
+              "default": true
+            },
+            "format": {
+              "type": "string",
+              "enum": ["full", "ids_only", "summary"],
+              "default": "full"
+            }
+          }
+        },
+        "language": {
+          "type": "string",
+          "default": "pt-BR",
+          "description": "Language for transcription"
+        },
+        "curator_id": {
+          "type": ["string", "null"],
+          "description": "Curator ID"
+        },
+        "entity_type": {
+          "type": "string",
+          "default": "restaurant",
+          "description": "Entity type"
+        }
+      }
+    },
+    
+    "ErrorResponse": {
+      "type": "object",
+      "title": "Error Response",
+      "required": ["error", "message"],
+      "properties": {
+        "error": {
+          "type": "string",
+          "description": "Error type"
+        },
+        "message": {
+          "type": "string",
+          "description": "Human-readable error message"
+        },
+        "details": {
+          "type": "object",
+          "description": "Additional error details"
+        }
+      }
+    },
+    
+    "PaginatedResponse": {
+      "type": "object",
+      "title": "Paginated Response",
+      "required": ["items", "total", "limit", "offset"],
+      "properties": {
+        "items": {
+          "type": "array",
+          "items": {},
+          "description": "Array of results"
+        },
+        "total": {
+          "type": "integer",
+          "description": "Total number of items"
+        },
+        "limit": {
+          "type": "integer",
+          "description": "Items per page"
+        },
+        "offset": {
+          "type": "integer",
+          "description": "Current offset"
+        }
+      }
+    }
+  }
+}
