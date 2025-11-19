@@ -149,11 +149,12 @@ if (typeof window.UIManager === 'undefined') {
         }
 
         hideAllSections() {
-            this.recordingSection.classList.add('hidden');
-            this.transcriptionSection.classList.add('hidden');
-            this.conceptsSection.classList.add('hidden');
-            this.restaurantListSection.classList.add('hidden');
-            this.exportImportSection.classList.add('hidden');
+            // Add null checks for all sections to prevent errors if DOM elements don't exist
+            if (this.recordingSection) this.recordingSection.classList.add('hidden');
+            if (this.transcriptionSection) this.transcriptionSection.classList.add('hidden');
+            if (this.conceptsSection) this.conceptsSection.classList.add('hidden');
+            if (this.restaurantListSection) this.restaurantListSection.classList.add('hidden');
+            if (this.exportImportSection) this.exportImportSection.classList.add('hidden');
             
             // Hide restaurant edit toolbar
             if (this.restaurantEditToolbar) {
@@ -164,8 +165,9 @@ if (typeof window.UIManager === 'undefined') {
         // Core UI visibility functions
         showRestaurantFormSection() {
             this.hideAllSections();
-            this.curatorSection.classList.remove('hidden');
-            this.conceptsSection.classList.remove('hidden');
+            // Add null checks before accessing classList
+            if (this.curatorSection) this.curatorSection.classList.remove('hidden');
+            if (this.conceptsSection) this.conceptsSection.classList.remove('hidden');
             
             // Show restaurant edit toolbar (same as edit mode)
             if (this.restaurantEditToolbar) {
@@ -188,27 +190,32 @@ if (typeof window.UIManager === 'undefined') {
 
         showRecordingSection() {
             this.hideAllSections();
-            this.curatorSection.classList.remove('hidden');
-            this.recordingSection.classList.remove('hidden');
-            this.restaurantListSection.classList.remove('hidden');
-            this.exportImportSection.classList.remove('hidden');
+            // Add null checks before accessing classList
+            if (this.curatorSection) this.curatorSection.classList.remove('hidden');
+            if (this.recordingSection) this.recordingSection.classList.remove('hidden');
+            if (this.restaurantListSection) this.restaurantListSection.classList.remove('hidden');
+            if (this.exportImportSection) this.exportImportSection.classList.remove('hidden');
         }
 
         showTranscriptionSection(transcription) {
             this.hideAllSections();
-            this.curatorSection.classList.remove('hidden');
-            this.transcriptionSection.classList.remove('hidden');
+            // Add null checks before accessing classList
+            if (this.curatorSection) this.curatorSection.classList.remove('hidden');
+            if (this.transcriptionSection) this.transcriptionSection.classList.remove('hidden');
             
             // Display the transcription
-            this.transcriptionText.textContent = transcription;
+            if (this.transcriptionText) {
+                this.transcriptionText.textContent = transcription;
+            }
             this.originalTranscription = transcription;
             this.translatedTranscription = null; // Reset translated text
         }
 
         showConceptsSection() {
             this.hideAllSections();
-            this.curatorSection.classList.remove('hidden');
-            this.conceptsSection.classList.remove('hidden');
+            // Add null checks before accessing classList
+            if (this.curatorSection) this.curatorSection.classList.remove('hidden');
+            if (this.conceptsSection) this.conceptsSection.classList.remove('hidden');
             
             // Show restaurant edit toolbar
             if (this.restaurantEditToolbar) {
@@ -244,9 +251,10 @@ if (typeof window.UIManager === 'undefined') {
 
         showRestaurantListSection() {
             this.hideAllSections();
-            this.curatorSection.classList.remove('hidden');
-            this.restaurantListSection.classList.remove('hidden');
-            this.exportImportSection.classList.remove('hidden');
+            // Add null checks before accessing classList
+            if (this.curatorSection) this.curatorSection.classList.remove('hidden');
+            if (this.restaurantListSection) this.restaurantListSection.classList.remove('hidden');
+            if (this.exportImportSection) this.exportImportSection.classList.remove('hidden');
         }
 
         // Delegate to appropriate modules via uiUtilsModule
@@ -498,7 +506,8 @@ if (typeof window.UIManager === 'undefined') {
             console.log('Showing transcription section');
             this.hideAllSections(); // Changed from resetSections() to hideAllSections()
             
-            this.curatorSection.classList.remove('hidden');
+            // Add null check for curatorSection
+            if (this.curatorSection) this.curatorSection.classList.remove('hidden');
             const transcriptionSection = document.getElementById('transcription-section');
             if (transcriptionSection) {
                 transcriptionSection.classList.remove('hidden');

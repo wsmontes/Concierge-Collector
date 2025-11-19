@@ -315,7 +315,11 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
 
                 <!-- Footer -->
                 <div class="flex justify-between items-center pt-3 border-t border-gray-100">
-                    <span class="text-xs text-gray-500">by ${createdBy}</span>
+                    <div class="flex items-center gap-2">
+                        <span class="text-xs text-gray-500">by ${createdBy}</span>
+                        ${entity.version ? `<span class="text-xs text-gray-400">v${entity.version}</span>` : ''}
+                        ${this.getSyncStatusBadge(entity)}
+                    </div>
                     <button class="btn-view-entity text-xs text-blue-600 hover:text-blue-800 font-medium">
                         View Details →
                     </button>
@@ -330,6 +334,23 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
         });
 
         return card;
+    }
+
+    /**
+     * Get sync status badge for entity
+     * @param {Object} entity - Entity object
+     * @returns {string} - HTML for sync status badge
+     */
+    getSyncStatusBadge(entity) {
+        const syncStatus = entity.sync?.status || 'pending';
+        
+        const badges = {
+            'synced': '<span class="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full flex items-center gap-1"><span class="material-icons text-xs">cloud_done</span>synced</span>',
+            'pending': '<span class="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs rounded-full flex items-center gap-1"><span class="material-icons text-xs">cloud_upload</span>pending</span>',
+            'conflict': '<span class="px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded-full flex items-center gap-1"><span class="material-icons text-xs">sync_problem</span>conflict</span>'
+        };
+        
+        return badges[syncStatus] || '';
     }
 
     /**
@@ -395,11 +416,34 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
                             <div class="text-sm text-gray-600 space-y-1">
                                 <p><span class="font-medium">Entity ID:</span> ${entity.entity_id}</p>
                                 <p><span class="font-medium">Type:</span> ${entity.type || 'restaurant'}</p>
-                                <p><span class="font-medium">Created by:</span> ${entity.createdBy || 'Unknown'}</p>
-                                <p><span class="font-medium">Created at:</span> ${entity.createdAt ? new Date(entity.createdAt).toLocaleString() : 'Unknown'}</p>
                                 <p><span class="font-medium">Status:</span> ${entity.status || 'active'}</p>
+                                <p><span class="font-medium">Version:</span> ${entity.version || 1}</p>
+                                <p><span class="font-medium">Created by:</span> ${entity.createdBy?.name || entity.createdBy || 'Unknown'}</p>
+                                <p><span class="font-medium">Created at:</span> ${entity.createdAt ? new Date(entity.createdAt).toLocaleString() : 'Unknown'}</p>
+                                ${entity.updatedAt ? `<p><span class="font-medium">Updated at:</span> ${new Date(entity.updatedAt).toLocaleString()}</p>` : ''}
                             </div>
                         </div>
+
+                        <!-- Sync Status -->
+                        ${entity.sync ? `
+                            <div class="border-t pt-4">
+                                <h3 class="font-semibold text-gray-700 mb-2">Sync Status</h3>
+                                <div class="text-sm text-gray-600 space-y-1">
+                                    <p class="flex items-center gap-2">
+                                        <span class="font-medium">Status:</span> 
+                                        ${this.getSyncStatusBadge(entity)}
+                                    </p>
+                                    ${entity.sync.serverId ? `<p><span class="font-medium">Server ID:</span> ${entity.sync.serverId}</p>` : ''}
+                                    ${entity.sync.lastSyncedAt ? `<p><span class="font-medium">Last synced:</span> ${new Date(entity.sync.lastSyncedAt).toLocaleString()}</p>` : ''}
+                                </div>
+                                ${entity.sync.status === 'pending' || entity.sync.status === 'conflict' ? `
+                                    <button class="btn-sync-entity mt-2 w-full text-sm py-2 px-4 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center justify-center gap-2">
+                                        <span class="material-icons text-sm">sync</span>
+                                        ${entity.sync.status === 'conflict' ? 'Resolve Conflict' : 'Sync Now'}
+                                    </button>
+                                ` : ''}
+                            </div>
+                        ` : ''}
 
                         <!-- Actions -->
                         <div class="border-t pt-4 flex gap-2">
@@ -425,11 +469,113 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
             modal.remove();
         });
 
+        // Sync button (if exists)
+        const syncButton = modal.querySelector('.btn-sync-entity');
+        if (syncButton) {
+            syncButton.addEventListener('click', async () => {
+                try {
+                    syncButton.disabled = true;
+                    syncButton.innerHTML = '<span class="material-icons text-sm animate-spin">sync</span> Syncing...';
+                    
+                    if (entity.sync?.status === 'conflict') {
+                        // Show conflict resolution UI
+                        await this.handleConflictResolution(entity);
+                    } else {
+                        // Trigger manual sync for this entity
+                        if (window.SyncManager) {
+                            await window.SyncManager.pushEntities();
+                            this.log.info('Entity synced successfully');
+                        }
+                    }
+                    
+                    // Close modal and refresh
+                    modal.remove();
+                    await this.refresh();
+                } catch (error) {
+                    this.log.error('Failed to sync entity:', error);
+                    alert('Failed to sync entity: ' + error.message);
+                    syncButton.disabled = false;
+                    syncButton.innerHTML = '<span class="material-icons text-sm">sync</span> Sync Now';
+                }
+            });
+        }
+
         // Click outside to close
         modal.addEventListener('click', (e) => {
             if (e.target === modal) {
                 modal.remove();
             }
+        });
+    }
+
+    /**
+     * Handle conflict resolution for entity
+     * @param {Object} entity - Entity with conflict
+     */
+    async handleConflictResolution(entity) {
+        return new Promise((resolve, reject) => {
+            const modal = document.createElement('div');
+            modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4';
+            modal.innerHTML = `
+                <div class="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+                    <div class="flex items-center mb-4">
+                        <span class="material-icons text-red-600 text-3xl mr-3">sync_problem</span>
+                        <h2 class="text-xl font-bold text-gray-900">Sync Conflict</h2>
+                    </div>
+                    
+                    <p class="text-gray-600 mb-4">
+                        This entity has conflicting versions between local and server. 
+                        Choose which version to keep:
+                    </p>
+                    
+                    <div class="space-y-2">
+                        <button class="btn-resolve-local w-full py-3 px-4 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center justify-center gap-2">
+                            <span class="material-icons">phonelink</span>
+                            Keep Local Version (v${entity.version})
+                        </button>
+                        <button class="btn-resolve-server w-full py-3 px-4 bg-green-600 text-white rounded hover:bg-green-700 flex items-center justify-center gap-2">
+                            <span class="material-icons">cloud</span>
+                            Use Server Version
+                        </button>
+                        <button class="btn-resolve-cancel w-full py-3 px-4 bg-gray-300 text-gray-700 rounded hover:bg-gray-400">
+                            Cancel
+                        </button>
+                    </div>
+                </div>
+            `;
+            
+            document.body.appendChild(modal);
+            
+            modal.querySelector('.btn-resolve-local').addEventListener('click', async () => {
+                try {
+                    if (window.SyncManager) {
+                        await window.SyncManager.resolveConflict('entity', entity.entity_id, 'local');
+                    }
+                    modal.remove();
+                    resolve();
+                } catch (error) {
+                    modal.remove();
+                    reject(error);
+                }
+            });
+            
+            modal.querySelector('.btn-resolve-server').addEventListener('click', async () => {
+                try {
+                    if (window.SyncManager) {
+                        await window.SyncManager.resolveConflict('entity', entity.entity_id, 'server');
+                    }
+                    modal.remove();
+                    resolve();
+                } catch (error) {
+                    modal.remove();
+                    reject(error);
+                }
+            });
+            
+            modal.querySelector('.btn-resolve-cancel').addEventListener('click', () => {
+                modal.remove();
+                reject(new Error('Conflict resolution cancelled'));
+            });
         });
     }
 

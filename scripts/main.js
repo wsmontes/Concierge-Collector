@@ -433,6 +433,14 @@ async function initializeApp() {
                 window.SyncManager = new window.SyncManagerV3();
                 await window.SyncManager.initialize();
                 console.log('✅ Sync Manager V3 initialized');
+                
+                // Initialize Sync Status Module
+                if (window.SyncStatusModule) {
+                    console.log('🔄 Initializing Sync Status Module...');
+                    window.syncStatusModule = new window.SyncStatusModule();
+                    await window.syncStatusModule.init();
+                    console.log('✅ Sync Status Module initialized');
+                }
             } catch (syncError) {
                 console.error('❌ Sync Manager V3 initialization failed:', syncError);
                 console.warn('⚠️ Continuing without sync functionality');

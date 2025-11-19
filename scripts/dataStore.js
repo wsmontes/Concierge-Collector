@@ -75,6 +75,20 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
                 cache: 'key, expires'
             });
 
+            // Version 7: Add sync.status index for sync manager queries
+            this.db.version(7).stores({
+                // Core V3 Tables with sync.status indexed
+                entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt, etag, sync.status',
+                curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt, updatedAt, etag, sync.status',
+                curators: '++id, curator_id, name, email, status, createdAt, lastActive',
+                
+                // System Tables
+                drafts: '++id, type, data, curator_id, createdAt, lastModified',
+                syncQueue: '++id, type, action, local_id, entity_id, data, createdAt, retryCount, lastError',
+                settings: 'key',
+                cache: 'key, expires'
+            });
+
             // Add hooks for automatic timestamps and validation
             this.addDatabaseHooks();
             
@@ -464,6 +478,20 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
         } catch (error) {
             this.log.error('❌ Failed to create curation:', error);
             throw error;
+        }
+    }
+
+    /**
+     * Get curation by curation_id
+     * @param {string} curationId - Curation ID
+     * @returns {Promise<Object|null>} - Curation or null
+     */
+    async getCuration(curationId) {
+        try {
+            return await this.db.curations.where('curation_id').equals(curationId).first();
+        } catch (error) {
+            this.log.error('❌ Failed to get curation:', error);
+            return null;
         }
     }
 

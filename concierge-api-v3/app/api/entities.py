@@ -179,6 +179,7 @@ async def list_entities(
     cursor = db.entities.find(query).skip(offset).limit(limit)
     items = []
     async for doc in cursor:
+        doc["_id"] = str(doc["_id"])  # Convert ObjectId to string
         items.append(Entity(**doc))
     
     return PaginatedResponse(

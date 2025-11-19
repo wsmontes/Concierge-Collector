@@ -13,7 +13,7 @@
  * - Manage error handling and retries
  */
 
-const ApiService = ModuleWrapper.defineClass('ApiService', class {
+const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
     constructor() {
         this.log = Logger.module('ApiService');
         this.baseUrl = AppConfig.api.backend.baseUrl;
@@ -75,18 +75,38 @@ const ApiService = ModuleWrapper.defineClass('ApiService', class {
         return { 'X-API-Key': apiKey };
     }
 
-    async validateApiKey() {
+    async validateApiKey(apiKey = null) {
         try {
-            const info = await this.getInfo();
-            return !!(info && info.version);
+            // Use provided key or get from storage
+            const keyToValidate = apiKey || this.getApiKey();
+            if (!keyToValidate) return false;
+            
+            // Make direct request to /info endpoint
+            const url = `${this.baseUrl}${AppConfig.api.backend.endpoints.info || '/info'}`;
+            const response = await fetch(url, {
+                method: 'GET',
+                headers: {
+                    'Content-Type': 'application/json'
+                }
+            });
+            
+            if (response.ok) {
+                const info = await response.json();
+                return !!(info && info.version);
+            }
+            return false;
         } catch (error) {
+            this.log.debug('Validation error:', error);
             return false;
         }
     }
 
     async request(method, endpoint, options = {}) {
-        const endpointPath = AppConfig.api.backend.endpoints[endpoint] || endpoint;
-        const url = `${this.baseUrl}${endpointPath}`;
+        // Extract endpoint name and query string if present
+        const [endpointName, queryString] = endpoint.split('?');
+        const endpointPath = AppConfig.api.backend.endpoints[endpointName] || endpointName;
+        const fullPath = queryString ? `${endpointPath}?${queryString}` : endpointPath;
+        const url = `${this.baseUrl}${fullPath}`;
         
         const headers = {
             'Content-Type': 'application/json',
@@ -164,7 +184,8 @@ const ApiService = ModuleWrapper.defineClass('ApiService', class {
         if (filters.limit) params.append('limit', filters.limit);
         if (filters.offset) params.append('offset', filters.offset);
         
-        const endpoint = `entities?${params.toString()}`;
+        const queryString = params.toString();
+        const endpoint = queryString ? `entities?${queryString}` : 'entities';
         const response = await this.request('GET', endpoint);
         return await response.json();
     }
@@ -211,7 +232,8 @@ const ApiService = ModuleWrapper.defineClass('ApiService', class {
         if (filters.limit) params.append('limit', filters.limit);
         if (filters.offset) params.append('offset', filters.offset);
         
-        const endpoint = `curations?${params.toString()}`;
+        // Use /search endpoint for curations list
+        const endpoint = `/curations/search?${params.toString()}`;
         const response = await this.request('GET', endpoint);
         return await response.json();
     }
@@ -329,6 +351,12 @@ const ApiService = ModuleWrapper.defineClass('ApiService', class {
         }
     }
 });
+
+// Create singleton instance - ApiService is the instance, not the class
+if (!window.ApiService) {
+    window.ApiService = new ApiServiceClass();
+    console.log('✅ ApiService instance created');
+}
 
 if (typeof Logger !== 'undefined' && typeof AppConfig !== 'undefined') {
     console.log('✅ ApiService V3 loaded successfully');

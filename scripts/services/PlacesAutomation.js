@@ -73,7 +73,7 @@ const PlacesAutomation = ModuleWrapper.defineClass('PlacesAutomation', class {
         if (imported > 0 && window.SyncManager) {
             this.log.info(`🔄 Triggering immediate sync for ${imported} entities...`);
             try {
-                await window.SyncManager.syncPendingItems();
+                await window.SyncManager.quickSync();
                 this.log.info(`✅ Sync completed for imported entities`);
             } catch (e) {
                 this.log.warn(`⚠️ Sync failed, will retry on background sync:`, e);
