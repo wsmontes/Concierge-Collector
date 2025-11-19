@@ -131,9 +131,6 @@
 			isExtractingConcepts = false;
 		}
 	}
-	let showConceptModal = $state(false);
-	let newConceptCategory = $state('');
-	let newConceptName = $state('');
 
 	function saveDraft() {
 		if (!curation) return;

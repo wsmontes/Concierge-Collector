@@ -48,6 +48,15 @@ __pycache__/
 # Distribuição / pacotes
 build/
 dist/
+
+# Dependency tracking
+.deps_installed
+
+############################
+# PROCESS MANAGEMENT
+############################
+pids/
+logs/
 *.egg-info/
 .eggs/
 *.egg
