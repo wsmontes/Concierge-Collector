@@ -1,0 +1,96 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+	/* Load Fonts */
+	@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fraunces:opsz,wght@9..144,600;9..144,700&display=swap');
+
+	/* Base Styles */
+	body {
+		@apply font-sans text-neutral-900 bg-neutral-50 antialiased;
+	}
+
+	h1, h2 {
+		@apply font-display;
+	}
+}
+
+@layer components {
+	/* Container */
+	.container {
+		@apply max-w-screen-lg mx-auto px-4;
+	}
+
+	/* Card */
+	.card {
+		@apply bg-white border border-neutral-200 rounded-xl shadow-md transition-all;
+	}
+
+	.card:hover {
+		@apply border-primary-300 shadow-lg -translate-y-1;
+	}
+
+	/* Buttons */
+	.btn {
+		@apply inline-flex items-center justify-center gap-2 px-6 py-3 rounded-lg font-medium transition-all;
+		@apply focus:outline-none focus:ring-4 focus:ring-primary-200;
+		min-height: 48px; /* Touch target */
+	}
+
+	.btn-primary {
+		@apply bg-primary-600 text-white border border-primary-700 shadow-primary;
+	}
+
+	.btn-primary:hover {
+		@apply bg-primary-700 shadow-lg;
+	}
+
+	.btn-primary:active {
+		@apply bg-primary-800;
+	}
+
+	.btn-secondary {
+		@apply bg-secondary-500 text-neutral-900 font-semibold shadow-secondary;
+	}
+
+	.btn-secondary:hover {
+		@apply bg-secondary-600 shadow-xl -translate-y-1;
+	}
+
+	/* Badges */
+	.badge {
+		@apply inline-flex items-center gap-1 px-3 py-1 rounded-full text-sm font-medium;
+	}
+
+	.badge-success {
+		@apply bg-emerald-100 text-emerald-800 border border-emerald-300;
+	}
+
+	.badge-draft {
+		@apply bg-amber-100 text-amber-800 border border-amber-300;
+	}
+
+	/* Concept Chips */
+	.chip {
+		@apply inline-flex items-center gap-1 px-3 py-1 bg-primary-100 text-primary-800;
+		@apply border border-primary-300 rounded-full text-sm font-medium transition-all;
+	}
+
+	.chip:hover {
+		@apply bg-primary-200 border-primary-400 -translate-y-0.5;
+	}
+}
+
+@layer utilities {
+	/* Typography */
+	.text-display {
+		@apply font-display text-4xl font-bold tracking-tight;
+	}
+
+	/* Touch targets */
+	.touch-target {
+		min-width: 48px;
+		min-height: 48px;
+	}
+}
