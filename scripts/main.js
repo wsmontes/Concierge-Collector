@@ -189,6 +189,157 @@ function showApiKeyPrompt() {
     setTimeout(() => input.focus(), 100);
 }
 
+/**
+ * Check if V3 API key exists and prompt user if not
+ * Exposed globally so it can be called anytime
+ */
+window.checkAndPromptForV3ApiKey = function() {
+    console.log('Checking for V3 API key...');
+    
+    const apiKey = AppConfig.getV3ApiKey();
+    
+    if (!apiKey || apiKey.trim() === '') {
+        console.log('No V3 API key found, showing prompt...');
+        showV3ApiKeyPrompt();
+        return false;
+    } else {
+        console.log('V3 API key found in storage');
+        return true;
+    }
+};
+
+/**
+ * Show V3 API key input prompt
+ */
+function showV3ApiKeyPrompt() {
+    if (document.getElementById('v3-api-key-modal')) {
+        return;
+    }
+    
+    const modal = document.createElement('div');
+    modal.id = 'v3-api-key-modal';
+    modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+    modal.innerHTML = `
+        <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
+            <div class="flex items-center mb-4">
+                <span class="material-icons text-purple-600 text-3xl mr-3">vpn_key</span>
+                <h2 class="text-2xl font-bold text-gray-800">V3 API Key Required</h2>
+            </div>
+            
+            <p class="text-gray-600 mb-4">
+                This app requires a V3 API key to save data to the server. 
+                Please enter your V3 API key to enable all features.
+            </p>
+            
+            <div class="mb-4">
+                <label for="v3-api-key-input" class="block text-sm font-medium text-gray-700 mb-2">
+                    V3 API Key
+                </label>
+                <input 
+                    type="password" 
+                    id="v3-api-key-input" 
+                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    placeholder="Enter your V3 API key"
+                    autocomplete="off"
+                />
+                <p class="text-xs text-gray-500 mt-1">
+                    Generate a key by running: <code class="bg-gray-100 px-1 py-0.5 rounded">python concierge-api-v3/scripts/generate_api_key.py</code>
+                </p>
+            </div>
+            
+            <div class="flex gap-3">
+                <button 
+                    id="v3-api-key-save" 
+                    class="flex-1 bg-purple-600 text-white px-4 py-2 rounded-md hover:bg-purple-700 transition-colors flex items-center justify-center gap-2"
+                >
+                    <span class="material-icons text-sm">save</span>
+                    Save & Continue
+                </button>
+                <button 
+                    id="v3-api-key-skip" 
+                    class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
+                >
+                    Skip for now
+                </button>
+            </div>
+            
+            <div id="v3-api-key-error" class="text-red-600 text-sm mt-3 hidden"></div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    const input = document.getElementById('v3-api-key-input');
+    const saveButton = document.getElementById('v3-api-key-save');
+    const skipButton = document.getElementById('v3-api-key-skip');
+    const errorDiv = document.getElementById('v3-api-key-error');
+    
+    async function saveV3ApiKey() {
+        const apiKey = input.value.trim();
+        
+        if (!apiKey) {
+            errorDiv.textContent = 'Please enter an API key';
+            errorDiv.classList.remove('hidden');
+            return;
+        }
+        
+        saveButton.disabled = true;
+        saveButton.innerHTML = '<span class="material-icons text-sm animate-spin">refresh</span> Validating...';
+        
+        try {
+            AppConfig.setV3ApiKey(apiKey);
+            
+            const isValid = await ApiService.validateApiKey();
+            
+            if (isValid) {
+                console.log('V3 API key validated and saved successfully');
+                
+                if (window.SafetyUtils && typeof SafetyUtils.showNotification === 'function') {
+                    SafetyUtils.showNotification('V3 API key saved successfully!', 'success');
+                }
+                
+                modal.remove();
+            } else {
+                throw new Error('Invalid API key - could not connect to server');
+            }
+        } catch (error) {
+            console.error('V3 API key validation failed:', error);
+            errorDiv.textContent = error.message || 'Invalid API key';
+            errorDiv.classList.remove('hidden');
+            
+            AppConfig.setV3ApiKey('');
+            
+            saveButton.disabled = false;
+            saveButton.innerHTML = '<span class="material-icons text-sm">save</span> Save & Continue';
+        }
+    }
+    
+    function skipV3ApiKey() {
+        console.log('User skipped V3 API key setup');
+        
+        if (window.SafetyUtils && typeof SafetyUtils.showNotification === 'function') {
+            SafetyUtils.showNotification(
+                'You can add your V3 API key later. Some features will be limited.',
+                'warning',
+                5000
+            );
+        }
+        
+        modal.remove();
+    }
+    
+    saveButton.addEventListener('click', saveV3ApiKey);
+    skipButton.addEventListener('click', skipV3ApiKey);
+    
+    input.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            saveV3ApiKey();
+        }
+    });
+    
+    setTimeout(() => input.focus(), 100);
+}
+
 // Note: AccessControl module will call window.startApplication() after password verification
 
 /**
@@ -225,6 +376,12 @@ async function initializeApp() {
     try {
         // Create base DOM structure
         ensureBaseStructureExists();
+        
+        // Check for V3 API key first
+        console.log('🔑 Checking V3 API key...');
+        if (window.checkAndPromptForV3ApiKey) {
+            window.checkAndPromptForV3ApiKey();
+        }
         
         // STEP 1: Run migration from V1 to V3 (if needed) - BEFORE initializing DataStore
         if (window.MigrationManager) {
@@ -269,18 +426,19 @@ async function initializeApp() {
             console.warn('⚠️ API Service not available');
         }
         
-        // Initialize Sync Manager (depends on DataStore and ApiService)
-        if (window.SyncManager) {
-            console.log('🔄 Initializing Sync Manager...');
+        // Initialize Sync Manager V3 (depends on DataStore and ApiService)
+        if (window.SyncManagerV3) {
+            console.log('🔄 Initializing Sync Manager V3...');
             try {
+                window.SyncManager = new window.SyncManagerV3();
                 await window.SyncManager.initialize();
-                console.log('✅ Sync Manager initialized');
+                console.log('✅ Sync Manager V3 initialized');
             } catch (syncError) {
-                console.error('❌ Sync Manager initialization failed:', syncError);
+                console.error('❌ Sync Manager V3 initialization failed:', syncError);
                 console.warn('⚠️ Continuing without sync functionality');
             }
         } else {
-            console.warn('⚠️ Sync Manager not available');
+            console.warn('⚠️ Sync Manager V3 not available');
         }
         
         // Initialize Import Manager

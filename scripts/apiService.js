@@ -1,14 +1,16 @@
 /**
  * File: apiService.js
- * Purpose: API Service - Entity-Curation API Client
- * Dependencies: AppConfig, Logger
+ * Purpose: API Service V3 - FastAPI Backend Client
+ * Dependencies: AppConfig, Logger, ModuleWrapper
+ * Last Updated: November 18, 2025
  * 
  * Main Responsibilities:
- * - Handle all API communications
- * - Implement optimistic locking with ETags
- * - Support flexible querying and real-time updates
- * - Manage authentication and error handling
- * - Provide clean abstraction for API operations
+ * - Handle all V3 API communications with X-API-Key authentication
+ * - Implement optimistic locking with If-Match headers
+ * - Support entity and curation CRUD operations
+ * - Provide AI service integrations (transcribe, concepts, vision)
+ * - Provide Google Places integration
+ * - Manage error handling and retries
  */
 
 const ApiService = ModuleWrapper.defineClass('ApiService', class {
@@ -19,36 +21,32 @@ const ApiService = ModuleWrapper.defineClass('ApiService', class {
         this.retryAttempts = AppConfig.api.backend.retryAttempts;
         this.retryDelay = AppConfig.api.backend.retryDelay;
         this.isInitialized = false;
-        
-        // Request interceptors
-        this.requestInterceptors = [];
-        this.responseInterceptors = [];
-        
-        this.setupDefaultInterceptors();
     }
 
-    /**
-     * Initialize V3 API Service
-     */
     async initialize() {
         try {
             this.log.debug('🚀 Initializing V3 API Service...');
             
-            // Validate configuration
             if (!this.baseUrl) {
                 throw new Error('API base URL not configured');
             }
             
-            // Check for existing auth token
-            const token = this.getAuthToken();
-            if (token) {
-                this.log.debug('✅ Found existing auth token');
+            const apiKey = this.getApiKey();
+            if (apiKey) {
+                this.log.debug('✅ Found V3 API key');
             } else {
-                this.log.warn('⚠️ No auth token found - authentication optional for V3 API');
+                this.log.warn('⚠️ No V3 API key - write operations will fail');
+            }
+            
+            try {
+                await this.getInfo();
+                this.log.debug('✅ API connection verified');
+            } catch (error) {
+                this.log.warn('⚠️ Could not connect to API:', error.message);
             }
             
             this.isInitialized = true;
-            this.log.debug('✅ V3 API Service initialized successfully');
+            this.log.debug('✅ V3 API Service initialized');
             return this;
             
         } catch (error) {
@@ -57,768 +55,283 @@ const ApiService = ModuleWrapper.defineClass('ApiService', class {
         }
     }
 
-    // ========================================
-    // AUTHENTICATION
-    // ========================================
+    getApiKey() {
+        return AppConfig.getV3ApiKey();
+    }
 
-    /**
-     * Register new user
-     * @param {string} username - Username
-     * @param {string} password - Password
-     * @param {string} email - Email
-     * @returns {Promise<Object>} - User data
-     */
-    async register(username, password, email) {
+    setApiKey(apiKey) {
+        AppConfig.setV3ApiKey(apiKey);
+        this.log.debug('✅ V3 API key stored');
+    }
+
+    removeApiKey() {
+        localStorage.removeItem(AppConfig.storage.keys.apiKeyV3);
+        this.log.debug('🗑️ V3 API key removed');
+    }
+
+    getAuthHeaders() {
+        const apiKey = this.getApiKey();
+        if (!apiKey) return {};
+        return { 'X-API-Key': apiKey };
+    }
+
+    async validateApiKey() {
         try {
-            this.log.debug(`📝 Registering user: ${username}`);
-            
-            const response = await this.request('POST', AppConfig.api.backend.endpoints.register, {
-                body: JSON.stringify({ username, password, email })
-            });
-            
-            const data = await response.json();
-            this.log.debug(`✅ User registered: ${username}`);
-            
-            return data;
+            const info = await this.getInfo();
+            return !!(info && info.version);
         } catch (error) {
-            this.log.error('❌ Registration failed:', error);
-            throw error;
-        }
-    }
-
-    /**
-     * Login and get JWT token
-     * @param {string} username - Username
-     * @param {string} password - Password
-     * @returns {Promise<string>} - JWT access token
-     */
-    async login(username, password) {
-        try {
-            this.log.debug(`🔐 Logging in user: ${username}`);
-            
-            // Use form data for OAuth2 compatibility
-            const formData = new URLSearchParams();
-            formData.append('username', username);
-            formData.append('password', password);
-            
-            const response = await this.request('POST', AppConfig.api.backend.endpoints.login, {
-                body: formData,
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded'
-                }
-            });
-            
-            const data = await response.json();
-            const token = data.access_token;
-            
-            // Store token
-            this.setAuthToken(token);
-            
-            this.log.debug(`✅ Login successful: ${username}`);
-            return token;
-            
-        } catch (error) {
-            this.log.error('❌ Login failed:', error);
-            throw error;
-        }
-    }
-
-    /**
-     * Logout (clear token)
-     */
-    logout() {
-        localStorage.removeItem('concierge_auth_token');
-        this.log.debug('👋 Logged out');
-    }
-
-    /**
-     * Get stored auth token
-     * @returns {string|null} - JWT token or null
-     */
-    getAuthToken() {
-        return localStorage.getItem('concierge_auth_token');
-    }
-
-    /**
-     * Set auth token
-     * @param {string} token - JWT token
-     */
-    setAuthToken(token) {
-        localStorage.setItem('concierge_auth_token', token);
-    }
-
-    /**
-     * Check if user is authenticated
-     * @returns {boolean} - True if token exists
-     */
-    isAuthenticated() {
-        return !!this.getAuthToken();
-    }
-
-    /**
-     * Setup default request/response interceptors
-     */
-    setupDefaultInterceptors() {
-        // Default request interceptor
-        this.addRequestInterceptor(async (config) => {
-            // Add JWT Bearer token if available
-            const authToken = this.getAuthToken();
-            if (authToken) {
-                config.headers = config.headers || {};
-                config.headers['Authorization'] = `Bearer ${authToken}`;
-            }
-            
-            // Add content type for JSON requests
-            if (config.body && typeof config.body === 'object' && !(config.body instanceof URLSearchParams)) {
-                config.headers = config.headers || {};
-                config.headers['Content-Type'] = 'application/json';
-            }
-            
-            return config;
-        });
-
-        // Default response interceptor
-        this.addResponseInterceptor(
-            // Success handler
-            (response) => {
-                this.log.debug(`✅ API Success: ${response.url} (${response.status})`);
-                return response;
-            },
-            // Error handler
-            (error) => {
-                this.log.error(`❌ API Error: ${error.message}`);
-                return Promise.reject(error);
-            }
-        );
-    }
-
-    /**
-     * Add request interceptor
-     * @param {Function} interceptor - Request interceptor function
-     */
-    addRequestInterceptor(interceptor) {
-        this.requestInterceptors.push(interceptor);
-    }
-
-    /**
-     * Add response interceptor
-     * @param {Function} successHandler - Success handler
-     * @param {Function} errorHandler - Error handler
-     */
-    addResponseInterceptor(successHandler, errorHandler) {
-        this.responseInterceptors.push({ successHandler, errorHandler });
-    }
-
-    /**
-     * Get API key from storage or settings
-     * @returns {Promise<string|null>} - API key or null
-     */
-    async getApiKey() {
-        try {
-            // Try to get from localStorage first
-            const apiKey = localStorage.getItem('concierge_api_key');
-            if (apiKey) return apiKey;
-            
-            // Try to get from entity store settings
-            if (window.entityStore) {
-                return await window.entityStore.getSetting('apiKey');
-            }
-            
-            return null;
-        } catch (error) {
-            this.log.error('❌ Failed to get API key:', error);
-            return null;
-        }
-    }
-
-    // ========================================
-    // CORE HTTP METHODS
-    // ========================================
-
-    /**
-     * Make HTTP request with interceptors and retry logic
-     * @param {string} method - HTTP method
-     * @param {string} url - Request URL
-     * @param {Object} options - Request options
-     * @returns {Promise<Object>} - Response object
-     */
-    async request(method, url, options = {}) {
-        const fullUrl = url.startsWith('http') ? url : `${this.baseUrl}${url}`;
-        
-        let config = {
-            method: method.toUpperCase(),
-            url: fullUrl,
-            headers: {},
-            timeout: this.timeout,
-            ...options
-        };
-
-        // Apply request interceptors
-        for (const interceptor of this.requestInterceptors) {
-            config = await interceptor(config);
-        }
-
-        // Convert body to JSON string if it's an object
-        if (config.body && typeof config.body === 'object') {
-            config.body = JSON.stringify(config.body);
-        }
-
-        let lastError;
-        
-        // Retry logic
-        for (let attempt = 0; attempt <= this.retryAttempts; attempt++) {
-            try {
-                this.log.debug(`🔄 API Request (attempt ${attempt + 1}): ${method.toUpperCase()} ${fullUrl}`);
-                
-                const controller = new AbortController();
-                const timeoutId = setTimeout(() => controller.abort(), config.timeout);
-                
-                const response = await fetch(fullUrl, {
-                    method: config.method,
-                    headers: config.headers,
-                    body: config.body,
-                    signal: controller.signal
-                });
-                
-                clearTimeout(timeoutId);
-                
-                // Apply response interceptors
-                let processedResponse = response;
-                for (const interceptor of this.responseInterceptors) {
-                    try {
-                        processedResponse = await interceptor.successHandler(processedResponse);
-                    } catch (interceptorError) {
-                        if (interceptor.errorHandler) {
-                            await interceptor.errorHandler(interceptorError);
-                        }
-                        throw interceptorError;
-                    }
-                }
-                
-                // Parse response
-                const result = await this.parseResponse(processedResponse);
-                
-                this.log.debug(`✅ API Success: ${method.toUpperCase()} ${fullUrl}`, result);
-                return result;
-                
-            } catch (error) {
-                lastError = error;
-                
-                // Don't retry for certain error types
-                if (error.name === 'AbortError' || 
-                    (error.response && error.response.status >= 400 && error.response.status < 500)) {
-                    break;
-                }
-                
-                // Wait before retry (except for last attempt)
-                if (attempt < this.retryAttempts) {
-                    this.log.warn(`⚠️ API request failed, retrying in ${this.retryDelay}ms...`, error.message);
-                    await new Promise(resolve => setTimeout(resolve, this.retryDelay));
-                }
-            }
-        }
-        
-        this.log.error(`❌ API request failed after ${this.retryAttempts + 1} attempts:`, lastError);
-        throw lastError;
-    }
-
-    /**
-     * Parse response based on content type
-     * @param {Response} response - Fetch response object
-     * @returns {Promise<Object>} - Parsed response
-     */
-    async parseResponse(response) {
-        const contentType = response.headers.get('content-type');
-        
-        let data;
-        if (contentType && contentType.includes('application/json')) {
-            try {
-                data = await response.json();
-            } catch (error) {
-                data = null;
-            }
-        } else {
-            data = await response.text();
-        }
-        
-        return {
-            success: response.ok,
-            status: response.status,
-            statusText: response.statusText,
-            data: data,
-            headers: Object.fromEntries(response.headers.entries()),
-            etag: response.headers.get('etag')
-        };
-    }
-
-    /**
-     * Check API health and availability
-     * @returns {Promise<Object>} - API status
-     */
-    async checkApiHealth() {
-        try {
-            this.log.debug('🏥 Checking API health...');
-            const response = await this.get('/health');
-            this.log.debug('✅ API health check successful:', response);
-            return response;
-        } catch (error) {
-            this.log.error('❌ API health check failed:', error);
-            throw error;
-        }
-    }
-
-    /**
-     * Get API information including available endpoints
-     * @returns {Promise<Object>} - API information
-     */
-    async getApiInfo() {
-        try {
-            this.log.debug('ℹ️ Getting API information...');
-            const response = await this.get('/info');
-            this.log.debug('✅ API info retrieved:', response);
-            return response;
-        } catch (error) {
-            this.log.error('❌ Failed to get API info:', error);
-            throw error;
-        }
-    }
-
-    /**
-     * GET request
-     * @param {string} url - Request URL
-     * @param {Object} options - Request options
-     * @returns {Promise<Object>} - Response object
-     */
-    async get(url, options = {}) {
-        return this.request('GET', url, options);
-    }
-
-    /**
-     * POST request
-     * @param {string} url - Request URL
-     * @param {Object} body - Request body
-     * @param {Object} options - Request options
-     * @returns {Promise<Object>} - Response object
-     */
-    async post(url, body = null, options = {}) {
-        return this.request('POST', url, { ...options, body });
-    }
-
-    /**
-     * PATCH request (for partial updates)
-     * @param {string} url - Request URL
-     * @param {Object} body - Request body
-     * @param {Object} options - Request options
-     * @returns {Promise<Object>} - Response object
-     */
-    async patch(url, body = null, options = {}) {
-        return this.request('PATCH', url, { ...options, body });
-    }
-
-    /**
-     * DELETE request
-     * @param {string} url - Request URL
-     * @param {Object} options - Request options
-     * @returns {Promise<Object>} - Response object
-     */
-    async delete(url, options = {}) {
-        return this.request('DELETE', url, options);
-    }
-
-    // ========================================
-    // ENTITY OPERATIONS
-    // ========================================
-
-    /**
-     * Get entities with filtering and pagination
-     * @param {Object} params - Query parameters
-     * @returns {Promise<Object>} - API response with entities
-     */
-    async getEntities(params = {}) {
-        try {
-            // Try with minimal parameters first
-            const minimalParams = {};
-            
-            // Only add limit if it's reasonable
-            if (params.limit && params.limit <= 100) {
-                minimalParams.limit = params.limit;
-            }
-            
-            const queryString = new URLSearchParams(minimalParams).toString();
-            const url = `/entities${queryString ? '?' + queryString : ''}`;
-            this.log.debug(`🔗 GET entities URL: ${this.baseUrl}${url}`);
-            
-            return await this.get(url);
-            
-        } catch (error) {
-            this.log.error('❌ Failed to get entities from API:', error);
-            
-            // Return empty result instead of throwing to prevent sync failure
-            this.log.warn('🔄 Returning empty entities result due to API failure');
-            return {
-                entities: [],
-                pagination: {
-                    total: 0,
-                    limit: params.limit || 50,
-                    offset: 0,
-                    has_more: false
-                }
-            };
-        }
-    }
-
-    /**
-     * Get single entity by ID
-     * @param {string} entityId - Entity ID
-     * @returns {Promise<Object>} - API response with entity
-     */
-    async getEntity(entityId) {
-        return this.get(`/entities/${entityId}`);
-    }
-
-    /**
-     * Create new entity
-     * @param {Object} entityData - Entity data
-     * @returns {Promise<Object>} - API response with created entity
-     */
-    async createEntity(entityData) {
-        return this.post('/entities', entityData);
-    }
-
-    /**
-     * Update entity with optimistic locking
-     * @param {string} entityId - Entity ID
-     * @param {Object} updateData - Update data (JSON Merge Patch format)
-     * @param {string} etag - Expected ETag for optimistic locking
-     * @returns {Promise<Object>} - API response with updated entity
-     */
-    async updateEntity(entityId, updateData, etag = null) {
-        const options = {};
-        
-        // Add If-Match header for optimistic locking
-        if (etag) {
-            options.headers = { 'If-Match': etag };
-        }
-        
-        return this.patch(`/entities/${entityId}`, updateData, options);
-    }
-
-    /**
-     * Delete entity
-     * @param {string} entityId - Entity ID
-     * @param {string} etag - Expected ETag for optimistic locking
-     * @returns {Promise<Object>} - API response
-     */
-    async deleteEntity(entityId, etag = null) {
-        const options = {};
-        
-        // Add If-Match header for optimistic locking
-        if (etag) {
-            options.headers = { 'If-Match': etag };
-        }
-        
-        return this.delete(`/entities/${entityId}`, options);
-    }
-
-    // ========================================
-    // CURATION OPERATIONS
-    // ========================================
-
-    /**
-     * Get curations with filtering and pagination
-     * Note: The API doesn't support GET /curations directly. 
-     * Use searchCurations() or getEntityCurations() instead.
-     * @param {Object} params - Query parameters
-     * @returns {Promise<Object>} - API response with curations
-     */
-    async getCurations(params = {}) {
-        // Redirect to search curations since GET /curations is not supported
-        this.log.debug('⚠️ Redirecting getCurations to searchCurations (GET /curations not supported by API)');
-        return this.searchCurations(params);
-    }
-    
-    /**
-     * Search curations with filtering and pagination
-     * @param {Object} params - Query parameters
-     * @returns {Promise<Object>} - API response with curations
-     */
-    async searchCurations(params = {}) {
-        try {
-            // Try with minimal parameters
-            const minimalParams = {};
-            if (params.limit && params.limit <= 100) {
-                minimalParams.limit = params.limit;
-            }
-            
-            const queryString = new URLSearchParams(minimalParams).toString();
-            const url = `/curations/search${queryString ? '?' + queryString : ''}`;
-            this.log.debug(`🔗 GET curations search URL: ${this.baseUrl}${url}`);
-            
-            return await this.get(url);
-            
-        } catch (error) {
-            this.log.error('❌ Failed to search curations from API:', error);
-            
-            // Return empty result instead of throwing to prevent sync failure
-            this.log.warn('🔄 Returning empty curations result due to API failure');
-            return {
-                curations: [],
-                pagination: {
-                    total: 0,
-                    limit: params.limit || 50,
-                    offset: 0,
-                    has_more: false
-                }
-            };
-        }
-    }
-
-    /**
-     * Get curations for specific entity
-     * @param {string} entityId - Entity ID
-     * @param {Object} params - Query parameters
-     * @returns {Promise<Object>} - API response with curations
-     */
-    async getEntityCurations(entityId, params = {}) {
-        const queryString = new URLSearchParams(params).toString();
-        const url = `/entities/${entityId}/curations${queryString ? '?' + queryString : ''}`;
-        return this.get(url);
-    }
-
-    /**
-     * Get single curation by ID
-     * @param {string} curationId - Curation ID
-     * @returns {Promise<Object>} - API response with curation
-     */
-    async getCuration(curationId) {
-        return this.get(`/curations/${curationId}`);
-    }
-
-    /**
-     * Create new curation
-     * @param {Object} curationData - Curation data
-     * @returns {Promise<Object>} - API response with created curation
-     */
-    async createCuration(curationData) {
-        return this.post('/curations', curationData);
-    }
-
-    /**
-     * Update curation with optimistic locking
-     * @param {string} curationId - Curation ID
-     * @param {Object} updateData - Update data (JSON Merge Patch format)
-     * @param {string} etag - Expected ETag for optimistic locking
-     * @returns {Promise<Object>} - API response with updated curation
-     */
-    async updateCuration(curationId, updateData, etag = null) {
-        const options = {};
-        
-        // Add If-Match header for optimistic locking
-        if (etag) {
-            options.headers = { 'If-Match': etag };
-        }
-        
-        return this.patch(`/curations/${curationId}`, updateData, options);
-    }
-
-    /**
-     * Delete curation
-     * @param {string} curationId - Curation ID
-     * @param {string} etag - Expected ETag for optimistic locking
-     * @returns {Promise<Object>} - API response
-     */
-    async deleteCuration(curationId, etag = null) {
-        const options = {};
-        
-        // Add If-Match header for optimistic locking
-        if (etag) {
-            options.headers = { 'If-Match': etag };
-        }
-        
-        return this.delete(`/curations/${curationId}`, options);
-    }
-
-    // ========================================
-    // ADVANCED QUERY OPERATIONS
-    // ========================================
-
-    /**
-     * Execute flexible query using V3 Query DSL
-     * @param {Object} queryDsl - Query DSL object
-     * @returns {Promise<Object>} - API response with query results
-     */
-    async query(queryDsl) {
-        return this.post('/query', queryDsl);
-    }
-
-    /**
-     * Search entities by text
-     * @param {string} searchText - Search text
-     * @param {Object} filters - Additional filters
-     * @returns {Promise<Object>} - API response with search results
-     */
-    async searchEntities(searchText, filters = {}) {
-        const queryDsl = {
-            query: {
-                bool: {
-                    must: [
-                        {
-                            multi_match: {
-                                query: searchText,
-                                fields: ['name^3', 'doc.description^2', 'doc.metadata.keywords']
-                            }
-                        }
-                    ],
-                    filter: []
-                }
-            },
-            sort: [
-                { '_score': { order: 'desc' } },
-                { 'doc.updatedAt': { order: 'desc' } }
-            ]
-        };
-        
-        // Add filters
-        Object.entries(filters).forEach(([key, value]) => {
-            if (value) {
-                queryDsl.query.bool.filter.push({
-                    term: { [key]: value }
-                });
-            }
-        });
-        
-        return this.query(queryDsl);
-    }
-
-    /**
-     * Advanced curation search by concept or category using query DSL
-     * @param {string} concept - Concept to search for
-     * @param {Object} filters - Additional filters
-     * @returns {Promise<Object>} - API response with search results
-     */
-    async searchCurationsByConceptAdvanced(concept, filters = {}) {
-        // This method uses the /query endpoint which may not be working
-        // For now, fall back to simple search
-        this.log.debug('⚠️ Advanced search not available, falling back to simple search');
-        return this.searchCurations({ 
-            concept: concept, 
-            ...filters,
-            limit: 50 
-        });
-    }
-
-    // ========================================
-    // SYSTEM OPERATIONS
-    // ========================================
-
-    /**
-     * Health check
-     * @returns {Promise<Object>} - API health status
-     */
-    async health() {
-        return this.get('/health');
-    }
-
-    /**
-     * Get API information
-     * @returns {Promise<Object>} - API information
-     */
-    async info() {
-        return this.get('/info');
-    }
-
-    /**
-     * Test API connectivity
-     * @returns {Promise<boolean>} - Connection status
-     */
-    async testConnection() {
-        try {
-            const response = await this.health();
-            return response.success;
-        } catch (error) {
-            this.log.error('❌ Connection test failed:', error);
             return false;
         }
     }
 
-    // ========================================
-    // BATCH OPERATIONS
-    // ========================================
-
-    /**
-     * Create multiple entities in batch
-     * Note: V3 API doesn't have native batch support, so we simulate it
-     * @param {Array} entities - Array of entity data
-     * @returns {Promise<Object>} - Batch results
-     */
-    async createEntitiesBatch(entities) {
-        const results = {
-            created: [],
-            errors: []
+    async request(method, endpoint, options = {}) {
+        const endpointPath = AppConfig.api.backend.endpoints[endpoint] || endpoint;
+        const url = `${this.baseUrl}${endpointPath}`;
+        
+        const headers = {
+            'Content-Type': 'application/json',
+            ...options.headers
         };
         
-        for (const entityData of entities) {
-            try {
-                const response = await this.createEntity(entityData);
-                if (response.success) {
-                    results.created.push(response.data);
-                } else {
-                    results.errors.push({
-                        entity: entityData,
-                        error: response.data?.error || 'Unknown error'
-                    });
-                }
-            } catch (error) {
-                results.errors.push({
-                    entity: entityData,
-                    error: error.message
-                });
-            }
+        if (['POST', 'PATCH', 'PUT', 'DELETE'].includes(method.toUpperCase())) {
+            Object.assign(headers, this.getAuthHeaders());
         }
         
-        return {
-            success: results.errors.length === 0,
-            data: results
-        };
+        const fetchOptions = { method, headers, ...options };
+        
+        this.log.debug(`${method} ${url}`);
+        
+        try {
+            const response = await fetch(url, fetchOptions);
+            if (!response.ok) {
+                await this.handleErrorResponse(response);
+            }
+            return response;
+        } catch (error) {
+            this.log.error(`Request failed: ${method} ${url}`, error);
+            throw error;
+        }
     }
 
-    /**
-     * Create multiple curations in batch
-     * @param {Array} curations - Array of curation data
-     * @returns {Promise<Object>} - Batch results
-     */
-    async createCurationsBatch(curations) {
-        const results = {
-            created: [],
-            errors: []
-        };
+    async handleErrorResponse(response) {
+        let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
         
-        for (const curationData of curations) {
-            try {
-                const response = await this.createCuration(curationData);
-                if (response.success) {
-                    results.created.push(response.data);
-                } else {
-                    results.errors.push({
-                        curation: curationData,
-                        error: response.data?.error || 'Unknown error'
-                    });
-                }
-            } catch (error) {
-                results.errors.push({
-                    curation: curationData,
-                    error: error.message
-                });
-            }
+        try {
+            const errorData = await response.json();
+            if (errorData.detail) errorMessage = errorData.detail;
+        } catch (e) {}
+        
+        switch (response.status) {
+            case 401: errorMessage = 'API key is invalid or missing'; break;
+            case 404: errorMessage = 'Resource not found'; break;
+            case 409: errorMessage = 'Version conflict - data was modified by another user'; break;
+            case 422: errorMessage = 'Validation error - check your input data'; break;
+            case 428: errorMessage = 'Version information required for update'; break;
+            case 500: errorMessage = 'Server error - please try again later'; break;
         }
         
-        return {
-            success: results.errors.length === 0,
-            data: results
-        };
+        this.log.error(errorMessage);
+        throw new Error(errorMessage);
+    }
+
+    async getInfo() {
+        const response = await this.request('GET', 'info');
+        return await response.json();
+    }
+
+    async checkHealth() {
+        const response = await this.request('GET', 'health');
+        return await response.json();
+    }
+
+    async createEntity(entity) {
+        const response = await this.request('POST', 'entities', {
+            body: JSON.stringify(entity)
+        });
+        return await response.json();
+    }
+
+    async getEntity(entityId) {
+        const endpoint = AppConfig.api.backend.endpoints.entityById.replace('{id}', entityId);
+        const response = await this.request('GET', endpoint);
+        return await response.json();
+    }
+
+    async listEntities(filters = {}) {
+        const params = new URLSearchParams();
+        if (filters.type) params.append('type', filters.type);
+        if (filters.status) params.append('status', filters.status);
+        if (filters.limit) params.append('limit', filters.limit);
+        if (filters.offset) params.append('offset', filters.offset);
+        
+        const endpoint = `entities?${params.toString()}`;
+        const response = await this.request('GET', endpoint);
+        return await response.json();
+    }
+
+    async updateEntity(entityId, updates, currentVersion) {
+        if (currentVersion === undefined) {
+            throw new Error('Current version required for optimistic locking');
+        }
+        
+        const endpoint = AppConfig.api.backend.endpoints.entityById.replace('{id}', entityId);
+        const response = await this.request('PATCH', endpoint, {
+            headers: { 'If-Match': String(currentVersion) },
+            body: JSON.stringify(updates)
+        });
+        return await response.json();
+    }
+
+    async deleteEntity(entityId) {
+        const endpoint = AppConfig.api.backend.endpoints.entityById.replace('{id}', entityId);
+        await this.request('DELETE', endpoint);
+    }
+
+    async searchEntities(filters = {}) {
+        return await this.listEntities(filters);
+    }
+
+    async createCuration(curation) {
+        const response = await this.request('POST', 'curations', {
+            body: JSON.stringify(curation)
+        });
+        return await response.json();
+    }
+
+    async getCuration(curationId) {
+        const endpoint = AppConfig.api.backend.endpoints.curationById.replace('{id}', curationId);
+        const response = await this.request('GET', endpoint);
+        return await response.json();
+    }
+
+    async listCurations(filters = {}) {
+        const params = new URLSearchParams();
+        if (filters.entity_id) params.append('entity_id', filters.entity_id);
+        if (filters.curator_id) params.append('curator_id', filters.curator_id);
+        if (filters.limit) params.append('limit', filters.limit);
+        if (filters.offset) params.append('offset', filters.offset);
+        
+        const endpoint = `curations?${params.toString()}`;
+        const response = await this.request('GET', endpoint);
+        return await response.json();
+    }
+
+    async getEntityCurations(entityId) {
+        const endpoint = AppConfig.api.backend.endpoints.entityCurations.replace('{id}', entityId);
+        const response = await this.request('GET', endpoint);
+        return await response.json();
+    }
+
+    async updateCuration(curationId, updates, currentVersion) {
+        if (currentVersion === undefined) {
+            throw new Error('Current version required for optimistic locking');
+        }
+        
+        const endpoint = AppConfig.api.backend.endpoints.curationById.replace('{id}', curationId);
+        const response = await this.request('PATCH', endpoint, {
+            headers: { 'If-Match': String(currentVersion) },
+            body: JSON.stringify(updates)
+        });
+        return await response.json();
+    }
+
+    async deleteCuration(curationId) {
+        const endpoint = AppConfig.api.backend.endpoints.curationById.replace('{id}', curationId);
+        await this.request('DELETE', endpoint);
+    }
+
+    async searchCurations(filters = {}) {
+        return await this.listCurations(filters);
+    }
+
+    async matchConcepts(concepts) {
+        const response = await this.request('POST', 'conceptMatch', {
+            body: JSON.stringify({ concepts })
+        });
+        return await response.json();
+    }
+
+    async transcribeAudio(audioBlob, language = 'pt') {
+        const formData = new FormData();
+        formData.append('file', audioBlob, 'audio.m4a');
+        if (language) formData.append('language', language);
+        
+        const response = await this.request('POST', 'aiTranscribe', {
+            headers: {},
+            body: formData
+        });
+        return await response.json();
+    }
+
+    async extractConcepts(text, entityType = 'restaurant') {
+        const response = await this.request('POST', 'aiExtractConcepts', {
+            body: JSON.stringify({ text, entity_type: entityType })
+        });
+        return await response.json();
+    }
+
+    async analyzeImage(imageBlob, prompt) {
+        const formData = new FormData();
+        formData.append('file', imageBlob, 'image.jpg');
+        formData.append('prompt', prompt);
+        
+        const response = await this.request('POST', 'aiAnalyzeImage', {
+            headers: {},
+            body: formData
+        });
+        return await response.json();
+    }
+
+    async searchPlaces(query, location = null, radius = null) {
+        const params = new URLSearchParams();
+        params.append('query', query);
+        if (location) params.append('location', location);
+        if (radius) params.append('radius', radius);
+        
+        const endpoint = `places/search?${params.toString()}`;
+        const response = await this.request('GET', endpoint);
+        return await response.json();
+    }
+
+    async getPlaceDetails(placeId) {
+        const endpoint = AppConfig.api.backend.endpoints.placesDetails.replace('{id}', placeId);
+        const response = await this.request('GET', endpoint);
+        return await response.json();
+    }
+
+    async isApiAvailable() {
+        try {
+            await this.getInfo();
+            return true;
+        } catch (error) {
+            return false;
+        }
+    }
+
+    async getStatus() {
+        try {
+            const [info, health] = await Promise.all([
+                this.getInfo(),
+                this.checkHealth()
+            ]);
+            return {
+                available: true,
+                info,
+                health,
+                hasApiKey: !!this.getApiKey()
+            };
+        } catch (error) {
+            return {
+                available: false,
+                error: error.message,
+                hasApiKey: !!this.getApiKey()
+            };
+        }
     }
 });
 
-// Create global instance
-window.ApiService = ModuleWrapper.createInstance('apiService', 'ApiService');
-window.apiService = window.ApiService; // Primary access point
+if (typeof Logger !== 'undefined' && typeof AppConfig !== 'undefined') {
+    console.log('✅ ApiService V3 loaded successfully');
+} else {
+    console.warn('⚠️ ApiService V3 loaded but dependencies not ready');
+}

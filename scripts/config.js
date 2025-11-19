@@ -2,7 +2,7 @@
  * File: config.js
  * Purpose: Centralized configuration for all API endpoints, timeouts, and application settings
  * Dependencies: None (must be loaded first)
- * Last Updated: October 19, 2025
+ * Last Updated: November 18, 2025
  * 
  * This is the ONLY file that should contain API URLs, timeouts, and configuration constants.
  * All other files must import from this configuration.
@@ -16,7 +16,7 @@ const AppConfig = {
         /**
          * V3 API Backend - CURRENT (LOCAL)
          * FastAPI + MongoDB async backend
-         * Features: JWT auth, optimistic locking via version field, pagination
+         * Features: X-API-Key auth, optimistic locking via version field, pagination
          */
         backend: {
             baseUrl: 'http://localhost:8000/api/v3',  // V3 API with prefix
@@ -24,33 +24,40 @@ const AppConfig = {
             retryAttempts: 3,      // Number of retry attempts
             retryDelay: 1000,      // Delay between retries (ms)
             features: {
-                optimisticLocking: true,     // version field (int)
+                optimisticLocking: true,     // version field (int) + If-Match header
                 partialUpdates: true,        // PATCH for partial updates
-                flexibleQuery: false,        // simple filters (not query DSL)
+                flexibleQuery: true,         // Filter-based queries
                 documentOriented: true,      // document-oriented (MongoDB)
-                requiresAuth: false          // Optional auth
+                requiresAuth: true,          // X-API-Key required for write operations
+                authType: 'api-key'          // API key authentication (not JWT)
             },
             endpoints: {
-                // Auth endpoints
-                register: '/auth/register',      // POST - Create user
-                login: '/auth/login',            // POST - Get JWT token
-                
                 // System endpoints
+                info: '/info',                   // GET - API info (no auth)
                 health: '/health',               // GET - Health check (no auth)
-                root: '/',                       // GET - API info (no auth)
                 
                 // Entity endpoints
-                entities: '/entities',           // GET list (filters), POST create (auth)
-                entityById: '/entities/{id}',    // GET (no auth), PUT (auth), DELETE (auth)
+                entities: '/entities',           // GET list (filters, no auth), POST create (X-API-Key)
+                entityById: '/entities/{id}',    // GET (no auth), PATCH (X-API-Key + If-Match), DELETE (X-API-Key)
+                entitiesSearch: '/entities/search',  // GET - Search entities with filters (no auth)
                 
                 // Curation endpoints
-                curations: '/curations',         // GET list (filters), POST create (auth)
-                curationById: '/curations/{id}', // GET (no auth), PUT (auth), DELETE (auth)
+                curations: '/curations',         // GET list (filters, no auth), POST create (X-API-Key)
+                curationById: '/curations/{id}', // GET (no auth), PATCH (X-API-Key + If-Match), DELETE (X-API-Key)
+                curationsSearch: '/curations/search',  // GET - Search curations with filters (no auth)
+                entityCurations: '/entities/{id}/curations',  // GET - All curations for entity (no auth)
                 
-                // Sync endpoints
-                syncPull: '/sync/pull',          // POST - Pull changes (auth)
-                syncPush: '/sync/push',          // POST - Push changes (auth)
-                syncFromConcierge: '/sync/from-concierge'  // POST - Receive embeddings (auth)
+                // Concepts endpoints
+                conceptMatch: '/concepts/match',  // POST - Match concepts to categories (X-API-Key)
+                
+                // AI Service endpoints
+                aiTranscribe: '/ai/transcribe',        // POST - Transcribe audio (X-API-Key)
+                aiExtractConcepts: '/ai/extract-concepts',  // POST - Extract concepts from text (X-API-Key)
+                aiAnalyzeImage: '/ai/analyze-image',   // POST - Analyze image with GPT-4 Vision (X-API-Key)
+                
+                // Places Service endpoints
+                placesSearch: '/places/search',        // GET - Search Google Places (X-API-Key)
+                placesDetails: '/places/details/{id}'  // GET - Get place details (X-API-Key)
             }
         },
 
@@ -109,26 +116,32 @@ const AppConfig = {
         
         // Migration settings
         migration: {
-            enabled: false,
+            enabled: true,
             notes: [
                 'V3 API features:',
-                '- Optional JWT authentication',
-                '- Entity IDs: entity_id',
+                '- X-API-Key authentication (no JWT)',
+                '- Entity IDs: entity_id (UUIDs)',
+                '- Curation IDs: curation_id (UUIDs)',
                 '- Version: integer for optimistic locking',
-                '- Updates: PATCH for partial updates',
-                '- Query: simple filters',
-                '- Pagination: items/total/skip/limit'
+                '- Updates: PATCH with If-Match header',
+                '- Query: filter-based queries',
+                '- Pagination: items/total/limit/offset',
+                '- AI services: transcribe, extract concepts, analyze images',
+                '- Places integration: search and details'
             ]
         },
         
         // API features
         features: {
-            optimisticLocking: true,     // Via version field (integer)
+            optimisticLocking: true,     // Via version field + If-Match header
             partialUpdates: true,        // PATCH supported
-            flexibleQuery: false,        // Simple filters
+            flexibleQuery: true,         // Filter-based queries
             entityCurations: true,       // Entity-curation model
-            authentication: false,       // JWT optional
-            pagination: true             // All list endpoints paginated
+            authentication: true,        // X-API-Key required for writes
+            authType: 'api-key',         // API key (not JWT)
+            pagination: true,            // All list endpoints paginated
+            aiServices: true,            // AI transcription and concept extraction
+            placesIntegration: true      // Google Places integration
         }
     },
 
@@ -139,6 +152,7 @@ const AppConfig = {
     storage: {
         keys: {
             // API Keys
+            apiKeyV3: 'api_key_v3',              // V3 API Key (X-API-Key header)
             openaiApiKey: 'openai_api_key',
             googlePlacesApiKey: 'google_places_api_key',
             
@@ -169,14 +183,14 @@ const AppConfig = {
      * V3 Format: Entity-Curation model with local storage for offline capabilities
      */
     database: {
-        name: 'ConciergeCollector',  // Single database name (Dexie handles versioning)
-        version: 6,  // Current schema version
+        name: 'ConciergeCollectorV3',  // V3 database name
+        version: 1,  // V3 schema version (fresh start)
         tables: {
-            entities: 'entities',            // Restaurants, users, admins, system objects
-            curations: 'curations',          // Reviews, recommendations, analysis
-            drafts: 'drafts',               // Unsaved entity/curation drafts
+            entities: 'entity_id, type, name, status, externalId, version, [sync.status], updatedAt',
+            curations: 'curation_id, entity_id, [curator.id], version, [sync.status], updatedAt',
+            sync_metadata: 'id, lastPullAt, lastPushAt',
             curators: 'curators',           // Curator management
-            syncQueue: 'syncQueue',         // Items pending server sync
+            drafts: 'drafts',               // Unsaved entity/curation drafts
             settings: 'settings',           // User settings and preferences
             cache: 'cache'                  // Cached data with expiration
         }
@@ -266,7 +280,7 @@ const AppConfig = {
 
     /**
      * Get API key from localStorage
-     * @param {string} keyName - Key name (openaiApiKey, googlePlacesApiKey)
+     * @param {string} keyName - Key name (apiKeyV3, openaiApiKey, googlePlacesApiKey)
      * @returns {string|null} - API key or null
      */
     getApiKey(keyName) {
@@ -281,7 +295,7 @@ const AppConfig = {
 
     /**
      * Set API key in localStorage
-     * @param {string} keyName - Key name (openaiApiKey, googlePlacesApiKey)
+     * @param {string} keyName - Key name (apiKeyV3, openaiApiKey, googlePlacesApiKey)
      * @param {string} value - API key value
      */
     setApiKey(keyName, value) {
@@ -292,6 +306,22 @@ const AppConfig = {
         } catch (error) {
             console.error(`Error setting API key ${keyName}:`, error);
         }
+    },
+    
+    /**
+     * Get V3 API Key from localStorage
+     * @returns {string|null} - API key or null
+     */
+    getV3ApiKey() {
+        return this.getApiKey('apiKeyV3');
+    },
+    
+    /**
+     * Set V3 API Key in localStorage
+     * @param {string} value - API key value
+     */
+    setV3ApiKey(value) {
+        this.setApiKey('apiKeyV3', value);
     },
 
     /**
@@ -322,8 +352,8 @@ const AppConfig = {
      * @returns {string} - Full URL
      */
     getV3Url(endpoint) {
-        const endpointPath = this.api.v3.endpoints[endpoint] || endpoint;
-        return `${this.api.v3.baseUrl}${endpointPath}`;
+        const endpointPath = this.api.backend.endpoints[endpoint] || endpoint;
+        return `${this.api.backend.baseUrl}${endpointPath}`;
     },
 
     /**

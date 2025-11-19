@@ -71,62 +71,52 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             // Use the database name from config
             this.db = new Dexie(AppConfig.database.name);
             
-            // Version 6: Multi-Curator + Entity-Agnostic Schema
-            // Note: Using version 6 to be higher than any existing versions
-            this.db.version(6).stores({
-                // Entity-Agnostic Model
+            // Version 1: V3 API Schema with optimistic locking
+            // Clean break from old schema - fresh start
+            this.db.version(1).stores({
+                // V3 Entities with optimistic locking
                 entities: `
-                    ++id, 
-                    entity_id, 
-                    google_place_id,
-                    entity_type,
-                    source,
-                    [entity_type+city],
-                    createdAt,
-                    synced
-                `,
-                
-                // Multi-Curator Curations
-                curations: `
-                    ++id, 
-                    curation_id,
                     entity_id,
-                    curator_id,
-                    [curator_id+entity_id],
-                    [entity_id+curator_id],
-                    source,
-                    forked_from,
-                    visibility,
-                    createdAt,
-                    synced
-                `,
-                
-                // Concept Suggestions (Supervised AI)
-                conceptSuggestions: `
-                    ++id,
-                    suggestion_id,
-                    entity_id,
-                    [entity_id+status],
+                    type,
+                    name,
                     status,
-                    source,
+                    externalId,
+                    version,
+                    [sync.status],
+                    updatedAt,
                     createdAt
                 `,
                 
-                // Import Queue (Bulk Operations)
-                importQueue: `
-                    ++id,
-                    import_id,
-                    status,
-                    type,
-                    createdAt,
-                    processedAt
+                // V3 Curations with optimistic locking
+                curations: `
+                    curation_id,
+                    entity_id,
+                    [curator.id],
+                    [entity_id+curator.id],
+                    version,
+                    [sync.status],
+                    updatedAt,
+                    createdAt
                 `,
                 
-                // Existing tables (unchanged)
-                drafts: '++id, type, curator_id, createdAt, lastModified',
+                // Sync tracking metadata
+                sync_metadata: `
+                    id,
+                    lastPullAt,
+                    lastPushAt,
+                    lastConflictAt
+                `,
+                
+                // Curator management (unchanged)
                 curators: '++id, curator_id, name, email, status, createdAt, lastActive',
-                pendingSync: '++id, type, local_id, action, createdAt, retryCount',
+                
+                // Draft storage (unchanged)
+                drafts: '++id, type, curator_id, createdAt, lastModified',
+                
+                // Settings storage (unchanged)
                 settings: 'key',
+                
+                // App metadata (unchanged)
                 appMetadata: 'key'
             });
 
@@ -187,6 +177,10 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
      * Migrate existing data to V3 schema
      * Adds multi-curator and entity-agnostic fields
      */
+    /**
+     * Migrate existing data from old ConciergeCollector database to V3 schema
+     * Copies entities and curations to new database with version=1
+     */
     async migrateToV3() {
         try {
             // Check if migration already done
@@ -196,108 +190,155 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 return;
             }
             
-            this.log.info('🔄 Starting V3 migration (multi-curator + entity-agnostic)...');
+            this.log.info('🔄 Starting V3 migration from old database...');
             
-            // 1. Migrate entities: Add entity_type field
-            const entities = await this.db.entities.toArray();
-            let entitiesUpdated = 0;
-            
-            for (const entity of entities) {
-                const updates = {};
-                
-                // Add entity_type if missing (default to restaurant)
-                if (!entity.entity_type) {
-                    updates.entity_type = 'restaurant';
-                }
-                
-                // Add synced flag if missing
-                if (entity.synced === undefined) {
-                    updates.synced = 0;
-                }
-                
-                // Add city to location if missing (for compound index)
-                if (entity.location && !entity.location.city) {
-                    updates.city = entity.location.address?.split(',')[1]?.trim() || 'Unknown';
-                }
-                
-                if (Object.keys(updates).length > 0) {
-                    await this.db.entities.update(entity.id, updates);
-                    entitiesUpdated++;
-                }
+            // Try to open old database
+            let oldDb;
+            try {
+                oldDb = new Dexie('ConciergeCollector');
+                oldDb.version(6).stores({
+                    entities: '++id, entity_id, google_place_id, entity_type, source',
+                    curations: '++id, curation_id, entity_id, curator_id'
+                });
+                await oldDb.open();
+                this.log.debug('✅ Old database opened');
+            } catch (error) {
+                this.log.debug('No old database found or error opening:', error.message);
+                // No old database to migrate from
+                localStorage.setItem('v3MigrationComplete', 'true');
+                return;
             }
             
-            this.log.debug(`✅ Migrated ${entitiesUpdated} entities to V3`);
+            let entitiesMigrated = 0;
+            let curationsMigrated = 0;
             
-            // 2. Migrate curations: Add curator fields
-            const curations = await this.db.curations.toArray();
-            let curationsUpdated = 0;
-            
-            for (const curation of curations) {
-                const updates = {};
+            // 1. Migrate entities to V3 schema
+            try {
+                const oldEntities = await oldDb.entities.toArray();
+                this.log.debug(`Found ${oldEntities.length} entities to migrate`);
                 
-                // Add curator_id if missing
-                if (!curation.curator_id) {
-                    updates.curator_id = 'default_curator';
+                for (const oldEntity of oldEntities) {
+                    // Transform to V3 schema
+                    const v3Entity = {
+                        entity_id: oldEntity.entity_id || `legacy-${oldEntity.id}`,
+                        type: oldEntity.entity_type || oldEntity.type || 'restaurant',
+                        name: oldEntity.name || 'Unnamed Entity',
+                        status: oldEntity.status || 'active',
+                        externalId: oldEntity.google_place_id || oldEntity.externalId || null,
+                        
+                        // Flexible data storage (convert old structure)
+                        data: {
+                            location: oldEntity.location || {},
+                            contacts: oldEntity.contacts || {},
+                            media: oldEntity.media || {},
+                            attributes: oldEntity.attributes || {}
+                        },
+                        
+                        // Metadata from old source
+                        metadata: oldEntity.metadata || [],
+                        
+                        // Sync status
+                        sync: {
+                            serverId: null,
+                            status: 'pending',
+                            lastSyncedAt: null
+                        },
+                        
+                        // Version for optimistic locking
+                        version: 1,
+                        
+                        // Timestamps
+                        createdAt: oldEntity.createdAt || new Date().toISOString(),
+                        updatedAt: new Date().toISOString(),
+                        
+                        // Creator info
+                        createdBy: oldEntity.createdBy || { id: 'legacy', name: 'Legacy Migration' },
+                        updatedBy: { id: 'legacy', name: 'Legacy Migration' }
+                    };
+                    
+                    await this.db.entities.put(v3Entity);
+                    entitiesMigrated++;
                 }
                 
-                // Add curator_name if missing
-                if (!curation.curator_name) {
-                    updates.curator_name = 'Legacy Curator';
-                }
-                
-                // Add curator_email if missing
-                if (!curation.curator_email) {
-                    updates.curator_email = '';
-                }
-                
-                // Add source if missing
-                if (!curation.source) {
-                    updates.source = 'curator';
-                }
-                
-                // Add visibility if missing
-                if (!curation.visibility) {
-                    updates.visibility = 'public';
-                }
-                
-                // Add allow_fork if missing
-                if (curation.allow_fork === undefined) {
-                    updates.allow_fork = true;
-                }
-                
-                // Add forked_from if missing
-                if (curation.forked_from === undefined) {
-                    updates.forked_from = null;
-                }
-                
-                // Add fork_count if missing
-                if (curation.fork_count === undefined) {
-                    updates.fork_count = 0;
-                }
-                
-                // Add synced flag if missing
-                if (curation.synced === undefined) {
-                    updates.synced = 0;
-                }
-                
-                if (Object.keys(updates).length > 0) {
-                    await this.db.curations.update(curation.id, updates);
-                    curationsUpdated++;
-                }
+                this.log.debug(`✅ Migrated ${entitiesMigrated} entities to V3`);
+            } catch (error) {
+                this.log.error('Error migrating entities:', error);
             }
             
-            this.log.debug(`✅ Migrated ${curationsUpdated} curations to V3`);
+            // 2. Migrate curations to V3 schema
+            try {
+                const oldCurations = await oldDb.curations.toArray();
+                this.log.debug(`Found ${oldCurations.length} curations to migrate`);
+                
+                for (const oldCuration of oldCurations) {
+                    // Transform to V3 schema
+                    const v3Curation = {
+                        curation_id: oldCuration.curation_id || `legacy-${oldCuration.id}`,
+                        entity_id: oldCuration.entity_id,
+                        
+                        // Curator info
+                        curator: {
+                            id: oldCuration.curator_id || 'default_curator',
+                            name: oldCuration.curator_name || 'Legacy Curator',
+                            email: oldCuration.curator_email || ''
+                        },
+                        
+                        // Flexible data storage
+                        data: {
+                            notes: oldCuration.notes || oldCuration.description || '',
+                            tags: oldCuration.tags || [],
+                            rating: oldCuration.rating || null,
+                            recommendations: oldCuration.recommendations || []
+                        },
+                        
+                        // Fork info
+                        fork: {
+                            forkedFrom: oldCuration.forked_from || null,
+                            allowFork: oldCuration.allow_fork !== false,
+                            forkCount: oldCuration.fork_count || 0
+                        },
+                        
+                        // Visibility
+                        visibility: oldCuration.visibility || 'public',
+                        
+                        // Sync status
+                        sync: {
+                            serverId: null,
+                            status: 'pending',
+                            lastSyncedAt: null
+                        },
+                        
+                        // Version for optimistic locking
+                        version: 1,
+                        
+                        // Timestamps
+                        createdAt: oldCuration.createdAt || new Date().toISOString(),
+                        updatedAt: new Date().toISOString()
+                    };
+                    
+                    await this.db.curations.put(v3Curation);
+                    curationsMigrated++;
+                }
+                
+                this.log.debug(`✅ Migrated ${curationsMigrated} curations to V3`);
+            } catch (error) {
+                this.log.error('Error migrating curations:', error);
+            }
+            
+            // Close old database
+            oldDb.close();
             
             // Mark migration as complete
             localStorage.setItem('v3MigrationComplete', 'true');
             
-            this.log.info(`✅ V3 migration complete! Updated ${entitiesUpdated} entities and ${curationsUpdated} curations`);
+            this.log.info(`✅ V3 migration complete! Migrated ${entitiesMigrated} entities and ${curationsMigrated} curations`);
             
         } catch (error) {
             this.log.error('V3 migration failed:', error);
-            // Don't throw - allow app to continue
+            // Don't throw - allow app to continue with empty database
         }
     }
+
 
     /**
      * Reset database to clean V3 schema
@@ -413,6 +454,181 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             throw error;
         }
     }
+
+    // ============================================
+    // V3 ENTITY AND CURATION HELPERS
+    // ============================================
+
+    /**
+     * Create a new V3 entity with version=1
+     * @param {Object} entityData - Entity data (name, type, data, etc.)
+     * @returns {Promise<string>} - entity_id
+     */
+    async createEntity(entityData) {
+        try {
+            const entity = {
+                entity_id: entityData.entity_id || crypto.randomUUID(),
+                type: entityData.type || 'restaurant',
+                name: entityData.name,
+                status: entityData.status || 'active',
+                externalId: entityData.externalId || null,
+                data: entityData.data || {},
+                metadata: entityData.metadata || [],
+                sync: {
+                    serverId: null,
+                    status: 'pending',
+                    lastSyncedAt: null
+                },
+                version: 1,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                createdBy: entityData.createdBy || { id: 'local', name: 'Local User' },
+                updatedBy: entityData.updatedBy || { id: 'local', name: 'Local User' }
+            };
+
+            await this.db.entities.put(entity);
+            this.log.debug(`Created entity: ${entity.name} (ID: ${entity.entity_id})`);
+            return entity.entity_id;
+        } catch (error) {
+            this.log.error('Error creating entity:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Update an existing V3 entity with version increment
+     * @param {string} entityId - entity_id to update
+     * @param {Object} updates - Fields to update
+     * @returns {Promise<void>}
+     */
+    async updateEntityData(entityId, updates) {
+        try {
+            const entity = await this.db.entities.get(entityId);
+            if (!entity) {
+                throw new Error(`Entity not found: ${entityId}`);
+            }
+
+            // Merge updates
+            const updatedEntity = {
+                ...entity,
+                ...updates,
+                version: (entity.version || 0) + 1,
+                updatedAt: new Date().toISOString(),
+                sync: {
+                    ...entity.sync,
+                    status: 'pending'  // Mark as pending sync
+                }
+            };
+
+            await this.db.entities.put(updatedEntity);
+            this.log.debug(`Updated entity: ${entityId}, new version: ${updatedEntity.version}`);
+        } catch (error) {
+            this.log.error('Error updating entity:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get entity by entity_id
+     * @param {string} entityId - entity_id
+     * @returns {Promise<Object|null>} - Entity or null
+     */
+    async getEntity(entityId) {
+        try {
+            return await this.db.entities.get(entityId);
+        } catch (error) {
+            this.log.error('Error getting entity:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Create a new V3 curation with version=1
+     * @param {Object} curationData - Curation data (entity_id, curator, data, etc.)
+     * @returns {Promise<string>} - curation_id
+     */
+    async createCuration(curationData) {
+        try {
+            const curation = {
+                curation_id: curationData.curation_id || crypto.randomUUID(),
+                entity_id: curationData.entity_id,
+                curator: curationData.curator || { id: 'default_curator', name: 'Default Curator', email: '' },
+                data: curationData.data || {},
+                fork: {
+                    forkedFrom: curationData.forkedFrom || null,
+                    allowFork: curationData.allowFork !== false,
+                    forkCount: 0
+                },
+                visibility: curationData.visibility || 'public',
+                sync: {
+                    serverId: null,
+                    status: 'pending',
+                    lastSyncedAt: null
+                },
+                version: 1,
+                createdAt: new Date().toISOString(),
+                updatedAt: new Date().toISOString()
+            };
+
+            await this.db.curations.put(curation);
+            this.log.debug(`Created curation: ${curation.curation_id} for entity: ${curation.entity_id}`);
+            return curation.curation_id;
+        } catch (error) {
+            this.log.error('Error creating curation:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Update an existing V3 curation with version increment
+     * @param {string} curationId - curation_id to update
+     * @param {Object} updates - Fields to update
+     * @returns {Promise<void>}
+     */
+    async updateCurationData(curationId, updates) {
+        try {
+            const curation = await this.db.curations.get(curationId);
+            if (!curation) {
+                throw new Error(`Curation not found: ${curationId}`);
+            }
+
+            // Merge updates
+            const updatedCuration = {
+                ...curation,
+                ...updates,
+                version: (curation.version || 0) + 1,
+                updatedAt: new Date().toISOString(),
+                sync: {
+                    ...curation.sync,
+                    status: 'pending'  // Mark as pending sync
+                }
+            };
+
+            await this.db.curations.put(updatedCuration);
+            this.log.debug(`Updated curation: ${curationId}, new version: ${updatedCuration.version}`);
+        } catch (error) {
+            this.log.error('Error updating curation:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Get curation by curation_id
+     * @param {string} curationId - curation_id
+     * @returns {Promise<Object|null>} - Curation or null
+     */
+    async getCuration(curationId) {
+        try {
+            return await this.db.curations.get(curationId);
+        } catch (error) {
+            this.log.error('Error getting curation:', error);
+            throw error;
+        }
+    }
+
+    // ============================================
+    // END V3 HELPERS
+    // ============================================
 
     /**
      * Save a curator with origin tracking
