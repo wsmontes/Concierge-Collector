@@ -12,11 +12,17 @@ pip install -r requirements.txt
 cp .env.example .env
 # Edit .env with your configuration
 
-# Run the API
+# Run the API (from project root)
+./start-api.sh   # Starts in background
+./stop-api.sh    # Stops the API
+
+# Or run directly
+cd concierge-api-v3
 python main.py
 ```
 
 API will be available at `http://localhost:8000`
+API docs at `http://localhost:8000/api/v3/docs`
 
 ## 📁 Project Structure
 
@@ -43,6 +49,8 @@ concierge-api-v3/
 API Key authentication is required for all write operations (POST, PATCH, DELETE).
 Read operations (GET) are public.
 
+Generate API key: `python scripts/generate_api_key.py`
+
 See [docs/security/SECURITY.md](docs/security/SECURITY.md) for details.
 
 ## 🧪 Testing
@@ -62,9 +70,9 @@ pytest tests/ --cov=app --cov-report=html
 
 ## 📚 API Documentation
 
-- Interactive docs: `http://localhost:8000/docs`
-- OpenAPI spec: `http://localhost:8000/openapi.json`
-- ReDoc: `http://localhost:8000/redoc`
+- Interactive docs: `http://localhost:8000/api/v3/docs`
+- OpenAPI spec: `http://localhost:8000/api/v3/openapi.json`
+- ReDoc: `http://localhost:8000/api/v3/redoc`
 
 ## 🔧 Configuration
 
@@ -105,13 +113,27 @@ python scripts/generate_api_key.py
 ## 🌟 Features
 
 - ✅ RESTful API with FastAPI
-- ✅ MongoDB with async support
+- ✅ MongoDB with async support (Motor)
 - ✅ API Key authentication
 - ✅ OpenAI integration (GPT-4, Whisper, Vision)
-- ✅ Comprehensive test suite
-- ✅ Interactive API documentation
+- ✅ Google Places API integration
+- ✅ Comprehensive test suite (pytest)
+- ✅ Interactive API documentation (Swagger/ReDoc)
 - ✅ Optimistic locking for data consistency
 - ✅ CORS support
+- ✅ Background process management scripts
+- ✅ Auto-reload in development mode
+
+## 📍 API Endpoints
+
+The API uses the `/api/v3` prefix for all endpoints:
+
+- `/api/v3/info` - System information and health check
+- `/api/v3/entities` - Entity management (restaurants, etc.)
+- `/api/v3/curations` - Curation management
+- `/api/v3/concepts` - Concept matching and management
+- `/api/v3/places` - Google Places integration
+- `/api/v3/ai` - AI services (GPT-4, Whisper, Vision)
 
 ## 📝 License
 
