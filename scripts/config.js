@@ -14,11 +14,15 @@
 const isGitHubPages = window.location.hostname.includes('github.io');
 const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 const isPythonAnywhere = window.location.hostname.includes('pythonanywhere.com');
+const isRenderProduction = window.location.hostname.includes('onrender.com');
 
 // Determine API base URL based on environment
 const getApiBaseUrl = () => {
-    if (isPythonAnywhere || isGitHubPages) {
-        // Production - PythonAnywhere API
+    if (isRenderProduction) {
+        // Production - Render.com API
+        return 'https://concierge-collector.onrender.com/api/v3';
+    } else if (isPythonAnywhere || isGitHubPages) {
+        // Production - PythonAnywhere API (legacy)
         return 'https://wsmontes.pythonanywhere.com/api/v3';
     } else if (isLocalhost) {
         // Local development
@@ -34,7 +38,7 @@ const AppConfig = {
      * Environment Detection
      */
     environment: {
-        isProduction: isGitHubPages,
+        isProduction: isGitHubPages || isRenderProduction,
         isDev: isLocalhost,
         hostname: window.location.hostname,
         protocol: window.location.protocol
