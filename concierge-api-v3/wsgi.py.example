@@ -1,0 +1,49 @@
+"""
+WSGI configuration for Concierge Collector API V3
+FastAPI + ASGI running on WSGI via Mangum adapter
+Auto-detects PythonAnywhere environment
+
+INSTRUCTIONS:
+1. Copy this file to wsgi.py
+2. Update project_home path if needed
+3. This file is in .gitignore to protect your paths
+
+For PythonAnywhere:
+- Update project_home to: /home/YOUR_USERNAME/concierge-api
+- Make sure .env is in the same directory
+
+For local development:
+- Not needed (use uvicorn directly)
+"""
+
+import sys
+import os
+
+# Add project directory to Python path
+# CHANGE THIS to match your PythonAnywhere username
+project_home = '/home/wsmontes/concierge-api'
+if project_home not in sys.path:
+    sys.path.insert(0, project_home)
+
+# Change to project directory
+os.chdir(project_home)
+
+# Load environment variables from .env
+from dotenv import load_dotenv
+env_path = os.path.join(project_home, '.env')
+load_dotenv(env_path)
+
+# Import FastAPI app
+from app.main import app
+
+# Mangum adapter for ASGI → WSGI
+from mangum import Mangum
+handler = Mangum(app, lifespan="off")
+
+# WSGI application
+def application(environ, start_response):
+    """
+    WSGI application entry point
+    Converts WSGI requests to ASGI for FastAPI
+    """
+    return handler(environ, start_response)

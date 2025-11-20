@@ -13,12 +13,13 @@
 // Detect environment
 const isGitHubPages = window.location.hostname.includes('github.io');
 const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+const isPythonAnywhere = window.location.hostname.includes('pythonanywhere.com');
 
 // Determine API base URL based on environment
 const getApiBaseUrl = () => {
-    if (isGitHubPages) {
-        // GitHub Pages - use production API
-        return 'https://your-production-api.com/api/v3';  // TODO: Replace with your production API URL
+    if (isPythonAnywhere || isGitHubPages) {
+        // Production - PythonAnywhere API
+        return 'https://wsmontes.pythonanywhere.com/api/v3';
     } else if (isLocalhost) {
         // Local development
         return 'http://localhost:8000/api/v3';

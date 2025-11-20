@@ -89,6 +89,10 @@ api.pid
 # Uvicorn logs
 uvicorn.log
 
+# WSGI configuration (may contain sensitive paths)
+wsgi.py
+concierge-api-v3/wsgi.py
+
 ############################
 # MONGODB
 ############################

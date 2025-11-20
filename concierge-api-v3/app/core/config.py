@@ -1,11 +1,13 @@
 """
 Application configuration using Pydantic Settings
 Loads from environment variables and .env file
+Automatically detects localhost vs production environment
 """
 
 from pydantic_settings import BaseSettings
 from typing import List
 import json
+import os
 
 
 class Settings(BaseSettings):
@@ -38,7 +40,7 @@ class Settings(BaseSettings):
     # Google OAuth
     google_oauth_client_id: str = ""
     google_oauth_client_secret: str = ""
-    google_oauth_redirect_uri: str = "http://localhost:8000/api/v3/auth/callback"
+    google_oauth_redirect_uri: str = ""  # Will be auto-detected
     
     # Frontend URLs (localhost and production)
     frontend_url: str = "http://127.0.0.1:5500"
@@ -47,6 +49,21 @@ class Settings(BaseSettings):
     # JWT Token Settings
     access_token_expire_minutes: int = 60  # 1 hour
     refresh_token_expire_days: int = 30  # 30 days for refresh token
+    
+    def model_post_init(self, __context):
+        """Called after model initialization - auto-detect environment"""
+        # Check for PythonAnywhere environment
+        hostname = os.getenv('HOSTNAME', '')
+        is_pythonanywhere = 'pythonanywhere' in hostname.lower() or os.path.exists('/home/wsmontes')
+        
+        # Set redirect_uri based on environment if not already set
+        if not self.google_oauth_redirect_uri:
+            if is_pythonanywhere:
+                object.__setattr__(self, 'google_oauth_redirect_uri', 
+                                 "https://wsmontes.pythonanywhere.com/api/v3/auth/callback")
+            else:
+                object.__setattr__(self, 'google_oauth_redirect_uri',
+                                 "http://localhost:8000/api/v3/auth/callback")
     
     @property
     def cors_origins_list(self) -> List[str]:

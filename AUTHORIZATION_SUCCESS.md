@@ -62,7 +62,7 @@ Significa que o browser pode ter cacheado a resposta HTTP 403. Nesse caso:
 Se quiser confirmar que está autorizado:
 
 ```bash
-mongosh "mongodb+srv://wmontes_db_user:w8tYrzEyWjBTdPql@concierge-collector.7bwiisy.mongodb.net/" --eval "use('concierge-collector'); db.users.findOne({email: 'wagner@lotier.com'})"
+mongosh "your-mongodb-connection-string" --eval "use('concierge-collector'); db.users.findOne({email: 'your-email@example.com'})"
 ```
 
 Deve mostrar: `authorized: true`
