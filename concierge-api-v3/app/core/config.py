@@ -52,13 +52,19 @@ class Settings(BaseSettings):
     
     def model_post_init(self, __context):
         """Called after model initialization - auto-detect environment"""
-        # Check for PythonAnywhere environment
+        # Check for deployment environment
         hostname = os.getenv('HOSTNAME', '')
+        render_service = os.getenv('RENDER_SERVICE_NAME', '')
+        
         is_pythonanywhere = 'pythonanywhere' in hostname.lower() or os.path.exists('/home/wsmontes')
+        is_render = bool(render_service) or 'render' in hostname.lower()
         
         # Set redirect_uri based on environment if not already set
         if not self.google_oauth_redirect_uri:
-            if is_pythonanywhere:
+            if is_render:
+                object.__setattr__(self, 'google_oauth_redirect_uri', 
+                                 "https://concierge-collector.onrender.com/api/v3/auth/google/callback")
+            elif is_pythonanywhere:
                 object.__setattr__(self, 'google_oauth_redirect_uri', 
                                  "https://wsmontes.pythonanywhere.com/api/v3/auth/callback")
             else:
