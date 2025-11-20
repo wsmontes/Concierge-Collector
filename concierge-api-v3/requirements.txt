@@ -9,7 +9,7 @@ mangum==0.19.0  # ASGI to WSGI adapter for PythonAnywhere
 
 # MongoDB
 motor==3.6.0
-pymongo==4.10.1
+pymongo==4.9.0
 
 # Validation
 pydantic==2.10.3
