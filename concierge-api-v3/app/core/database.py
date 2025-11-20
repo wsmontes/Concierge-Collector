@@ -60,26 +60,58 @@ async def close_mongo_connection():
 async def create_indexes():
     """
     Create database indexes for optimal query performance
-    Indexes on: _id, type, entity_id, curator.id, createdAt
+    Uses create_index with background=True and handles conflicts gracefully
     """
     try:
-        # Entities indexes
         entities = _database.entities
-        await entities.create_index("type")
-        await entities.create_index("name")
-        await entities.create_index("createdAt")
-        await entities.create_index([("name", "text")])  # Text search
+        curations = _database.curations
+        
+        # Entities indexes (non-unique)
+        await _create_index_safe(entities, "type", unique=False)
+        await _create_index_safe(entities, "name", unique=False)
+        await _create_index_safe(entities, "createdAt", unique=False)
+        await _create_index_safe(entities, [("name", "text")], unique=False)
         
         # Curations indexes
-        curations = _database.curations
-        await entities.create_index("entity_id")
-        await curations.create_index("curator.id")
-        await curations.create_index("createdAt")
+        # entity_id should be unique per curation (one curation per entity)
+        await _create_index_safe(curations, "entity_id", unique=True)
+        await _create_index_safe(curations, "curator.id", unique=False)
+        await _create_index_safe(curations, "createdAt", unique=False)
         
-        logger.info("✅ Database indexes created")
+        logger.info("✅ Database indexes verified/created")
         
     except Exception as e:
         logger.warning(f"⚠️ Index creation failed: {e}")
+
+
+async def _create_index_safe(collection, keys, unique=False):
+    """
+    Safely create an index, handling conflicts with existing indexes
+    If index exists with different options, drops and recreates it
+    """
+    try:
+        await collection.create_index(keys, unique=unique, background=True)
+    except Exception as e:
+        # If index exists with different spec, try to drop and recreate
+        if "IndexKeySpecsConflict" in str(e) or "IndexOptionsConflict" in str(e):
+            try:
+                # Get index name
+                if isinstance(keys, list):
+                    index_name = "_".join([f"{k}_{v}" for k, v in keys])
+                else:
+                    index_name = f"{keys}_1"
+                
+                logger.info(f"Dropping conflicting index: {index_name}")
+                await collection.drop_index(index_name)
+                
+                # Recreate with correct spec
+                await collection.create_index(keys, unique=unique, background=True)
+                logger.info(f"✅ Recreated index: {index_name}")
+            except Exception as drop_error:
+                logger.warning(f"Could not resolve index conflict: {drop_error}")
+        else:
+            # Other errors (like index already exists with same spec) can be ignored
+            pass
 
 
 def get_database() -> AsyncIOMotorDatabase:
