@@ -234,6 +234,9 @@ async def google_oauth_callback(
     Returns:
         RedirectResponse: Redirect to frontend with tokens or error
     """
+    logger.info("=" * 60)
+    logger.info(f"[OAuth] ⚡ CALLBACK ENDPOINT HIT")
+    logger.info("=" * 60)
     logger.info(f"[OAuth] Callback received")
     logger.info(f"[OAuth]   code: {'present' if code else 'MISSING'}")
     logger.info(f"[OAuth]   state: {'present' if state else 'MISSING'}")
@@ -331,6 +334,25 @@ async def google_oauth_callback(
     
     logger.info(f"[OAuth] User: {user.email}")
     logger.info(f"[OAuth]   authorized: {user.authorized}")
+    
+    # Create/update curator profile automatically
+    if user.authorized:
+        curator_data = {
+            "curator_id": user.email,  # Use email as curator ID
+            "name": user.name,
+            "email": user.email,
+            "picture": user.picture,
+            "google_id": user.google_id,
+            "updatedAt": datetime.utcnow()
+        }
+        
+        # Upsert curator in curators collection
+        await db.curators.update_one(
+            {"curator_id": user.email},
+            {"$set": curator_data, "$setOnInsert": {"createdAt": datetime.utcnow()}},
+            upsert=True
+        )
+        logger.info(f"[OAuth] ✓ Curator profile created/updated for {user.email}")
     
     # Check if user is authorized
     if not user.authorized:

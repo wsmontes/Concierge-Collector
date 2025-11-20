@@ -180,7 +180,14 @@ async def verify_access_token(
     Raises:
         HTTPException: 401 if token is missing or invalid
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    logger.info("[Token Verify] ========================================")
+    logger.info(f"[Token Verify] Credentials present: {credentials is not None}")
+    
     if not credentials:
+        logger.warning("[Token Verify] ✗ Missing authorization token")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Missing authorization token",
@@ -188,29 +195,45 @@ async def verify_access_token(
         )
     
     token = credentials.credentials
+    logger.info(f"[Token Verify] Token: {token[:20]}...")
     
     try:
         secret_key = get_api_secret_key()
+        logger.info("[Token Verify] Decoding token...")
         payload = jwt.decode(token, secret_key, algorithms=[ALGORITHM])
+        
+        logger.info(f"[Token Verify] ✓ Token decoded")
+        logger.info(f"[Token Verify]   sub: {payload.get('sub')}")
+        logger.info(f"[Token Verify]   exp: {payload.get('exp')}")
         
         # Check expiration
         exp = payload.get("exp")
-        if exp and datetime.utcnow() > datetime.fromtimestamp(exp):
-            raise HTTPException(
-                status_code=status.HTTP_401_UNAUTHORIZED,
-                detail="Token expired",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
+        if exp:
+            exp_time = datetime.utcfromtimestamp(exp)  # FIX: Use utcfromtimestamp instead of fromtimestamp
+            now = datetime.utcnow()
+            logger.info(f"[Token Verify]   now: {now}")
+            logger.info(f"[Token Verify]   exp_time: {exp_time}")
+            
+            if now > exp_time:
+                logger.warning("[Token Verify] ✗ Token expired")
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Token expired",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
         
+        logger.info("[Token Verify] ✓ Token valid")
         return payload
         
     except JWTError as e:
+        logger.error(f"[Token Verify] ✗ JWT Error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Invalid token: {str(e)}",
             headers={"WWW-Authenticate": "Bearer"},
         )
     except RuntimeError as e:
+        logger.error(f"[Token Verify] ✗ Runtime Error: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e)

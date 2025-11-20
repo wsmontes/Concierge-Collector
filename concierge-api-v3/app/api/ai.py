@@ -10,7 +10,7 @@ from typing import Optional, Dict, Any, List
 import os
 
 from app.core.database import get_database
-from app.core.security import verify_api_key
+from app.core.security import verify_access_token
 from app.services.openai_service import OpenAIService
 from app.services.ai_orchestrator import AIOrchestrator
 
@@ -90,12 +90,12 @@ async def get_ai_orchestrator(
 async def orchestrate(
     request: OrchestrateRequest,
     orchestrator: AIOrchestrator = Depends(get_ai_orchestrator),
-    _: str = Depends(verify_api_key)  # Require API key
+    token_data: dict = Depends(verify_access_token)  # Require JWT authentication
 ):
     """
     Intelligent AI workflow orchestration.
     
-    **Authentication Required:** Include `X-API-Key` header
+    **Authentication Required:** Include `Authorization: Bearer <token>` header
     **⚠️  Costs Money:** Uses OpenAI API - monitor usage
     
     Combines multiple AI services (transcription, concept extraction, image analysis)

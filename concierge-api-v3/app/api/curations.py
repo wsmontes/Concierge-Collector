@@ -12,7 +12,7 @@ from app.models.schemas import (
     Curation, CurationCreate, CurationUpdate, PaginatedResponse
 )
 from app.core.database import get_database
-from app.core.security import verify_api_key
+from app.core.security import verify_access_token
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 router = APIRouter(prefix="/curations", tags=["curations"])
@@ -22,11 +22,11 @@ router = APIRouter(prefix="/curations", tags=["curations"])
 async def create_curation(
     curation: CurationCreate,
     db: AsyncIOMotorDatabase = Depends(get_database),
-    _: str = Depends(verify_api_key)  # Require API key
+    token_data: dict = Depends(verify_access_token)  # Require JWT authentication
 ):
     """Create a new curation
     
-    **Authentication Required:** Include `X-API-Key` header
+    **Authentication Required:** Include `Authorization: Bearer <token>` header
     """
     # Verify entity exists
     entity = await db.entities.find_one({"_id": curation.entity_id})
@@ -136,11 +136,11 @@ async def update_curation(
     updates: CurationUpdate,
     if_match: Optional[str] = Header(None, alias="If-Match"),
     db: AsyncIOMotorDatabase = Depends(get_database),
-    _: str = Depends(verify_api_key)  # Require API key
+    token_data: dict = Depends(verify_access_token)  # Require JWT authentication
 ):
     """Update curation with optimistic locking
     
-    **Authentication Required:** Include `X-API-Key` header
+    **Authentication Required:** Include `Authorization: Bearer <token>` header
     """
     # Check If-Match header
     if not if_match:
@@ -180,11 +180,11 @@ async def update_curation(
 async def delete_curation(
     curation_id: str,
     db: AsyncIOMotorDatabase = Depends(get_database),
-    _: str = Depends(verify_api_key)  # Require API key
+    token_data: dict = Depends(verify_access_token)  # Require JWT authentication
 ):
     """Delete curation
     
-    **Authentication Required:** Include `X-API-Key` header
+    **Authentication Required:** Include `Authorization: Bearer <token>` header
     """
     result = await db.curations.delete_one({"_id": curation_id})
     

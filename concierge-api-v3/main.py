@@ -30,7 +30,8 @@ app = FastAPI(
     lifespan=lifespan,
     docs_url="/api/v3/docs",  # Swagger UI
     redoc_url="/api/v3/redoc",  # ReDoc
-    openapi_url="/api/v3/openapi.json"  # OpenAPI schema
+    openapi_url="/api/v3/openapi.json",  # OpenAPI schema
+    redirect_slashes=False  # CRITICAL: Disable automatic trailing slash redirects for OAuth
 )
 
 # Configure CORS

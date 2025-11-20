@@ -95,12 +95,9 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         
         const headers = {
             'Content-Type': 'application/json',
+            ...this.getAuthHeaders(),  // Include OAuth token in ALL requests
             ...options.headers
         };
-        
-        if (['POST', 'PATCH', 'PUT', 'DELETE'].includes(method.toUpperCase())) {
-            Object.assign(headers, this.getAuthHeaders());
-        }
         
         const fetchOptions = { method, headers, ...options };
         

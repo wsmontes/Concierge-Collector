@@ -12,7 +12,7 @@ from app.models.schemas import (
     Entity, EntityCreate, EntityUpdate, PaginatedResponse, ErrorResponse
 )
 from app.core.database import get_database
-from app.core.security import verify_api_key
+from app.core.security import verify_access_token
 from motor.motor_asyncio import AsyncIOMotorDatabase
 
 router = APIRouter(prefix="/entities", tags=["entities"])
@@ -22,11 +22,11 @@ router = APIRouter(prefix="/entities", tags=["entities"])
 async def create_entity(
     entity: EntityCreate,
     db: AsyncIOMotorDatabase = Depends(get_database),
-    _: str = Depends(verify_api_key)  # Require API key
+    token_data: dict = Depends(verify_access_token)  # Require JWT authentication
 ):
     """Create a new entity or update if exists (upsert with merge)
     
-    **Authentication Required:** Include `X-API-Key` header
+    **Authentication Required:** Include `Authorization: Bearer <token>` header
     """
     # Check if entity already exists
     existing = await db.entities.find_one({"_id": entity.entity_id})
@@ -98,11 +98,11 @@ async def update_entity(
     updates: EntityUpdate,
     if_match: Optional[str] = Header(None, alias="If-Match"),
     db: AsyncIOMotorDatabase = Depends(get_database),
-    _: str = Depends(verify_api_key)  # Require API key
+    token_data: dict = Depends(verify_access_token)  # Require JWT authentication
 ):
     """Update entity with optimistic locking
     
-    **Authentication Required:** Include `X-API-Key` header
+    **Authentication Required:** Include `Authorization: Bearer <token>` header
     """
     # Check If-Match header
     if not if_match:
@@ -142,11 +142,11 @@ async def update_entity(
 async def delete_entity(
     entity_id: str,
     db: AsyncIOMotorDatabase = Depends(get_database),
-    _: str = Depends(verify_api_key)  # Require API key
+    token_data: dict = Depends(verify_access_token)  # Require JWT authentication
 ):
     """Delete entity
     
-    **Authentication Required:** Include `X-API-Key` header
+    **Authentication Required:** Include `Authorization: Bearer <token>` header
     """
     result = await db.entities.delete_one({"_id": entity_id})
     

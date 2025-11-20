@@ -53,6 +53,43 @@
     <!-- Centralized Logging (loads after config) -->
     <script src="scripts/logger.js"></script>
     
+    <!-- OAuth Callback Protection (prevents page reload during OAuth callback) -->
+    <script>
+        (function() {
+            // Check if OAuth redirect is in progress
+            const oauthRedirectInProgress = sessionStorage.getItem('oauth_redirect_in_progress');
+            const oauthCallbackInProgress = sessionStorage.getItem('oauth_callback_in_progress');
+            
+            if (oauthRedirectInProgress === 'true') {
+                console.log('[OAuth Protection] 🔒 Redirect in progress - allowing navigation');
+                // Don't clear - let the redirect happen
+                return;
+            }
+            
+            if (oauthCallbackInProgress === 'true') {
+                console.log('[OAuth Protection] Callback in progress - preventing hot reload');
+                
+                // Disable Live Server hot reload temporarily
+                if (window.stop) {
+                    window.stop(); // Modern browsers
+                }
+                
+                // Mark as complete after 3 seconds (safety timeout)
+                setTimeout(function() {
+                    if (sessionStorage.getItem('oauth_callback_in_progress') === 'true') {
+                        console.log('[OAuth Protection] Timeout reached - clearing protection');
+                        sessionStorage.removeItem('oauth_callback_in_progress');
+                    }
+                }, 3000);
+            }
+            
+            // Clear redirect flag if we're back from OAuth
+            if (oauthRedirectInProgress) {
+                sessionStorage.removeItem('oauth_redirect_in_progress');
+            }
+        })();
+    </script>
+    
     <!-- Restaurant validator utility -->
     <script src="scripts/utils/restaurantValidator.js" defer></script>
     

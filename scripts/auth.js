@@ -178,18 +178,26 @@ const AuthService = (function() {
         console.log(`[AuthService]   user_email: ${userEmail || 'missing'}`);
         console.log(`[AuthService]   auth_error: ${authError || 'none'}`);
 
+        // If we have tokens in URL, mark callback as in progress
+        if (accessToken) {
+            sessionStorage.setItem('oauth_callback_in_progress', 'true');
+            console.log('[AuthService] OAuth callback in progress - protecting from reload');
+        }
+
         // Check for auth error
         if (authError) {
             console.error(`[AuthService] Authentication error: ${authError}`);
             
             // Special handling for "not_authorized" error
             if (authError === 'not_authorized') {
+                sessionStorage.removeItem('oauth_callback_in_progress');
                 return { 
                     error: 'not_authorized',
                     message: `Your account (${userEmail || 'unknown'}) is not authorized. Please contact the administrator.`
                 };
             }
             
+            sessionStorage.removeItem('oauth_callback_in_progress');
             return { error: authError };
         }
 
@@ -228,6 +236,13 @@ const AuthService = (function() {
             const authUrl = `${baseUrl}${ENDPOINTS.login}`;
 
             console.log(`[AuthService] Redirecting to: ${authUrl}`);
+            
+            // Mark OAuth as starting to prevent Live Server interference
+            sessionStorage.setItem('oauth_redirect_in_progress', 'true');
+            console.log('[AuthService] 🔒 OAuth redirect protection enabled');
+
+            // Small delay to ensure sessionStorage is written
+            await new Promise(resolve => setTimeout(resolve, 100));
 
             // Redirect to backend OAuth endpoint
             // Backend will redirect to Google OAuth consent screen
@@ -235,6 +250,7 @@ const AuthService = (function() {
 
         } catch (error) {
             console.error('[AuthService] Login failed:', error);
+            sessionStorage.removeItem('oauth_redirect_in_progress');
             throw error;
         }
     }
@@ -372,6 +388,7 @@ const AuthService = (function() {
                     console.error(`[AuthService] ${urlTokens.message}`);
                 }
                 cleanURL();
+                sessionStorage.removeItem('oauth_callback_in_progress');
                 _initialized = true;
                 
                 // Store error for AccessControl to display
@@ -383,6 +400,8 @@ const AuthService = (function() {
             console.log('[AuthService] ✓ Tokens found in URL, storing...');
             storeTokens(urlTokens);
             cleanURL();
+            sessionStorage.removeItem('oauth_callback_in_progress');
+            console.log('[AuthService] ✓ OAuth callback complete');
         }
 
         // Step 2: Check for existing token in localStorage
