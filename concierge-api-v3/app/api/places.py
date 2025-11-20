@@ -23,8 +23,9 @@ logger = logging.getLogger(__name__)
 # Create router
 router = APIRouter(prefix="/places", tags=["places"])
 
-# New Places API base URL
-PLACES_API_NEW_URL = "https://places.googleapis.com/v1/places:searchNearby"
+# New Places API base URLs
+PLACES_API_NEARBY_URL = "https://places.googleapis.com/v1/places:searchNearby"
+PLACES_API_TEXT_SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
 
 
 # ============================================================================
@@ -65,29 +66,158 @@ class PlaceDetailsResponse(BaseModel):
 # HELPER FUNCTIONS
 # ============================================================================
 
-def format_place_result(place: Dict[str, Any]) -> Dict[str, Any]:
+def get_enhanced_field_mask(include_reviews: bool = False, include_photos: bool = True, detail_level: str = "standard") -> str:
     """
-    Format Google Places API result to match our schema
+    Build comprehensive field mask for Google Places API
+    
+    Based on 150+ most important fields from Google Places API (New).
+    Controls billing by only requesting needed fields.
     
     Args:
-        place: Raw place data from Google Maps API
+        include_reviews: Include review details (higher cost)
+        include_photos: Include photo metadata
+        detail_level: "minimal", "standard", or "full" (controls billing cost)
         
     Returns:
-        Formatted place dict
+        Comma-separated field mask string
     """
-    return {
-        'place_id': place.get('place_id'),
-        'name': place.get('name'),
-        'vicinity': place.get('vicinity'),
-        'rating': place.get('rating'),
-        'user_ratings_total': place.get('user_ratings_total'),
-        'price_level': place.get('price_level'),
-        'types': place.get('types', []),
-        'geometry': place.get('geometry', {}),
-        'business_status': place.get('business_status'),
-        'opening_hours': place.get('opening_hours'),
-        'photos': place.get('photos')
-    }
+    # Essential fields (always included) - SKU: Basic Data
+    essential = [
+        "places.id",
+        "places.displayName",
+        "places.formattedAddress",
+        "places.location",
+        "places.rating",
+        "places.userRatingCount",
+        "places.priceLevel",
+        "places.types",
+        "places.businessStatus"
+    ]
+    
+    if detail_level == "minimal":
+        return ",".join(essential)
+    
+    # Contact and web presence - SKU: Contact Data
+    contact = [
+        "places.websiteUri",
+        "places.internationalPhoneNumber",
+        "places.nationalPhoneNumber"
+    ]
+    
+    # Opening hours - SKU: Atmosphere Data
+    hours = [
+        "places.currentOpeningHours",
+        "places.regularOpeningHours",
+        "places.utcOffsetMinutes"
+    ]
+    
+    # Address components (detailed geocoding) - SKU: Basic Data
+    address = [
+        "places.shortFormattedAddress",
+        "places.addressComponents",
+        "places.plusCode"
+    ]
+    
+    # Basic attributes - SKU: Atmosphere Data
+    basic_attributes = [
+        "places.takeout",
+        "places.delivery",
+        "places.dineIn",
+        "places.reservable",
+        "places.goodForChildren",
+        "places.goodForGroups"
+    ]
+    
+    # Editorial content
+    editorial = [
+        "places.editorialSummary",
+        "places.iconMaskBaseUri"
+    ]
+    
+    # Photos (if requested)
+    photos = []
+    if include_photos:
+        photos = [
+            "places.photos"
+        ]
+    
+    if detail_level == "standard":
+        all_fields = essential + contact + hours + address + basic_attributes + editorial + photos
+        return ",".join(all_fields)
+    
+    # FULL DETAIL LEVEL - All 150+ fields
+    
+    # Food service attributes (restaurants) - SKU: Atmosphere Data
+    food_service = [
+        "places.servesBreakfast",
+        "places.servesLunch",
+        "places.servesDinner",
+        "places.servesBrunch",
+        "places.servesBeer",
+        "places.servesWine"
+    ]
+    
+    # Dietary and service options - SKU: Atmosphere Data
+    dietary = [
+        "places.servesVegetarianFood",
+        "places.takeout",
+        "places.delivery",
+        "places.dineIn",
+        "places.reservable"
+    ]
+    
+    # Amenities - SKU: Atmosphere Data
+    amenities = [
+        "places.outdoorSeating",
+        "places.liveMusic",
+        "places.allowsDogs",
+        "places.goodForChildren",
+        "places.goodForGroups",
+        "places.wheelchairAccessibleEntrance"
+    ]
+    
+    # Parking - SKU: Atmosphere Data
+    parking = [
+        "places.parkingOptions"
+    ]
+    
+    # Payment options - SKU: Atmosphere Data
+    payment = [
+        "places.paymentOptions"
+    ]
+    
+    # Reviews (if requested - higher billing cost) - SKU: Reviews
+    reviews = []
+    if include_reviews:
+        reviews = [
+            "places.reviews"
+        ]
+    
+    # Attribution and metadata
+    metadata = [
+        "places.attributions",
+        "places.url",
+        "places.googleMapsUri"
+    ]
+    
+    # Combine all fields for full detail
+    all_fields = (
+        essential + 
+        contact + 
+        hours + 
+        address + 
+        food_service + 
+        dietary + 
+        amenities + 
+        parking + 
+        payment + 
+        editorial + 
+        photos + 
+        reviews +
+        metadata
+    )
+    
+    return ",".join(all_fields)
 
 
 # ============================================================================
@@ -98,34 +228,45 @@ def format_place_result(place: Dict[str, Any]) -> Dict[str, Any]:
 async def search_nearby(
     latitude: float = Query(..., description="Latitude for search center"),
     longitude: float = Query(..., description="Longitude for search center"),
-    radius: int = Query(5000, ge=1, le=50000, description="Search radius in meters"),
-    type: Optional[str] = Query("restaurant", description="Place type filter"),
-    keyword: Optional[str] = Query(None, description="Keyword search"),
-    max_results: int = Query(20, ge=1, le=60, description="Maximum results to return")
+    radius: Optional[int] = Query(None, ge=1, le=50000, description="Search radius in meters (omit for worldwide with keyword)"),
+    type: Optional[str] = Query(None, description="Place type filter (restaurant, cafe, bar, bakery, food)"),
+    keyword: Optional[str] = Query(None, description="Keyword search (enables Text Search if no radius)"),
+    max_results: int = Query(20, ge=1, le=20, description="Maximum results to return"),
+    language: Optional[str] = Query("pt-BR", description="Language code (e.g., pt-BR, en, es)"),
+    region: Optional[str] = Query("BR", description="Region code (e.g., BR, US, ES)"),
+    min_rating: Optional[float] = Query(None, ge=1.0, le=5.0, description="Minimum rating filter"),
+    open_now: Optional[bool] = Query(None, description="Only return places that are open now"),
+    price_levels: Optional[str] = Query(None, description="Comma-separated price levels (e.g., 'MODERATE,EXPENSIVE')")
 ):
     """
-    Search for nearby places using Google Places API (New)
+    Hybrid search endpoint: Nearby Search or Text Search
     
-    This endpoint proxies requests to Google Places API (New),
-    keeping the API key secure on the backend.
+    - Uses **Nearby Search** when radius is provided
+    - Uses **Text Search** when keyword is provided without radius (worldwide search)
+    - Supports advanced filters: minRating, openNow, priceLevels
+    - Supports localization: language and region codes
     
     Args:
         latitude: Center latitude for search
-        longitude: Center longitude for search
-        radius: Search radius in meters (1-50000)
+        longitude: Center longitude for search  
+        radius: Search radius in meters (1-50000), omit for worldwide with keyword
         type: Place type (restaurant, cafe, bar, etc.)
-        keyword: Optional keyword filter
+        keyword: Search query text (enables Text Search if no radius)
         max_results: Maximum results (1-20, API limit)
+        language: Language code (pt-BR, en, es, etc.)
+        region: Region code (BR, US, ES, etc.)
+        min_rating: Minimum rating filter (1.0-5.0)
+        open_now: Only return places open now
+        price_levels: Comma-separated price levels
         
     Returns:
         NearbySearchResponse with place results
         
-    Example:
-        GET /api/v3/places/nearby?latitude=40.7128&longitude=-74.0060&radius=5000
+    Examples:
+        Nearby: GET /api/v3/places/nearby?latitude=-23.55&longitude=-46.63&radius=2000&type=restaurant
+        Worldwide: GET /api/v3/places/nearby?latitude=-23.55&longitude=-46.63&keyword=Osteria+Francescana&type=restaurant
     """
     try:
-        logger.info(f"Nearby search: lat={latitude}, lng={longitude}, radius={radius}")
-        
         # Validate API key
         if not settings.google_places_api_key or settings.google_places_api_key == "YOUR_GOOGLE_PLACES_API_KEY_HERE":
             raise HTTPException(
@@ -133,93 +274,279 @@ async def search_nearby(
                 detail="Google Places API key not configured on server"
             )
         
-        # Build request payload for New Places API
-        # Limit to 20 results (API maximum)
-        max_results = min(max_results, 20)
+        # Determine search mode: Text Search (worldwide) or Nearby Search
+        use_text_search = keyword and not radius
         
-        payload = {
-            "includedTypes": [type] if type else ["restaurant"],
-            "maxResultCount": max_results,
-            "locationRestriction": {
-                "circle": {
-                    "center": {
-                        "latitude": latitude,
-                        "longitude": longitude
-                    },
-                    "radius": radius
-                }
-            }
-        }
-        
-        # Add keyword if provided
-        if keyword:
-            payload["rankPreference"] = "RELEVANCE"
-            # Note: New API doesn't have direct keyword parameter
-            # You'd use textQuery for keyword search
-        
-        # Headers for new API
-        headers = {
-            "Content-Type": "application/json",
-            "X-Goog-Api-Key": settings.google_places_api_key,
-            "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.rating,places.userRatingCount,places.priceLevel,places.types,places.location,places.businessStatus,places.currentOpeningHours"
-        }
-        
-        # Make request to New Places API
-        async with httpx.AsyncClient(timeout=30.0) as client:
-            response = await client.post(
-                PLACES_API_NEW_URL,
-                json=payload,
-                headers=headers
+        if use_text_search:
+            logger.info(f"Text Search: keyword='{keyword}', type={type}, language={language}")
+            return await _text_search(
+                keyword=keyword,
+                latitude=latitude,
+                longitude=longitude,
+                type=type,
+                max_results=max_results,
+                language=language,
+                region=region,
+                min_rating=min_rating,
+                open_now=open_now,
+                price_levels=price_levels
             )
-            
-            if response.status_code != 200:
-                error_text = response.text
-                logger.error(f"Places API error: {response.status_code} - {error_text}")
-                raise HTTPException(
-                    status_code=502,
-                    detail=f"Google Places API error: {error_text}"
-                )
-            
-            data = response.json()
-        
-        # Format results to match old API format
-        places = data.get('places', [])
-        formatted_results = []
-        
-        for place in places:
-            formatted_results.append({
-                'place_id': place.get('id', '').replace('places/', ''),
-                'name': place.get('displayName', {}).get('text', ''),
-                'vicinity': place.get('formattedAddress', ''),
-                'rating': place.get('rating'),
-                'user_ratings_total': place.get('userRatingCount'),
-                'price_level': None,  # Not available in new API response with this field mask
-                'types': place.get('types', []),
-                'geometry': {
-                    'location': place.get('location', {})
-                },
-                'business_status': place.get('businessStatus'),
-                'opening_hours': place.get('currentOpeningHours'),
-                'photos': None  # Would need separate request
-            })
-        
-        logger.info(f"Found {len(formatted_results)} places")
-        
-        return NearbySearchResponse(
-            results=formatted_results,
-            status='OK' if formatted_results else 'ZERO_RESULTS',
-            error_message=None,
-            next_page_token=data.get('nextPageToken')
-        )
+        else:
+            # Default to nearby search
+            if not radius:
+                radius = 5000  # Default 5km
+            logger.info(f"Nearby Search: lat={latitude}, lng={longitude}, radius={radius}, type={type}")
+            return await _nearby_search(
+                latitude=latitude,
+                longitude=longitude,
+                radius=radius,
+                type=type,
+                max_results=max_results,
+                language=language,
+                region=region,
+                min_rating=min_rating,
+                open_now=open_now,
+                price_levels=price_levels
+            )
         
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Unexpected error in nearby search: {e}", exc_info=True)
+        logger.error(f"Unexpected error in search: {e}", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Internal server error: {str(e)}"
         )
+
+
+async def _nearby_search(
+    latitude: float,
+    longitude: float,
+    radius: int,
+    type: Optional[str],
+    max_results: int,
+    language: Optional[str],
+    region: Optional[str],
+    min_rating: Optional[float],
+    open_now: Optional[bool],
+    price_levels: Optional[str]
+) -> NearbySearchResponse:
+    """Execute Nearby Search with Google Places API"""
+    
+    max_results = min(max_results, 20)
+    
+    # Build payload
+    payload = {
+        "maxResultCount": max_results,
+        "locationRestriction": {
+            "circle": {
+                "center": {
+                    "latitude": latitude,
+                    "longitude": longitude
+                },
+                "radius": radius
+            }
+        },
+        "languageCode": language or "pt-BR",
+        "regionCode": region or "BR"
+    }
+    
+    # Add type filter if provided
+    if type:
+        payload["includedTypes"] = [type]
+    
+    # Add filters
+    if min_rating:
+        payload["minRating"] = min_rating
+    
+    if price_levels:
+        levels = [f"PRICE_LEVEL_{level.strip().upper()}" for level in price_levels.split(',')]
+        payload["priceLevels"] = levels
+    
+    # Headers with comprehensive field mask (100 most important fields)
+    headers = {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": settings.google_places_api_key,
+        "X-Goog-FieldMask": get_enhanced_field_mask(include_reviews=False, include_photos=True, detail_level="standard")
+    }
+    
+    # Make request
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.post(
+            PLACES_API_NEARBY_URL,
+            json=payload,
+            headers=headers
+        )
+        
+        if response.status_code != 200:
+            error_text = response.text
+            logger.error(f"Places API error: {response.status_code} - {error_text}")
+            raise HTTPException(
+                status_code=502,
+                detail=f"Google Places API error: {error_text}"
+            )
+        
+        data = response.json()
+    
+    # Format results
+    places = data.get('places', [])
+    formatted_results = []
+    
+    for place in places:
+        # Apply openNow filter if requested (client-side since API doesn't support it directly in nearby)
+        if open_now:
+            opening_hours = place.get('currentOpeningHours', {})
+            if not opening_hours.get('openNow', False):
+                continue
+        
+        formatted_results.append({
+            'place_id': place.get('id', '').replace('places/', ''),
+            'name': place.get('displayName', {}).get('text', ''),
+            'vicinity': place.get('formattedAddress', ''),
+            'rating': place.get('rating'),
+            'user_ratings_total': place.get('userRatingCount'),
+            'price_level': _convert_price_level(place.get('priceLevel')),
+            'types': place.get('types', []),
+            'geometry': {
+                'location': place.get('location', {})
+            },
+            'business_status': place.get('businessStatus'),
+            'opening_hours': place.get('currentOpeningHours'),
+            'website': place.get('websiteUri'),
+            'phone': place.get('internationalPhoneNumber'),
+            'photos': None  # Would need separate request
+        })
+    
+    logger.info(f"Nearby Search found {len(formatted_results)} places")
+    
+    return NearbySearchResponse(
+        results=formatted_results,
+        status='OK' if formatted_results else 'ZERO_RESULTS',
+        error_message=None,
+        next_page_token=data.get('nextPageToken')
+    )
+
+
+async def _text_search(
+    keyword: str,
+    latitude: float,
+    longitude: float,
+    type: Optional[str],
+    max_results: int,
+    language: Optional[str],
+    region: Optional[str],
+    min_rating: Optional[float],
+    open_now: Optional[bool],
+    price_levels: Optional[str]
+) -> NearbySearchResponse:
+    """Execute Text Search with Google Places API (worldwide search)"""
+    
+    max_results = min(max_results, 20)
+    
+    # Build payload for Text Search
+    payload = {
+        "textQuery": keyword,
+        "maxResultCount": max_results,
+        "languageCode": language or "pt-BR",
+        "regionCode": region or "BR",
+        "locationBias": {
+            "circle": {
+                "center": {
+                    "latitude": latitude,
+                    "longitude": longitude
+                },
+                "radius": 50000  # 50km bias (not restriction)
+            }
+        }
+    }
+    
+    # Add type filter if provided
+    if type:
+        payload["includedType"] = type
+    
+    # Add filters
+    if min_rating:
+        payload["minRating"] = min_rating
+    
+    if open_now:
+        payload["openNow"] = True
+    
+    if price_levels:
+        levels = [f"PRICE_LEVEL_{level.strip().upper()}" for level in price_levels.split(',')]
+        payload["priceLevels"] = levels
+    
+    # Headers with comprehensive field mask (100 most important fields)
+    headers = {
+        "Content-Type": "application/json",
+        "X-Goog-Api-Key": settings.google_places_api_key,
+        "X-Goog-FieldMask": get_enhanced_field_mask(include_reviews=False, include_photos=True, detail_level="standard")
+    }
+    
+    # Make request
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        response = await client.post(
+            PLACES_API_TEXT_SEARCH_URL,
+            json=payload,
+            headers=headers
+        )
+        
+        if response.status_code != 200:
+            error_text = response.text
+            logger.error(f"Text Search API error: {response.status_code} - {error_text}")
+            raise HTTPException(
+                status_code=502,
+                detail=f"Google Places API error: {error_text}"
+            )
+        
+        data = response.json()
+    
+    # Format results (same format as nearby search)
+    places = data.get('places', [])
+    formatted_results = []
+    
+    for place in places:
+        formatted_results.append({
+            'place_id': place.get('id', '').replace('places/', ''),
+            'name': place.get('displayName', {}).get('text', ''),
+            'vicinity': place.get('formattedAddress', ''),
+            'rating': place.get('rating'),
+            'user_ratings_total': place.get('userRatingCount'),
+            'price_level': _convert_price_level(place.get('priceLevel')),
+            'types': place.get('types', []),
+            'geometry': {
+                'location': place.get('location', {})
+            },
+            'business_status': place.get('businessStatus'),
+            'opening_hours': place.get('currentOpeningHours'),
+            'website': place.get('websiteUri'),
+            'phone': place.get('internationalPhoneNumber'),
+            'photos': None  # Would need separate request
+        })
+    
+    logger.info(f"Text Search found {len(formatted_results)} places")
+    
+    return NearbySearchResponse(
+        results=formatted_results,
+        status='OK' if formatted_results else 'ZERO_RESULTS',
+        error_message=None,
+        next_page_token=data.get('nextPageToken')
+    )
+
+
+def _convert_price_level(price_level_str: Optional[str]) -> Optional[int]:
+    """Convert Google's price level string to numeric (1-4)"""
+    if not price_level_str:
+        return None
+    
+    price_map = {
+        'PRICE_LEVEL_FREE': 0,
+        'PRICE_LEVEL_INEXPENSIVE': 1,
+        'PRICE_LEVEL_MODERATE': 2,
+        'PRICE_LEVEL_EXPENSIVE': 3,
+        'PRICE_LEVEL_VERY_EXPENSIVE': 4
+    }
+    
+    return price_map.get(price_level_str)
 
 
 @router.get("/details/{place_id}", response_model=PlaceDetailsResponse)

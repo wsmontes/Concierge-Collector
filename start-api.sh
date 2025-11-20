@@ -7,8 +7,11 @@ ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 API_DIR="$ROOT_DIR/concierge-api-v3"
 PID_FILE="$API_DIR/.api.pid"
 LOG_FILE="$API_DIR/api.log"
+FRONTEND_PID_FILE="$ROOT_DIR/pids/frontend.pid"
+FRONTEND_LOG_FILE="$ROOT_DIR/logs/frontend.log"
 HOST="0.0.0.0"
 PORT="8000"
+FRONTEND_PORT="8080"
 
 # Check if API is already running
 if [ -f "$PID_FILE" ]; then
@@ -56,8 +59,45 @@ if ps -p "$API_PID" > /dev/null 2>&1; then
     echo "   Docs: http://localhost:$PORT/docs"
     echo "   Log: $LOG_FILE"
     echo ""
-    echo "To view logs: tail -f $LOG_FILE"
-    echo "To stop: ./stop-api.sh"
+    
+    # Start frontend HTTP server
+    echo "🌐 Starting frontend HTTP server..."
+    
+    # Create directories if they don't exist
+    mkdir -p "$ROOT_DIR/pids"
+    mkdir -p "$ROOT_DIR/logs"
+    
+    # Check if frontend port is already in use
+    if lsof -ti:$FRONTEND_PORT > /dev/null 2>&1; then
+        echo "⚠️  Port $FRONTEND_PORT is already in use, skipping frontend server"
+    else
+        cd "$ROOT_DIR"
+        # Start Python HTTP server in background
+        nohup python3 -m http.server $FRONTEND_PORT > "$FRONTEND_LOG_FILE" 2>&1 &
+        FRONTEND_PID=$!
+        echo $FRONTEND_PID > "$FRONTEND_PID_FILE"
+        
+        sleep 1
+        
+        if ps -p "$FRONTEND_PID" > /dev/null 2>&1; then
+            echo "✅ Frontend server started successfully!"
+            echo "   PID: $FRONTEND_PID"
+            echo "   URL: http://localhost:$FRONTEND_PORT"
+            echo ""
+            
+            # Open index.html in default browser
+            echo "🚀 Opening application in browser..."
+            open "http://localhost:$FRONTEND_PORT/index.html"
+        else
+            echo "❌ Failed to start frontend server"
+            rm -f "$FRONTEND_PID_FILE"
+        fi
+    fi
+    
+    echo ""
+    echo "To view API logs: tail -f $LOG_FILE"
+    echo "To view frontend logs: tail -f $FRONTEND_LOG_FILE"
+    echo "To stop both: ./stop-api.sh"
 else
     echo "❌ Failed to start API"
     echo "Check the log file: $LOG_FILE"

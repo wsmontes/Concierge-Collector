@@ -203,6 +203,13 @@ const AccessControl = (function() {
                 console.log(`[AccessControl] ✓ User authenticated: ${user.email}`);
                 console.log(`[AccessControl] ✓ User authorized: ${user.authorized}`);
                 console.log('[AccessControl] ========================================');
+                
+                // Initialize curator profile with Google OAuth data
+                if (typeof CuratorProfile !== 'undefined') {
+                    console.log('[AccessControl] Initializing Curator Profile...');
+                    await CuratorProfile.initialize();
+                }
+                
                 initializeApp();
             } else {
                 console.log('[AccessControl] ✗ No valid authentication');
@@ -223,9 +230,16 @@ const AccessControl = (function() {
     async function logout() {
         console.log('[AccessControl] Logout requested');
         try {
+            // Clear curator profile
+            if (typeof CuratorProfile !== 'undefined') {
+                CuratorProfile.reset();
+            }
+            
+            // Logout from AuthService
             if (typeof AuthService !== 'undefined') {
                 await AuthService.logout();
             }
+            
             console.log('[AccessControl] Reloading page...');
             location.reload();
         } catch (error) {

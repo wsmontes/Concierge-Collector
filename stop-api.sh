@@ -6,6 +6,7 @@
 ROOT_DIR="$(cd "$(dirname "$0")" && pwd)"
 API_DIR="$ROOT_DIR/concierge-api-v3"
 PID_FILE="$API_DIR/.api.pid"
+FRONTEND_PID_FILE="$ROOT_DIR/pids/frontend.pid"
 
 # Check if PID file exists
 if [ ! -f "$PID_FILE" ]; then
@@ -49,8 +50,29 @@ sleep 1
 if ! ps -p "$PID" > /dev/null 2>&1; then
     echo "✅ API stopped (forced)"
     rm "$PID_FILE"
-    exit 0
 else
     echo "❌ Failed to stop API process"
     exit 1
 fi
+
+# Stop frontend server if running
+if [ -f "$FRONTEND_PID_FILE" ]; then
+    FRONTEND_PID=$(cat "$FRONTEND_PID_FILE")
+    
+    if ps -p "$FRONTEND_PID" > /dev/null 2>&1; then
+        echo "🛑 Stopping frontend server (PID: $FRONTEND_PID)..."
+        kill "$FRONTEND_PID" 2>/dev/null
+        sleep 1
+        
+        # Force kill if still running
+        if ps -p "$FRONTEND_PID" > /dev/null 2>&1; then
+            kill -9 "$FRONTEND_PID" 2>/dev/null
+        fi
+        
+        echo "✅ Frontend server stopped"
+    fi
+    
+    rm "$FRONTEND_PID_FILE"
+fi
+
+exit 0
