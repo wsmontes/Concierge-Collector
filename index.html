@@ -111,14 +111,33 @@
 <body class="bg-white">
     <div id="app" class="container mx-auto px-4">
         <header class="mb-6 bg-white py-3">
-            <!-- Logo, Title and User Profile -->
-            <div class="flex items-center justify-between">
-                <h1 class="text-3xl font-bold text-gray-800">Collector</h1>
+            <!-- Logo, Title, Controls and User Profile - All horizontally aligned -->
+            <div class="flex items-center justify-between gap-4">
+                <!-- Left: Logo and Title -->
+                <div class="flex items-center gap-3">
+                    <img src="images/Lotier_Logo.webp" alt="Lotier Logo" class="h-12 w-auto">
+                    <h1 class="text-3xl font-bold text-gray-800">Collector</h1>
+                </div>
                 
-                <!-- User Profile Section (populated by CuratorProfile.js) -->
+                <!-- Right: Sync Button and User Profile -->
                 <div class="flex items-center gap-4">
+                    <!-- Sync Button (icon only) -->
+                    <button 
+                        id="sync-button-header" 
+                        class="p-2 rounded-lg hover:bg-gray-100 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        title="Sync data"
+                        aria-label="Sync data"
+                    >
+                        <span class="material-icons text-gray-600 hover:text-blue-600" aria-hidden="true">sync</span>
+                    </button>
+                    
+                    <!-- Sync Status (hidden on small screens) -->
+                    <div id="sync-status-header" class="text-xs text-gray-500 hidden sm:block">
+                        Last sync: Never
+                    </div>
+                    
+                    <!-- User Profile Section (populated by CuratorProfile.js) -->
                     <div id="user-profile-header"></div>
-                    <img src="images/Lotier_Logo.webp" alt="Lotier Logo" class="h-16 w-auto">
                 </div>
             </div>
         </header>

@@ -89,13 +89,13 @@ const AuthService = (function() {
     function isTokenExpired() {
         const token = getToken();
         if (!token) {
-            console.log('[AuthService] No token found');
+            console.log('[AuthService] isTokenExpired: No token found');
             return true;
         }
 
         const expiry = getTokenExpiry();
         if (!expiry) {
-            console.log('[AuthService] No expiry found');
+            console.log('[AuthService] isTokenExpired: No expiry found');
             return true;
         }
 
@@ -103,9 +103,13 @@ const AuthService = (function() {
         const isExpired = now >= expiry;
         
         if (isExpired) {
-            console.log('[AuthService] Token expired');
+            console.log('[AuthService] isTokenExpired: Token expired');
             console.log(`[AuthService]   now: ${new Date(now).toISOString()}`);
             console.log(`[AuthService]   expiry: ${new Date(expiry).toISOString()}`);
+        } else {
+            console.log('[AuthService] isTokenExpired: Token still valid');
+            const remainingMinutes = Math.round((expiry - now) / 60000);
+            console.log(`[AuthService]   Remaining time: ${remainingMinutes} minutes`);
         }
         
         return isExpired;
@@ -119,20 +123,30 @@ const AuthService = (function() {
      * @param {number} [tokenData.expires_in] Token lifetime in seconds
      */
     function storeTokens(tokenData) {
+        console.log('[AuthService] storeTokens() called with:', {
+            hasAccessToken: !!tokenData?.access_token,
+            hasRefreshToken: !!tokenData?.refresh_token,
+            expiresIn: tokenData?.expires_in
+        });
+        
         if (!tokenData || !tokenData.access_token) {
+            console.error('[AuthService] ✗ Invalid token data:', tokenData);
             throw new Error('Invalid token data: missing access_token');
         }
 
         const keys = getStorageKeys();
+        console.log('[AuthService] Using storage keys:', keys);
 
         // Store access token
         localStorage.setItem(keys.oauthToken, tokenData.access_token);
-        console.log('[AuthService] ✓ Access token stored');
+        console.log(`[AuthService] ✓ Access token stored to key: ${keys.oauthToken}`);
 
         // Store refresh token if present
         if (tokenData.refresh_token) {
             localStorage.setItem(keys.oauthRefreshToken, tokenData.refresh_token);
-            console.log('[AuthService] ✓ Refresh token stored');
+            console.log(`[AuthService] ✓ Refresh token stored to key: ${keys.oauthRefreshToken}`);
+        } else {
+            console.warn('[AuthService] ⚠️ No refresh token in tokenData');
         }
 
         // Calculate and store expiry timestamp
@@ -142,6 +156,13 @@ const AuthService = (function() {
         
         const expiryDate = new Date(expiryTimestamp).toLocaleString();
         console.log(`[AuthService] ✓ Token expires at: ${expiryDate}`);
+        
+        // Verify storage worked
+        console.log('[AuthService] Verification - localStorage now contains:', {
+            oauthToken: localStorage.getItem(keys.oauthToken) ? 'present' : 'MISSING',
+            oauthRefreshToken: localStorage.getItem(keys.oauthRefreshToken) ? 'present' : 'MISSING',
+            oauthExpiry: localStorage.getItem(keys.oauthExpiry)
+        });
     }
 
     /**
@@ -164,7 +185,7 @@ const AuthService = (function() {
     function extractTokensFromURL() {
         const urlParams = new URLSearchParams(window.location.search);
         
-        const accessToken = urlParams.get('access_token');
+        const accessToken = urlParams.get('token') || urlParams.get('access_token');
         const refreshToken = urlParams.get('refresh_token');
         const expiresIn = urlParams.get('expires_in');
         const userEmail = urlParams.get('user_email');
@@ -223,6 +244,96 @@ const AuthService = (function() {
         const newUrl = window.location.pathname;
         window.history.replaceState({}, document.title, newUrl);
         console.log('[AuthService] URL cleaned');
+    }
+
+    /**
+     * Refresh access token using refresh token
+     * @returns {Promise<boolean>} True if token refreshed successfully
+     */
+    async function refreshAccessToken() {
+        const refreshToken = getRefreshToken();
+        
+        if (!refreshToken) {
+            console.log('[AuthService] No refresh token available');
+            return false;
+        }
+
+        try {
+            console.log('[AuthService] Refreshing access token...');
+            
+            const baseUrl = AppConfig.api.backend.baseUrl;
+            const refreshUrl = `${baseUrl}/auth/refresh`;
+
+            const response = await fetch(refreshUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({ refresh_token: refreshToken })
+            });
+
+            if (!response.ok) {
+                console.error('[AuthService] Token refresh failed:', response.status);
+                return false;
+            }
+
+            const data = await response.json();
+            
+            // Store new tokens
+            storeTokens({
+                access_token: data.access_token,
+                refresh_token: data.refresh_token,
+                expires_in: data.expires_in || 3600
+            });
+            
+            console.log('[AuthService] ✓ Token refreshed successfully');
+            return true;
+
+        } catch (error) {
+            console.error('[AuthService] Token refresh error:', error);
+            return false;
+        }
+    }
+
+    /**
+     * Schedule automatic token refresh before expiration
+     */
+    function scheduleTokenRefresh() {
+        const expiry = getTokenExpiry();
+        if (!expiry) {
+            return;
+        }
+
+        const now = Date.now();
+        const expiryTime = expiry;
+        const timeUntilExpiry = expiryTime - now;
+        
+        // Refresh 5 minutes before expiration
+        const refreshTime = timeUntilExpiry - (5 * 60 * 1000);
+
+        if (refreshTime > 0) {
+            console.log(`[AuthService] Token refresh scheduled in ${Math.round(refreshTime / 60000)} minutes`);
+            
+            setTimeout(async () => {
+                console.log('[AuthService] Auto-refreshing token...');
+                const success = await refreshAccessToken();
+                
+                if (success) {
+                    // Schedule next refresh
+                    scheduleTokenRefresh();
+                } else {
+                    console.warn('[AuthService] Auto-refresh failed - user may need to re-authenticate');
+                }
+            }, refreshTime);
+        } else {
+            // Token expires soon or already expired, try to refresh immediately
+            console.log('[AuthService] Token expires soon, refreshing now...');
+            refreshAccessToken().then(success => {
+                if (success) {
+                    scheduleTokenRefresh();
+                }
+            });
+        }
     }
 
     /**
@@ -398,7 +509,33 @@ const AuthService = (function() {
             }
             
             console.log('[AuthService] ✓ Tokens found in URL, storing...');
-            storeTokens(urlTokens);
+            
+            // CRITICAL: Store tokens BEFORE anything else
+            // Live Server might reload the page, so we need to save immediately
+            try {
+                storeTokens(urlTokens);
+                console.log('[AuthService] ✓ Tokens stored successfully');
+            } catch (error) {
+                console.error('[AuthService] ✗ Failed to store tokens:', error);
+                throw error;
+            }
+            
+            // Small delay to ensure localStorage write completes
+            await new Promise(resolve => setTimeout(resolve, 100));
+            
+            // Verify tokens were saved
+            const savedToken = getToken();
+            const savedRefresh = getRefreshToken();
+            console.log('[AuthService] Verification after storage:', {
+                accessToken: savedToken ? 'present' : 'MISSING',
+                refreshToken: savedRefresh ? 'present' : 'MISSING'
+            });
+            
+            if (!savedToken) {
+                console.error('[AuthService] ✗ CRITICAL: Tokens not saved to localStorage!');
+                throw new Error('Failed to persist tokens');
+            }
+            
             cleanURL();
             sessionStorage.removeItem('oauth_callback_in_progress');
             console.log('[AuthService] ✓ OAuth callback complete');
@@ -406,11 +543,69 @@ const AuthService = (function() {
 
         // Step 2: Check for existing token in localStorage
         console.log('[AuthService] Checking localStorage...');
+        const keys = getStorageKeys();
+        console.log(`[AuthService]   Storage keys:`, keys);
+        console.log(`[AuthService]   localStorage content:`, {
+            oauthToken: localStorage.getItem(keys.oauthToken),
+            oauthRefreshToken: localStorage.getItem(keys.oauthRefreshToken),
+            oauthExpiry: localStorage.getItem(keys.oauthExpiry)
+        });
         const hasToken = getToken() !== null;
-        console.log(`[AuthService]   Has token: ${hasToken}`);
+        const hasRefreshToken = getRefreshToken() !== null;
+        console.log(`[AuthService]   Has access token: ${hasToken}`);
+        console.log(`[AuthService]   Has refresh token: ${hasRefreshToken}`);
         
         if (hasToken) {
-            console.log(`[AuthService]   Token expired: ${isTokenExpired()}`);
+            const expired = isTokenExpired();
+            console.log(`[AuthService]   Access token expired: ${expired}`);
+            
+            // If token is expired but we have refresh token, try to refresh
+            if (expired && hasRefreshToken) {
+                console.log('[AuthService] Token expired, attempting refresh...');
+                const refreshed = await refreshAccessToken();
+                
+                if (refreshed) {
+                    console.log('[AuthService] ✓ Token refreshed successfully');
+                    // Verify the new token
+                    const user = await verifyToken();
+                    if (user) {
+                        scheduleTokenRefresh();
+                        console.log('[AuthService] ========================================');
+                        console.log('[AuthService] ✓ Initialization complete (token refreshed)');
+                        console.log(`[AuthService] ✓ Logged in as: ${user.email}`);
+                        console.log('[AuthService] ========================================');
+                        _initialized = true;
+                        return _currentUser;
+                    }
+                } else {
+                    console.log('[AuthService] ✗ Token refresh failed');
+                    clearTokens();
+                    _initialized = true;
+                    return null;
+                }
+            }
+        } else if (hasRefreshToken) {
+            // No access token but have refresh token - try to get new access token
+            console.log('[AuthService] No access token, but have refresh token. Attempting refresh...');
+            const refreshed = await refreshAccessToken();
+            
+            if (refreshed) {
+                const user = await verifyToken();
+                if (user) {
+                    scheduleTokenRefresh();
+                    console.log('[AuthService] ========================================');
+                    console.log('[AuthService] ✓ Initialization complete (restored from refresh token)');
+                    console.log(`[AuthService] ✓ Logged in as: ${user.email}`);
+                    console.log('[AuthService] ========================================');
+                    _initialized = true;
+                    return _currentUser;
+                }
+            } else {
+                console.log('[AuthService] ✗ Token refresh failed');
+                clearTokens();
+                _initialized = true;
+                return null;
+            }
         }
 
         if (isAuthenticated()) {
@@ -420,14 +615,30 @@ const AuthService = (function() {
             const user = await verifyToken();
 
             if (user) {
+                // Schedule automatic token refresh
+                scheduleTokenRefresh();
+                
                 console.log('[AuthService] ========================================');
                 console.log('[AuthService] ✓ Initialization complete');
                 console.log(`[AuthService] ✓ Logged in as: ${user.email}`);
                 console.log('[AuthService] ========================================');
             } else {
-                console.log('[AuthService] ========================================');
-                console.log('[AuthService] ✗ Token verification failed');
-                console.log('[AuthService] ========================================');
+                // Try to refresh token if verification failed
+                console.log('[AuthService] Attempting token refresh after verification failure...');
+                const refreshed = await refreshAccessToken();
+                
+                if (refreshed) {
+                    // Verify new token
+                    const user = await verifyToken();
+                    if (user) {
+                        scheduleTokenRefresh();
+                        console.log('[AuthService] ✓ Token refreshed and verified');
+                    }
+                } else {
+                    console.log('[AuthService] ========================================');
+                    console.log('[AuthService] ✗ Token verification failed');
+                    console.log('[AuthService] ========================================');
+                }
             }
         } else {
             console.log('[AuthService] ========================================');

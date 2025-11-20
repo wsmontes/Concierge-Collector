@@ -309,7 +309,8 @@ function ensureBaseStructureExists() {
  * Setup manual sync button to use V3 SyncManager
  */
 function setupManualSyncButton() {
-    const syncButton = document.getElementById('sync-button');
+    // Try both button locations (header and sidebar)
+    const syncButton = document.getElementById('sync-button-header') || document.getElementById('sync-button');
     if (!syncButton) {
         console.warn('⚠️ Sync button not found');
         return;
@@ -323,7 +324,7 @@ function setupManualSyncButton() {
 
     // Add click handler using V3 SyncManager
     newButton.addEventListener('click', async () => {
-        console.log('🔄 V3: Manual sync triggered from sidebar');
+        console.log('🔄 V3: Manual sync triggered');
         
         const syncManager = window.V3SyncManager || window.syncManager;
         if (!syncManager) {
@@ -336,12 +337,20 @@ function setupManualSyncButton() {
 
         // Disable button and add syncing state
         newButton.disabled = true;
-        newButton.classList.add('syncing', 'opacity-75');
+        newButton.classList.add('syncing');
         
-        // Get button text element
-        const buttonText = newButton.querySelector('.btn-text') || newButton;
-        const originalText = buttonText.textContent;
-        buttonText.textContent = 'V3 Syncing...';
+        // Animate icon (rotate) if it's the header button
+        const icon = newButton.querySelector('.material-icons');
+        if (icon) {
+            icon.style.animation = 'spin 1s linear infinite';
+        }
+        
+        // Get button text element (for sidebar button)
+        const buttonText = newButton.querySelector('.btn-text') || newButton.childNodes[newButton.childNodes.length - 1];
+        const originalText = buttonText?.textContent;
+        if (buttonText && buttonText.textContent && !buttonText.textContent.includes('sync')) {
+            buttonText.textContent = 'Syncing...';
+        }
 
         try {
             let syncResults;
@@ -394,8 +403,18 @@ function setupManualSyncButton() {
         } finally {
             // Re-enable button and restore state
             newButton.disabled = false;
-            newButton.classList.remove('syncing', 'opacity-75');
-            buttonText.textContent = originalText;
+            newButton.classList.remove('syncing');
+            
+            // Stop icon animation
+            const icon = newButton.querySelector('.material-icons');
+            if (icon) {
+                icon.style.animation = '';
+            }
+            
+            // Restore text for sidebar button
+            if (buttonText && originalText) {
+                buttonText.textContent = originalText;
+            }
         }
     });
 
@@ -448,7 +467,10 @@ function cleanupBrowserData() {
             'filter_by_curator',
             'debug_mode',
             'concierge_access_granted',  // CRITICAL: Preserve password access
-            'auth_token'  // CRITICAL: Preserve API authentication token
+            'auth_token',  // CRITICAL: Preserve API authentication token
+            'oauth_access_token',  // CRITICAL: Preserve OAuth access token
+            'oauth_refresh_token',  // CRITICAL: Preserve OAuth refresh token
+            'oauth_token_expiry'  // CRITICAL: Preserve OAuth token expiry
         ];
         
         // Clean localStorage (preserve only essential keys)

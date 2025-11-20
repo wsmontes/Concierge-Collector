@@ -547,12 +547,19 @@ if (typeof window.UIManager === 'undefined') {
                 }
             }
             
-            // Update any sync status indicators
-            if (document.getElementById('sync-status')) {
+            // Update any sync status indicators (both header and sidebar)
+            const syncStatusElements = [
+                document.getElementById('sync-status-header'),
+                document.getElementById('sync-status')
+            ].filter(Boolean);
+            
+            if (syncStatusElements.length > 0) {
                 const lastSyncTime = await dataStorage.getLastSyncTime();
                 if (lastSyncTime) {
                     const formattedTime = new Date(lastSyncTime).toLocaleString();
-                    document.getElementById('sync-status').textContent = `Last sync: ${formattedTime}`;
+                    syncStatusElements.forEach(el => {
+                        el.textContent = `Last sync: ${formattedTime}`;
+                    });
                 }
             }
             

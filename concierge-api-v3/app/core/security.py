@@ -23,6 +23,7 @@ bearer_scheme = HTTPBearer(auto_error=False)
 # JWT Configuration
 ALGORITHM = "HS256"
 ACCESS_TOKEN_EXPIRE_MINUTES = 60  # 1 hour
+REFRESH_TOKEN_EXPIRE_DAYS = 30  # 30 days
 
 
 def get_api_secret_key() -> str:
@@ -163,6 +164,86 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     encoded_jwt = jwt.encode(to_encode, secret_key, algorithm=ALGORITHM)
     
     return encoded_jwt
+
+
+def create_refresh_token(data: dict) -> str:
+    """
+    Create JWT refresh token for persistent authentication
+    
+    Args:
+        data: Payload data to encode (should include 'sub' for user email)
+        
+    Returns:
+        str: Encoded JWT refresh token
+    """
+    to_encode = data.copy()
+    expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    to_encode.update({
+        "exp": expire,
+        "iat": datetime.utcnow(),
+        "type": "refresh"  # Distinguish from access tokens
+    })
+    
+    # Use API secret key as JWT secret
+    secret_key = get_api_secret_key()
+    encoded_jwt = jwt.encode(to_encode, secret_key, algorithm=ALGORITHM)
+    
+    return encoded_jwt
+
+
+async def verify_refresh_token(token: str) -> dict:
+    """
+    Verify JWT refresh token
+    
+    Args:
+        token: JWT refresh token
+        
+    Returns:
+        dict: Decoded token payload
+        
+    Raises:
+        HTTPException: 401 if token is invalid or expired
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    try:
+        secret_key = get_api_secret_key()
+        payload = jwt.decode(token, secret_key, algorithms=[ALGORITHM])
+        
+        # Verify it's a refresh token
+        if payload.get("type") != "refresh":
+            logger.warning("[Refresh Token] Not a refresh token")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token type",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        # Check expiration
+        exp = payload.get("exp")
+        if exp:
+            exp_time = datetime.utcfromtimestamp(exp)
+            now = datetime.utcnow()
+            
+            if now > exp_time:
+                logger.warning("[Refresh Token] Token expired")
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Refresh token expired",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+        
+        logger.info("[Refresh Token] ✓ Valid")
+        return payload
+        
+    except JWTError as e:
+        logger.error(f"[Refresh Token] JWT Error: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid refresh token: {str(e)}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
 
 
 async def verify_access_token(

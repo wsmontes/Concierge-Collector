@@ -22,7 +22,7 @@ from app.core.config import settings
 from app.core.database import get_database
 from app.core.security import create_access_token, verify_access_token
 from app.models.user import (
-    User, UserInDB, OAuthTokens, UserAuthResponse
+    User, UserInDB, OAuthTokens, UserAuthResponse, TokenRefreshRequest
 )
 
 # Setup logging
@@ -123,18 +123,24 @@ async def get_user_by_email(db: AsyncIOMotorDatabase, email: str) -> Optional[Us
 
 async def create_or_update_user(db: AsyncIOMotorDatabase, user_data: dict) -> UserInDB:
     """
-    Create new user or update existing user's last login
+    Create new user or update existing user's last login and refresh token
     New users are created as unauthorized by default
     """
     existing_user = await get_user_by_google_id(db, user_data["google_id"])
     
     if existing_user:
-        # Update last login
+        # Update last login and refresh token if provided
+        update_data = {"last_login": datetime.utcnow()}
+        if user_data.get("refresh_token"):
+            update_data["refresh_token"] = user_data["refresh_token"]
+        
         await db.users.update_one(
             {"google_id": user_data["google_id"]},
-            {"$set": {"last_login": datetime.utcnow()}}
+            {"$set": update_data}
         )
         existing_user.last_login = datetime.utcnow()
+        if user_data.get("refresh_token"):
+            existing_user.refresh_token = user_data["refresh_token"]
         logger.info(f"[OAuth] Updated existing user: {existing_user.email}")
         return existing_user
     else:
@@ -146,7 +152,8 @@ async def create_or_update_user(db: AsyncIOMotorDatabase, user_data: dict) -> Us
             picture=user_data.get("picture"),
             authorized=False,  # Admin must authorize
             created_at=datetime.utcnow(),
-            last_login=datetime.utcnow()
+            last_login=datetime.utcnow(),
+            refresh_token=user_data.get("refresh_token")
         )
         result = await db.users.insert_one(new_user.dict())
         user_dict = new_user.dict()
@@ -198,11 +205,11 @@ async def google_oauth_init():
         f"&redirect_uri={settings.google_oauth_redirect_uri}"
         "&response_type=code"
         "&scope=openid email profile"
+        "&access_type=offline"  # Request refresh token
+        "&prompt=consent"  # Force consent screen to get refresh token
         f"&state={state}"
         f"&code_challenge={code_challenge}"
         "&code_challenge_method=S256"
-        "&access_type=offline"
-        "&prompt=consent"
     )
     
     return RedirectResponse(url=google_oauth_url)
@@ -317,6 +324,11 @@ async def google_oauth_callback(
             user_info = userinfo_response.json()
             logger.info(f"[OAuth] ✓ User info retrieved: {user_info.get('email')}")
             
+            # Store Google refresh token if available
+            google_refresh_token = token_data.get('refresh_token')
+            if google_refresh_token:
+                logger.info("[OAuth] ✓ Refresh token received from Google")
+            
     except httpx.RequestError as e:
         logger.error(f"[OAuth] HTTP request failed: {str(e)}")
         raise HTTPException(
@@ -324,12 +336,13 @@ async def google_oauth_callback(
             detail=f"Failed to communicate with Google: {str(e)}"
         )
     
-    # Create or update user in database
+    # Create or update user in database (include refresh token)
     user = await create_or_update_user(db, {
         "email": user_info["email"],
         "google_id": user_info["id"],
         "name": user_info["name"],
-        "picture": user_info.get("picture")
+        "picture": user_info.get("picture"),
+        "refresh_token": google_refresh_token
     })
     
     logger.info(f"[OAuth] User: {user.email}")
@@ -362,21 +375,25 @@ async def google_oauth_callback(
         logger.info(f"[OAuth] Redirecting unauthorized user to: {redirect_url}")
         return RedirectResponse(url=redirect_url)
     
-    # User is authorized - create JWT token for app session
-    logger.info(f"[OAuth] Creating JWT token...")
+    # User is authorized - create JWT tokens for app session
+    logger.info(f"[OAuth] Creating JWT tokens...")
     access_token = create_access_token(
         data={"sub": user.email, "google_id": user.google_id},
         expires_delta=timedelta(minutes=settings.access_token_expire_minutes)
     )
     
-    logger.info(f"[OAuth] ✓ JWT token created")
+    # Create refresh token for persistent login
+    from app.core.security import create_refresh_token
+    refresh_token = create_refresh_token(data={"sub": user.email})
+    
+    logger.info(f"[OAuth] ✓ JWT tokens created")
     
     # Redirect to frontend with tokens in URL
     # Using query params because frontend is on different port
     redirect_url = (
         f"{settings.frontend_url}/"
-        f"?access_token={access_token}"
-        f"&refresh_token={token_data.get('refresh_token', '')}"
+        f"?token={access_token}"
+        f"&refresh_token={refresh_token}"
         f"&expires_in={settings.access_token_expire_minutes * 60}"
         f"&user_email={user.email}"
         f"&user_name={user.name}"
@@ -429,6 +446,65 @@ async def verify_token(
         authorized=user.authorized
     )
 
+
+@router.post("/refresh")
+async def refresh_access_token(
+    request: TokenRefreshRequest,
+    db: AsyncIOMotorDatabase = Depends(get_database)
+):
+    """
+    Refresh access token using a valid refresh token
+    
+    Request body:
+        refresh_token: JWT refresh token
+    
+    Returns:
+        New access token and refresh token
+    """
+    from app.core.security import verify_refresh_token, create_access_token, create_refresh_token
+    
+    # Verify refresh token
+    token_data = await verify_refresh_token(request.refresh_token)
+    
+    email = token_data.get("sub")
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid refresh token: missing subject"
+        )
+    
+    # Get user from database
+    user = await get_user_by_email(db, email)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    if not user.authorized:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User not authorized"
+        )
+    
+    # Create new tokens
+    new_access_token = create_access_token(data={"sub": user.email})
+    new_refresh_token = create_refresh_token(data={"sub": user.email})
+    
+    logger.info(f"[OAuth] Token refreshed for user: {user.email}")
+    
+    return {
+        "access_token": new_access_token,
+        "refresh_token": new_refresh_token,
+        "expires_in": settings.access_token_expire_minutes * 60,  # Return expiry time in seconds
+        "token_type": "bearer",
+        "user": UserAuthResponse(
+            email=user.email,
+            name=user.name,
+            picture=user.picture,
+            authorized=user.authorized
+        )
+    }
 
 @router.post("/logout")
 async def logout(token_data: dict = Depends(verify_access_token)):

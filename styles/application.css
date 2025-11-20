@@ -380,6 +380,32 @@ body:has(.toolbar-fixed-bottom:not(.hidden)) #app {
 }
 
 /* ===================================================================
+   HEADER SYNC BUTTON
+   =================================================================== */
+
+#sync-button-header {
+    position: relative;
+    transition: all var(--transition-fast);
+}
+
+#sync-button-header:hover .material-icons {
+    color: var(--color-primary-600);
+    transform: scale(1.1);
+}
+
+#sync-button-header:active .material-icons {
+    transform: scale(0.95);
+}
+
+#sync-button-header.syncing {
+    pointer-events: none;
+}
+
+#sync-button-header.syncing .material-icons {
+    color: var(--color-primary-500);
+}
+
+/* ===================================================================
    PRINT STYLES
    =================================================================== */
 

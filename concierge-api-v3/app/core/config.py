@@ -45,6 +45,7 @@ class Settings(BaseSettings):
     
     # JWT Token Settings
     access_token_expire_minutes: int = 60  # 1 hour
+    refresh_token_expire_days: int = 30  # 30 days for refresh token
     
     @property
     def cors_origins_list(self) -> List[str]:

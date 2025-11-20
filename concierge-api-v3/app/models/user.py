@@ -16,6 +16,7 @@ class User(BaseModel):
     authorized: bool = Field(False, description="Whether user is authorized to use the application")
     created_at: datetime = Field(default_factory=datetime.utcnow, description="Account creation timestamp")
     last_login: Optional[datetime] = Field(None, description="Last login timestamp")
+    refresh_token: Optional[str] = Field(None, description="Encrypted Google refresh token for persistent login")
     
     class Config:
         json_schema_extra = {
