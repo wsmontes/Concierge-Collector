@@ -7,7 +7,7 @@ Implements secure OAuth flow following best practices:
 - User authorization via MongoDB
 """
 
-from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi import APIRouter, HTTPException, Depends, status, Request
 from fastapi.responses import RedirectResponse, HTMLResponse
 from motor.motor_asyncio import AsyncIOMotorDatabase
 from datetime import datetime, timedelta
@@ -163,14 +163,22 @@ async def create_or_update_user(db: AsyncIOMotorDatabase, user_data: dict) -> Us
 
 
 @router.get("/google")
-async def google_oauth_init():
+async def google_oauth_init(
+    callback_url: Optional[str] = None,
+    request: Request = None
+):
     """
     Initiate Google OAuth 2.0 flow with PKCE
     
     Flow:
-    1. Generate PKCE code_verifier and code_challenge
-    2. Generate state for CSRF protection
-    3. Redirect to Google OAuth consent screen
+    1. Determine frontend URL (from parameter, referer, or default)
+    2. Generate PKCE code_verifier and code_challenge
+    3. Generate state for CSRF protection (includes frontend URL)
+    4. Redirect to Google OAuth consent screen
+    
+    Args:
+        callback_url: Optional frontend URL to redirect after OAuth
+        request: FastAPI request object to extract referer
     
     Returns:
         RedirectResponse: Redirect to Google OAuth URL
@@ -188,14 +196,30 @@ async def google_oauth_init():
             detail="OAuth not configured. Missing GOOGLE_OAUTH_REDIRECT_URI"
         )
     
+    # Determine frontend URL for final redirect
+    frontend_redirect_url = callback_url
+    if not frontend_redirect_url and request:
+        # Try to extract from referer header
+        referer = request.headers.get('referer', '')
+        if 'github.io' in referer:
+            frontend_redirect_url = settings.frontend_url_production
+        elif 'localhost' in referer or '127.0.0.1' in referer:
+            frontend_redirect_url = settings.frontend_url
+    
+    # Default to configured frontend_url
+    if not frontend_redirect_url:
+        frontend_redirect_url = settings.frontend_url
+    
     # Generate PKCE pair
     code_verifier, code_challenge = generate_pkce_pair()
     
-    # Generate state and store code_verifier
-    state = generate_state(code_verifier)
+    # Generate state and store code_verifier + frontend URL
+    state_data = f"{code_verifier}|{frontend_redirect_url}"
+    state = generate_state(state_data)
     
     logger.info(f"[OAuth] Initiating flow")
     logger.info(f"[OAuth] redirect_uri: {settings.google_oauth_redirect_uri}")
+    logger.info(f"[OAuth] frontend_redirect_url: {frontend_redirect_url}")
     logger.info(f"[OAuth] PKCE challenge generated")
     
     # Build Google OAuth URL
@@ -265,14 +289,21 @@ async def google_oauth_callback(
             detail="Missing code or state parameter"
         )
     
-    # Verify state and get code_verifier (CSRF protection)
-    code_verifier = verify_state(state)
-    if not code_verifier:
+    # Verify state and get code_verifier + frontend URL (CSRF protection)
+    state_data = verify_state(state)
+    if not state_data:
         logger.error("[OAuth] Invalid or expired state parameter")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Invalid or expired state parameter (CSRF check failed)"
         )
+    
+    # Extract code_verifier and frontend_redirect_url from state
+    parts = state_data.split('|', 1)
+    code_verifier = parts[0]
+    frontend_redirect_url = parts[1] if len(parts) > 1 else settings.frontend_url
+    
+    logger.info(f"[OAuth] Frontend redirect URL from state: {frontend_redirect_url}")
     
     # Exchange authorization code for tokens
     try:
@@ -371,7 +402,7 @@ async def google_oauth_callback(
     if not user.authorized:
         logger.warning(f"[OAuth] User {user.email} is NOT authorized")
         # Redirect to frontend with error parameter
-        redirect_url = f"{settings.frontend_url}/?auth_error=not_authorized&user_email={user.email}"
+        redirect_url = f"{frontend_redirect_url}/?auth_error=not_authorized&user_email={user.email}"
         logger.info(f"[OAuth] Redirecting unauthorized user to: {redirect_url}")
         return RedirectResponse(url=redirect_url)
     
@@ -389,9 +420,9 @@ async def google_oauth_callback(
     logger.info(f"[OAuth] ✓ JWT tokens created")
     
     # Redirect to frontend with tokens in URL
-    # Using query params because frontend is on different port
+    # Using query params because frontend may be on different port/domain
     redirect_url = (
-        f"{settings.frontend_url}/"
+        f"{frontend_redirect_url}/"
         f"?token={access_token}"
         f"&refresh_token={refresh_token}"
         f"&expires_in={settings.access_token_expire_minutes * 60}"
@@ -399,7 +430,7 @@ async def google_oauth_callback(
         f"&user_name={user.name}"
     )
     
-    logger.info(f"[OAuth] ✓ Redirecting to frontend: {settings.frontend_url}")
+    logger.info(f"[OAuth] ✓ Redirecting to frontend: {frontend_redirect_url}")
     
     return RedirectResponse(url=redirect_url)
 

@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     api_v3_reload: bool = True
     
     # CORS - parse JSON string from env
-    cors_origins: str = '["http://localhost:3000","http://localhost:5500","http://127.0.0.1:5500","http://127.0.0.1:5501"]'
+    cors_origins: str = '["http://localhost:3000","http://localhost:5500","http://127.0.0.1:5500","http://127.0.0.1:5501","http://localhost:8080","https://wsmontes.github.io"]'
     
     # Environment
     environment: str = "development"
@@ -40,8 +40,9 @@ class Settings(BaseSettings):
     google_oauth_client_secret: str = ""
     google_oauth_redirect_uri: str = "http://localhost:8000/api/v3/auth/callback"
     
-    # Frontend
+    # Frontend URLs (localhost and production)
     frontend_url: str = "http://127.0.0.1:5500"
+    frontend_url_production: str = "https://wsmontes.github.io/Concierge-Collector"
     
     # JWT Token Settings
     access_token_expire_minutes: int = 60  # 1 hour

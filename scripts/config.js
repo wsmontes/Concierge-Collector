@@ -2,24 +2,55 @@
  * File: config.js
  * Purpose: Centralized configuration for all API endpoints, timeouts, and application settings
  * Dependencies: None (must be loaded first)
- * Last Updated: November 18, 2025
+ * Last Updated: November 19, 2025
  * 
  * This is the ONLY file that should contain API URLs, timeouts, and configuration constants.
  * All other files must import from this configuration.
+ * 
+ * Supports both localhost and GitHub Pages deployment with automatic detection.
  */
 
+// Detect environment
+const isGitHubPages = window.location.hostname.includes('github.io');
+const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+
+// Determine API base URL based on environment
+const getApiBaseUrl = () => {
+    if (isGitHubPages) {
+        // GitHub Pages - use production API
+        return 'https://your-production-api.com/api/v3';  // TODO: Replace with your production API URL
+    } else if (isLocalhost) {
+        // Local development
+        return 'http://localhost:8000/api/v3';
+    } else {
+        // Default to localhost
+        return 'http://localhost:8000/api/v3';
+    }
+};
+
 const AppConfig = {
+    /**
+     * Environment Detection
+     */
+    environment: {
+        isProduction: isGitHubPages,
+        isDev: isLocalhost,
+        hostname: window.location.hostname,
+        protocol: window.location.protocol
+    },
+
     /**
      * API Configuration
      */
     api: {
         /**
-         * V3 API Backend - CURRENT (LOCAL)
+         * V3 API Backend - CURRENT
          * FastAPI + MongoDB async backend
-         * Features: X-API-Key auth, optimistic locking via version field, pagination
+         * Features: OAuth authentication, optimistic locking via version field, pagination
+         * Automatically switches between localhost and production based on hostname
          */
         backend: {
-            baseUrl: 'http://localhost:8000/api/v3',  // V3 API with prefix
+            baseUrl: getApiBaseUrl(),  // Dynamically determined
             timeout: 30000,        // 30 seconds
             retryAttempts: 3,      // Number of retry attempts
             retryDelay: 1000,      // Delay between retries (ms)
@@ -374,6 +405,11 @@ const AppConfig = {
      */
     needsV2Migration() {
         const migrationStatus = localStorage.getItem(this.storage.keys.v2MigrationStatus);
+
+// Log configuration on load
+console.log('✅ AppConfig loaded successfully');
+console.log('Environment:', AppConfig.environment);
+console.log('API Version:', AppConfig.getApiVersion());
         return !migrationStatus || migrationStatus !== 'completed';
     },
 

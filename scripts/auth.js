@@ -344,8 +344,15 @@ const AuthService = (function() {
             console.log('[AuthService] Initiating Google OAuth login...');
 
             const baseUrl = AppConfig.api.backend.baseUrl;
-            const authUrl = `${baseUrl}${ENDPOINTS.login}`;
+            
+            // Get current frontend URL for callback
+            const currentUrl = `${window.location.protocol}//${window.location.host}${window.location.pathname}`;
+            const frontendUrl = currentUrl.replace(/\/$/, ''); // Remove trailing slash
+            
+            // Pass frontend URL to backend for dynamic redirect
+            const authUrl = `${baseUrl}${ENDPOINTS.login}?callback_url=${encodeURIComponent(frontendUrl)}`;
 
+            console.log(`[AuthService] Frontend URL: ${frontendUrl}`);
             console.log(`[AuthService] Redirecting to: ${authUrl}`);
             
             // Mark OAuth as starting to prevent Live Server interference
