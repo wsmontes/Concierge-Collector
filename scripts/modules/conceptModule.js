@@ -363,11 +363,11 @@ class ConceptModule {
                 
                 // Save to IndexedDB
                 await window.dataStore.db.entities.put(entity);
-                restaurantId = entity.id;
+                restaurantId = entity.entity_id;  // V3 uses entity_id (UUID), not .id
                 
                 // Queue for sync
                 if (window.dataStore) {
-                    await window.dataStore.addToSyncQueue('entity', 'update', entity.id, entity.entity_id, entity);
+                    await window.dataStore.addToSyncQueue('entity', 'update', entity.entity_id, entity.entity_id, entity);
                     syncStatus = 'pending';
                 }
             } else {

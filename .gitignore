@@ -134,6 +134,10 @@ build/
 .next/
 .nuxt/
 
+# Test coverage
+coverage/
+.vitest/
+
 ############################
 # LOGS
 ############################

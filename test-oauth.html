@@ -1,0 +1,196 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>OAuth Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 5px;
+        }
+        .success { background-color: #d4edda; color: #155724; }
+        .error { background-color: #f8d7da; color: #721c24; }
+        .info { background-color: #d1ecf1; color: #0c5460; }
+        button {
+            padding: 10px 20px;
+            margin: 5px;
+            cursor: pointer;
+        }
+        pre {
+            background: #f5f5f5;
+            padding: 10px;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+    </style>
+</head>
+<body>
+    <h1>🔐 OAuth Testing Dashboard</h1>
+    
+    <div id="status"></div>
+    
+    <h2>1. Backend Status</h2>
+    <button onclick="checkBackend()">Check Backend</button>
+    <pre id="backend-status">Click button to check...</pre>
+    
+    <h2>2. OAuth Endpoints</h2>
+    <button onclick="testOAuthInit()">Test /auth/google</button>
+    <pre id="oauth-init">Click button to test...</pre>
+    
+    <h2>3. User Authentication</h2>
+    <button onclick="window.location.href='http://localhost:8000/api/v3/auth/google'">
+        Sign in with Google
+    </button>
+    <pre id="auth-status">Not authenticated</pre>
+    
+    <h2>4. Token Info</h2>
+    <button onclick="checkToken()">Check Token</button>
+    <button onclick="clearToken()">Clear Token</button>
+    <pre id="token-info">No token stored</pre>
+    
+    <h2>5. API Test with Token</h2>
+    <button onclick="testProtectedEndpoint()">Test Protected Endpoint</button>
+    <pre id="api-test">Click button to test...</pre>
+
+    <script>
+        // Check if we're returning from OAuth callback
+        const urlParams = new URLSearchParams(window.location.search);
+        const code = urlParams.get('code');
+        const state = urlParams.get('state');
+        
+        if (code && state) {
+            document.getElementById('status').innerHTML = 
+                '<div class="info">OAuth callback received! Code: ' + code.substring(0, 20) + '...</div>';
+        }
+        
+        async function checkBackend() {
+            try {
+                const response = await fetch('http://localhost:8000/api/v3/info');
+                const data = await response.json();
+                document.getElementById('backend-status').textContent = 
+                    JSON.stringify(data, null, 2);
+                document.getElementById('status').innerHTML = 
+                    '<div class="success">✅ Backend is running!</div>';
+            } catch (error) {
+                document.getElementById('backend-status').textContent = 
+                    'Error: ' + error.message;
+                document.getElementById('status').innerHTML = 
+                    '<div class="error">❌ Backend error: ' + error.message + '</div>';
+            }
+        }
+        
+        async function testOAuthInit() {
+            try {
+                const response = await fetch('http://localhost:8000/api/v3/auth/google', {
+                    redirect: 'manual'
+                });
+                document.getElementById('oauth-init').textContent = 
+                    'Status: ' + response.status + '\n' +
+                    'Type: ' + response.type + '\n' +
+                    'Headers: ' + JSON.stringify([...response.headers], null, 2);
+                    
+                if (response.status === 0 || response.type === 'opaqueredirect') {
+                    document.getElementById('status').innerHTML = 
+                        '<div class="success">✅ OAuth endpoint is working (redirect detected)</div>';
+                } else {
+                    document.getElementById('status').innerHTML = 
+                        '<div class="info">OAuth endpoint responded with status: ' + response.status + '</div>';
+                }
+            } catch (error) {
+                document.getElementById('oauth-init').textContent = 
+                    'Error: ' + error.message;
+                document.getElementById('status').innerHTML = 
+                    '<div class="error">❌ OAuth error: ' + error.message + '</div>';
+            }
+        }
+        
+        function checkToken() {
+            const token = localStorage.getItem('oauth_access_token');
+            const expiry = localStorage.getItem('oauth_token_expiry');
+            const refreshToken = localStorage.getItem('oauth_refresh_token');
+            
+            if (token) {
+                const expiryDate = expiry ? new Date(parseInt(expiry)) : null;
+                const isExpired = expiryDate && expiryDate < new Date();
+                
+                document.getElementById('token-info').textContent = 
+                    'Access Token: ' + token.substring(0, 50) + '...\n' +
+                    'Expires: ' + (expiryDate ? expiryDate.toLocaleString() : 'Unknown') + '\n' +
+                    'Status: ' + (isExpired ? 'EXPIRED' : 'VALID') + '\n' +
+                    'Refresh Token: ' + (refreshToken ? refreshToken.substring(0, 30) + '...' : 'None');
+                    
+                document.getElementById('auth-status').textContent = 
+                    isExpired ? 'Authenticated (token expired)' : 'Authenticated';
+                    
+                document.getElementById('status').innerHTML = 
+                    '<div class="' + (isExpired ? 'error' : 'success') + '">' +
+                    (isExpired ? '⚠️ Token expired' : '✅ Token valid') +
+                    '</div>';
+            } else {
+                document.getElementById('token-info').textContent = 'No token stored';
+                document.getElementById('auth-status').textContent = 'Not authenticated';
+                document.getElementById('status').innerHTML = 
+                    '<div class="info">ℹ️ No token found</div>';
+            }
+        }
+        
+        function clearToken() {
+            localStorage.removeItem('oauth_access_token');
+            localStorage.removeItem('oauth_refresh_token');
+            localStorage.removeItem('oauth_token_expiry');
+            document.getElementById('token-info').textContent = 'Token cleared';
+            document.getElementById('auth-status').textContent = 'Not authenticated';
+            document.getElementById('status').innerHTML = 
+                '<div class="info">ℹ️ Token cleared</div>';
+        }
+        
+        async function testProtectedEndpoint() {
+            const token = localStorage.getItem('oauth_access_token');
+            
+            if (!token) {
+                document.getElementById('api-test').textContent = 
+                    'Error: No token available. Please sign in first.';
+                return;
+            }
+            
+            try {
+                const response = await fetch('http://localhost:8000/api/v3/auth/verify', {
+                    headers: {
+                        'Authorization': 'Bearer ' + token
+                    }
+                });
+                
+                const data = await response.json();
+                document.getElementById('api-test').textContent = 
+                    'Status: ' + response.status + '\n' +
+                    JSON.stringify(data, null, 2);
+                    
+                if (response.ok) {
+                    document.getElementById('status').innerHTML = 
+                        '<div class="success">✅ API call successful! User: ' + data.email + '</div>';
+                } else {
+                    document.getElementById('status').innerHTML = 
+                        '<div class="error">❌ API call failed: ' + data.detail + '</div>';
+                }
+            } catch (error) {
+                document.getElementById('api-test').textContent = 
+                    'Error: ' + error.message;
+                document.getElementById('status').innerHTML = 
+                    '<div class="error">❌ API error: ' + error.message + '</div>';
+            }
+        }
+        
+        // Auto-check on load
+        checkBackend();
+        checkToken();
+    </script>
+</body>
+</html>

@@ -1,19 +1,28 @@
 """
 Security module for API authentication
-Implements API Key authentication via X-API-Key header
+Implements both API Key and JWT OAuth authentication
 """
 
 import os
 import secrets
 from typing import Optional
-from fastapi import Security, HTTPException, status
-from fastapi.security import APIKeyHeader
+from datetime import datetime, timedelta
+from fastapi import Security, HTTPException, status, Depends
+from fastapi.security import APIKeyHeader, HTTPBearer, HTTPAuthorizationCredentials
+from jose import JWTError, jwt
 
 from app.core.config import settings
 
 
 # API Key header configuration
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+# Bearer token configuration
+bearer_scheme = HTTPBearer(auto_error=False)
+
+# JWT Configuration
+ALGORITHM = "HS256"
+ACCESS_TOKEN_EXPIRE_MINUTES = 60  # 1 hour
 
 
 def get_api_secret_key() -> str:
@@ -123,6 +132,89 @@ def generate_api_key() -> str:
         str: URL-safe base64-encoded random key (256 bits)
     """
     return secrets.token_urlsafe(32)
+
+
+# ============================================================================
+# JWT OAuth Token Functions
+# ============================================================================
+
+def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
+    """
+    Create JWT access token for OAuth authentication
+    
+    Args:
+        data: Payload data to encode (should include 'sub' for user email)
+        expires_delta: Optional custom expiration time
+        
+    Returns:
+        str: Encoded JWT token
+    """
+    to_encode = data.copy()
+    
+    if expires_delta:
+        expire = datetime.utcnow() + expires_delta
+    else:
+        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+    
+    to_encode.update({"exp": expire, "iat": datetime.utcnow()})
+    
+    # Use API secret key as JWT secret
+    secret_key = get_api_secret_key()
+    encoded_jwt = jwt.encode(to_encode, secret_key, algorithm=ALGORITHM)
+    
+    return encoded_jwt
+
+
+async def verify_access_token(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme)
+) -> dict:
+    """
+    Verify JWT access token from Authorization: Bearer header
+    
+    Args:
+        credentials: Bearer token credentials from header
+        
+    Returns:
+        dict: Decoded token payload
+        
+    Raises:
+        HTTPException: 401 if token is missing or invalid
+    """
+    if not credentials:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing authorization token",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    token = credentials.credentials
+    
+    try:
+        secret_key = get_api_secret_key()
+        payload = jwt.decode(token, secret_key, algorithms=[ALGORITHM])
+        
+        # Check expiration
+        exp = payload.get("exp")
+        if exp and datetime.utcnow() > datetime.fromtimestamp(exp):
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token expired",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+        
+        return payload
+        
+    except JWTError as e:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Invalid token: {str(e)}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except RuntimeError as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=str(e)
+        )
 
 
 # Export main dependencies

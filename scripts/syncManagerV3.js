@@ -198,6 +198,13 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
     }
 
     /**
+     * Alias for fullSync() - used by main.js initialization
+     */
+    async syncAll() {
+        return await this.fullSync();
+    }
+
+    /**
      * Quick sync (push pending items only)
      */
     async quickSync() {

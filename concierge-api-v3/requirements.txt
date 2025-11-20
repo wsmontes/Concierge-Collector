@@ -1,5 +1,5 @@
 # Concierge API V3 - FastAPI + MongoDB
-# Professional-grade async REST API
+# Professional-grade async REST API with OAuth authentication
 
 # Web Framework
 fastapi==0.109.0
@@ -15,6 +15,10 @@ pydantic==2.5.3
 pydantic-settings==2.1.0
 email-validator==2.1.0
 
+# Authentication & Security
+python-jose[cryptography]==3.3.0
+passlib[bcrypt]==1.7.4
+
 # Environment
 python-dotenv==1.0.0
 
@@ -24,7 +28,9 @@ openai==1.35.0
 # Google Places
 googlemaps==4.10.0
 
+# HTTP Client (for OAuth)
+httpx==0.25.2
+
 # Testing
 pytest==7.4.3
 pytest-asyncio==0.21.1
-httpx==0.25.2

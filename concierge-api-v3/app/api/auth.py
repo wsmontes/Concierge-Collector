@@ -1,0 +1,421 @@
+"""
+Authentication Router - Google OAuth 2.0 with PKCE
+Implements secure OAuth flow following best practices:
+- Authorization Code Flow with PKCE
+- State parameter for CSRF protection
+- JWT tokens for session management
+- User authorization via MongoDB
+"""
+
+from fastapi import APIRouter, HTTPException, Depends, status
+from fastapi.responses import RedirectResponse, HTMLResponse
+from motor.motor_asyncio import AsyncIOMotorDatabase
+from datetime import datetime, timedelta
+import httpx
+import secrets
+import hashlib
+import base64
+from typing import Optional
+import logging
+
+from app.core.config import settings
+from app.core.database import get_database
+from app.core.security import create_access_token, verify_access_token
+from app.models.user import (
+    User, UserInDB, OAuthTokens, UserAuthResponse
+)
+
+# Setup logging
+logger = logging.getLogger(__name__)
+
+router = APIRouter(prefix="/auth", tags=["authentication"])
+
+# OAuth state storage (in production, use Redis)
+# Structure: {state: {"created": datetime, "code_verifier": str}}
+_oauth_states = {}
+
+
+def generate_pkce_pair() -> tuple[str, str]:
+    """
+    Generate PKCE code_verifier and code_challenge
+    
+    Returns:
+        tuple: (code_verifier, code_challenge)
+    """
+    # Generate random code_verifier (43-128 characters)
+    code_verifier = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode('utf-8').rstrip('=')
+    
+    # Create code_challenge (SHA256 hash of verifier)
+    challenge_bytes = hashlib.sha256(code_verifier.encode('utf-8')).digest()
+    code_challenge = base64.urlsafe_b64encode(challenge_bytes).decode('utf-8').rstrip('=')
+    
+    return code_verifier, code_challenge
+
+
+def generate_state(code_verifier: str) -> str:
+    """
+    Generate CSRF protection state parameter and store with code_verifier
+    
+    Args:
+        code_verifier: PKCE code verifier to store with state
+        
+    Returns:
+        str: Random state token
+    """
+    state = secrets.token_urlsafe(32)
+    _oauth_states[state] = {
+        "created": datetime.utcnow(),
+        "code_verifier": code_verifier
+    }
+    logger.info(f"[OAuth] Generated state: {state[:10]}...")
+    return state
+
+
+def verify_state(state: str) -> Optional[str]:
+    """
+    Verify CSRF state parameter and return code_verifier
+    
+    Args:
+        state: State parameter from callback
+        
+    Returns:
+        str: code_verifier if valid, None if invalid/expired
+    """
+    if state not in _oauth_states:
+        logger.warning(f"[OAuth] State not found: {state[:10]}...")
+        return None
+    
+    state_data = _oauth_states[state]
+    created = state_data["created"]
+    age = (datetime.utcnow() - created).total_seconds()
+    
+    # State expires after 5 minutes
+    if age > 300:
+        logger.warning(f"[OAuth] State expired (age: {age}s)")
+        del _oauth_states[state]
+        return None
+    
+    # Valid state, return code_verifier and clean up
+    code_verifier = state_data["code_verifier"]
+    del _oauth_states[state]
+    logger.info(f"[OAuth] State verified: {state[:10]}...")
+    
+    return code_verifier
+
+
+async def get_user_by_google_id(db: AsyncIOMotorDatabase, google_id: str) -> Optional[UserInDB]:
+    """Get user from database by Google ID"""
+    user_doc = await db.users.find_one({"google_id": google_id})
+    if user_doc:
+        user_doc["_id"] = str(user_doc["_id"])
+        return UserInDB(**user_doc)
+    return None
+
+
+async def get_user_by_email(db: AsyncIOMotorDatabase, email: str) -> Optional[UserInDB]:
+    """Get user from database by email"""
+    user_doc = await db.users.find_one({"email": email})
+    if user_doc:
+        user_doc["_id"] = str(user_doc["_id"])
+        return UserInDB(**user_doc)
+    return None
+
+
+async def create_or_update_user(db: AsyncIOMotorDatabase, user_data: dict) -> UserInDB:
+    """
+    Create new user or update existing user's last login
+    New users are created as unauthorized by default
+    """
+    existing_user = await get_user_by_google_id(db, user_data["google_id"])
+    
+    if existing_user:
+        # Update last login
+        await db.users.update_one(
+            {"google_id": user_data["google_id"]},
+            {"$set": {"last_login": datetime.utcnow()}}
+        )
+        existing_user.last_login = datetime.utcnow()
+        logger.info(f"[OAuth] Updated existing user: {existing_user.email}")
+        return existing_user
+    else:
+        # Create new user (unauthorized by default)
+        new_user = User(
+            email=user_data["email"],
+            google_id=user_data["google_id"],
+            name=user_data["name"],
+            picture=user_data.get("picture"),
+            authorized=False,  # Admin must authorize
+            created_at=datetime.utcnow(),
+            last_login=datetime.utcnow()
+        )
+        result = await db.users.insert_one(new_user.dict())
+        user_dict = new_user.dict()
+        user_dict["_id"] = str(result.inserted_id)
+        logger.info(f"[OAuth] Created new user: {new_user.email} (authorized=False)")
+        return UserInDB(**user_dict)
+
+
+@router.get("/google")
+async def google_oauth_init():
+    """
+    Initiate Google OAuth 2.0 flow with PKCE
+    
+    Flow:
+    1. Generate PKCE code_verifier and code_challenge
+    2. Generate state for CSRF protection
+    3. Redirect to Google OAuth consent screen
+    
+    Returns:
+        RedirectResponse: Redirect to Google OAuth URL
+    """
+    # Validate configuration
+    if not settings.google_oauth_client_id:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="OAuth not configured. Missing GOOGLE_OAUTH_CLIENT_ID"
+        )
+    
+    if not settings.google_oauth_redirect_uri:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="OAuth not configured. Missing GOOGLE_OAUTH_REDIRECT_URI"
+        )
+    
+    # Generate PKCE pair
+    code_verifier, code_challenge = generate_pkce_pair()
+    
+    # Generate state and store code_verifier
+    state = generate_state(code_verifier)
+    
+    logger.info(f"[OAuth] Initiating flow")
+    logger.info(f"[OAuth] redirect_uri: {settings.google_oauth_redirect_uri}")
+    logger.info(f"[OAuth] PKCE challenge generated")
+    
+    # Build Google OAuth URL
+    google_oauth_url = (
+        "https://accounts.google.com/o/oauth2/v2/auth"
+        f"?client_id={settings.google_oauth_client_id}"
+        f"&redirect_uri={settings.google_oauth_redirect_uri}"
+        "&response_type=code"
+        "&scope=openid email profile"
+        f"&state={state}"
+        f"&code_challenge={code_challenge}"
+        "&code_challenge_method=S256"
+        "&access_type=offline"
+        "&prompt=consent"
+    )
+    
+    return RedirectResponse(url=google_oauth_url)
+
+
+@router.get("/callback")
+async def google_oauth_callback(
+    code: Optional[str] = None,
+    state: Optional[str] = None,
+    error: Optional[str] = None,
+    db: AsyncIOMotorDatabase = Depends(get_database)
+):
+    """
+    Handle OAuth callback from Google
+    
+    Flow:
+    1. Verify state (CSRF protection)
+    2. Exchange authorization code for tokens
+    3. Get user info from Google
+    4. Create/update user in MongoDB
+    5. Generate JWT for app session
+    6. Redirect to frontend with tokens
+    
+    Args:
+        code: Authorization code from Google
+        state: State parameter for CSRF validation
+        error: Error from Google (if user cancelled)
+        
+    Returns:
+        RedirectResponse: Redirect to frontend with tokens or error
+    """
+    logger.info(f"[OAuth] Callback received")
+    logger.info(f"[OAuth]   code: {'present' if code else 'MISSING'}")
+    logger.info(f"[OAuth]   state: {'present' if state else 'MISSING'}")
+    logger.info(f"[OAuth]   error: {error if error else 'none'}")
+    
+    # Handle user cancellation or Google errors
+    if error:
+        error_msg = error
+        if error == "access_denied":
+            error_msg = "Login cancelled by user"
+        logger.warning(f"[OAuth] Error in callback: {error_msg}")
+        return RedirectResponse(url=f"{settings.frontend_url}/?auth_error={error_msg}")
+    
+    # Validate required parameters
+    if not code or not state:
+        logger.error("[OAuth] Missing code or state parameter")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Missing code or state parameter"
+        )
+    
+    # Verify state and get code_verifier (CSRF protection)
+    code_verifier = verify_state(state)
+    if not code_verifier:
+        logger.error("[OAuth] Invalid or expired state parameter")
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid or expired state parameter (CSRF check failed)"
+        )
+    
+    # Exchange authorization code for tokens
+    try:
+        logger.info("[OAuth] Exchanging code for tokens...")
+        logger.info(f"[OAuth]   redirect_uri: {settings.google_oauth_redirect_uri}")
+        logger.info(f"[OAuth]   using PKCE code_verifier")
+        
+        async with httpx.AsyncClient() as client:
+            token_response = await client.post(
+                "https://oauth2.googleapis.com/token",
+                data={
+                    "code": code,
+                    "client_id": settings.google_oauth_client_id,
+                    "client_secret": settings.google_oauth_client_secret,
+                    "redirect_uri": settings.google_oauth_redirect_uri,
+                    "grant_type": "authorization_code",
+                    "code_verifier": code_verifier
+                },
+                headers={"Content-Type": "application/x-www-form-urlencoded"}
+            )
+            
+            if token_response.status_code != 200:
+                error_data = token_response.json()
+                error_desc = error_data.get('error_description', error_data.get('error', 'Unknown error'))
+                logger.error(f"[OAuth] Token exchange failed: {error_desc}")
+                logger.error(f"[OAuth] Response: {error_data}")
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail=f"Failed to exchange authorization code: {error_desc}"
+                )
+            
+            token_data = token_response.json()
+            logger.info("[OAuth] ✓ Tokens received from Google")
+            
+            # Get user info from Google
+            logger.info("[OAuth] Fetching user info...")
+            userinfo_response = await client.get(
+                "https://www.googleapis.com/oauth2/v2/userinfo",
+                headers={"Authorization": f"Bearer {token_data['access_token']}"}
+            )
+            
+            if userinfo_response.status_code != 200:
+                logger.error(f"[OAuth] Failed to get user info: {userinfo_response.status_code}")
+                raise HTTPException(
+                    status_code=status.HTTP_400_BAD_REQUEST,
+                    detail="Failed to get user info from Google"
+                )
+            
+            user_info = userinfo_response.json()
+            logger.info(f"[OAuth] ✓ User info retrieved: {user_info.get('email')}")
+            
+    except httpx.RequestError as e:
+        logger.error(f"[OAuth] HTTP request failed: {str(e)}")
+        raise HTTPException(
+            status_code=status.HTTP_502_BAD_GATEWAY,
+            detail=f"Failed to communicate with Google: {str(e)}"
+        )
+    
+    # Create or update user in database
+    user = await create_or_update_user(db, {
+        "email": user_info["email"],
+        "google_id": user_info["id"],
+        "name": user_info["name"],
+        "picture": user_info.get("picture")
+    })
+    
+    logger.info(f"[OAuth] User: {user.email}")
+    logger.info(f"[OAuth]   authorized: {user.authorized}")
+    
+    # Check if user is authorized
+    if not user.authorized:
+        logger.warning(f"[OAuth] User {user.email} is NOT authorized")
+        # Redirect to frontend with error parameter
+        redirect_url = f"{settings.frontend_url}/?auth_error=not_authorized&user_email={user.email}"
+        logger.info(f"[OAuth] Redirecting unauthorized user to: {redirect_url}")
+        return RedirectResponse(url=redirect_url)
+    
+    # User is authorized - create JWT token for app session
+    logger.info(f"[OAuth] Creating JWT token...")
+    access_token = create_access_token(
+        data={"sub": user.email, "google_id": user.google_id},
+        expires_delta=timedelta(minutes=settings.access_token_expire_minutes)
+    )
+    
+    logger.info(f"[OAuth] ✓ JWT token created")
+    
+    # Redirect to frontend with tokens in URL
+    # Using query params because frontend is on different port
+    redirect_url = (
+        f"{settings.frontend_url}/"
+        f"?access_token={access_token}"
+        f"&refresh_token={token_data.get('refresh_token', '')}"
+        f"&expires_in={settings.access_token_expire_minutes * 60}"
+        f"&user_email={user.email}"
+        f"&user_name={user.name}"
+    )
+    
+    logger.info(f"[OAuth] ✓ Redirecting to frontend: {settings.frontend_url}")
+    
+    return RedirectResponse(url=redirect_url)
+
+
+@router.get("/verify", response_model=UserAuthResponse)
+async def verify_token(
+    token_data: dict = Depends(verify_access_token),
+    db: AsyncIOMotorDatabase = Depends(get_database)
+):
+    """
+    Verify JWT access token and return user data
+    
+    Requires: Authorization: Bearer <token> header
+    
+    Returns:
+        UserAuthResponse: User data if token is valid and user is authorized
+    """
+    email = token_data.get("sub")
+    if not email:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid token: missing subject"
+        )
+    
+    user = await get_user_by_email(db, email)
+    if not user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found"
+        )
+    
+    if not user.authorized:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="User not authorized"
+        )
+    
+    logger.info(f"[OAuth] Token verified for user: {user.email}")
+    
+    return UserAuthResponse(
+        email=user.email,
+        name=user.name,
+        picture=user.picture,
+        authorized=user.authorized
+    )
+
+
+@router.post("/logout")
+async def logout(token_data: dict = Depends(verify_access_token)):
+    """
+    Logout user
+    
+    In production, add token to blacklist (Redis)
+    For now, client-side token deletion is sufficient
+    """
+    email = token_data.get("sub")
+    logger.info(f"[OAuth] User logged out: {email}")
+    return {"message": "Logged out successfully"}

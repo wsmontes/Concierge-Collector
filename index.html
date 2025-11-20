@@ -656,7 +656,7 @@
     <script src="scripts/accessibilityChecker.js"></script>
     
     <!-- Entity-Curation Backend - Core Data Layer -->
-    <script src="scripts/migrationManager.js"></script>
+    <!-- migrationManager.js REMOVED: Clean break strategy, no migration needed -->
     <script src="scripts/dataStore.js"></script>
     <script src="scripts/apiService.js"></script>
     <script src="scripts/syncManagerV3.js"></script>
@@ -700,6 +700,9 @@
     <!-- Google Places Module (refactored to use services) -->
     <script src="scripts/modules/placesModule.js"></script>
     <script src="scripts/modules/audioUtils.js"></script>
+
+    <!-- Authentication Module (must load before accessControl.js) -->
+    <script src="scripts/auth.js"></script>
 
     <!-- Access Control (must load before main.js) -->
     <script src="scripts/accessControl.js"></script>

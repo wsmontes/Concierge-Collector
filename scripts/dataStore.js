@@ -40,11 +40,7 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
         try {
             this.log.debug('🚀 Initializing V3 Entity Store...');
             
-            // DISABLED: Do not delete legacy databases - MigrationManager handles this
-            // await this.cleanLegacyDatabases();
-            
             // Use final database name (no version suffix - Dexie handles versioning)
-            // This allows seamless upgrades without data loss
             const dbName = 'ConciergeCollector';
             this.db = new Dexie(dbName);
             

@@ -1,16 +1,17 @@
 /**
  * File: apiService.js
- * Purpose: API Service V3 - FastAPI Backend Client
- * Dependencies: AppConfig, Logger, ModuleWrapper
- * Last Updated: November 18, 2025
+ * Purpose: API Service V3 - FastAPI Backend Client with OAuth Authentication
+ * Dependencies: AppConfig, Logger, ModuleWrapper, AuthService
+ * Last Updated: January 2025
  * 
  * Main Responsibilities:
- * - Handle all V3 API communications with X-API-Key authentication
+ * - Handle all V3 API communications with OAuth Bearer token authentication
  * - Implement optimistic locking with If-Match headers
  * - Support entity and curation CRUD operations
  * - Provide AI service integrations (transcribe, concepts, vision)
  * - Provide Google Places integration
  * - Manage error handling and retries
+ * - Handle token refresh on 401 errors
  */
 
 const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
@@ -31,11 +32,11 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
                 throw new Error('API base URL not configured');
             }
             
-            const apiKey = this.getApiKey();
-            if (apiKey) {
-                this.log.debug('✅ Found V3 API key');
+            // Check if user is authenticated
+            if (typeof AuthService !== 'undefined' && AuthService.isAuthenticated()) {
+                this.log.debug('✅ User authenticated with OAuth');
             } else {
-                this.log.warn('⚠️ No V3 API key - write operations will fail');
+                this.log.warn('⚠️ No authentication - write operations will fail');
             }
             
             try {
@@ -55,46 +56,30 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         }
     }
 
-    getApiKey() {
-        return AppConfig.getV3ApiKey();
-    }
-
-    setApiKey(apiKey) {
-        AppConfig.setV3ApiKey(apiKey);
-        this.log.debug('✅ V3 API key stored');
-    }
-
-    removeApiKey() {
-        localStorage.removeItem(AppConfig.storage.keys.apiKeyV3);
-        this.log.debug('🗑️ V3 API key removed');
-    }
-
     getAuthHeaders() {
-        const apiKey = this.getApiKey();
-        if (!apiKey) return {};
-        return { 'X-API-Key': apiKey };
+        // Get OAuth token from AuthService
+        if (typeof AuthService === 'undefined') {
+            this.log.warn('AuthService not available');
+            return {};
+        }
+        
+        const token = AuthService.getToken();
+        if (!token) {
+            return {};
+        }
+        
+        return { 'Authorization': `Bearer ${token}` };
     }
 
     async validateApiKey(apiKey = null) {
+        // Deprecated: kept for backward compatibility
+        // Now checks if OAuth token is valid
         try {
-            // Use provided key or get from storage
-            const keyToValidate = apiKey || this.getApiKey();
-            if (!keyToValidate) return false;
-            
-            // Make direct request to /info endpoint
-            const url = `${this.baseUrl}${AppConfig.api.backend.endpoints.info || '/info'}`;
-            const response = await fetch(url, {
-                method: 'GET',
-                headers: {
-                    'Content-Type': 'application/json'
-                }
-            });
-            
-            if (response.ok) {
-                const info = await response.json();
-                return !!(info && info.version);
+            if (typeof AuthService === 'undefined') {
+                return false;
             }
-            return false;
+            
+            return AuthService.isAuthenticated();
         } catch (error) {
             this.log.debug('Validation error:', error);
             return false;
@@ -142,7 +127,23 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         } catch (e) {}
         
         switch (response.status) {
-            case 401: errorMessage = 'API key is invalid or missing'; break;
+            case 401:
+                errorMessage = 'Authentication required or token expired';
+                // Try to refresh token
+                if (typeof AuthService !== 'undefined' && AuthService.isAuthenticated()) {
+                    this.log.debug('Token expired, attempting refresh...');
+                    const refreshed = await AuthService.refreshToken();
+                    if (!refreshed) {
+                        // Redirect to login
+                        if (typeof AccessControl !== 'undefined') {
+                            await AccessControl.logout();
+                        }
+                    }
+                }
+                break;
+            case 403:
+                errorMessage = 'Access forbidden - user not authorized';
+                break;
             case 404: errorMessage = 'Resource not found'; break;
             case 409: errorMessage = 'Version conflict - data was modified by another user'; break;
             case 422: errorMessage = 'Validation error - check your input data'; break;

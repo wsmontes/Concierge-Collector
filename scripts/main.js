@@ -3,8 +3,39 @@
  * Dependencies: Dexie.js, ModuleWrapper, AccessControl, DataStore, ApiService, SyncManager, ImportManager
  */
 
+// Flag to prevent multiple initializations
+let applicationStarted = false;
+
+// Detect if running under Live Server (VS Code extension)
+const isLiveServer = window.location.port === '5500' || 
+                     window.location.port === '5501' ||
+                     document.querySelector('script[src*="live-server"]') !== null;
+
+if (isLiveServer) {
+    console.log('🔴 Live Server detected - Adding hot-reload protection');
+    
+    // Clear any previous state on hot-reload
+    window.addEventListener('beforeunload', () => {
+        console.log('🔄 Live Server: Page unloading, clearing state...');
+        applicationStarted = false;
+    });
+}
+
 // Expose startApplication function for AccessControl to call after unlock
 window.startApplication = function() {
+    console.log('🔵 startApplication called, applicationStarted:', applicationStarted);
+    
+    if (isLiveServer) {
+        console.log('🔴 Live Server mode - Extra checks');
+    }
+    
+    if (applicationStarted) {
+        console.warn('⚠️ Application already started, ignoring duplicate call');
+        console.trace('Duplicate call stack:');
+        return;
+    }
+    
+    applicationStarted = true;
     console.log('🚀 Starting Concierge Collector application...');
     
     // Check if required libraries exist
@@ -28,8 +59,7 @@ window.startApplication = function() {
         .then(() => {
             console.log('✅ Application initialization completed');
             
-            // Check API key and trigger initial sync
-            window.checkAndPromptForApiKey();
+            // Trigger initial sync
             triggerInitialSync();
         })
         .catch(error => {
@@ -38,156 +68,6 @@ window.startApplication = function() {
             showFatalError('There was an error initializing the application. Please check the console for details.');
         });
 };
-
-/**
- * Check if OpenAI API key exists and prompt user if not
- * Exposed globally so it can be called anytime
- */
-window.checkAndPromptForApiKey = function() {
-    console.log('Checking for OpenAI API key...');
-    
-    // Check localStorage for API key
-    const apiKey = localStorage.getItem('openai_api_key');
-    
-    if (!apiKey || apiKey.trim() === '') {
-        console.log('No API key found, showing prompt...');
-        showApiKeyPrompt();
-        return false;
-    } else {
-        console.log('API key found in storage');
-        return true;
-    }
-};
-
-/**
- * Show API key input prompt
- */
-function showApiKeyPrompt() {
-    // Check if modal already exists
-    if (document.getElementById('api-key-modal')) {
-        return;
-    }
-    
-    const modal = document.createElement('div');
-    modal.id = 'api-key-modal';
-    modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
-    modal.innerHTML = `
-        <div class="bg-white rounded-lg shadow-xl max-w-md w-full mx-4 p-6">
-            <div class="flex items-center mb-4">
-                <span class="material-icons text-blue-600 text-3xl mr-3">vpn_key</span>
-                <h2 class="text-2xl font-bold text-gray-800">OpenAI API Key Required</h2>
-            </div>
-            
-            <p class="text-gray-600 mb-4">
-                This app uses OpenAI's API for transcription and concept extraction. 
-                Please enter your OpenAI API key to continue.
-            </p>
-            
-            <div class="mb-4">
-                <label for="api-key-input" class="block text-sm font-medium text-gray-700 mb-2">
-                    API Key
-                </label>
-                <input 
-                    type="password" 
-                    id="api-key-input" 
-                    class="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                    placeholder="sk-..."
-                    autocomplete="off"
-                />
-                <p class="text-xs text-gray-500 mt-1">
-                    Get your API key from <a href="https://platform.openai.com/api-keys" target="_blank" class="text-blue-600 hover:underline">OpenAI Platform</a>
-                </p>
-            </div>
-            
-            <div class="flex gap-3">
-                <button 
-                    id="api-key-save" 
-                    class="flex-1 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 transition-colors flex items-center justify-center gap-2"
-                >
-                    <span class="material-icons text-sm">save</span>
-                    Save & Continue
-                </button>
-                <button 
-                    id="api-key-skip" 
-                    class="px-4 py-2 text-gray-600 hover:bg-gray-100 rounded-md transition-colors"
-                >
-                    Skip for now
-                </button>
-            </div>
-            
-            <div id="api-key-error" class="text-red-600 text-sm mt-3 hidden"></div>
-        </div>
-    `;
-    
-    document.body.appendChild(modal);
-    
-    const input = document.getElementById('api-key-input');
-    const saveButton = document.getElementById('api-key-save');
-    const skipButton = document.getElementById('api-key-skip');
-    const errorDiv = document.getElementById('api-key-error');
-    
-    function saveApiKey() {
-        const apiKey = input.value.trim();
-        
-        if (!apiKey) {
-            errorDiv.textContent = 'Please enter an API key';
-            errorDiv.classList.remove('hidden');
-            return;
-        }
-        
-        if (!apiKey.startsWith('sk-')) {
-            errorDiv.textContent = 'Invalid API key format. OpenAI keys start with "sk-"';
-            errorDiv.classList.remove('hidden');
-            return;
-        }
-        
-        // Save to localStorage
-        localStorage.setItem('openai_api_key', apiKey);
-        
-        // Set in apiHandler if available
-        if (window.apiHandler && typeof window.apiHandler.setApiKey === 'function') {
-            window.apiHandler.setApiKey(apiKey);
-        }
-        
-        console.log('API key saved successfully');
-        
-        // Show success notification
-        if (window.SafetyUtils && typeof SafetyUtils.showNotification === 'function') {
-            SafetyUtils.showNotification('API key saved successfully!', 'success');
-        }
-        
-        // Remove modal
-        modal.remove();
-    }
-    
-    function skipApiKey() {
-        console.log('User skipped API key setup');
-        
-        // Show warning
-        if (window.SafetyUtils && typeof SafetyUtils.showNotification === 'function') {
-            SafetyUtils.showNotification(
-                'You can add your API key later in the curator settings.',
-                'info',
-                5000
-            );
-        }
-        
-        // Remove modal
-        modal.remove();
-    }
-    
-    saveButton.addEventListener('click', saveApiKey);
-    skipButton.addEventListener('click', skipApiKey);
-    
-    input.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-            saveApiKey();
-        }
-    });
-    
-    // Focus input after a short delay
-    setTimeout(() => input.focus(), 100);
-}
 
 /**
  * Check if V3 API key exists and prompt user if not
@@ -383,28 +263,8 @@ async function initializeApp() {
             window.checkAndPromptForV3ApiKey();
         }
         
-        // STEP 1: Run migration from V1 to V3 (if needed) - BEFORE initializing DataStore
-        if (window.MigrationManager) {
-            console.log('🔄 Checking for V1 legacy data migration...');
-            try {
-                const migrationManager = new window.MigrationManager();
-                const migrationResult = await migrationManager.initialize();
-                
-                if (migrationResult.needsMigration) {
-                    console.log('⏳ Migration in progress - this may take a moment...');
-                    // Migration runs in background, we can continue
-                } else {
-                    console.log(`✅ No migration needed: ${migrationResult.reason}`);
-                }
-            } catch (migrationError) {
-                console.error('⚠️ Migration check failed:', migrationError);
-                console.warn('⚠️ Continuing with DataStore initialization...');
-            }
-        } else {
-            console.warn('⚠️ MigrationManager not available - skipping migration check');
-        }
-        
-        // STEP 2: Initialize DataStore (core database layer)
+        // STEP 1: Initialize DataStore (core database layer)
+        // Clean break strategy: No migration, force reset handled by dataStorage.js
         if (!window.DataStore) {
             throw new Error('DataStore not available - check script loading order');
         }
@@ -416,6 +276,12 @@ async function initializeApp() {
             throw new Error('DataStore failed to initialize properly');
         }
         console.log('✅ DataStore initialized successfully');
+        
+        // Check if initial sync is needed after clean break reset
+        const needsInitialSync = localStorage.getItem('needsInitialSync');
+        if (needsInitialSync === 'true') {
+            console.log('🔄 Clean break detected - initial sync will be triggered after setup');
+        }
         
         // Initialize API Service
         if (window.ApiService) {
@@ -433,6 +299,23 @@ async function initializeApp() {
                 window.SyncManager = new window.SyncManagerV3();
                 await window.SyncManager.initialize();
                 console.log('✅ Sync Manager V3 initialized');
+                
+                // Trigger initial sync if needed after clean break
+                if (needsInitialSync === 'true') {
+                    console.log('🔄 Triggering initial sync from server...');
+                    localStorage.removeItem('needsInitialSync');
+                    
+                    // Trigger sync in background (non-blocking)
+                    setTimeout(async () => {
+                        try {
+                            await window.SyncManager.syncAll();
+                            console.log('✅ Initial sync completed');
+                        } catch (syncError) {
+                            console.error('❌ Initial sync failed:', syncError);
+                            console.warn('⚠️ You can manually sync later from the sync menu');
+                        }
+                    }, 1000); // 1 second delay to let UI initialize
+                }
                 
                 // Initialize Sync Status Module
                 if (window.SyncStatusModule) {

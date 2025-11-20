@@ -152,9 +152,13 @@ const AppConfig = {
     storage: {
         keys: {
             // API Keys
-            apiKeyV3: 'api_key_v3',              // V3 API Key (X-API-Key header)
-            openaiApiKey: 'openai_api_key',
+            apiKeyV3: 'api_key_v3',              // V3 API Key (X-API-Key header) - DEPRECATED: Use OAuth token
             googlePlacesApiKey: 'google_places_api_key',
+            
+            // OAuth tokens
+            oauthToken: 'oauth_access_token',    // Google OAuth access token
+            oauthRefreshToken: 'oauth_refresh_token',  // OAuth refresh token
+            oauthExpiry: 'oauth_token_expiry',   // Token expiration timestamp
             
             // User Preferences
             currentCurator: 'current_curator_id',

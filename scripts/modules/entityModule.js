@@ -140,11 +140,12 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
                            entity.google_place_id ||
                            entity.entity_id;
             
-            // Use place_id as deduplication key
-            const key = placeId || `local_${entity.id}`;
+            // Use place_id as deduplication key (entity_id is the V3 UUID)
+            const key = placeId || `local_${entity.entity_id}`;
             
-            // Keep entity with highest internal ID (most recent)
-            if (!uniqueMap.has(key) || entity.id > uniqueMap.get(key).id) {
+            // Keep entity with most recent updatedAt timestamp
+            const existingEntity = uniqueMap.get(key);
+            if (!existingEntity || new Date(entity.updatedAt) > new Date(existingEntity.updatedAt)) {
                 uniqueMap.set(key, entity);
             }
         }
@@ -255,8 +256,8 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
     createEntityCard(entity) {
         const card = document.createElement('div');
         card.className = 'entity-card bg-white rounded-lg shadow hover:shadow-lg transition-all cursor-pointer border border-gray-200 overflow-hidden';
-        card.dataset.entityId = entity.entity_id;
-        card.dataset.id = entity.id;
+        card.dataset.entityId = entity.entity_id;  // V3 UUID
+        card.dataset.type = entity.type;
 
         // Extract data
         const name = entity.name || 'Unknown';

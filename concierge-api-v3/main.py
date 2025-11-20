@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 
 from app.core.config import settings
 from app.core.database import connect_to_mongo, close_mongo_connection
-from app.api import entities, curations, system, places, ai, concepts
+from app.api import entities, curations, system, places, ai, concepts, auth
 
 
 @asynccontextmanager
@@ -44,6 +44,7 @@ app.add_middleware(
 
 # Include routers with /api/v3 prefix
 app.include_router(system.router, prefix="/api/v3")
+app.include_router(auth.router, prefix="/api/v3")
 app.include_router(entities.router, prefix="/api/v3")
 app.include_router(curations.router, prefix="/api/v3")
 app.include_router(places.router, prefix="/api/v3")

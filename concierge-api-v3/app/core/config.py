@@ -35,6 +35,17 @@ class Settings(BaseSettings):
     # API Security
     api_secret_key: str = ""
     
+    # Google OAuth
+    google_oauth_client_id: str = ""
+    google_oauth_client_secret: str = ""
+    google_oauth_redirect_uri: str = "http://localhost:8000/api/v3/auth/callback"
+    
+    # Frontend
+    frontend_url: str = "http://127.0.0.1:5500"
+    
+    # JWT Token Settings
+    access_token_expire_minutes: int = 60  # 1 hour
+    
     @property
     def cors_origins_list(self) -> List[str]:
         """Parse CORS origins from comma-separated string or JSON"""

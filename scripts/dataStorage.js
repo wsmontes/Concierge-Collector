@@ -39,12 +39,14 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             }
             
             // Check schema version in localStorage to force reset if needed
-            const expectedSchemaVersion = 'v3.0';
+            // v3.0-clean-break: Forces complete database reset, no backward compatibility
+            const expectedSchemaVersion = 'v3.0-clean-break';
             const currentSchemaVersion = localStorage.getItem('dbSchemaVersion');
             
             if (currentSchemaVersion !== expectedSchemaVersion) {
                 this.log.warn(`⚠️ Schema version mismatch (current: ${currentSchemaVersion}, expected: ${expectedSchemaVersion})`);
-                this.log.warn('🔄 Forcing database reset to V3...');
+                this.log.warn('🔄 Forcing CLEAN BREAK reset to V3 - all local data will be deleted');
+                this.log.warn('📡 Data will be re-synced from server after reset');
                 
                 // Close any existing connection
                 if (this.db) {
@@ -52,7 +54,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                     this.db = null;
                 }
                 
-                // Delete old database to start fresh (synchronous approach)
+                // Delete ALL old databases to ensure clean slate
                 try {
                     Dexie.delete('ConciergeCollector').catch(() => {});
                     Dexie.delete('ConciergeCollectorV3').catch(() => {});
@@ -61,11 +63,17 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                     this.log.debug('No old databases to delete');
                 }
                 
-                // Clear migration flag
+                // Clear ALL migration and sync flags
                 localStorage.removeItem('v3MigrationComplete');
+                localStorage.removeItem('lastSyncTimestamp');
+                localStorage.removeItem('lastFullSync');
                 
-                // Mark as updated
+                // Mark as updated to new schema
                 localStorage.setItem('dbSchemaVersion', expectedSchemaVersion);
+                
+                // Set flag to trigger auto-sync after initialization
+                localStorage.setItem('needsInitialSync', 'true');
+                this.log.info('✅ Database will auto-sync after initialization');
             }
             
             // Use the database name from config
@@ -125,8 +133,8 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 .then(async () => {
                     this.log.debug('✅ Database opened successfully');
                     
-                    // Run migration if needed
-                    await this.migrateToV3();
+                    // Clean break: No migration needed, will sync from server
+                    // Migration removed in favor of forced reset + server sync
                     
                     // Create default curator if none exists
                     const curatorCount = await this.db.curators.count();
@@ -173,172 +181,12 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
         }
     }
 
-    /**
-     * Migrate existing data to V3 schema
-     * Adds multi-curator and entity-agnostic fields
-     */
-    /**
-     * Migrate existing data from old ConciergeCollector database to V3 schema
-     * Copies entities and curations to new database with version=1
-     */
-    async migrateToV3() {
-        try {
-            // Check if migration already done
-            const migrationDone = localStorage.getItem('v3MigrationComplete');
-            if (migrationDone === 'true') {
-                this.log.debug('V3 migration already completed, skipping...');
-                return;
-            }
-            
-            this.log.info('🔄 Starting V3 migration from old database...');
-            
-            // Try to open old database
-            let oldDb;
-            try {
-                oldDb = new Dexie('ConciergeCollector');
-                oldDb.version(6).stores({
-                    entities: '++id, entity_id, google_place_id, entity_type, source',
-                    curations: '++id, curation_id, entity_id, curator_id'
-                });
-                await oldDb.open();
-                this.log.debug('✅ Old database opened');
-            } catch (error) {
-                this.log.debug('No old database found or error opening:', error.message);
-                // No old database to migrate from
-                localStorage.setItem('v3MigrationComplete', 'true');
-                return;
-            }
-            
-            let entitiesMigrated = 0;
-            let curationsMigrated = 0;
-            
-            // 1. Migrate entities to V3 schema
-            try {
-                const oldEntities = await oldDb.entities.toArray();
-                this.log.debug(`Found ${oldEntities.length} entities to migrate`);
-                
-                for (const oldEntity of oldEntities) {
-                    // Transform to V3 schema
-                    const v3Entity = {
-                        entity_id: oldEntity.entity_id || `legacy-${oldEntity.id}`,
-                        type: oldEntity.entity_type || oldEntity.type || 'restaurant',
-                        name: oldEntity.name || 'Unnamed Entity',
-                        status: oldEntity.status || 'active',
-                        externalId: oldEntity.google_place_id || oldEntity.externalId || null,
-                        
-                        // Flexible data storage (convert old structure)
-                        data: {
-                            location: oldEntity.location || {},
-                            contacts: oldEntity.contacts || {},
-                            media: oldEntity.media || {},
-                            attributes: oldEntity.attributes || {}
-                        },
-                        
-                        // Metadata from old source
-                        metadata: oldEntity.metadata || [],
-                        
-                        // Sync status
-                        sync: {
-                            serverId: null,
-                            status: 'pending',
-                            lastSyncedAt: null
-                        },
-                        
-                        // Version for optimistic locking
-                        version: 1,
-                        
-                        // Timestamps
-                        createdAt: oldEntity.createdAt || new Date().toISOString(),
-                        updatedAt: new Date().toISOString(),
-                        
-                        // Creator info
-                        createdBy: oldEntity.createdBy || { id: 'legacy', name: 'Legacy Migration' },
-                        updatedBy: { id: 'legacy', name: 'Legacy Migration' }
-                    };
-                    
-                    await this.db.entities.put(v3Entity);
-                    entitiesMigrated++;
-                }
-                
-                this.log.debug(`✅ Migrated ${entitiesMigrated} entities to V3`);
-            } catch (error) {
-                this.log.error('Error migrating entities:', error);
-            }
-            
-            // 2. Migrate curations to V3 schema
-            try {
-                const oldCurations = await oldDb.curations.toArray();
-                this.log.debug(`Found ${oldCurations.length} curations to migrate`);
-                
-                for (const oldCuration of oldCurations) {
-                    // Transform to V3 schema
-                    const v3Curation = {
-                        curation_id: oldCuration.curation_id || `legacy-${oldCuration.id}`,
-                        entity_id: oldCuration.entity_id,
-                        
-                        // Curator info
-                        curator: {
-                            id: oldCuration.curator_id || 'default_curator',
-                            name: oldCuration.curator_name || 'Legacy Curator',
-                            email: oldCuration.curator_email || ''
-                        },
-                        
-                        // Flexible data storage
-                        data: {
-                            notes: oldCuration.notes || oldCuration.description || '',
-                            tags: oldCuration.tags || [],
-                            rating: oldCuration.rating || null,
-                            recommendations: oldCuration.recommendations || []
-                        },
-                        
-                        // Fork info
-                        fork: {
-                            forkedFrom: oldCuration.forked_from || null,
-                            allowFork: oldCuration.allow_fork !== false,
-                            forkCount: oldCuration.fork_count || 0
-                        },
-                        
-                        // Visibility
-                        visibility: oldCuration.visibility || 'public',
-                        
-                        // Sync status
-                        sync: {
-                            serverId: null,
-                            status: 'pending',
-                            lastSyncedAt: null
-                        },
-                        
-                        // Version for optimistic locking
-                        version: 1,
-                        
-                        // Timestamps
-                        createdAt: oldCuration.createdAt || new Date().toISOString(),
-                        updatedAt: new Date().toISOString()
-                    };
-                    
-                    await this.db.curations.put(v3Curation);
-                    curationsMigrated++;
-                }
-                
-                this.log.debug(`✅ Migrated ${curationsMigrated} curations to V3`);
-            } catch (error) {
-                this.log.error('Error migrating curations:', error);
-            }
-            
-            // Close old database
-            oldDb.close();
-            
-            // Mark migration as complete
-            localStorage.setItem('v3MigrationComplete', 'true');
-            
-            this.log.info(`✅ V3 migration complete! Migrated ${entitiesMigrated} entities and ${curationsMigrated} curations`);
-            
-        } catch (error) {
-            this.log.error('V3 migration failed:', error);
-            // Don't throw - allow app to continue with empty database
-        }
-    }
 
+    /**
+     * REMOVED: migrateToV3() method
+     * Clean break strategy: No migration, force reset + server sync
+     * Migration removed in favor of v3.0-clean-break schema version check
+     */
 
     /**
      * Reset database to clean V3 schema
@@ -370,7 +218,7 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
             // Show notification to the user
             if (typeof Toastify !== 'undefined') {
                 Toastify({
-                    text: "Database has been reset. Your data has been cleared.",
+                    text: "Database has been reset. Data will be synced from server.",
                     duration: 5000,
                     gravity: "top",
                     position: "center",
@@ -378,14 +226,18 @@ const DataStorage = ModuleWrapper.defineClass('DataStorage', class {
                 }).showToast();
             }
             
-            // Clear migration flag
+            // Clear all migration and sync flags
             localStorage.removeItem('v3MigrationComplete');
-            localStorage.setItem('dbSchemaVersion', 'v3.0');
+            localStorage.removeItem('lastSyncTimestamp');
+            localStorage.removeItem('lastFullSync');
+            localStorage.setItem('dbSchemaVersion', 'v3.0-clean-break');
+            localStorage.setItem('needsInitialSync', 'true');
             
             // Reinitialize database
             this.initializeDatabase();
             
             this.log.debug('Database reset and reinitialized successfully');
+            this.log.info('Initial sync will be triggered automatically');
             
             // Clear reset flag
             this.isResetting = false;
