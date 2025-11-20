@@ -63,7 +63,7 @@ class Settings(BaseSettings):
         if not self.google_oauth_redirect_uri:
             if is_render:
                 object.__setattr__(self, 'google_oauth_redirect_uri', 
-                                 "https://concierge-collector.onrender.com/api/v3/auth/google/callback")
+                                 "https://concierge-collector.onrender.com/api/v3/auth/callback")
             elif is_pythonanywhere:
                 object.__setattr__(self, 'google_oauth_redirect_uri', 
                                  "https://wsmontes.pythonanywhere.com/api/v3/auth/callback")
