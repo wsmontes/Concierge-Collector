@@ -9,7 +9,7 @@ import hashlib
 import json
 import uuid
 from typing import Dict, Any, Optional
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 
 from openai import OpenAI
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -71,13 +71,13 @@ class OpenAIService:
         transcription_id = f"trans_{uuid.uuid4().hex[:12]}"
         
         # Cache transcription in DB
-        await self.db.ai_transcriptions.insert_one({
+        await self.db.transcriptions.insert_one({
             "transcription_id": transcription_id,
             "text": response.text,
             "language": params.get("language", "pt-BR"),
             "model": model,
             "duration": getattr(response, 'duration', None),
-            "created_at": datetime.now(UTC).isoformat()
+            "created_at": datetime.now(timezone.utc).isoformat()
         })
         
         return {
@@ -140,7 +140,7 @@ class OpenAIService:
             "confidence_score": result.get("confidence_score", 0.0),
             "entity_type": entity_type,
             "model": config["model"],
-            "created_at": datetime.now(UTC).isoformat()
+            "created_at": datetime.now(timezone.utc).isoformat()
         })
         
         return result
@@ -210,7 +210,7 @@ class OpenAIService:
             "visual_notes": result.get("visual_notes", ""),
             "entity_type": entity_type,
             "model": config["model"],
-            "created_at": datetime.now(UTC).isoformat()
+            "created_at": datetime.now(timezone.utc).isoformat()
         })
         
         return result
