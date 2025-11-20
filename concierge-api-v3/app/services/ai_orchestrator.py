@@ -9,7 +9,7 @@ import time
 import uuid
 import json
 from typing import Dict, Any, Optional
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 
 from app.services.category_service import CategoryService
 from app.services.openai_config_service import OpenAIConfigService
@@ -283,7 +283,7 @@ class AIOrchestrator:
                 "concepts": concepts["concepts"],
                 "source": "text_analysis",
                 "entity_type": entity_type,
-                "created_at": datetime.now(UTC).isoformat()
+                "created_at": datetime.now(timezone.utc).isoformat()
             }
         
         elif workflow == "place_id_with_image":
@@ -309,7 +309,7 @@ class AIOrchestrator:
                 "source": "image_analysis",
                 "visual_notes": image_analysis.get("visual_notes"),
                 "entity_type": entity_type,
-                "created_at": datetime.now(UTC).isoformat()
+                "created_at": datetime.now(timezone.utc).isoformat()
             }
         
         elif workflow == "place_id_with_audio_and_image":
@@ -355,7 +355,7 @@ class AIOrchestrator:
                 "sources": ["text_analysis", "image_analysis"],
                 "visual_notes": image_analysis.get("visual_notes"),
                 "entity_type": entity_type,
-                "created_at": datetime.now(UTC).isoformat()
+                "created_at": datetime.now(timezone.utc).isoformat()
             }
         
         else:
@@ -382,6 +382,6 @@ class AIOrchestrator:
             "location": place_data.get("geometry", {}).get("location"),
             "address": place_data.get("formatted_address"),
             "place_id": place_data.get("place_id"),
-            "created_at": datetime.now(UTC).isoformat(),
+            "created_at": datetime.now(timezone.utc).isoformat(),
             "source": "google_places"
         }

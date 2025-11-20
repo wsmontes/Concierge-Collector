@@ -7,7 +7,7 @@ Provides access to service configurations, prompts, and parameters with caching.
 import time
 from typing import Dict, Optional, Any
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 
 
 class OpenAIConfigService:
@@ -111,7 +111,7 @@ class OpenAIConfigService:
             Dictionary with update status
         """
         # Add metadata
-        updates["updated_at"] = datetime.now(UTC).isoformat()
+        updates["updated_at"] = datetime.now(timezone.utc).isoformat()
         updates["updated_by"] = updated_by
         
         result = await self.db.openai_configs.update_one(
@@ -149,7 +149,7 @@ class OpenAIConfigService:
             {
                 "$set": {
                     "enabled": enabled,
-                    "updated_at": datetime.now(UTC).isoformat()
+                    "updated_at": datetime.now(timezone.utc).isoformat()
                 }
             }
         )

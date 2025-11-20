@@ -7,7 +7,7 @@ Provides access to concept categories by entity type with caching and fallback l
 import time
 from typing import List, Optional, Dict
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from datetime import datetime, UTC
+from datetime import datetime, timezone
 
 
 class CategoryService:
@@ -90,7 +90,7 @@ class CategoryService:
             {
                 "$set": {
                     "categories": categories,
-                    "updated_at": datetime.now(UTC).isoformat(),
+                    "updated_at": datetime.now(timezone.utc).isoformat(),
                     "updated_by": updated_by
                 },
                 "$inc": {"version": 1}

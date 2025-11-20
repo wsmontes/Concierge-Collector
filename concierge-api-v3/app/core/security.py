@@ -6,7 +6,7 @@ Implements both API Key and JWT OAuth authentication
 import os
 import secrets
 from typing import Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from fastapi import Security, HTTPException, status, Depends
 from fastapi.security import APIKeyHeader, HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
@@ -153,11 +153,11 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     to_encode = data.copy()
     
     if expires_delta:
-        expire = datetime.utcnow() + expires_delta
+        expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.utcnow() + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
+        expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
     
-    to_encode.update({"exp": expire, "iat": datetime.utcnow()})
+    to_encode.update({"exp": expire, "iat": datetime.now(timezone.utc)})
     
     # Use API secret key as JWT secret
     secret_key = get_api_secret_key()
@@ -177,10 +177,10 @@ def create_refresh_token(data: dict) -> str:
         str: Encoded JWT refresh token
     """
     to_encode = data.copy()
-    expire = datetime.utcnow() + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
+    expire = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
     to_encode.update({
         "exp": expire,
-        "iat": datetime.utcnow(),
+        "iat": datetime.now(timezone.utc),
         "type": "refresh"  # Distinguish from access tokens
     })
     
@@ -223,8 +223,8 @@ async def verify_refresh_token(token: str) -> dict:
         # Check expiration
         exp = payload.get("exp")
         if exp:
-            exp_time = datetime.utcfromtimestamp(exp)
-            now = datetime.utcnow()
+            exp_time = datetime.fromtimestamp(exp, tz=timezone.utc)
+            now = datetime.now(timezone.utc)
             
             if now > exp_time:
                 logger.warning("[Refresh Token] Token expired")
@@ -290,8 +290,8 @@ async def verify_access_token(
         # Check expiration
         exp = payload.get("exp")
         if exp:
-            exp_time = datetime.utcfromtimestamp(exp)  # FIX: Use utcfromtimestamp instead of fromtimestamp
-            now = datetime.utcnow()
+            exp_time = datetime.fromtimestamp(exp, tz=timezone.utc)
+            now = datetime.now(timezone.utc)
             logger.info(f"[Token Verify]   now: {now}")
             logger.info(f"[Token Verify]   exp_time: {exp_time}")
             

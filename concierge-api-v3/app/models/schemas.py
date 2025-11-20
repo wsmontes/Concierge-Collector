@@ -3,7 +3,7 @@ Pydantic models for API V3 Entity-Curation architecture
 Professional data validation and serialization
 """
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any, Literal
 from pydantic import BaseModel, Field, EmailStr, ConfigDict
 
@@ -68,8 +68,8 @@ class Entity(EntityBase):
     """Complete Entity with system fields"""
     id: str = Field(..., alias="_id")
     entity_id: str
-    createdAt: datetime = Field(default_factory=datetime.utcnow)
-    updatedAt: datetime = Field(default_factory=datetime.utcnow)
+    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     createdBy: Optional[str] = None
     updatedBy: Optional[str] = None
     version: int = Field(default=1, description="Optimistic locking version")
@@ -129,8 +129,8 @@ class Curation(CurationBase):
     curation_id: str
     entity_id: str
     curator: CuratorInfo
-    createdAt: datetime = Field(default_factory=datetime.utcnow)
-    updatedAt: datetime = Field(default_factory=datetime.utcnow)
+    createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     version: int = Field(default=1)
     
     model_config = ConfigDict(populate_by_name=True)

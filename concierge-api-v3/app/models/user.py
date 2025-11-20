@@ -4,7 +4,7 @@ User Model - MongoDB Schema for OAuth-authenticated users
 
 from pydantic import BaseModel, Field, EmailStr
 from typing import Optional
-from datetime import datetime
+from datetime import datetime, timezone
 
 
 class User(BaseModel):
@@ -14,7 +14,7 @@ class User(BaseModel):
     name: str = Field(..., description="User's full name from Google")
     picture: Optional[str] = Field(None, description="User's profile picture URL")
     authorized: bool = Field(False, description="Whether user is authorized to use the application")
-    created_at: datetime = Field(default_factory=datetime.utcnow, description="Account creation timestamp")
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Account creation timestamp")
     last_login: Optional[datetime] = Field(None, description="Last login timestamp")
     refresh_token: Optional[str] = Field(None, description="Encrypted Google refresh token for persistent login")
     

@@ -10,7 +10,7 @@ Implements secure OAuth flow following best practices:
 from fastapi import APIRouter, HTTPException, Depends, status, Request
 from fastapi.responses import RedirectResponse, HTMLResponse
 from motor.motor_asyncio import AsyncIOMotorDatabase
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import httpx
 import secrets
 import hashlib
@@ -64,7 +64,7 @@ def generate_state(code_verifier: str) -> str:
     """
     state = secrets.token_urlsafe(32)
     _oauth_states[state] = {
-        "created": datetime.utcnow(),
+        "created": datetime.now(timezone.utc),
         "code_verifier": code_verifier
     }
     logger.info(f"[OAuth] Generated state: {state[:10]}...")
@@ -87,7 +87,7 @@ def verify_state(state: str) -> Optional[str]:
     
     state_data = _oauth_states[state]
     created = state_data["created"]
-    age = (datetime.utcnow() - created).total_seconds()
+    age = (datetime.now(timezone.utc) - created).total_seconds()
     
     # State expires after 5 minutes
     if age > 300:
@@ -130,7 +130,7 @@ async def create_or_update_user(db: AsyncIOMotorDatabase, user_data: dict) -> Us
     
     if existing_user:
         # Update last login and refresh token if provided
-        update_data = {"last_login": datetime.utcnow()}
+        update_data = {"last_login": datetime.now(timezone.utc)}
         if user_data.get("refresh_token"):
             update_data["refresh_token"] = user_data["refresh_token"]
         
@@ -138,7 +138,7 @@ async def create_or_update_user(db: AsyncIOMotorDatabase, user_data: dict) -> Us
             {"google_id": user_data["google_id"]},
             {"$set": update_data}
         )
-        existing_user.last_login = datetime.utcnow()
+        existing_user.last_login = datetime.now(timezone.utc)
         if user_data.get("refresh_token"):
             existing_user.refresh_token = user_data["refresh_token"]
         logger.info(f"[OAuth] Updated existing user: {existing_user.email}")
@@ -151,8 +151,8 @@ async def create_or_update_user(db: AsyncIOMotorDatabase, user_data: dict) -> Us
             name=user_data["name"],
             picture=user_data.get("picture"),
             authorized=False,  # Admin must authorize
-            created_at=datetime.utcnow(),
-            last_login=datetime.utcnow(),
+            created_at=datetime.now(timezone.utc),
+            last_login=datetime.now(timezone.utc),
             refresh_token=user_data.get("refresh_token")
         )
         result = await db.users.insert_one(new_user.dict())
@@ -387,13 +387,13 @@ async def google_oauth_callback(
             "email": user.email,
             "picture": user.picture,
             "google_id": user.google_id,
-            "updatedAt": datetime.utcnow()
+            "updatedAt": datetime.now(timezone.utc)
         }
         
         # Upsert curator in curators collection
         await db.curators.update_one(
             {"curator_id": user.email},
-            {"$set": curator_data, "$setOnInsert": {"createdAt": datetime.utcnow()}},
+            {"$set": curator_data, "$setOnInsert": {"createdAt": datetime.now(timezone.utc)}},
             upsert=True
         )
         logger.info(f"[OAuth] ✓ Curator profile created/updated for {user.email}")
