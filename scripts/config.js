@@ -92,8 +92,8 @@ const AppConfig = {
                 aiAnalyzeImage: '/ai/analyze-image',   // POST - Analyze image with GPT-4 Vision (X-API-Key)
                 
                 // Places Service endpoints
-                placesSearch: '/places/search',        // GET - Search Google Places (X-API-Key)
-                placesDetails: '/places/details/{id}'  // GET - Get place details (X-API-Key)
+                placesSearch: '/places/nearby',        // GET - Search Google Places (OAuth Bearer)
+                placesDetails: '/places/details/{id}'  // GET - Get place details (OAuth Bearer)
             }
         },
 

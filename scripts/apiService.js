@@ -304,11 +304,14 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
 
     async searchPlaces(query, location = null, radius = null) {
         const params = new URLSearchParams();
-        params.append('query', query);
-        if (location) params.append('location', location);
+        if (query) params.append('keyword', query);
+        if (location) {
+            params.append('latitude', location.latitude || location.lat);
+            params.append('longitude', location.longitude || location.lng);
+        }
         if (radius) params.append('radius', radius);
         
-        const endpoint = `places/search?${params.toString()}`;
+        const endpoint = `places/nearby?${params.toString()}`;
         const response = await this.request('GET', endpoint);
         return await response.json();
     }

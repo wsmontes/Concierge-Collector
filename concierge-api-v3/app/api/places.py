@@ -268,7 +268,7 @@ async def search_nearby(
     """
     try:
         # Validate API key
-        if not settings.google_places_api_key or settings.google_places_api_key == "YOUR_GOOGLE_PLACES_API_KEY_HERE":
+        if not settings.google_places_api_key or settings.google_places_api_key.strip() == "":
             raise HTTPException(
                 status_code=500,
                 detail="Google Places API key not configured on server"
@@ -558,13 +558,14 @@ async def get_place_details(
     )
 ):
     """
-    Get detailed information about a place
+    Get detailed information about a place using Google Places API (New)
     
     This endpoint proxies requests to Google Places Details API.
+    Uses the new Places API with Place ID format.
     
     Args:
-        place_id: Google Place ID
-        fields: Optional comma-separated fields (name,rating,formatted_address,etc.)
+        place_id: Google Place ID (will be converted to places/{place_id} format)
+        fields: Optional comma-separated fields (ignored - uses comprehensive field mask)
         
     Returns:
         PlaceDetailsResponse with place details
@@ -575,32 +576,44 @@ async def get_place_details(
     try:
         logger.info(f"Place details: place_id={place_id}")
         
-        # Get Google Maps client
-        gmaps = get_gmaps_client()
-        
-        # Parse fields if provided
-        fields_list = fields.split(',') if fields else None
-        
-        # Call Google Places API
-        result = gmaps.place(
-            place_id=place_id,
-            fields=fields_list
-        )
-        
-        # Check status
-        status = result.get('status')
-        if status != 'OK':
-            error_msg = result.get('error_message', status)
-            logger.error(f"Google Places API error: {error_msg}")
+        # Validate API key
+        if not settings.google_places_api_key or settings.google_places_api_key.strip() == "":
             raise HTTPException(
-                status_code=502,
-                detail=f"Google Places API error: {error_msg}"
+                status_code=500,
+                detail="Google Places API key not configured on server"
             )
         
+        # Format place ID for new API (needs places/ prefix)
+        formatted_place_id = place_id if place_id.startswith('places/') else f'places/{place_id}'
+        
+        # New Places API endpoint for place details
+        url = f"https://places.googleapis.com/v1/{formatted_place_id}"
+        
+        # Headers with comprehensive field mask
+        headers = {
+            "Content-Type": "application/json",
+            "X-Goog-Api-Key": settings.google_places_api_key,
+            "X-Goog-FieldMask": get_enhanced_field_mask(include_reviews=True, include_photos=True, detail_level="full")
+        }
+        
+        # Make request
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            response = await client.get(url, headers=headers)
+            
+            if response.status_code != 200:
+                error_text = response.text
+                logger.error(f"Places API error: {response.status_code} - {error_text}")
+                raise HTTPException(
+                    status_code=502,
+                    detail=f"Google Places API error: {error_text}"
+                )
+            
+            data = response.json()
+        
         return PlaceDetailsResponse(
-            result=result.get('result', {}),
-            status=status,
-            error_message=result.get('error_message')
+            result=data,
+            status='OK',
+            error_message=None
         )
         
     except HTTPException:
@@ -623,7 +636,7 @@ async def health_check():
     """
     has_key = bool(
         settings.google_places_api_key and 
-        settings.google_places_api_key != "YOUR_GOOGLE_PLACES_API_KEY_HERE"
+        settings.google_places_api_key.strip() != ""
     )
     
     return {
