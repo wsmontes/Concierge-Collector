@@ -399,7 +399,12 @@ Your deployment guide shows the connection string in `.env` examples.
 
 **Risk**: If `.env` gets committed, credentials exposed.
 
-**Fix**: Add `.env` to `.gitignore` (likely already there, but verify).
+**Important Note**: Since you're deploying via GitHub, **never commit `.env` with real credentials**. The `.env` file is properly gitignored, so you'll need to:
+1. Deploy code via `git pull` on PythonAnywhere
+2. **Manually create `.env` on PythonAnywhere** with your real API keys
+3. This is actually **more secure** - credentials never transit through GitHub
+
+**Fix**: Verify `.env` is in `.gitignore` (already done). Always create `.env` manually on the server.
 
 ---
 
@@ -478,11 +483,21 @@ pip install --upgrade certifi
 
 ## 🛠️ RECOMMENDED DEPLOYMENT STEPS (Corrected)
 
+### Important: GitHub Deployment Security
+
+**Your deployment workflow**:
+1. ✅ Code is pushed to GitHub (without `.env`)
+2. ✅ Pull code on PythonAnywhere via `git pull`
+3. ✅ Manually create `.env` on PythonAnywhere with real API keys
+4. ✅ Keys never transit through GitHub (more secure!)
+
+This is the **recommended approach** - credentials stay on the server only.
+
 ### Step 1: Prepare Repository
 ```bash
-# Locally, create wsgi.py
+# Locally, create wsgi.py (already done in this commit)
 cd concierge-api-v3
-# Create the WSGI file with content from issue #1
+# wsgi.py is now included in the repository
 git add wsgi.py
 git commit -m "Add WSGI file for PythonAnywhere deployment"
 git push
@@ -498,25 +513,35 @@ rm -rf temp
 cd concierge-api
 ```
 
-### Step 3: Configure Environment
+### Step 2: Create .env Manually (5 minutes)
+
+**IMPORTANT**: Since you deploy via GitHub, the `.env` file is gitignored and won't be pulled. You must create it manually on PythonAnywhere with your real credentials.
+
 ```bash
+cd /home/wsmontes/concierge-api
 nano .env
 ```
 
-**Critical settings**:
+**Copy and paste these settings with YOUR real credentials**:
 ```bash
 ENVIRONMENT=pythonanywhere  # ← Explicit environment
-MONGODB_URL=your-atlas-connection-string
+MONGODB_URL=your-atlas-connection-string  # ← Your real MongoDB Atlas URL
 MONGODB_DB_NAME=concierge-collector
 API_RELOAD=false  # ← MUST be false in production
 CORS_ORIGINS=https://wsmontes.github.io,https://wsmontes.pythonanywhere.com
-GOOGLE_OAUTH_CLIENT_ID=your-client-id
-GOOGLE_OAUTH_CLIENT_SECRET=your-secret
-GOOGLE_PLACES_API_KEY=your-key
-OPENAI_API_KEY=your-key
-API_SECRET_KEY=your-32-char-secret
+GOOGLE_OAUTH_CLIENT_ID=your-client-id  # ← Your real OAuth client ID
+GOOGLE_OAUTH_CLIENT_SECRET=your-secret  # ← Your real OAuth secret
+GOOGLE_PLACES_API_KEY=your-key  # ← Your real Google Places API key
+OPENAI_API_KEY=your-key  # ← Your real OpenAI API key
+API_SECRET_KEY=your-32-char-secret  # ← Generate with: python -c "import secrets; print(secrets.token_urlsafe(32))"
 FRONTEND_URL_PRODUCTION=https://wsmontes.github.io/Concierge-Collector
 ```
+
+**Security Note**: This manual approach is actually **more secure** because:
+- ✅ API keys never pass through GitHub
+- ✅ No risk of accidentally committing credentials
+- ✅ Different keys can be used for dev vs production
+- ✅ Credentials stay only on the server where they're needed
 
 ### Step 4: Install Dependencies
 ```bash

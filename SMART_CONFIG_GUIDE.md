@@ -43,6 +43,11 @@ cp .env.smart.example .env
 
 Edit `.env` and set **only these 5 values**:
 
+**Security Note**: When deploying to PythonAnywhere via GitHub:
+- The `.env` file is gitignored (won't be pushed to GitHub)
+- Create `.env` manually on PythonAnywhere with your real credentials
+- This keeps API keys secure - they never transit through GitHub
+
 ```bash
 # MongoDB Atlas connection string
 MONGODB_URL=mongodb+srv://username:password@cluster.mongodb.net/

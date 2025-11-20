@@ -55,12 +55,15 @@ ls -la wsgi.py
 # Should show: wsgi.py with ~120 lines
 ```
 
-### Step 2: Update .env (3 minutes)
+### Step 2: Create .env Manually (3 minutes)
+
+**IMPORTANT**: The `.env` file is gitignored and won't be pulled from GitHub. You must create it manually on PythonAnywhere.
+
 ```bash
 nano .env
 ```
 
-**Critical additions**:
+**Paste your real credentials** (this keeps API keys secure - they never pass through GitHub):
 ```bash
 # Add this line at the top
 ENVIRONMENT=production

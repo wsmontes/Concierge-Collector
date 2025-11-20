@@ -202,8 +202,8 @@ PythonAnywhere Production:
 
 ### Short Term (Next Deploy):
 1. Update `PYTHONANYWHERE_DEPLOYMENT.md` with corrected instructions
-2. Add `.env.production.example` specific to PythonAnywhere
-3. Create deployment script to automate steps
+2. Document that `.env` must be created manually on server (for security)
+3. Create deployment script to automate steps (excluding `.env` setup)
 
 ### Medium Term (Next Sprint):
 1. Move OAuth state storage to MongoDB (Sprint 2)
@@ -244,10 +244,16 @@ gunicorn wsgi:application --bind 0.0.0.0:8000
 ### Best Practice for .env:
 ```bash
 # Keep three versions:
-1. .env.example → Template with fake values
-2. .env.local → Your local development
-3. .env.production → PythonAnywhere (never commit!)
+1. .env.example → Template with fake values (committed to GitHub)
+2. .env → Your local development (gitignored, never committed)
+3. .env on server → PythonAnywhere production (created manually, never committed)
 ```
+
+**Deployment Security**:
+- ✅ `.env` is properly gitignored
+- ✅ Deploy code via `git pull` on PythonAnywhere
+- ✅ Create `.env` manually on server with real credentials
+- ✅ API keys never pass through GitHub (most secure approach)
 
 ---
 
