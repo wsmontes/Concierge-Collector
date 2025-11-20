@@ -1,12 +1,50 @@
 # Deployment Guide - Concierge Collector
 
-## 🚀 Live Deployment (Render.com)
+## 🚀 Live Production Deployment
 
 ### Production URLs
-- **API:** https://concierge-collector.onrender.com/api/v3
 - **Frontend:** https://concierge-collector-web.onrender.com
-- **API Docs:** https://concierge-collector.onrender.com/api/v3/docs
+- **API:** https://concierge-collector.onrender.com/api/v3
+- **API Documentation:** https://concierge-collector.onrender.com/api/v3/docs
 - **Health Check:** https://concierge-collector.onrender.com/api/v3/health
+
+**Platform:** Render.com  
+**Branch:** `Front-End-V3` (auto-deploy enabled)  
+**Python Version:** 3.13.4
+
+---
+
+## 📋 Deployment Architecture
+
+```
+┌─────────────────────────────────────────────────────────────┐
+│                     GitHub Repository                        │
+│              wsmontes/Concierge-Collector                   │
+│                   Branch: Front-End-V3                       │
+└─────────────────┬───────────────────────────────────────────┘
+                  │ (push triggers auto-deploy)
+                  │
+        ┌─────────┴─────────┐
+        │                   │
+        ▼                   ▼
+┌───────────────┐   ┌──────────────────┐
+│  Render.com   │   │   Render.com     │
+│  Static Site  │   │   Web Service    │
+├───────────────┤   ├──────────────────┤
+│ Frontend      │   │ Backend API      │
+│ HTML/CSS/JS   │   │ FastAPI/Python   │
+│ Port: 443     │   │ Port: 10000      │
+└───────┬───────┘   └────────┬─────────┘
+        │                    │
+        │                    ▼
+        │            ┌───────────────┐
+        │            │ MongoDB Atlas │
+        │            │ Cloud Database│
+        │            └───────────────┘
+        │
+        └──────── OAuth Flow ────────►
+                  Google OAuth 2.0
+```
 
 ---
 
@@ -52,6 +90,78 @@ ENVIRONMENT=production
 ```
 
 **Note:** `GOOGLE_OAUTH_REDIRECT_URI` is auto-detected based on environment. No need to set it manually.
+
+---
+
+## 🔒 Security Best Practices
+
+### Environment Variables Management
+
+**✅ DO:**
+- Store all secrets in Render.com Environment Variables (never in code)
+- Use different credentials for development and production
+- Rotate API keys regularly (every 90 days)
+- Use MongoDB Atlas IP whitelist (allow Render.com IPs)
+- Generate strong `API_SECRET_KEY` with at least 32 characters
+
+**❌ DON'T:**
+- Commit `.env` files to git (protected by `.gitignore`)
+- Share credentials via email, Slack, or other insecure channels
+- Use the same MongoDB credentials across environments
+- Hardcode secrets in source code
+- Expose admin endpoints without authentication
+
+### Protected Files (via .gitignore)
+
+```
+✅ Protected from git:
+- .env (all variants)
+- *.pem, *.key, *.crt
+- secrets/
+- credentials/
+```
+
+### MongoDB Security
+
+1. **Enable MongoDB Atlas Network Access:**
+   - Add Render.com IP ranges to Atlas whitelist
+   - Or use "Allow access from anywhere" (0.0.0.0/0) with strong credentials
+
+2. **Use Database User (not admin):**
+   - Create dedicated user: `wmontes_db_user`
+   - Grant only necessary permissions (readWrite on specific database)
+
+3. **Connection String Format:**
+   ```
+   mongodb+srv://<user>:<password>@<cluster>.mongodb.net/?appName=<appname>
+   ```
+
+### Google OAuth Security
+
+1. **Authorized JavaScript Origins:**
+   - Only add your actual domains
+   - Include both `http://localhost` (dev) and production URLs
+   
+2. **Authorized Redirect URIs:**
+   - Must match exactly what backend sends
+   - Format: `https://<domain>/api/v3/auth/callback`
+
+3. **Client Secret Protection:**
+   - Never commit to git
+   - Store only in Render Environment Variables
+   - Rotate if exposed
+
+### CORS Configuration
+
+The `CORS_ORIGINS` variable must include:
+- All frontend domains (including subdomains)
+- Development URLs (localhost with various ports)
+- No wildcards in production (security risk)
+
+**Example:**
+```
+CORS_ORIGINS=http://localhost:3000,http://localhost:8080,https://concierge-collector-web.onrender.com,https://concierge-collector.onrender.com
+```
 
 ---
 

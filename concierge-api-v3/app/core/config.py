@@ -1,4 +1,3 @@
-"""
 Application configuration using Pydantic Settings
 Loads from environment variables and .env file
 Automatically detects localhost vs production environment

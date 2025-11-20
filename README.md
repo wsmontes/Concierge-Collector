@@ -2,9 +2,9 @@
 
 **Professional restaurant curation platform with AI-powered concept extraction and offline-first architecture.**
 
-[![Status](https://img.shields.io/badge/status-active%20development-green)]()
-[![Sprint](https://img.shields.io/badge/sprint-1%20complete-blue)]()
-[![API Tests](https://img.shields.io/badge/API%20tests-28%2F28%20passing-brightgreen)]()
+[![Status](https://img.shields.io/badge/status-production-success)]()
+[![Deployment](https://img.shields.io/badge/deployment-render.com-blue)]()
+[![API](https://img.shields.io/badge/API-live-brightgreen)](https://concierge-collector.onrender.com/api/v3/docs)
 [![Architecture](https://img.shields.io/badge/architecture-service--based-orange)]()
 
 ---
@@ -13,13 +13,22 @@
 
 Concierge Collector is a modern restaurant curation platform that helps users discover, import, and curate restaurants with intelligent automation and offline-first capabilities.
 
+### 🌐 Live Production
+
+- **Frontend**: https://concierge-collector-web.onrender.com
+- **API**: https://concierge-collector.onrender.com/api/v3
+- **API Docs**: https://concierge-collector.onrender.com/api/v3/docs
+- **Health Check**: https://concierge-collector.onrender.com/api/v3/health
+
 ### Key Features
 
+✅ **Google OAuth Authentication** - Secure user authorization with Google Sign-In  
 ✅ **Automated Google Places Import** - Intelligent restaurant discovery with duplicate detection  
 ✅ **AI Concept Extraction** - Automatic categorization from reviews (cuisine, mood, occasion)  
 ✅ **Offline-First Architecture** - Full functionality without internet connection  
-✅ **MongoDB V3 API** - FastAPI backend with 100% test coverage  
+✅ **MongoDB V3 API** - FastAPI backend deployed on Render.com  
 ✅ **Service-Based Frontend** - Modular, maintainable vanilla JavaScript  
+✅ **Automatic Deployment** - CI/CD from GitHub `Front-End-V3` branch  
 
 ---
 
@@ -27,10 +36,11 @@ Concierge Collector is a modern restaurant curation platform that helps users di
 
 ### Prerequisites
 
-- **Python 3.11+** (for API)
-- **MongoDB** (local or MongoDB Atlas)
+- **Python 3.13.4** (for API)
+- **MongoDB Atlas** (cloud database)
+- **Google OAuth 2.0 Client** (for authentication)
 - **Google Places API Key** (for restaurant import)
-- **OpenAI API Key** (optional, for concept extraction)
+- **OpenAI API Key** (for AI concept extraction)
 
 ### Installation
 
@@ -52,8 +62,10 @@ Concierge Collector is a modern restaurant curation platform that helps users di
 
 3. **Configure environment**
    ```bash
+   cd concierge-api-v3
    cp .env.example .env
-   # Edit .env with your MongoDB connection string and secrets
+   # Edit .env with your credentials (see DEPLOYMENT.md for details)
+   # NEVER commit .env files to git!
    ```
 
 4. **Run tests** (optional)
@@ -79,12 +91,11 @@ Concierge Collector is a modern restaurant curation platform that helps users di
 
 | Document | Description |
 |----------|-------------|
-| [PROJECT_STATUS.md](PROJECT_STATUS.md) | Current project status and roadmap |
-| [CHANGELOG.md](CHANGELOG.md) | Architectural decisions and changes |
-| [docs/SPRINT_1_COMPLETE_SUMMARY.md](docs/SPRINT_1_COMPLETE_SUMMARY.md) | Sprint 1 detailed summary |
-| [docs/SPRINT_2_ROADMAP.md](docs/SPRINT_2_ROADMAP.md) | Sprint 2 automation roadmap |
-| [docs/COLLECTOR_MODERNIZATION_PLAN.md](docs/COLLECTOR_MODERNIZATION_PLAN.md) | Full 20-day modernization plan |
+| [DEPLOYMENT.md](DEPLOYMENT.md) | **🚀 Production deployment guide (Render.com)** |
 | [API-REF/API_DOCUMENTATION_V3.md](API-REF/API_DOCUMENTATION_V3.md) | API V3 reference |
+| [docs/OAUTH_SETUP_GUIDE.md](docs/OAUTH_SETUP_GUIDE.md) | Google OAuth configuration |
+| [docs/COLLECTOR_MODERNIZATION_PLAN.md](docs/COLLECTOR_MODERNIZATION_PLAN.md) | Full 20-day modernization plan |
+| [archive/deployment-docs/](archive/deployment-docs/) | Legacy deployment documentation |
 
 ---
 
