@@ -264,11 +264,46 @@ if (typeof window.UIManager === 'undefined') {
          * Loads and displays curated entities with status tags.
          * Shows only entities that have been curated by current user.
          */
-        loadCurations() {
-            // TODO: Filter data to show only entities with curations
-            // TODO: Add status tags (draft/done)
-            // TODO: Sort by last modification date
+        async loadCurations() {
             console.log('Loading curations view...');
+            
+            const container = this.containers.curations;
+            if (!container) {
+                console.warn('Curations container not found');
+                return;
+            }
+            
+            try {
+                // Get all entities with curations
+                const entities = await window.DataStore.getEntities({ status: 'active' });
+                
+                if (entities.length === 0) {
+                    container.innerHTML = `
+                        <div class="col-span-full text-center py-12">
+                            <span class="material-icons text-6xl text-gray-300 mb-4">restaurant_menu</span>
+                            <p class="text-gray-500 mb-2">No curated entities yet</p>
+                            <p class="text-sm text-gray-400">Start by adding entities from the Find Entity button</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                // Display entities
+                container.innerHTML = '';
+                entities.forEach(entity => {
+                    const card = this.createEntityCard(entity);
+                    container.appendChild(card);
+                });
+                
+            } catch (error) {
+                console.error('Failed to load curations:', error);
+                container.innerHTML = `
+                    <div class="col-span-full text-center py-12 text-red-500">
+                        <span class="material-icons text-6xl mb-4">error</span>
+                        <p>Failed to load curations</p>
+                    </div>
+                `;
+            }
         }
 
         /**
@@ -277,10 +312,98 @@ if (typeof window.UIManager === 'undefined') {
          * Loads and displays entities without curations.
          * Shows recently ingested entities awaiting curation.
          */
-        loadEntities() {
-            // TODO: Filter data to show only entities without curations
-            // TODO: Show recently ingested entities
+        async loadEntities() {
             console.log('Loading entities view...');
+            
+            const container = this.containers.entities;
+            if (!container) {
+                console.warn('Entities container not found');
+                return;
+            }
+            
+            try {
+                // Get all entities
+                const entities = await window.DataStore.getEntities({ status: 'active' });
+                
+                if (entities.length === 0) {
+                    container.innerHTML = `
+                        <div class="col-span-full text-center py-12">
+                            <span class="material-icons text-6xl text-gray-300 mb-4">store</span>
+                            <p class="text-gray-500 mb-2">No entities yet</p>
+                            <p class="text-sm text-gray-400">Use the Find Entity button to add places</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                // Display entities
+                container.innerHTML = '';
+                entities.forEach(entity => {
+                    const card = this.createEntityCard(entity);
+                    container.appendChild(card);
+                });
+                
+            } catch (error) {
+                console.error('Failed to load entities:', error);
+                container.innerHTML = `
+                    <div class="col-span-full text-center py-12 text-red-500">
+                        <span class="material-icons text-6xl mb-4">error</span>
+                        <p>Failed to load entities</p>
+                    </div>
+                `;
+            }
+        }
+
+        /**
+         * Create entity card element
+         */
+        createEntityCard(entity) {
+            const card = document.createElement('div');
+            card.className = 'bg-white rounded-lg shadow-sm border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer';
+            
+            const name = entity.name || 'Unknown';
+            const type = entity.type || 'restaurant';
+            const city = entity.data?.location?.city || 'Unknown';
+            const rating = entity.data?.attributes?.rating || 0;
+            
+            card.innerHTML = `
+                <div class="flex items-start gap-3">
+                    <div class="flex-shrink-0">
+                        <span class="material-icons text-2xl text-gray-400">${this.getTypeIcon(type)}</span>
+                    </div>
+                    <div class="flex-1 min-w-0">
+                        <h3 class="font-semibold text-gray-900 truncate">${name}</h3>
+                        <p class="text-sm text-gray-500">${city}</p>
+                        ${rating > 0 ? `
+                            <div class="flex items-center gap-1 mt-1">
+                                <span class="material-icons text-sm text-yellow-500">star</span>
+                                <span class="text-sm text-gray-600">${rating.toFixed(1)}</span>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            `;
+            
+            card.addEventListener('click', () => {
+                // TODO: Open entity details or edit
+                console.log('Entity clicked:', entity.entity_id);
+            });
+            
+            return card;
+        }
+
+        /**
+         * Get icon for entity type
+         */
+        getTypeIcon(type) {
+            const icons = {
+                restaurant: 'restaurant',
+                bar: 'local_bar',
+                hotel: 'hotel',
+                cafe: 'local_cafe',
+                bakery: 'bakery_dining'
+            };
+            return icons[type] || 'place';
         }
 
         /**
@@ -290,10 +413,20 @@ if (typeof window.UIManager === 'undefined') {
          * Shows all recordings/transcripts by current user.
          */
         loadReviews() {
-            // TODO: Filter data to show only transcripts without entities
-            // TODO: Display extracted concepts/name/location
-            // TODO: Show transcript preview
             console.log('Loading reviews view...');
+            
+            // TODO: Implement reviews loading from recordings/transcriptions
+            // For now, show empty state
+            const container = this.containers.reviews;
+            if (container) {
+                container.innerHTML = `
+                    <div class="text-center py-12">
+                        <span class="material-icons text-6xl text-gray-300 mb-4">mic_off</span>
+                        <p class="text-gray-500">No reviews yet</p>
+                        <p class="text-sm text-gray-400 mt-2">Start recording to create reviews</p>
+                    </div>
+                `;
+            }
         }
 
         /**
