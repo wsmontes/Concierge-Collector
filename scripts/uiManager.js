@@ -274,15 +274,51 @@ if (typeof window.UIManager === 'undefined') {
             }
             
             try {
-                // Get all entities with curations
-                const entities = await window.DataStore.getEntities({ status: 'active' });
+                // Get current curator
+                const curator = window.CuratorProfile?.getCurrentCurator();
+                if (!curator) {
+                    container.innerHTML = `
+                        <div class="col-span-full text-center py-12">
+                            <span class="material-icons text-6xl text-gray-300 mb-4">person_off</span>
+                            <p class="text-gray-500 mb-2">Curator not logged in</p>
+                            <p class="text-sm text-gray-400">Please log in to see your curations</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                // Get curations by current curator from IndexedDB
+                const curations = await window.DataStore.db.curations
+                    .where('curator_id')
+                    .equals(curator.curator_id)
+                    .toArray();
+                
+                if (curations.length === 0) {
+                    container.innerHTML = `
+                        <div class="col-span-full text-center py-12">
+                            <span class="material-icons text-6xl text-gray-300 mb-4">rate_review</span>
+                            <p class="text-gray-500 mb-2">No curations yet</p>
+                            <p class="text-sm text-gray-400">Start curating entities by clicking on them</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                // Get unique entity IDs from curations
+                const entityIds = [...new Set(curations.map(c => c.entity_id))];
+                
+                // Fetch entities for these curations
+                const entities = await window.DataStore.db.entities
+                    .where('entity_id')
+                    .anyOf(entityIds)
+                    .toArray();
                 
                 if (entities.length === 0) {
                     container.innerHTML = `
                         <div class="col-span-full text-center py-12">
-                            <span class="material-icons text-6xl text-gray-300 mb-4">restaurant_menu</span>
-                            <p class="text-gray-500 mb-2">No curated entities yet</p>
-                            <p class="text-sm text-gray-400">Start by adding entities from the Find Entity button</p>
+                            <span class="material-icons text-6xl text-gray-300 mb-4">error</span>
+                            <p class="text-gray-500 mb-2">Entities not found</p>
+                            <p class="text-sm text-gray-400">Curations exist but entities are missing</p>
                         </div>
                     `;
                     return;
@@ -298,6 +334,13 @@ if (typeof window.UIManager === 'undefined') {
             } catch (error) {
                 console.error('Failed to load curations:', error);
                 container.innerHTML = `
+                    <div class="col-span-full text-center py-12 text-red-500">
+                        <span class="material-icons text-6xl mb-4">error</span>
+                        <p>Failed to load curations</p>
+                    </div>
+                `;
+            }
+        }
                     <div class="col-span-full text-center py-12 text-red-500">
                         <span class="material-icons text-6xl mb-4">error</span>
                         <p>Failed to load curations</p>
