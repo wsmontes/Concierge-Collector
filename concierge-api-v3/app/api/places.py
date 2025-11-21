@@ -183,7 +183,7 @@ def get_enhanced_field_mask(include_reviews: bool = False, include_photos: bool 
         "allowsDogs",
         "goodForChildren",
         "goodForGroups",
-        "wheelchairAccessibleEntrance"
+        "accessibilityOptions"  # Renamed from wheelchairAccessibleEntrance
     ]
     
     # Parking - SKU: Atmosphere Data
@@ -378,10 +378,13 @@ async def _nearby_search(
     
     # Headers with comprehensive field mask (100 most important fields)
     # Note: searchNearby requires 'places.' prefix for fields
+    field_mask = get_enhanced_field_mask(include_reviews=False, include_photos=True, detail_level="standard", use_prefix=True)
+    logger.info(f"Field mask for nearby search: {field_mask[:200]}...")  # Log first 200 chars
+    
     headers = {
         "Content-Type": "application/json",
         "X-Goog-Api-Key": settings.google_places_api_key,
-        "X-Goog-FieldMask": get_enhanced_field_mask(include_reviews=False, include_photos=True, detail_level="standard", use_prefix=True)
+        "X-Goog-FieldMask": field_mask
     }
     
     # Make request
@@ -405,6 +408,11 @@ async def _nearby_search(
     # Format results
     places = data.get('places', [])
     formatted_results = []
+    
+    # Debug: Log first place to check id field
+    if places:
+        logger.info(f"First place from Google API: {places[0]}")
+        logger.info(f"First place 'id' field: {places[0].get('id', 'NOT FOUND')}")
     
     for place in places:
         # Apply openNow filter if requested (client-side since API doesn't support it directly in nearby)
@@ -430,6 +438,10 @@ async def _nearby_search(
             'phone': place.get('internationalPhoneNumber'),
             'photos': None  # Would need separate request
         })
+        
+        # Debug: Log if place_id is missing
+        if not place.get('id'):
+            logger.warning(f"⚠️ Place missing 'id' field: {place.get('displayName', {}).get('text', 'Unknown')}")
     
     logger.info(f"Nearby Search found {len(formatted_results)} places")
     
@@ -519,6 +531,11 @@ async def _text_search(
     places = data.get('places', [])
     formatted_results = []
     
+    # Debug: Log first place to check id field
+    if places:
+        logger.info(f"First place from Google API (text search): {places[0]}")
+        logger.info(f"First place 'id' field (text search): {places[0].get('id', 'NOT FOUND')}")
+    
     for place in places:
         formatted_results.append({
             'place_id': place.get('id', '').replace('places/', ''),
@@ -537,6 +554,10 @@ async def _text_search(
             'phone': place.get('internationalPhoneNumber'),
             'photos': None  # Would need separate request
         })
+        
+        # Debug: Log if place_id is missing
+        if not place.get('id'):
+            logger.warning(f"⚠️ Place missing 'id' field (text search): {place.get('displayName', {}).get('text', 'Unknown')}")
     
     logger.info(f"Text Search found {len(formatted_results)} places")
     

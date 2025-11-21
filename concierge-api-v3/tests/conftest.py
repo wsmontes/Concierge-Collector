@@ -47,6 +47,29 @@ def clean_test_curations(test_db):
 
 
 @pytest.fixture
+def test_google_api_key():
+    """Get Google Places API key from settings for integration tests"""
+    return settings.google_places_api_key if hasattr(settings, 'google_places_api_key') else None
+
+
+@pytest.fixture
+def test_place_id():
+    """Provide a known valid place ID for testing"""
+    # Using a well-known place: Google's Sydney office
+    return "ChIJN1t_tDeuEmsRUsoyG83frY4"
+
+
+def pytest_addoption(parser):
+    """Add custom command line options"""
+    parser.addoption(
+        "--run-integration",
+        action="store_true",
+        default=False,
+        help="Run integration tests that hit external APIs"
+    )
+
+
+@pytest.fixture
 def sample_entity():
     """Sample entity data for testing"""
     return {

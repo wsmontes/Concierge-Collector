@@ -308,6 +308,14 @@ window.FindEntityModal = class FindEntityModal {
             const response = await window.ApiService.request('GET', url);
             const data = await response.json();
             
+            console.log('🌐 API Response:', {
+                hasData: !!data,
+                hasResults: !!data?.results,
+                resultsCount: data?.results?.length,
+                firstResult: data?.results?.[0],
+                status: data?.status
+            });
+            
             if (data && data.results) {
                 this.currentResults = data.results;
                 this.displayResults(this.currentResults);
@@ -392,6 +400,15 @@ window.FindEntityModal = class FindEntityModal {
     displayResults(results) {
         console.log('📍 Displaying results:', results);
         
+        // Debug: Check place_id in first result
+        if (results && results.length > 0) {
+            console.log('🔍 First result place_id check:', {
+                hasPlaceId: !!results[0].place_id,
+                placeId: results[0].place_id,
+                fullObject: results[0]
+            });
+        }
+        
         if (!results || results.length === 0) {
             this.resultsContainer.innerHTML = `
                 <div class="text-center text-gray-500 py-12">
@@ -422,6 +439,11 @@ window.FindEntityModal = class FindEntityModal {
      * Create HTML card for a place
      */
     createPlaceCard(place) {
+        // Debug: Log place_id for each card created
+        if (!place.place_id) {
+            console.warn('⚠️ Creating card for place without place_id:', place.name);
+        }
+        
         const rating = place.rating || 0;
         const ratingStars = this.createStarRating(rating);
         const priceLevel = place.price_level ? '$'.repeat(place.price_level) : 'N/A';
