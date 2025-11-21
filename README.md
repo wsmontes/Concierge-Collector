@@ -34,15 +34,46 @@ Concierge Collector is a modern restaurant curation platform that helps users di
 
 ## 🚀 Quick Start
 
+### 🏠 Local Development (One Command)
+
+```bash
+./setup_local.sh  # Automated setup wizard
+```
+
+Then start the backend:
+```bash
+cd concierge-api-v3
+./run_local.sh    # macOS/Linux
+# or
+run_local.bat     # Windows
+```
+
+**Frontend auto-detects local backend!** Just open `index.html` with Live Server.
+
+📚 **Detailed guide**: [LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md)
+
+---
+
+### 🌐 Production Deployment
+
+The system **automatically** works on Render.com with zero code changes:
+- Backend detects Render environment variables
+- Frontend detects production hostname
+- OAuth redirects auto-configure
+
+See [DEPLOYMENT.md](DEPLOYMENT.md) for production setup.
+
+---
+
 ### Prerequisites
 
 - **Python 3.13.4** (for API)
-- **MongoDB Atlas** (cloud database)
-- **Google OAuth 2.0 Client** (for authentication)
-- **Google Places API Key** (for restaurant import)
-- **OpenAI API Key** (for AI concept extraction)
+- **MongoDB** (local or Atlas)
+- **Google OAuth 2.0 Client** (optional - for authentication)
+- **Google Places API Key** (optional - for restaurant import)
+- **OpenAI API Key** (optional - for AI concept extraction)
 
-### Installation
+### Manual Installation
 
 1. **Clone the repository**
    ```bash
@@ -53,7 +84,7 @@ Concierge Collector is a modern restaurant curation platform that helps users di
 2. **Set up API V3 (Backend)**
    ```bash
    cd concierge-api-v3
-   python -m venv venv
+   python3 -m venv venv
    source venv/bin/activate  # On Windows: venv\Scripts\activate
    pip install -r requirements.txt
    ```
@@ -62,10 +93,9 @@ Concierge Collector is a modern restaurant curation platform that helps users di
 
 3. **Configure environment**
    ```bash
-   cd concierge-api-v3
+   # Already created by setup script, or:
    cp .env.example .env
-   # Edit .env with your credentials (see DEPLOYMENT.md for details)
-   # NEVER commit .env files to git!
+   # Edit .env with your credentials
    ```
 
 4. **Run tests** (optional)
@@ -81,8 +111,8 @@ Concierge Collector is a modern restaurant curation platform that helps users di
 6. **Open the frontend**
    ```bash
    cd ..
-   # Open index.html in your browser
-   # Or use a local server: python -m http.server 3000
+   # Open index.html with Live Server (VSCode extension)
+   # Or: python3 -m http.server 5500
    ```
 
 ---
@@ -91,6 +121,7 @@ Concierge Collector is a modern restaurant curation platform that helps users di
 
 | Document | Description |
 |----------|-------------|
+| [LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md) | **🏠 Local development quick start** |
 | [DEPLOYMENT.md](DEPLOYMENT.md) | **🚀 Production deployment guide (Render.com)** |
 | [API-REF/API_DOCUMENTATION_V3.md](API-REF/API_DOCUMENTATION_V3.md) | API V3 reference |
 | [docs/OAUTH_SETUP_GUIDE.md](docs/OAUTH_SETUP_GUIDE.md) | Google OAuth configuration |

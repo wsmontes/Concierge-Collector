@@ -20,7 +20,7 @@ pip install pytest pytest-asyncio httpx --quiet
 # Run tests
 echo ""
 echo "📦 Running pytest..."
-pytest tests/test_places.py -v --tb=short
+venv/bin/pytest tests/ -v --tb=short
 
 # Check exit code
 if [ $? -eq 0 ]; then
@@ -29,6 +29,6 @@ if [ $? -eq 0 ]; then
     exit 0
 else
     echo ""
-    echo "❌ Some tests failed"
+    echo "❌ Tests failed!"
     exit 1
 fi

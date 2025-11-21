@@ -1,6 +1,6 @@
 """
 Concierge Collector API V3 - Professional FastAPI Implementation
-Main application entry point with async MongoDB support
+Main application entry point with PyMongo (sync) support
 """
 
 from fastapi import FastAPI
@@ -17,13 +17,13 @@ async def lifespan(app: FastAPI):
     """Startup and shutdown events"""
     # Startup
     try:
-        await connect_to_mongo()
+        connect_to_mongo()
     except Exception as e:
         print(f"⚠️  MongoDB connection failed (continuing without it): {e}")
         print("⚠️  Only Places API endpoints will work")
     yield
     # Shutdown
-    await close_mongo_connection()
+    close_mongo_connection()
 
 
 # Create FastAPI application

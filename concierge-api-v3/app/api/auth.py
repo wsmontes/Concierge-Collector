@@ -9,7 +9,7 @@ Implements secure OAuth flow following best practices:
 
 from fastapi import APIRouter, HTTPException, Depends, status, Request
 from fastapi.responses import RedirectResponse, HTMLResponse
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo.database import Database
 from datetime import datetime, timedelta, timezone
 import httpx
 import secrets
@@ -103,30 +103,30 @@ def verify_state(state: str) -> Optional[str]:
     return code_verifier
 
 
-async def get_user_by_google_id(db: AsyncIOMotorDatabase, google_id: str) -> Optional[UserInDB]:
+def get_user_by_google_id(db: Database, google_id: str) -> Optional[UserInDB]:
     """Get user from database by Google ID"""
-    user_doc = await db.users.find_one({"google_id": google_id})
+    user_doc = db.users.find_one({"google_id": google_id})
     if user_doc:
         user_doc["_id"] = str(user_doc["_id"])
         return UserInDB(**user_doc)
     return None
 
 
-async def get_user_by_email(db: AsyncIOMotorDatabase, email: str) -> Optional[UserInDB]:
+def get_user_by_email(db: Database, email: str) -> Optional[UserInDB]:
     """Get user from database by email"""
-    user_doc = await db.users.find_one({"email": email})
+    user_doc = db.users.find_one({"email": email})
     if user_doc:
         user_doc["_id"] = str(user_doc["_id"])
         return UserInDB(**user_doc)
     return None
 
 
-async def create_or_update_user(db: AsyncIOMotorDatabase, user_data: dict) -> UserInDB:
+def create_or_update_user(db: Database, user_data: dict) -> UserInDB:
     """
     Create new user or update existing user's last login and refresh token
     New users are created as unauthorized by default
     """
-    existing_user = await get_user_by_google_id(db, user_data["google_id"])
+    existing_user = get_user_by_google_id(db, user_data["google_id"])
     
     if existing_user:
         # Update last login and refresh token if provided
@@ -134,7 +134,7 @@ async def create_or_update_user(db: AsyncIOMotorDatabase, user_data: dict) -> Us
         if user_data.get("refresh_token"):
             update_data["refresh_token"] = user_data["refresh_token"]
         
-        await db.users.update_one(
+        db.users.update_one(
             {"google_id": user_data["google_id"]},
             {"$set": update_data}
         )
@@ -155,7 +155,7 @@ async def create_or_update_user(db: AsyncIOMotorDatabase, user_data: dict) -> Us
             last_login=datetime.now(timezone.utc),
             refresh_token=user_data.get("refresh_token")
         )
-        result = await db.users.insert_one(new_user.dict())
+        result = db.users.insert_one(new_user.dict())
         user_dict = new_user.dict()
         user_dict["_id"] = str(result.inserted_id)
         logger.info(f"[OAuth] Created new user: {new_user.email} (authorized=False)")
@@ -163,7 +163,7 @@ async def create_or_update_user(db: AsyncIOMotorDatabase, user_data: dict) -> Us
 
 
 @router.get("/google")
-async def google_oauth_init(
+def google_oauth_init(
     callback_url: Optional[str] = None,
     request: Request = None
 ):
@@ -240,11 +240,11 @@ async def google_oauth_init(
 
 
 @router.get("/callback")
-async def google_oauth_callback(
+def google_oauth_callback(
     code: Optional[str] = None,
     state: Optional[str] = None,
     error: Optional[str] = None,
-    db: AsyncIOMotorDatabase = Depends(get_database)
+    db: Database = Depends(get_database)
 ):
     """
     Handle OAuth callback from Google
@@ -311,8 +311,8 @@ async def google_oauth_callback(
         logger.info(f"[OAuth]   redirect_uri: {settings.google_oauth_redirect_uri}")
         logger.info(f"[OAuth]   using PKCE code_verifier")
         
-        async with httpx.AsyncClient() as client:
-            token_response = await client.post(
+        with httpx.Client() as client:
+            token_response = client.post(
                 "https://oauth2.googleapis.com/token",
                 data={
                     "code": code,
@@ -340,7 +340,7 @@ async def google_oauth_callback(
             
             # Get user info from Google
             logger.info("[OAuth] Fetching user info...")
-            userinfo_response = await client.get(
+            userinfo_response = client.get(
                 "https://www.googleapis.com/oauth2/v2/userinfo",
                 headers={"Authorization": f"Bearer {token_data['access_token']}"}
             )
@@ -368,7 +368,7 @@ async def google_oauth_callback(
         )
     
     # Create or update user in database (include refresh token)
-    user = await create_or_update_user(db, {
+    user = create_or_update_user(db, {
         "email": user_info["email"],
         "google_id": user_info["id"],
         "name": user_info["name"],
@@ -391,7 +391,7 @@ async def google_oauth_callback(
         }
         
         # Upsert curator in curators collection
-        await db.curators.update_one(
+        db.curators.update_one(
             {"curator_id": user.email},
             {"$set": curator_data, "$setOnInsert": {"createdAt": datetime.now(timezone.utc)}},
             upsert=True
@@ -436,9 +436,9 @@ async def google_oauth_callback(
 
 
 @router.get("/verify", response_model=UserAuthResponse)
-async def verify_token(
+def verify_token(
     token_data: dict = Depends(verify_access_token),
-    db: AsyncIOMotorDatabase = Depends(get_database)
+    db: Database = Depends(get_database)
 ):
     """
     Verify JWT access token and return user data
@@ -455,7 +455,7 @@ async def verify_token(
             detail="Invalid token: missing subject"
         )
     
-    user = await get_user_by_email(db, email)
+    user = get_user_by_email(db, email)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -479,9 +479,9 @@ async def verify_token(
 
 
 @router.post("/refresh")
-async def refresh_access_token(
+def refresh_access_token(
     request: TokenRefreshRequest,
-    db: AsyncIOMotorDatabase = Depends(get_database)
+    db: Database = Depends(get_database)
 ):
     """
     Refresh access token using a valid refresh token
@@ -495,7 +495,7 @@ async def refresh_access_token(
     from app.core.security import verify_refresh_token, create_access_token, create_refresh_token
     
     # Verify refresh token
-    token_data = await verify_refresh_token(request.refresh_token)
+    token_data = verify_refresh_token(request.refresh_token)
     
     email = token_data.get("sub")
     if not email:
@@ -505,7 +505,7 @@ async def refresh_access_token(
         )
     
     # Get user from database
-    user = await get_user_by_email(db, email)
+    user = get_user_by_email(db, email)
     if not user:
         raise HTTPException(
             status_code=status.HTTP_404_NOT_FOUND,
@@ -538,7 +538,7 @@ async def refresh_access_token(
     }
 
 @router.post("/logout")
-async def logout(token_data: dict = Depends(verify_access_token)):
+def logout(token_data: dict = Depends(verify_access_token)):
     """
     Logout user
     

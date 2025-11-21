@@ -65,7 +65,7 @@ class OrchestrateResponse(BaseModel):
 
 
 # Dependency to get OpenAI service
-async def get_openai_service(db = Depends(get_database)):
+def get_openai_service(db = Depends(get_database)):
     """Get OpenAI service instance"""
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
@@ -77,7 +77,7 @@ async def get_openai_service(db = Depends(get_database)):
 
 
 # Dependency to get AI orchestrator
-async def get_ai_orchestrator(
+def get_ai_orchestrator(
     db = Depends(get_database),
     openai_service = Depends(get_openai_service)
 ):
@@ -87,7 +87,7 @@ async def get_ai_orchestrator(
 
 
 @router.post("/orchestrate", response_model=OrchestrateResponse)
-async def orchestrate(
+def orchestrate(
     request: OrchestrateRequest,
     orchestrator: AIOrchestrator = Depends(get_ai_orchestrator),
     token_data: dict = Depends(verify_access_token)  # Require JWT authentication
@@ -132,7 +132,7 @@ async def orchestrate(
         request_dict = request.model_dump(exclude_none=True)
         
         # Orchestrate
-        result = await orchestrator.orchestrate(request_dict)
+        result = orchestrator.orchestrate(request_dict)
         
         return result
     
@@ -149,7 +149,7 @@ async def orchestrate(
 
 
 @router.get("/usage-stats")
-async def get_usage_stats(
+def get_usage_stats(
     days: int = 7,
     openai_service: OpenAIService = Depends(get_openai_service)
 ):
@@ -160,7 +160,7 @@ async def get_usage_stats(
     for the specified number of days.
     """
     try:
-        stats = await openai_service.get_usage_stats(days)
+        stats = openai_service.get_usage_stats(days)
         return stats
     except Exception as e:
         raise HTTPException(
@@ -170,18 +170,18 @@ async def get_usage_stats(
 
 
 @router.get("/health")
-async def health_check(db = Depends(get_database)):
+def health_check(db = Depends(get_database)):
     """Health check for AI services"""
     try:
         # Check if MongoDB collections exist
-        collections = await db.list_collection_names()
+        collections = db.list_collection_names()
         
         has_categories = "categories" in collections
         has_configs = "openai_configs" in collections
         
         # Count documents
-        category_count = await db.categories.count_documents({"active": True}) if has_categories else 0
-        config_count = await db.openai_configs.count_documents({"enabled": True}) if has_configs else 0
+        category_count = db.categories.count_documents({"active": True}) if has_categories else 0
+        config_count = db.openai_configs.count_documents({"enabled": True}) if has_configs else 0
         
         return {
             "status": "healthy",

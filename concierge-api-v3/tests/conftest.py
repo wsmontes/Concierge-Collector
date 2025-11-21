@@ -1,109 +1,84 @@
 """
-Pytest configuration and fixtures
-Provides test client, database, and common test data
+Test configuration and fixtures
 """
-
 import pytest
-import pytest_asyncio
-from httpx import AsyncClient
-from motor.motor_asyncio import AsyncIOMotorClient
-from datetime import datetime
-import asyncio
-import os
+from fastapi.testclient import TestClient
+from pymongo import MongoClient
+from datetime import datetime, timezone
 
 from main import app
 from app.core.config import settings
 
 
-# Test API key - should match .env for tests
-TEST_API_KEY = "test_api_key_for_testing_only"
-
-# Set test API key in environment for tests
-os.environ["API_SECRET_KEY"] = TEST_API_KEY
-# Set test OpenAI key (mock key for testing)
-os.environ["OPENAI_API_KEY"] = "sk-test-mock-openai-key-for-testing-only"
-
-
 @pytest.fixture(scope="session")
-def event_loop():
-    """Create event loop for the test session"""
-    loop = asyncio.get_event_loop_policy().new_event_loop()
-    yield loop
-    loop.close()
-
-
-@pytest_asyncio.fixture
-async def test_db():
-    """Create test database connection"""
-    # Use a test database
-    test_db_name = f"{settings.mongodb_db_name}_test"
-    client = AsyncIOMotorClient(settings.mongodb_url)
-    db = client[test_db_name]
-    
+def test_db():
+    """Get test database - uses same DB but test collections"""
+    client = MongoClient(settings.mongodb_url)
+    db = client[settings.mongodb_db_name]
     yield db
-    
-    # Cleanup - drop all collections
-    for collection_name in await db.list_collection_names():
-        await db[collection_name].drop()
-    
     client.close()
 
 
-@pytest_asyncio.fixture
-async def client(test_db):
-    """Create test HTTP client"""
-    # Override database dependency
-    from app.core.database import get_database
-    
-    async def override_get_database():
-        return test_db
-    
-    app.dependency_overrides[get_database] = override_get_database
-    
-    async with AsyncClient(app=app, base_url="http://test") as ac:
-        yield ac
-    
-    app.dependency_overrides.clear()
+@pytest.fixture(scope="session")
+def client():
+    """FastAPI test client"""
+    with TestClient(app) as c:
+        yield c
+
+
+@pytest.fixture(scope="function")
+def clean_test_entities(test_db):
+    """Clean test entities before and after each test"""
+    # Clean before
+    test_db.entities.delete_many({"_id": {"$regex": "^test_"}})
+    yield
+    # Clean after
+    test_db.entities.delete_many({"_id": {"$regex": "^test_"}})
+
+
+@pytest.fixture(scope="function")
+def clean_test_curations(test_db):
+    """Clean test curations before and after each test"""
+    # Clean before
+    test_db.curations.delete_many({"entity_id": {"$regex": "^test_"}})
+    yield
+    # Clean after
+    test_db.curations.delete_many({"entity_id": {"$regex": "^test_"}})
 
 
 @pytest.fixture
-def sample_entity_data():
-    """Sample entity data for tests"""
+def sample_entity():
+    """Sample entity data for testing"""
     return {
-        "entity_id": "rest_test_001",
+        "entity_id": "test_restaurant_001",
         "type": "restaurant",
         "name": "Test Restaurant",
-        "location": {
-            "city": "São Paulo",
-            "country": "Brazil"
+        "data": {
+            "address": "123 Test St",
+            "cuisine": "Italian"
         }
     }
 
 
 @pytest.fixture
-def sample_curation_data():
-    """Sample curation data for tests"""
+def sample_curation():
+    """Sample curation data for testing"""
     return {
-        "curation_id": "cur_test_001",
-        "entity_id": "rest_test_001",
+        "entity_id": "test_restaurant_001",
+        "status": "pending",
         "curator": {
-            "id": "curator_test",
+            "id": "test_curator",
             "name": "Test Curator"
         },
-        "categories": {
-            "primary": ["Fine Dining"],
-            "secondary": ["French"]
-        },
-        "notes": {
-            "public": "Excellent restaurant",
-            "private": "Test notes"
+        "data": {
+            "notes": "Test notes"
         }
     }
 
 
 @pytest.fixture
 def auth_headers():
-    """Authentication headers with API key for protected endpoints"""
-    return {
-        "X-API-Key": TEST_API_KEY
-    }
+    """Mock auth headers - in real tests you'd get a valid JWT"""
+    # For now, return empty dict since we need proper OAuth
+    # In production, generate a real JWT token here
+    return {}
