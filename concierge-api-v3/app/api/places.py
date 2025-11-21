@@ -83,7 +83,7 @@ def get_enhanced_field_mask(include_reviews: bool = False, include_photos: bool 
     """
     # Essential fields (always included) - SKU: Basic Data
     essential = [
-        "places.id",
+        "places.name",  # Changed from places.id - this is the correct field
         "places.displayName",
         "places.formattedAddress",
         "places.location",
@@ -130,8 +130,8 @@ def get_enhanced_field_mask(include_reviews: bool = False, include_photos: bool 
     
     # Editorial content
     editorial = [
-        "places.editorialSummary",
-        "places.iconMaskBaseUri"
+        "places.editorialSummary"
+        # Removed: places.iconMaskBaseUri - deprecated in Places API (New)
     ]
     
     # Photos (if requested)
@@ -195,9 +195,8 @@ def get_enhanced_field_mask(include_reviews: bool = False, include_photos: bool 
     
     # Attribution and metadata
     metadata = [
-        "places.attributions",
-        "places.url",
         "places.googleMapsUri"
+        # Removed: places.attributions, places.url - not valid in Places API (New)
     ]
     
     # Combine all fields for full detail

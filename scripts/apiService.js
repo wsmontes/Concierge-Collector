@@ -302,7 +302,7 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         return await response.json();
     }
 
-    async searchPlaces(query, location = null, radius = null) {
+    async searchPlaces(query, location = null, radius = null, placeType = 'restaurant') {
         const params = new URLSearchParams();
         if (query) params.append('keyword', query);
         if (location) {
@@ -310,6 +310,8 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
             params.append('longitude', location.longitude || location.lng);
         }
         if (radius) params.append('radius', radius);
+        // Default filter: only restaurants
+        if (placeType) params.append('type', placeType);
         
         const endpoint = `places/nearby?${params.toString()}`;
         const response = await this.request('GET', endpoint);

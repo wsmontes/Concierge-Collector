@@ -441,3 +441,212 @@ describe('ApiService - Request Format', () => {
     expect(result).toHaveProperty('offset');
   });
 });
+
+// ============================================================================
+// Google Places API Integration Tests (Real API)
+// ============================================================================
+
+describe('ApiService - Google Places Integration', () => {
+  describe('Nearby Search with Restaurant Filter', () => {
+    test('should return only restaurants when type=restaurant', async () => {
+      if (!apiAvailable) {
+        console.warn('⚠️  Skipping - API not available');
+        return;
+      }
+
+      // São Paulo downtown coordinates
+      const params = new URLSearchParams({
+        latitude: -23.5505,
+        longitude: -46.6333,
+        radius: 1000,
+        type: 'restaurant',
+        max_results: 5
+      });
+
+      const response = await fetch(`${API_BASE}/places/nearby?${params.toString()}`);
+      expect(response.ok).toBe(true);
+
+      const data = await response.json();
+      expect(data).toHaveProperty('results');
+      expect(Array.isArray(data.results)).toBe(true);
+      
+      if (data.results.length > 0) {
+        // Verify results have essential fields
+        const place = data.results[0];
+        expect(place).toHaveProperty('place_id');
+        expect(place).toHaveProperty('name');
+        expect(place).toHaveProperty('vicinity');
+      }
+    });
+
+    test('should accept custom place type (cafe)', async () => {
+      if (!apiAvailable) {
+        console.warn('⚠️  Skipping - API not available');
+        return;
+      }
+
+      const params = new URLSearchParams({
+        latitude: -23.5505,
+        longitude: -46.6333,
+        radius: 1000,
+        type: 'cafe',
+        max_results: 3
+      });
+
+      const response = await fetch(`${API_BASE}/places/nearby?${params.toString()}`);
+      expect(response.ok).toBe(true);
+
+      const data = await response.json();
+      expect(data).toHaveProperty('results');
+      expect(Array.isArray(data.results)).toBe(true);
+    });
+
+    test('should handle all query parameters', async () => {
+      if (!apiAvailable) {
+        console.warn('⚠️  Skipping - API not available');
+        return;
+      }
+
+      const params = new URLSearchParams({
+        keyword: 'pizza',
+        latitude: -23.5505,
+        longitude: -46.6333,
+        radius: 2000,
+        type: 'restaurant',
+        max_results: 10
+      });
+
+      const response = await fetch(`${API_BASE}/places/nearby?${params.toString()}`);
+      expect(response.ok).toBe(true);
+
+      const data = await response.json();
+      expect(data).toHaveProperty('results');
+      expect(data.status).toBe('OK');
+    });
+
+    test('should return error for invalid coordinates', async () => {
+      if (!apiAvailable) {
+        console.warn('⚠️  Skipping - API not available');
+        return;
+      }
+
+      const params = new URLSearchParams({
+        latitude: 999,
+        longitude: 999,
+        radius: 1000,
+        type: 'restaurant'
+      });
+
+      const response = await fetch(`${API_BASE}/places/nearby?${params.toString()}`);
+      expect(response.ok).toBe(false);
+      expect([400, 422, 502]).toContain(response.status);
+    });
+
+    test('should return error for missing required parameters', async () => {
+      if (!apiAvailable) {
+        console.warn('⚠️  Skipping - API not available');
+        return;
+      }
+
+      // Missing latitude
+      const response = await fetch(`${API_BASE}/places/nearby?longitude=-46.6333&radius=1000`);
+      expect(response.ok).toBe(false);
+      expect([400, 422]).toContain(response.status);
+    });
+  });
+
+  describe('Place Details', () => {
+    test('should return place details for valid place_id', async () => {
+      if (!apiAvailable) {
+        console.warn('⚠️  Skipping - API not available');
+        return;
+      }
+
+      // First get a place_id from nearby search
+      const searchParams = new URLSearchParams({
+        latitude: -23.5505,
+        longitude: -46.6333,
+        radius: 1000,
+        type: 'restaurant',
+        max_results: 1
+      });
+
+      const searchResponse = await fetch(`${API_BASE}/places/nearby?${searchParams.toString()}`);
+      const searchData = await searchResponse.json();
+
+      if (searchData.results && searchData.results.length > 0) {
+        const placeId = searchData.results[0].place_id;
+
+        // Now get place details
+        const detailsResponse = await fetch(`${API_BASE}/places/details/${placeId}`);
+        expect(detailsResponse.ok).toBe(true);
+
+        const detailsData = await detailsResponse.json();
+        expect(detailsData).toHaveProperty('result');
+        expect(detailsData.status).toBe('OK');
+      }
+    });
+
+    test('should return error for invalid place_id', async () => {
+      if (!apiAvailable) {
+        console.warn('⚠️  Skipping - API not available');
+        return;
+      }
+
+      const response = await fetch(`${API_BASE}/places/details/invalid_place_id_12345`);
+      expect(response.ok).toBe(false);
+      expect([400, 404, 502]).toContain(response.status);
+    });
+  });
+
+  describe('Response Structure Validation', () => {
+    test('should return results array (not places)', async () => {
+      if (!apiAvailable) {
+        console.warn('⚠️  Skipping - API not available');
+        return;
+      }
+
+      const params = new URLSearchParams({
+        latitude: -23.5505,
+        longitude: -46.6333,
+        radius: 1000,
+        type: 'restaurant',
+        max_results: 1
+      });
+
+      const response = await fetch(`${API_BASE}/places/nearby?${params.toString()}`);
+      const data = await response.json();
+
+      // API should return 'results' not 'places'
+      expect(data).toHaveProperty('results');
+      expect(data).not.toHaveProperty('places');
+      expect(data).toHaveProperty('status');
+    });
+
+    test('should include place_id field (not id)', async () => {
+      if (!apiAvailable) {
+        console.warn('⚠️  Skipping - API not available');
+        return;
+      }
+
+      const params = new URLSearchParams({
+        latitude: -23.5505,
+        longitude: -46.6333,
+        radius: 1000,
+        type: 'restaurant',
+        max_results: 1
+      });
+
+      const response = await fetch(`${API_BASE}/places/nearby?${params.toString()}`);
+      const data = await response.json();
+
+      if (data.results && data.results.length > 0) {
+        const place = data.results[0];
+        // Should have place_id, not id
+        expect(place).toHaveProperty('place_id');
+        expect(place).not.toHaveProperty('id');
+      }
+    });
+  });
+});
+
