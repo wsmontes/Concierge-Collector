@@ -994,6 +994,11 @@ audio {
   border-radius: var (--radius);
   padding: 1rem 1.5rem;
   box-shadow: var(--shadow-md);
+  top: 5rem !important; /* Position below header */
+}
+
+.toastify.on {
+  top: 5rem !important; /* Ensure it stays below header when active */
 }
 
 /* ===== Modals ===== */
@@ -1005,9 +1010,8 @@ audio {
 .fixed.inset-0.bg-black.bg-opacity-50 .bg-white {
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-lg);
-  overflow: hidden;
   animation: modal-slide-in var(--transition-smooth);
-  overflow: visible !important; /* Override any overflow settings */
+}
 }
 
 @keyframes modal-slide-in {

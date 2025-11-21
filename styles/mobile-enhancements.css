@@ -658,11 +658,40 @@
     z-index: 9999 !important; /* Just below loading overlay */
 }
 
+/* Position toastify below header */
+.toastify {
+    top: 5rem !important;
+    margin-top: 0.5rem !important;
+}
+
+.toastify.on {
+    top: 5rem !important;
+}
+
 /* Modals should be above content */
 .modal,
 [id*="modal"],
 .fixed.inset-0.bg-black.bg-opacity-50 {
     z-index: 1050 !important; /* --z-modal from design system */
+}
+
+/* Fix modal overflow on mobile */
+@media (max-width: 768px) {
+    .fixed.inset-0.bg-black.bg-opacity-50 {
+        align-items: flex-start !important;
+        padding-top: 1rem !important;
+        padding-bottom: 1rem !important;
+    }
+    
+    .fixed.inset-0.bg-black.bg-opacity-50 > div {
+        margin-top: 0 !important;
+        margin-bottom: 0 !important;
+        max-height: calc(100vh - 2rem) !important;
+    }
+    
+    .fixed.inset-0.bg-black.bg-opacity-50 > div > div {
+        max-height: calc(100vh - 2rem) !important;
+    }
 }
 
 /* Toolbars should float above content */
