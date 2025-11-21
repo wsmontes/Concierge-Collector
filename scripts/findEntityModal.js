@@ -458,11 +458,12 @@ window.FindEntityModal = class FindEntityModal {
                 <!-- Import Button -->
                 <button 
                     class="import-entity-btn btn btn-primary w-full mt-4"
-                    data-place-id="${place.place_id}"
-                    data-place-name="${place.name}"
+                    data-place-id="${place.place_id || ''}"
+                    data-place-name="${place.name || 'Unknown'}"
+                    ${!place.place_id ? 'disabled title="Place ID not available"' : ''}
                 >
-                    <span class="material-icons mr-2 text-sm">add_circle</span>
-                    Import as Entity
+                    <span class="material-icons mr-2 text-sm">${place.place_id ? 'add_circle' : 'error'}</span>
+                    ${place.place_id ? 'Import as Entity' : 'Place ID Missing'}
                 </button>
             </div>
         `;
@@ -514,6 +515,17 @@ window.FindEntityModal = class FindEntityModal {
         buttonElement.innerHTML = '<span class="material-icons mr-2 text-sm animate-spin">refresh</span>Importing...';
         
         try {
+            // Validate place ID
+            if (!placeId || placeId.trim() === '') {
+                console.error('❌ Place ID is empty or undefined');
+                console.error('   Received placeId:', placeId);
+                console.error('   Button element:', buttonElement);
+                console.error('   data-place-id attribute:', buttonElement.getAttribute('data-place-id'));
+                throw new Error('Place ID is missing. This place cannot be imported. Please try a different search result.');
+            }
+            
+            console.log('✅ Place ID validated:', placeId);
+            
             // Verify ApiService is available
             if (!window.ApiService) {
                 throw new Error('ApiService not available. Please ensure the application is fully loaded.');
