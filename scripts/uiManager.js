@@ -395,28 +395,96 @@ if (typeof window.UIManager === 'undefined') {
          */
         createEntityCard(entity) {
             const card = document.createElement('div');
-            card.className = 'bg-white rounded-lg shadow-sm border border-gray-200 p-4 hover:shadow-md transition-shadow cursor-pointer';
+            card.className = 'bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-lg hover:border-blue-300 transition-all duration-200 cursor-pointer group';
             
             const name = entity.name || 'Unknown';
             const type = entity.type || 'restaurant';
-            const city = entity.data?.location?.city || 'Unknown';
-            const rating = entity.data?.attributes?.rating || 0;
+            const city = entity.data?.location?.city || entity.data?.address?.city || 'Unknown';
+            const neighborhood = entity.data?.location?.neighborhood || entity.data?.address?.neighborhood || '';
+            const country = entity.data?.location?.country || entity.data?.address?.country || '';
+            const rating = entity.data?.attributes?.rating || entity.data?.rating || 0;
+            const priceLevel = entity.data?.attributes?.price_level || entity.data?.price_level || 0;
+            const cuisine = entity.data?.attributes?.cuisine || entity.data?.cuisine || [];
+            const phone = entity.data?.contact?.phone || entity.data?.phone || '';
+            const website = entity.data?.contact?.website || entity.data?.website || '';
+            
+            // Get first cuisine type if available
+            const cuisineType = Array.isArray(cuisine) && cuisine.length > 0 ? cuisine[0] : '';
+            
+            // Format location string
+            let locationStr = city;
+            if (neighborhood && neighborhood !== city) {
+                locationStr = `${neighborhood}, ${city}`;
+            }
+            if (country && country !== city) {
+                locationStr += ` • ${country}`;
+            }
+            
+            // Price level indicator
+            const priceIndicator = priceLevel > 0 ? '€'.repeat(priceLevel) : '';
             
             card.innerHTML = `
-                <div class="flex items-start gap-3">
-                    <div class="flex-shrink-0">
-                        <span class="material-icons text-2xl text-gray-400">${this.getTypeIcon(type)}</span>
+                <div class="relative">
+                    <!-- Header with type icon and actions -->
+                    <div class="absolute top-3 right-3 flex items-center gap-2 z-10">
+                        <div class="bg-white/90 backdrop-blur-sm rounded-full p-2 shadow-sm">
+                            <span class="material-icons text-lg text-gray-600">${this.getTypeIcon(type)}</span>
+                        </div>
                     </div>
-                    <div class="flex-1 min-w-0">
-                        <h3 class="font-semibold text-gray-900 truncate">${name}</h3>
-                        <p class="text-sm text-gray-500">${city}</p>
-                        ${rating > 0 ? `
-                            <div class="flex items-center gap-1 mt-1">
-                                <span class="material-icons text-sm text-yellow-500">star</span>
-                                <span class="text-sm text-gray-600">${rating.toFixed(1)}</span>
+                    
+                    <!-- Main content -->
+                    <div class="p-5">
+                        <!-- Name and cuisine -->
+                        <div class="mb-3">
+                            <h3 class="font-bold text-lg text-gray-900 mb-1 pr-12 line-clamp-2 group-hover:text-blue-600 transition-colors">
+                                ${name}
+                            </h3>
+                            ${cuisineType ? `
+                                <p class="text-sm text-gray-500 font-medium">${cuisineType}</p>
+                            ` : ''}
+                        </div>
+                        
+                        <!-- Location -->
+                        <div class="flex items-start gap-2 mb-3 text-sm text-gray-600">
+                            <span class="material-icons text-base mt-0.5 flex-shrink-0">place</span>
+                            <span class="line-clamp-2">${locationStr}</span>
+                        </div>
+                        
+                        <!-- Rating and Price -->
+                        <div class="flex items-center gap-4 mb-4">
+                            ${rating > 0 ? `
+                                <div class="flex items-center gap-1.5">
+                                    <span class="material-icons text-base text-yellow-500">star</span>
+                                    <span class="font-semibold text-gray-900">${rating.toFixed(1)}</span>
+                                </div>
+                            ` : ''}
+                            ${priceIndicator ? `
+                                <div class="flex items-center">
+                                    <span class="font-semibold text-gray-700">${priceIndicator}</span>
+                                </div>
+                            ` : ''}
+                        </div>
+                        
+                        <!-- Contact info -->
+                        ${phone || website ? `
+                            <div class="flex items-center gap-3 pt-3 border-t border-gray-100">
+                                ${phone ? `
+                                    <div class="flex items-center gap-1.5 text-xs text-gray-500" title="${phone}">
+                                        <span class="material-icons text-sm">phone</span>
+                                        <span class="truncate">${phone}</span>
+                                    </div>
+                                ` : ''}
+                                ${website ? `
+                                    <div class="flex items-center gap-1.5 text-xs text-blue-600" title="Has website">
+                                        <span class="material-icons text-sm">language</span>
+                                    </div>
+                                ` : ''}
                             </div>
                         ` : ''}
                     </div>
+                    
+                    <!-- Hover overlay effect -->
+                    <div class="absolute inset-0 bg-gradient-to-t from-blue-50/0 to-blue-50/0 group-hover:from-blue-50/30 group-hover:to-transparent transition-all duration-200 pointer-events-none"></div>
                 </div>
             `;
             
