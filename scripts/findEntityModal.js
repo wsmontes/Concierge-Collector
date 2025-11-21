@@ -647,19 +647,22 @@ window.FindEntityModal = class FindEntityModal {
                 // Close the find entity modal
                 this.close();
                 
-                // Open curation editor with the imported entity data
-                console.log('🎨 Opening curation editor for imported entity');
-                if (window.CurationEditor) {
-                    // Ensure the editor is initialized
-                    if (!window.curationEditorInstance) {
-                        window.curationEditorInstance = new window.CurationEditor();
-                        window.curationEditorInstance.init();
-                    }
+                // Open curation page (concepts-section) with entity data pre-filled
+                console.log('🎨 Opening curation page for imported entity');
+                if (window.uiManager) {
+                    // Pre-fill entity data in the form
+                    this.populateEntityFormForCuration(entity, place);
                     
-                    // Open editor with entity data
-                    window.curationEditorInstance.open(entity);
+                    // Show the concepts section (curation page)
+                    window.uiManager.showRestaurantFormSection();
+                    
+                    // Mark that we're curating an imported entity (not editing)
+                    window.uiManager.isEditingRestaurant = false;
+                    window.uiManager.editingRestaurantId = null;
+                    window.uiManager.importedEntityId = entity.entity_id;
+                    window.uiManager.importedEntityData = entity;
                 } else {
-                    console.warn('⚠️ CurationEditor not available - please ensure curationEditor.js is loaded');
+                    console.warn('⚠️ uiManager not available');
                 }
             }
         } catch (error) {
@@ -747,6 +750,78 @@ window.FindEntityModal = class FindEntityModal {
         if (!components) return '';
         const postalComponent = components.find(c => c.types.includes('postal_code'));
         return postalComponent ? (postalComponent.longText || postalComponent.long_name || '') : '';
+    }
+    
+    /**
+     * Populate entity form for curation
+     * Pre-fills the concepts-section form with imported entity data
+     */
+    populateEntityFormForCuration(entity, placeDetails) {
+        console.log('📝 Populating form with entity data for curation');
+        
+        // Restaurant name
+        const nameInput = document.getElementById('restaurant-name');
+        if (nameInput) {
+            nameInput.value = entity.name || '';
+        }
+        
+        // Location (coordinates)
+        if (entity.data?.location?.coordinates && window.uiManager) {
+            window.uiManager.currentLocation = {
+                latitude: entity.data.location.coordinates[1],
+                longitude: entity.data.location.coordinates[0]
+            };
+            
+            // Update location display
+            const locationDisplay = document.getElementById('location-display');
+            if (locationDisplay) {
+                locationDisplay.innerHTML = `
+                    <p class="text-green-600">Location from Google Places:</p>
+                    <p>Latitude: ${entity.data.location.coordinates[1].toFixed(6)}</p>
+                    <p>Longitude: ${entity.data.location.coordinates[0].toFixed(6)}</p>
+                    <p class="text-sm text-gray-600 mt-1">${entity.data.address.street}</p>
+                `;
+            }
+        }
+        
+        // Description (can leave empty for curator to add)
+        const descriptionInput = document.getElementById('restaurant-description');
+        if (descriptionInput) {
+            descriptionInput.value = '';
+        }
+        
+        // Transcription (empty - curator will add via recording)
+        const transcriptionTextarea = document.getElementById('restaurant-transcription');
+        if (transcriptionTextarea) {
+            transcriptionTextarea.value = '';
+        }
+        
+        // Curation notes (empty - curator will add)
+        const publicNotesTextarea = document.getElementById('curation-notes-public');
+        if (publicNotesTextarea) {
+            publicNotesTextarea.value = '';
+        }
+        
+        const privateNotesTextarea = document.getElementById('curation-notes-private');
+        if (privateNotesTextarea) {
+            privateNotesTextarea.value = '';
+        }
+        
+        // Clear photos (curator will add new ones)
+        if (window.uiManager) {
+            window.uiManager.currentPhotos = [];
+        }
+        const photosPreview = document.getElementById('photos-preview');
+        if (photosPreview) {
+            photosPreview.innerHTML = '';
+        }
+        
+        // Clear concepts (curator will add via AI or manually)
+        if (window.uiManager) {
+            window.uiManager.currentConcepts = [];
+        }
+        
+        console.log('✅ Form populated with entity data, ready for curation');
     }
     
     /**

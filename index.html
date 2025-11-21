@@ -313,6 +313,32 @@
                     <p class="helper-text">This short description will be displayed in restaurant listings.</p>
                 </div>
                 
+                <!-- Curation Notes Section -->
+                <div class="mb-8 pb-4 border-b border-gray-200">
+                    <h3 class="text-lg font-semibold mb-4 flex items-center">
+                        <span class="material-icons mr-2 text-indigo-600" aria-hidden="true">edit_note</span>
+                        Curation Notes
+                    </h3>
+                    <div class="mb-4">
+                        <label for="curation-notes-public" class="label flex items-center">
+                            <span class="material-icons mr-2 text-green-600" aria-hidden="true">visibility</span>
+                            Public Notes
+                            <span class="text-gray-500 text-xs ml-2">(visible to guests)</span>
+                        </label>
+                        <textarea id="curation-notes-public" class="input input-md h-24" placeholder="Add your recommendations, highlights, or tips for guests..." spellcheck="true"></textarea>
+                        <p class="helper-text">Share your expertise and recommendations with guests</p>
+                    </div>
+                    <div class="mb-4">
+                        <label for="curation-notes-private" class="label flex items-center">
+                            <span class="material-icons mr-2 text-red-600" aria-hidden="true">visibility_off</span>
+                            Private Notes
+                            <span class="text-gray-500 text-xs ml-2">(for internal use only)</span>
+                        </label>
+                        <textarea id="curation-notes-private" class="input input-md h-24" placeholder="Internal notes, contact information, or reminders..." spellcheck="true"></textarea>
+                        <p class="helper-text">Internal notes only you and your team can see</p>
+                    </div>
+                </div>
+                
                 <div id="concepts-container" class="mb-6"></div>
             </div>
         </section>
@@ -628,9 +654,6 @@
     <!-- DEPRECATED: <script src="scripts/modules/exportImportModule.js"></script> -->
     <script src="scripts/modules/quickActionModule.js"></script>
     <!-- REMOVED: michelinStagingModule.js - Michelin data will be batch imported -->
-    
-    <!-- Curation Editor - Modal-based curation creation and editing -->
-    <script src="scripts/curationEditor.js"></script>
     
     <!-- V3 Data Services (Sprint 1, Day 3 - MongoDB ↔ IndexedDB compatibility) -->
     <script src="scripts/services/V3DataTransformer.js"></script>

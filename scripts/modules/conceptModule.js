@@ -342,6 +342,16 @@ class ConceptModule {
             
             let restaurantId;
             let syncStatus = 'local-only';
+            let isImportedEntity = false;
+            let entityToUpdate = null;
+            
+            // Check if we're curating an imported entity
+            if (this.uiManager.importedEntityId && this.uiManager.importedEntityData) {
+                isImportedEntity = true;
+                entityToUpdate = this.uiManager.importedEntityData;
+                restaurantId = this.uiManager.importedEntityId;
+                this.log.debug('🎨 Creating curation for imported entity:', restaurantId);
+            }
             
             if (this.uiManager.isEditingRestaurant) {
                 // Update existing restaurant
@@ -404,6 +414,73 @@ class ConceptModule {
                 }
             }
             
+            // If curating an imported entity, update entity data and create curation
+            if (isImportedEntity && entityToUpdate) {
+                this.log.debug('🎨 Updating imported entity and creating curation');
+                
+                // Update entity if name or location changed
+                const entityNeedsUpdate = 
+                    entityToUpdate.name !== name ||
+                    JSON.stringify(entityToUpdate.location) !== JSON.stringify(this.uiManager.currentLocation);
+                
+                if (entityNeedsUpdate) {
+                    this.log.debug('📝 Entity data changed, updating...');
+                    
+                    // Get curation notes if available
+                    const publicNotes = document.getElementById('curation-notes-public')?.value.trim() || '';
+                    const privateNotes = document.getElementById('curation-notes-private')?.value.trim() || '';
+                    
+                    // Update entity via API
+                    const updatedEntity = {
+                        ...entityToUpdate,
+                        name: name,
+                        data: {
+                            ...entityToUpdate.data,
+                            location: this.uiManager.currentLocation || entityToUpdate.data.location
+                        }
+                    };
+                    
+                    await window.ApiService.createEntity(updatedEntity);
+                    this.log.debug('✅ Entity updated');
+                }
+                
+                // Create curation
+                const publicNotes = document.getElementById('curation-notes-public')?.value.trim() || '';
+                const privateNotes = document.getElementById('curation-notes-private')?.value.trim() || '';
+                
+                const user = window.AuthService?.currentUser;
+                if (!user) {
+                    throw new Error('User not authenticated');
+                }
+                
+                const curation = {
+                    curation_id: `curation_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                    entity_id: restaurantId,
+                    curator: {
+                        id: user.email,
+                        name: user.email.split('@')[0],
+                        email: user.email
+                    },
+                    notes: {
+                        public: publicNotes || null,
+                        private: privateNotes || null
+                    },
+                    categories: this.convertConceptsToCategories(this.uiManager.currentConcepts || []),
+                    sources: ['google_places', 'manual_curation']
+                };
+                
+                // Add transcription to curation if available
+                if (transcription) {
+                    curation.notes.transcription = transcription;
+                }
+                
+                this.log.debug('📤 Creating curation:', curation.curation_id);
+                await window.ApiService.createCuration(curation);
+                this.log.debug('✅ Curation created successfully');
+                
+                syncStatus = 'synced';
+            }
+            
             SafetyUtils.hideLoading();
             
             // Show appropriate notification based on sync status
@@ -458,6 +535,8 @@ class ConceptModule {
             // Reset state
             this.uiManager.isEditingRestaurant = false;
             this.uiManager.editingRestaurantId = null;
+            this.uiManager.importedEntityId = null;
+            this.uiManager.importedEntityData = null;
             this.uiManager.currentConcepts = [];
             this.uiManager.currentLocation = null;
             this.uiManager.currentPhotos = [];
@@ -487,6 +566,36 @@ class ConceptModule {
             this.log.error('Error saving restaurant:', error);
             SafetyUtils.showNotification(`Error ${this.uiManager.isEditingRestaurant ? 'updating' : 'saving'} restaurant: ${error.message}`, 'error');
         }
+    }
+
+    /**
+     * Convert concepts array to categories object for curation
+     * @param {Array} concepts - Array of concept objects
+     * @returns {Object} - Categories object organized by concept type
+     */
+    convertConceptsToCategories(concepts) {
+        const categories = {};
+        
+        if (!concepts || concepts.length === 0) {
+            return categories;
+        }
+        
+        // Group concepts by their concept_name (category)
+        concepts.forEach(concept => {
+            const categoryName = concept.concept_name || concept.category || 'general';
+            
+            if (!categories[categoryName]) {
+                categories[categoryName] = [];
+            }
+            
+            categories[categoryName].push({
+                name: concept.name || concept.item || '',
+                rating: concept.rating || 0,
+                description: concept.description || ''
+            });
+        });
+        
+        return categories;
     }
 
     removePhoto(photoData, photoContainer) {
