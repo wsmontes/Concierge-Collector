@@ -341,13 +341,6 @@ if (typeof window.UIManager === 'undefined') {
                 `;
             }
         }
-                    <div class="col-span-full text-center py-12 text-red-500">
-                        <span class="material-icons text-6xl mb-4">error</span>
-                        <p>Failed to load curations</p>
-                    </div>
-                `;
-            }
-        }
 
         /**
          * Load Entities
