@@ -4,6 +4,7 @@ Test entity endpoints: CRUD operations
 import pytest
 
 
+@pytest.mark.mongo
 class TestEntityEndpoints:
     """Test entity CRUD operations"""
     

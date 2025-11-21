@@ -4,6 +4,7 @@ Test concepts endpoints
 import pytest
 
 
+@pytest.mark.mongo
 class TestConceptsEndpoints:
     """Test concepts operations"""
     
@@ -40,6 +41,7 @@ class TestConceptsEndpoints:
         assert response.status_code in [200, 404]
 
 
+@pytest.mark.mongo
 class TestConceptsValidation:
     """Test concepts validation"""
     

@@ -4,6 +4,7 @@ Test curation endpoints
 import pytest
 
 
+@pytest.mark.mongo
 class TestCurationEndpoints:
     """Test curation CRUD operations"""
     

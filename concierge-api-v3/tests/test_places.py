@@ -4,6 +4,7 @@ Test Google Places API endpoints
 import pytest
 
 
+@pytest.mark.external_api
 class TestPlacesEndpoints:
     """Test Google Places integration"""
     
@@ -46,6 +47,7 @@ class TestPlacesEndpoints:
         assert response.status_code in [400, 404, 500, 502]
 
 
+@pytest.mark.external_api
 class TestPlacesValidation:
     """Test Places API input validation"""
     

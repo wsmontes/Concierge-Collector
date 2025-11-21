@@ -4,6 +4,7 @@ Test AI endpoints
 import pytest
 
 
+@pytest.mark.openai
 class TestAIEndpoints:
     """Test AI integration endpoints"""
     

@@ -4,6 +4,7 @@ Integration tests - test complete workflows
 import pytest
 
 
+@pytest.mark.mongo
 class TestIntegrationWorkflows:
     """Test complete user workflows"""
     

@@ -8,6 +8,7 @@ import base64
 import json
 
 
+@pytest.mark.openai
 class TestAIOrchestrate:
     """Comprehensive tests for /api/v3/ai/orchestrate endpoint"""
     

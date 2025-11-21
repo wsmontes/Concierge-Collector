@@ -7,6 +7,10 @@ from httpx import AsyncClient
 import base64
 
 
+# Mark all tests in this module as requiring OpenAI and integration
+pytestmark = [pytest.mark.openai, pytest.mark.integration]
+
+
 @pytest.mark.asyncio
 async def test_complete_transcription_workflow(async_client, auth_token):
     """
