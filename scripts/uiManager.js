@@ -196,8 +196,7 @@ if (typeof window.UIManager === 'undefined') {
             // Add null checks before accessing classList
             if (this.curatorSection) this.curatorSection.classList.remove('hidden');
             if (this.recordingSection) this.recordingSection.classList.remove('hidden');
-            if (this.restaurantListSection) this.restaurantListSection.classList.remove('hidden');
-            if (this.exportImportSection) this.exportImportSection.classList.remove('hidden');
+            // Keep restaurant list hidden during recording to focus on the task
         }
 
         showTranscriptionSection(transcription) {
@@ -205,6 +204,7 @@ if (typeof window.UIManager === 'undefined') {
             // Add null checks before accessing classList
             if (this.curatorSection) this.curatorSection.classList.remove('hidden');
             if (this.transcriptionSection) this.transcriptionSection.classList.remove('hidden');
+            // Keep restaurant list hidden during transcription review to focus on the task
             
             // Display the transcription
             if (this.transcriptionText) {
