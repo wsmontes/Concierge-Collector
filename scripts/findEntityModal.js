@@ -624,6 +624,7 @@ window.FindEntityModal = class FindEntityModal {
             
             console.log('🔍 Entity object to create:', entity);
             console.log('🔍 Place data received:', place);
+            console.log('🔍 Entity JSON:', JSON.stringify(entity, null, 2));
             
             // Create entity via API
             const createdEntity = await window.ApiService.createEntity(entity);
