@@ -146,11 +146,11 @@ async function initializeApp() {
         // Initialize utility managers that depend on DataStore
         console.log('🔄 Initializing utility managers...');
         if (window.DraftRestaurantManager && typeof window.DraftRestaurantManager.init === 'function') {
-            window.DraftRestaurantManager.init(window.DataStore);
+            window.DraftRestaurantManager.init(window.dataStore); // Use lowercase (primary access point)
             console.log('✅ DraftRestaurantManager initialized');
         }
         if (window.PendingAudioManager && typeof window.PendingAudioManager.init === 'function') {
-            window.PendingAudioManager.init(window.DataStore);
+            window.PendingAudioManager.init(window.dataStore); // Use lowercase (primary access point)
             console.log('✅ PendingAudioManager initialized');
         }
         
