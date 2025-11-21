@@ -589,34 +589,45 @@ window.FindEntityModal = class FindEntityModal {
             // Extract place_id - handle both id (new) and place_id (old)
             const googlePlaceId = place.id?.replace('places/', '') || place.place_id || placeId;
             
+            // Generate entity_id from place_id
+            const entityId = `entity_${googlePlaceId}`;
+            
             // Create entity object from place data
             const entity = {
+                entity_id: entityId,
+                type: this.mapPlaceTypeToEntityType(place.types),
                 name: entityName,
-                entity_type: this.mapPlaceTypeToEntityType(place.types),
-                address: {
-                    street: formattedAddress,
-                    city: this.extractCity(place.addressComponents || place.address_components),
-                    state: this.extractState(place.addressComponents || place.address_components),
-                    country: this.extractCountry(place.addressComponents || place.address_components),
-                    postal_code: this.extractPostalCode(place.addressComponents || place.address_components)
-                },
-                location: {
-                    type: 'Point',
-                    coordinates: coordinates
-                },
-                contact: {
-                    phone: phone,
-                    website: website
-                },
-                google_place_id: googlePlaceId,
-                rating: place.rating || 0,
-                price_level: place.priceLevel ? this.convertPriceLevel(place.priceLevel) : (place.price_level || 0),
                 status: 'active',
-                source: 'google_places'
+                externalId: googlePlaceId,
+                data: {
+                    google_place_id: googlePlaceId,
+                    source: 'google_places',
+                    address: {
+                        street: formattedAddress,
+                        city: this.extractCity(place.addressComponents || place.address_components),
+                        state: this.extractState(place.addressComponents || place.address_components),
+                        country: this.extractCountry(place.addressComponents || place.address_components),
+                        postal_code: this.extractPostalCode(place.addressComponents || place.address_components)
+                    },
+                    location: {
+                        type: 'Point',
+                        coordinates: coordinates
+                    },
+                    contact: {
+                        phone: phone,
+                        website: website
+                    },
+                    rating: place.rating || 0,
+                    price_level: place.priceLevel ? this.convertPriceLevel(place.priceLevel) : (place.price_level || 0)
+                }
             };
+            
+            console.log('🔍 Entity object to create:', entity);
+            console.log('🔍 Place data received:', place);
             
             // Create entity via API
             const createdEntity = await window.ApiService.createEntity(entity);
+
             
             if (createdEntity) {
                 // Success feedback
