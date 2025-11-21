@@ -19,30 +19,127 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
 
     /**
      * Initialize the module
-     * 
-     * DISABLED: Sync status UI removed from header per user request
      */
     async init() {
-        this.log.debug('SyncStatusModule disabled - UI removed');
-        return false;
+        try {
+            this.log.debug('Initializing SyncStatusModule...');
+            
+            // Find or create container in header
+            this.container = document.getElementById('sync-status-header');
+            if (!this.container) {
+                this.log.warn('sync-status-header element not found');
+                return false;
+            }
+            
+            // Initial update
+            await this.updateStatus();
+            
+            // Auto-update every 30 seconds
+            this.updateInterval = setInterval(() => {
+                this.updateStatus();
+            }, 30000);
+            
+            this.log.debug('SyncStatusModule initialized');
+            return true;
+        } catch (error) {
+            this.log.error('Failed to initialize SyncStatusModule:', error);
+            return false;
+        }
     }
 
     /**
      * Create status container in header
      * 
-     * DISABLED: Container creation disabled
+     * DEPRECATED: Now uses existing sync-status-header element
      */
     createContainer() {
-        // No-op: Container creation disabled
+        // No longer needed - using existing element
     }
 
     /**
-     * Update sync status display
-     * 
-     * DISABLED: Status updates disabled
+     * Update sync status display - compact version for header
      */
     async updateStatus() {
-        // No-op: Status updates disabled
+        if (!this.container) return;
+        
+        if (!window.SyncManager) {
+            this.container.innerHTML = '';
+            return;
+        }
+
+        try {
+            const status = await window.SyncManager.getSyncStatus();
+            
+            if (!status) {
+                this.container.innerHTML = '';
+                return;
+            }
+
+            // Build compact status
+            let statusHtml = '';
+
+            // Show syncing indicator
+            if (status.isSyncing) {
+                statusHtml = `
+                    <span class="flex items-center gap-1 text-xs sm:text-sm text-blue-600" title="Syncing...">
+                        <span class="material-icons text-sm animate-spin">sync</span>
+                        <span class="hidden sm:inline">Syncing</span>
+                    </span>
+                `;
+            }
+            // Show conflicts if any
+            else if (status.conflicts && status.conflicts.total > 0) {
+                statusHtml = `
+                    <button 
+                        id="btn-view-conflicts" 
+                        class="flex items-center gap-1 text-xs sm:text-sm text-red-600 hover:text-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 rounded px-2 py-1"
+                        title="${status.conflicts.total} conflicts"
+                    >
+                        <span class="material-icons text-sm">sync_problem</span>
+                        <span class="hidden sm:inline">${status.conflicts.total}</span>
+                    </button>
+                `;
+            }
+            // Show pending count if any
+            else if (status.pending && status.pending.total > 0) {
+                statusHtml = `
+                    <span class="flex items-center gap-1 text-xs sm:text-sm text-yellow-600" title="${status.pending.total} pending">
+                        <span class="material-icons text-sm">cloud_upload</span>
+                        <span class="hidden sm:inline">${status.pending.total}</span>
+                    </span>
+                `;
+            }
+            // Show synced status
+            else if (status.isOnline && status.lastSync.push) {
+                statusHtml = `
+                    <span class="flex items-center gap-1 text-xs sm:text-sm text-green-600" title="Synced">
+                        <span class="material-icons text-sm">cloud_done</span>
+                        <span class="hidden sm:inline">Synced</span>
+                    </span>
+                `;
+            }
+            // Offline
+            else if (!status.isOnline) {
+                statusHtml = `
+                    <span class="flex items-center gap-1 text-xs sm:text-sm text-gray-400" title="Offline">
+                        <span class="material-icons text-sm">cloud_off</span>
+                        <span class="hidden sm:inline">Offline</span>
+                    </span>
+                `;
+            }
+
+            this.container.innerHTML = statusHtml;
+
+            // Add event listener for conflicts button
+            const conflictsButton = document.getElementById('btn-view-conflicts');
+            if (conflictsButton) {
+                conflictsButton.addEventListener('click', () => this.showConflicts());
+            }
+
+        } catch (error) {
+            this.log.error('Failed to update sync status:', error);
+            this.container.innerHTML = '';
+        }
     }
 
     /**
