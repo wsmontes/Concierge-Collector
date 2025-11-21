@@ -243,98 +243,20 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
         this.container.innerHTML = '';
 
         entities.forEach(entity => {
-            const card = this.createEntityCard(entity);
+            const card = window.CardFactory.createEntityCard(entity);
             this.container.appendChild(card);
         });
     }
 
     /**
      * Create mini-card for entity (visual but compact)
+     * @deprecated Use CardFactory.createEntityCard instead
      * @param {Object} entity - Entity object
      * @returns {HTMLElement} - Card element
      */
     createEntityCard(entity) {
-        const card = document.createElement('div');
-        card.className = 'entity-card bg-white rounded-lg shadow hover:shadow-lg transition-all cursor-pointer border border-gray-200 overflow-hidden';
-        card.dataset.entityId = entity.entity_id;  // V3 UUID
-        card.dataset.type = entity.type;
-
-        // Extract data
-        const name = entity.name || 'Unknown';
-        const city = entity.data?.location?.city || 'Unknown';
-        const address = entity.data?.location?.address || '';
-        const phone = entity.data?.contacts?.phone || '';
-        const rating = entity.data?.attributes?.rating || 0;
-        const totalRatings = entity.data?.attributes?.user_ratings_total || 0;
-        const cuisine = entity.data?.attributes?.cuisine || '';
-        const priceLevel = entity.data?.attributes?.price_level || 0;
-        const createdBy = entity.createdBy || 'Unknown';
-        const createdAt = entity.createdAt ? new Date(entity.createdAt).toLocaleDateString() : 'Unknown';
-
-        // Price level indicator
-        const priceIndicator = '$'.repeat(priceLevel || 1);
-
-        // Rating stars
-        const stars = '⭐'.repeat(Math.round(rating));
-
-        card.innerHTML = `
-            <div class="p-4">
-                <!-- Header -->
-                <div class="flex justify-between items-start mb-2">
-                    <h3 class="text-lg font-bold text-gray-900 flex-1 mr-2">${name}</h3>
-                    ${rating > 0 ? `
-                        <div class="flex flex-col items-end">
-                            <span class="text-sm font-semibold">${rating.toFixed(1)}</span>
-                            <span class="text-xs text-yellow-500">${stars}</span>
-                        </div>
-                    ` : ''}
-                </div>
-
-                <!-- Location -->
-                <div class="flex items-start text-sm text-gray-600 mb-2">
-                    <span class="material-icons text-sm mr-1">location_on</span>
-                    <div class="flex-1">
-                        <div class="font-medium">${city}</div>
-                        ${address ? `<div class="text-xs text-gray-500">${address}</div>` : ''}
-                    </div>
-                </div>
-
-                <!-- Contact -->
-                ${phone ? `
-                    <div class="flex items-center text-sm text-gray-600 mb-2">
-                        <span class="material-icons text-sm mr-1">phone</span>
-                        <span>${phone}</span>
-                    </div>
-                ` : ''}
-
-                <!-- Attributes -->
-                <div class="flex items-center gap-2 mb-3 flex-wrap">
-                    ${cuisine ? `<span class="px-2 py-1 bg-blue-100 text-blue-800 text-xs rounded-full">${cuisine}</span>` : ''}
-                    ${priceLevel > 0 ? `<span class="px-2 py-1 bg-green-100 text-green-800 text-xs rounded-full">${priceIndicator}</span>` : ''}
-                    ${totalRatings > 0 ? `<span class="text-xs text-gray-500">${totalRatings} reviews</span>` : ''}
-                </div>
-
-                <!-- Footer -->
-                <div class="flex justify-between items-center pt-3 border-t border-gray-100">
-                    <div class="flex items-center gap-2">
-                        <span class="text-xs text-gray-500">by ${createdBy}</span>
-                        ${entity.version ? `<span class="text-xs text-gray-400">v${entity.version}</span>` : ''}
-                        ${this.getSyncStatusBadge(entity)}
-                    </div>
-                    <button class="btn-view-entity text-xs text-blue-600 hover:text-blue-800 font-medium">
-                        View Details →
-                    </button>
-                </div>
-            </div>
-        `;
-
-        // Add click event
-        card.querySelector('.btn-view-entity').addEventListener('click', (e) => {
-            e.stopPropagation();
-            this.showEntityDetails(entity);
-        });
-
-        return card;
+        // Delegate to CardFactory for consistent UI
+        return window.CardFactory.createEntityCard(entity);
     }
 
     /**
