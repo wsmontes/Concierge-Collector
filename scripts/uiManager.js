@@ -125,6 +125,9 @@ if (typeof window.UIManager === 'undefined') {
             // Load curator info
             if (this.curatorModule) this.curatorModule.loadCuratorInfo();
             
+            // Set initial view state - show restaurant list, hide form
+            this.showRestaurantListSection();
+            
             console.log('UIManager initialized');
         }
 
