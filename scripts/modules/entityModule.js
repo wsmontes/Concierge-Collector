@@ -163,8 +163,10 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
         // Get unique cities
         const cities = new Set();
         this.entities.forEach(entity => {
-            const city = entity.data?.location?.city || 'Unknown';
-            cities.add(city);
+            const city = this.extractCity(entity);
+            if (city && city !== 'Unknown') {
+                cities.add(city);
+            }
         });
 
         // Populate city filter
@@ -181,6 +183,40 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
     }
 
     /**
+     * Extract city name from entity data
+     * Handles multiple data structures
+     */
+    extractCity(entity) {
+        // Try different paths for city data
+        let city = entity.data?.address?.city || 
+                   entity.data?.location?.city ||
+                   entity.data?.city;
+        
+        // If city is an object or array (coordinates), try to extract from formatted address
+        if (typeof city === 'object' || Array.isArray(city)) {
+            const address = entity.data?.formattedAddress || 
+                          entity.data?.address?.formattedAddress ||
+                          entity.data?.location?.address;
+            
+            if (address && typeof address === 'string') {
+                // Extract city from formatted address (usually second-to-last component before country/postal)
+                const parts = address.split(',').map(p => p.trim());
+                if (parts.length >= 2) {
+                    // Try to get city (usually before state/country)
+                    city = parts[parts.length - 2] || parts[parts.length - 1];
+                    // Remove postal codes
+                    city = city.replace(/\d{5}(-\d{4})?/, '').trim();
+                    city = city.replace(/\b\d+\b/g, '').trim();
+                }
+            } else {
+                city = 'Unknown';
+            }
+        }
+        
+        return city || 'Unknown';
+    }
+
+    /**
      * Filter and display entities based on search query and filters
      */
     filterAndDisplayEntities() {
@@ -190,8 +226,8 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
         if (this.searchQuery) {
             filtered = filtered.filter(entity => {
                 const name = (entity.name || '').toLowerCase();
-                const city = (entity.data?.location?.city || '').toLowerCase();
-                const address = (entity.data?.location?.address || '').toLowerCase();
+                const city = this.extractCity(entity).toLowerCase();
+                const address = (entity.data?.formattedAddress || entity.data?.address?.formattedAddress || '').toLowerCase();
                 
                 return name.includes(this.searchQuery) || 
                        city.includes(this.searchQuery) ||
@@ -206,12 +242,10 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
 
         // Apply city filter
         if (this.filters.city !== 'all') {
-            filtered = filtered.filter(entity => 
-                (entity.data?.location?.city || 'Unknown') === this.filters.city
+            filtered = filtered.filter(entity =>
+                this.extractCity(entity) === this.filters.city
             );
-        }
-
-        // Apply rating filter
+        }        // Apply rating filter
         if (this.filters.rating > 0) {
             filtered = filtered.filter(entity => 
                 (entity.data?.attributes?.rating || 0) >= this.filters.rating

@@ -43,9 +43,11 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
         
         const name = entity.name || 'Unknown';
         const type = entity.type || 'restaurant';
-        const city = entity.data?.location?.city || entity.data?.address?.city || 'Unknown';
-        const neighborhood = entity.data?.location?.neighborhood || entity.data?.address?.neighborhood || '';
-        const country = entity.data?.location?.country || entity.data?.address?.country || '';
+        
+        // Extract city using robust method
+        const city = this.extractCity(entity);
+        const neighborhood = entity.data?.address?.neighborhood || entity.data?.location?.neighborhood || '';
+        const country = entity.data?.address?.country || entity.data?.location?.country || '';
         const rating = entity.data?.attributes?.rating || entity.data?.rating || 0;
         const priceLevel = entity.data?.attributes?.price_level || entity.data?.price_level || 0;
         const cuisine = entity.data?.attributes?.cuisine || entity.data?.cuisine || [];
@@ -162,6 +164,42 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
             park: 'park'
         };
         return icons[type] || 'place';
+    }
+
+    /**
+     * Extract city name from entity data
+     * Handles multiple data structures and coordinate objects
+     * @param {Object} entity - Entity data
+     * @returns {string} City name
+     */
+    extractCity(entity) {
+        // Try different paths for city data
+        let city = entity.data?.address?.city || 
+                   entity.data?.location?.city ||
+                   entity.data?.city;
+        
+        // If city is an object or array (coordinates), try to extract from formatted address
+        if (typeof city === 'object' || Array.isArray(city)) {
+            const address = entity.data?.formattedAddress || 
+                          entity.data?.address?.formattedAddress ||
+                          entity.data?.location?.address;
+            
+            if (address && typeof address === 'string') {
+                // Extract city from formatted address (usually second-to-last component before country/postal)
+                const parts = address.split(',').map(p => p.trim());
+                if (parts.length >= 2) {
+                    // Try to get city (usually before state/country)
+                    city = parts[parts.length - 2] || parts[parts.length - 1];
+                    // Remove postal codes
+                    city = city.replace(/\d{5}(-\d{4})?/, '').trim();
+                    city = city.replace(/\b\d+\b/g, '').trim();
+                }
+            } else {
+                city = 'Unknown';
+            }
+        }
+        
+        return city || 'Unknown';
     }
 
     /**
