@@ -71,6 +71,27 @@ if (typeof window.UIManager === 'undefined') {
             
             // Form elements
             this.transcriptionText = document.getElementById('transcription-text');
+
+            // Tab system
+            this.tabs = {
+                curations: document.getElementById('tab-curations'),
+                entities: document.getElementById('tab-entities'),
+                reviews: document.getElementById('tab-reviews')
+            };
+            
+            this.views = {
+                curations: document.getElementById('curations-view'),
+                entities: document.getElementById('entities-view'),
+                reviews: document.getElementById('reviews-view')
+            };
+            
+            this.containers = {
+                curations: document.getElementById('curations-container'),
+                entities: document.getElementById('entities-container'),
+                reviews: document.getElementById('reviews-container')
+            };
+
+            this.currentTab = 'curations'; // Default tab
         }
 
         /**
@@ -146,7 +167,133 @@ if (typeof window.UIManager === 'undefined') {
             // Set initial view state - show restaurant list, hide form
             this.showRestaurantListSection();
             
+            // Initialize tab system
+            this.initTabSystem();
+            
             console.log('UIManager initialized');
+        }
+
+        /**
+         * Initialize Tab System
+         * 
+         * Sets up tab navigation for Curations, Entities, and Reviews views.
+         * Manages tab state and view visibility.
+         */
+        initTabSystem() {
+            // Attach click handlers to all tabs
+            Object.keys(this.tabs).forEach(tabName => {
+                const tabButton = this.tabs[tabName];
+                if (tabButton) {
+                    tabButton.addEventListener('click', () => this.switchTab(tabName));
+                }
+            });
+            
+            // Show default tab (curations)
+            this.switchTab('curations');
+        }
+
+        /**
+         * Switch Tab
+         * 
+         * Changes active tab and shows corresponding view.
+         * Updates tab button states and view visibility.
+         * 
+         * @param {string} tabName - Name of tab to activate ('curations', 'entities', 'reviews')
+         */
+        switchTab(tabName) {
+            // Validate tab name
+            if (!this.tabs[tabName] || !this.views[tabName]) {
+                console.warn(`Invalid tab name: ${tabName}`);
+                return;
+            }
+
+            // Update current tab state
+            this.currentTab = tabName;
+
+            // Update tab button states
+            Object.keys(this.tabs).forEach(name => {
+                const tab = this.tabs[name];
+                if (name === tabName) {
+                    tab.classList.add('active', 'border-blue-500', 'text-blue-600');
+                    tab.classList.remove('border-transparent', 'text-gray-500');
+                } else {
+                    tab.classList.remove('active', 'border-blue-500', 'text-blue-600');
+                    tab.classList.add('border-transparent', 'text-gray-500');
+                }
+            });
+
+            // Update view visibility
+            Object.keys(this.views).forEach(name => {
+                const view = this.views[name];
+                if (name === tabName) {
+                    view.classList.remove('hidden');
+                } else {
+                    view.classList.add('hidden');
+                }
+            });
+
+            // Trigger data load for the selected tab
+            this.loadTabData(tabName);
+        }
+
+        /**
+         * Load Tab Data
+         * 
+         * Loads and renders data for the specified tab.
+         * Filters data based on tab type (curations/entities/reviews).
+         * 
+         * @param {string} tabName - Name of tab to load data for
+         */
+        loadTabData(tabName) {
+            switch(tabName) {
+                case 'curations':
+                    this.loadCurations();
+                    break;
+                case 'entities':
+                    this.loadEntities();
+                    break;
+                case 'reviews':
+                    this.loadReviews();
+                    break;
+            }
+        }
+
+        /**
+         * Load Curations
+         * 
+         * Loads and displays curated entities with status tags.
+         * Shows only entities that have been curated by current user.
+         */
+        loadCurations() {
+            // TODO: Filter data to show only entities with curations
+            // TODO: Add status tags (draft/done)
+            // TODO: Sort by last modification date
+            console.log('Loading curations view...');
+        }
+
+        /**
+         * Load Entities
+         * 
+         * Loads and displays entities without curations.
+         * Shows recently ingested entities awaiting curation.
+         */
+        loadEntities() {
+            // TODO: Filter data to show only entities without curations
+            // TODO: Show recently ingested entities
+            console.log('Loading entities view...');
+        }
+
+        /**
+         * Load Reviews
+         * 
+         * Loads and displays transcripts without entity associations.
+         * Shows all recordings/transcripts by current user.
+         */
+        loadReviews() {
+            // TODO: Filter data to show only transcripts without entities
+            // TODO: Display extracted concepts/name/location
+            // TODO: Show transcript preview
+            console.log('Loading reviews view...');
         }
 
         /**

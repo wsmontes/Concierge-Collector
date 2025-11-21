@@ -1165,3 +1165,71 @@
     grid-template-columns: 1fr;
   }
 }
+
+/* ========================================================================
+   TAB NAVIGATION COMPONENTS
+   ======================================================================== */
+
+.view-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--spacing-1);
+  padding: var(--spacing-4) var(--spacing-1);
+  border-bottom: 2px solid transparent;
+  font-weight: var(--font-medium);
+  color: var(--color-text-secondary);
+  background: transparent;
+  cursor: pointer;
+  transition: all var(--transition-fast) var(--ease-out);
+  white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.view-tab:hover:not(.active) {
+  color: var(--color-text-primary);
+  border-bottom-color: var(--color-border);
+}
+
+.view-tab.active {
+  color: var(--color-primary);
+  border-bottom-color: var(--color-primary);
+}
+
+.view-tab:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
+  border-radius: var(--radius-sm);
+}
+
+.view-tab .material-icons {
+  font-size: 1rem;
+  vertical-align: middle;
+}
+
+/* Tab content areas */
+.view-content {
+  animation: fadeIn var(--transition-medium) var(--ease-out);
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* Responsive tabs */
+@media (max-width: 768px) {
+  .view-tab {
+    padding: var(--spacing-3) var(--spacing-2);
+    font-size: var(--font-size-sm);
+  }
+  
+  .view-tab .material-icons {
+    display: none;
+  }
+}

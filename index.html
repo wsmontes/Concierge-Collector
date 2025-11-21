@@ -357,46 +357,129 @@
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-2xl font-bold flex items-center">
                     <span class="material-icons mr-2 text-green-500">restaurant</span>
-                    Entities
+                    My Collection
                 </h2>
             </div>
 
-            <!-- Search and Filters -->
-            <div class="mb-4 grid grid-cols-1 md:grid-cols-4 gap-3">
+            <!-- Tab Navigation -->
+            <div class="mb-6 border-b border-gray-200">
+                <nav class="flex space-x-8" aria-label="View modes">
+                    <button 
+                        id="tab-curations" 
+                        class="view-tab active py-4 px-1 border-b-2 border-blue-500 font-medium text-blue-600 focus:outline-none"
+                        data-tab="curations"
+                    >
+                        <span class="material-icons text-sm align-middle mr-1">edit_note</span>
+                        Curations
+                    </button>
+                    <button 
+                        id="tab-entities" 
+                        class="view-tab py-4 px-1 border-b-2 border-transparent font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300 focus:outline-none"
+                        data-tab="entities"
+                    >
+                        <span class="material-icons text-sm align-middle mr-1">restaurant</span>
+                        Entities
+                    </button>
+                    <button 
+                        id="tab-reviews" 
+                        class="view-tab py-4 px-1 border-b-2 border-transparent font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300 focus:outline-none"
+                        data-tab="reviews"
+                    >
+                        <span class="material-icons text-sm align-middle mr-1">mic</span>
+                        Reviews
+                    </button>
+                </nav>
+            </div>
+
+            <!-- Curations View -->
+            <div id="curations-view" class="view-content">
+                <!-- Search and Filters -->
+                <div class="mb-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <!-- Search -->
+                    <div class="md:col-span-2">
+                        <div class="relative">
+                            <span class="material-icons absolute left-3 top-2.5 text-gray-400">search</span>
+                            <input 
+                                type="text" 
+                                id="curation-search" 
+                                placeholder="Search curations..." 
+                                class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            />
+                        </div>
+                    </div>
+
+                    <!-- Status Filter -->
+                    <div>
+                        <select id="curation-status-filter" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                            <option value="all">All Status</option>
+                            <option value="draft">Draft</option>
+                            <option value="done">Done</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Curations Grid -->
+                <div id="curations-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+            </div>
+
+            <!-- Entities View -->
+            <div id="entities-view" class="view-content hidden">
+                <!-- Search and Filters -->
+                <div class="mb-4 grid grid-cols-1 md:grid-cols-4 gap-3">
+                    <!-- Search -->
+                    <div class="md:col-span-2">
+                        <div class="relative">
+                            <span class="material-icons absolute left-3 top-2.5 text-gray-400">search</span>
+                            <input 
+                                type="text" 
+                                id="entity-search" 
+                                placeholder="Search entities..." 
+                                class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            />
+                        </div>
+                    </div>
+
+                    <!-- Type Filter -->
+                    <div>
+                        <select id="entity-type-filter" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                            <option value="all">All Types</option>
+                            <option value="restaurant">Restaurants</option>
+                            <option value="bar">Bars</option>
+                            <option value="hotel">Hotels</option>
+                            <option value="cafe">Cafés</option>
+                        </select>
+                    </div>
+
+                    <!-- City Filter -->
+                    <div>
+                        <select id="entity-city-filter" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                            <option value="all">All Cities</option>
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Entity Grid -->
+                <div id="entities-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"></div>
+            </div>
+
+            <!-- Reviews View -->
+            <div id="reviews-view" class="view-content hidden">
                 <!-- Search -->
-                <div class="md:col-span-2">
+                <div class="mb-4">
                     <div class="relative">
                         <span class="material-icons absolute left-3 top-2.5 text-gray-400">search</span>
                         <input 
                             type="text" 
-                            id="entity-search" 
-                            placeholder="Search entities..." 
+                            id="review-search" 
+                            placeholder="Search reviews..." 
                             class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         />
                     </div>
                 </div>
 
-                <!-- Type Filter -->
-                <div>
-                    <select id="entity-type-filter" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                        <option value="all">All Types</option>
-                        <option value="restaurant">Restaurants</option>
-                        <option value="bar">Bars</option>
-                        <option value="hotel">Hotels</option>
-                        <option value="cafe">Cafés</option>
-                    </select>
-                </div>
-
-                <!-- City Filter -->
-                <div>
-                    <select id="entity-city-filter" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                        <option value="all">All Cities</option>
-                    </select>
-                </div>
+                <!-- Reviews Grid -->
+                <div id="reviews-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
             </div>
-
-            <!-- Entity Grid -->
-            <div id="entities-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"></div>
         </section>
 
         <!-- Export/Import Section -->
