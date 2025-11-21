@@ -51,35 +51,44 @@ class TranscriptionModule {
             // Save original transcription
             this.uiManager.originalTranscription = transcription;
             
-            // First translate the text to English for concept extraction
-            this.uiManager.showLoading('Translating text to English...');
-            const translatedText = await apiHandler.translateText(transcription);
-            this.uiManager.translatedTranscription = translatedText;
+            // Use ApiService V3 instead of legacy apiHandler
+            if (!window.ApiService) {
+                throw new Error('ApiService not initialized');
+            }
+            if (!window.AuthService || !window.AuthService.isAuthenticated()) {
+                throw new Error('Authentication required');
+            }
             
-            this.log.debug('Original text:', transcription);
-            this.log.debug('Translated text:', translatedText);
+            // API V3 handles translation internally if needed
+            this.uiManager.showLoading('Extracting concepts from text...');
             
-            // Then extract concepts using the translated text
-            this.uiManager.showLoading('Extracting concepts from translated text...');
-            
-            // Use GPT-4 to extract concepts from the translated text
-            const extractedConcepts = await apiHandler.extractConcepts(
-                translatedText, 
-                promptTemplates.conceptExtraction
+            // Use ApiService V3 to extract concepts
+            const result = await window.ApiService.extractConcepts(
+                transcription, 
+                'restaurant'
             );
             
-            this.log.debug('Extracted concepts:', extractedConcepts);
+            this.log.debug('Extracted concepts:', result);
             
             // Convert to our internal format
             this.uiManager.currentConcepts = [];
             
-            for (const category in extractedConcepts) {
-                if (extractedConcepts[category] && Array.isArray(extractedConcepts[category])) {
-                    for (const value of extractedConcepts[category]) {
-                        this.uiManager.currentConcepts.push({
-                            category,
-                            value
-                        });
+            if (result.concepts && Array.isArray(result.concepts)) {
+                // API V3 returns concepts as array of {category, value, confidence}
+                this.uiManager.currentConcepts = result.concepts.map(c => ({
+                    category: c.category,
+                    value: c.value
+                }));
+            } else {
+                // Fallback to old format conversion if needed
+                for (const category in result) {
+                    if (result[category] && Array.isArray(result[category])) {
+                        for (const value of result[category]) {
+                            this.uiManager.currentConcepts.push({
+                                category,
+                                value
+                            });
+                        }
                     }
                 }
             }

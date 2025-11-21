@@ -1451,38 +1451,40 @@ class RecordingModule {
     }
 
     /**
-     * Transcribe (and translate) audio to English using Whisper API.
-     * Always produces English text, no matter the spoken language.
+     * Transcribe audio using backend API V3.
+     * Uses ApiService which calls /api/v3/ai/orchestrate.
      * @param {Blob} audioBlob - Audio blob from recorder
      * @returns {Promise<string>} - English transcription text
      */
     async transcribeAudio(audioBlob) {
-        this.log.debug('Transcribing audio with Whisper API...');
-        const apiKey = localStorage.getItem('openai_api_key');
-        if (!apiKey) throw new Error('OpenAI API key not set');
-
-        // Wrap blob in File to provide filename+MIME
-        const ext       = audioBlob.type.split('/')[1].split(';')[0] || 'webm';
-        const audioFile = new File([audioBlob], `recording.${ext}`, { type: audioBlob.type });
-
-        const form = new FormData();
-        form.append('file', audioFile);
-        form.append('model', 'whisper-1');
-
-        // Use the Whisper "translations" endpoint for English output
-        const resp = await fetch('https://api.openai.com/v1/audio/translations', {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${apiKey}` },
-            body: form
-        });
-
-        if (!resp.ok) {
-            const errJson = await resp.json().catch(() => ({}));
-            throw new Error(`API error: ${resp.status} - ${errJson.error?.message || resp.statusText}`);
+        this.log.debug('Transcribing audio via API V3...');
+        
+        // Check if ApiService is available
+        if (!window.ApiService) {
+            throw new Error('ApiService not initialized');
         }
 
-        const data = await resp.json();
-        return data.text;
+        // Check authentication
+        if (!window.AuthService || !window.AuthService.isAuthenticated()) {
+            throw new Error('Authentication required for transcription');
+        }
+
+        try {
+            // Use ApiService to transcribe (handles OAuth token, retries, etc.)
+            const result = await window.ApiService.transcribeAudio(audioBlob, 'en');
+            
+            // API returns: { transcription_id, text, language, model }
+            if (!result || !result.text) {
+                throw new Error('Invalid response from transcription API');
+            }
+            
+            this.log.debug('Transcription successful via API V3');
+            return result.text;
+            
+        } catch (error) {
+            this.log.error('Transcription error:', error);
+            throw new Error(`Transcription failed: ${error.message}`);
+        }
     }
 
     /**

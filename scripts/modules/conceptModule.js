@@ -1072,39 +1072,21 @@ class ConceptModule {
         if (!transcription) return null;
         
         try {
-            this.log.debug('Generating description from transcription...');
-            const template = promptTemplates.restaurantDescription;
-            const userPrompt = template.user.replace('{texto}', transcription);
+            this.log.debug('Generating description from transcription via API V3...');
             
-            // Get API key from localStorage for proper authentication
-            const apiKey = localStorage.getItem('openai_api_key');
-            if (!apiKey) {
-                throw new Error('OpenAI API key not found. Please set it in the curator section.');
+            // Check if ApiService is available and authenticated
+            if (!window.ApiService) {
+                throw new Error('ApiService not initialized');
+            }
+            if (!window.AuthService || !window.AuthService.isAuthenticated()) {
+                throw new Error('Authentication required');
             }
             
-            const response = await fetch('https://api.openai.com/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${apiKey}`
-                },
-                body: JSON.stringify({
-                    model: 'gpt-4',
-                    messages: [
-                        {role: 'system', content: template.system},
-                        {role: 'user', content: userPrompt}
-                    ],
-                    temperature: 0.7,
-                    max_tokens: 100
-                })
-            });
+            // Use ApiService to extract concepts which includes description generation
+            const result = await window.ApiService.extractConcepts(transcription, 'restaurant');
             
-            if (!response.ok) {
-                throw new Error(`API error: ${response.status}`);
-            }
-            
-            const data = await response.json();
-            const description = data.choices[0].message.content.trim();
+            // Extract description from concepts if available
+            const description = result.description || result.summary || transcription.substring(0, 100);
             
             // Update the description field
             const descriptionInput = document.getElementById('restaurant-description');
@@ -1125,53 +1107,20 @@ class ConceptModule {
         this.log.debug('Extracting concepts from transcription...');
         
         try {
-            const template = promptTemplates.conceptExtraction;
-            const userPrompt = template.user.replace('{texto}', transcription);
-            
-            // Get API key from localStorage for proper authentication
-            const apiKey = localStorage.getItem('openai_api_key');
-            if (!apiKey) {
-                throw new Error('OpenAI API key not found. Please set it in the curator section.');
+            // Check if ApiService is available and authenticated
+            if (!window.ApiService) {
+                throw new Error('ApiService not initialized');
+            }
+            if (!window.AuthService || !window.AuthService.isAuthenticated()) {
+                throw new Error('Authentication required');
             }
             
-            const response = await fetch('https://api.openai.com/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${apiKey}`
-                },
-                body: JSON.stringify({
-                    model: 'gpt-4',
-                    messages: [
-                        {role: 'system', content: template.system},
-                        {role: 'user', content: userPrompt}
-                    ],
-                    temperature: 0.7,
-                    max_tokens: 1000
-                })
-            });
+            // Use ApiService V3 to extract concepts
+            const result = await window.ApiService.extractConcepts(transcription, 'restaurant');
             
-            if (!response.ok) {
-                throw new Error(`API error: ${response.status}`);
-            }
-            
-            const data = await response.json();
-            const conceptsText = data.choices[0].message.content;
-            
-            try {
-                // Try to parse as JSON
-                const conceptsJson = JSON.parse(conceptsText);
-                
-                // Convert to array of objects
-                const conceptsArray = [];
-                for (const category in conceptsJson) {
-                    for (const value of conceptsJson[category]) {
-                        conceptsArray.push({
-                            category,
-                            value
-                        });
-                    }
-                }
+            // API V3 returns concepts in the format we need
+            // result = { concepts: [{category, value, confidence}], ...}
+            const conceptsArray = result.concepts || [];
                 
                 // Here we also run generateDescription explicitly to ensure it happens
                 this.log.debug("Concepts extracted successfully, generating description...");
@@ -1205,24 +1154,25 @@ class ConceptModule {
                 return null;
             }
             
-            const response = await apiHandler.extractConcepts(transcriptionText, promptTemplates.restaurantNameExtraction);
-            this.log.debug('Restaurant name extracted:', response);
+            // Use ApiService V3 instead of legacy apiHandler
+            if (!window.ApiService || !window.AuthService || !window.AuthService.isAuthenticated()) {
+                this.log.warn('ApiService not available or not authenticated');
+                return null;
+            }
             
-            // Handle different response formats
-            if (response) {
-                if (typeof response === 'string' && response !== 'Unknown') {
-                    // If response is directly a string
-                    return response.trim();
-                } else if (response.restaurant_name) {
-                    // If response is an object with restaurant_name property
-                    return response.restaurant_name.trim();
-                } else {
-                    // Check for any property that might contain the name
-                    const possibleKeys = Object.keys(response);
-                    for (const key of possibleKeys) {
-                        if (typeof response[key] === 'string' && response[key] !== 'Unknown') {
-                            return response[key].trim();
-                        }
+            const result = await window.ApiService.extractConcepts(transcriptionText, 'restaurant');
+            this.log.debug('Restaurant name extracted:', result);
+            
+            // Handle different response formats from API V3
+            if (result) {
+                if (result.name || result.restaurant_name) {
+                    return (result.name || result.restaurant_name).trim();
+                }
+                // Check if concepts include a name category
+                if (result.concepts && Array.isArray(result.concepts)) {
+                    const nameConcept = result.concepts.find(c => c.category === 'name' || c.category === 'restaurant_name');
+                    if (nameConcept && nameConcept.value) {
+                        return nameConcept.value.trim();
                     }
                 }
             }
@@ -1251,9 +1201,14 @@ class ConceptModule {
             }
             
             // Extract concepts in the original JSON format expected by the app
-            const extractedConcepts = await apiHandler.extractConcepts(
+            // Use ApiService V3 instead of legacy apiHandler
+            if (!window.ApiService || !window.AuthService || !window.AuthService.isAuthenticated()) {
+                throw new Error('ApiService not available or not authenticated');
+            }
+            
+            const extractedConcepts = await window.ApiService.extractConcepts(
                 transcriptionText, 
-                promptTemplates.conceptExtraction
+                'restaurant'
             );
             
             // Show concepts section
@@ -1695,9 +1650,13 @@ class ConceptModule {
      * @returns {Promise<string|null>} - The extracted restaurant name or null
      */
     async extractRestaurantNameFromImage(imageData) {
-        // Only execute if API handler exists
-        if (!apiHandler || !apiHandler.apiKey) {
-            this.log.warn('API handler not available or API key not set');
+        // Check if ApiService is available and authenticated
+        if (!window.ApiService) {
+            this.log.warn('ApiService not initialized');
+            return null;
+        }
+        if (!window.AuthService || !window.AuthService.isAuthenticated()) {
+            this.log.warn('Authentication required');
             return null;
         }
         
@@ -1719,65 +1678,29 @@ class ConceptModule {
                 return null;
             }
             
+            // Convert base64 to blob for API V3
+            const byteCharacters = atob(baseImage);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const imageBlob = new Blob([byteArray], {type: 'image/jpeg'});
+            
             const template = promptTemplates.imageRestaurantNameExtraction;
+            const prompt = `${template.system}\n\n${template.user}`;
             
-            // Updated model name to current version with vision capabilities
-            const model = "gpt-4o";
+            this.log.debug('Extracting restaurant name from image via API V3...');
             
-            this.log.debug('Sending image to OpenAI API for restaurant name extraction...');
+            // Use ApiService V3 to analyze image
+            const result = await window.ApiService.analyzeImage(imageBlob, prompt);
             
-            // Important: Ensure the structure follows OpenAI's API requirements for image content
-            const payload = {
-                model: model,
-                messages: [
-                    {
-                        role: "system",
-                        content: template.system
-                    },
-                    {
-                        role: "user",
-                        content: [
-                            { 
-                                type: "text", 
-                                text: template.user
-                            },
-                            {
-                                type: "image_url",
-                                image_url: {
-                                    url: `data:image/jpeg;base64,${baseImage}`
-                                }
-                            }
-                        ]
-                    }
-                ],
-                max_tokens: 50
-            };
-            
-            // For debugging, log a truncated version of the payload (remove the actual base64 data)
-            const debugPayload = JSON.parse(JSON.stringify(payload));
-            if (debugPayload.messages[1].content[1].image_url.url.length > 50) {
-                debugPayload.messages[1].content[1].image_url.url = 
-                    debugPayload.messages[1].content[1].image_url.url.substring(0, 30) + '... [truncated]';
-            }
-            this.log.debug('API request payload structure:', debugPayload);
-            
-            const response = await fetch('https://api.openai.com/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${apiHandler.apiKey}`
-                },
-                body: JSON.stringify(payload)
-            });
-            
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                this.log.error('OpenAI API error details:', errorData);
-                throw new Error(`API error: ${response.status} - ${errorData.error?.message || 'Unknown error'}`);
+            if (!result || !result.text) {
+                this.log.debug('API V3 could not extract restaurant name');
+                return null;
             }
             
-            const data = await response.json();
-            const responseText = data.choices[0].message.content.trim();
+            const responseText = result.text.trim();
             
             // Check if the response indicates the AI couldn't determine the name
             if (responseText === 'UNKNOWN' || 
@@ -1822,9 +1745,13 @@ class ConceptModule {
      * @param {string} imageData - Base64 image data
      */
     async extractConceptsFromImage(imageData) {
-        // Only execute if API handler exists
-        if (!apiHandler || !apiHandler.apiKey) {
-            this.log.warn('API handler not available or API key not set');
+        // Check if ApiService is available and authenticated
+        if (!window.ApiService) {
+            this.log.warn('ApiService not initialized');
+            return;
+        }
+        if (!window.AuthService || !window.AuthService.isAuthenticated()) {
+            this.log.warn('Authentication required');
             return;
         }
         
@@ -1840,54 +1767,29 @@ class ConceptModule {
                 return;
             }
             
+            // Convert base64 to blob
+            const byteCharacters = atob(baseImage);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const imageBlob = new Blob([byteArray], {type: 'image/jpeg'});
+            
             const template = promptTemplates.imageConceptExtraction;
+            const prompt = `${template.system}\n\n${template.user}`;
             
-            // Updated model name to current version with vision capabilities
-            const model = "gpt-4o";
+            this.log.debug('Extracting concepts from image via API V3...');
             
-            this.log.debug('Sending image to OpenAI API for concept extraction...');
+            // Use ApiService V3 to analyze image
+            const result = await window.ApiService.analyzeImage(imageBlob, prompt);
             
-            const response = await fetch('https://api.openai.com/v1/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${apiHandler.apiKey}`
-                },
-                body: JSON.stringify({
-                    model: model,
-                    messages: [
-                        {
-                            role: "system",
-                            content: template.system
-                        },
-                        {
-                            role: "user",
-                            content: [
-                                { 
-                                    type: "text", 
-                                    text: template.user 
-                                },
-                                {
-                                    type: "image_url",
-                                    image_url: {
-                                        url: `data:image/jpeg;base64,${baseImage}`
-                                    }
-                                }
-                            ]
-                        }
-                    ],
-                    max_tokens: 500
-                })
-            });
-            
-            if (!response.ok) {
-                const errorData = await response.json().catch(() => ({}));
-                this.log.error('OpenAI API error details:', errorData);
-                throw new Error(`API error: ${response.status} - ${errorData.error?.message || 'Unknown error'}`);
+            if (!result || !result.text) {
+                this.log.warn('API V3 could not extract concepts from image');
+                return;
             }
             
-            const data = await response.json();
-            const conceptsText = data.choices[0].message.content.trim();
+            const conceptsText = result.text.trim();
             
             // Extract JSON from the response
             const jsonMatch = conceptsText.match(/\[.*\]/s);
