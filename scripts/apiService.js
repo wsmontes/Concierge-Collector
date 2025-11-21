@@ -312,17 +312,37 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
     }
 
     async transcribeAudio(audioBlob, language = 'pt') {
-        const formData = new FormData();
-        formData.append('file', audioBlob, 'audio.m4a');
-        formData.append('mode', 'audio_only');
-        if (language) formData.append('language', language);
+        // Convert Blob to base64 - API V3 expects JSON with base64 audio_file
+        const base64Audio = await this.blobToBase64(audioBlob);
         
-        // Use orchestrate endpoint which handles transcription
-        // Don't pass empty headers - let request() add auth automatically
+        // API V3 orchestrate endpoint expects JSON, not FormData
+        const requestBody = {
+            audio_file: base64Audio,
+            language: language || 'pt-BR',
+            entity_type: 'restaurant'
+        };
+        
         const response = await this.request('POST', 'aiOrchestrate', {
-            body: formData
+            body: JSON.stringify(requestBody)
         });
         return await response.json();
+    }
+    
+    /**
+     * Convert Blob to base64 string
+     * @private
+     */
+    async blobToBase64(blob) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => {
+                // Remove data URL prefix (data:audio/m4a;base64,)
+                const base64 = reader.result.split(',')[1];
+                resolve(base64);
+            };
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
     }
 
     async extractConcepts(text, entityType = 'restaurant') {
@@ -333,12 +353,17 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
     }
 
     async analyzeImage(imageBlob, prompt) {
-        const formData = new FormData();
-        formData.append('file', imageBlob, 'image.jpg');
-        formData.append('prompt', prompt);
+        // Convert image to base64 - API V3 expects JSON with base64 image_file
+        const base64Image = await this.blobToBase64(imageBlob);
         
-        const response = await this.request('POST', 'aiAnalyzeImage', {
-            body: formData
+        const requestBody = {
+            image_file: base64Image,
+            prompt: prompt,
+            entity_type: 'restaurant'
+        };
+        
+        const response = await this.request('POST', 'aiOrchestrate', {
+            body: JSON.stringify(requestBody)
         });
         return await response.json();
     }
