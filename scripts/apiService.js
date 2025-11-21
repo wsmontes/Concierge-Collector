@@ -93,11 +93,17 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         const fullPath = queryString ? `${endpointPath}?${queryString}` : endpointPath;
         const url = `${this.baseUrl}${fullPath}`;
         
+        // Build headers - don't set Content-Type for FormData (browser sets it with boundary)
+        const isFormData = options.body instanceof FormData;
         const headers = {
-            'Content-Type': 'application/json',
             ...this.getAuthHeaders(),  // Include OAuth token in ALL requests
             ...options.headers
         };
+        
+        // Only add Content-Type for non-FormData requests
+        if (!isFormData && !headers['Content-Type']) {
+            headers['Content-Type'] = 'application/json';
+        }
         
         const fetchOptions = { method, headers, ...options };
         
