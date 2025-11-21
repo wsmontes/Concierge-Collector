@@ -129,8 +129,12 @@ def create_or_update_user(db: Database, user_data: dict) -> UserInDB:
     existing_user = get_user_by_google_id(db, user_data["google_id"])
     
     if existing_user:
-        # Update last login and refresh token if provided
-        update_data = {"last_login": datetime.now(timezone.utc)}
+        # Update user info from Google (name, picture can change)
+        update_data = {
+            "name": user_data["name"],
+            "picture": user_data.get("picture"),
+            "last_login": datetime.now(timezone.utc)
+        }
         if user_data.get("refresh_token"):
             update_data["refresh_token"] = user_data["refresh_token"]
         
@@ -138,10 +142,14 @@ def create_or_update_user(db: Database, user_data: dict) -> UserInDB:
             {"google_id": user_data["google_id"]},
             {"$set": update_data}
         )
+        
+        # Update local object
+        existing_user.name = user_data["name"]
+        existing_user.picture = user_data.get("picture")
         existing_user.last_login = datetime.now(timezone.utc)
         if user_data.get("refresh_token"):
             existing_user.refresh_token = user_data["refresh_token"]
-        logger.info(f"[OAuth] Updated existing user: {existing_user.email}")
+        logger.info(f"[OAuth] Updated existing user: {existing_user.email} (name, picture, last_login)")
         return existing_user
     else:
         # Create new user (unauthorized by default)
