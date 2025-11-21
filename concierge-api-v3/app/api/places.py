@@ -84,9 +84,9 @@ def get_enhanced_field_mask(include_reviews: bool = False, include_photos: bool 
         Comma-separated field mask string
     """
     # Essential fields (always included) - SKU: Basic Data
-    # Note: Google Places API (New) does NOT have an 'id' field
-    # The place_id is part of the response by default
+    # CRITICAL: 'id' field must be explicitly requested in the field mask
     essential = [
+        "id",  # Place ID - REQUIRED for frontend imports
         "displayName",  # The name of the place
         "formattedAddress",
         "location",
