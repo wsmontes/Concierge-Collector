@@ -32,9 +32,10 @@ const DraftRestaurantManager = ModuleWrapper.defineClass('DraftRestaurantManager
     init(dataStorage) {
         this.dataStorage = dataStorage;
         this.log.debug('DraftRestaurantManager initialized');
-        this.log.debug('DataStorage type:', typeof dataStorage);
-        this.log.debug('DataStorage.db:', dataStorage ? dataStorage.db : 'dataStorage is null');
-        this.log.debug('DataStorage.db.draftRestaurants:', dataStorage && dataStorage.db ? dataStorage.db.draftRestaurants : 'db is null/undefined');
+        console.log('🔍 [DraftRestaurantManager.init] dataStorage:', dataStorage);
+        console.log('🔍 [DraftRestaurantManager.init] dataStorage.db:', dataStorage ? dataStorage.db : 'NULL');
+        console.log('🔍 [DraftRestaurantManager.init] this.dataStorage:', this.dataStorage);
+        console.log('🔍 [DraftRestaurantManager.init] this.dataStorage.db:', this.dataStorage ? this.dataStorage.db : 'NULL');
     }
 
     /**
@@ -45,6 +46,9 @@ const DraftRestaurantManager = ModuleWrapper.defineClass('DraftRestaurantManager
      */
     async createDraft(curatorId, data = {}) {
         try {
+            console.log('🔍 [createDraft] this.dataStorage:', this.dataStorage);
+            console.log('🔍 [createDraft] this.dataStorage.db:', this.dataStorage ? this.dataStorage.db : 'NULL');
+            
             const draftData = {
                 curatorId: curatorId,
                 name: data.name || '',

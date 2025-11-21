@@ -31,9 +31,10 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
     init(dataStorage) {
         this.dataStorage = dataStorage;
         this.log.debug('PendingAudioManager initialized');
-        this.log.debug('DataStorage type:', typeof dataStorage);
-        this.log.debug('DataStorage.db:', dataStorage ? dataStorage.db : 'dataStorage is null');
-        this.log.debug('DataStorage.db.pendingAudio:', dataStorage && dataStorage.db ? dataStorage.db.pendingAudio : 'db is null/undefined');
+        console.log('🔍 [PendingAudioManager.init] dataStorage:', dataStorage);
+        console.log('🔍 [PendingAudioManager.init] dataStorage.db:', dataStorage ? dataStorage.db : 'NULL');
+        console.log('🔍 [PendingAudioManager.init] this.dataStorage:', this.dataStorage);
+        console.log('🔍 [PendingAudioManager.init] this.dataStorage.db:', this.dataStorage ? this.dataStorage.db : 'NULL');
     }
 
     /**
@@ -47,6 +48,9 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
      */
     async saveAudio(data) {
         try {
+            console.log('🔍 [saveAudio] this.dataStorage:', this.dataStorage);
+            console.log('🔍 [saveAudio] this.dataStorage.db:', this.dataStorage ? this.dataStorage.db : 'NULL');
+            
             const audioData = {
                 audioBlob: data.audioBlob,
                 restaurantId: data.restaurantId || null,
