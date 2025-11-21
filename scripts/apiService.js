@@ -412,8 +412,20 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
     }
 
     async getPlaceDetails(placeId) {
-        const endpoint = AppConfig.api.backend.endpoints.placesDetails.replace('{id}', placeId);
-        const response = await this.request('GET', endpoint);
+        this.log.debug(`🔍 Getting place details for: ${placeId}`);
+        
+        if (!placeId) {
+            throw new Error('Place ID is required');
+        }
+        
+        // Build the full endpoint path with the place ID
+        const endpointTemplate = AppConfig.api.backend.endpoints.placesDetails;
+        const endpointPath = endpointTemplate.replace('{id}', placeId);
+        
+        this.log.debug(`📍 Endpoint template: ${endpointTemplate}`);
+        this.log.debug(`📍 Endpoint path: ${endpointPath}`);
+        
+        const response = await this.request('GET', endpointPath);
         return await response.json();
     }
 
