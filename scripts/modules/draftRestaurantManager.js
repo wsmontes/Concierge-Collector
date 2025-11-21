@@ -32,6 +32,9 @@ const DraftRestaurantManager = ModuleWrapper.defineClass('DraftRestaurantManager
     init(dataStorage) {
         this.dataStorage = dataStorage;
         this.log.debug('DraftRestaurantManager initialized');
+        this.log.debug('DataStorage type:', typeof dataStorage);
+        this.log.debug('DataStorage.db:', dataStorage ? dataStorage.db : 'dataStorage is null');
+        this.log.debug('DataStorage.db.draftRestaurants:', dataStorage && dataStorage.db ? dataStorage.db.draftRestaurants : 'db is null/undefined');
     }
 
     /**

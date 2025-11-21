@@ -31,6 +31,9 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
     init(dataStorage) {
         this.dataStorage = dataStorage;
         this.log.debug('PendingAudioManager initialized');
+        this.log.debug('DataStorage type:', typeof dataStorage);
+        this.log.debug('DataStorage.db:', dataStorage ? dataStorage.db : 'dataStorage is null');
+        this.log.debug('DataStorage.db.pendingAudio:', dataStorage && dataStorage.db ? dataStorage.db.pendingAudio : 'db is null/undefined');
     }
 
     /**
