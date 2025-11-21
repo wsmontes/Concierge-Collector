@@ -390,6 +390,8 @@ window.FindEntityModal = class FindEntityModal {
      * Display search results
      */
     displayResults(results) {
+        console.log('📍 Displaying results:', results);
+        
         if (!results || results.length === 0) {
             this.resultsContainer.innerHTML = `
                 <div class="text-center text-gray-500 py-12">
@@ -497,6 +499,7 @@ window.FindEntityModal = class FindEntityModal {
             button.addEventListener('click', async (e) => {
                 const placeId = e.currentTarget.getAttribute('data-place-id');
                 const placeName = e.currentTarget.getAttribute('data-place-name');
+                console.log('🎯 Import button clicked:', { placeId, placeName });
                 await this.importEntity(placeId, placeName, e.currentTarget);
             });
         });
