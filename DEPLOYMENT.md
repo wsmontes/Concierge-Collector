@@ -93,6 +93,29 @@ ENVIRONMENT=production
 
 ---
 
+## 🧪 Testing Before Deployment
+
+### Run Backend Tests
+```bash
+cd concierge-api-v3
+pytest tests/ -v
+```
+
+**Critical Tests:**
+- `test_ai_orchestrate.py` - Catches async/await bugs
+- `test_integration_transcription.py` - End-to-end workflow
+- All tests should pass without 500 errors
+
+### Pre-Deployment Checklist
+- [ ] All pytest tests pass
+- [ ] No 500 errors in test output
+- [ ] Manual test of transcription workflow locally
+- [ ] Environment variables verified on Render
+
+See `concierge-api-v3/TESTING_GUIDE.md` for detailed testing instructions.
+
+---
+
 ## 🔒 Security Best Practices
 
 ### Environment Variables Management
