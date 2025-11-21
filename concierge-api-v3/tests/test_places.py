@@ -53,58 +53,57 @@ class TestFieldMaskGeneration:
         mask = get_enhanced_field_mask(detail_level="minimal")
         fields = mask.split(",")
         
-        # Verify essential fields are present
-        assert "places.name" in fields  # Changed from places.id
-        assert "places.displayName" in fields
-        assert "places.formattedAddress" in fields
-        assert "places.location" in fields
-        assert "places.rating" in fields
-        assert "places.types" in fields
+        # Verify essential fields are present (no 'places.' prefix in new API)
+        assert "displayName" in fields
+        assert "formattedAddress" in fields
+        assert "location" in fields
+        assert "rating" in fields
+        assert "types" in fields
         
         # Should not include expensive fields
-        assert "places.reviews" not in fields
+        assert "reviews" not in fields
     
     def test_standard_field_mask(self):
         """Should include standard fields without reviews"""
         mask = get_enhanced_field_mask(detail_level="standard")
         fields = mask.split(",")
         
-        # Essential + contact + hours + address
-        assert "places.name" in fields
-        assert "places.websiteUri" in fields
-        assert "places.currentOpeningHours" in fields
-        assert "places.addressComponents" in fields
+        # Essential + contact + hours + address (no 'places.' prefix)
+        assert "displayName" in fields
+        assert "websiteUri" in fields
+        assert "currentOpeningHours" in fields
+        assert "addressComponents" in fields
         
         # Should not include reviews (not requested)
-        assert "places.reviews" not in fields
+        assert "reviews" not in fields
     
     def test_full_field_mask_without_reviews(self):
         """Should include all fields except reviews when not requested"""
         mask = get_enhanced_field_mask(detail_level="full", include_reviews=False)
         fields = mask.split(",")
         
-        # Should include food service attributes
-        assert "places.servesBreakfast" in fields
-        assert "places.servesLunch" in fields
-        assert "places.servesDinner" in fields
+        # Should include food service attributes (no 'places.' prefix)
+        assert "servesBreakfast" in fields
+        assert "servesLunch" in fields
+        assert "servesDinner" in fields
         
         # Should not include reviews
-        assert "places.reviews" not in fields
+        assert "reviews" not in fields
     
     def test_full_field_mask_with_reviews(self):
         """Should include reviews when explicitly requested"""
         mask = get_enhanced_field_mask(detail_level="full", include_reviews=True)
         fields = mask.split(",")
         
-        assert "places.reviews" in fields
+        assert "reviews" in fields
     
     def test_photos_inclusion(self):
         """Should include photos when requested"""
         mask_with_photos = get_enhanced_field_mask(include_photos=True)
         mask_without_photos = get_enhanced_field_mask(include_photos=False)
         
-        assert "places.photos" in mask_with_photos
-        assert "places.photos" not in mask_without_photos
+        assert "photos" in mask_with_photos
+        assert "photos" not in mask_without_photos
     
     def test_no_invalid_fields(self):
         """Should not include deprecated/invalid fields"""
@@ -112,10 +111,14 @@ class TestFieldMaskGeneration:
         fields = mask.split(",")
         
         # These fields should NOT be present (invalid in Places API New)
-        assert "places.id" not in fields  # Changed to places.name
-        assert "places.iconMaskBaseUri" not in fields  # Deprecated
-        assert "places.attributions" not in fields  # Invalid
-        assert "places.url" not in fields  # Invalid
+        assert "id" not in fields  # place_id is returned automatically, not in field mask
+        assert "iconMaskBaseUri" not in fields  # Deprecated
+        assert "attributions" not in fields  # Invalid
+        assert "url" not in fields  # Invalid
+        
+        # No fields should have 'places.' prefix
+        for field in fields:
+            assert not field.startswith("places."), f"Field '{field}' should not have 'places.' prefix"
 
 
 # ============================================================================

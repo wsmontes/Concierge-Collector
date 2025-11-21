@@ -66,7 +66,7 @@ class PlaceDetailsResponse(BaseModel):
 # HELPER FUNCTIONS
 # ============================================================================
 
-def get_enhanced_field_mask(include_reviews: bool = False, include_photos: bool = True, detail_level: str = "standard") -> str:
+def get_enhanced_field_mask(include_reviews: bool = False, include_photos: bool = True, detail_level: str = "standard", use_prefix: bool = False) -> str:
     """
     Build comprehensive field mask for Google Places API
     
@@ -77,126 +77,136 @@ def get_enhanced_field_mask(include_reviews: bool = False, include_photos: bool 
         include_reviews: Include review details (higher cost)
         include_photos: Include photo metadata
         detail_level: "minimal", "standard", or "full" (controls billing cost)
+        use_prefix: If True, prefix fields with 'places.' (for searchNearby/searchText)
+                   If False, no prefix (for Place Details GET requests)
         
     Returns:
         Comma-separated field mask string
     """
     # Essential fields (always included) - SKU: Basic Data
+    # Note: Google Places API (New) does NOT have an 'id' field
+    # The place_id is part of the response by default
     essential = [
-        "places.name",  # Changed from places.id - this is the correct field
-        "places.displayName",
-        "places.formattedAddress",
-        "places.location",
-        "places.rating",
-        "places.userRatingCount",
-        "places.priceLevel",
-        "places.types",
-        "places.businessStatus"
+        "displayName",  # The name of the place
+        "formattedAddress",
+        "location",
+        "rating",
+        "userRatingCount",
+        "priceLevel",
+        "types",
+        "businessStatus"
     ]
     
     if detail_level == "minimal":
-        return ",".join(essential)
+        all_fields = essential
+        # Apply prefix if needed
+        if use_prefix:
+            all_fields = [f"places.{field}" for field in all_fields]
+        return ",".join(all_fields)
     
     # Contact and web presence - SKU: Contact Data
     contact = [
-        "places.websiteUri",
-        "places.internationalPhoneNumber",
-        "places.nationalPhoneNumber"
+        "websiteUri",
+        "internationalPhoneNumber",
+        "nationalPhoneNumber"
     ]
     
     # Opening hours - SKU: Atmosphere Data
     hours = [
-        "places.currentOpeningHours",
-        "places.regularOpeningHours",
-        "places.utcOffsetMinutes"
+        "currentOpeningHours",
+        "regularOpeningHours",
+        "utcOffsetMinutes"
     ]
     
     # Address components (detailed geocoding) - SKU: Basic Data
     address = [
-        "places.shortFormattedAddress",
-        "places.addressComponents",
-        "places.plusCode"
+        "shortFormattedAddress",
+        "addressComponents",
+        "plusCode"
     ]
     
     # Basic attributes - SKU: Atmosphere Data
     basic_attributes = [
-        "places.takeout",
-        "places.delivery",
-        "places.dineIn",
-        "places.reservable",
-        "places.goodForChildren",
-        "places.goodForGroups"
+        "takeout",
+        "delivery",
+        "dineIn",
+        "reservable",
+        "goodForChildren",
+        "goodForGroups"
     ]
     
     # Editorial content
     editorial = [
-        "places.editorialSummary"
-        # Removed: places.iconMaskBaseUri - deprecated in Places API (New)
+        "editorialSummary"
+        # Removed: iconMaskBaseUri - deprecated in Places API (New)
     ]
     
     # Photos (if requested)
     photos = []
     if include_photos:
         photos = [
-            "places.photos"
+            "photos"
         ]
     
     if detail_level == "standard":
         all_fields = essential + contact + hours + address + basic_attributes + editorial + photos
+        # Apply prefix if needed
+        if use_prefix:
+            all_fields = [f"places.{field}" for field in all_fields]
         return ",".join(all_fields)
     
     # FULL DETAIL LEVEL - All 150+ fields
     
     # Food service attributes (restaurants) - SKU: Atmosphere Data
     food_service = [
-        "places.servesBreakfast",
-        "places.servesLunch",
-        "places.servesDinner",
-        "places.servesBrunch",
-        "places.servesBeer",
-        "places.servesWine"
+        "servesBreakfast",
+        "servesLunch",
+        "servesDinner",
+        "servesBrunch",
+        "servesBeer",
+        "servesWine"
     ]
     
     # Dietary and service options - SKU: Atmosphere Data
     dietary = [
-        "places.servesVegetarianFood",
-        "places.takeout",
-        "places.delivery",
-        "places.dineIn",
-        "places.reservable"
+        "servesVegetarianFood",
+        "takeout",
+        "delivery",
+        "dineIn",
+        "reservable"
     ]
     
     # Amenities - SKU: Atmosphere Data
     amenities = [
-        "places.outdoorSeating",
-        "places.liveMusic",
-        "places.allowsDogs",
-        "places.goodForChildren",
-        "places.goodForGroups",
-        "places.wheelchairAccessibleEntrance"
+        "outdoorSeating",
+        "liveMusic",
+        "allowsDogs",
+        "goodForChildren",
+        "goodForGroups",
+        "wheelchairAccessibleEntrance"
     ]
     
     # Parking - SKU: Atmosphere Data
     parking = [
-        "places.parkingOptions"
+        "parkingOptions"
     ]
     
     # Payment options - SKU: Atmosphere Data
     payment = [
-        "places.paymentOptions"
+        "paymentOptions"
     ]
     
     # Reviews (if requested - higher billing cost) - SKU: Reviews
     reviews = []
     if include_reviews:
         reviews = [
-            "places.reviews"
+            "reviews"
         ]
     
     # Attribution and metadata
     metadata = [
-        "places.googleMapsUri"
-        # Removed: places.attributions, places.url - not valid in Places API (New)
+        "googleMapsUri"
+        # Removed: attributions, url - not valid in Places API (New)
     ]
     
     # Combine all fields for full detail
@@ -215,6 +225,10 @@ def get_enhanced_field_mask(include_reviews: bool = False, include_photos: bool 
         reviews +
         metadata
     )
+    
+    # Apply prefix if needed (searchNearby/searchText use 'places.' prefix)
+    if use_prefix:
+        all_fields = [f"places.{field}" for field in all_fields]
     
     return ",".join(all_fields)
 
@@ -363,10 +377,11 @@ async def _nearby_search(
         payload["priceLevels"] = levels
     
     # Headers with comprehensive field mask (100 most important fields)
+    # Note: searchNearby requires 'places.' prefix for fields
     headers = {
         "Content-Type": "application/json",
         "X-Goog-Api-Key": settings.google_places_api_key,
-        "X-Goog-FieldMask": get_enhanced_field_mask(include_reviews=False, include_photos=True, detail_level="standard")
+        "X-Goog-FieldMask": get_enhanced_field_mask(include_reviews=False, include_photos=True, detail_level="standard", use_prefix=True)
     }
     
     # Make request
@@ -475,10 +490,11 @@ async def _text_search(
         payload["priceLevels"] = levels
     
     # Headers with comprehensive field mask (100 most important fields)
+    # Note: searchText requires 'places.' prefix for fields
     headers = {
         "Content-Type": "application/json",
         "X-Goog-Api-Key": settings.google_places_api_key,
-        "X-Goog-FieldMask": get_enhanced_field_mask(include_reviews=False, include_photos=True, detail_level="standard")
+        "X-Goog-FieldMask": get_enhanced_field_mask(include_reviews=False, include_photos=True, detail_level="standard", use_prefix=True)
     }
     
     # Make request
@@ -592,7 +608,7 @@ async def get_place_details(
         headers = {
             "Content-Type": "application/json",
             "X-Goog-Api-Key": settings.google_places_api_key,
-            "X-Goog-FieldMask": get_enhanced_field_mask(include_reviews=True, include_photos=True, detail_level="full")
+            "X-Goog-FieldMask": get_enhanced_field_mask(include_reviews=True, include_photos=True, detail_level="full", use_prefix=False)
         }
         
         # Make request
