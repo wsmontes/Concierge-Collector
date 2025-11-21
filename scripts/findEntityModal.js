@@ -643,6 +643,24 @@ window.FindEntityModal = class FindEntityModal {
                 if (window.dataStorage && typeof window.dataStorage.refreshEntities === 'function') {
                     await window.dataStorage.refreshEntities();
                 }
+                
+                // Close the find entity modal
+                this.close();
+                
+                // Open curation editor with the imported entity data
+                console.log('🎨 Opening curation editor for imported entity');
+                if (window.CurationEditor) {
+                    // Ensure the editor is initialized
+                    if (!window.curationEditorInstance) {
+                        window.curationEditorInstance = new window.CurationEditor();
+                        window.curationEditorInstance.init();
+                    }
+                    
+                    // Open editor with entity data
+                    window.curationEditorInstance.open(entity);
+                } else {
+                    console.warn('⚠️ CurationEditor not available - please ensure curationEditor.js is loaded');
+                }
             }
         } catch (error) {
             console.error('Error importing entity:', error);

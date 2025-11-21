@@ -1099,3 +1099,69 @@
   }
 }
 
+/* ========================================================================
+   CURATION EDITOR MODAL
+   ======================================================================== */
+
+#curation-editor-modal .modal-content {
+  position: relative;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+#curation-editor-modal section {
+  scroll-margin-top: var(--spacing-4);
+}
+
+#curation-editor-modal h3 {
+  color: var(--color-neutral-900);
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+}
+
+#curation-editor-modal input[type="text"],
+#curation-editor-modal input[type="tel"],
+#curation-editor-modal input[type="url"],
+#curation-editor-modal input[type="number"],
+#curation-editor-modal select,
+#curation-editor-modal textarea {
+  font-size: var(--text-sm);
+  transition: all var(--transition-fast);
+}
+
+#curation-editor-modal input:focus,
+#curation-editor-modal select:focus,
+#curation-editor-modal textarea:focus {
+  border-color: var(--color-primary);
+  ring: 2px;
+  ring-color: var(--color-primary);
+  ring-opacity: 0.2;
+}
+
+#curation-editor-modal label span.text-red-500 {
+  color: var(--color-error);
+}
+
+#curation-editor-modal label span.text-gray-500 {
+  color: var(--color-neutral-500);
+  font-weight: var(--font-normal);
+}
+
+#curation-editor-loading {
+  z-index: 10;
+}
+
+/* Make modal scrollable on mobile */
+@media (max-width: 768px) {
+  #curation-editor-modal .modal-content {
+    margin: var(--spacing-4);
+    max-height: calc(100vh - var(--spacing-8));
+    max-width: calc(100vw - var(--spacing-8));
+  }
+  
+  #curation-editor-modal .grid-cols-2,
+  #curation-editor-modal .md\\:grid-cols-2,
+  #curation-editor-modal .md\\:grid-cols-4 {
+    grid-template-columns: 1fr;
+  }
+}
