@@ -172,9 +172,10 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         }
         
         // For non-401 errors, try to get error details from body
+        let errorDetails = null;
         try {
-            const errorData = await response.json();
-            if (errorData.detail) errorMessage = errorData.detail;
+            errorDetails = await response.json();
+            if (errorDetails.detail) errorMessage = errorDetails.detail;
         } catch (e) {}
         
         switch (response.status) {
@@ -183,7 +184,14 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
                 break;
             case 404: errorMessage = 'Resource not found'; break;
             case 409: errorMessage = 'Version conflict - data was modified by another user'; break;
-            case 422: errorMessage = 'Validation error - check your input data'; break;
+            case 422: 
+                // Log full validation error for debugging
+                if (errorDetails) {
+                    console.error('🔴 Validation error details:', errorDetails);
+                    this.log.error('Validation error details:', errorDetails);
+                }
+                errorMessage = 'Validation error - check your input data';
+                break;
             case 428: errorMessage = 'Version information required for update'; break;
             case 500: errorMessage = 'Server error - please try again later'; break;
         }
