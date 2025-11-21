@@ -5,7 +5,9 @@ Provides transcription (Whisper), concept extraction (GPT-4), and image analysis
 using configurations and prompts stored in MongoDB.
 """
 
+import base64
 import hashlib
+import io
 import json
 import uuid
 from typing import Dict, Any, Optional
@@ -59,15 +61,12 @@ class OpenAIService:
             params["language"] = language
         
         # Handle base64 audio data conversion
-        import base64
-        import io
-        
         if isinstance(audio_data, str):
             # Decode base64 string to bytes
             audio_bytes = base64.b64decode(audio_data)
             # Create file-like object
             audio_file = io.BytesIO(audio_bytes)
-            audio_file.name = "audio.m4a"  # OpenAI needs filename for format detection
+            audio_file.name = "audio.mp3"  # OpenAI needs filename for format detection
         else:
             # Already a file object
             audio_file = audio_data
