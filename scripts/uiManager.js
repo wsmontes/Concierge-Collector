@@ -28,7 +28,12 @@ if (typeof window.UIManager === 'undefined') {
             this.curatorNameDisplay = document.getElementById('curator-name-display');
             this.editCuratorButton = document.getElementById('edit-curator');
             
-            // Add FAB and Quick Action elements references with null checks
+            // Header elements (always visible)
+            this.syncButtonHeader = document.getElementById('sync-button-header');
+            this.syncStatusHeader = document.getElementById('sync-status-header');
+            this.userProfileHeader = document.getElementById('user-profile-header');
+            
+            // FAB and Quick Action elements
             this.fab = document.getElementById('fab');
             this.quickActionModal = document.getElementById('quick-action-modal');
             this.closeQuickModal = document.getElementById('close-quick-modal');
@@ -36,6 +41,12 @@ if (typeof window.UIManager === 'undefined') {
             this.quickLocation = document.getElementById('quick-location');
             this.quickPhoto = document.getElementById('quick-photo');
             this.quickManual = document.getElementById('quick-manual');
+            
+            // Sidebar elements (should be managed for visibility)
+            this.syncSidebarSection = document.getElementById('sync-sidebar-section');
+            this.syncButton = document.getElementById('sync-button');
+            this.syncStatus = document.getElementById('sync-status');
+            this.openSyncSettings = document.getElementById('open-sync-settings');
             
             // Get restaurant list container
             this.restaurantsContainer = document.getElementById('restaurants-container');
@@ -53,6 +64,10 @@ if (typeof window.UIManager === 'undefined') {
             
             // Fixed toolbars
             this.restaurantEditToolbar = document.getElementById('restaurant-edit-toolbar');
+            this.curatorEditToolbar = document.getElementById('curator-edit-toolbar');
+            
+            // Loading overlay
+            this.loadingOverlay = document.getElementById('loading-overlay');
             
             // Form elements
             this.transcriptionText = document.getElementById('transcription-text');
@@ -155,20 +170,20 @@ if (typeof window.UIManager === 'undefined') {
         }
 
         hideAllSections() {
-            // Add null checks for all sections to prevent errors if DOM elements don't exist
+            // Hide all main content sections
             if (this.recordingSection) this.recordingSection.classList.add('hidden');
             if (this.transcriptionSection) this.transcriptionSection.classList.add('hidden');
             if (this.conceptsSection) this.conceptsSection.classList.add('hidden');
             if (this.restaurantListSection) this.restaurantListSection.classList.add('hidden');
             if (this.exportImportSection) this.exportImportSection.classList.add('hidden');
             
-            // Hide Find Entity button (only visible in list view)
+            // Hide list-only UI elements
             if (this.findEntityBtn) this.findEntityBtn.classList.add('hidden');
+            if (this.syncSidebarSection) this.syncSidebarSection.classList.add('hidden');
             
-            // Hide restaurant edit toolbar
-            if (this.restaurantEditToolbar) {
-                this.restaurantEditToolbar.classList.add('hidden');
-            }
+            // Hide all toolbars
+            if (this.restaurantEditToolbar) this.restaurantEditToolbar.classList.add('hidden');
+            if (this.curatorEditToolbar) this.curatorEditToolbar.classList.add('hidden');
         }
 
         // Core UI visibility functions
@@ -260,13 +275,14 @@ if (typeof window.UIManager === 'undefined') {
 
         showRestaurantListSection() {
             this.hideAllSections();
-            // Add null checks before accessing classList
+            // Show main list view elements
             if (this.curatorSection) this.curatorSection.classList.remove('hidden');
             if (this.restaurantListSection) this.restaurantListSection.classList.remove('hidden');
             if (this.exportImportSection) this.exportImportSection.classList.remove('hidden');
             
-            // Show Find Entity button (only in list view)
+            // Show list-only UI elements
             if (this.findEntityBtn) this.findEntityBtn.classList.remove('hidden');
+            if (this.syncSidebarSection) this.syncSidebarSection.classList.remove('hidden');
         }
 
         // Delegate to appropriate modules via uiUtilsModule
