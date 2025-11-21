@@ -142,7 +142,7 @@ const CuratorProfile = (function() {
                 <div class="relative" id="user-profile-dropdown-container">
                     <button 
                         id="user-profile-button"
-                        class="flex items-center gap-2 px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500"
+                        class="flex items-center gap-2 px-2 sm:px-3 py-2 rounded-lg hover:bg-gray-50 transition-colors cursor-pointer focus:outline-none focus:ring-2 focus:ring-blue-500"
                         aria-haspopup="true"
                         aria-expanded="false"
                     >
@@ -150,18 +150,18 @@ const CuratorProfile = (function() {
                             <img 
                                 src="${_currentCurator.picture}" 
                                 alt="${_currentCurator.name}"
-                                class="w-10 h-10 rounded-full ring-2 ring-blue-200 object-cover"
+                                class="w-8 h-8 sm:w-10 sm:h-10 rounded-full ring-2 ring-blue-200 object-cover flex-shrink-0"
                                 onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'"
                             >
-                            <div class="avatar-fallback w-10 h-10 rounded-full bg-blue-500 text-white flex items-center justify-center font-bold" style="display:none">
+                            <div class="avatar-fallback w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-blue-500 text-white flex items-center justify-center font-bold flex-shrink-0" style="display:none">
                                 ${getInitials(_currentCurator.name)}
                             </div>
                         ` : `
-                            <div class="avatar-fallback w-10 h-10 rounded-full bg-blue-500 text-white flex items-center justify-center font-bold">
+                            <div class="avatar-fallback w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-blue-500 text-white flex items-center justify-center font-bold flex-shrink-0">
                                 ${getInitials(_currentCurator.name)}
                             </div>
                         `}
-                        <div class="flex flex-col items-start">
+                        <div class="hidden sm:flex flex-col items-start">
                             <span class="text-sm font-semibold text-gray-900">${_currentCurator.name}</span>
                             <span class="text-xs text-gray-500">${_currentCurator.email}</span>
                         </div>
