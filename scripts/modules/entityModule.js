@@ -164,7 +164,13 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
         const cities = new Set();
         this.entities.forEach(entity => {
             const city = this.extractCity(entity);
-            if (city && city !== 'Unknown') {
+            // Only add valid string cities (not objects, not Unknown)
+            if (city && 
+                typeof city === 'string' && 
+                city !== 'Unknown' && 
+                city.trim() !== '' &&
+                !city.includes('{') && 
+                !city.includes('[')) {
                 cities.add(city);
             }
         });
@@ -192,28 +198,39 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
                    entity.data?.location?.city ||
                    entity.data?.city;
         
-        // If city is an object or array (coordinates), try to extract from formatted address
-        if (typeof city === 'object' || Array.isArray(city)) {
-            const address = entity.data?.formattedAddress || 
-                          entity.data?.address?.formattedAddress ||
-                          entity.data?.location?.address;
-            
-            if (address && typeof address === 'string') {
-                // Extract city from formatted address (usually second-to-last component before country/postal)
-                const parts = address.split(',').map(p => p.trim());
-                if (parts.length >= 2) {
-                    // Try to get city (usually before state/country)
-                    city = parts[parts.length - 2] || parts[parts.length - 1];
-                    // Remove postal codes
-                    city = city.replace(/\d{5}(-\d{4})?/, '').trim();
-                    city = city.replace(/\b\d+\b/g, '').trim();
+        // Always convert to string and check if it's valid
+        if (city && typeof city === 'string' && !city.includes('{') && !city.includes('[')) {
+            return city;
+        }
+        
+        // If city is an object, array, or invalid, extract from formatted address
+        const address = entity.data?.formattedAddress || 
+                      entity.data?.address?.formattedAddress ||
+                      entity.data?.location?.formattedAddress ||
+                      entity.data?.location?.address;
+        
+        if (address && typeof address === 'string') {
+            // Extract city from formatted address
+            const parts = address.split(',').map(p => p.trim());
+            if (parts.length >= 2) {
+                // Get second-to-last part (usually city before state/country)
+                city = parts[parts.length - 2];
+                // If that's a number/postal, try last part
+                if (/^\d+/.test(city)) {
+                    city = parts[parts.length - 1];
                 }
-            } else {
-                city = 'Unknown';
+                // Clean up
+                city = city.replace(/\d{5}(-\d{4})?/, '').trim();
+                city = city.replace(/\b\d+\b/g, '').trim();
+                city = city.replace(/\s+/g, ' ').trim();
+                
+                if (city && city.length > 1) {
+                    return city;
+                }
             }
         }
         
-        return city || 'Unknown';
+        return 'Unknown';
     }
 
     /**
