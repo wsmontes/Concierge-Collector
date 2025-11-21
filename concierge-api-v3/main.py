@@ -47,6 +47,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# Add exception handler to ensure CORS headers are included in error responses
+@app.exception_handler(Exception)
+async def global_exception_handler(request, exc):
+    """Ensure CORS headers are present even on error responses"""
+    from fastapi.responses import JSONResponse
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    logger.error(f"[Global Exception Handler] {type(exc).__name__}: {str(exc)}")
+    
+    return JSONResponse(
+        status_code=500,
+        content={"detail": f"Internal server error: {str(exc)}"},
+        headers={
+            "Access-Control-Allow-Origin": request.headers.get("origin", "*"),
+            "Access-Control-Allow-Credentials": "true",
+            "Access-Control-Allow-Methods": "*",
+            "Access-Control-Allow-Headers": "*",
+        }
+    )
+
 # Include routers with /api/v3 prefix
 app.include_router(system.router, prefix="/api/v3")
 app.include_router(auth.router, prefix="/api/v3")

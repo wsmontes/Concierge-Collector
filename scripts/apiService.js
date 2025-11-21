@@ -312,20 +312,47 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
     }
 
     async transcribeAudio(audioBlob, language = 'pt') {
-        // Convert Blob to base64 - API V3 expects JSON with base64 audio_file
-        const base64Audio = await this.blobToBase64(audioBlob);
-        
-        // API V3 orchestrate endpoint expects JSON, not FormData
-        const requestBody = {
-            audio_file: base64Audio,
-            language: language || 'pt-BR',
-            entity_type: 'restaurant'
-        };
-        
-        const response = await this.request('POST', 'aiOrchestrate', {
-            body: JSON.stringify(requestBody)
-        });
-        return await response.json();
+        try {
+            // Log authentication status for debugging
+            this.log.debug('🎤 Starting audio transcription');
+            this.log.debug(`📍 API URL: ${this.baseUrl}/ai/orchestrate`);
+            this.log.debug(`🔑 Token available: ${!!AuthService.getToken()}`);
+            this.log.debug(`🌐 Language: ${language || 'pt-BR'}`);
+            
+            // Convert Blob to base64 - API V3 expects JSON with base64 audio_file
+            const base64Audio = await this.blobToBase64(audioBlob);
+            this.log.debug(`📦 Audio converted to base64 (${base64Audio.length} chars)`);
+            
+            // API V3 orchestrate endpoint expects JSON, not FormData
+            const requestBody = {
+                audio_file: base64Audio,
+                language: language || 'pt-BR',
+                entity_type: 'restaurant'
+            };
+            
+            this.log.debug('🚀 Sending transcription request...');
+            const response = await this.request('POST', 'aiOrchestrate', {
+                body: JSON.stringify(requestBody)
+            });
+            
+            const result = await response.json();
+            this.log.debug('✅ Transcription successful');
+            return result;
+            
+        } catch (error) {
+            this.log.error('❌ Transcription error:', error);
+            
+            // Provide more helpful error messages
+            if (error.message.includes('Failed to fetch')) {
+                throw new Error('Backend server is not responding. Please check if the API service is running on Render.com');
+            } else if (error.message.includes('Authentication')) {
+                throw new Error('Authentication failed. Please log in again.');
+            } else if (error.message.includes('OPENAI_API_KEY')) {
+                throw new Error('OpenAI API key not configured on backend. Please contact administrator.');
+            }
+            
+            throw error;
+        }
     }
     
     /**

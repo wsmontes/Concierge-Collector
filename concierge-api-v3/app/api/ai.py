@@ -87,7 +87,7 @@ def get_ai_orchestrator(
 
 
 @router.post("/orchestrate", response_model=OrchestrateResponse)
-def orchestrate(
+async def orchestrate(
     request: OrchestrateRequest,
     orchestrator: AIOrchestrator = Depends(get_ai_orchestrator),
     token_data: dict = Depends(verify_access_token)  # Require JWT authentication
@@ -127,21 +127,39 @@ def orchestrate(
     {"place_id": "...", "audio_file": "...", "output": {"save_to_db": true, "format": "ids_only"}}
     ```
     """
+    import logging
+    logger = logging.getLogger(__name__)
+    
     try:
+        logger.info("=" * 60)
+        logger.info("[AI Orchestrate] New request received")
+        logger.info(f"[AI Orchestrate] User: {token_data.get('sub', 'unknown')}")
+        logger.info(f"[AI Orchestrate] Has audio: {request.audio_file is not None}")
+        logger.info(f"[AI Orchestrate] Has image: {request.image_file is not None}")
+        logger.info(f"[AI Orchestrate] Has text: {request.text is not None}")
+        logger.info(f"[AI Orchestrate] Language: {request.language}")
+        logger.info(f"[AI Orchestrate] Entity type: {request.entity_type}")
+        
         # Convert Pydantic model to dict
         request_dict = request.model_dump(exclude_none=True)
         
-        # Orchestrate
-        result = orchestrator.orchestrate(request_dict)
+        # Orchestrate (MUST await async method)
+        logger.info("[AI Orchestrate] Starting orchestration...")
+        result = await orchestrator.orchestrate(request_dict)
         
+        logger.info("[AI Orchestrate] ✓ Orchestration successful")
+        logger.info("=" * 60)
         return result
     
     except ValueError as e:
+        logger.error(f"[AI Orchestrate] ✗ ValueError: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
     except Exception as e:
+        logger.error(f"[AI Orchestrate] ✗ Exception: {str(e)}", exc_info=True)
+        logger.error("=" * 60)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Orchestration failed: {str(e)}"
@@ -171,7 +189,79 @@ def get_usage_stats(
 
 @router.get("/health")
 def health_check(db = Depends(get_database)):
-    """Health check for AI services"""
+    """
+    Health check for AI services.
+    
+    Verifies:
+    - OpenAI API key is configured
+    - MongoDB connection is working
+    - Required collections exist
+    
+    **No authentication required** - use this to diagnose issues
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
+    try:
+        health_status = {
+            "service": "AI Services",
+            "status": "healthy",
+            "checks": {}
+        }
+        
+        # Check OpenAI API key
+        api_key = os.getenv("OPENAI_API_KEY")
+        if api_key:
+            health_status["checks"]["openai_api_key"] = {
+                "status": "configured",
+                "key_prefix": api_key[:10] + "..."
+            }
+        else:
+            health_status["status"] = "unhealthy"
+            health_status["checks"]["openai_api_key"] = {
+                "status": "missing",
+                "error": "OPENAI_API_KEY environment variable not set"
+            }
+            logger.error("[AI Health] ✗ OPENAI_API_KEY not configured")
+        
+        # Check MongoDB collections
+        try:
+            collections = db.list_collection_names()
+            has_categories = "categories" in collections
+            
+            health_status["checks"]["mongodb"] = {
+                "status": "connected",
+                "collections_count": len(collections),
+                "has_categories": has_categories
+            }
+            
+            if not has_categories:
+                logger.warning("[AI Health] ⚠ Categories collection not found")
+                health_status["checks"]["mongodb"]["warning"] = "Categories collection missing"
+                
+        except Exception as db_error:
+            health_status["status"] = "degraded"
+            health_status["checks"]["mongodb"] = {
+                "status": "error",
+                "error": str(db_error)
+            }
+            logger.error(f"[AI Health] ✗ MongoDB error: {str(db_error)}")
+        
+        logger.info(f"[AI Health] Status: {health_status['status']}")
+        return health_status
+        
+    except Exception as e:
+        logger.error(f"[AI Health] ✗ Health check failed: {str(e)}")
+        return {
+            "service": "AI Services",
+            "status": "error",
+            "error": str(e)
+        }
+
+
+@router.get("/health/original")
+def health_check_original(db = Depends(get_database)):
+    """Health check for AI services - original implementation"""
     try:
         # Check if MongoDB collections exist
         collections = db.list_collection_names()
