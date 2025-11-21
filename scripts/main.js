@@ -134,7 +134,14 @@ async function initializeApp() {
         if (!window.DataStore.isInitialized) {
             throw new Error('DataStore failed to initialize properly');
         }
-        console.log('✅ DataStore initialized successfully');
+        
+        // CRITICAL: Validate DataStore.db is ready before proceeding
+        // This prevents race conditions where modules try to access db before it's open
+        if (!window.DataStore.db || !window.DataStore.db.isOpen()) {
+            throw new Error('DataStore.db is not ready - async initialization incomplete');
+        }
+        
+        console.log('✅ DataStore initialized successfully - db is ready and open');
         
         // Check if initial sync is needed after clean break reset
         const needsInitialSync = localStorage.getItem('needsInitialSync');

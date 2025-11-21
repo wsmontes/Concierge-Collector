@@ -16,7 +16,11 @@ from app.api import entities, curations, system, places, ai, concepts, auth
 async def lifespan(app: FastAPI):
     """Startup and shutdown events"""
     # Startup
-    await connect_to_mongo()
+    try:
+        await connect_to_mongo()
+    except Exception as e:
+        print(f"⚠️  MongoDB connection failed (continuing without it): {e}")
+        print("⚠️  Only Places API endpoints will work")
     yield
     # Shutdown
     await close_mongo_connection()

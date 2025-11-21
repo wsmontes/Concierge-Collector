@@ -26,18 +26,26 @@ async def connect_to_mongo():
     try:
         logger.info(f"Connecting to MongoDB: {settings.mongodb_url[:50]}...")
         
-        # Create Motor client (async)
+        # Create Motor client (async) with retry and longer timeouts
         _client = AsyncIOMotorClient(
             settings.mongodb_url,
             maxPoolSize=10,
             minPoolSize=1,
-            serverSelectionTimeoutMS=5000
+            serverSelectionTimeoutMS=30000,  # 30s timeout
+            connectTimeoutMS=30000,
+            socketTimeoutMS=30000,
+            retryWrites=True,
+            retryReads=True,
+            maxIdleTimeMS=45000,
+            # SSL/TLS configuration
+            tls=True,
+            tlsAllowInvalidCertificates=False  # Keep security
         )
         
         # Get database
         _database = _client[settings.mongodb_db_name]
         
-        # Verify connection
+        # Verify connection with retry
         await _client.admin.command('ping')
         logger.info(f"✅ Connected to MongoDB: {settings.mongodb_db_name}")
         
@@ -46,6 +54,10 @@ async def connect_to_mongo():
         
     except Exception as e:
         logger.error(f"❌ MongoDB connection failed: {e}")
+        logger.error("💡 Possible solutions:")
+        logger.error("   1. Check MongoDB Atlas Network Access (IP Whitelist)")
+        logger.error("   2. Verify credentials in .env file")
+        logger.error("   3. Check firewall/antivirus blocking port 27017")
         raise
 
 
