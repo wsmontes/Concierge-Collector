@@ -45,7 +45,7 @@ if (typeof window.UIManager === 'undefined') {
             this.recordingSection = document.getElementById('recording-section');
             this.transcriptionSection = document.getElementById('transcription-section');
             this.conceptsSection = document.getElementById('concepts-section');
-            this.restaurantListSection = document.getElementById('restaurant-list-section');
+            this.restaurantListSection = document.getElementById('entities-section'); // Fixed: was 'restaurant-list-section', but HTML has 'entities-section'
             this.exportImportSection = document.getElementById('export-import-section');
             
             // Fixed toolbars
