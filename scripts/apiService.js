@@ -116,13 +116,20 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
                 if (shouldRetry) {
                     // Token was refreshed, retry with new token
                     this.log.debug('Retrying request with refreshed token...');
+                    
+                    // Get fresh auth headers AFTER token refresh
+                    const freshAuthHeaders = this.getAuthHeaders();
+                    this.log.debug('Fresh auth headers:', Object.keys(freshAuthHeaders));
+                    
                     const retryHeaders = {
-                        ...this.getAuthHeaders(),  // Get fresh token
+                        ...freshAuthHeaders,
                         ...options.headers
                     };
+                    
                     if (!isFormData && !retryHeaders['Content-Type']) {
                         retryHeaders['Content-Type'] = 'application/json';
                     }
+                    
                     const retryFetchOptions = { method, headers: retryHeaders, ...options };
                     const retryResponse = await fetch(url, retryFetchOptions);
                     if (!retryResponse.ok) {
