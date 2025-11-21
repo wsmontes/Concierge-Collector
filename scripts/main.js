@@ -143,6 +143,17 @@ async function initializeApp() {
         
         console.log('✅ DataStore initialized successfully - db is ready and open');
         
+        // Initialize utility managers that depend on DataStore
+        console.log('🔄 Initializing utility managers...');
+        if (window.DraftRestaurantManager && typeof window.DraftRestaurantManager.init === 'function') {
+            window.DraftRestaurantManager.init(window.DataStore);
+            console.log('✅ DraftRestaurantManager initialized');
+        }
+        if (window.PendingAudioManager && typeof window.PendingAudioManager.init === 'function') {
+            window.PendingAudioManager.init(window.DataStore);
+            console.log('✅ PendingAudioManager initialized');
+        }
+        
         // Check if initial sync is needed after clean break reset
         const needsInitialSync = localStorage.getItem('needsInitialSync');
         if (needsInitialSync === 'true') {
