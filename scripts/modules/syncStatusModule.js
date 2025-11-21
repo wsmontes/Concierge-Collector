@@ -60,10 +60,19 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
      * Update sync status display - compact version for header
      */
     async updateStatus() {
-        if (!this.container) return;
+        if (!this.container) {
+            this.log.warn('Container not found for sync status update');
+            return;
+        }
         
         if (!window.SyncManager) {
-            this.container.innerHTML = '';
+            // Show offline indicator if SyncManager not available
+            this.container.innerHTML = `
+                <span class="flex items-center gap-1 text-xs sm:text-sm text-gray-400" title="Sync unavailable">
+                    <span class="material-icons text-sm">cloud_off</span>
+                    <span class="hidden sm:inline">Offline</span>
+                </span>
+            `;
             return;
         }
 
@@ -71,7 +80,12 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
             const status = await window.SyncManager.getSyncStatus();
             
             if (!status) {
-                this.container.innerHTML = '';
+                this.container.innerHTML = `
+                    <span class="flex items-center gap-1 text-xs sm:text-sm text-gray-400" title="Status unavailable">
+                        <span class="material-icons text-sm">cloud_off</span>
+                        <span class="hidden sm:inline">Unknown</span>
+                    </span>
+                `;
                 return;
             }
 
@@ -110,7 +124,7 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
                 `;
             }
             // Show synced status
-            else if (status.isOnline && status.lastSync.push) {
+            else if (status.isOnline && status.lastSync && status.lastSync.push) {
                 statusHtml = `
                     <span class="flex items-center gap-1 text-xs sm:text-sm text-green-600" title="Synced">
                         <span class="material-icons text-sm">cloud_done</span>
@@ -127,6 +141,15 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
                     </span>
                 `;
             }
+            // Default: show ready status
+            else {
+                statusHtml = `
+                    <span class="flex items-center gap-1 text-xs sm:text-sm text-green-600" title="Ready">
+                        <span class="material-icons text-sm">cloud_done</span>
+                        <span class="hidden sm:inline">Ready</span>
+                    </span>
+                `;
+            }
 
             this.container.innerHTML = statusHtml;
 
@@ -138,7 +161,13 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
 
         } catch (error) {
             this.log.error('Failed to update sync status:', error);
-            this.container.innerHTML = '';
+            // Show error indicator
+            this.container.innerHTML = `
+                <span class="flex items-center gap-1 text-xs sm:text-sm text-red-400" title="Error: ${error.message}">
+                    <span class="material-icons text-sm">error</span>
+                    <span class="hidden sm:inline">Error</span>
+                </span>
+            `;
         }
     }
 
