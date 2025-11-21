@@ -61,22 +61,34 @@ class OpenAIService:
             params["language"] = language
         
         # Handle base64 audio data conversion
-        if isinstance(audio_data, str):
-            # Decode base64 string to bytes
-            audio_bytes = base64.b64decode(audio_data)
-            # Create file-like object
-            audio_file = io.BytesIO(audio_bytes)
-            audio_file.name = "audio.mp3"  # OpenAI needs filename for format detection
-        else:
-            # Already a file object
-            audio_file = audio_data
-        
-        # Call OpenAI
-        response = self.client.audio.transcriptions.create(
-            model=model,
-            file=audio_file,
-            **params
-        )
+        try:
+            if isinstance(audio_data, str):
+                print(f"[DEBUG] Received base64 string, length: {len(audio_data)}")
+                # Decode base64 string to bytes
+                audio_bytes = base64.b64decode(audio_data)
+                print(f"[DEBUG] Decoded to {len(audio_bytes)} bytes")
+                # Create file-like object
+                audio_file = io.BytesIO(audio_bytes)
+                audio_file.name = "audio.mp3"  # OpenAI needs filename for format detection
+                print(f"[DEBUG] Created BytesIO object with name: {audio_file.name}")
+            else:
+                print(f"[DEBUG] Received file object type: {type(audio_data)}")
+                # Already a file object
+                audio_file = audio_data
+            
+            # Call OpenAI
+            print(f"[DEBUG] Calling OpenAI Whisper API with model: {model}")
+            response = self.client.audio.transcriptions.create(
+                model=model,
+                file=audio_file,
+                **params
+            )
+            print(f"[DEBUG] OpenAI response received, text length: {len(response.text)}")
+        except Exception as e:
+            print(f"[ERROR] Audio transcription failed: {type(e).__name__}: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            raise
         
         transcription_id = f"trans_{uuid.uuid4().hex[:12]}"
         
