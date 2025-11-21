@@ -95,9 +95,10 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         
         // Build headers - don't set Content-Type for FormData (browser sets it with boundary)
         const isFormData = options.body instanceof FormData;
+        // Put custom headers FIRST, then auth headers LAST to ensure auth is never overridden
         const headers = {
-            ...this.getAuthHeaders(),  // Include OAuth token in ALL requests
-            ...options.headers
+            ...(options.headers || {}),     // Custom headers first (if any)
+            ...this.getAuthHeaders()        // OAuth token LAST - never overridden
         };
         
         // Only add Content-Type for non-FormData requests
@@ -121,9 +122,10 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
                     const freshAuthHeaders = this.getAuthHeaders();
                     this.log.debug('Fresh auth headers:', Object.keys(freshAuthHeaders));
                     
+                    // Custom headers first, auth LAST
                     const retryHeaders = {
-                        ...freshAuthHeaders,
-                        ...options.headers
+                        ...(options.headers || {}),
+                        ...freshAuthHeaders  // Fresh OAuth token LAST
                     };
                     
                     if (!isFormData && !retryHeaders['Content-Type']) {
@@ -316,8 +318,8 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         if (language) formData.append('language', language);
         
         // Use orchestrate endpoint which handles transcription
+        // Don't pass empty headers - let request() add auth automatically
         const response = await this.request('POST', 'aiOrchestrate', {
-            headers: {},
             body: formData
         });
         return await response.json();
@@ -336,7 +338,6 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         formData.append('prompt', prompt);
         
         const response = await this.request('POST', 'aiAnalyzeImage', {
-            headers: {},
             body: formData
         });
         return await response.json();
