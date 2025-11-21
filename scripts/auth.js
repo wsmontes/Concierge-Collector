@@ -670,7 +670,8 @@ const AuthService = (function() {
         isTokenExpired,
         getCurrentUser,
         getToken,
-        clearTokens
+        clearTokens,
+        refreshToken: refreshAccessToken  // Expose refresh function for ApiService
     };
 })();
 
