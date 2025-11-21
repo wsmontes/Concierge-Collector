@@ -1572,8 +1572,8 @@ class RecordingModule {
                 const retryCount = await window.PendingAudioManager.incrementRetryCount(audioId, error.message);
                 this.log.debug(`Transcription failed. Retry count: ${retryCount}`);
                 
-                const audio = await window.PendingAudioManager.getAudio(audioId);
-                if (window.PendingAudioManager.canAutoRetry(audio)) {
+                const canRetry = await window.PendingAudioManager.canAutoRetry(audioId);
+                if (canRetry) {
                     // Schedule automatic retry
                     this.log.debug('Scheduling automatic retry...');
                     await window.PendingAudioManager.scheduleAutoRetry(audioId, async (retryAudioId, retryAudio) => {

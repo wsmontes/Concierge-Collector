@@ -274,9 +274,11 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
     async transcribeAudio(audioBlob, language = 'pt') {
         const formData = new FormData();
         formData.append('file', audioBlob, 'audio.m4a');
+        formData.append('mode', 'audio_only');
         if (language) formData.append('language', language);
         
-        const response = await this.request('POST', 'aiTranscribe', {
+        // Use orchestrate endpoint which handles transcription
+        const response = await this.request('POST', 'aiOrchestrate', {
             headers: {},
             body: formData
         });
