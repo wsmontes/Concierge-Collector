@@ -12,7 +12,7 @@
 
 const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
     constructor() {
-        this.log = Logger.module('CardFactory');
+        this.log = Logger?.module('CardFactory') || console;
     }
 
     /**
@@ -22,6 +22,15 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
      * @returns {HTMLElement} Card element
      */
     createEntityCard(entity, options = {}) {
+        if (!entity) {
+            console.error('[CardFactory] Cannot create card: entity is null/undefined');
+            return this.createEmptyState({
+                icon: 'error',
+                title: 'Invalid entity',
+                message: 'Entity data is missing'
+            });
+        }
+
         const {
             variant = 'default', // default, compact, detailed
             showActions = true,
