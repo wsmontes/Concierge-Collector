@@ -516,9 +516,8 @@ window.FindEntityModal = class FindEntityModal {
                 throw new Error('ApiService not available. Please ensure the application is fully loaded.');
             }
             
-            // Fetch detailed place information
-            const response = await window.ApiService.request('GET', `/places/details/${placeId}`);
-            const placeDetails = await response.json();
+            // Fetch detailed place information using the proper method
+            const placeDetails = await window.ApiService.getPlaceDetails(placeId);
             
             if (!placeDetails || !placeDetails.result) {
                 throw new Error('Failed to fetch place details');
