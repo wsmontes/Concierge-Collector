@@ -141,29 +141,34 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
     async handleErrorResponse(response) {
         let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
         
+        // Check for 401 FIRST, before reading the body
+        if (response.status === 401) {
+            errorMessage = 'Authentication required or token expired';
+            // Try to refresh token
+            if (typeof AuthService !== 'undefined' && AuthService.isAuthenticated()) {
+                this.log.debug('Token expired, attempting refresh...');
+                const refreshed = await AuthService.refreshToken();
+                if (refreshed) {
+                    // Return true to signal caller to retry the request
+                    return true;
+                } else {
+                    // Redirect to login
+                    if (typeof AccessControl !== 'undefined') {
+                        await AccessControl.logout();
+                    }
+                }
+            }
+            this.log.error(errorMessage);
+            throw new Error(errorMessage);
+        }
+        
+        // For non-401 errors, try to get error details from body
         try {
             const errorData = await response.json();
             if (errorData.detail) errorMessage = errorData.detail;
         } catch (e) {}
         
         switch (response.status) {
-            case 401:
-                errorMessage = 'Authentication required or token expired';
-                // Try to refresh token
-                if (typeof AuthService !== 'undefined' && AuthService.isAuthenticated()) {
-                    this.log.debug('Token expired, attempting refresh...');
-                    const refreshed = await AuthService.refreshToken();
-                    if (refreshed) {
-                        // Return true to signal caller to retry the request
-                        return true;
-                    } else {
-                        // Redirect to login
-                        if (typeof AccessControl !== 'undefined') {
-                            await AccessControl.logout();
-                        }
-                    }
-                }
-                break;
             case 403:
                 errorMessage = 'Access forbidden - user not authorized';
                 break;
