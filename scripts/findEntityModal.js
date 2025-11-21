@@ -562,31 +562,55 @@ window.FindEntityModal = class FindEntityModal {
             
             const place = placeDetails.result;
             
+            // Extract location - handle both old (geometry.location) and new (location) API formats
+            let coordinates;
+            if (place.location) {
+                // New Places API format
+                coordinates = [place.location.longitude, place.location.latitude];
+            } else if (place.geometry && place.geometry.location) {
+                // Old Places API format (fallback)
+                coordinates = [place.geometry.location.lng, place.geometry.location.lat];
+            } else {
+                throw new Error('Location data not available in place details');
+            }
+            
+            // Extract name - handle both displayName.text (new) and name (old) formats
+            const entityName = place.displayName?.text || place.name || placeName;
+            
+            // Extract address - handle both formattedAddress (new) and formatted_address (old)
+            const formattedAddress = place.formattedAddress || place.formatted_address || '';
+            
+            // Extract phone - handle both internationalPhoneNumber (new) and formatted_phone_number (old)
+            const phone = place.internationalPhoneNumber || place.formatted_phone_number || '';
+            
+            // Extract website - handle both websiteUri (new) and website (old)
+            const website = place.websiteUri || place.website || '';
+            
+            // Extract place_id - handle both id (new) and place_id (old)
+            const googlePlaceId = place.id?.replace('places/', '') || place.place_id || placeId;
+            
             // Create entity object from place data
             const entity = {
-                name: place.name,
+                name: entityName,
                 entity_type: this.mapPlaceTypeToEntityType(place.types),
                 address: {
-                    street: place.formatted_address || '',
-                    city: this.extractCity(place.address_components),
-                    state: this.extractState(place.address_components),
-                    country: this.extractCountry(place.address_components),
-                    postal_code: this.extractPostalCode(place.address_components)
+                    street: formattedAddress,
+                    city: this.extractCity(place.addressComponents || place.address_components),
+                    state: this.extractState(place.addressComponents || place.address_components),
+                    country: this.extractCountry(place.addressComponents || place.address_components),
+                    postal_code: this.extractPostalCode(place.addressComponents || place.address_components)
                 },
                 location: {
                     type: 'Point',
-                    coordinates: [
-                        place.geometry.location.lng,
-                        place.geometry.location.lat
-                    ]
+                    coordinates: coordinates
                 },
                 contact: {
-                    phone: place.formatted_phone_number || '',
-                    website: place.website || ''
+                    phone: phone,
+                    website: website
                 },
-                google_place_id: place.place_id,
+                google_place_id: googlePlaceId,
                 rating: place.rating || 0,
-                price_level: place.price_level || 0,
+                price_level: place.priceLevel ? this.convertPriceLevel(place.priceLevel) : (place.price_level || 0),
                 status: 'active',
                 source: 'google_places'
             };
@@ -640,6 +664,23 @@ window.FindEntityModal = class FindEntityModal {
     }
     
     /**
+     * Convert Google Places API (New) price level to numeric value
+     */
+    convertPriceLevel(priceLevel) {
+        if (!priceLevel) return 0;
+        
+        const priceMap = {
+            'PRICE_LEVEL_FREE': 0,
+            'PRICE_LEVEL_INEXPENSIVE': 1,
+            'PRICE_LEVEL_MODERATE': 2,
+            'PRICE_LEVEL_EXPENSIVE': 3,
+            'PRICE_LEVEL_VERY_EXPENSIVE': 4
+        };
+        
+        return priceMap[priceLevel] || 0;
+    }
+    
+    /**
      * Extract city from address components
      */
     extractCity(components) {
@@ -648,7 +689,7 @@ window.FindEntityModal = class FindEntityModal {
             c.types.includes('locality') || 
             c.types.includes('administrative_area_level_2')
         );
-        return cityComponent ? cityComponent.long_name : '';
+        return cityComponent ? (cityComponent.longText || cityComponent.long_name || '') : '';
     }
     
     /**
@@ -657,7 +698,7 @@ window.FindEntityModal = class FindEntityModal {
     extractState(components) {
         if (!components) return '';
         const stateComponent = components.find(c => c.types.includes('administrative_area_level_1'));
-        return stateComponent ? stateComponent.short_name : '';
+        return stateComponent ? (stateComponent.shortText || stateComponent.short_name || '') : '';
     }
     
     /**
@@ -666,7 +707,7 @@ window.FindEntityModal = class FindEntityModal {
     extractCountry(components) {
         if (!components) return '';
         const countryComponent = components.find(c => c.types.includes('country'));
-        return countryComponent ? countryComponent.long_name : '';
+        return countryComponent ? (countryComponent.longText || countryComponent.long_name || '') : '';
     }
     
     /**
@@ -675,7 +716,7 @@ window.FindEntityModal = class FindEntityModal {
     extractPostalCode(components) {
         if (!components) return '';
         const postalComponent = components.find(c => c.types.includes('postal_code'));
-        return postalComponent ? postalComponent.long_name : '';
+        return postalComponent ? (postalComponent.longText || postalComponent.long_name || '') : '';
     }
     
     /**
