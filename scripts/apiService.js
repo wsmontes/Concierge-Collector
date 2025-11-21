@@ -112,7 +112,24 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         try {
             const response = await fetch(url, fetchOptions);
             if (!response.ok) {
-                await this.handleErrorResponse(response);
+                const shouldRetry = await this.handleErrorResponse(response);
+                if (shouldRetry) {
+                    // Token was refreshed, retry with new token
+                    this.log.debug('Retrying request with refreshed token...');
+                    const retryHeaders = {
+                        ...this.getAuthHeaders(),  // Get fresh token
+                        ...options.headers
+                    };
+                    if (!isFormData && !retryHeaders['Content-Type']) {
+                        retryHeaders['Content-Type'] = 'application/json';
+                    }
+                    const retryFetchOptions = { method, headers: retryHeaders, ...options };
+                    const retryResponse = await fetch(url, retryFetchOptions);
+                    if (!retryResponse.ok) {
+                        await this.handleErrorResponse(retryResponse);
+                    }
+                    return retryResponse;
+                }
             }
             return response;
         } catch (error) {
@@ -136,7 +153,10 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
                 if (typeof AuthService !== 'undefined' && AuthService.isAuthenticated()) {
                     this.log.debug('Token expired, attempting refresh...');
                     const refreshed = await AuthService.refreshToken();
-                    if (!refreshed) {
+                    if (refreshed) {
+                        // Return true to signal caller to retry the request
+                        return true;
+                    } else {
                         // Redirect to login
                         if (typeof AccessControl !== 'undefined') {
                             await AccessControl.logout();
