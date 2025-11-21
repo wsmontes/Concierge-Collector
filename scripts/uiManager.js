@@ -40,6 +40,9 @@ if (typeof window.UIManager === 'undefined') {
             // Get restaurant list container
             this.restaurantsContainer = document.getElementById('restaurants-container');
             this.conceptsContainer = document.getElementById('concepts-container');
+            
+            // Find Entity button (should only show in list view)
+            this.findEntityBtn = document.getElementById('find-entity-btn');
 
             // Editor sections
             this.recordingSection = document.getElementById('recording-section');
@@ -159,6 +162,9 @@ if (typeof window.UIManager === 'undefined') {
             if (this.restaurantListSection) this.restaurantListSection.classList.add('hidden');
             if (this.exportImportSection) this.exportImportSection.classList.add('hidden');
             
+            // Hide Find Entity button (only visible in list view)
+            if (this.findEntityBtn) this.findEntityBtn.classList.add('hidden');
+            
             // Hide restaurant edit toolbar
             if (this.restaurantEditToolbar) {
                 this.restaurantEditToolbar.classList.add('hidden');
@@ -258,6 +264,9 @@ if (typeof window.UIManager === 'undefined') {
             if (this.curatorSection) this.curatorSection.classList.remove('hidden');
             if (this.restaurantListSection) this.restaurantListSection.classList.remove('hidden');
             if (this.exportImportSection) this.exportImportSection.classList.remove('hidden');
+            
+            // Show Find Entity button (only in list view)
+            if (this.findEntityBtn) this.findEntityBtn.classList.remove('hidden');
         }
 
         // Delegate to appropriate modules via uiUtilsModule
