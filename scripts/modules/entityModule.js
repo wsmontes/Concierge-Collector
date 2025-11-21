@@ -193,38 +193,46 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
      * Handles multiple data structures
      */
     extractCity(entity) {
-        // Try different paths for city data
-        let city = entity.data?.address?.city || 
-                   entity.data?.location?.city ||
-                   entity.data?.city;
-        
-        // Always convert to string and check if it's valid
-        if (city && typeof city === 'string' && !city.includes('{') && !city.includes('[')) {
-            return city;
+        // Priority 1: Direct city field (Michelin import)
+        if (entity.data?.location?.city && typeof entity.data.location.city === 'string') {
+            return entity.data.location.city;
         }
         
-        // If city is an object, array, or invalid, extract from formatted address
+        // Priority 2: addressComponents (Google Places)
+        const addressComponents = entity.data?.addressComponents || [];
+        if (Array.isArray(addressComponents)) {
+            // Look for locality (city) in address components
+            const cityComponent = addressComponents.find(comp => 
+                comp.types && (
+                    comp.types.includes('locality') || 
+                    comp.types.includes('administrative_area_level_2')
+                )
+            );
+            if (cityComponent?.longText || cityComponent?.shortText) {
+                return cityComponent.longText || cityComponent.shortText;
+            }
+        }
+        
+        // Priority 3: Parse from formattedAddress
         const address = entity.data?.formattedAddress || 
-                      entity.data?.address?.formattedAddress ||
-                      entity.data?.location?.formattedAddress ||
-                      entity.data?.location?.address;
+                       entity.data?.address?.formattedAddress ||
+                       entity.data?.shortFormattedAddress;
         
         if (address && typeof address === 'string') {
-            // Extract city from formatted address
             const parts = address.split(',').map(p => p.trim());
             if (parts.length >= 2) {
                 // Get second-to-last part (usually city before state/country)
-                city = parts[parts.length - 2];
-                // If that's a number/postal, try last part
-                if (/^\d+/.test(city)) {
-                    city = parts[parts.length - 1];
+                let city = parts[parts.length - 2];
+                // If that's a number/postal, try other parts
+                if (/^\d+/.test(city) && parts.length >= 3) {
+                    city = parts[parts.length - 3];
                 }
                 // Clean up
-                city = city.replace(/\d{5}(-\d{4})?/, '').trim();
+                city = city.replace(/\d{5}(-\d{4})?/g, '').trim();
                 city = city.replace(/\b\d+\b/g, '').trim();
                 city = city.replace(/\s+/g, ' ').trim();
                 
-                if (city && city.length > 1) {
+                if (city && city.length > 1 && !city.includes('{') && !city.includes('[')) {
                     return city;
                 }
             }
