@@ -58,13 +58,24 @@ class OpenAIService:
         if language:
             params["language"] = language
         
-        # TODO: Handle audio_data conversion if base64
-        # For now, assume it's a file object
+        # Handle base64 audio data conversion
+        import base64
+        import io
+        
+        if isinstance(audio_data, str):
+            # Decode base64 string to bytes
+            audio_bytes = base64.b64decode(audio_data)
+            # Create file-like object
+            audio_file = io.BytesIO(audio_bytes)
+            audio_file.name = "audio.m4a"  # OpenAI needs filename for format detection
+        else:
+            # Already a file object
+            audio_file = audio_data
         
         # Call OpenAI
         response = self.client.audio.transcriptions.create(
             model=model,
-            file=audio_data,
+            file=audio_file,
             **params
         )
         
