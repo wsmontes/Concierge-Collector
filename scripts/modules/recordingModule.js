@@ -1473,13 +1473,16 @@ class RecordingModule {
             // Use ApiService to transcribe (handles OAuth token, retries, etc.)
             const result = await window.ApiService.transcribeAudio(audioBlob, 'en');
             
-            // API returns: { transcription_id, text, language, model }
-            if (!result || !result.text) {
+            // API V3 returns Pydantic model: 
+            // { workflow: str, results: {...}, saved_to_db: bool, processing_time_ms: int }
+            // For audio_only: results.transcription = { transcription_id, text, language, model }
+            if (!result || !result.results || !result.results.transcription || !result.results.transcription.text) {
+                this.log.error('Invalid API response structure:', result);
                 throw new Error('Invalid response from transcription API');
             }
             
             this.log.debug('Transcription successful via API V3');
-            return result.text;
+            return result.results.transcription.text;
             
         } catch (error) {
             this.log.error('Transcription error:', error);
