@@ -92,6 +92,9 @@ class UIUtilsModule {
                 duration: 3000,
                 gravity: "top",
                 position: "right",
+                offset: {
+                    y: '5rem'
+                },
                 style: { background: backgroundColor }
             }).showToast();
         } else {
