@@ -31,10 +31,6 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
     init(dataStorage) {
         this.dataStorage = dataStorage;
         this.log.debug('PendingAudioManager initialized');
-        console.log('🔍 [PendingAudioManager.init] dataStorage:', dataStorage);
-        console.log('🔍 [PendingAudioManager.init] dataStorage.db:', dataStorage ? dataStorage.db : 'NULL');
-        console.log('🔍 [PendingAudioManager.init] this.dataStorage:', this.dataStorage);
-        console.log('🔍 [PendingAudioManager.init] this.dataStorage.db:', this.dataStorage ? this.dataStorage.db : 'NULL');
     }
 
     /**
@@ -48,9 +44,6 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
      */
     async saveAudio(data) {
         try {
-            console.log('🔍 [saveAudio] this.dataStorage:', this.dataStorage);
-            console.log('🔍 [saveAudio] this.dataStorage.db:', this.dataStorage ? this.dataStorage.db : 'NULL');
-            
             const audioData = {
                 audioBlob: data.audioBlob,
                 restaurantId: data.restaurantId || null,
@@ -202,6 +195,24 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
             }, delay);
         } catch (error) {
             this.log.error('Error scheduling auto retry:', error);
+        }
+    }
+
+    /**
+     * Check if audio can be automatically retried
+     * @param {number} id - Pending audio ID
+     * @returns {Promise<boolean>} - True if can retry
+     */
+    async canAutoRetry(id) {
+        try {
+            const audio = await this.getAudio(id);
+            if (!audio) return false;
+            
+            // Can retry if status is failed and retry count is below max
+            return audio.status === 'failed' && audio.retryCount < this.maxAutoRetries;
+        } catch (error) {
+            this.log.error('Error checking auto retry eligibility:', error);
+            return false;
         }
     }
 

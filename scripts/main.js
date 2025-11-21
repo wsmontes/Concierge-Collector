@@ -145,22 +145,12 @@ async function initializeApp() {
         
         // Initialize utility managers that depend on DataStore
         console.log('🔄 Initializing utility managers...');
-        console.log('🔍 window.dataStore:', window.dataStore);
-        console.log('🔍 window.dataStore.db:', window.dataStore ? window.dataStore.db : 'NULL');
-        console.log('🔍 window.dataStore.db.draftRestaurants:', window.dataStore && window.dataStore.db ? window.dataStore.db.draftRestaurants : 'NULL');
-        
         if (window.DraftRestaurantManager && typeof window.DraftRestaurantManager.init === 'function') {
-            console.log('🔍 BEFORE init - DraftRestaurantManager.dataStorage:', window.DraftRestaurantManager.dataStorage);
-            window.DraftRestaurantManager.init(window.dataStore); // Use lowercase (primary access point)
-            console.log('🔍 AFTER init - DraftRestaurantManager.dataStorage:', window.DraftRestaurantManager.dataStorage);
-            console.log('🔍 AFTER init - DraftRestaurantManager.dataStorage.db:', window.DraftRestaurantManager.dataStorage ? window.DraftRestaurantManager.dataStorage.db : 'NULL');
+            window.DraftRestaurantManager.init(window.dataStore);
             console.log('✅ DraftRestaurantManager initialized');
         }
         if (window.PendingAudioManager && typeof window.PendingAudioManager.init === 'function') {
-            console.log('🔍 BEFORE init - PendingAudioManager.dataStorage:', window.PendingAudioManager.dataStorage);
-            window.PendingAudioManager.init(window.dataStore); // Use lowercase (primary access point)
-            console.log('🔍 AFTER init - PendingAudioManager.dataStorage:', window.PendingAudioManager.dataStorage);
-            console.log('🔍 AFTER init - PendingAudioManager.dataStorage.db:', window.PendingAudioManager.dataStorage ? window.PendingAudioManager.dataStorage.db : 'NULL');
+            window.PendingAudioManager.init(window.dataStore);
             console.log('✅ PendingAudioManager initialized');
         }
         
