@@ -700,18 +700,21 @@ class CuratorModule {
      */
     async safeLoadRestaurantList(curatorId, filterEnabled) {
         try {
-            if (this.uiManager && 
+            // V3 Architecture: Use EntityModule instead of restaurantModule
+            if (window.entityModule && typeof window.entityModule.refresh === 'function') {
+                this.log.debug(`Refreshing entity list with curatorId: ${curatorId}, filter: ${filterEnabled}`);
+                await window.entityModule.refresh();
+            } else if (this.uiManager && 
                 this.uiManager.restaurantModule && 
                 typeof this.uiManager.restaurantModule.loadRestaurantList === 'function') {
-                
-                // Pass both parameters explicitly to ensure filter works correctly
-                this.log.debug(`Loading restaurant list with curatorId: ${curatorId}, filter: ${filterEnabled}`);
+                // Fallback: Legacy restaurantModule (if still exists)
+                this.log.debug(`Loading restaurant list (legacy) with curatorId: ${curatorId}, filter: ${filterEnabled}`);
                 await this.uiManager.restaurantModule.loadRestaurantList(curatorId, filterEnabled);
             } else {
-                this.log.warn('restaurantModule not available or loadRestaurantList not a function');
+                this.log.debug('EntityModule not yet initialized - entities will load when module is ready');
             }
         } catch (error) {
-            this.log.error('Error loading restaurant list:', error);
+            this.log.error('Error loading entity/restaurant list:', error);
         }
     }
     
@@ -792,13 +795,11 @@ class CuratorModule {
         const selectorSection = document.getElementById('curator-selector-compact');
         const curatorNameCompact = document.getElementById('curator-name-compact');
         
-        // Debug: Check if elements exist
+        // Check if compact curator elements exist (they may not be in all layouts)
         if (!compactDisplay || !editForm || !selectorSection) {
-            this.log.error('Compact curator elements missing:', {
-                compactDisplay: !!compactDisplay,
-                editForm: !!editForm,
-                selectorSection: !!selectorSection
-            });
+            this.log.debug('Compact curator elements not found (may not be in current layout) - using header profile instead');
+            // This is not an error - compact elements are optional
+            // The header profile section (user-profile-header) is the primary curator display
             return;
         }
         
