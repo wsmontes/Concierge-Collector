@@ -32,6 +32,9 @@ googlemaps==4.10.0
 # HTTP Client (for OAuth)
 httpx==0.28.1
 
+# Timezone
+pytz==2025.2
+
 # Testing
 pytest==8.3.4
 pytest-asyncio==0.24.0
