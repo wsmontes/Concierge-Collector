@@ -12,6 +12,7 @@ from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime, time
 import pytz
 import logging
+import httpx
 
 from app.models.llm_models import (
     LLMRestaurantSnapshot,
@@ -27,6 +28,7 @@ from app.models.llm_models import (
     LLMDayAvailability,
 )
 from app.core.database import get_database
+from app.core.config import settings
 
 logger = logging.getLogger(__name__)
 
@@ -46,12 +48,190 @@ class LLMPlaceService:
         """
         self.db = database if database is not None else get_database()
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
+        self.places_api_base = "http://localhost:8000/api/v3/places/orchestrate"
+    
+    # =========================================================================
+    # HELPER METHODS - PLACES API INTEGRATION
+    # =========================================================================
+    
+    def fetch_google_place_details(self, place_id: str, language: str = "pt-BR", region: str = "BR") -> Optional[Dict[str, Any]]:
+        """
+        Fetch place details from Google Places API via orchestration endpoint.
+        
+        Args:
+            place_id: Google Place ID
+            language: Language code
+            region: Region code
+            
+        Returns:
+            Place details dictionary or None if failed
+        """
+        try:
+            with httpx.Client(timeout=30.0) as client:
+                response = client.post(
+                    self.places_api_base,
+                    json={
+                        "place_id": place_id,
+                        "language": language,
+                        "region_code": region
+                    }
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    if data.get("results") and len(data["results"]) > 0:
+                        return data["results"][0]
+                else:
+                    self.logger.warning(f"Places API returned {response.status_code} for place_id={place_id}")
+                    
+        except Exception as e:
+            self.logger.error(f"Failed to fetch Google place details for {place_id}: {e}")
+        
+        return None
+    
+    def search_google_places(
+        self,
+        query: str,
+        latitude: Optional[float] = None,
+        longitude: Optional[float] = None,
+        radius_m: int = 5000,
+        max_results: int = 5,
+        language: str = "pt-BR",
+        region: str = "BR"
+    ) -> List[Dict[str, Any]]:
+        """
+        Search Google Places via orchestration endpoint.
+        
+        Args:
+            query: Search query
+            latitude: Optional latitude
+            longitude: Optional longitude
+            radius_m: Search radius in meters
+            max_results: Max results
+            language: Language code
+            region: Region code
+            
+        Returns:
+            List of place dictionaries
+        """
+        try:
+            with httpx.Client(timeout=30.0) as client:
+                request_body = {
+                    "query": query,
+                    "max_results": max_results,
+                    "language": language,
+                    "region_code": region
+                }
+                
+                if latitude is not None and longitude is not None:
+                    request_body["latitude"] = latitude
+                    request_body["longitude"] = longitude
+                    request_body["radius"] = radius_m
+                
+                response = client.post(
+                    self.places_api_base,
+                    json=request_body
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    return data.get("results", [])
+                else:
+                    self.logger.warning(f"Places API search returned {response.status_code}")
+                    
+        except Exception as e:
+            self.logger.error(f"Failed to search Google Places: {e}")
+        
+        return []
+    
+    def update_entity_with_google_data(self, entity_id: str, google_data: Dict[str, Any]) -> bool:
+        """
+        Update entity with Google Places data.
+        Merges new data with existing entity, preserving important fields.
+        
+        Args:
+            entity_id: Entity ID
+            google_data: Google Places data dictionary
+            
+        Returns:
+            True if update succeeded
+        """
+        try:
+            self.logger.info(f"Updating entity {entity_id} with Google Places data...")
+            
+            # Extract key fields from Google data
+            update_fields = {}
+            
+            # Core fields
+            if google_data.get("id"):
+                update_fields["data.place_id"] = google_data["id"]
+                update_fields["externalId"] = google_data["id"]
+            
+            if google_data.get("displayName", {}).get("text"):
+                update_fields["data.google_name"] = google_data["displayName"]["text"]
+            
+            if google_data.get("formattedAddress"):
+                update_fields["data.formatted_address"] = google_data["formattedAddress"]
+            
+            # Location
+            if google_data.get("location"):
+                loc = google_data["location"]
+                update_fields["data.location"] = loc
+                if loc.get("latitude") and loc.get("longitude"):
+                    update_fields["location"] = {
+                        "type": "Point",
+                        "coordinates": [loc["longitude"], loc["latitude"]]
+                    }
+            
+            # Rating and reviews
+            if google_data.get("rating") is not None:
+                update_fields["data.google_rating"] = google_data["rating"]
+            
+            # Opening hours
+            if google_data.get("regularOpeningHours"):
+                update_fields["data.opening_hours"] = google_data["regularOpeningHours"]
+            
+            # Types
+            if google_data.get("types"):
+                update_fields["data.types"] = google_data["types"]
+            
+            # Contact info
+            if google_data.get("nationalPhoneNumber"):
+                update_fields["data.phone"] = google_data["nationalPhoneNumber"]
+            
+            if google_data.get("websiteUri"):
+                update_fields["data.website"] = google_data["websiteUri"]
+            
+            # Price level
+            if google_data.get("priceLevel"):
+                update_fields["data.priceLevel"] = google_data["priceLevel"]
+            
+            # Update timestamp
+            update_fields["data.google_last_updated"] = datetime.utcnow().isoformat()
+            update_fields["updatedAt"] = datetime.utcnow()
+            
+            # Perform update
+            result = self.db.entities.update_one(
+                {"_id": entity_id},
+                {"$set": update_fields}
+            )
+            
+            if result.modified_count > 0:
+                self.logger.info(f"Updated entity {entity_id} with Google Places data")
+                return True
+            else:
+                self.logger.debug(f"No changes needed for entity {entity_id}")
+                return True
+                
+        except Exception as e:
+            self.logger.error(f"Failed to update entity {entity_id} with Google data: {e}")
+            return False
     
     # =========================================================================
     # SEARCH RESTAURANTS
     # =========================================================================
     
-    async def search_restaurants(
+    def search_restaurants(
         self,
         query: str,
         latitude: Optional[float] = None,
@@ -68,6 +248,7 @@ class LLMPlaceService:
         1. Searches Google Places using orchestration
         2. Checks if entities exist for each result
         3. Enriches with Michelin data if available
+        4. Updates entities with fresh Google data
         
         Args:
             query: Restaurant name or search query
@@ -83,14 +264,110 @@ class LLMPlaceService:
         """
         results = []
         
-        # TODO: Call Places orchestration endpoint
-        # For now, search entities by name as fallback
-        try:
+        # 1. Search Google Places API
+        google_places = self.search_google_places(
+            query=query,
+            latitude=latitude,
+            longitude=longitude,
+            radius_m=radius_m,
+            max_results=max_results,
+            language=language,
+            region=region
+        )
+        
+        # 2. Process each Google result
+        for google_place in google_places:
+            place_id = google_place.get("id")
+            if not place_id:
+                continue
+            
+            # Extract name
+            name = google_place.get("displayName", {})
+            if isinstance(name, dict):
+                name = name.get("text", "Unknown")
+            elif not name:
+                name = "Unknown"
+            
+            # Extract coordinates
+            location = google_place.get("location", {})
+            geo = None
+            if location.get("latitude") and location.get("longitude"):
+                geo = LLMRestaurantGeo(
+                    lat=location["latitude"],
+                    lng=location["longitude"]
+                )
+            
+            # Extract address
+            address = google_place.get("formattedAddress")
+            
+            # Extract rating
+            rating = google_place.get("rating")
+            
+            # 3. Check if entity exists for this place_id
+            entity = self.db.entities.find_one({
+                "$or": [
+                    {"externalId": place_id},
+                    {"data.place_id": place_id},
+                    {"data.google_place_id": place_id}
+                ]
+            })
+            
+            entity_id = None
+            has_michelin = False
+            michelin_info = None
+            
+            if entity:
+                entity_id = entity.get("_id")
+                
+                # Update entity with fresh Google data
+                self.update_entity_with_google_data(entity_id, google_place)
+                
+                # Check for Michelin data
+                michelin_data = entity.get("data", {}).get("michelin", {})
+                has_michelin = bool(michelin_data)
+                
+                if has_michelin:
+                    michelin_info = LLMRestaurantMichelin(
+                        has_star=bool(michelin_data.get("stars", 0) > 0),
+                        stars=michelin_data.get("stars"),
+                        guide_year=michelin_data.get("year"),
+                        bib_gourmand=michelin_data.get("bib_gourmand", False),
+                        cuisine=michelin_data.get("cuisine"),
+                        price=michelin_data.get("price")
+                    )
+            
+            # 4. Build search result item
+            results.append(LLMSearchRestaurantItem(
+                place_id=place_id,
+                entity_id=entity_id,
+                name=name,
+                canonical_address=address,
+                geo=geo,
+                google_rating=rating,
+                has_entity=entity is not None,
+                has_michelin_data=has_michelin,
+                michelin=michelin_info
+            ))
+        
+        # 5. If no Google results, fallback to entity search
+        if not results:
+            self.logger.info(f"No Google Places results for query='{query}', falling back to entity search")
+            
             entities_cursor = self.db.entities.find({
                 "name": {"$regex": query, "$options": "i"}
             }).limit(max_results)
             
             entities = list(entities_cursor)
+            
+            for entity in entities:
+                data = entity.get("data", {})
+                
+                # Extract place_id
+                place_id = (
+                    data.get("place_id") or
+                    data.get("google_place_id") or
+                    entity.get("externalId")
+                )
             
             for entity in entities:
                 data = entity.get("data", {})
@@ -145,16 +422,13 @@ class LLMPlaceService:
                 
                 results.append(item)
         
-        except Exception as e:
-            self.logger.error(f"Error searching restaurants: {e}")
-        
         return results
     
     # =========================================================================
     # GET RESTAURANT SNAPSHOT
     # =========================================================================
     
-    async def get_restaurant_snapshot(
+    def get_restaurant_snapshot(
         self,
         place_id: Optional[str] = None,
         entity_id: Optional[str] = None,
@@ -213,11 +487,24 @@ class LLMPlaceService:
         # 2. Get Google Places data
         google_data = None
         if include_google_places and place_id:
-            # TODO: Call Places details API
-            # For now, use entity data as fallback
-            if entity:
+            # Fetch fresh data from Google Places API
+            google_data = self.fetch_google_place_details(
+                place_id=place_id,
+                language="pt-BR",
+                region="BR"
+            )
+            
+            if google_data:
+                sources_used.append("google_places")
+                
+                # Update entity with fresh Google data if entity exists
+                if entity:
+                    self.update_entity_with_google_data(entity.get("_id"), google_data)
+            elif entity:
+                # Fallback to entity data if Google API fails
                 google_data = entity.get("data", {})
                 sources_used.append("google_places")
+                self.logger.warning(f"Using entity data as fallback for place_id={place_id}")
         
         # 3. Get Michelin data
         michelin_data = None
@@ -261,7 +548,7 @@ class LLMPlaceService:
     # GET RESTAURANT AVAILABILITY
     # =========================================================================
     
-    async def get_restaurant_availability(
+    def get_restaurant_availability(
         self,
         place_id: Optional[str] = None,
         entity_id: Optional[str] = None,
@@ -285,7 +572,7 @@ class LLMPlaceService:
             Dictionary with availability information
         """
         # Get snapshot to reuse logic
-        snapshot, _ = await self.get_restaurant_snapshot(
+        snapshot, _ = self.get_restaurant_snapshot(
             place_id=place_id,
             entity_id=entity_id,
             include_google_places=True,

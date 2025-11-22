@@ -36,7 +36,7 @@ def get_llm_service() -> LLMPlaceService:
 
 
 @router.post("/search-restaurants", response_model=LLMSearchRestaurantsResponse)
-async def search_restaurants(
+def search_restaurants(
     request: LLMSearchRestaurantsRequest,
     service: LLMPlaceService = Depends(get_llm_service)
 ):
@@ -61,7 +61,7 @@ async def search_restaurants(
     try:
         logger.info(f"LLM search-restaurants: query='{request.query}', location=({request.latitude}, {request.longitude})")
         
-        items = await service.search_restaurants(
+        items = service.search_restaurants(
             query=request.query,
             latitude=request.latitude,
             longitude=request.longitude,
@@ -86,7 +86,7 @@ async def search_restaurants(
 
 
 @router.post("/get-restaurant-snapshot", response_model=LLMGetRestaurantSnapshotResponse)
-async def get_restaurant_snapshot(
+def get_restaurant_snapshot(
     request: LLMGetRestaurantSnapshotRequest,
     service: LLMPlaceService = Depends(get_llm_service)
 ):
@@ -127,7 +127,7 @@ async def get_restaurant_snapshot(
         
         logger.info(f"LLM get-restaurant-snapshot: place_id={request.place_id}, entity_id={request.entity_id}")
         
-        snapshot, sources_used = await service.get_restaurant_snapshot(
+        snapshot, sources_used = service.get_restaurant_snapshot(
             place_id=request.place_id,
             entity_id=request.entity_id,
             include_google_places=request.include_google_places,
@@ -159,7 +159,7 @@ async def get_restaurant_snapshot(
 
 
 @router.post("/get-restaurant-availability", response_model=LLMGetRestaurantAvailabilityResponse)
-async def get_restaurant_availability(
+def get_restaurant_availability(
     request: LLMGetRestaurantAvailabilityRequest,
     service: LLMPlaceService = Depends(get_llm_service)
 ):
@@ -201,7 +201,7 @@ async def get_restaurant_availability(
         
         logger.info(f"LLM get-restaurant-availability: place_id={request.place_id}, entity_id={request.entity_id}")
         
-        availability_data = await service.get_restaurant_availability(
+        availability_data = service.get_restaurant_availability(
             place_id=request.place_id,
             entity_id=request.entity_id,
             date_iso=request.date_iso,
