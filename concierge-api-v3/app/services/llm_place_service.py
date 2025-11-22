@@ -12,7 +12,6 @@ from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime, time
 import pytz
 import logging
-import httpx
 
 from app.models.llm_models import (
     LLMRestaurantSnapshot,
@@ -29,8 +28,13 @@ from app.models.llm_models import (
 )
 from app.core.database import get_database
 from app.core.config import settings
+import httpx
 
 logger = logging.getLogger(__name__)
+
+# Google Places API URLs
+PLACES_API_TEXT_SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
+PLACES_API_DETAILS_URL = "https://places.googleapis.com/v1/places"
 
 
 class LLMPlaceService:
@@ -48,7 +52,6 @@ class LLMPlaceService:
         """
         self.db = database if database is not None else get_database()
         self.logger = logging.getLogger(f"{__name__}.{self.__class__.__name__}")
-        self.places_api_base = "http://localhost:8000/api/v3/places/orchestrate"
     
     # =========================================================================
     # HELPER METHODS - PLACES API INTEGRATION
@@ -56,7 +59,7 @@ class LLMPlaceService:
     
     def fetch_google_place_details(self, place_id: str, language: str = "pt-BR", region: str = "BR") -> Optional[Dict[str, Any]]:
         """
-        Fetch place details from Google Places API via orchestration endpoint.
+        Fetch place details from Google Places API directly.
         
         Args:
             place_id: Google Place ID
@@ -67,20 +70,27 @@ class LLMPlaceService:
             Place details dictionary or None if failed
         """
         try:
+            headers = {
+                "Content-Type": "application/json",
+                "X-Goog-Api-Key": settings.google_places_api_key,
+                "X-Goog-FieldMask": "id,displayName,formattedAddress,location,rating,types,priceLevel,nationalPhoneNumber,websiteUri,regularOpeningHours"
+            }
+            
+            params = {}
+            if language:
+                params["languageCode"] = language
+            if region:
+                params["regionCode"] = region
+            
             with httpx.Client(timeout=30.0) as client:
-                response = client.post(
-                    self.places_api_base,
-                    json={
-                        "place_id": place_id,
-                        "language": language,
-                        "region_code": region
-                    }
+                response = client.get(
+                    f"{PLACES_API_DETAILS_URL}/{place_id}",
+                    headers=headers,
+                    params=params
                 )
                 
                 if response.status_code == 200:
-                    data = response.json()
-                    if data.get("results") and len(data["results"]) > 0:
-                        return data["results"][0]
+                    return response.json()
                 else:
                     self.logger.warning(f"Places API returned {response.status_code} for place_id={place_id}")
                     
@@ -100,7 +110,7 @@ class LLMPlaceService:
         region: str = "BR"
     ) -> List[Dict[str, Any]]:
         """
-        Search Google Places via orchestration endpoint.
+        Search Google Places API directly.
         
         Args:
             query: Search query
@@ -115,29 +125,45 @@ class LLMPlaceService:
             List of place dictionaries
         """
         try:
-            with httpx.Client(timeout=30.0) as client:
-                request_body = {
-                    "query": query,
-                    "max_results": max_results,
-                    "language": language,
-                    "region_code": region
+            headers = {
+                "Content-Type": "application/json",
+                "X-Goog-Api-Key": settings.google_places_api_key,
+                "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.types,places.priceLevel"
+            }
+            
+            body = {
+                "textQuery": query,
+                "pageSize": min(max_results, 20),
+                "languageCode": language
+            }
+            
+            # Add location bias if coordinates provided
+            if latitude is not None and longitude is not None:
+                body["locationBias"] = {
+                    "circle": {
+                        "center": {
+                            "latitude": latitude,
+                            "longitude": longitude
+                        },
+                        "radius": radius_m
+                    }
                 }
-                
-                if latitude is not None and longitude is not None:
-                    request_body["latitude"] = latitude
-                    request_body["longitude"] = longitude
-                    request_body["radius"] = radius_m
-                
+            
+            if region:
+                body["regionCode"] = region
+            
+            with httpx.Client(timeout=30.0) as client:
                 response = client.post(
-                    self.places_api_base,
-                    json=request_body
+                    PLACES_API_TEXT_SEARCH_URL,
+                    headers=headers,
+                    json=body
                 )
                 
                 if response.status_code == 200:
                     data = response.json()
-                    return data.get("results", [])
+                    return data.get("places", [])
                 else:
-                    self.logger.warning(f"Places API search returned {response.status_code}")
+                    self.logger.warning(f"Places API search returned {response.status_code}: {response.text}")
                     
         except Exception as e:
             self.logger.error(f"Failed to search Google Places: {e}")
