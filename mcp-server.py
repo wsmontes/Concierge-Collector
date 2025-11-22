@@ -29,14 +29,20 @@ app = Server("concierge-restaurant")
 TOOLS = [
     Tool(
         name="search_restaurants",
-        description="Search for restaurants by name or query. Returns candidates with place_id and entity_id.",
+        description="Search for restaurants by name or query. Returns candidates with place_id and entity_id. You can request up to 20 results.",
         inputSchema={
             "type": "object",
             "properties": {
                 "query": {"type": "string", "description": "Restaurant name or search term"},
-                "latitude": {"type": "number", "description": "Optional latitude"},
-                "longitude": {"type": "number", "description": "Optional longitude"},
-                "max_results": {"type": "integer", "default": 5},
+                "latitude": {"type": "number", "description": "Optional latitude for location-biased search"},
+                "longitude": {"type": "number", "description": "Optional longitude for location-biased search"},
+                "max_results": {
+                    "type": "integer",
+                    "description": "Maximum number of results to return (1-20)",
+                    "default": 20,
+                    "minimum": 1,
+                    "maximum": 20
+                },
             },
             "required": ["query"],
         },
