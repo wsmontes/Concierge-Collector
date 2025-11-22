@@ -2,13 +2,324 @@
 
 ## 🎯 Visão Geral
 
-LM Studio não suporta MCP nativamente, mas você pode usar o servidor MCP de duas formas:
+LM Studio não suporta MCP nativamente, mas você pode usar as mesmas funcionalidades através de **OpenAI Function Calling**.
+
+✅ **Agora implementado:** Endpoint OpenAI-compatible na API!
 
 ---
 
-## ✅ Opção 1: Via Wrapper OpenAI Function Calling (Recomendado)
+## ⚡ Opção Recomendada: Endpoint OpenAI-Compatible (IMPLEMENTADO)
 
-Crie um servidor intermediário que expõe os MCPs como OpenAI function calling.
+A API Concierge agora tem um endpoint totalmente compatível com OpenAI Function Calling!
+
+### 📍 Endpoints Disponíveis:
+
+**Produção:**
+```
+https://concierge-collector.onrender.com/api/v3/openai/v1/models
+https://concierge-collector.onrender.com/api/v3/openai/v1/chat/completions
+```
+
+**Local:**
+```
+http://localhost:8000/api/v3/openai/v1/models
+http://localhost:8000/api/v3/openai/v1/chat/completions
+```
+
+---
+
+## 🚀 Como Usar com LM Studio
+
+### 1. Configure LM Studio
+
+1. Abra **LM Studio**
+2. Vá na aba **Developer** ou **Chat**
+3. Carregue um modelo com suporte a function calling (recomendado: Qwen2.5-7B-Instruct)
+4. Configure o endpoint customizado:
+
+```
+Base URL: https://concierge-collector.onrender.com/api/v3/openai
+```
+
+### 2. Teste com Curl
+
+```bash
+curl https://concierge-collector.onrender.com/api/v3/openai/v1/models
+```
+
+### 3. Exemplo Completo de Function Calling
+
+```bash
+curl https://concierge-collector.onrender.com/api/v3/openai/v1/chat/completions \
+  -H "Content-Type: application/json" \
+  -d '{
+    "model": "concierge-restaurant",
+    "messages": [
+      {
+        "role": "assistant",
+        "tool_calls": [
+          {
+            "id": "call_123",
+            "type": "function",
+            "function": {
+              "name": "search_restaurants",
+              "arguments": "{\"query\":\"D.O.M São Paulo\",\"max_results\":5}"
+            }
+          }
+        ]
+      }
+    ]
+  }'
+```
+
+---
+
+## 📚 Funções Disponíveis
+
+### 1. **search_restaurants**
+Busca restaurantes por nome ou query.
+
+**Parâmetros:**
+- `query` (string, required): Nome ou termo de busca
+- `max_results` (integer, optional): Máximo de resultados (1-20, padrão: 20)
+- `latitude` (number, optional): Latitude para busca geolocalizada
+- `longitude` (number, optional): Longitude para busca geolocalizada
+- `radius_m` (integer, optional): Raio de busca em metros (100-50000, padrão: 5000)
+
+**Exemplo:**
+```json
+{
+  "name": "search_restaurants",
+  "arguments": "{\"query\":\"Maní\",\"max_results\":10}"
+}
+```
+
+### 2. **get_restaurant_snapshot**
+Obtém informações completas de um restaurante.
+
+**Parâmetros:**
+- `place_id` (string, optional): Google Place ID
+- `entity_id` (string, optional): ID interno da entidade
+
+**Exemplo:**
+```json
+{
+  "name": "get_restaurant_snapshot",
+  "arguments": "{\"place_id\":\"ChIJxxx...\"}"
+}
+```
+
+### 3. **get_restaurant_availability**
+Verifica disponibilidade e horários de funcionamento.
+
+**Parâmetros:**
+- `place_id` (string, optional): Google Place ID
+- `entity_id` (string, optional): ID interno da entidade
+
+**Exemplo:**
+```json
+{
+  "name": "get_restaurant_availability",
+  "arguments": "{\"place_id\":\"ChIJxxx...\"}"
+}
+```
+
+---
+
+## 🐍 Exemplo Python Completo
+
+```python
+from openai import OpenAI
+
+# Conectar ao endpoint Concierge (não precisa de API key)
+client = OpenAI(
+    base_url="https://concierge-collector.onrender.com/api/v3/openai",
+    api_key="not-needed"
+)
+
+# Definir as funções disponíveis
+tools = [
+    {
+        "type": "function",
+        "function": {
+            "name": "search_restaurants",
+            "description": "Search for restaurants by name or query",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "query": {
+                        "type": "string",
+                        "description": "Restaurant name or search term"
+                    },
+                    "max_results": {
+                        "type": "integer",
+                        "description": "Maximum results (1-20)",
+                        "default": 20
+                    }
+                },
+                "required": ["query"]
+            }
+        }
+    }
+]
+
+# Simular chamada de função (normalmente o LLM faria isso)
+# 1. LLM decide chamar a função
+response = client.chat.completions.create(
+    model="concierge-restaurant",
+    messages=[
+        {
+            "role": "assistant",
+            "tool_calls": [
+                {
+                    "id": "call_abc123",
+                    "type": "function",
+                    "function": {
+                        "name": "search_restaurants",
+                        "arguments": '{"query":"D.O.M","max_results":5}'
+                    }
+                }
+            ]
+        }
+    ]
+)
+
+# 2. API executa a função e retorna resultados
+print(response.choices[0].message.content)
+```
+
+---
+
+## 🔧 Integração com LM Studio (Passo a Passo)
+
+### Para usar com modelo local (Gemma, Qwen, etc):
+
+1. **Inicie LM Studio como servidor:**
+```bash
+lms server start
+```
+
+2. **Carregue um modelo com suporte a function calling:**
+```bash
+lms load lmstudio-community/Qwen2.5-7B-Instruct-GGUF
+```
+
+3. **No seu código Python:**
+```python
+from openai import OpenAI
+import json
+
+# Cliente LM Studio (modelo local)
+lm_studio = OpenAI(
+    base_url="http://localhost:1234/v1",
+    api_key="lm-studio"
+)
+
+# Cliente Concierge API (funções)
+concierge = OpenAI(
+    base_url="https://concierge-collector.onrender.com/api/v3/openai",
+    api_key="not-needed"
+)
+
+# Definir funções
+tools = [...]  # Ver exemplo acima
+
+# Conversa com o modelo
+messages = [
+    {"role": "user", "content": "Find D.O.M restaurant in São Paulo"}
+]
+
+# 1. Perguntar ao LLM (local)
+response = lm_studio.chat.completions.create(
+    model="qwen2.5-7b-instruct",
+    messages=messages,
+    tools=tools
+)
+
+# 2. Se o LLM pediu para chamar função
+if response.choices[0].message.tool_calls:
+    tool_call = response.choices[0].message.tool_calls[0]
+    
+    # 3. Executar função na API Concierge
+    function_response = concierge.chat.completions.create(
+        model="concierge-restaurant",
+        messages=[
+            {
+                "role": "assistant",
+                "tool_calls": [tool_call.dict()]
+            }
+        ]
+    )
+    
+    # 4. Dar resultado de volta ao LLM
+    messages.append(response.choices[0].message)
+    messages.append({
+        "role": "tool",
+        "tool_call_id": tool_call.id,
+        "content": function_response.choices[0].message.content
+    })
+    
+    # 5. LLM gera resposta final
+    final_response = lm_studio.chat.completions.create(
+        model="qwen2.5-7b-instruct",
+        messages=messages
+    )
+    
+    print(final_response.choices[0].message.content)
+```
+
+---
+
+## 🎯 Modelos Recomendados
+
+| Modelo | Tamanho | Suporte Function Calling |
+|--------|---------|--------------------------|
+| Qwen2.5-7B-Instruct | 4.68 GB | ⭐⭐⭐ Nativo |
+| Llama-3.1-8B-Instruct | 4.92 GB | ⭐⭐⭐ Nativo |
+| Ministral-8B-Instruct | 4.67 GB | ⭐⭐⭐ Nativo |
+| Gemma-2-9B-Instruct | ~5 GB | ⭐⭐ Default |
+
+---
+
+## 📋 Comparação das Opções:
+
+| Opção | Dificuldade | Function Calling | Melhor Para |
+|-------|------------|------------------|-------------|
+| **OpenAI Endpoint** ✅ | Fácil | ✅ Sim | **Uso geral (RECOMENDADO)** |
+| API REST Direta | Fácil | ❌ Não | Testes rápidos, scripts |
+| LangChain | Difícil | ✅ Sim | Aplicações Python complexas |
+
+---
+
+## ❓ Troubleshooting
+
+### Erro "Connection refused"
+- Verifique se a API está rodando (produção sempre disponível)
+- Para local: `cd concierge-api-v3 && uvicorn main:app --reload`
+
+### LLM não chama funções
+- Use modelos com suporte **nativo** a function calling (Qwen2.5, Llama-3.1)
+- Verifique se as funções estão bem descritas
+- Ajuste a temperatura (valores mais baixos = mais determinístico)
+
+### Funções retornam erro
+- Valide os parâmetros JSON
+- Verifique logs da API: `lms log stream` (local) ou Render dashboard (produção)
+
+---
+
+## 📚 Documentação Completa:
+
+- **Swagger UI**: https://concierge-collector.onrender.com/api/v3/docs
+- **OpenAPI Spec**: https://concierge-collector.onrender.com/api/v3/openapi.json
+- **API Reference**: `/API-REF/API_DOCUMENTATION_V3.md`
+
+---
+
+## 🎉 Pronto!
+
+Agora você pode usar modelos locais (Gemma, Qwen, etc) no LM Studio com acesso às funções de restaurantes da API Concierge!
+
 
 ### 1. Instalar dependências adicionais:
 

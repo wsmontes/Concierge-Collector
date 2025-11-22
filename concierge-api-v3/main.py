@@ -9,7 +9,7 @@ from contextlib import asynccontextmanager
 
 from app.core.config import settings
 from app.core.database import connect_to_mongo, close_mongo_connection
-from app.api import entities, curations, system, places, places_orchestrate, ai, concepts, auth, llm_gateway
+from app.api import entities, curations, system, places, places_orchestrate, ai, concepts, auth, llm_gateway, openai_compat
 
 
 @asynccontextmanager
@@ -78,6 +78,7 @@ app.include_router(places_orchestrate.router, prefix="/api/v3")
 app.include_router(ai.router, prefix="/api/v3")
 app.include_router(concepts.router, prefix="/api/v3")
 app.include_router(llm_gateway.router, prefix="/api/v3")
+app.include_router(openai_compat.router, prefix="/api/v3")
 
 
 if __name__ == "__main__":
