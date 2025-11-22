@@ -605,6 +605,7 @@
     height: 100%;
     text-align: center;
     line-height: 1;
+    transform: translateY(-2px); /* Slight upward adjustment to visually center */
     /* Removed position and z-index to avoid creating stacking context */
 }
 
