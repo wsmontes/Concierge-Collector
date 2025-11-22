@@ -12,6 +12,7 @@ from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime, time
 import pytz
 import logging
+import threading
 
 from app.models.llm_models import (
     LLMRestaurantSnapshot,
@@ -170,83 +171,196 @@ class LLMPlaceService:
         
         return []
     
-    def update_entity_with_google_data(self, entity_id: str, google_data: Dict[str, Any]) -> bool:
+    def create_entity_from_google_data(self, google_data: Dict[str, Any]) -> Optional[str]:
         """
-        Update entity with Google Places data.
-        Merges new data with existing entity, preserving important fields.
+        Create a new entity from Google Places data.
+        Includes duplicate prevention.
+        
+        Args:
+            google_data: Google Places data dictionary
+            
+        Returns:
+            Entity ID if created, None if duplicate or failed
+        """
+        try:
+            place_id = google_data.get("id")
+            if not place_id:
+                self.logger.warning("Cannot create entity: missing place_id")
+                return None
+            
+            # Check for duplicates
+            existing = self.db.entities.find_one({
+                "$or": [
+                    {"externalId": place_id},
+                    {"data.place_id": place_id},
+                    {"data.google_place_id": place_id}
+                ]
+            })
+            
+            if existing:
+                self.logger.debug(f"Entity already exists for place_id={place_id}")
+                return existing.get("_id")
+            
+            # Extract name
+            name = google_data.get("displayName", {})
+            if isinstance(name, dict):
+                name = name.get("text", "Unknown")
+            elif not name:
+                name = "Unknown"
+            
+            # Extract location
+            location = google_data.get("location", {})
+            coordinates = []
+            if location.get("longitude") and location.get("latitude"):
+                coordinates = [location["longitude"], location["latitude"]]
+            
+            # Build entity document
+            now = datetime.utcnow()
+            entity_doc = {
+                "name": name,
+                "externalId": place_id,
+                "coordinates": coordinates,
+                "location": {
+                    "type": "Point",
+                    "coordinates": coordinates
+                } if coordinates else None,
+                "address": google_data.get("formattedAddress"),
+                "data": {
+                    "place_id": place_id,
+                    "google_place_id": place_id,
+                    "google_name": name,
+                    "formatted_address": google_data.get("formattedAddress"),
+                    "location": location,
+                    "rating": google_data.get("rating"),
+                    "google_rating": google_data.get("rating"),
+                    "types": google_data.get("types", []),
+                    "priceLevel": google_data.get("priceLevel"),
+                    "google_last_updated": now.isoformat(),
+                    "auto_created": True,
+                    "source": "google_places_api"
+                },
+                "createdAt": now,
+                "updatedAt": now
+            }
+            
+            # Insert entity
+            result = self.db.entities.insert_one(entity_doc)
+            entity_id = result.inserted_id
+            
+            self.logger.info(f"Created new entity {entity_id} for place_id={place_id} ({name})")
+            return entity_id
+            
+        except Exception as e:
+            self.logger.error(f"Failed to create entity from Google data: {e}", exc_info=True)
+            return None
+    
+    def create_entity_in_background(self, google_data: Dict[str, Any]):
+        """
+        Create entity in background thread without blocking response.
+        
+        Args:
+            google_data: Google Places data dictionary
+        """
+        def _create():
+            try:
+                self.create_entity_from_google_data(google_data)
+            except Exception as e:
+                self.logger.error(f"Background entity creation failed: {e}")
+        
+        thread = threading.Thread(target=_create, daemon=True)
+        thread.start()
+    
+    def update_entity_with_google_data(self, entity_id: str, google_data: Dict[str, Any], force_update: bool = False) -> bool:
+        """
+        Update entity with Google Places data incrementally.
+        Only updates fields that are missing or force_update=True.
         
         Args:
             entity_id: Entity ID
             google_data: Google Places data dictionary
+            force_update: If True, updates all fields regardless
             
         Returns:
             True if update succeeded
         """
         try:
-            self.logger.info(f"Updating entity {entity_id} with Google Places data...")
+            # Get current entity to check existing fields
+            entity = self.db.entities.find_one({"_id": entity_id})
+            if not entity:
+                self.logger.warning(f"Entity {entity_id} not found")
+                return False
+            
+            entity_data = entity.get("data", {})
+            
+            self.logger.info(f"Updating entity {entity_id} with Google Places data (force={force_update})")
             
             # Extract key fields from Google data
             update_fields = {}
             
-            # Core fields
-            if google_data.get("id"):
+            # Core fields - only update if missing or force
+            if google_data.get("id") and (force_update or not entity_data.get("place_id")):
                 update_fields["data.place_id"] = google_data["id"]
                 update_fields["externalId"] = google_data["id"]
             
-            if google_data.get("displayName", {}).get("text"):
+            if google_data.get("displayName", {}).get("text") and (force_update or not entity_data.get("google_name")):
                 update_fields["data.google_name"] = google_data["displayName"]["text"]
             
-            if google_data.get("formattedAddress"):
+            if google_data.get("formattedAddress") and (force_update or not entity_data.get("formatted_address")):
                 update_fields["data.formatted_address"] = google_data["formattedAddress"]
             
-            # Location
+            # Location - only update if missing or force
             if google_data.get("location"):
                 loc = google_data["location"]
-                update_fields["data.location"] = loc
-                if loc.get("latitude") and loc.get("longitude"):
-                    update_fields["location"] = {
-                        "type": "Point",
-                        "coordinates": [loc["longitude"], loc["latitude"]]
-                    }
+                if force_update or not entity_data.get("location"):
+                    update_fields["data.location"] = loc
+                    if loc.get("latitude") and loc.get("longitude"):
+                        update_fields["location"] = {
+                            "type": "Point",
+                            "coordinates": [loc["longitude"], loc["latitude"]]
+                        }
             
-            # Rating and reviews
+            # Rating - always update (can change)
             if google_data.get("rating") is not None:
                 update_fields["data.google_rating"] = google_data["rating"]
             
-            # Opening hours
+            # Opening hours - always update (can change)
             if google_data.get("regularOpeningHours"):
                 update_fields["data.opening_hours"] = google_data["regularOpeningHours"]
             
-            # Types
-            if google_data.get("types"):
+            # Types - only if missing
+            if google_data.get("types") and (force_update or not entity_data.get("types")):
                 update_fields["data.types"] = google_data["types"]
             
-            # Contact info
-            if google_data.get("nationalPhoneNumber"):
+            # Contact info - only if missing
+            if google_data.get("nationalPhoneNumber") and (force_update or not entity_data.get("phone")):
                 update_fields["data.phone"] = google_data["nationalPhoneNumber"]
             
-            if google_data.get("websiteUri"):
+            if google_data.get("websiteUri") and (force_update or not entity_data.get("website")):
                 update_fields["data.website"] = google_data["websiteUri"]
             
-            # Price level
-            if google_data.get("priceLevel"):
+            # Price level - only if missing
+            if google_data.get("priceLevel") and (force_update or not entity_data.get("priceLevel")):
                 update_fields["data.priceLevel"] = google_data["priceLevel"]
             
-            # Update timestamp
+            # Always update timestamp
             update_fields["data.google_last_updated"] = datetime.utcnow().isoformat()
             update_fields["updatedAt"] = datetime.utcnow()
             
-            # Perform update
-            result = self.db.entities.update_one(
-                {"_id": entity_id},
-                {"$set": update_fields}
-            )
-            
-            if result.modified_count > 0:
-                self.logger.info(f"Updated entity {entity_id} with Google Places data")
-                return True
+            # Perform update only if there are fields to update
+            if update_fields:
+                result = self.db.entities.update_one(
+                    {"_id": entity_id},
+                    {"$set": update_fields}
+                )
+                
+                if result.modified_count > 0:
+                    self.logger.info(f"Updated {len(update_fields)} fields in entity {entity_id}")
+                    return True
+                else:
+                    self.logger.debug(f"No changes needed for entity {entity_id}")
+                    return True
             else:
-                self.logger.debug(f"No changes needed for entity {entity_id}")
+                self.logger.debug(f"All fields up to date for entity {entity_id}")
                 return True
                 
         except Exception as e:
@@ -345,7 +459,7 @@ class LLMPlaceService:
             if entity:
                 entity_id = entity.get("_id")
                 
-                # Update entity with fresh Google data
+                # Update entity with fresh Google data (incremental)
                 self.update_entity_with_google_data(entity_id, google_place)
                 
                 # Check for Michelin data
@@ -361,6 +475,10 @@ class LLMPlaceService:
                         cuisine=michelin_data.get("cuisine"),
                         price=michelin_data.get("price")
                     )
+            else:
+                # Entity doesn't exist - create in background
+                self.logger.info(f"Creating entity in background for new place_id={place_id}")
+                self.create_entity_in_background(google_place)
             
             # 4. Build search result item
             results.append(LLMSearchRestaurantItem(
@@ -483,12 +601,13 @@ class LLMPlaceService:
         """
         sources_used = []
         
-        # 1. Resolve entity
+        # 1. Resolve entity - PRIORITY: Check entity first
         entity = None
         if entity_id:
             entity = self.db.entities.find_one({"_id": entity_id})
             if entity:
                 sources_used.append("entity")
+                self.logger.debug(f"Found entity by entity_id={entity_id}")
         elif place_id:
             # Try to find entity by place_id
             entity = self.db.entities.find_one({
@@ -500,6 +619,7 @@ class LLMPlaceService:
             })
             if entity:
                 sources_used.append("entity")
+                self.logger.debug(f"Found entity by place_id={place_id}")
         
         # Extract place_id from entity if not provided
         if entity and not place_id:
@@ -510,10 +630,31 @@ class LLMPlaceService:
                 entity.get("externalId")
             )
         
-        # 2. Get Google Places data
+        # 2. Get Google Places data only if needed
         google_data = None
+        entity_data = entity.get("data", {}) if entity else {}
+        
+        # Check if we need to fetch from Google Places
+        needs_google_fetch = False
         if include_google_places and place_id:
-            # Fetch fresh data from Google Places API
+            # Check if entity is missing critical fields
+            if not entity:
+                needs_google_fetch = True
+                self.logger.info(f"Entity not found for place_id={place_id}, fetching from Google")
+            elif not entity_data.get("opening_hours"):
+                needs_google_fetch = True
+                self.logger.info(f"Entity missing opening_hours, fetching from Google")
+            elif not entity_data.get("google_rating"):
+                needs_google_fetch = True
+                self.logger.info(f"Entity missing rating, fetching from Google")
+            else:
+                # Use entity data
+                google_data = entity_data
+                sources_used.append("google_places")
+                self.logger.debug(f"Using entity data for place_id={place_id}")
+        
+        # Fetch from Google if needed
+        if needs_google_fetch and place_id:
             google_data = self.fetch_google_place_details(
                 place_id=place_id,
                 language="pt-BR",
@@ -523,9 +664,18 @@ class LLMPlaceService:
             if google_data:
                 sources_used.append("google_places")
                 
-                # Update entity with fresh Google data if entity exists
+                # Update or create entity
                 if entity:
+                    # Update existing entity with fresh data
                     self.update_entity_with_google_data(entity.get("_id"), google_data)
+                else:
+                    # Create new entity in background
+                    self.logger.info(f"Creating entity for place_id={place_id}")
+                    new_entity_id = self.create_entity_from_google_data(google_data)
+                    if new_entity_id:
+                        # Reload entity for use in this response
+                        entity = self.db.entities.find_one({"_id": new_entity_id})
+                        sources_used.append("entity")
             elif entity:
                 # Fallback to entity data if Google API fails
                 google_data = entity.get("data", {})

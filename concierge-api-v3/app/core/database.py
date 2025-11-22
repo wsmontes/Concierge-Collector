@@ -59,6 +59,10 @@ def _ensure_indexes():
         db.entities.create_index("createdAt", background=True)
         db.entities.create_index([("name", "text")], background=True)
         
+        # Prevent duplicate entities by place_id
+        db.entities.create_index("externalId", unique=True, sparse=True, background=True)
+        db.entities.create_index("data.place_id", unique=True, sparse=True, background=True)
+        
         # Curations collection
         db.curations.create_index("entity_id", unique=True, background=True)
         db.curations.create_index("curator.id", background=True)
