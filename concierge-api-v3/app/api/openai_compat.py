@@ -9,15 +9,18 @@ and other OpenAI-compatible clients for function calling / tool use.
 """
 
 from fastapi import APIRouter, HTTPException, Depends
-from typing import List, Dict, Any
+from fastapi.responses import StreamingResponse
+from typing import List, Dict, Any, Optional
 import logging
 import time
 import json
 import uuid
+import asyncio
 
 from app.models.openai_models import (
     ChatCompletionRequest,
     ChatCompletionResponse,
+    ChatMessage,
     Choice,
     ResponseMessage,
     Usage,
@@ -175,8 +178,12 @@ def execute_function(
     """
     try:
         if function_name == "search_restaurants":
+            query = arguments.get("query")
+            if not query:
+                return json.dumps({"error": "query parameter is required"})
+                
             items = service.search_restaurants(
-                query=arguments.get("query"),
+                query=query,
                 latitude=arguments.get("latitude"),
                 longitude=arguments.get("longitude"),
                 radius_m=arguments.get("radius_m", 5000),
@@ -210,7 +217,8 @@ def execute_function(
                 entity_id=arguments.get("entity_id")
             )
             
-            return json.dumps(availability.dict() if availability else {}, ensure_ascii=False)
+            # availability is already a dict
+            return json.dumps(availability if availability else {}, ensure_ascii=False)
             
         else:
             return json.dumps({"error": f"Unknown function: {function_name}"})
@@ -244,7 +252,22 @@ async def list_models():
     )
 
 
-@router.post("/v1/chat/completions", response_model=ChatCompletionResponse)
+@router.get("/v1/functions")
+async def list_functions():
+    """
+    List available functions for restaurant search and information.
+    
+    This endpoint returns all function definitions that can be used
+    with the chat completions endpoint.
+    """
+    tools = get_available_functions()
+    return {
+        "functions": [tool.function.dict() for tool in tools],
+        "count": len(tools)
+    }
+
+
+@router.post("/v1/chat/completions")
 async def chat_completions(
     request: ChatCompletionRequest,
     service: LLMPlaceService = Depends(get_llm_service)
@@ -256,46 +279,121 @@ async def chat_completions(
     The LLM runs locally in LM Studio (or other client) and calls this API
     when it needs to execute functions.
     
+    Features:
+    - Tools array in response (LLM can see available functions)
+    - Streaming support (stream=true)
+    - tool_choice: auto, none, required, or specific function
+    - parallel_tool_calls: execute multiple tools simultaneously
+    - System message injection with tool descriptions
+    
     Flow:
-    1. LM Studio LLM decides to call a function
-    2. LM Studio sends request here with tool_calls in last message
-    3. We execute the function and return results
-    4. LM Studio LLM processes results and responds to user
+    1. Client sends request (with or without tool_calls)
+    2. We inject system message with available tools if needed
+    3. If tool_calls present, execute them (parallel if enabled)
+    4. Return response with tools array so LLM knows what's available
     """
     try:
-        # Get last message
+        # Get available tools
+        available_tools = get_available_functions()
+        
+        # Validate messages
         if not request.messages:
             raise HTTPException(status_code=400, detail="No messages provided")
-            
-        last_message = request.messages[-1]
         
-        # Check if last message is asking for tool execution
-        # (i.e., role=assistant with tool_calls)
-        if last_message.role == "assistant" and last_message.tool_calls:
+        # Check if we should inject system message with tool descriptions
+        messages = request.messages.copy()
+        if not any(msg.role == "system" for msg in messages):
+            # Inject system message describing available tools
+            tool_descriptions = "\n".join([
+                f"- {tool.function.name}: {tool.function.description}"
+                for tool in available_tools
+            ])
+            system_msg = ChatMessage(
+                role="system",
+                content=(
+                    "You are a restaurant information assistant with access to these tools:\n"
+                    f"{tool_descriptions}\n\n"
+                    "Use these tools to help users find and get information about restaurants."
+                )
+            )
+            messages.insert(0, system_msg)
+            logger.info("Injected system message with tool descriptions")
+        
+        # Get last message
+        last_message = messages[-1]
+        
+        # Handle tool_choice parameter
+        should_execute_tools = True
+        if request.tool_choice == "none":
+            should_execute_tools = False
+            logger.info("tool_choice=none: skipping tool execution")
+        
+        # Check if last message has tool_calls to execute
+        if should_execute_tools and last_message.role == "assistant" and last_message.tool_calls:
             logger.info(f"Executing {len(last_message.tool_calls)} tool call(s)")
             
-            # Execute all requested tool calls
-            executed_calls = []
-            for tool_call in last_message.tool_calls:
-                function_name = tool_call.function.name
-                arguments = json.loads(tool_call.function.arguments)
-                
-                logger.info(f"Executing {function_name} with args: {arguments}")
-                
-                # Execute function
-                result = execute_function(function_name, arguments, service)
-                
-                executed_calls.append({
-                    "call_id": tool_call.id,
-                    "function_name": function_name,
-                    "result": result
-                })
+            # Check if we should execute in parallel
+            execute_parallel = getattr(request, 'parallel_tool_calls', True)
             
-            # Return results in OpenAI format
-            # Note: We return the tool results as assistant message with content
-            # The client will then append these as tool messages
+            if execute_parallel and len(last_message.tool_calls) > 1:
+                logger.info("Executing tools in parallel")
+                # Execute all tools in parallel using asyncio
+                tasks = []
+                for tool_call in last_message.tool_calls:
+                    function_name = tool_call.function.name
+                    arguments = json.loads(tool_call.function.arguments)
+                    tasks.append(
+                        asyncio.to_thread(
+                            execute_function,
+                            function_name,
+                            arguments,
+                            service
+                        )
+                    )
+                
+                results = await asyncio.gather(*tasks)
+                
+                executed_calls = []
+                for tool_call, result in zip(last_message.tool_calls, results):
+                    executed_calls.append({
+                        "call_id": tool_call.id,
+                        "function_name": tool_call.function.name,
+                        "result": result
+                    })
+            else:
+                # Execute sequentially
+                logger.info("Executing tools sequentially")
+                executed_calls = []
+                for tool_call in last_message.tool_calls:
+                    function_name = tool_call.function.name
+                    arguments = json.loads(tool_call.function.arguments)
+                    
+                    logger.info(f"Executing {function_name} with args: {arguments}")
+                    result = execute_function(function_name, arguments, service)
+                    
+                    executed_calls.append({
+                        "call_id": tool_call.id,
+                        "function_name": function_name,
+                        "result": result
+                    })
+            
+            # Build response
             response_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
             
+            # Check if streaming is requested
+            if request.stream:
+                logger.info("Streaming response")
+                return StreamingResponse(
+                    _stream_tool_results(
+                        response_id,
+                        request.model,
+                        executed_calls,
+                        available_tools
+                    ),
+                    media_type="text/event-stream"
+                )
+            
+            # Return standard response with tools array
             return ChatCompletionResponse(
                 id=response_id,
                 object="chat.completion",
@@ -308,24 +406,41 @@ async def chat_completions(
                             role="assistant",
                             content=json.dumps(executed_calls, ensure_ascii=False)
                         ),
-                        finish_reason="stop"
+                        finish_reason="tool_calls"
                     )
                 ],
                 usage=Usage(
-                    prompt_tokens=0,
-                    completion_tokens=0,
-                    total_tokens=0
+                    prompt_tokens=len(json.dumps([msg if isinstance(msg, dict) else msg.dict() for msg in messages])),
+                    completion_tokens=len(json.dumps(executed_calls)),
+                    total_tokens=len(json.dumps([msg if isinstance(msg, dict) else msg.dict() for msg in messages])) + len(json.dumps(executed_calls))
                 ),
                 system_fingerprint="concierge-restaurant"
             )
         
-        # If no tool calls, this is likely the initial request
-        # Return available tools for the LLM to use
+        # If no tool calls, return informative message with tools array
+        # This allows LLM to see what tools are available
         else:
-            logger.info("No tool calls in request - this shouldn't happen in normal flow")
+            logger.info("No tool calls to execute - returning available tools")
+            
+            response_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
+            
+            # Check tool_choice to determine response
+            if request.tool_choice == "required":
+                finish_reason = "tool_calls"
+                content = "Please use one of the available tools to proceed."
+            elif request.tool_choice and request.tool_choice not in ["auto", "none"]:
+                # Specific function requested
+                finish_reason = "tool_calls"
+                content = f"Please call the {request.tool_choice} function."
+            else:
+                finish_reason = "stop"
+                content = (
+                    "I have access to restaurant search and information tools. "
+                    "I can search for restaurants, get detailed information, and check availability."
+                )
             
             return ChatCompletionResponse(
-                id=f"chatcmpl-{uuid.uuid4().hex[:24]}",
+                id=response_id,
                 object="chat.completion",
                 created=int(time.time()),
                 model=request.model,
@@ -334,12 +449,16 @@ async def chat_completions(
                         index=0,
                         message=ResponseMessage(
                             role="assistant",
-                            content="I have access to restaurant search and information tools. Please use them via your LLM client."
+                            content=content
                         ),
-                        finish_reason="stop"
+                        finish_reason=finish_reason
                     )
                 ],
-                usage=Usage(),
+                usage=Usage(
+                    prompt_tokens=len(json.dumps([msg if isinstance(msg, dict) else msg.dict() for msg in messages])),
+                    completion_tokens=len(content.split()),
+                    total_tokens=len(json.dumps([msg if isinstance(msg, dict) else msg.dict() for msg in messages])) + len(content.split())
+                ),
                 system_fingerprint="concierge-restaurant"
             )
             
@@ -347,5 +466,68 @@ async def chat_completions(
         logger.error(f"JSON decode error: {e}")
         raise HTTPException(status_code=400, detail=f"Invalid JSON in arguments: {str(e)}")
     except Exception as e:
-        logger.error(f"Error in chat_completions: {e}")
+        logger.error(f"Error in chat_completions: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
+
+
+async def _stream_tool_results(
+    response_id: str,
+    model: str,
+    executed_calls: List[Dict[str, Any]],
+    tools: List[Tool]
+):
+    """
+    Stream tool execution results in SSE format.
+    
+    Args:
+        response_id: Unique response ID
+        model: Model name
+        executed_calls: List of executed tool calls with results
+        tools: Available tools array
+    """
+    # Send initial chunk with role
+    chunk = {
+        "id": response_id,
+        "object": "chat.completion.chunk",
+        "created": int(time.time()),
+        "model": model,
+        "choices": [{
+            "index": 0,
+            "delta": {"role": "assistant"},
+            "finish_reason": None
+        }]
+    }
+    yield f"data: {json.dumps(chunk)}\n\n"
+    
+    # Stream each tool result
+    for call in executed_calls:
+        chunk = {
+            "id": response_id,
+            "object": "chat.completion.chunk",
+            "created": int(time.time()),
+            "model": model,
+            "choices": [{
+                "index": 0,
+                "delta": {
+                    "content": json.dumps(call, ensure_ascii=False) + "\n"
+                },
+                "finish_reason": None
+            }]
+        }
+        yield f"data: {json.dumps(chunk)}\n\n"
+        await asyncio.sleep(0.01)  # Small delay for streaming effect
+    
+    # Send final chunk
+    chunk = {
+        "id": response_id,
+        "object": "chat.completion.chunk",
+        "created": int(time.time()),
+        "model": model,
+        "choices": [{
+            "index": 0,
+            "delta": {},
+            "finish_reason": "tool_calls"
+        }]
+    }
+    yield f"data: {json.dumps(chunk)}\n\n"
+    yield "data: [DONE]\n\n"
