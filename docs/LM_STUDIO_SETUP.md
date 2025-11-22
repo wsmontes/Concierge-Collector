@@ -102,11 +102,11 @@ print(response.choices[0].message.content)
 
 ### 1. search_restaurants
 
-Search for restaurants by name or query. Returns up to 20 candidates.
+Search for restaurants by name or query. Returns up to 5 candidates by default.
 
 **Parameters:**
 - `query` (string, **required**): Restaurant name or search term
-- `max_results` (integer, optional): Maximum results (1-20, default: 20)
+- `max_results` (integer, optional): Maximum results (1-20, default: 5)
 - `latitude` (number, optional): Latitude for location-biased search
 - `longitude` (number, optional): Longitude for location-biased search
 - `radius_m` (integer, optional): Search radius in meters (100-50000, default: 5000)

@@ -62,7 +62,7 @@ def get_available_functions() -> List[Tool]:
             function=FunctionDefinition(
                 name="search_restaurants",
                 description=(
-                    "Search for restaurants by name or query. Returns up to 20 candidates "
+                    "Search for restaurants by name or query. Returns up to 5 candidates by default "
                     "with place_id and entity_id. Use this when user asks to find restaurants "
                     "or needs to disambiguate between multiple restaurants."
                 ),
@@ -75,8 +75,8 @@ def get_available_functions() -> List[Tool]:
                         },
                         "max_results": {
                             "type": "integer",
-                            "description": "Maximum number of results (1-20)",
-                            "default": 20,
+                            "description": "Maximum number of results (1-20, default: 5)",
+                            "default": 5,
                             "minimum": 1,
                             "maximum": 20
                         },
@@ -187,7 +187,7 @@ def execute_function(
                 latitude=arguments.get("latitude"),
                 longitude=arguments.get("longitude"),
                 radius_m=arguments.get("radius_m", 5000),
-                max_results=arguments.get("max_results", 20),
+                max_results=arguments.get("max_results", 5),
                 language=arguments.get("language", "pt-BR"),
                 region=arguments.get("region", "BR")
             )
