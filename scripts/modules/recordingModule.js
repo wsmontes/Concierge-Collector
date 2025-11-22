@@ -980,16 +980,36 @@ class RecordingModule {
             
             allTimers.forEach(timer => {
                 if (timer) {
-                    timer.textContent = formattedTime;
+                    // Check if timer has digit structure
+                    const digits = timer.querySelectorAll('.timer-digit');
+                    if (digits.length === 4) {
+                        // Update individual digits
+                        digits[0].textContent = minutes[0];
+                        digits[1].textContent = minutes[1];
+                        digits[2].textContent = seconds[0];
+                        digits[3].textContent = seconds[1];
+                    } else {
+                        // Fallback to old text-based timer
+                        timer.textContent = formattedTime;
+                    }
                     timer.classList.remove('hidden');
                     
                     // Add visual indicator when approaching max duration (4+ minutes)
+                    const timerCircle = timer.closest('.timer-circle');
                     if (elapsedSeconds >= 240) {
-                        timer.classList.add('text-red-600');
-                        timer.classList.add('font-bold');
+                        if (timerCircle) {
+                            timerCircle.classList.add('warning');
+                        } else {
+                            timer.classList.add('text-red-600');
+                            timer.classList.add('font-bold');
+                        }
                     } else {
-                        timer.classList.remove('text-red-600');
-                        timer.classList.remove('font-bold');
+                        if (timerCircle) {
+                            timerCircle.classList.remove('warning');
+                        } else {
+                            timer.classList.remove('text-red-600');
+                            timer.classList.remove('font-bold');
+                        }
                     }
                 }
             });
@@ -997,7 +1017,7 @@ class RecordingModule {
             // Update circular timer pulsating effect if present
             const circularTimer = document.getElementById('timer');
             if (circularTimer) {
-                const pulsateElement = circularTimer.parentElement.querySelector('.pulsate');
+                const pulsateElement = circularTimer.parentElement.querySelector('.timer-pulse');
                 if (pulsateElement) {
                     pulsateElement.classList.remove('hidden');
                 }
@@ -1026,8 +1046,19 @@ class RecordingModule {
         });
         const circularTimer = document.getElementById('timer');
         if (circularTimer) {
-            circularTimer.textContent = '00:00';
-            const pulsateElement = circularTimer.parentElement.querySelector('.pulsate');
+            // Reset digit display
+            const digits = circularTimer.querySelectorAll('.timer-digit');
+            if (digits.length === 4) {
+                digits[0].textContent = '0';
+                digits[1].textContent = '0';
+                digits[2].textContent = '0';
+                digits[3].textContent = '0';
+            } else {
+                circularTimer.textContent = '00:00';
+            }
+            
+            // Hide pulse effect
+            const pulsateElement = circularTimer.parentElement.querySelector('.timer-pulse');
             if (pulsateElement) {
                 pulsateElement.classList.add('hidden');
             }

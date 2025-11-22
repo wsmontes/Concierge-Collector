@@ -141,9 +141,15 @@
             
             <!-- Add the circular timer section -->
             <div class="flex flex-col items-center" id="circular-timer-container">
-                <div class="relative w-32 h-32 mb-4 flex items-center justify-center rounded-full bg-gradient-to-r from-blue-50 to-purple-50 border-4 border-white shadow-inner">
-                    <div id="timer" class="text-2xl font-mono mb-0">00:00</div>
-                    <div class="absolute inset-0 rounded-full bg-purple-50 opacity-50 pulsate hidden"></div>
+                <div class="timer-circle">
+                    <div id="timer" class="timer-display">
+                        <span class="timer-digit">0</span>
+                        <span class="timer-digit">0</span>
+                        <span class="timer-separator">:</span>
+                        <span class="timer-digit">0</span>
+                        <span class="timer-digit">0</span>
+                    </div>
+                    <div class="timer-pulse hidden"></div>
                 </div>
                 <div class="flex space-x-4">
                     <!-- Space for additional timer controls -->
