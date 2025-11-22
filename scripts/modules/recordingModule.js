@@ -980,32 +980,34 @@ class RecordingModule {
             
             allTimers.forEach(timer => {
                 if (timer) {
-                    // Check if timer has digit structure
-                    const digits = timer.querySelectorAll('.timer-digit');
-                    if (digits.length === 4) {
-                        // Update individual digits
-                        digits[0].textContent = minutes[0];
-                        digits[1].textContent = minutes[1];
-                        digits[2].textContent = seconds[0];
-                        digits[3].textContent = seconds[1];
-                    } else {
-                        // Fallback to old text-based timer
-                        timer.textContent = formattedTime;
-                    }
+                    // Update timer text
+                    timer.textContent = formattedTime;
                     timer.classList.remove('hidden');
                     
-                    // Add visual indicator when approaching max duration (4+ minutes)
+                    // Update progress ring if present
                     const timerCircle = timer.closest('.timer-circle');
-                    if (elapsedSeconds >= 240) {
-                        if (timerCircle) {
+                    if (timerCircle) {
+                        const progressRing = timerCircle.querySelector('.timer-ring-progress');
+                        if (progressRing) {
+                            // Calculate progress (5 minutes = 300 seconds)
+                            const maxDuration = 300;
+                            const progress = Math.min(elapsedSeconds / maxDuration, 1);
+                            const circumference = 289; // 2 * PI * 46
+                            const offset = circumference - (progress * circumference);
+                            progressRing.style.strokeDashoffset = offset;
+                        }
+                        
+                        // Add warning state when approaching max duration (4+ minutes)
+                        if (elapsedSeconds >= 240) {
                             timerCircle.classList.add('warning');
                         } else {
-                            timer.classList.add('text-red-600');
-                            timer.classList.add('font-bold');
+                            timerCircle.classList.remove('warning');
                         }
                     } else {
-                        if (timerCircle) {
-                            timerCircle.classList.remove('warning');
+                        // Fallback for old-style timers
+                        if (elapsedSeconds >= 240) {
+                            timer.classList.add('text-red-600');
+                            timer.classList.add('font-bold');
                         } else {
                             timer.classList.remove('text-red-600');
                             timer.classList.remove('font-bold');
@@ -1046,18 +1048,20 @@ class RecordingModule {
         });
         const circularTimer = document.getElementById('timer');
         if (circularTimer) {
-            // Reset digit display
-            const digits = circularTimer.querySelectorAll('.timer-digit');
-            if (digits.length === 4) {
-                digits[0].textContent = '0';
-                digits[1].textContent = '0';
-                digits[2].textContent = '0';
-                digits[3].textContent = '0';
-            } else {
-                circularTimer.textContent = '00:00';
+            // Reset timer display
+            circularTimer.textContent = '00:00';
+            
+            // Reset progress ring
+            const timerCircle = circularTimer.closest('.timer-circle');
+            if (timerCircle) {
+                const progressRing = timerCircle.querySelector('.timer-ring-progress');
+                if (progressRing) {
+                    progressRing.style.strokeDashoffset = 289;
+                }
+                timerCircle.classList.remove('warning');
             }
             
-            // Hide pulse effect
+            // Hide pulse effect (legacy)
             const pulsateElement = circularTimer.parentElement.querySelector('.timer-pulse');
             if (pulsateElement) {
                 pulsateElement.classList.add('hidden');
