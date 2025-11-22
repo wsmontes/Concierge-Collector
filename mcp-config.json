@@ -1,0 +1,23 @@
+{
+  "mcpServers": {
+    "concierge-restaurant": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@modelcontextprotocol/server-http@latest",
+        "https://concierge-collector.onrender.com/api/v3/llm"
+      ],
+      "env": {
+        "REQUEST_TIMEOUT": "30000"
+      },
+      "description": "Concierge Restaurant Search and Information Tools",
+      "metadata": {
+        "version": "1.0.0",
+        "author": "Concierge Collector",
+        "tools_count": 3,
+        "production_url": "https://concierge-collector.onrender.com/api/v3/llm",
+        "health_check": "https://concierge-collector.onrender.com/api/v3/llm/health"
+      }
+    }
+  }
+}

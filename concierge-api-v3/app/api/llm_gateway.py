@@ -21,6 +21,7 @@ from app.models.llm_models import (
     LLMGetRestaurantAvailabilityRequest,
     LLMGetRestaurantAvailabilityResponse,
 )
+from app.models.llm_tools import get_all_tools, get_tools_manifest
 from app.services.llm_place_service import LLMPlaceService
 from app.core.database import get_database
 
@@ -228,6 +229,41 @@ async def health_check():
         "endpoints": [
             "/llm/search-restaurants",
             "/llm/get-restaurant-snapshot",
-            "/llm/get-restaurant-availability"
+            "/llm/get-restaurant-availability",
+            "/llm/tools",
+            "/llm/tools-manifest"
         ]
     }
+
+
+@router.get("/tools")
+def get_tools():
+    """
+    Get MCP tool definitions.
+    
+    Returns the JSON Schema definitions for all available tools.
+    This endpoint is used by MCP clients to discover available tools.
+    
+    Returns:
+        List of tool schemas in MCP format
+    """
+    return {
+        "tools": get_all_tools()
+    }
+
+
+@router.get("/tools-manifest")
+def get_manifest():
+    """
+    Get complete MCP tools manifest with metadata.
+    
+    Returns comprehensive information about the tools service including:
+    - All tool schemas
+    - Service metadata
+    - API endpoints
+    - Data sources
+    
+    Returns:
+        Complete manifest dictionary
+    """
+    return get_tools_manifest()
