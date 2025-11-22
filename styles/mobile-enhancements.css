@@ -604,6 +604,7 @@
     width: 100%;
     height: 100%;
     text-align: center;
+    line-height: 1;
     /* Removed position and z-index to avoid creating stacking context */
 }
 
