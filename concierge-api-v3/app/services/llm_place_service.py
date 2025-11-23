@@ -766,10 +766,14 @@ class LLMPlaceService:
         if snapshot.opening_hours and snapshot.opening_hours.regular_hours:
             for day, periods in snapshot.opening_hours.regular_hours.items():
                 is_open = len(periods) > 0
-                availability_by_day[day] = LLMDayAvailability(
-                    is_open=is_open,
-                    periods=periods
-                )
+                
+                # Convert periods to dict for JSON serialization
+                periods_dict = [p.dict() if hasattr(p, 'dict') else p for p in periods]
+                
+                availability_by_day[day] = {
+                    "is_open": is_open,
+                    "periods": periods_dict
+                }
                 
                 # Check weekend
                 if day in weekend_days and is_open:
