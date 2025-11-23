@@ -152,6 +152,53 @@ def get_available_functions() -> List[Tool]:
                 ),
                 strict=True
             )
+        ),
+        Tool(
+            type="function",
+            function=FunctionDefinition(
+                name="get_restaurant_photos",
+                description=(
+                    "Get restaurant photos from Google Places. Returns photo URLs "
+                    "with optional metadata (dimensions, attributions). "
+                    "Use this when user asks for images or wants to see the restaurant."
+                ),
+                parameters=FunctionParameters(
+                    type="object",
+                    properties={
+                        "place_id": {
+                            "type": ["string", "null"],
+                            "description": "Google Place ID"
+                        },
+                        "entity_id": {
+                            "type": ["string", "null"],
+                            "description": "Internal entity ID"
+                        },
+                        "max_photos": {
+                            "type": "integer",
+                            "description": "Maximum number of photos (1-10, default: 10)",
+                            "default": 10,
+                            "minimum": 1,
+                            "maximum": 10
+                        },
+                        "max_width": {
+                            "type": ["integer", "null"],
+                            "description": "Maximum width in pixels (400-4800)"
+                        },
+                        "max_height": {
+                            "type": ["integer", "null"],
+                            "description": "Maximum height in pixels (400-4800)"
+                        },
+                        "include_metadata": {
+                            "type": "boolean",
+                            "description": "Include dimensions and attributions (default: true)",
+                            "default": True
+                        }
+                    },
+                    required=[],
+                    additionalProperties=False
+                ),
+                strict=True
+            )
         )
     ]
 
@@ -219,6 +266,19 @@ def execute_function(
             
             # availability is already a dict
             return json.dumps(availability if availability else {}, ensure_ascii=False)
+            
+        elif function_name == "get_restaurant_photos":
+            photos = service.get_restaurant_photos(
+                place_id=arguments.get("place_id"),
+                entity_id=arguments.get("entity_id"),
+                max_photos=arguments.get("max_photos", 10),
+                max_width=arguments.get("max_width"),
+                max_height=arguments.get("max_height"),
+                include_metadata=arguments.get("include_metadata", True),
+                language=arguments.get("language", "pt-BR")
+            )
+            
+            return json.dumps(photos, ensure_ascii=False)
             
         else:
             return json.dumps({"error": f"Unknown function: {function_name}"})

@@ -16,6 +16,7 @@ The Concierge Collector API provides a **fully-featured OpenAI-compatible endpoi
 ✅ **Parallel Execution**: Execute multiple tools simultaneously with `parallel_tool_calls=true`  
 ✅ **System Message Injection**: Automatic tool descriptions when no system message present  
 ✅ **Function List Endpoint**: GET `/v1/functions` to inspect available tools  
+✅ **4 Restaurant Functions**: Search, snapshots, availability, photos
 
 ---
 
@@ -214,6 +215,56 @@ Check restaurant opening hours and weekend availability.
     "sunday": "12:00 PM - 10:00 PM"
   },
   "special_notes": "Reservations recommended"
+}
+```
+
+---
+
+### 4. get_restaurant_photos
+
+Get restaurant photos from Google Places with optional size and metadata control.
+
+**Parameters:**
+- `place_id` (string, optional): Google Place ID
+- `entity_id` (string, optional): Internal entity ID
+- `max_photos` (integer, optional): Maximum number of photos (1-10, default: 10)
+- `max_width` (integer, optional): Maximum width in pixels (400-4800)
+- `max_height` (integer, optional): Maximum height in pixels (400-4800)
+- `include_metadata` (boolean, optional): Include dimensions and attributions (default: true)
+- *At least one of place_id/entity_id required*
+
+**Example:**
+```json
+{
+  "name": "get_restaurant_photos",
+  "arguments": {
+    "place_id": "ChIJxxx",
+    "max_photos": 5,
+    "max_width": 800,
+    "include_metadata": true
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "place_id": "ChIJxxx",
+  "entity_id": "ent_xxx",
+  "name": "Restaurant Name",
+  "photos": [
+    {
+      "index": 0,
+      "url": "https://places.googleapis.com/v1/places/xxx/photos/yyy/media?maxWidthPx=800&key=xxx",
+      "photo_reference": "places/xxx/photos/yyy",
+      "width_px": 4032,
+      "height_px": 3024,
+      "attributions": ["Photographer Name"]
+    }
+  ],
+  "total": 5,
+  "max_width": 800,
+  "max_height": null
 }
 ```
 
@@ -499,6 +550,48 @@ for call in search_results:
             print("\nRestaurant Details:", detail_response.choices[0].message.content)
 
 # Step 5: LLM would now format this into natural language response for user
+```
+
+---
+
+## 🖼️ Direct REST Access
+
+For non-LLM use cases, access restaurant photos directly via REST:
+
+### GET /api/v3/places/{place_id}/photos
+
+**Query Parameters:**
+- `max_photos` (integer, optional): Maximum number of photos (1-10, default: 10)
+- `max_width` (integer, optional): Maximum width in pixels (400-4800)
+- `max_height` (integer, optional): Maximum height in pixels (400-4800)
+- `include_metadata` (boolean, optional): Include dimensions and attributions (default: true)
+- `language` (string, optional): Language code for attributions (default: pt-BR)
+
+**Example:**
+```bash
+curl "https://concierge-collector.onrender.com/api/v3/places/ChIJxxx/photos?max_photos=5&max_width=800"
+```
+
+**Response:**
+```json
+{
+  "place_id": "ChIJxxx",
+  "entity_id": "ent_xxx",
+  "name": "Restaurant Name",
+  "photos": [
+    {
+      "index": 0,
+      "url": "https://places.googleapis.com/v1/places/xxx/photos/yyy/media?maxWidthPx=800&key=xxx",
+      "photo_reference": "places/xxx/photos/yyy",
+      "width_px": 4032,
+      "height_px": 3024,
+      "attributions": ["Photographer Name"]
+    }
+  ],
+  "total": 5,
+  "max_width": 800,
+  "max_height": null
+}
 ```
 
 ---

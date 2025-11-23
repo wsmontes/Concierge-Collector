@@ -36,6 +36,7 @@ logger = logging.getLogger(__name__)
 # Google Places API URLs
 PLACES_API_TEXT_SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
 PLACES_API_DETAILS_URL = "https://places.googleapis.com/v1/places"
+PLACES_API_PHOTO_MEDIA_URL = "https://places.googleapis.com/v1/{photo_name}/media"
 
 
 class LLMPlaceService:
@@ -99,6 +100,95 @@ class LLMPlaceService:
             self.logger.error(f"Failed to fetch Google place details for {place_id}: {e}")
         
         return None
+    
+    def fetch_google_place_photos(
+        self,
+        place_id: str,
+        max_photos: int = 10,
+        language: str = "pt-BR"
+    ) -> Optional[List[Dict[str, Any]]]:
+        """
+        Fetch place photos metadata from Google Places API.
+        
+        Args:
+            place_id: Google Place ID
+            max_photos: Maximum number of photos to return (1-10)
+            language: Language code for attributions
+            
+        Returns:
+            List of photo metadata dictionaries or None if failed
+        """
+        try:
+            headers = {
+                "Content-Type": "application/json",
+                "X-Goog-Api-Key": settings.google_places_api_key,
+                "X-Goog-FieldMask": "photos"
+            }
+            
+            params = {}
+            if language:
+                params["languageCode"] = language
+            
+            with httpx.Client(timeout=30.0) as client:
+                response = client.get(
+                    f"{PLACES_API_DETAILS_URL}/{place_id}",
+                    headers=headers,
+                    params=params
+                )
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    photos = data.get("photos", [])
+                    
+                    # Limit to max_photos
+                    if max_photos:
+                        photos = photos[:max_photos]
+                    
+                    self.logger.info(f"Fetched {len(photos)} photos for place_id={place_id}")
+                    return photos
+                else:
+                    self.logger.warning(f"Places API photos returned {response.status_code} for place_id={place_id}")
+                    
+        except Exception as e:
+            self.logger.error(f"Failed to fetch Google place photos for {place_id}: {e}")
+        
+        return None
+    
+    def build_photo_url(
+        self,
+        photo_name: str,
+        max_width: Optional[int] = None,
+        max_height: Optional[int] = None,
+        skip_redirect: bool = False
+    ) -> str:
+        """
+        Build Google Places Photo Media URL.
+        
+        Args:
+            photo_name: Photo resource name (e.g., places/xxx/photos/yyy)
+            max_width: Maximum width in pixels (400-4800)
+            max_height: Maximum height in pixels (400-4800)
+            skip_redirect: If True, returns direct image bytes URL
+            
+        Returns:
+            Photo URL
+        """
+        url = PLACES_API_PHOTO_MEDIA_URL.format(photo_name=photo_name)
+        
+        params = []
+        if max_width:
+            params.append(f"maxWidthPx={max_width}")
+        if max_height:
+            params.append(f"maxHeightPx={max_height}")
+        if skip_redirect:
+            params.append("skipHttpRedirect=true")
+        
+        params.append(f"key={settings.google_places_api_key}")
+        
+        if params:
+            url += "?" + "&".join(params)
+        
+        return url
     
     def search_google_places(
         self,
@@ -719,6 +809,127 @@ class LLMPlaceService:
         )
         
         return snapshot, sources_used
+    
+    # =========================================================================
+    # GET RESTAURANT PHOTOS
+    # =========================================================================
+    
+    def get_restaurant_photos(
+        self,
+        place_id: Optional[str] = None,
+        entity_id: Optional[str] = None,
+        max_photos: int = 10,
+        max_width: Optional[int] = None,
+        max_height: Optional[int] = None,
+        include_metadata: bool = True,
+        language: str = "pt-BR"
+    ) -> Dict[str, Any]:
+        """
+        Get restaurant photos with URLs and metadata.
+        
+        Args:
+            place_id: Google Place ID
+            entity_id: Internal entity ID
+            max_photos: Maximum number of photos (1-10)
+            max_width: Maximum width in pixels (400-4800)
+            max_height: Maximum height in pixels (400-4800)
+            include_metadata: Include original dimensions and attributions
+            language: Language code for attributions
+            
+        Returns:
+            Dictionary with photos list and metadata
+        """
+        # Resolve entity and place_id
+        entity = None
+        if entity_id:
+            entity = self.db.entities.find_one({"_id": entity_id})
+        elif place_id:
+            entity = self.db.entities.find_one({
+                "$or": [
+                    {"data.place_id": place_id},
+                    {"data.google_place_id": place_id},
+                    {"externalId": place_id}
+                ]
+            })
+        
+        # Extract place_id from entity if not provided
+        if entity and not place_id:
+            data = entity.get("data", {})
+            place_id = (
+                data.get("place_id") or
+                data.get("google_place_id") or
+                entity.get("externalId")
+            )
+        
+        if not place_id:
+            return {
+                "error": "place_id or entity_id required",
+                "photos": []
+            }
+        
+        # Fetch photos from Google Places
+        photos_metadata = self.fetch_google_place_photos(
+            place_id=place_id,
+            max_photos=max_photos,
+            language=language
+        )
+        
+        if not photos_metadata:
+            return {
+                "place_id": place_id,
+                "entity_id": entity.get("_id") if entity else None,
+                "photos": [],
+                "total": 0
+            }
+        
+        # Build photo objects with URLs
+        photos = []
+        for idx, photo_meta in enumerate(photos_metadata):
+            photo_name = photo_meta.get("name")
+            if not photo_name:
+                continue
+            
+            # Build photo URL
+            url = self.build_photo_url(
+                photo_name=photo_name,
+                max_width=max_width,
+                max_height=max_height,
+                skip_redirect=False
+            )
+            
+            photo_obj = {
+                "index": idx,
+                "url": url,
+                "photo_reference": photo_name
+            }
+            
+            # Add metadata if requested
+            if include_metadata:
+                photo_obj["width_px"] = photo_meta.get("widthPx")
+                photo_obj["height_px"] = photo_meta.get("heightPx")
+                
+                # Extract attributions
+                attributions = []
+                for attr in photo_meta.get("authorAttributions", []):
+                    if isinstance(attr, dict):
+                        display_name = attr.get("displayName")
+                        if display_name:
+                            attributions.append(display_name)
+                
+                if attributions:
+                    photo_obj["attributions"] = attributions
+            
+            photos.append(photo_obj)
+        
+        return {
+            "place_id": place_id,
+            "entity_id": entity.get("_id") if entity else None,
+            "name": entity.get("name") if entity else None,
+            "photos": photos,
+            "total": len(photos),
+            "max_width": max_width,
+            "max_height": max_height
+        }
     
     # =========================================================================
     # GET RESTAURANT AVAILABILITY
