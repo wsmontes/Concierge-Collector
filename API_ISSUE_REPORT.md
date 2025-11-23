@@ -2,11 +2,32 @@
 
 **Data**: 22 de Novembro de 2025  
 **Endpoint Afetado**: `https://concierge-collector.onrender.com/api/v3/openai/v1/chat/completions`  
-**Função com Bug**: `get_restaurant_availability`
+**Função com Bug**: `get_restaurant_availability`  
+**Status**: ✅ **CORRIGIDO** (Commit: 2be0067)
 
 ---
 
-## 📋 Resumo Executivo
+## 🎉 Status da Correção
+
+### ✅ Problema Resolvido
+O erro de serialização JSON foi corrigido com sucesso em **22/11/2025**.
+
+**Commit**: `2be0067` - "fix: Resolve JSON serialization error in get_restaurant_availability"
+
+### O que foi corrigido:
+1. Substituído objeto `LLMDayAvailability` por dict simples em `availability_by_day`
+2. Convertido objetos `periods` para dict usando `.dict()` method
+3. Mantida mesma estrutura de dados mas com tipos serializáveis JSON
+
+### Teste da Correção:
+```bash
+# Execute o script de teste
+./test_availability_fix.sh
+```
+
+---
+
+## 📋 Resumo Executivo (Original)
 
 A função `get_restaurant_availability` da Concierge API está retornando um erro de serialização JSON ao invés dos dados de disponibilidade do restaurante. Isso impede que aplicações cliente obtenham informações sobre horários de funcionamento.
 
