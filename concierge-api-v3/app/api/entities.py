@@ -3,25 +3,55 @@ Entity endpoints - CRUD operations
 """
 
 from fastapi import APIRouter, HTTPException, Header, Query, Depends
+from fastapi.security import HTTPAuthorizationCredentials
 from typing import Optional, List
 from datetime import datetime, timezone
 from pymongo.errors import DuplicateKeyError
 from pymongo.database import Database
+import secrets
 
 from app.models.schemas import (
     Entity, EntityCreate, EntityUpdate, PaginatedResponse, ErrorResponse
 )
 from app.core.database import get_database
-from app.core.security import verify_access_token
+from app.core.security import api_key_header, bearer_scheme, get_api_secret_key
+from jose import jwt, JWTError
 
 router = APIRouter(prefix="/entities", tags=["entities"])
+
+
+async def verify_auth(
+    api_key: Optional[str] = Depends(api_key_header),
+    bearer: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme)
+) -> dict:
+    """Verify either OAuth token or API key"""
+    # Try API key first
+    if api_key:
+        try:
+            expected_key = get_api_secret_key()
+            if secrets.compare_digest(api_key, expected_key):
+                return {"authenticated": True, "method": "api_key"}
+        except:
+            pass
+    
+    # Try Bearer token
+    if bearer:
+        try:
+            # Import here to avoid circular dependency
+            from app.core.security import ALGORITHM
+            payload = jwt.decode(bearer.credentials, get_api_secret_key(), algorithms=[ALGORITHM])
+            return {"authenticated": True, "method": "jwt", "user": payload.get("sub")}
+        except JWTError:
+            pass
+    
+    raise HTTPException(status_code=401, detail="Missing authorization token")
 
 
 @router.post("", response_model=Entity, status_code=201)
 def create_entity(
     entity: EntityCreate,
     db: Database = Depends(get_database),
-    token_data: dict = Depends(verify_access_token)
+    auth: dict = Depends(verify_auth)
 ):
     """Create new entity or update if exists"""
     # Check if exists
@@ -83,7 +113,7 @@ def update_entity(
     updates: EntityUpdate,
     if_match: Optional[str] = Header(None, alias="If-Match"),
     db: Database = Depends(get_database),
-    token_data: dict = Depends(verify_access_token)
+    auth: dict = Depends(verify_auth)
 ):
     """Update entity with optimistic locking"""
     if not if_match:
@@ -117,7 +147,7 @@ def update_entity(
 def delete_entity(
     entity_id: str,
     db: Database = Depends(get_database),
-    token_data: dict = Depends(verify_access_token)
+    auth: dict = Depends(verify_auth)
 ):
     """Delete entity"""
     result = db.entities.delete_one({"_id": entity_id})
