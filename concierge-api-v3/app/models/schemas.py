@@ -213,3 +213,35 @@ class SemanticSearchResponse(BaseModel):
     query_embedding_time: float
     search_time: float
     total_results: int
+
+
+class HybridSearchRequest(BaseModel):
+    """Request para busca híbrida (entities + semantic curations)"""
+    query: str = Field(..., min_length=1, max_length=500, description="Search query text")
+    location: Optional[str] = Field(None, description="Location filter (city, neighborhood)")
+    limit: int = Field(default=10, ge=1, le=100, description="Maximum number of results")
+    min_similarity: float = Field(default=0.5, ge=0.0, le=1.0, description="Minimum cosine similarity for semantic matches")
+    categories: Optional[List[str]] = Field(None, description="Filter by specific categories")
+    boost_semantic: float = Field(default=0.7, ge=0.0, le=1.0, description="Weight for semantic score (0-1)")
+
+
+class HybridSearchResult(BaseModel):
+    """Resultado combinado de busca híbrida"""
+    entity_id: str = Field(..., description="Entity ID")
+    entity: dict = Field(..., description="Entity data")
+    curation: Optional[dict] = Field(None, description="Curation data if available")
+    score: float = Field(..., description="Combined score (0-1)")
+    match_type: str = Field(..., description="Type of match: 'entity', 'semantic', 'hybrid'")
+    entity_score: float = Field(default=0.0, description="Entity match score")
+    semantic_score: float = Field(default=0.0, description="Semantic match score")
+    semantic_matches: Optional[List[ConceptMatch]] = Field(None, description="Top semantic matches")
+
+
+class HybridSearchResponse(BaseModel):
+    """Response da busca híbrida"""
+    results: List[HybridSearchResult] = Field(..., description="Ranked results")
+    query: str = Field(..., description="Original query")
+    entity_search_time: float = Field(..., description="Time for entity search (seconds)")
+    semantic_search_time: float = Field(..., description="Time for semantic search (seconds)")
+    total_time: float = Field(..., description="Total search time (seconds)")
+    total_results: int = Field(..., description="Total number of results")

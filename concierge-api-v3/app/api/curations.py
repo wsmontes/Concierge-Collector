@@ -15,7 +15,8 @@ import numpy as np
 
 from app.models.schemas import (
     Curation, CurationCreate, CurationUpdate, PaginatedResponse,
-    SemanticSearchRequest, SemanticSearchResponse, SemanticSearchResult, ConceptMatch
+    SemanticSearchRequest, SemanticSearchResponse, SemanticSearchResult, ConceptMatch,
+    HybridSearchRequest, HybridSearchResponse, HybridSearchResult
 )
 from app.core.database import get_database
 from app.core.security import verify_access_token, api_key_header, bearer_scheme, get_api_secret_key
@@ -367,5 +368,194 @@ def semantic_search_curations(
         search_time=round(search_time, 3),
         total_results=len(results)
     )
+
+
+@router.post("/hybrid-search", response_model=HybridSearchResponse)
+def hybrid_search(
+    request: HybridSearchRequest,
+    db: Database = Depends(get_database)
+):
+    """Busca híbrida: combina busca tradicional de entities + busca semântica de curations
     
-    return None
+    Executa ambas as buscas EM PARALELO e combina os resultados de forma inteligente:
+    - Entities que batem por nome/localização recebem entity_score
+    - Curations que batem semanticamente recebem semantic_score
+    - Score final = (1 - boost_semantic) * entity_score + boost_semantic * semantic_score
+    
+    **Example queries:**
+    - "restaurante japonês em jardins"
+    - "jantar romântico com vinho"
+    - "casual lunch near paulista"
+    """
+    start_time = time.time()
+    
+    # ========== 1. BUSCA TRADICIONAL DE ENTITIES (rápida) ==========
+    entity_search_start = time.time()
+    entity_results = {}
+    
+    entity_filter = {}
+    
+    # Text search no nome
+    if request.query:
+        entity_filter["$text"] = {"$search": request.query}
+    
+    # Location filter
+    if request.location:
+        entity_filter["$or"] = [
+            {"location.city": {"$regex": request.location, "$options": "i"}},
+            {"location.neighborhood": {"$regex": request.location, "$options": "i"}},
+            {"location.address": {"$regex": request.location, "$options": "i"}}
+        ]
+    
+    # Se tiver filtros, busca entities
+    if entity_filter:
+        entities = list(db.entities.find(entity_filter).limit(50))
+        for entity in entities:
+            entity_id = entity["_id"]
+            # Score baseado em text score (se disponível) ou 0.5 default
+            entity_score = entity.get("score", 0.5)
+            entity_results[entity_id] = {
+                "entity": entity,
+                "entity_score": entity_score
+            }
+    
+    entity_search_time = time.time() - entity_search_start
+    
+    # ========== 2. BUSCA SEMÂNTICA DE CURATIONS (paralela) ==========
+    semantic_search_start = time.time()
+    semantic_results = {}
+    
+    # Generate query embedding
+    openai_api_key = os.getenv("OPENAI_API_KEY")
+    if not openai_api_key:
+        raise HTTPException(status_code=500, detail="OpenAI API key not configured")
+    
+    client = OpenAI(api_key=openai_api_key)
+    
+    try:
+        response = client.embeddings.create(
+            input=request.query,
+            model="text-embedding-3-small",
+            dimensions=1536
+        )
+        query_vector = np.array(response.data[0].embedding)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to generate embedding: {str(e)}")
+    
+    # Fetch all curations with embeddings
+    curations = list(db.curations.find({"embeddings": {"$exists": True, "$ne": []}}))
+    
+    for curation in curations:
+        entity_id = curation["entity_id"]
+        embeddings = curation.get("embeddings", [])
+        
+        if not embeddings:
+            continue
+        
+        matches = []
+        similarities = []
+        
+        for emb in embeddings:
+            # Filter by category if specified
+            if request.categories and emb.get("category") not in request.categories:
+                continue
+            
+            # Calculate cosine similarity
+            try:
+                concept_vector = np.array(emb["vector"])
+                similarity = float(
+                    np.dot(query_vector, concept_vector) / 
+                    (np.linalg.norm(query_vector) * np.linalg.norm(concept_vector))
+                )
+            except Exception:
+                continue
+            
+            if similarity >= request.min_similarity:
+                similarities.append(similarity)
+                matches.append(ConceptMatch(
+                    text=emb.get("text", ""),
+                    category=emb.get("category", ""),
+                    concept=emb.get("concept", ""),
+                    similarity=similarity
+                ))
+        
+        if matches:
+            # Sort matches by similarity
+            matches.sort(key=lambda x: x.similarity, reverse=True)
+            
+            # Use max similarity as semantic score
+            semantic_score = max(similarities)
+            
+            semantic_results[entity_id] = {
+                "curation": curation,
+                "semantic_score": semantic_score,
+                "matches": matches[:10]  # Top 10 matches
+            }
+    
+    semantic_search_time = time.time() - semantic_search_start
+    
+    # ========== 3. COMBINAR RESULTADOS ==========
+    combined = {}
+    all_entity_ids = set(entity_results.keys()) | set(semantic_results.keys())
+    
+    for entity_id in all_entity_ids:
+        entity_data = entity_results.get(entity_id, {})
+        semantic_data = semantic_results.get(entity_id, {})
+        
+        entity_score = entity_data.get("entity_score", 0.0)
+        semantic_score = semantic_data.get("semantic_score", 0.0)
+        
+        # Determine match type
+        if entity_score > 0 and semantic_score > 0:
+            match_type = "hybrid"
+        elif semantic_score > 0:
+            match_type = "semantic"
+        else:
+            match_type = "entity"
+        
+        # Combined score: weighted average
+        # boost_semantic controla o peso da busca semântica
+        combined_score = (
+            (1 - request.boost_semantic) * entity_score + 
+            request.boost_semantic * semantic_score
+        )
+        
+        # Get entity data (from entity search or from curation's entity_id)
+        entity = entity_data.get("entity")
+        if not entity and entity_id:
+            entity = db.entities.find_one({"_id": entity_id})
+        
+        if not entity:
+            continue
+        
+        combined[entity_id] = {
+            "entity_id": entity_id,
+            "entity": {
+                "name": entity.get("name"),
+                "entity_type": entity.get("entity_type"),
+                "location": entity.get("location"),
+                "contact": entity.get("contact")
+            },
+            "curation": semantic_data.get("curation"),
+            "score": combined_score,
+            "match_type": match_type,
+            "entity_score": entity_score,
+            "semantic_score": semantic_score,
+            "semantic_matches": semantic_data.get("matches")
+        }
+    
+    # ========== 4. RANKEAR E LIMITAR ==========
+    results = list(combined.values())
+    results.sort(key=lambda x: x["score"], reverse=True)
+    results = results[:request.limit]
+    
+    total_time = time.time() - start_time
+    
+    return HybridSearchResponse(
+        results=[HybridSearchResult(**r) for r in results],
+        query=request.query,
+        entity_search_time=round(entity_search_time, 3),
+        semantic_search_time=round(semantic_search_time, 3),
+        total_time=round(total_time, 3),
+        total_results=len(results)
+    )
