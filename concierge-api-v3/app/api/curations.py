@@ -4,29 +4,58 @@ Professional FastAPI implementation with async MongoDB
 """
 
 from fastapi import APIRouter, HTTPException, Header, Query, Depends
+from fastapi.security import HTTPAuthorizationCredentials
 from typing import Optional, List
 from datetime import datetime, timezone
 from pymongo.errors import DuplicateKeyError
+import secrets
 
 from app.models.schemas import (
     Curation, CurationCreate, CurationUpdate, PaginatedResponse
 )
 from app.core.database import get_database
-from app.core.security import verify_access_token
+from app.core.security import verify_access_token, api_key_header, bearer_scheme, get_api_secret_key
 from pymongo.database import Database
+from jose import jwt, JWTError
 
 router = APIRouter(prefix="/curations", tags=["curations"])
+
+
+async def verify_auth(
+    api_key: Optional[str] = Depends(api_key_header),
+    bearer: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme)
+) -> dict:
+    """Verify either OAuth token or API key"""
+    # Try API key first
+    if api_key:
+        try:
+            expected_key = get_api_secret_key()
+            if secrets.compare_digest(api_key, expected_key):
+                return {"authenticated": True, "method": "api_key"}
+        except:
+            pass
+    
+    # Try Bearer token
+    if bearer:
+        try:
+            from app.core.security import ALGORITHM
+            payload = jwt.decode(bearer.credentials, get_api_secret_key(), algorithms=[ALGORITHM])
+            return {"authenticated": True, "method": "jwt", "user": payload.get("sub")}
+        except JWTError:
+            pass
+    
+    raise HTTPException(status_code=401, detail="Missing authorization token")
 
 
 @router.post("", response_model=Curation, status_code=201)
 def create_curation(
     curation: CurationCreate,
     db: Database = Depends(get_database),
-    token_data: dict = Depends(verify_access_token)  # Require JWT authentication
+    auth: dict = Depends(verify_auth)  # Support both API key and JWT
 ):
     """Create a new curation
     
-    **Authentication Required:** Include `Authorization: Bearer <token>` header
+    **Authentication Required:** Include `Authorization: Bearer <token>` OR `X-API-Key: <key>` header
     """
     # Verify entity exists
     entity = db.entities.find_one({"_id": curation.entity_id})
