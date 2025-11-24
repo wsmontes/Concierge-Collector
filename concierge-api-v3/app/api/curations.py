@@ -165,33 +165,39 @@ def update_curation(
     updates: CurationUpdate,
     if_match: Optional[str] = Header(None, alias="If-Match"),
     db: Database = Depends(get_database),
-    token_data: dict = Depends(verify_access_token)  # Require JWT authentication
+    auth: dict = Depends(verify_auth)  # Support both API key and JWT
 ):
     """Update curation with optimistic locking
     
-    **Authentication Required:** Include `Authorization: Bearer <token>` header
+    **Authentication Required:** Include `Authorization: Bearer <token>` OR `X-API-Key: <key>` header
     """
-    # Check If-Match header
-    if not if_match:
-        raise HTTPException(
-            status_code=428,
-            detail="If-Match header is required for updates"
-        )
+    # Get current curation for version
+    current = db.curations.find_one({"_id": curation_id})
+    if not current:
+        raise HTTPException(status_code=404, detail="Curation not found")
     
-    # Parse version from ETag
-    try:
-        current_version = int(if_match.strip('"'))
-    except ValueError:
-        raise HTTPException(status_code=400, detail="Invalid If-Match header format")
+    current_version = current.get("version", 1)
+    
+    # If If-Match provided, validate it
+    if if_match:
+        try:
+            requested_version = int(if_match.strip('"'))
+            if requested_version != current_version:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"Version conflict: current={current_version}, requested={requested_version}"
+                )
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid If-Match header format")
     
     # Prepare update
     update_data = {k: v for k, v in updates.model_dump(exclude_unset=True).items() if v is not None}
     update_data["updatedAt"] = datetime.now(timezone.utc)
     update_data["version"] = current_version + 1
     
-    # Update with version check (optimistic locking)
+    # Update
     result = db.curations.find_one_and_update(
-        {"_id": curation_id, "version": current_version},
+        {"_id": curation_id},
         {"$set": update_data},
         return_document=True
     )
