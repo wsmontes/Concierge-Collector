@@ -181,7 +181,7 @@ class SemanticSearchRequest(BaseModel):
     """Request para busca semântica por embeddings"""
     query: str = Field(..., min_length=1, max_length=500, description="Query text for semantic search")
     limit: int = Field(default=10, ge=1, le=100, description="Maximum number of results")
-    min_similarity: float = Field(default=0.5, ge=0.0, le=1.0, description="Minimum cosine similarity threshold")
+    min_similarity: float = Field(default=0.0, ge=0.0, le=1.0, description="Minimum cosine similarity threshold (0.0 returns all results ranked)")
     entity_types: Optional[List[str]] = Field(None, description="Filter by entity types (e.g., ['restaurant'])")
     categories: Optional[List[str]] = Field(None, description="Filter by specific categories")
     include_entity: bool = Field(default=True, description="Include entity data in response")
