@@ -171,3 +171,45 @@ class PaginatedResponse(BaseModel):
     total: int
     limit: int
     offset: int
+
+
+# ============================================================================
+# SEMANTIC SEARCH MODELS
+# ============================================================================
+
+class SemanticSearchRequest(BaseModel):
+    """Request para busca semântica por embeddings"""
+    query: str = Field(..., min_length=1, max_length=500, description="Query text for semantic search")
+    limit: int = Field(default=10, ge=1, le=100, description="Maximum number of results")
+    min_similarity: float = Field(default=0.5, ge=0.0, le=1.0, description="Minimum cosine similarity threshold")
+    entity_types: Optional[List[str]] = Field(None, description="Filter by entity types (e.g., ['restaurant'])")
+    categories: Optional[List[str]] = Field(None, description="Filter by specific categories")
+    include_entity: bool = Field(default=True, description="Include entity data in response")
+
+
+class ConceptMatch(BaseModel):
+    """Individual concept match with similarity score"""
+    text: str = Field(..., description="Full text of the match (e.g., 'cuisine japanese')")
+    category: str = Field(..., description="Category of the concept")
+    concept: str = Field(..., description="Concept value")
+    similarity: float = Field(..., description="Cosine similarity score (0-1)")
+
+
+class SemanticSearchResult(BaseModel):
+    """Individual result from semantic search"""
+    entity_id: str
+    entity: Optional[Dict] = None
+    curation: Dict
+    matches: List[ConceptMatch]
+    avg_similarity: float
+    max_similarity: float
+    match_count: int
+
+
+class SemanticSearchResponse(BaseModel):
+    """Complete semantic search response"""
+    results: List[SemanticSearchResult]
+    query: str
+    query_embedding_time: float
+    search_time: float
+    total_results: int

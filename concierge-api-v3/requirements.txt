@@ -26,6 +26,9 @@ python-dotenv==1.0.1
 # OpenAI
 openai==1.57.4
 
+# Numerical Computing
+numpy==2.2.1
+
 # Google Places
 googlemaps==4.10.0
 
