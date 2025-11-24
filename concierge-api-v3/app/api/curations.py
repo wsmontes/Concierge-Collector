@@ -273,32 +273,11 @@ def semantic_search_curations(
     
     query_embed_time = time.time() - query_embed_start
     
-    # 2. Build MongoDB filter
+    # 2. Fetch all curations with embeddings (only restaurants for now)
     query_filter = {"embeddings": {"$exists": True, "$ne": []}}
-    
-    if request.entity_types:
-        # Filter by entity type
-        entities = list(db.entities.find(
-            {"entity_type": {"$in": request.entity_types}},
-            {"_id": 1}
-        ))
-        entity_ids = [e["_id"] for e in entities]
-        if entity_ids:
-            query_filter["entity_id"] = {"$in": entity_ids}
-        else:
-            # No entities of requested types
-            return SemanticSearchResponse(
-                results=[],
-                query=request.query,
-                query_embedding_time=round(query_embed_time, 3),
-                search_time=0.0,
-                total_results=0
-            )
-    
-    # 3. Fetch curations with embeddings
     curations = list(db.curations.find(query_filter))
     
-    # 4. Calculate similarities for each curation
+    # 3. Calculate similarities for each curation
     results = []
     
     for curation in curations:
