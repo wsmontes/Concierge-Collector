@@ -121,6 +121,8 @@ class CurationUpdate(BaseModel):
     notes: Optional[CurationNotes] = None
     categories: Optional[CurationCategories] = None
     sources: Optional[List[str]] = None
+    embeddings: Optional[List[Dict]] = None
+    embeddings_metadata: Optional[Dict] = None
 
 
 class Curation(CurationBase):
@@ -129,6 +131,8 @@ class Curation(CurationBase):
     curation_id: str
     entity_id: str
     curator: CuratorInfo
+    embeddings: Optional[List[Dict]] = None
+    embeddings_metadata: Optional[Dict] = None
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     version: int = Field(default=1)
