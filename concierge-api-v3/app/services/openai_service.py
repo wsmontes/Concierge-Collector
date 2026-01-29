@@ -15,6 +15,8 @@ from datetime import datetime, timezone
 
 from openai import OpenAI
 from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo import MongoClient
+import os
 
 from app.services.category_service import CategoryService
 from app.services.openai_config_service import OpenAIConfigService
@@ -29,11 +31,17 @@ class OpenAIService:
         
         Args:
             api_key: OpenAI API key
-            db: MongoDB database instance
+            db: MongoDB database instance (Motor async)
         """
         self.client = OpenAI(api_key=api_key)
         self.db = db
-        self.config_service = OpenAIConfigService(db)
+        
+        # Create sync PyMongo client for config_service (non-critical reads)
+        from app.core.config import settings
+        sync_client = MongoClient(settings.mongodb_url)
+        sync_db = sync_client[settings.mongodb_db_name]
+        
+        self.config_service = OpenAIConfigService(sync_db)
         self.category_service = CategoryService(db)
     
     async def transcribe_audio(
@@ -52,7 +60,7 @@ class OpenAIService:
             Dictionary with transcription_id, text, language, model
         """
         # Get service configuration
-        config = await self.config_service.get_config("transcription")
+        config = self.config_service.get_config("transcription")
         
         # Use config parameters
         model = config["model"]
@@ -129,10 +137,10 @@ class OpenAIService:
         categories = await self.category_service.get_categories(entity_type)
         
         # Get service configuration
-        config = await self.config_service.get_config("concept_extraction_text")
+        config = self.config_service.get_config("concept_extraction_text")
         
         # Render prompt with variables
-        prompt = await self.config_service.render_prompt(
+        prompt = self.config_service.render_prompt(
             "concept_extraction_text",
             {
                 "text": text,
@@ -186,10 +194,10 @@ class OpenAIService:
         categories = await self.category_service.get_categories(entity_type)
         
         # Get service configuration
-        config = await self.config_service.get_config("image_analysis")
+        config = self.config_service.get_config("image_analysis")
         
         # Render prompt with variables
-        prompt = await self.config_service.render_prompt(
+        prompt = self.config_service.render_prompt(
             "image_analysis",
             {"categories": categories}
         )

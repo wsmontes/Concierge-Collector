@@ -6,25 +6,25 @@ Provides access to service configurations, prompts, and parameters with caching.
 
 import time
 from typing import Dict, Optional, Any
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from pymongo.database import Database
 from datetime import datetime, timezone
 
 
 class OpenAIConfigService:
     """Manages OpenAI service configurations from MongoDB with caching and prompt rendering"""
     
-    def __init__(self, db: AsyncIOMotorDatabase):
+    def __init__(self, db: Database):
         """
         Initialize OpenAIConfigService.
         
         Args:
-            db: Motor async MongoDB database instance
+            db: PyMongo Database instance
         """
         self.db = db
         self.cache: Dict[str, tuple] = {}
         self.cache_ttl = 600  # 10 minutes cache TTL (configs change less frequently)
     
-    async def get_config(self, service: str) -> Dict[str, Any]:
+    def get_config(self, service: str) -> Dict[str, Any]:
         """
         Get configuration for OpenAI service.
         
@@ -46,7 +46,7 @@ class OpenAIConfigService:
                 return cached_data
         
         # Fetch from MongoDB
-        config = await self.db.openai_configs.find_one({
+        config = self.db.openai_configs.find_one({
             "service": service,
             "enabled": True
         })
@@ -59,7 +59,7 @@ class OpenAIConfigService:
         
         return config
     
-    async def render_prompt(
+    def render_prompt(
         self, 
         service: str, 
         variables: Dict[str, Any]
@@ -76,9 +76,9 @@ class OpenAIConfigService:
             
         Example:
             variables = {"text": "Great food", "categories": ["modern", "cozy"]}
-            prompt = await render_prompt("concept_extraction_text", variables)
+            prompt = render_prompt("concept_extraction_text", variables)
         """
-        config = await self.get_config(service)
+        config = self.get_config(service)
         prompt_template = config.get("prompt_template", "")
         
         # Simple template rendering
@@ -93,7 +93,7 @@ class OpenAIConfigService:
         
         return prompt_template
     
-    async def update_config(
+    def update_config(
         self, 
         service: str, 
         updates: Dict[str, Any], 
@@ -114,7 +114,7 @@ class OpenAIConfigService:
         updates["updated_at"] = datetime.now(timezone.utc).isoformat()
         updates["updated_by"] = updated_by
         
-        result = await self.db.openai_configs.update_one(
+        result = self.db.openai_configs.update_one(
             {"service": service},
             {
                 "$set": updates,
@@ -133,7 +133,7 @@ class OpenAIConfigService:
             "service": service
         }
     
-    async def toggle_service(self, service: str, enabled: bool) -> Dict[str, Any]:
+    def toggle_service(self, service: str, enabled: bool) -> Dict[str, Any]:
         """
         Enable or disable a service.
         
@@ -144,7 +144,7 @@ class OpenAIConfigService:
         Returns:
             Dictionary with toggle status
         """
-        result = await self.db.openai_configs.update_one(
+        result = self.db.openai_configs.update_one(
             {"service": service},
             {
                 "$set": {
@@ -164,7 +164,7 @@ class OpenAIConfigService:
             "enabled": enabled
         }
     
-    async def list_all_services(self) -> Dict[str, Any]:
+    def list_all_services(self) -> Dict[str, Any]:
         """
         List all OpenAI services.
         
@@ -174,7 +174,7 @@ class OpenAIConfigService:
         cursor = self.db.openai_configs.find({})
         services = {}
         
-        async for doc in cursor:
+        for doc in cursor:
             services[doc["service"]] = {
                 "model": doc["model"],
                 "enabled": doc["enabled"],

@@ -503,7 +503,7 @@ def refresh_access_token(
     from app.core.security import verify_refresh_token, create_access_token, create_refresh_token
     
     # Verify refresh token
-    token_data = verify_refresh_token(request.refresh_token)
+    token_data = await verify_refresh_token(request.refresh_token)
     
     email = token_data.get("sub")
     if not email:
