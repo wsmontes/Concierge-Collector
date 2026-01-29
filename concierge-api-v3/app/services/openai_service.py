@@ -155,7 +155,6 @@ class OpenAIService:
         response = self.client.chat.completions.create(
             model=config["model"],
             messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"},
             **config["config"]
         )
         
@@ -223,7 +222,6 @@ class OpenAIService:
                     ]
                 }
             ],
-            response_format={"type": "json_object"},
             temperature=config["config"].get("temperature", 0.3),
             max_tokens=config["config"].get("max_tokens", 300)
         )
