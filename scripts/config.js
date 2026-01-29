@@ -89,7 +89,7 @@ const AppConfig = {
                 // AI Service endpoints
                 aiOrchestrate: '/ai/orchestrate',      // POST - AI orchestration (audio+concepts)
                 aiTranscribe: '/ai/transcribe',        // POST - Transcribe audio (X-API-Key)
-                aiExtractConcepts: '/ai/extract-concepts',  // POST - Extract concepts from text (X-API-Key)
+                aiExtractConcepts: '/ai/orchestrate',  // POST - Extract concepts via orchestrate (JWT)
                 aiAnalyzeImage: '/ai/analyze-image',   // POST - Analyze image with GPT-4 Vision (X-API-Key)
                 
                 // Places Service endpoints

@@ -384,7 +384,15 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
 
     async extractConcepts(text, entityType = 'restaurant') {
         const response = await this.request('POST', 'aiExtractConcepts', {
-            body: JSON.stringify({ text, entity_type: entityType })
+            body: JSON.stringify({ 
+                text,
+                entity_type: entityType,
+                workflow_type: 'text_only',
+                output: {
+                    save_to_db: false,
+                    return_results: true
+                }
+            })
         });
         return await response.json();
     }
