@@ -48,10 +48,10 @@
     <link rel="stylesheet" href="styles/style.css">
     
     <!-- Centralized Configuration (MUST load first) -->
-    <script src="scripts/config.js"></script>
+    <script src="scripts/core/config.js"></script>
     
     <!-- Centralized Logging (loads after config) -->
-    <script src="scripts/logger.js"></script>
+    <script src="scripts/core/logger.js"></script>
     
     <!-- OAuth Callback Protection (prevents page reload during OAuth callback) -->
     <script>
@@ -677,43 +677,43 @@
     <script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
 
     <!-- Core utilities - load before any other scripts -->
-    <script src="scripts/uiUtils.js"></script>
-    <script src="scripts/moduleWrapper.js"></script>
+    <script src="scripts/ui-core/uiUtils.js"></script>
+    <script src="scripts/core/moduleWrapper.js"></script>
     
     <!-- NEW: Architectural Managers (load early - other modules depend on these) -->
-    <script src="scripts/modalManager.js"></script>
-    <script src="scripts/stateStore.js"></script>
-    <script src="scripts/progressManager.js"></script>
-    <script src="scripts/navigationManager.js"></script>
-    <script src="scripts/errorManager.js"></script>
-    <script src="scripts/formManager.js"></script>
+    <script src="scripts/ui-core/modalManager.js"></script>
+    <script src="scripts/managers/stateStore.js"></script>
+    <script src="scripts/managers/progressManager.js"></script>
+    <script src="scripts/ui-core/navigationManager.js"></script>
+    <script src="scripts/managers/errorManager.js"></script>
+    <script src="scripts/managers/formManager.js"></script>
     
     <!-- Phase 3-4: Mobile, Performance & UX Enhancements -->
-    <script src="scripts/bottomSheet.js"></script>
-    <script src="scripts/gestureManager.js"></script>
-    <script src="scripts/skeletonLoader.js"></script>
-    <script src="scripts/lazyLoader.js"></script>
-    <script src="scripts/optimisticUI.js"></script>
-    <script src="scripts/emptyStateManager.js"></script>
-    <script src="scripts/accessibilityChecker.js"></script>
+    <script src="scripts/ui-core/bottomSheet.js"></script>
+    <script src="scripts/ui-core/gestureManager.js"></script>
+    <script src="scripts/ui-core/skeletonLoader.js"></script>
+    <script src="scripts/ui-core/lazyLoader.js"></script>
+    <script src="scripts/ui-core/optimisticUI.js"></script>
+    <script src="scripts/ui-core/emptyStateManager.js"></script>
+    <script src="scripts/ui-core/accessibilityChecker.js"></script>
     
     <!-- Entity-Curation Backend - Core Data Layer -->
     <!-- migrationManager.js REMOVED: Clean break strategy, no migration needed -->
-    <script src="scripts/dataStore.js"></script>
-    <script src="scripts/apiService.js"></script>
-    <script src="scripts/syncManagerV3.js"></script>
-    <script src="scripts/importManager.js"></script>
+    <script src="scripts/storage/dataStore.js"></script>
+    <script src="scripts/services/apiService.js"></script>
+    <script src="scripts/sync/syncManagerV3.js"></script>
+    <script src="scripts/sync/importManager.js"></script>
     
     <!-- UI Components -->
     <script src="scripts/ui/cardFactory.js"></script>
     <script src="scripts/ui/conflictResolutionModal.js"></script>
     
     <!-- Compatibility Layer for Legacy UI Modules -->
-    <script src="scripts/dataStorageWrapper.js"></script>
+    <script src="scripts/storage/dataStorageWrapper.js"></script>
     
     <!-- Application modules - keeping essential ones -->
-    <script src="scripts/promptTemplate.js"></script>
-    <script src="scripts/conceptMatcher.js"></script>
+    <script src="scripts/services/promptTemplate.js"></script>
+    <script src="scripts/services/conceptMatcher.js"></script>
     <script src="scripts/audioRecorder.js"></script>
     <script src="scripts/uiManager.js"></script>
     
@@ -757,14 +757,14 @@
     <script src="scripts/curatorProfile.js"></script>
 
     <!-- Find Entity Modal (Google Places search interface) -->
-    <script src="scripts/findEntityModal.js"></script>
+    <script src="scripts/services/findEntityModal.js"></script>
 
     <!-- Access Control (must load before main.js) -->
-    <script src="scripts/accessControl.js"></script>
+    <script src="scripts/auth/accessControl.js"></script>
 
     <!-- Core application scripts -->
-    <script src="scripts/main.js"></script>
-    <script src="scripts/syncSettingsManager.js"></script>
+    <script src="scripts/core/main.js"></script>
+    <script src="scripts/sync/syncSettingsManager.js"></script>
 
     <!-- Ensure this appears after all other scripts -->
     <script>
