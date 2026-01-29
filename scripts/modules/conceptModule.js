@@ -1032,6 +1032,18 @@ class ConceptModule {
         const warningElement = document.getElementById('duplicate-concept-warning');
         const messageElement = document.getElementById('duplicate-concept-message');
         
+        // ✅ Defensive check: If elements don't exist, use fallback notification
+        if (!warningElement || !messageElement) {
+            console.warn(`Duplicate concept: "${value}" already exists in "${category}"`);
+            if (window.uiUtils && window.uiUtils.showNotification) {
+                window.uiUtils.showNotification(
+                    `Concept "${value}" already exists in "${category}"`,
+                    'warning'
+                );
+            }
+            return;
+        }
+        
         messageElement.textContent = `"${value}" already exists in the "${category}" category.`;
         warningElement.classList.remove('hidden');
         
