@@ -5,9 +5,9 @@ name: Backend Tests
 
 on:
   push:
-    branches: [ main, Front-End-V3, develop ]
+    branches: [ main, develop ]
   pull_request:
-    branches: [ main, Front-End-V3 ]
+    branches: [ main ]
 
 jobs:
   test:
