@@ -387,7 +387,7 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
             body: JSON.stringify({ 
                 text,
                 entity_type: entityType,
-                workflow_type: 'text_only',
+                // workflow_type will be auto-detected as 'audio_only' when text is present
                 output: {
                     save_to_db: false,
                     return_results: true
