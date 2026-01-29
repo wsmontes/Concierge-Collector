@@ -65,15 +65,18 @@ class OrchestrateResponse(BaseModel):
 
 
 # Dependency to get OpenAI service
-def get_openai_service(db = Depends(get_database)):
+def get_openai_service():
     """Get OpenAI service instance"""
+    from app.core.config import settings
+    
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="OPENAI_API_KEY not configured"
         )
-    return OpenAIService(api_key, db)
+    
+    return OpenAIService(api_key, settings.mongodb_url, settings.mongodb_db_name)
 
 
 # Dependency to get AI orchestrator

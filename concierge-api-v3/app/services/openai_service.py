@@ -14,7 +14,7 @@ from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 
 from openai import OpenAI
-from motor.motor_asyncio import AsyncIOMotorDatabase
+from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from pymongo import MongoClient
 import os
 
@@ -25,24 +25,27 @@ from app.services.openai_config_service import OpenAIConfigService
 class OpenAIService:
     """OpenAI service using MongoDB configuration"""
     
-    def __init__(self, api_key: str, db: AsyncIOMotorDatabase):
+    def __init__(self, api_key: str, db_url: str, db_name: str):
         """
         Initialize OpenAIService.
         
         Args:
             api_key: OpenAI API key
-            db: MongoDB database instance (Motor async)
+            db_url: MongoDB connection URL
+            db_name: Database name
         """
         self.client = OpenAI(api_key=api_key)
-        self.db = db
+        
+        # Create Motor async client for db operations (insert_one, find_one)
+        async_client = AsyncIOMotorClient(db_url)
+        self.db = async_client[db_name]
         
         # Create sync PyMongo client for config_service (non-critical reads)
-        from app.core.config import settings
-        sync_client = MongoClient(settings.mongodb_url)
-        sync_db = sync_client[settings.mongodb_db_name]
+        sync_client = MongoClient(db_url)
+        sync_db = sync_client[db_name]
         
         self.config_service = OpenAIConfigService(sync_db)
-        self.category_service = CategoryService(db)
+        self.category_service = CategoryService(self.db)
     
     async def transcribe_audio(
         self, 
