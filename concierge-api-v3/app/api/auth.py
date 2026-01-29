@@ -487,7 +487,7 @@ def verify_token(
 
 
 @router.post("/refresh")
-def refresh_access_token(
+async def refresh_access_token(
     request: TokenRefreshRequest,
     db: Database = Depends(get_database)
 ):
