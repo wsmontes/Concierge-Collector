@@ -620,6 +620,10 @@ class ConceptModule {
     }
     
     async renderConcepts() {
+        this.log.debug('renderConcepts called');
+        this.log.debug('conceptsContainer:', this.uiManager.conceptsContainer);
+        this.log.debug('currentConcepts:', this.uiManager.currentConcepts);
+        
         // Clear the container
         this.uiManager.conceptsContainer.innerHTML = '';
         
@@ -633,6 +637,8 @@ class ConceptModule {
                 conceptsByCategory[concept.category].push(concept);
             }
         }
+        
+        this.log.debug('conceptsByCategory:', conceptsByCategory);
         
         // Add section for each category, regardless if there are concepts or not
         const categories = [
@@ -1083,6 +1089,9 @@ class ConceptModule {
      * @param {object} extractedConcepts - The concepts extracted from AI
      */
     handleExtractedConceptsWithValidation(extractedConcepts) {
+        this.log.debug('handleExtractedConceptsWithValidation called with:', extractedConcepts);
+        this.log.debug('Current concepts before processing:', this.uiManager.currentConcepts);
+        
         // Filter out concepts that the restaurant already has
         const filteredConcepts = {};
         let addedCount = 0;
@@ -1104,12 +1113,16 @@ class ConceptModule {
             }
         }
         
+        this.log.debug('Filtered concepts to add:', filteredConcepts);
+        
         // Update the UI with the filtered concepts
         for (const category in filteredConcepts) {
             for (const value of filteredConcepts[category]) {
                 this.addConceptWithValidation(category, value);
             }
         }
+        
+        this.log.debug('Current concepts after adding:', this.uiManager.currentConcepts);
         
         // Render the concepts UI
         this.renderConcepts();
