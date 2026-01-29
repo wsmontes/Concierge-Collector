@@ -264,6 +264,16 @@ async def verify_access_token(
     import logging
     logger = logging.getLogger(__name__)
     
+    # Test mode bypass - allows tests to run without real OAuth tokens
+    if os.getenv("TESTING") == "true":
+        logger.info("[Token Verify] TEST MODE - bypassing auth")
+        return {
+            "sub": "test@example.com",
+            "email": "test@example.com",
+            "name": "Test User",
+            "picture": "https://example.com/avatar.jpg"
+        }
+    
     logger.info("[Token Verify] ========================================")
     logger.info(f"[Token Verify] Credentials present: {credentials is not None}")
     

@@ -163,6 +163,16 @@ async def orchestrate(
     except Exception as e:
         logger.error(f"[AI Orchestrate] ✗ Exception: {str(e)}", exc_info=True)
         logger.error("=" * 60)
+        
+        # Check if it's an OpenAI BadRequestError (400)
+        from openai import BadRequestError
+        if isinstance(e.__cause__, BadRequestError) or isinstance(e, BadRequestError):
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail=f"Invalid request: {str(e)}"
+            )
+        
+        # Generic 500 error for other exceptions
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Orchestration failed: {str(e)}"
@@ -170,7 +180,7 @@ async def orchestrate(
 
 
 @router.get("/usage-stats")
-def get_usage_stats(
+async def get_usage_stats(
     days: int = 7,
     openai_service: OpenAIService = Depends(get_openai_service)
 ):
@@ -181,7 +191,7 @@ def get_usage_stats(
     for the specified number of days.
     """
     try:
-        stats = openai_service.get_usage_stats(days)
+        stats = await openai_service.get_usage_stats(days)
         return stats
     except Exception as e:
         raise HTTPException(

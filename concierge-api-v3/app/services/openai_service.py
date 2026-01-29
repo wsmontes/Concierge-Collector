@@ -69,7 +69,9 @@ class OpenAIService:
         model = config["model"]
         params = config["config"].copy()
         if language:
-            params["language"] = language
+            # Normalize language to ISO-639-1 format (pt-BR → pt)
+            normalized_lang = language.split('-')[0].lower()
+            params["language"] = normalized_lang
         
         # Handle base64 audio data conversion
         try:

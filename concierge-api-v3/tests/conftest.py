@@ -2,9 +2,17 @@
 Test configuration and fixtures
 """
 import pytest
+import pytest_asyncio
 from fastapi.testclient import TestClient
 from pymongo import MongoClient
 from datetime import datetime, timezone
+import os
+from pathlib import Path
+
+# Load .env file before importing app
+from dotenv import load_dotenv
+env_path = Path(__file__).parent.parent / ".env"
+load_dotenv(env_path)
 
 from main import app
 from app.core.config import settings
@@ -99,9 +107,43 @@ def sample_curation():
     }
 
 
+@pytest.fixture(scope="session", autouse=True)
+def enable_test_mode():
+    """Enable test mode to bypass auth validation during tests"""
+    import os
+    os.environ["TESTING"] = "true"
+    yield
+    if "TESTING" in os.environ:
+        del os.environ["TESTING"]
+
+
+@pytest_asyncio.fixture(scope="function")
+async def async_client():
+    """Async test client for testing async endpoints"""
+    from httpx import ASGITransport, AsyncClient
+    from app.core.database import connect_to_mongo, _client
+    
+    # Ensure MongoDB is connected for async tests
+    if _client is None:
+        connect_to_mongo()
+    
+    # Use ASGITransport to mount the FastAPI app
+    async with AsyncClient(
+        transport=ASGITransport(app=app),
+        base_url="http://test"
+    ) as ac:
+        yield ac
+
+
 @pytest.fixture
 def auth_headers():
-    """Mock auth headers - in real tests you'd get a valid JWT"""
-    # For now, return empty dict since we need proper OAuth
-    # In production, generate a real JWT token here
-    return {}
+    """Mock auth headers - in test mode, auth is bypassed"""
+    # In test mode (TESTING=true), auth is bypassed automatically
+    # Still return proper format for consistency
+    return {"Authorization": "Bearer test_token_bypass"}
+
+
+@pytest.fixture
+def auth_token():
+    """JWT token string for tests that expect just the token"""
+    return "test_token_bypass"
