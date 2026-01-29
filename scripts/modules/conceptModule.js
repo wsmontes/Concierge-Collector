@@ -461,18 +461,16 @@ class ConceptModule {
                         name: user.email.split('@')[0],
                         email: user.email
                     },
+                    content: {
+                        transcription: transcription || null  // ✅ ÁUDIO GRAVADO AQUI
+                    },
+                    concepts: this.convertConceptsToCategories(this.uiManager.currentConcepts || []),
                     notes: {
                         public: publicNotes || null,
                         private: privateNotes || null
                     },
-                    categories: this.convertConceptsToCategories(this.uiManager.currentConcepts || []),
                     sources: ['google_places', 'manual_curation']
                 };
-                
-                // Add transcription to curation if available
-                if (transcription) {
-                    curation.notes.transcription = transcription;
-                }
                 
                 this.log.debug('📤 Creating curation:', curation.curation_id);
                 await window.ApiService.createCuration(curation);
@@ -498,6 +496,14 @@ class ConceptModule {
             }
             
             SafetyUtils.showNotification(message);
+            
+            // ✅ Trigger immediate sync if entity is pending
+            if (syncStatus === 'pending' && window.SyncManagerV3) {
+                this.log.debug('🚀 Triggering immediate background sync');
+                window.SyncManagerV3.quickSync().catch(err => {
+                    this.log.warn('Background sync failed, will retry automatically:', err);
+                });
+            }
             
             // Clean up pending audio and draft data for this restaurant
             // DISABLED: Draft and PendingAudio managers use old database schema

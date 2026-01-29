@@ -1489,10 +1489,10 @@ class RecordingModule {
      * Transcribe audio using backend API V3.
      * Uses ApiService which calls /api/v3/ai/orchestrate.
      * @param {Blob} audioBlob - Audio blob from recorder
-     * @returns {Promise<string>} - English transcription text
+     * @returns {Promise<Object>} - Enhanced result with text + concepts
      */
     async transcribeAudio(audioBlob) {
-        this.log.debug('Transcribing audio via API V3...');
+        this.log.debug('Transcribing audio via API V3 (orchestrate with concepts)...');
         
         // Check if ApiService is available
         if (!window.ApiService) {
@@ -1505,19 +1505,25 @@ class RecordingModule {
         }
 
         try {
-            // Use ApiService to transcribe (handles OAuth token, retries, etc.)
+            // ✅ USE ORCHESTRATE: Single API call returns both transcription + concepts
             const result = await window.ApiService.transcribeAudio(audioBlob, 'en');
             
             // API V3 returns Pydantic model: 
             // { workflow: str, results: {...}, saved_to_db: bool, processing_time_ms: int }
-            // For audio_only: results.transcription = { transcription_id, text, language, model }
+            // For audio_only: results = { transcription: {...}, concepts: {...} }
             if (!result || !result.results || !result.results.transcription || !result.results.transcription.text) {
                 this.log.error('Invalid API response structure:', result);
                 throw new Error('Invalid response from transcription API');
             }
             
-            this.log.debug('Transcription successful via API V3');
-            return result.results.transcription.text;
+            this.log.debug('✅ Transcription + concepts successful via API V3 orchestrate');
+            
+            // ✅ Return enhanced result with both transcription AND concepts
+            return {
+                text: result.results.transcription.text,
+                transcription: result.results.transcription,
+                concepts: result.results.concepts  // ✅ Concepts already extracted!
+            };
             
         } catch (error) {
             this.log.error('Transcription error:', error);
@@ -1582,6 +1588,8 @@ class RecordingModule {
             }
             
             const transcription = await this.transcribeAudio(preparedBlob);
+            
+            // ✅ transcription is now an object: { text, transcription, concepts }
             this.processTranscription(transcription);
 
             // Signal main transcription done
@@ -1654,12 +1662,35 @@ class RecordingModule {
 
     /**
      * Process transcription results with improved handling for all recording scenarios
+     * Now also handles concepts if returned by orchestrate endpoint
      * Always appends to the textarea instead of replacing it.
      */
-    processTranscription(transcription) {
+    processTranscription(result) {
         try {
-            if (!transcription || typeof transcription !== 'string' || transcription.trim() === '') {
+            // ✅ HANDLE ORCHESTRATE RESPONSE: result may contain { text, transcription, concepts }
+            let transcription;
+            let concepts = null;
+            
+            if (typeof result === 'object' && result.text) {
+                // Enhanced format from orchestrate: { text, transcription, concepts }
+                transcription = result.text;
+                concepts = result.concepts;
+                this.log.debug(`✅ Received orchestrate response with ${concepts?.concepts?.length || 0} concepts`);
+            } else if (typeof result === 'object' && result.transcription) {
+                // Alternative format
+                transcription = result.transcription.text || result.transcription;
+                concepts = result.concepts;
+                this.log.debug('✅ Received orchestrate response with concepts:', !!concepts);
+            } else if (typeof result === 'string') {
+                // Plain string (legacy)
+                transcription = result;
+            } else {
                 this.log.warn('Empty or invalid transcription received');
+                return;
+            }
+            
+            if (!transcription || transcription.trim() === '') {
+                this.log.warn('Empty transcription text');
                 return;
             }
             
@@ -1695,8 +1726,8 @@ class RecordingModule {
                 textarea.value = transcription;
                 textarea.dispatchEvent(new Event('input'));
                 
-                // Trigger concept processing
-                this.triggerConceptProcessing(transcription);
+                // ✅ Trigger concept processing (will use pre-extracted concepts if available)
+                this.triggerConceptProcessing(transcription, concepts?.concepts);
             }
             
             this.log.debug('Transcription processing completed successfully');
@@ -1713,6 +1744,71 @@ class RecordingModule {
             setTimeout(() => {
                 this.resetRecordingToolState();
             }, 100);
+        }
+    }
+
+    /**
+     * Trigger concept processing pipeline after a successful transcription
+     * ✅ NOW ACCEPTS PRE-EXTRACTED CONCEPTS to skip second API call
+     * @param {string} transcription - The transcribed text
+     * @param {Array} preExtractedConcepts - Optional concepts already extracted by orchestrate
+     */
+    triggerConceptProcessing(transcription, preExtractedConcepts = null) {
+        try {
+            this.log.debug('Triggering concept processing for new restaurant');
+            
+            // ✅ IF CONCEPTS PRE-EXTRACTED: Apply them directly
+            if (preExtractedConcepts && Array.isArray(preExtractedConcepts) && preExtractedConcepts.length > 0) {
+                this.log.debug(`✅ Using ${preExtractedConcepts.length} pre-extracted concepts from orchestrate`);
+                
+                // Method 1: Use conceptModule with direct concept application
+                if (this.uiManager && this.uiManager.conceptModule) {
+                    if (typeof this.uiManager.conceptModule.displayConcepts === 'function') {
+                        this.uiManager.conceptModule.displayConcepts(preExtractedConcepts);
+                        return;
+                    }
+                }
+                
+                // Method 2: Use global conceptModule
+                if (window.conceptModule && typeof window.conceptModule.displayConcepts === 'function') {
+                    window.conceptModule.displayConcepts(preExtractedConcepts);
+                    return;
+                }
+                
+                this.log.warn('No method to apply pre-extracted concepts, falling back to standard processing');
+            }
+            
+            // FALLBACK: Standard concept extraction (will make another API call)
+            this.log.debug('Using standard concept processing (will call extractConcepts API)');
+            
+            // Method 1: Use conceptModule directly if available
+            if (this.uiManager && this.uiManager.conceptModule && 
+                typeof this.uiManager.conceptModule.processConcepts === 'function') {
+                this.log.debug('Using uiManager.conceptModule.processConcepts');
+                this.uiManager.conceptModule.processConcepts(transcription);
+                return;
+            }
+            
+            // Method 2: Find globally available conceptModule
+            if (window.conceptModule && typeof window.conceptModule.processConcepts === 'function') {
+                this.log.debug('Using global conceptModule.processConcepts');
+                window.conceptModule.processConcepts(transcription);
+                return;
+            }
+            
+            // Method 3: Use the reprocessConcepts function if available
+            const reprocessButton = document.getElementById('reprocess-concepts');
+            if (reprocessButton) {
+                this.log.debug('Using reprocess-concepts button click as fallback');
+                reprocessButton.click();
+                return;
+            }
+            
+            // Method 4: Notify the user that manual processing is needed
+            this.log.warn('No automatic concept processing available, user needs to click "Reprocess Concepts" manually');
+            this.showProcessingNotification();
+        } catch (error) {
+            this.log.error('Error triggering concept processing:', error);
         }
     }
 
@@ -1787,6 +1883,68 @@ class RecordingModule {
         if (additionalRecordingTime) additionalRecordingTime.classList.add('hidden');
         if (additionalAudioVisualizer) additionalAudioVisualizer.classList.add('hidden');
         if (additionalRecordingStatus) additionalRecordingStatus.textContent = '';
+    }
+    
+    /**
+     * Apply pre-extracted concepts directly to the form
+     * @param {Array} concepts - Array of concept objects from orchestrate
+     */
+    applyConcepts(concepts) {
+        try {
+            this.log.debug(`Applying ${concepts.length} pre-extracted concepts`);
+            
+            // Method 1: Use conceptModule if available
+            if (this.uiManager && this.uiManager.conceptModule && 
+                typeof this.uiManager.conceptModule.applyConcepts === 'function') {
+                this.uiManager.conceptModule.applyConcepts(concepts);
+                return;
+            }
+            
+            // Method 2: Use global conceptModule
+            if (window.conceptModule && typeof window.conceptModule.applyConcepts === 'function') {
+                window.conceptModule.applyConcepts(concepts);
+                return;
+            }
+            
+            // Method 3: Populate form fields directly (fallback)
+            this.populateConceptFields(concepts);
+            
+        } catch (error) {
+            this.log.error('Error applying concepts:', error);
+        }
+    }
+    
+    /**
+     * Populate form fields directly from concepts (fallback method)
+     * @param {Array} concepts - Array of concept objects
+     */
+    populateConceptFields(concepts) {
+        try {
+            const fieldMapping = {
+                'name': 'restaurant-name',
+                'cuisine': 'restaurant-cuisine',
+                'price_range': 'restaurant-price',
+                'address': 'restaurant-address',
+                'city': 'restaurant-city',
+                'neighborhood': 'restaurant-neighborhood',
+                'phone': 'restaurant-phone',
+                'website': 'restaurant-website'
+            };
+            
+            for (const concept of concepts) {
+                const fieldId = fieldMapping[concept.category];
+                if (fieldId) {
+                    const field = document.getElementById(fieldId);
+                    if (field && concept.value) {
+                        field.value = concept.value;
+                        field.dispatchEvent(new Event('input'));
+                        this.log.debug(`✅ Populated ${concept.category}: ${concept.value}`);
+                    }
+                }
+            }
+        } catch (error) {
+            this.log.error('Error populating concept fields:', error);
+        }
     }
     
     /**

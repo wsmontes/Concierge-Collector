@@ -1751,184 +1751,53 @@ if (typeof window.PlacesModule === 'undefined') {
         }
         
         /**
-         * Create places service with error handling - Modern API Implementation
+         * Create places service - Now uses secure backend API
+         * @deprecated Google Maps JS API direct use is deprecated for security
          */
         async createPlacesService() {
-            try {
-                // Check if modern Place API is available
-                if (window.google && window.google.maps && window.google.maps.places && 
-                    window.google.maps.places.Place) {
-                    
-                    this.debugLog('Using modern Google Places API');
-                    this.placesService = 'modern'; // Flag to indicate modern API usage
-                    
-                } else {
-                    this.debugLog('Using legacy PlacesService API (fallback)');
-                    
-                    // We need a map div for the legacy PlacesService, even if it's not displayed
-                    let mapDiv = document.getElementById('places-map-div');
-                    if (!mapDiv) {
-                        mapDiv = document.createElement('div');
-                        mapDiv.id = 'places-map-div';
-                        mapDiv.style.cssText = 'height:0;width:0;position:absolute;left:-9999px;';
-                        document.body.appendChild(mapDiv);
-                    }
-                    
-                    // Create a map instance (required for legacy PlacesService)
-                    const map = new google.maps.Map(mapDiv, {
-                        center: { lat: this.currentLatitude, lng: this.currentLongitude },
-                        zoom: 15
-                    });
-                    
-                    this.placesService = new google.maps.places.PlacesService(map);
-                }
-                
-                this.debugLog('Places service initialized successfully');
-                
-            } catch (error) {
-                this.log.error('Error creating Places service:', error);
-                throw new Error('Failed to initialize Places service: ' + error.message);
-            }
+            // ✅ SECURITY FIX: No longer creates google.maps.places.PlacesService
+            // All Place operations now go through backend API (ApiService)
+            this.debugLog('✅ Using backend API for Places (secure, no exposed API keys)');
+            this.placesService = 'api';  // Mark as using backend API
+            return true;
         }
         
         /**
-         * Perform enhanced search with retry mechanism - Modern API Implementation
+         * Perform enhanced search - Now uses backend API
+         * @deprecated Direct Google Maps API use is deprecated
          * @param {Object} params - Search parameters
          * @returns {Promise<Array>} - Search results
          */
         async performEnhancedSearch(params) {
-            return new Promise(async (resolve, reject) => {
-                try {
-                    // Check if we're using the modern API
-                    if (this.placesService === 'modern' && window.google.maps.places.Place) {
-                        this.debugLog('Using modern Place.searchNearby API');
-                        
-                        // Use modern searchNearby API
-                        const request = {
-                            location: { lat: params.latitude, lng: params.longitude },
-                            radius: params.radius,
-                            includedTypes: params.filterFood ? ['restaurant'] : ['establishment'],
-                            fields: [
-                                'id', 'displayName', 'location', 'formattedAddress',
-                                'types', 'photos', 'rating', 'userRatingCount', 'priceLevel',
-                                'regularOpeningHours', 'websiteUri', 'nationalPhoneNumber', 'internationalPhoneNumber'
-                            ],
-                            maxResultCount: 20
-                        };
-                        
-                        // Add cuisine-specific types if selected
-                        if (params.cuisine !== 'all') {
-                            const cuisineTypes = {
-                                'italian': ['italian_restaurant'],
-                                'chinese': ['chinese_restaurant'], 
-                                'japanese': ['japanese_restaurant'],
-                                'mexican': ['mexican_restaurant'],
-                                'french': ['french_restaurant'],
-                                'thai': ['thai_restaurant'],
-                                'indian': ['indian_restaurant'],
-                                'mediterranean': ['mediterranean_restaurant'],
-                                'seafood': ['seafood_restaurant'],
-                                'american': ['american_restaurant'],
-                                'vegetarian': ['vegetarian_restaurant'],
-                                'fast_food': ['fast_food_restaurant']
-                            };
-                            
-                            if (cuisineTypes[params.cuisine]) {
-                                request.includedTypes = cuisineTypes[params.cuisine];
-                            }
-                        }
-                        
-                        this.debugLog('Modern search parameters:', request);
-                        this.performanceMetrics.apiCalls++;
-                        
-                        // Use the modern API
-                        const { places } = await google.maps.places.Place.searchNearby(request);
-                        
-                        // Convert modern API response to legacy format for compatibility
-                        const legacyResults = places.map(place => ({
-                            place_id: place.id,
-                            name: place.displayName?.text || 'Unknown',
-                            geometry: {
-                                location: {
-                                    lat: () => place.location.lat,
-                                    lng: () => place.location.lng
-                                }
-                            },
-                            formatted_address: place.formattedAddress,
-                            vicinity: place.formattedAddress,
-                            types: place.types || [],
-                            photos: place.photos || [],
-                            rating: place.rating,
-                            user_ratings_total: place.userRatingCount,
-                            price_level: place.priceLevel,
-                            opening_hours: place.regularOpeningHours,
-                            website: place.websiteUri,
-                            formatted_phone_number: place.nationalPhoneNumber,
-                            international_phone_number: place.internationalPhoneNumber
-                        }));
-                        
-                        resolve(legacyResults);
-                        
-                    } else {
-                        // Fallback to legacy API
-                        this.debugLog('Using legacy PlacesService.nearbySearch API');
-                        
-                        const request = {
-                            location: new google.maps.LatLng(params.latitude, params.longitude),
-                            radius: params.radius
-                        };
-                        
-                        // Set type based on filters
-                        if (params.filterFood) {
-                            request.type = 'restaurant';
-                        } else {
-                            request.type = 'establishment';
-                        }
-                        
-                        // Add cuisine-specific type if selected
-                        if (params.cuisine !== 'all') {
-                            const cuisineTypes = {
-                                'italian': 'italian_restaurant',
-                                'chinese': 'chinese_restaurant',
-                                'japanese': 'japanese_restaurant',
-                                'mexican': 'mexican_restaurant',
-                                'french': 'french_restaurant',
-                                'thai': 'thai_restaurant',
-                                'indian': 'indian_restaurant',
-                                'mediterranean': 'mediterranean_restaurant',
-                                'seafood': 'seafood_restaurant',
-                                'american': 'american_restaurant',
-                                'vegetarian': 'vegetarian_restaurant',
-                                'fast_food': 'fast_food_restaurant'
-                            };
-                            
-                            if (cuisineTypes[params.cuisine]) {
-                                request.type = cuisineTypes[params.cuisine];
-                            }
-                        }
-                        
-                        this.debugLog('Legacy search parameters:', request);
-                        this.performanceMetrics.apiCalls++;
-                        
-                        this.placesService.nearbySearch(request, (results, status) => {
-                            this.debugLog('Search completed with status:', status);
-                            
-                            if (status === google.maps.places.PlacesServiceStatus.OK) {
-                                resolve(results || []);
-                            } else if (status === google.maps.places.PlacesServiceStatus.ZERO_RESULTS) {
-                                resolve([]);
-                            } else {
-                                const errorMessage = this.handleApiError(status);
-                                reject(new Error(errorMessage));
-                            }
-                        });
-                    }
-                    
-                } catch (error) {
-                    this.log.error('Error in performEnhancedSearch:', error);
-                    reject(error);
+            // ✅ SECURITY FIX: Replaced with PlacesOrchestrationService/ApiService call
+            // This method is deprecated, use searchPlaces() instead
+            this.log.warn('⚠️ performEnhancedSearch is deprecated, use searchPlaces() with PlacesOrchestrationService');
+            
+            try {
+                // Use PlacesOrchestrationService if available
+                if (window.PlacesOrchestrationService) {
+                    const response = await window.PlacesOrchestrationService.searchNearby({
+                        latitude: params.latitude,
+                        longitude: params.longitude,
+                        radius: params.radius,
+                        types: ['restaurant'],
+                        maxResults: 20
+                    });
+                    return response.results || [];
+                } else {
+                    // Fallback to ApiService
+                    const results = await window.ApiService.searchPlaces(
+                        null,
+                        { latitude: params.latitude, longitude: params.longitude },
+                        params.radius,
+                        'restaurant'
+                    );
+                    return results.results || results || [];
                 }
-            });
+            } catch (error) {
+                this.log.error('Search failed:', error);
+                throw error;
+            }
         }
         
         /**
@@ -2132,9 +2001,10 @@ if (typeof window.PlacesModule === 'undefined') {
                     return;
                 }
                 
-                // Use PlacesOrchestrationService if available (preferred), fallback to Google Maps API
+                // Use PlacesOrchestrationService for advanced features (caching, bulk ops)
+                // Falls back to ApiService if not available
                 if (window.PlacesOrchestrationService) {
-                    this.debugLog('Using PlacesOrchestrationService for search');
+                    this.debugLog('✅ Using PlacesOrchestrationService (advanced features enabled)');
                     
                     // Get selected radius
                     const radiusSelect = document.getElementById('search-radius');
@@ -2150,167 +2020,74 @@ if (typeof window.PlacesModule === 'undefined') {
                         cuisine: this.cuisineFilter
                     });
                     
-                    // Build types array based on filters
-                    const types = [];
-                    if (this.filterFoodPlacesOnly) {
-                        if (this.cuisineFilter !== 'all') {
-                            const cuisineTypes = {
-                                'italian': 'italian_restaurant',
-                                'chinese': 'chinese_restaurant',
-                                'japanese': 'japanese_restaurant',
-                                'mexican': 'mexican_restaurant',
-                                'french': 'french_restaurant',
-                                'thai': 'thai_restaurant',
-                                'indian': 'indian_restaurant',
-                                'mediterranean': 'mediterranean_restaurant',
-                                'seafood': 'seafood_restaurant',
-                                'american': 'american_restaurant',
-                                'vegetarian': 'vegetarian_restaurant',
-                                'fast_food': 'fast_food_restaurant'
-                            };
-                            types.push(cuisineTypes[this.cuisineFilter] || 'restaurant');
-                        } else {
-                            types.push('restaurant');
-                        }
-                    }
-                    
-                    // Call orchestration service
+                    // Call orchestrated API (secure, with caching & bulk support)
                     try {
                         const response = await window.PlacesOrchestrationService.searchNearby({
                             latitude: this.currentLatitude,
                             longitude: this.currentLongitude,
                             radius: radius,
-                            types: types.length > 0 ? types : undefined,
-                            maxResults: 20,
-                            minRating: parseFloat(this.ratingFilter) > 0 ? parseFloat(this.ratingFilter) : undefined
+                            types: ['restaurant'],
+                            minRating: parseFloat(this.ratingFilter) || 0,
+                            maxResults: 20
                         });
                         
                         this.hideLoading();
                         this.isLoading = false;
                         
-                        this.debugLog(`Search completed: ${response.operation}, ${response.total_results} results`);
+                        this.debugLog(`✅ Search completed: ${response.total_results} results`);
                         
-                        // Convert to legacy format for compatibility
-                        const legacyResults = window.PlacesOrchestrationService.toLegacyFormat(response.results);
-                        this.searchResults = legacyResults;
-                        this.displaySearchResults(legacyResults);
+                        this.searchResults = response.results || [];
+                        this.displaySearchResults(this.searchResults);
                         
-                    } catch (orchestrationError) {
+                    } catch (apiError) {
                         this.hideLoading();
                         this.isLoading = false;
-                        this.log.error('Orchestration search error:', orchestrationError);
-                        this.showNotification(`Search error: ${orchestrationError.message}`, 'error');
+                        this.log.error('❌ API search error:', apiError);
+                        this.showNotification(`Search error: ${apiError.message}`, 'error');
                         
                         const resultsContainer = document.getElementById('places-search-results');
                         if (resultsContainer) {
                             resultsContainer.innerHTML = `
                                 <div class="p-4 text-center">
-                                    <p class="text-red-600">Search failed: ${orchestrationError.message}</p>
+                                    <p class="text-red-600">Search failed: ${apiError.message}</p>
                                     <p class="text-sm text-gray-500 mt-2">Please try again later.</p>
                                 </div>
                             `;
                         }
                     }
                     
-                } else {
-                    // Fallback to Google Maps JavaScript API
-                    this.debugLog('Falling back to Google Maps API');
+                } else if (window.ApiService) {
+                    // Fallback to ApiService
+                    this.debugLog('⚠️ PlacesOrchestrationService not available, using ApiService fallback');
                     
-                    // Create places service if needed
-                    if (!this.placesService) {
-                        try {
-                            // We need a map div for the PlacesService, even if it's not displayed
-                            let mapDiv = document.getElementById('places-map-div');
-                            if (!mapDiv) {
-                                mapDiv = document.createElement('div');
-                                mapDiv.id = 'places-map-div';
-                                mapDiv.style.height = '0px';
-                                mapDiv.style.width = '0px';
-                                mapDiv.style.position = 'absolute';
-                                mapDiv.style.left = '-9999px';
-                                document.body.appendChild(mapDiv);
-                            }
-                            
-                            // Create a map instance (required for PlacesService)
-                            const map = new google.maps.Map(mapDiv, {
-                                center: { lat: this.currentLatitude, lng: this.currentLongitude },
-                                zoom: 15
-                            });
-                            
-                            this.placesService = new google.maps.places.PlacesService(map);
-                            this.debugLog('PlacesService initialized successfully');
-                        } catch (serviceError) {
-                            this.hideLoading();
-                            this.isLoading = false;
-                            this.log.error('Error creating PlacesService:', serviceError);
-                            this.showNotification('Error initializing Places service: ' + serviceError.message, 'error');
-                            return;
-                        }
-                    }
-                    
-                    // Get selected radius
                     const radiusSelect = document.getElementById('search-radius');
                     const radius = radiusSelect ? parseInt(radiusSelect.value, 10) : 5000;
-                    this.debugLog('Search parameters:', { 
-                        lat: this.currentLatitude, 
-                        lng: this.currentLongitude, 
-                        radius: radius,
-                        filterFood: this.filterFoodPlacesOnly
-                    });
                     
-                    // Set up the search request
-                    const request = {
-                        location: new google.maps.LatLng(this.currentLatitude, this.currentLongitude),
-                        radius: radius
-                    };
-                    
-                    // Add type filter if enabled - use 'types' instead of 'type' for nearbySearch
-                    if (this.filterFoodPlacesOnly) {
-                        // For nearbySearch, we can only specify one type at a time
-                        // Start with 'restaurant' as the primary type
-                        request.type = 'restaurant';
-                    } else {
-                        // If not filtering, search for all types
-                        request.type = 'establishment';
-                    }
-                    
-                    // Perform the search with better error handling
                     try {
-                        this.placesService.nearbySearch(request, (results, status) => {
-                            this.hideLoading();
-                            this.isLoading = false;
-                            
-                            this.debugLog('Search completed with status:', status);
-                            
-                            if (status === google.maps.places.PlacesServiceStatus.OK) {
-                                this.searchResults = results;
-                                this.displaySearchResults(results);
-                            } else if (status === google.maps.places.PlacesServiceStatus.ZERO_RESULTS) {
-                                this.searchResults = [];
-                                this.displaySearchResults([]);
-                            } else {
-                                this.log.error('Places search failed with status:', status);
-                                const errorMessage = this.handleApiError(status);
-                                this.showNotification(`Places search failed: ${errorMessage}`, 'error');
-                                
-                                // Clear and display error message
-                                const resultsContainer = document.getElementById('places-search-results');
-                                if (resultsContainer) {
-                                    resultsContainer.innerHTML = `
-                                        <div class="p-4 text-center">
-                                            <p class="text-red-600">Search failed: ${errorMessage}</p>
-                                            <p class="text-sm text-gray-500 mt-2">Please try adjusting your search criteria or try again later.</p>
-                                        </div>
-                                    `;
-                                }
-                            }
-                        });
-                    } catch (serviceError) {
+                        const results = await window.ApiService.searchPlaces(
+                            null,
+                            { latitude: this.currentLatitude, longitude: this.currentLongitude },
+                            radius,
+                            'restaurant'
+                        );
+                        
                         this.hideLoading();
                         this.isLoading = false;
-                        this.log.error('Error calling Places service:', serviceError);
-                        this.showNotification(`Error calling Places service: ${serviceError.message}`, 'error');
+                        this.searchResults = results.results || results || [];
+                        this.displaySearchResults(this.searchResults);
+                    } catch (error) {
+                        this.hideLoading();
+                        this.isLoading = false;
+                        this.log.error('❌ ApiService search error:', error);
+                        this.showNotification(`Search error: ${error.message}`, 'error');
                     }
+                    
+                } else {
+                    // No Places service available
+                    this.hideLoading();
+                    this.isLoading = false;
+                    this.log.error('❌ No Places service available (neither PlacesOrchestrationService nor ApiService)');
+                    this.showNotification('API Service not available. Please refresh the page.', 'error');
                 }
                 
             } catch (error) {

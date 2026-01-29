@@ -96,17 +96,31 @@ def create_curation(
 def search_curations(
     entity_id: Optional[str] = Query(None),
     curator_id: Optional[str] = Query(None),
+    since: Optional[str] = Query(None, description="ISO timestamp - only return curations updated after this time"),
     limit: int = Query(50, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     db: Database = Depends(get_database)
 ):
-    """Search curations with filters"""
+    """Search curations with filters
+    
+    Supports incremental sync via ?since parameter:
+    - If since is provided, only returns curations with updatedAt >= since
+    - Reduces bandwidth for large collections
+    """
     # Build query
     query = {}
     if entity_id:
         query["entity_id"] = entity_id
     if curator_id:
         query["curator.id"] = curator_id
+    
+    # ✅ INCREMENTAL SYNC: Filter by updatedAt >= since
+    if since:
+        try:
+            since_dt = datetime.fromisoformat(since.replace('Z', '+00:00'))
+            query["updatedAt"] = {"$gte": since_dt}
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid since timestamp format. Use ISO 8601.")
     
     # Get total count
     total = db.curations.count_documents(query)

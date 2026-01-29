@@ -548,13 +548,17 @@ window.FindEntityModal = class FindEntityModal {
             
             console.log('✅ Place ID validated:', placeId);
             
-            // Verify ApiService is available
-            if (!window.ApiService) {
-                throw new Error('ApiService not available. Please ensure the application is fully loaded.');
+            // Use PlacesOrchestrationService if available (with caching), otherwise fallback to ApiService
+            let placeDetails;
+            if (window.PlacesOrchestrationService) {
+                console.log('✅ Using PlacesOrchestrationService for place details (cached)');
+                placeDetails = await window.PlacesOrchestrationService.getPlaceDetails(placeId);
+            } else if (window.ApiService) {
+                console.log('⚠️ Using ApiService fallback for place details');
+                placeDetails = await window.ApiService.getPlaceDetails(placeId);
+            } else {
+                throw new Error('No Places service available. Please ensure the application is fully loaded.');
             }
-            
-            // Fetch detailed place information using the proper method
-            const placeDetails = await window.ApiService.getPlaceDetails(placeId);
             
             if (!placeDetails || !placeDetails.result) {
                 throw new Error('Failed to fetch place details');

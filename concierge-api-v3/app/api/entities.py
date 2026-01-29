@@ -162,16 +162,30 @@ def delete_entity(
 def list_entities(
     type: Optional[str] = Query(None),
     name: Optional[str] = Query(None),
+    since: Optional[str] = Query(None, description="ISO timestamp - only return entities updated after this time"),
     limit: int = Query(50, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     db: Database = Depends(get_database)
 ):
-    """List entities with filters and pagination"""
+    """List entities with filters and pagination
+    
+    Supports incremental sync via ?since parameter:
+    - If since is provided, only returns entities with updatedAt >= since
+    - Reduces bandwidth for large collections (1000 entities → ~10 per sync)
+    """
     query = {}
     if type:
         query["type"] = type
     if name:
         query["name"] = {"$regex": name, "$options": "i"}
+    
+    # ✅ INCREMENTAL SYNC: Filter by updatedAt >= since
+    if since:
+        try:
+            since_dt = datetime.fromisoformat(since.replace('Z', '+00:00'))
+            query["updatedAt"] = {"$gte": since_dt}
+        except ValueError:
+            raise HTTPException(status_code=400, detail="Invalid since timestamp format. Use ISO 8601.")
     
     total = db.entities.count_documents(query)
     

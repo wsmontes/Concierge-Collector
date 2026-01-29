@@ -227,6 +227,7 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         const params = new URLSearchParams();
         if (filters.type) params.append('type', filters.type);
         if (filters.status) params.append('status', filters.status);
+        if (filters.since) params.append('since', filters.since);  // ✅ Incremental sync support
         if (filters.limit) params.append('limit', filters.limit);
         if (filters.offset) params.append('offset', filters.offset);
         
@@ -275,6 +276,7 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         const params = new URLSearchParams();
         if (filters.entity_id) params.append('entity_id', filters.entity_id);
         if (filters.curator_id) params.append('curator_id', filters.curator_id);
+        if (filters.since) params.append('since', filters.since);  // ✅ Incremental sync support
         if (filters.limit) params.append('limit', filters.limit);
         if (filters.offset) params.append('offset', filters.offset);
         
