@@ -187,3 +187,10 @@ TODO_LOCAL.md
 ############################
 docker-compose.override.yml
 .dockerignore
+
+# Temporary test scripts
+concierge-api-v3/test_*.py
+concierge-api-v3/fix_*.py
+concierge-api-v3/find_*.py
+concierge-api-v3/docs/openapi-render.json
+scripts/fetch_render_logs.py
