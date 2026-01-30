@@ -1349,6 +1349,8 @@ class ConceptModule {
                 'restaurant'
             );
             
+            console.log('🔴 RAW API RESPONSE:', extractedConcepts);
+            
             // Show concepts section
             this.uiManager.showConceptsSection();
             
@@ -1358,16 +1360,21 @@ class ConceptModule {
                 // Transform API v3 response format to expected frontend format
                 let conceptsData = extractedConcepts;
                 
+                console.log('🟡 Before transformation:', conceptsData);
+                
                 // API v3 returns: {workflow, results: {concepts: {concepts: [{category, value}], confidence_score}}}
                 // Extract the actual concepts array
                 if (extractedConcepts.results && extractedConcepts.results.concepts) {
                     conceptsData = extractedConcepts.results.concepts.concepts || [];
+                    console.log('🟢 After path extraction:', conceptsData);
                 }
                 
                 // Transform from array format [{category, value}] to object format {category: [values]}
                 if (Array.isArray(conceptsData)) {
+                    console.log('🔵 Is array, transforming...');
                     const transformed = {};
                     for (const concept of conceptsData) {
+                        console.log('🔵 Processing concept:', concept);
                         if (concept.category && concept.value) {
                             if (!transformed[concept.category]) {
                                 transformed[concept.category] = [];
@@ -1376,8 +1383,10 @@ class ConceptModule {
                         }
                     }
                     conceptsData = transformed;
+                    console.log('🟣 Final transformed:', conceptsData);
                 }
                 
+                console.log('🟠 Calling handleExtractedConceptsWithValidation with:', conceptsData);
                 this.handleExtractedConceptsWithValidation(conceptsData);
             }
             
