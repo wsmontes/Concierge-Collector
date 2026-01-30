@@ -635,8 +635,13 @@ class ConceptModule {
         
         // Group concepts by category if they exist
         const conceptsByCategory = {};
+        console.log('🟡 [GROUP DEBUG] About to group concepts');
+        console.log('🟡 [GROUP DEBUG] currentConcepts:', this.uiManager.currentConcepts);
+        console.log('🟡 [GROUP DEBUG] currentConcepts length:', this.uiManager.currentConcepts?.length);
+        
         if (this.uiManager.currentConcepts && this.uiManager.currentConcepts.length > 0) {
             for (const concept of this.uiManager.currentConcepts) {
+                console.log('🟡 [GROUP DEBUG] Processing concept:', concept);
                 if (!conceptsByCategory[concept.category]) {
                     conceptsByCategory[concept.category] = [];
                 }
@@ -644,6 +649,7 @@ class ConceptModule {
             }
         }
         
+        console.log('🟡 [GROUP DEBUG] conceptsByCategory:', conceptsByCategory);
         this.log.debug('conceptsByCategory:', conceptsByCategory);
         
         // Add section for each category, regardless if there are concepts or not
@@ -654,12 +660,17 @@ class ConceptModule {
         
         // Check if we have any concepts at all
         let hasAnyConcepts = this.uiManager.currentConcepts && this.uiManager.currentConcepts.length > 0;
+        console.log('🟡 [CHECK DEBUG] hasAnyConcepts:', hasAnyConcepts);
+        console.log('🟡 [CHECK DEBUG] conceptsSection hidden:', this.uiManager.conceptsSection?.classList.contains('hidden'));
         
         // If no concepts and not in manual entry mode, show the message
         if (!hasAnyConcepts && this.uiManager.conceptsSection.classList.contains('hidden')) {
+            console.log('⚠️ [CHECK DEBUG] EARLY RETURN - No concepts and section hidden');
             this.uiManager.conceptsContainer.innerHTML = '<p class="text-gray-500">No concepts extracted.</p>';
             return;
         }
+        
+        console.log('🟡 [CHECK DEBUG] Proceeding to render categories');
         
         for (const category of categories) {
             const categorySection = document.createElement('div');
