@@ -1109,6 +1109,14 @@ class ConceptModule {
         this.log.debug('🔵 handleExtractedConceptsWithValidation called');
         
         // 🔍 DEBUG: Log what we received in detail
+        console.log('🔴 [CRITICAL] extractedConcepts RAW:', extractedConcepts);
+        console.log('🔴 [CRITICAL] extractedConcepts type:', typeof extractedConcepts);
+        console.log('🔴 [CRITICAL] extractedConcepts keys:', Object.keys(extractedConcepts));
+        console.log('🔴 [CRITICAL] extractedConcepts.workflow:', extractedConcepts.workflow);
+        console.log('🔴 [CRITICAL] extractedConcepts.results:', extractedConcepts.results);
+        console.log('🔴 [CRITICAL] extractedConcepts.concepts:', extractedConcepts.concepts);
+        console.log('🔴 [CRITICAL] JSON:', JSON.stringify(extractedConcepts, null, 2));
+        
         this.log.debug('📄 Received extractedConcepts:', {
             type: typeof extractedConcepts,
             isArray: Array.isArray(extractedConcepts),
