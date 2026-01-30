@@ -31,7 +31,9 @@ async def test_complete_transcription_workflow(async_client, auth_token):
     # This is exactly what apiService.transcribeAudio() sends
     request_body = {
         "audio_file": base64_audio,
-        "language": "pt",  # ISO-639-1 format
+        # Note: language is now optional - GPT-5.2 Audio auto-detects
+        # If provided, will override auto-detection
+        "language": "pt",  # ISO-639-1 format (optional)
         "entity_type": "restaurant"
     }
     
@@ -75,6 +77,17 @@ async def test_complete_transcription_workflow(async_client, auth_token):
         results = data["results"]
         if results:  # May be empty if return_results=False
             assert isinstance(results, dict), "Results should be a dictionary"
+            
+            # GPT-5.2 Migration: Verify new fields if transcription was performed
+            if "transcription" in results:
+                trans = results["transcription"]
+                # language should be auto-detected (e.g., "pt", "en", "es")
+                assert "language" in trans, "Transcription missing auto-detected language"
+                assert "text" in trans, "Transcription missing text field"
+                # GPT-5.2 Audio uses gpt-5.2-audio model
+                if "model" in trans:
+                    assert trans["model"] == "gpt-5.2-audio", \
+                        f"Expected gpt-5.2-audio model, got {trans['model']}"
 
 
 @pytest.mark.asyncio
@@ -86,7 +99,7 @@ async def test_transcription_without_authentication(async_client):
     """
     request_body = {
         "audio_file": base64.b64encode(b"test").decode(),
-        "language": "pt",  # Use ISO-639-1 format
+        "language": "pt",  # Optional with GPT-5.2 (auto-detects if not provided)
         "entity_type": "restaurant"
     }
     
@@ -106,7 +119,7 @@ async def test_transcription_with_invalid_token(async_client):
     """Test handling of invalid authentication token"""
     request_body = {
         "audio_file": base64.b64encode(b"test").decode(),
-        "language": "pt",  # Use ISO-639-1 format
+        "language": "pt",  # Optional with GPT-5.2 (auto-detects if not provided)
         "entity_type": "restaurant"
     }
     
