@@ -78,17 +78,17 @@ class OpenAIService:
         save_to_cache: bool = True
     ) -> Dict[str, Any]:
         """
-        Transcribe audio using GPT-5.2 Audio with automatic language detection.
+        Transcribe audio using GPT-4o Transcribe with automatic language detection.
         
         Phase 1 Migration:
-        - Model: whisper-1 → gpt-5.2-audio
+        - Model: whisper-1 → gpt-4o-transcribe
         - Language: Auto-detection (unless explicitly overridden)
         - Validation: Pydantic schema enforcement
         
         Args:
             audio_data: Audio file object or base64 string
             language: Optional language override (e.g., "pt-BR", "en", "es")
-                     If not provided, GPT-5.2 will auto-detect
+                     If not provided, GPT-4o will auto-detect
             save_to_cache: Whether to save transcription to ai_transcriptions collection (default: True)
             
         Returns:
@@ -101,8 +101,8 @@ class OpenAIService:
         # Get service configuration
         config = self.config_service.get_config("transcription")
         
-        # Use GPT-5.2 Audio model (Phase 1 migration)
-        model = "gpt-5.2-audio"
+        # Use GPT-4o Transcribe model (Phase 1 migration)
+        model = "gpt-4o-transcribe"
         params = config["config"].copy()
         
         # Phase 1: Language auto-detection
