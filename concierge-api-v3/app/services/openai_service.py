@@ -50,7 +50,8 @@ class OpenAIService:
     async def transcribe_audio(
         self, 
         audio_data: Any, 
-        language: Optional[str] = None
+        language: Optional[str] = None,
+        save_to_cache: bool = True
     ) -> Dict[str, Any]:
         """
         Transcribe audio using Whisper with MongoDB config.
@@ -58,6 +59,7 @@ class OpenAIService:
         Args:
             audio_data: Audio file object or base64 string
             language: Language code (overrides config default)
+            save_to_cache: Whether to save transcription to ai_transcriptions collection (default: True)
             
         Returns:
             Dictionary with transcription_id, text, language, model
@@ -105,15 +107,16 @@ class OpenAIService:
         
         transcription_id = f"trans_{uuid.uuid4().hex[:12]}"
         
-        # Cache transcription in DB
-        await self.db.transcriptions.insert_one({
-            "transcription_id": transcription_id,
-            "text": response.text,
-            "language": params.get("language", "pt-BR"),
-            "model": model,
-            "duration": getattr(response, 'duration', None),
-            "created_at": datetime.now(timezone.utc).isoformat()
-        })
+        # Cache transcription in DB only if requested
+        if save_to_cache:
+            await self.db.ai_transcriptions.insert_one({
+                "transcription_id": transcription_id,
+                "text": response.text,
+                "language": params.get("language", "pt-BR"),
+                "model": model,
+                "duration": getattr(response, 'duration', None),
+                "created_at": datetime.now(timezone.utc).isoformat()
+            })
         
         return {
             "transcription_id": transcription_id,
@@ -126,7 +129,8 @@ class OpenAIService:
     async def extract_concepts_from_text(
         self, 
         text: str, 
-        entity_type: str = "restaurant"
+        entity_type: str = "restaurant",
+        save_to_cache: bool = True
     ) -> Dict[str, Any]:
         """
         Extract concepts from text using GPT-4 with MongoDB config.
@@ -134,6 +138,7 @@ class OpenAIService:
         Args:
             text: Text to analyze
             entity_type: Type of entity (for category selection)
+            save_to_cache: Whether to save concepts to ai_concepts collection (default: True)
             
         Returns:
             Dictionary with concepts, confidence_score, entity_type, model
@@ -165,24 +170,26 @@ class OpenAIService:
         result["entity_type"] = entity_type
         result["model"] = config["model"]
         
-        # Cache concepts in DB
-        concept_id = f"concept_{uuid.uuid4().hex[:12]}"
-        await self.db.ai_concepts.insert_one({
-            "concept_id": concept_id,
-            "text": text,
-            "concepts": result.get("concepts", []),
-            "confidence_score": result.get("confidence_score", 0.0),
-            "entity_type": entity_type,
-            "model": config["model"],
-            "created_at": datetime.now(timezone.utc).isoformat()
-        })
+        # Cache concepts in DB only if requested
+        if save_to_cache:
+            concept_id = f"concept_{uuid.uuid4().hex[:12]}"
+            await self.db.ai_concepts.insert_one({
+                "concept_id": concept_id,
+                "text": text,
+                "concepts": result.get("concepts", []),
+                "confidence_score": result.get("confidence_score", 0.0),
+                "entity_type": entity_type,
+                "model": config["model"],
+                "created_at": datetime.now(timezone.utc).isoformat()
+            })
         
         return result
     
     async def analyze_image(
         self, 
         image_url: str, 
-        entity_type: str = "restaurant"
+        entity_type: str = "restaurant",
+        save_to_cache: bool = True
     ) -> Dict[str, Any]:
         """
         Analyze image using GPT-4 Vision with MongoDB config.
@@ -190,6 +197,7 @@ class OpenAIService:
         Args:
             image_url: URL of image or base64 data
             entity_type: Type of entity (for category selection)
+            save_to_cache: Whether to save analysis to ai_image_analysis collection (default: True)
             
         Returns:
             Dictionary with concepts, confidence_score, visual_notes, entity_type, model
@@ -233,18 +241,19 @@ class OpenAIService:
         result["entity_type"] = entity_type
         result["model"] = config["model"]
         
-        # Cache image analysis in DB
-        analysis_id = f"img_analysis_{uuid.uuid4().hex[:12]}"
-        await self.db.ai_image_analysis.insert_one({
-            "analysis_id": analysis_id,
-            "image_url": image_url,
-            "concepts": result.get("concepts", []),
-            "confidence_score": result.get("confidence_score", 0.0),
-            "visual_notes": result.get("visual_notes", ""),
-            "entity_type": entity_type,
-            "model": config["model"],
-            "created_at": datetime.now(timezone.utc).isoformat()
-        })
+        # Cache image analysis in DB only if requested
+        if save_to_cache:
+            analysis_id = f"img_analysis_{uuid.uuid4().hex[:12]}"
+            await self.db.ai_image_analysis.insert_one({
+                "analysis_id": analysis_id,
+                "image_url": image_url,
+                "concepts": result.get("concepts", []),
+                "confidence_score": result.get("confidence_score", 0.0),
+                "visual_notes": result.get("visual_notes", ""),
+                "entity_type": entity_type,
+                "model": config["model"],
+                "created_at": datetime.now(timezone.utc).isoformat()
+            })
         
         return result
     

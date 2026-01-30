@@ -221,6 +221,9 @@ class AIOrchestrator:
         results = {}
         entity_type = request.get("entity_type", "restaurant")
         
+        # Extract save_to_cache flag from output config
+        save_to_cache = request.get("output", {}).get("save_to_db", False)
+        
         if workflow == "audio_only":
             # Transcribe audio
             audio = request.get("audio_file") or request.get("audio_url") or request.get("text")
@@ -233,20 +236,29 @@ class AIOrchestrator:
                 # Transcribe audio
                 transcription = await self.openai.transcribe_audio(
                     audio, 
-                    request.get("language", "pt-BR")
+                    request.get("language", "pt-BR"),
+                    save_to_cache=save_to_cache
                 )
                 results["transcription"] = transcription
                 text = transcription["text"]
             
             # Extract concepts
-            concepts = await self.openai.extract_concepts_from_text(text, entity_type)
+            concepts = await self.openai.extract_concepts_from_text(
+                text, 
+                entity_type,
+                save_to_cache=save_to_cache
+            )
             concepts["category_context"] = entity_type
             results["concepts"] = concepts
         
         elif workflow == "image_only":
             # Analyze image
             image = request.get("image_file") or request.get("image_url")
-            image_analysis = await self.openai.analyze_image(image, entity_type)
+            image_analysis = await self.openai.analyze_image(
+                image, 
+                entity_type,
+                save_to_cache=save_to_cache
+            )
             image_analysis["category_context"] = entity_type
             results["image_analysis"] = image_analysis
         
@@ -262,14 +274,16 @@ class AIOrchestrator:
             audio = request.get("audio_file") or request.get("audio_url")
             transcription = await self.openai.transcribe_audio(
                 audio, 
-                request.get("language", "pt-BR")
+                request.get("language", "pt-BR"),
+                save_to_cache=save_to_cache
             )
             results["transcription"] = transcription
             
             # 3. Extract concepts
             concepts = await self.openai.extract_concepts_from_text(
                 transcription["text"],
-                entity_type
+                entity_type,
+                save_to_cache=save_to_cache
             )
             concepts["category_context"] = entity_type
             results["concepts"] = concepts
@@ -296,7 +310,11 @@ class AIOrchestrator:
             
             # 2. Analyze image
             image = request.get("image_file") or request.get("image_url")
-            image_analysis = await self.openai.analyze_image(image, entity_type)
+            image_analysis = await self.openai.analyze_image(
+                image, 
+                entity_type,
+                save_to_cache=save_to_cache
+            )
             image_analysis["category_context"] = entity_type
             results["image_analysis"] = image_analysis
             
@@ -324,20 +342,26 @@ class AIOrchestrator:
             audio = request.get("audio_file") or request.get("audio_url")
             transcription = await self.openai.transcribe_audio(
                 audio, 
-                request.get("language", "pt-BR")
+                request.get("language", "pt-BR"),
+                save_to_cache=save_to_cache
             )
             results["transcription"] = transcription
             
             # Extract concepts from text
             text_concepts = await self.openai.extract_concepts_from_text(
                 transcription["text"],
-                entity_type
+                entity_type,
+                save_to_cache=save_to_cache
             )
             results["text_concepts"] = text_concepts
             
             # Analyze image
             image = request.get("image_file") or request.get("image_url")
-            image_analysis = await self.openai.analyze_image(image, entity_type)
+            image_analysis = await self.openai.analyze_image(
+                image, 
+                entity_type,
+                save_to_cache=save_to_cache
+            )
             results["image_analysis"] = image_analysis
             
             # Combine concepts from both sources (deduplicate)
