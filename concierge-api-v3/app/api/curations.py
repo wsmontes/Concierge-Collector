@@ -235,11 +235,11 @@ def update_curation(
 def delete_curation(
     curation_id: str,
     db: Database = Depends(get_database),
-    token_data: dict = Depends(verify_access_token)  # Require JWT authentication
+    auth: dict = Depends(verify_auth)  # Support both API key and JWT
 ):
     """Delete curation
     
-    **Authentication Required:** Include `Authorization: Bearer <token>` header
+    **Authentication Required:** Include `Authorization: Bearer <token>` OR `X-API-Key: <key>` header
     """
     result = db.curations.delete_one({"_id": curation_id})
     
