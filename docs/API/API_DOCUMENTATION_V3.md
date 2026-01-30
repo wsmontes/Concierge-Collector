@@ -1,9 +1,8 @@
 # Concierge API V3 - Complete Documentation
 
-**Base URL**: `https://wsmontes.pythonanywhere.com/api/v3`  
-**Local Dev**: `http://localhost:8000/api/v3`  
-**API Version**: `3.0.0`  
-**Content-Type**: `application/json`
+**Production**: `https://concierge-collector.onrender.com/api/v3`  
+**Local**: `http://localhost:8000/api/v3`  
+**Version**: `3.0.0` | **Content-Type**: `application/json`
 
 ## Overview
 
@@ -32,37 +31,33 @@ The Concierge API V3 is a professional async FastAPI implementation designed for
 
 ## Authentication
 
-### Public Endpoints
-Most endpoints are publicly accessible:
-- System (`/health`, `/info`)
-- Entities (CRUD operations)
-- Curations (CRUD operations)
-- Places (Google Places proxy)
+### Dual Authentication Methods
 
-### Protected Endpoints (API Key Required)
-AI services require `X-API-Key` header:
+**1. OAuth JWT (Web Users)**
 ```http
-X-API-Key: your-api-key-here
+Authorization: Bearer <jwt_token>
 ```
 
-**Generate API Key:**
-```bash
-cd concierge-api-v3
-python scripts/generate_api_key.py
+**2. API Key (Bots/Scripts)**
+```http
+X-API-Key: <api_secret_key>
 ```
 
-**AI Endpoints:**
-- `/ai/orchestrate` - Intelligent workflow orchestration (all-in-one)
-- `/ai/usage-stats` - AI usage statistics
-- `/ai/health` - AI services health check
+Generate API key: `python scripts/generate_api_key.py`
 
-> **Note:** AI services use a single `/orchestrate` endpoint with `workflow_type` parameter:
-> - `audio_only` - Transcribe audio + extract concepts
-> - `image_only` - Analyze image
-> - `auto` - Smart detection based on inputs
-> - `place_id_with_audio` - Full workflow: Place → Entity + Curation
+### Endpoint Protection
 
-⚠️ **Important:** AI endpoints use OpenAI API and cost money. Monitor your usage.
+**Protected (Require Auth):**
+- POST/PATCH/DELETE `/entities/*`, `/curations/*`
+- POST `/ai/orchestrate`
+
+**Public (No Auth):**
+- GET requests
+- `/health`, `/info`
+- `/places/*` (Google Places proxy)
+- `/llm/*` (LLM Gateway for Claude/MCP)
+
+⚠️ **Cost Warning:** `/ai/orchestrate` uses OpenAI API - monitor usage
 
 ---
 

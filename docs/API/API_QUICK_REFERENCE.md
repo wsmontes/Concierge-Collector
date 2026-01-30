@@ -1,19 +1,17 @@
 # Concierge API V3 - Quick Reference
 
-**Base URL**: `https://wsmontes.pythonanywhere.com/api/v3`  
-**Local Dev**: `http://localhost:8000/api/v3`
+**Production**: `https://concierge-collector.onrender.com/api/v3`  
+**Local**: `http://localhost:8000/api/v3`
 
-## Quick Links
-- [Full Documentation](./API_DOCUMENTATION_V3.md)
-- [Interactive Docs](https://wsmontes.pythonanywhere.com/api/v3/docs) 🔗 Swagger UI
-- [ReDoc](https://wsmontes.pythonanywhere.com/api/v3/redoc) 📚 Alternative docs
-- [Health Check](https://wsmontes.pythonanywhere.com/api/v3/health)
+## 🔗 Quick Links
+- [Full Docs](./API_DOCUMENTATION_V3.md) | [Interactive](https://concierge-collector.onrender.com/api/v3/docs) | [Health](https://concierge-collector.onrender.com/api/v3/health)
 
 ## 🔑 Authentication
 
-Most endpoints are public. AI endpoints require API key:
-```
-X-API-Key: your-api-key-here
+**Dual Auth:** OAuth JWT or API Key accepted
+```http
+Authorization: Bearer <jwt_token>  # Web users
+X-API-Key: <api_secret_key>        # Bots/scripts
 ```
 
 ## Endpoints Summary
@@ -27,21 +25,21 @@ X-API-Key: your-api-key-here
 ### Entities
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| POST | `/entities` | ❌ | Create entity |
+| POST | `/entities` | ✅ | Create entity |
 | GET | `/entities/{id}` | ❌ | Get entity |
-| PATCH | `/entities/{id}` | ❌ | Update entity (requires ETag) |
-| DELETE | `/entities/{id}` | ❌ | Delete entity |
+| PATCH | `/entities/{id}` | ✅ | Update entity (requires ETag) |
+| DELETE | `/entities/{id}` | ✅ | Delete entity |
 | GET | `/entities?type=X&name=Y` | ❌ | Search entities |
 
 ### Curations
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| POST | `/curations` | ❌ | Create curation |
+| POST | `/curations` | ✅ | Create curation |
 | GET | `/curations/{id}` | ❌ | Get curation |
-| PATCH | `/curations/{id}` | ❌ | Update curation (requires ETag) |
-| DELETE | `/curations/{id}` | ❌ | Delete curation |
+| PATCH | `/curations/{id}` | ✅ | Update curation (requires ETag) |
+| DELETE | `/curations/{id}` | ✅ | Delete curation |
 | GET | `/entities/{id}/curations` | ❌ | Get entity curations |
-| GET | `/curations/search?category=X` | ❌ | Search curations |
+| GET | `/curations/search?...` | ❌ | Search curations |
 
 ### Places (Google Places API Proxy)
 | Method | Endpoint | Auth | Description |

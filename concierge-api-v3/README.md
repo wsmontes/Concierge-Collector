@@ -21,8 +21,9 @@ cd concierge-api-v3
 python main.py
 ```
 
-API will be available at `http://localhost:8000`
-API docs at `http://localhost:8000/api/v3/docs`
+**Production:** `https://concierge-collector.onrender.com/api/v3`  
+**Local:** `http://localhost:8000/api/v3`  
+**Docs:** `/docs` | `/redoc`
 
 ## 📁 Project Structure
 
@@ -44,14 +45,20 @@ concierge-api-v3/
 └── requirements.txt  # Python dependencies
 ```
 
-## 🔒 Security
+## 🔒 Authentication
 
-API Key authentication is required for all write operations (POST, PATCH, DELETE).
-Read operations (GET) are public.
+**Dual Authentication:**
+- **OAuth (Web Users):** `Authorization: Bearer <jwt_token>`
+- **API Key (Bots/Scripts):** `X-API-Key: <api_secret_key>`
+
+**Protected Endpoints:**
+- POST/PATCH/DELETE on `/entities`, `/curations`
+- POST `/ai/orchestrate`
+
+**Public Endpoints:**
+- GET requests, `/health`, `/places/*`, `/llm/*`
 
 Generate API key: `python scripts/generate_api_key.py`
-
-See [docs/security/SECURITY.md](docs/security/SECURITY.md) for details.
 
 ## 🧪 Testing
 

@@ -30,52 +30,34 @@ Perfect for: Code generation, API testing tools, validation.
 
 ## 🔗 Interactive Documentation
 
-### Swagger UI
-**https://wsmontes.pythonanywhere.com/api/v3/docs**  
-Interactive API explorer - try endpoints directly in your browser.
-
-### ReDoc
-**https://wsmontes.pythonanywhere.com/api/v3/redoc**  
-Beautiful, responsive API documentation.
+### Interactive Docs
+- **Swagger UI:** `https://concierge-collector.onrender.com/api/v3/docs`
+- **ReDoc:** `https://concierge-collector.onrender.com/api/v3/redoc`
 
 ---
 
 ## 🎯 Quick Start
 
-### 1. Check API Status
 ```bash
-curl https://wsmontes.pythonanywhere.com/api/v3/health
-```
+# 1. Health Check
+curl https://concierge-collector.onrender.com/api/v3/health
 
-### 2. Create an Entity
-```bash
-curl -X POST https://wsmontes.pythonanywhere.com/api/v3/entities \
+# 2. Search Places (public)
+curl "https://concierge-collector.onrender.com/api/v3/places/orchestrate" \
   -H "Content-Type: application/json" \
-  -d '{
-    "entity_id": "my_restaurant",
-    "type": "restaurant",
-    "name": "My Restaurant",
-    "metadata": {
-      "cuisine": "Italian",
-      "rating": 4.5
-    }
-  }'
-```
+  -d '{"query": "restaurants in Rome"}'
 
-### 3. Search Nearby Places
-```bash
-curl "https://wsmontes.pythonanywhere.com/api/v3/places/nearby?latitude=37.7749&longitude=-122.4194&radius=1000&type=restaurant"
-```
-
-### 4. Use AI Services (requires API key)
-```bash
-curl -X POST https://wsmontes.pythonanywhere.com/api/v3/ai/transcribe \
+# 3. Create Entity (requires auth)
+curl -X POST https://concierge-collector.onrender.com/api/v3/entities \
   -H "Content-Type: application/json" \
   -H "X-API-Key: your-key" \
-  -d '{
-    "audio_file": "base64_encoded_audio...",
-    "language": "pt-BR"
-  }'
+  -d '{"entity_id": "my_restaurant", "type": "restaurant", "name": "My Restaurant"}'
+
+# 4. AI Services (requires auth)
+curl -X POST https://concierge-collector.onrender.com/api/v3/ai/orchestrate \
+  -H "Content-Type: application/json" \
+  -H "X-API-Key: your-key" \
+  -d '{"workflow": "text_only", "input": {"text": "Great food"}, "output": {"save_to_db": false}}'
 ```
 
 ---
@@ -83,8 +65,8 @@ curl -X POST https://wsmontes.pythonanywhere.com/api/v3/ai/transcribe \
 ## 📋 API Overview
 
 ### Base URLs
-- **Production:** `https://wsmontes.pythonanywhere.com/api/v3`
-- **Local Dev:** `http://localhost:8000/api/v3`
+- **Production:** `https://concierge-collector.onrender.com/api/v3`
+- **Local:** `http://localhost:8000/api/v3`
 
 ### Endpoints Summary
 

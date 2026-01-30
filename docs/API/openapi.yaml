@@ -1,9 +1,18 @@
 openapi: 3.1.0
 info:
   title: Concierge Collector API V3
-  description: Professional async API with MongoDB support for entity and curation
-    management
+  description: |
+    Professional async API with MongoDB, AI services, and dual authentication.
+    
+    **Production:** `https://concierge-collector.onrender.com/api/v3`
+    
+    **Authentication:** OAuth JWT or API Key
   version: 3.0.0
+servers:
+  - url: https://concierge-collector.onrender.com/api/v3
+    description: Production
+  - url: http://localhost:8000/api/v3
+    description: Local Development
 paths:
   /api/v3/health:
     get:
@@ -41,9 +50,10 @@ paths:
       description: 'Create a new entity or update if exists (upsert with merge)
 
 
-        **Authentication Required:** Include `X-API-Key` header'
+        **Authentication Required:** OAuth JWT or API Key'
       operationId: create_entity_api_v3_entities_post
       security:
+      - BearerAuth: []
       - APIKeyHeader: []
       requestBody:
         required: true
@@ -1452,4 +1462,10 @@ components:
       type: apiKey
       in: header
       name: X-API-Key
+      description: API Key for bots and scripts
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: OAuth JWT token for web users
 
