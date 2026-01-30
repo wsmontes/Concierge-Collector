@@ -620,12 +620,18 @@ class ConceptModule {
     }
     
     async renderConcepts() {
+        console.log('🔵 [RENDER DEBUG] renderConcepts() called');
         this.log.debug('renderConcepts called');
         this.log.debug('conceptsContainer:', this.uiManager.conceptsContainer);
         this.log.debug('currentConcepts:', this.uiManager.currentConcepts);
         
+        console.log('🔵 [RENDER DEBUG] conceptsContainer:', this.uiManager.conceptsContainer);
+        console.log('🔵 [RENDER DEBUG] conceptsContainer.id:', this.uiManager.conceptsContainer?.id);
+        console.log('🔵 [RENDER DEBUG] currentConcepts length:', this.uiManager.currentConcepts?.length);
+        
         // Clear the container
         this.uiManager.conceptsContainer.innerHTML = '';
+        console.log('🔵 [RENDER DEBUG] Container cleared');
         
         // Group concepts by category if they exist
         const conceptsByCategory = {};
@@ -1135,7 +1141,11 @@ class ConceptModule {
         this.log.debug('Current concepts after adding:', this.uiManager.currentConcepts);
         
         // Render the concepts UI
+        console.log('🟢 [CONCEPT DEBUG] About to call renderConcepts()');
+        console.log('🟢 [CONCEPT DEBUG] currentConcepts:', this.uiManager.currentConcepts);
+        console.log('🟢 [CONCEPT DEBUG] conceptsContainer exists:', !!this.uiManager.conceptsContainer);
         this.renderConcepts();
+        console.log('🟢 [CONCEPT DEBUG] renderConcepts() completed');
         
         // Notify user about the results
         if (duplicateCount > 0) {
