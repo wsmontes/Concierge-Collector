@@ -12,8 +12,14 @@ Dependencies:
 
 Migration Status:
 - Phase 1: Audio Transcription (whisper-1 → gpt-5.2-audio) ✅
-- Phase 2: Concept Extraction (gpt-4 → gpt-5.2) ⏳
-- Phase 3: Image Analysis (gpt-4-vision → gpt-5.2) ⏳
+- Phase 2: Concept Extraction (gpt-4 → gpt-5.2) ✅
+- Phase 3: Image Analysis (gpt-4-vision → gpt-5.2) ✅
+
+All services now use:
+- Responses API (client.responses.parse)
+- Pydantic structured outputs (text_format parameter)
+- reasoning={"effort": "none"} for fast responses
+- text={"verbosity": "low"} for -40% token savings
 """
 
 import base64
@@ -33,7 +39,11 @@ import os
 
 from app.services.category_service import CategoryService
 from app.services.openai_config_service import OpenAIConfigService
-from app.models.ai_outputs import TranscriptionOutput
+from app.models.ai_outputs import (
+    TranscriptionOutput,
+    ConceptExtractionOutput,
+    ImageAnalysisOutput,
+)
 
 
 class OpenAIService:
@@ -193,7 +203,14 @@ class OpenAIService:
         save_to_cache: bool = True
     ) -> Dict[str, Any]:
         """
-        Extract concepts from text using GPT-4 with MongoDB config.
+        Extract concepts from text using GPT-5.2 with Responses API and structured outputs.
+        
+        Phase 2 Migration:
+        - Model: gpt-4 → gpt-5.2
+        - API: Chat Completions → Responses API
+        - Outputs: json.loads() → Pydantic validation
+        - Reasoning: effort="none" (fastest, no chain-of-thought)
+        - Verbosity: "low" (-40% output tokens)
         
         Args:
             text: Text to analyze
@@ -201,12 +218,16 @@ class OpenAIService:
             save_to_cache: Whether to save concepts to ai_concepts collection (default: True)
             
         Returns:
-            Dictionary with concepts, confidence_score, entity_type, model
+            Dictionary with concepts, confidence_score, reasoning (optional), entity_type, model
+            
+        Raises:
+            HTTPException(400): If concept extraction validation fails
+            HTTPException(500): If OpenAI API call fails
         """
         # Get categories for entity type
         categories = await self.category_service.get_categories(entity_type)
         
-        # Get service configuration
+        # Get service configuration (still read from MongoDB for prompt template)
         config = self.config_service.get_config("concept_extraction_text")
         
         # Render prompt with variables
@@ -218,17 +239,54 @@ class OpenAIService:
             }
         )
         
-        # Call OpenAI
-        response = self.client.chat.completions.create(
-            model=config["model"],
-            messages=[{"role": "user", "content": prompt}],
-            **config["config"]
-        )
+        # Phase 2: Use GPT-5.2 with Responses API
+        model = "gpt-5.2"
         
-        # Parse JSON response
-        result = json.loads(response.choices[0].message.content)
-        result["entity_type"] = entity_type
-        result["model"] = config["model"]
+        try:
+            print(f"[DEBUG] Calling GPT-5.2 Responses API for concept extraction")
+            print(f"[DEBUG] Text length: {len(text)} chars, Categories: {len(categories)}")
+            
+            # Call OpenAI Responses API with structured outputs
+            response = self.client.responses.parse(
+                model=model,
+                input=[
+                    {"role": "user", "content": prompt}
+                ],
+                text_format=ConceptExtractionOutput,  # Pydantic schema for structured outputs
+                reasoning={"effort": "none"},  # No chain-of-thought (fastest)
+                text={"verbosity": "low"}  # -40% output tokens
+            )
+            
+            print(f"[DEBUG] Response received, parsing output")
+            
+            # Phase 2: Pydantic validation built-in
+            validated = response.output_parsed  # Already a ConceptExtractionOutput instance
+            
+            print(f"[DEBUG] Validation successful - concepts: {validated.concepts}, confidence: {validated.confidence_score}")
+            
+        except ValidationError as e:
+            print(f"[ERROR] Concept extraction validation failed: {e}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid concept extraction format: {str(e)}"
+            )
+        except Exception as e:
+            print(f"[ERROR] Concept extraction failed: {type(e).__name__}: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            raise HTTPException(
+                status_code=500,
+                detail=f"Concept extraction failed: {str(e)}"
+            )
+        
+        # Prepare result dictionary
+        result = {
+            "concepts": validated.concepts,
+            "confidence_score": validated.confidence_score,
+            "reasoning": validated.reasoning,
+            "entity_type": entity_type,
+            "model": model
+        }
         
         # Cache concepts in DB only if requested
         if save_to_cache:
@@ -236,10 +294,11 @@ class OpenAIService:
             await self.db.ai_concepts.insert_one({
                 "concept_id": concept_id,
                 "text": text,
-                "concepts": result.get("concepts", []),
-                "confidence_score": result.get("confidence_score", 0.0),
+                "concepts": validated.concepts,
+                "confidence_score": validated.confidence_score,
+                "reasoning": validated.reasoning,
                 "entity_type": entity_type,
-                "model": config["model"],
+                "model": model,
                 "created_at": datetime.now(timezone.utc).isoformat()
             })
         
@@ -252,7 +311,14 @@ class OpenAIService:
         save_to_cache: bool = True
     ) -> Dict[str, Any]:
         """
-        Analyze image using GPT-4 Vision with MongoDB config.
+        Analyze image using GPT-5.2 with Responses API and structured outputs.
+        
+        Phase 3 Migration:
+        - Model: gpt-4-vision-preview → gpt-5.2
+        - API: Chat Completions → Responses API
+        - Outputs: json.loads() → Pydantic validation
+        - Reasoning: effort="none" (fastest)
+        - Verbosity: "low" (-40% output tokens)
         
         Args:
             image_url: URL of image or base64 data
@@ -260,12 +326,16 @@ class OpenAIService:
             save_to_cache: Whether to save analysis to ai_image_analysis collection (default: True)
             
         Returns:
-            Dictionary with concepts, confidence_score, visual_notes, entity_type, model
+            Dictionary with description, detected_items, cuisine_inference, ambiance, confidence_score
+            
+        Raises:
+            HTTPException(400): If image analysis validation fails
+            HTTPException(500): If OpenAI API call fails
         """
         # Get categories for entity type
         categories = await self.category_service.get_categories(entity_type)
         
-        # Get service configuration
+        # Get service configuration (still read from MongoDB for prompt template)
         config = self.config_service.get_config("image_analysis")
         
         # Render prompt with variables
@@ -274,32 +344,68 @@ class OpenAIService:
             {"categories": categories}
         )
         
-        # Call OpenAI Vision
-        response = self.client.chat.completions.create(
-            model=config["model"],
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {
-                            "type": "image_url", 
-                            "image_url": {
-                                "url": image_url,
-                                "detail": config["config"].get("detail", "high")
-                            }
-                        }
-                    ]
-                }
-            ],
-            temperature=config["config"].get("temperature", 0.3),
-            max_tokens=config["config"].get("max_tokens", 300)
-        )
+        # Phase 3: Use GPT-5.2 with Responses API
+        model = "gpt-5.2"
         
-        # Parse JSON response
-        result = json.loads(response.choices[0].message.content)
-        result["entity_type"] = entity_type
-        result["model"] = config["model"]
+        try:
+            print(f"[DEBUG] Calling GPT-5.2 Responses API for image analysis")
+            print(f"[DEBUG] Image URL: {image_url[:100]}...")
+            
+            # Call OpenAI Responses API with structured outputs
+            response = self.client.responses.parse(
+                model=model,
+                input=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {"type": "text", "text": prompt},
+                            {
+                                "type": "image_url",
+                                "image_url": {
+                                    "url": image_url,
+                                    "detail": config["config"].get("detail", "high")
+                                }
+                            }
+                        ]
+                    }
+                ],
+                text_format=ImageAnalysisOutput,  # Pydantic schema for structured outputs
+                reasoning={"effort": "none"},  # No chain-of-thought (fastest)
+                text={"verbosity": "low"}  # -40% output tokens
+            )
+            
+            print(f"[DEBUG] Response received, parsing output")
+            
+            # Phase 3: Pydantic validation built-in
+            validated = response.output_parsed  # Already an ImageAnalysisOutput instance
+            
+            print(f"[DEBUG] Validation successful - detected {len(validated.detected_items)} items, confidence: {validated.confidence_score}")
+            
+        except ValidationError as e:
+            print(f"[ERROR] Image analysis validation failed: {e}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid image analysis format: {str(e)}"
+            )
+        except Exception as e:
+            print(f"[ERROR] Image analysis failed: {type(e).__name__}: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            raise HTTPException(
+                status_code=500,
+                detail=f"Image analysis failed: {str(e)}"
+            )
+        
+        # Prepare result dictionary
+        result = {
+            "description": validated.description,
+            "detected_items": [item.model_dump() for item in validated.detected_items],
+            "cuisine_inference": validated.cuisine_inference,
+            "ambiance": validated.ambiance,
+            "confidence_score": validated.confidence_score,
+            "entity_type": entity_type,
+            "model": model
+        }
         
         # Cache image analysis in DB only if requested
         if save_to_cache:
@@ -307,11 +413,13 @@ class OpenAIService:
             await self.db.ai_image_analysis.insert_one({
                 "analysis_id": analysis_id,
                 "image_url": image_url,
-                "concepts": result.get("concepts", []),
-                "confidence_score": result.get("confidence_score", 0.0),
-                "visual_notes": result.get("visual_notes", ""),
+                "description": validated.description,
+                "detected_items": [item.model_dump() for item in validated.detected_items],
+                "cuisine_inference": validated.cuisine_inference,
+                "ambiance": validated.ambiance,
+                "confidence_score": validated.confidence_score,
                 "entity_type": entity_type,
-                "model": config["model"],
+                "model": model,
                 "created_at": datetime.now(timezone.utc).isoformat()
             })
         
