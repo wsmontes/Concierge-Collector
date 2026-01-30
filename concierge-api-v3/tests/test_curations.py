@@ -67,7 +67,7 @@ class TestCurationEndpoints:
         """Test creating curation without authentication"""
         response = client.post("/api/v3/curations", json=sample_curation)
         
-        assert response.status_code in [401, 403]
+        assert response.status_code == 401
     
     def test_get_curation_not_found(self, client):
         """Test getting non-existent curation"""
@@ -82,14 +82,14 @@ class TestCurationEndpoints:
             json={"status": "approved"}
         )
         
-        assert response.status_code in [401, 403]
+        assert response.status_code == 401
     
     def test_delete_curation_without_auth(self, client):
         """Test deleting curation without authentication"""
         response = client.delete("/api/v3/curations/test_id")
         
-        # Should fail without auth, or 404 if endpoint not implemented
-        assert response.status_code in [401, 403, 404]
+        # Should fail without auth
+        assert response.status_code == 401
 
 
 class TestCurationValidation:
@@ -103,7 +103,7 @@ class TestCurationValidation:
         }
         
         response = client.post("/api/v3/curations", json=invalid_curation)
-        assert response.status_code in [401, 403, 422]
+        assert response.status_code == 401  # No auth provided
     
     def test_search_curations_invalid_status(self, client):
         """Test searching with invalid status"""

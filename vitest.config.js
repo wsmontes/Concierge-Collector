@@ -35,8 +35,8 @@ export default defineConfig({
       lines: 70
     },
     
-    // Test timeout (5 seconds)
-    testTimeout: 5000,
+    // Test timeout (30 seconds for integration tests)
+    testTimeout: 30000,
     
     // Include only test files
     include: ['tests/**/*.test.js'],

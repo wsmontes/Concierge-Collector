@@ -22,13 +22,13 @@ class TestAIEndpoints:
         """Test orchestrate without data - should validate, not crash"""
         response = client.post("/api/v3/ai/orchestrate", json={})
         
-        # Should return validation error or auth error, NOT 500 (internal error)
+        # Should return validation error, NOT 500 (internal error)
         assert response.status_code != 500, \
             f"Empty request should not cause 500 error: {response.text}"
         
-        # Expected: 401 (auth required), 400 (validation), or 422 (unprocessable)
-        assert response.status_code in [400, 401, 422], \
-            f"Expected validation/auth error, got {response.status_code}"
+        # Expected: 422 (unprocessable entity - missing required fields)
+        assert response.status_code == 422, \
+            f"Expected 422 validation error, got {response.status_code}"
     
     def test_orchestrate_with_text(self, client, auth_headers):
         """Test orchestrating with text input"""
@@ -48,8 +48,9 @@ class TestAIEndpoints:
         assert response.status_code != 500, \
             f"❌ 500 error indicates code bug (async/await?): {response.text}"
         
-        # Acceptable: 200 (success), 401 (auth), 503 (service unavailable)
-        assert response.status_code in [200, 401, 503]
+        # With auth_headers (which skips if no key), should succeed with 200
+        assert response.status_code == 200, \
+            f"Expected 200 with valid auth, got {response.status_code}"
     
     def test_get_usage_stats(self, client):
         """Test getting AI usage statistics"""
@@ -59,7 +60,8 @@ class TestAIEndpoints:
         assert response.status_code != 500, \
             f"Usage stats should not return 500: {response.text}"
         
-        assert response.status_code in [200, 401, 403]
+        # Expected: 200 (success)
+        assert response.status_code == 200
 
 
 class TestAIValidation:
@@ -78,12 +80,12 @@ class TestAIValidation:
             headers=auth_headers
         )
         
-        # Should accept or validate, but NEVER crash with 500
+        # Should validate, but NEVER crash with 500
         assert response.status_code != 500, \
             f"Invalid workflow should not cause 500: {response.text}"
         
-        # Should return 200 (accepts any workflow) or 400 (validates)
-        assert response.status_code in [200, 400, 401]
+        # Should return 400 (validates workflow type)
+        assert response.status_code == 400
 
 
 class TestAsyncAwaitIssues:

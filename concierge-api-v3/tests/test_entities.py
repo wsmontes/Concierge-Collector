@@ -72,8 +72,8 @@ class TestEntityEndpoints:
         """Test creating entity without authentication fails"""
         response = client.post("/api/v3/entities", json=sample_entity)
         
-        # Should fail without auth
-        assert response.status_code in [401, 403]
+        # Must fail with 401 Unauthorized
+        assert response.status_code == 401
     
     def test_get_entity_not_found(self, client):
         """Test getting non-existent entity"""
@@ -109,7 +109,7 @@ class TestEntityEndpoints:
             json={"name": "Updated Name"}
         )
         
-        assert response.status_code in [401, 403, 428]  # 428 = missing If-Match
+        assert response.status_code == 401  # Unauthorized
     
     def test_update_entity_missing_if_match(self, client, auth_headers):
         """Test updating entity without If-Match header"""
@@ -119,13 +119,13 @@ class TestEntityEndpoints:
             headers=auth_headers
         )
         
-        assert response.status_code in [401, 403, 428]
+        assert response.status_code == 428  # Precondition Required (missing If-Match)
     
     def test_delete_entity_without_auth(self, client):
         """Test deleting entity without authentication"""
         response = client.delete("/api/v3/entities/test_id")
         
-        assert response.status_code in [401, 403]
+        assert response.status_code == 401  # Unauthorized
     
     def test_delete_entity_not_found(self, client, auth_headers):
         """Test deleting non-existent entity"""
@@ -134,8 +134,7 @@ class TestEntityEndpoints:
             headers=auth_headers
         )
         
-        # Should fail - either auth required or not found
-        assert response.status_code in [401, 403, 404]
+        assert response.status_code == 404  # Not Found
 
 
 class TestEntityValidation:
@@ -149,8 +148,8 @@ class TestEntityValidation:
         }
         
         response = client.post("/api/v3/entities", json=invalid_entity)
-        # Requires auth or validation fails
-        assert response.status_code in [401, 422]
+        # Without auth, expects 401 before validation
+        assert response.status_code == 401
     
     def test_list_entities_invalid_limit(self, client):
         """Test listing with invalid limit"""

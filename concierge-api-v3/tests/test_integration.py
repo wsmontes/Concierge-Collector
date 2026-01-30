@@ -83,8 +83,8 @@ class TestPerformance:
         duration = time.time() - start
         
         assert response.status_code == 200
-        # Should respond in under 35 seconds (allows for database timeout)
-        assert duration < 35.0  # First request may be slower
+        # Should respond in under 5 seconds
+        assert duration < 5.0, f"Health check took {duration:.2f}s, expected <5s"
     
     def test_list_entities_reasonable_time(self, client):
         """Test listing entities completes in reasonable time"""

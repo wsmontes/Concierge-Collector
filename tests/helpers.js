@@ -12,10 +12,10 @@ import { config } from 'dotenv';
 import { fileURLToPath } from 'url';
 import { dirname, resolve } from 'path';
 
-// Load test environment variables
+// Load environment variables from main .env file
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
-const envPath = resolve(__dirname, '..', '.env.test');
+const envPath = resolve(__dirname, '..', 'concierge-api-v3', '.env');
 config({ path: envPath });
 
 // Test Configuration from environment
@@ -23,7 +23,7 @@ export const TEST_API_BASE = process.env.API_V3_BASE_URL || 'http://localhost:80
 export const TEST_API_KEY = process.env.API_SECRET_KEY;
 
 if (!TEST_API_KEY) {
-  throw new Error('API_SECRET_KEY not found in .env.test file');
+  throw new Error('API_SECRET_KEY not found in concierge-api-v3/.env file');
 }
 
 // ============================================================================

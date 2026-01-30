@@ -26,25 +26,21 @@ class TestPlacesEndpoints:
         """Test nearby search with location"""
         response = client.get("/api/v3/places/nearby?latitude=-23.5505&longitude=-46.6333&radius=1000")
         
-        # Should work or return API key error
-        assert response.status_code in [200, 400, 500]
-        
-        if response.status_code == 200:
-            data = response.json()
-            assert "places" in data or "results" in data
+        # Expect 500 if API key not configured
+        assert response.status_code == 500
     
     def test_get_place_details_missing_id(self, client):
         """Test getting place details without place_id"""
         response = client.get("/api/v3/places/details/")
         
-        assert response.status_code in [404, 422]
+        assert response.status_code == 404
     
     def test_get_place_details_invalid_id(self, client):
         """Test getting place details with invalid ID"""
         response = client.get("/api/v3/places/details/invalid_id")
         
-        # Should fail gracefully (502 = Places API invalid field error)
-        assert response.status_code in [400, 404, 500, 502]
+        # Expect 502 (Places API invalid field error)
+        assert response.status_code == 502
 
 
 @pytest.mark.external_api

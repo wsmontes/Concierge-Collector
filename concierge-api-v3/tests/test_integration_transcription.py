@@ -96,10 +96,9 @@ async def test_transcription_without_authentication(async_client):
         json=request_body
     )
     
-    # In test mode, auth is bypassed so may return 200 or 400
-    # In production, must require authentication (401)
-    assert response.status_code in [200, 400, 401, 500], \
-        f"Expected valid response, got {response.status_code}"
+    # Must require authentication
+    assert response.status_code == 401, \
+        f"Expected 401 Unauthorized, got {response.status_code}"
 
 
 @pytest.mark.asyncio  
@@ -118,10 +117,9 @@ async def test_transcription_with_invalid_token(async_client):
         headers={"Authorization": "Bearer invalid_token_12345"}
     )
     
-    # In test mode, auth is bypassed so may succeed
-    # In production, should reject invalid token (401)
-    assert response.status_code in [200, 400, 401, 500], \
-        f"Expected valid response code, got {response.status_code}"
+    # Should reject invalid token
+    assert response.status_code == 401, \
+        f"Expected 401 Unauthorized for invalid token, got {response.status_code}"
 
 
 @pytest.mark.asyncio

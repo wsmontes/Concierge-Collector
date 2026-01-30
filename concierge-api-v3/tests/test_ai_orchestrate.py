@@ -35,9 +35,9 @@ class TestAIOrchestrate:
         # Should NOT return 500 - that indicates async/await issues
         assert response.status_code != 500, f"500 error indicates async/await bug: {response.text}"
         
-        # Should return 200 (success) or 401 (auth) or 400 (validation) or 503 (service unavailable)
-        # But NEVER 500 (internal server error from code bugs)
-        assert response.status_code in [200, 401, 400, 503], \
+        # With auth_headers, should return 200 (success) or 503 (service unavailable)
+        # But NEVER 500 (internal server error from code bugs) or 401 (auth is provided)
+        assert response.status_code in [200, 503], \
             f"Unexpected status code {response.status_code}: {response.text}"
     
     @pytest.mark.asyncio
@@ -67,8 +67,8 @@ class TestAIOrchestrate:
         assert response.status_code != 500, \
             f"Audio transcription returned 500 error (async/await bug?): {response.text}"
         
-        # May fail with 400 (invalid audio) or 503 (OpenAI unavailable) but not 500
-        assert response.status_code in [200, 400, 401, 503]
+        # May fail with 400 (invalid audio) or 503 (OpenAI unavailable) but not 500 or 401 (auth provided)
+        assert response.status_code in [200, 400, 503]
     
     @pytest.mark.asyncio
     async def test_orchestrate_returns_proper_response_structure(self, async_client, auth_headers):
@@ -106,16 +106,13 @@ class TestAIOrchestrate:
             json=request_data
         )
         
-        # In test mode (TESTING=true), auth is bypassed and returns 200
-        # In production mode, should return 401 Unauthorized
-        # This test verifies the endpoint is protected (would be 401 without test mode)
-        assert response.status_code in [200, 401], \
-            f"Expected 200 (test mode) or 401 (production), got {response.status_code}"
+        # Without auth, should return 401 Unauthorized (no test mode bypass)
+        assert response.status_code == 401, \
+            f"Expected 401 without auth, got {response.status_code}"
         
-        if response.status_code == 401:
-            data = response.json()
-            assert "detail" in data
-            assert "authorization" in data["detail"].lower() or "token" in data["detail"].lower()
+        data = response.json()
+        assert "detail" in data
+        assert "authorization" in data["detail"].lower() or "token" in data["detail"].lower()
     
     @pytest.mark.asyncio
     async def test_orchestrate_workflow_detection(self, async_client, auth_headers):

@@ -107,14 +107,8 @@ def sample_curation():
     }
 
 
-@pytest.fixture(scope="session", autouse=True)
-def enable_test_mode():
-    """Enable test mode to bypass auth validation during tests"""
-    import os
-    os.environ["TESTING"] = "true"
-    yield
-    if "TESTING" in os.environ:
-        del os.environ["TESTING"]
+# Auth bypass removed - tests must use real authentication
+# Use auth_headers fixture with valid API key from .env
 
 
 @pytest_asyncio.fixture(scope="function")
@@ -137,13 +131,17 @@ async def async_client():
 
 @pytest.fixture
 def auth_headers():
-    """Mock auth headers - in test mode, auth is bypassed"""
-    # In test mode (TESTING=true), auth is bypassed automatically
-    # Still return proper format for consistency
-    return {"Authorization": "Bearer test_token_bypass"}
+    """Real auth headers using API key from .env"""
+    api_key = settings.api_secret_key
+    if not api_key:
+        pytest.skip("API_SECRET_KEY not set in .env")
+    return {"X-API-Key": api_key}
 
 
 @pytest.fixture
 def auth_token():
-    """JWT token string for tests that expect just the token"""
-    return "test_token_bypass"
+    """API key for tests that expect just the token"""
+    api_key = settings.api_secret_key
+    if not api_key:
+        pytest.skip("API_SECRET_KEY not set in .env")
+    return api_key
