@@ -620,28 +620,19 @@ class ConceptModule {
     }
     
     async renderConcepts() {
-        console.log('🔵 [RENDER DEBUG] renderConcepts() called');
         this.log.debug('renderConcepts called');
         this.log.debug('conceptsContainer:', this.uiManager.conceptsContainer);
         this.log.debug('currentConcepts:', this.uiManager.currentConcepts);
         
-        console.log('🔵 [RENDER DEBUG] conceptsContainer:', this.uiManager.conceptsContainer);
-        console.log('🔵 [RENDER DEBUG] conceptsContainer.id:', this.uiManager.conceptsContainer?.id);
-        console.log('🔵 [RENDER DEBUG] currentConcepts length:', this.uiManager.currentConcepts?.length);
         
         // Clear the container
         this.uiManager.conceptsContainer.innerHTML = '';
-        console.log('🔵 [RENDER DEBUG] Container cleared');
         
         // Group concepts by category if they exist
         const conceptsByCategory = {};
-        console.log('🟡 [GROUP DEBUG] About to group concepts');
-        console.log('🟡 [GROUP DEBUG] currentConcepts:', this.uiManager.currentConcepts);
-        console.log('🟡 [GROUP DEBUG] currentConcepts length:', this.uiManager.currentConcepts?.length);
         
         if (this.uiManager.currentConcepts && this.uiManager.currentConcepts.length > 0) {
             for (const concept of this.uiManager.currentConcepts) {
-                console.log('🟡 [GROUP DEBUG] Processing concept:', concept);
                 if (!conceptsByCategory[concept.category]) {
                     conceptsByCategory[concept.category] = [];
                 }
@@ -649,7 +640,6 @@ class ConceptModule {
             }
         }
         
-        console.log('🟡 [GROUP DEBUG] conceptsByCategory:', conceptsByCategory);
         this.log.debug('conceptsByCategory:', conceptsByCategory);
         
         // Add section for each category, regardless if there are concepts or not
@@ -660,17 +650,13 @@ class ConceptModule {
         
         // Check if we have any concepts at all
         let hasAnyConcepts = this.uiManager.currentConcepts && this.uiManager.currentConcepts.length > 0;
-        console.log('🟡 [CHECK DEBUG] hasAnyConcepts:', hasAnyConcepts);
-        console.log('🟡 [CHECK DEBUG] conceptsSection hidden:', this.uiManager.conceptsSection?.classList.contains('hidden'));
         
         // If no concepts and not in manual entry mode, show the message
         if (!hasAnyConcepts && this.uiManager.conceptsSection.classList.contains('hidden')) {
-            console.log('⚠️ [CHECK DEBUG] EARLY RETURN - No concepts and section hidden');
             this.uiManager.conceptsContainer.innerHTML = '<p class="text-gray-500">No concepts extracted.</p>';
             return;
         }
         
-        console.log('🟡 [CHECK DEBUG] Proceeding to render categories');
         
         for (const category of categories) {
             const categorySection = document.createElement('div');
@@ -1109,15 +1095,7 @@ class ConceptModule {
         this.log.debug('🔵 handleExtractedConceptsWithValidation called');
         
         // 🔍 DEBUG: Log what we received in detail
-        console.log('🔴 [CRITICAL] extractedConcepts RAW:', extractedConcepts);
-        console.log('🔴 [CRITICAL] extractedConcepts type:', typeof extractedConcepts);
-        console.log('🔴 [CRITICAL] extractedConcepts keys:', Object.keys(extractedConcepts));
-        console.log('🔴 [CRITICAL] extractedConcepts.workflow:', extractedConcepts.workflow);
-        console.log('🔴 [CRITICAL] extractedConcepts.results:', extractedConcepts.results);
-        console.log('🔴 [CRITICAL] extractedConcepts.concepts:', extractedConcepts.concepts);
-        console.log('🔴 [CRITICAL] JSON:', JSON.stringify(extractedConcepts, null, 2));
         
-        this.log.debug('📄 Received extractedConcepts:', {
             type: typeof extractedConcepts,
             isArray: Array.isArray(extractedConcepts),
             keys: extractedConcepts ? Object.keys(extractedConcepts) : 'N/A',
@@ -1160,11 +1138,7 @@ class ConceptModule {
         this.log.debug('Current concepts after adding:', this.uiManager.currentConcepts);
         
         // Render the concepts UI
-        console.log('🟢 [CONCEPT DEBUG] About to call renderConcepts()');
-        console.log('🟢 [CONCEPT DEBUG] currentConcepts:', this.uiManager.currentConcepts);
-        console.log('🟢 [CONCEPT DEBUG] conceptsContainer exists:', !!this.uiManager.conceptsContainer);
         this.renderConcepts();
-        console.log('🟢 [CONCEPT DEBUG] renderConcepts() completed');
         
         // Notify user about the results
         if (duplicateCount > 0) {
@@ -1391,7 +1365,30 @@ class ConceptModule {
             // Use the existing method to handle concepts that does proper validation
             // and renders the UI correctly
             if (extractedConcepts) {
-                this.handleExtractedConceptsWithValidation(extractedConcepts);
+                // Transform API v3 response format to expected frontend format
+                let conceptsData = extractedConcepts;
+                
+                // API v3 returns: {workflow, results: {concepts: {concepts: [{category, value}], confidence_score}}}
+                // Extract the actual concepts array
+                if (extractedConcepts.results && extractedConcepts.results.concepts) {
+                    conceptsData = extractedConcepts.results.concepts.concepts || [];
+                }
+                
+                // Transform from array format [{category, value}] to object format {category: [values]}
+                if (Array.isArray(conceptsData)) {
+                    const transformed = {};
+                    for (const concept of conceptsData) {
+                        if (concept.category && concept.value) {
+                            if (!transformed[concept.category]) {
+                                transformed[concept.category] = [];
+                            }
+                            transformed[concept.category].push(concept.value);
+                        }
+                    }
+                    conceptsData = transformed;
+                }
+                
+                this.handleExtractedConceptsWithValidation(conceptsData);
             }
             
             // Populate restaurant name field if available
