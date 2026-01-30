@@ -15,6 +15,7 @@ Author: Restaurant Finder CLI
 Date: 2025-11-18
 """
 
+import os
 import subprocess
 import time
 import sys
@@ -29,7 +30,12 @@ from rich.table import Table
 console = Console()
 
 # API Configuration
-API_KEY = "7AxYmOWqcVoSUylQQ3do5_nHAf9Fxh4i7-EhD-2wxoc"
+API_KEY = os.getenv("API_SECRET_KEY")
+if not API_KEY:
+    console.print("[red]❌ API_SECRET_KEY not found in environment[/red]")
+    console.print("   Set it in .env file or export API_SECRET_KEY=your_key")
+    sys.exit(1)
+
 SCRIPT_PATH = Path(__file__).parent / "find_restaurants.py"
 PYTHON_PATH = Path(__file__).parent.parent / "venv" / "bin" / "python"
 
