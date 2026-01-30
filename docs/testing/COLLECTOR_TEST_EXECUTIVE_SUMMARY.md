@@ -206,7 +206,7 @@ Used by Collector modules:
 - **Frontend:** Vanilla JavaScript + HTML5 + CSS3
 - **API Client:** apiService.js (from Collector)
 - **Test Framework:** Custom JavaScript
-- **API Server:** Flask 3.0 + Motor
+- **API Server:** FastAPI 0.109.0 + Motor 3.3
 - **Database:** MongoDB Atlas
 
 ### Architecture

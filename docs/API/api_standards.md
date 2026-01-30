@@ -27,7 +27,7 @@ This document defines the **mandatory patterns and standards** for all API inter
 5. **No Direct fetch()**: Never call `fetch()` directly - always use `apiService`
 
 ### API Services Used
-- **Concierge Parser API** - Backend MySQL database (restaurants, curators, sync)
+- **Concierge Collector API V3** - Backend FastAPI + MongoDB (restaurants, curations, AI orchestration)
 - **OpenAI API** - Whisper transcription and GPT-4 analysis
 - **Google Places API** - Restaurant search and location data
 
@@ -58,7 +58,7 @@ const restaurantsUrl = AppConfig.getBackendUrl('restaurants');
 const apiKey = AppConfig.getApiKey('openaiApiKey');
 
 // ❌ Wrong - Don't hardcode
-const backendUrl = 'https://wsmontes.pythonanywhere.com/api';
+const backendUrl = 'https://concierge-collector.onrender.com/api';
 const apiKey = localStorage.getItem('openai_api_key');
 ```
 

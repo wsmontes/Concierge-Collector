@@ -3,7 +3,7 @@
 ## 📋 Resumo Executivo
 
 **Projeto:** Concierge Collector API V3  
-**Stack:** Flask 3.0 + Motor 3.3 + MongoDB Atlas  
+**Stack:** FastAPI 0.109.0 + Motor 3.3 + MongoDB Atlas  
 **Status:** ✅ Completo e Funcional  
 **Data:** November 17, 2025
 
@@ -20,7 +20,7 @@ concierge-api-v3/
 │   ├── models_v3.py             # Modelos Pydantic
 │   ├── database_v3.py           # Operações MongoDB (Motor)
 │   ├── api_v3.py                # 17 REST endpoints
-│   └── app_v3.py                # Factory Flask app
+│   └── app_v3.py                # FastAPI application factory
 ├── tests/
 │   ├── conftest.py              # Fixtures pytest
 │   ├── test_models.py           # 30+ testes de validação
@@ -38,7 +38,7 @@ concierge-api-v3/
 
 ### Tecnologias Core
 - **Python 3.11+**
-- **Flask 3.0** - Web framework
+- **FastAPI 0.109.0** - Async web framework
 - **Motor 3.3** - Async MongoDB driver
 - **Pydantic 2.5** - Data validation
 - **MongoDB 7.0+** - Database (Atlas)
@@ -182,8 +182,7 @@ MONGODB_DB_NAME=concierge-collector
 # API
 API_HOST=0.0.0.0
 API_PORT=8000
-FLASK_ENV=development
-FLASK_DEBUG=true
+ENVIRONMENT=development
 
 # CORS
 CORS_ORIGINS=http://localhost:3000,http://localhost:5500

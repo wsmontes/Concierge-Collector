@@ -269,7 +269,7 @@ After successful testing:
 
 - **Frontend:** Vanilla JavaScript, HTML5, CSS3
 - **API Client:** apiService.js (from Collector)
-- **API Server:** Flask 3.0 + Motor (async MongoDB)
+- **API Server:** FastAPI 0.109.0 + Motor 3.3 (async MongoDB)
 - **Database:** MongoDB Atlas
 - **Test Runner:** Custom JavaScript test framework
 

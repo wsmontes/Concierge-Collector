@@ -68,9 +68,9 @@ cd API-REF
 
 The same schema powers the interactive documentation:
 
-- **Swagger UI:** https://wsmontes.pythonanywhere.com/api/v3/docs
-- **ReDoc:** https://wsmontes.pythonanywhere.com/api/v3/redoc
-- **Raw JSON:** https://wsmontes.pythonanywhere.com/api/v3/openapi.json
+- **Swagger UI:** https://concierge-collector.onrender.com/api/v3/docs
+- **ReDoc:** https://concierge-collector.onrender.com/api/v3/redoc
+- **Raw JSON:** https://concierge-collector.onrender.com/api/v3/openapi.json
 
 ---
 
@@ -107,7 +107,7 @@ Import into:
 - License (if applicable)
 
 ### Servers
-- Production: `https://wsmontes.pythonanywhere.com/api/v3`
+- Production: `https://concierge-collector.onrender.com/api/v3`
 - Local: `http://localhost:8000/api/v3`
 
 ### Paths
