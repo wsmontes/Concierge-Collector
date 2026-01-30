@@ -1092,17 +1092,7 @@ class ConceptModule {
      * @param {object} extractedConcepts - The concepts extracted from AI
      */
     handleExtractedConceptsWithValidation(extractedConcepts) {
-        this.log.debug('🔵 handleExtractedConceptsWithValidation called');
-        
-        // 🔍 DEBUG: Log what we received in detail
-        
-            type: typeof extractedConcepts,
-            isArray: Array.isArray(extractedConcepts),
-            keys: extractedConcepts ? Object.keys(extractedConcepts) : 'N/A',
-            hasConceptsProperty: !!extractedConcepts?.concepts,
-            structure: JSON.stringify(extractedConcepts, null, 2)
-        });
-        
+        this.log.debug('handleExtractedConceptsWithValidation called');
         this.log.debug('Current concepts before processing:', this.uiManager.currentConcepts);
         
         // Filter out concepts that the restaurant already has
