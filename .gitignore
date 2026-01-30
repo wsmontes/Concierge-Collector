@@ -197,3 +197,4 @@ scripts/fetch_render_logs.py
 
 # Archive - old code not needed in version control
 archive/
+node_modules

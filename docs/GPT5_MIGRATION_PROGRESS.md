@@ -1,0 +1,296 @@
+# GPT-5.2 Migration Progress Tracker
+
+**Started:** 2026-01-30  
+**Last Updated:** 2026-01-30  
+**Status:** Phase 0 ✅
+
+---
+
+## Phase 0: Preparation ✅
+
+**Duration:** 4 hours  
+**Started:** 2026-01-30  
+**Completed:** 2026-01-30
+
+### ✅ Completed Tasks
+
+1. **Created AI Output Schemas** - `app/models/ai_outputs.py`
+   - ✅ TranscriptionOutput (whisper → gpt-5.2-audio)
+   - ✅ ConceptExtractionOutput (gpt-4 → gpt-5.2)
+   - ✅ ImageAnalysisOutput (gpt-4-vision → gpt-5.2)
+   - ✅ All schemas include Pydantic validation
+   - ✅ Field validators for business rules
+   - ✅ Comprehensive documentation
+
+2. **Updated Models Package** - `app/models/__init__.py`
+   - ✅ Exported all new schemas
+   - ✅ Added module documentation
+
+### 📝 Files Changed
+
+| File | Lines | Changes |
+|------|-------|---------|
+| `app/models/ai_outputs.py` | 237 | Created (new file) |
+| `app/models/__init__.py` | 27 | Updated exports |
+
+### 🔍 Next Steps
+
+**Phase 1: Audio Transcription Migration**
+- [ ] Update `openai_service.py` - `transcribe_audio()` method
+- [ ] Change model from `whisper-1` to `gpt-5.2-audio`
+- [ ] Remove hardcoded `language` parameter (auto-detect)
+- [ ] Add TranscriptionOutput validation
+- [ ] Update error handling for validation failures
+- [ ] Add tests for multi-language detection
+
+---
+
+## Phase 1: Audio Transcription ⏳
+
+**Duration:** 2-3 days  
+**Started:** TBD  
+**Status:** Not started
+
+### Objectives
+
+1. Migrate whisper-1 → gpt-5.2-audio
+2. Implement automatic language detection
+3. Add Pydantic validation for transcription outputs
+4. Update error handling
+
+### Implementation Checklist
+
+- [ ] **openai_service.py**
+  - [ ] Update model name: `"gpt-5.2-audio"`
+  - [ ] Remove hardcoded `language="pt-BR"`
+  - [ ] Keep `response_format="verbose_json"`
+  - [ ] Keep `timestamp_granularities=["word", "segment"]`
+  - [ ] Add validation: `TranscriptionOutput(**response.dict())`
+  - [ ] Handle ValidationError → HTTPException(400)
+
+- [ ] **ai_orchestrator.py**
+  - [ ] Update transcription service call
+  - [ ] Handle new auto-detected language field
+  - [ ] Update response format to include detected language
+
+- [ ] **Tests**
+  - [ ] Audio in Portuguese → detects `pt`
+  - [ ] Audio in English → detects `en`
+  - [ ] Audio in Spanish → detects `es`
+  - [ ] Manual language override works: `language="pt-BR"` → `pt`
+  - [ ] Invalid transcription → 400 error
+
+- [ ] **Documentation**
+  - [ ] Update API docs with new language detection behavior
+  - [ ] Document breaking change (language now auto-detected)
+
+---
+
+## Phase 2: Concept Extraction ⏳
+
+**Duration:** 2-3 days  
+**Status:** Not started
+
+### Objectives
+
+1. Migrate gpt-4 → gpt-5.2
+2. Implement structured outputs with json_schema
+3. Add reasoning + verbosity control
+4. Improve prompt quality
+
+### Implementation Checklist
+
+- [ ] **Update Prompt Template**
+  - [ ] Use XML-style structured prompt (better for GPT-5.2)
+  - [ ] Add `<task>`, `<constraints>`, `<uncertainty_handling>` sections
+  - [ ] Reduce verbosity (720 chars → ~400 chars)
+  - [ ] Add clear instructions for ambiguity handling
+
+- [ ] **openai_service.py**
+  - [ ] Update model: `"gpt-5.2"`
+  - [ ] Add `reasoning={"effort": "minimal"}`
+  - [ ] Add `text={"verbosity": "low"}` (-40% tokens)
+  - [ ] Implement structured outputs:
+    ```python
+    response_format={
+        "type": "json_schema",
+        "json_schema": {
+            "name": "concept_extraction",
+            "strict": True,
+            "schema": ConceptExtractionOutput.model_json_schema()
+        }
+    }
+    ```
+  - [ ] Add validation: `ConceptExtractionOutput(**response.choices[0].message.content)`
+
+- [ ] **MongoDB Config Update**
+  - [ ] Update `openai_configs` collection
+  - [ ] Add new `gpt-5.2` config entry
+  - [ ] Keep `gpt-4` as fallback during migration
+
+- [ ] **Tests**
+  - [ ] Concept extraction with 2-8 concepts
+  - [ ] Confidence score validation (0.0-1.0)
+  - [ ] Reasoning field populated on ambiguity
+  - [ ] Invalid schema → 400 error
+  - [ ] Hallucination detection (concepts not in category list)
+
+---
+
+## Phase 3: Image Analysis ⏳
+
+**Duration:** 2-3 days  
+**Status:** Not started
+
+### Objectives
+
+1. Migrate gpt-4-vision-preview → gpt-5.2
+2. Implement structured outputs for image analysis
+3. Improve prompt quality
+4. Add ambiance detection
+
+### Implementation Checklist
+
+- [ ] **Update Prompt Template**
+  - [ ] Add structured instructions for image analysis
+  - [ ] Request detected items with confidence scores
+  - [ ] Add cuisine inference
+  - [ ] Add ambiance detection
+
+- [ ] **openai_service.py**
+  - [ ] Update model: `"gpt-5.2"`
+  - [ ] Add `reasoning={"effort": "minimal"}`
+  - [ ] Add `text={"verbosity": "low"}`
+  - [ ] Implement structured outputs with ImageAnalysisOutput schema
+  - [ ] Keep `detail="high"` for image processing
+
+- [ ] **Tests**
+  - [ ] Image analysis returns valid schema
+  - [ ] Detected items sorted by confidence
+  - [ ] Cuisine inference works
+  - [ ] Ambiance description generated
+  - [ ] Invalid schema → 400 error
+
+---
+
+## Phase 4: Embeddings Evaluation ⏳
+
+**Duration:** 1 day  
+**Status:** Not started
+
+### Objectives
+
+1. Evaluate current text-embedding-3-small performance
+2. Test gpt-5.2-embedding if needed
+3. Decide whether migration is worth the cost
+
+### Evaluation Checklist
+
+- [ ] **Benchmark Current System**
+  - [ ] Measure semantic search quality
+  - [ ] Measure hybrid search quality
+  - [ ] Document current performance metrics
+
+- [ ] **Test GPT-5.2 Embeddings** (if justified)
+  - [ ] Create test embeddings with gpt-5.2-embedding
+  - [ ] Compare search quality
+  - [ ] Compare performance (latency)
+  - [ ] Compare costs
+
+- [ ] **Decision**
+  - [ ] Keep text-embedding-3-small (if performance is good)
+  - [ ] Migrate to gpt-5.2-embedding (if quality improves significantly)
+  - [ ] Document decision rationale
+
+---
+
+## Rollback Plan
+
+If any phase fails or causes production issues:
+
+1. **Immediate Rollback**
+   ```bash
+   git revert <migration-commit>
+   git push origin main
+   ```
+
+2. **MongoDB Config Rollback**
+   - Change model back to previous version in `openai_configs` collection
+   - Restart API service
+
+3. **Gradual Rollback** (if partial migration)
+   - Keep new schemas (harmless)
+   - Revert service implementations only
+   - Test with old models
+
+---
+
+## Success Metrics
+
+### Phase 1 Success Criteria
+- ✅ Auto language detection works (pt/en/es)
+- ✅ All tests pass
+- ✅ No production errors for 24 hours
+
+### Phase 2 Success Criteria
+- ✅ Concept extraction accuracy ≥ 95%
+- ✅ -40% token usage vs GPT-4
+- ✅ Structured outputs eliminate parsing errors
+
+### Phase 3 Success Criteria
+- ✅ Image analysis quality maintained or improved
+- ✅ Detected items have >80% accuracy
+- ✅ Ambiance detection works
+
+### Phase 4 Success Criteria
+- ✅ Search quality ≥ current performance
+- ✅ Cost/benefit analysis completed
+- ✅ Decision documented
+
+---
+
+## Cost Analysis
+
+### Current Costs (GPT-4 era)
+- whisper-1: $0.006/min
+- gpt-4: $0.03/1K tokens (input), $0.06/1K tokens (output)
+- gpt-4-vision: $0.01/image (high detail)
+- text-embedding-3-small: $0.00002/1K tokens
+
+### Expected Costs (GPT-5.2)
+- gpt-5.2-audio: TBD (likely similar to whisper-1)
+- gpt-5.2: TBD (check OpenAI pricing)
+- gpt-5.2 with verbosity=low: -40% output tokens
+- gpt-5.2-embedding: TBD (if needed)
+
+### Savings Estimate
+- Verbosity control: **-40% tokens** on concept extraction
+- Structured outputs: Eliminates retry costs from parsing errors
+- Better prompts: Fewer tokens per request
+
+**Estimated total savings:** 30-50% on concept extraction costs
+
+---
+
+## Risk Assessment
+
+| Risk | Impact | Likelihood | Mitigation |
+|------|--------|------------|------------|
+| Language detection fails | High | Low | Keep language override option |
+| Structured outputs break | High | Medium | Comprehensive validation + tests |
+| GPT-5.2 quality lower | Critical | Low | A/B test before full rollout |
+| Cost increase | Medium | Medium | Monitor usage, optimize verbosity |
+| Production downtime | Critical | Low | Gradual rollout, instant rollback |
+
+---
+
+## Timeline
+
+| Phase | Duration | Start | End | Status |
+|-------|----------|-------|-----|--------|
+| Phase 0 | 0.5 days | 2026-01-30 | 2026-01-30 | ✅ Done |
+| Phase 1 | 2-3 days | TBD | TBD | ⏳ Pending |
+| Phase 2 | 2-3 days | TBD | TBD | ⏳ Pending |
+| Phase 3 | 2-3 days | TBD | TBD | ⏳ Pending |
+| Phase 4 | 1 day | TBD | TBD | ⏳ Pending |
+| **Total** | **8-10 days** | **2026-01-30** | **TBD** | **10% Done** |
