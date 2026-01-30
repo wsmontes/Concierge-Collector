@@ -24,7 +24,7 @@ passlib[bcrypt]==1.7.4
 python-dotenv==1.0.1
 
 # OpenAI
-openai==1.57.4
+openai==2.16.0
 
 # Numerical Computing
 numpy==2.2.1

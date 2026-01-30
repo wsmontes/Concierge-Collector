@@ -165,7 +165,7 @@ async def orchestrate(
     try:
         logger.info("=" * 60)
         logger.info("[AI Orchestrate] New request received")
-        logger.info(f"[AI Orchestrate] User: {token_data.get('sub', 'unknown')}")
+        logger.info(f"[AI Orchestrate] User: {auth.get('user', 'unknown')}")
         logger.info(f"[AI Orchestrate] Has audio: {request.audio_file is not None}")
         logger.info(f"[AI Orchestrate] Has image: {request.image_file is not None}")
         logger.info(f"[AI Orchestrate] Has text: {request.text is not None}")
