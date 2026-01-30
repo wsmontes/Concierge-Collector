@@ -1,8 +1,19 @@
 """
 OpenAIService: Interface with OpenAI APIs using MongoDB configuration.
 
-Provides transcription (Whisper), concept extraction (GPT-4), and image analysis (GPT-4 Vision)
+Provides transcription (GPT-5.2 Audio), concept extraction (GPT-5.2), and image analysis (GPT-5.2)
 using configurations and prompts stored in MongoDB.
+
+Dependencies:
+- openai: OpenAI Python client
+- motor: Async MongoDB driver
+- pymongo: Sync MongoDB driver
+- pydantic: Data validation
+
+Migration Status:
+- Phase 1: Audio Transcription (whisper-1 → gpt-5.2-audio) ✅
+- Phase 2: Concept Extraction (gpt-4 → gpt-5.2) ⏳
+- Phase 3: Image Analysis (gpt-4-vision → gpt-5.2) ⏳
 """
 
 import base64
@@ -16,10 +27,13 @@ from datetime import datetime, timezone
 from openai import OpenAI
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from pymongo import MongoClient
+from pydantic import ValidationError
+from fastapi import HTTPException
 import os
 
 from app.services.category_service import CategoryService
 from app.services.openai_config_service import OpenAIConfigService
+from app.models.ai_outputs import TranscriptionOutput
 
 
 class OpenAIService:
@@ -54,26 +68,44 @@ class OpenAIService:
         save_to_cache: bool = True
     ) -> Dict[str, Any]:
         """
-        Transcribe audio using Whisper with MongoDB config.
+        Transcribe audio using GPT-5.2 Audio with automatic language detection.
+        
+        Phase 1 Migration:
+        - Model: whisper-1 → gpt-5.2-audio
+        - Language: Auto-detection (unless explicitly overridden)
+        - Validation: Pydantic schema enforcement
         
         Args:
             audio_data: Audio file object or base64 string
-            language: Language code (overrides config default)
+            language: Optional language override (e.g., "pt-BR", "en", "es")
+                     If not provided, GPT-5.2 will auto-detect
             save_to_cache: Whether to save transcription to ai_transcriptions collection (default: True)
             
         Returns:
-            Dictionary with transcription_id, text, language, model
+            Dictionary with transcription_id, text, language (auto-detected or override), model
+            
+        Raises:
+            HTTPException(400): If transcription validation fails
+            HTTPException(500): If OpenAI API call fails
         """
         # Get service configuration
         config = self.config_service.get_config("transcription")
         
-        # Use config parameters
-        model = config["model"]
+        # Use GPT-5.2 Audio model (Phase 1 migration)
+        model = "gpt-5.2-audio"
         params = config["config"].copy()
+        
+        # Phase 1: Language auto-detection
+        # Only set language if explicitly provided by user
         if language:
-            # Normalize language to ISO-639-1 format (pt-BR → pt)
+            # Normalize language to ISO-639-1 format (pt-BR → pt, en-US → en)
             normalized_lang = language.split('-')[0].lower()
             params["language"] = normalized_lang
+            print(f"[DEBUG] Language override: {language} → {normalized_lang}")
+        else:
+            # Remove hardcoded language - let GPT-5.2 auto-detect
+            params.pop("language", None)
+            print(f"[DEBUG] Language auto-detection enabled")
         
         # Handle base64 audio data conversion
         try:
@@ -91,19 +123,43 @@ class OpenAIService:
                 # Already a file object
                 audio_file = audio_data
             
-            # Call OpenAI
-            print(f"[DEBUG] Calling OpenAI Whisper API with model: {model}")
+            # Call OpenAI GPT-5.2 Audio API
+            print(f"[DEBUG] Calling OpenAI API with model: {model}")
             response = self.client.audio.transcriptions.create(
                 model=model,
                 file=audio_file,
                 **params
             )
             print(f"[DEBUG] OpenAI response received, text length: {len(response.text)}")
+            
+            # Phase 1: Validate response with Pydantic schema
+            try:
+                validated = TranscriptionOutput(
+                    text=response.text,
+                    language=getattr(response, 'language', params.get('language', 'unknown')),
+                    duration=getattr(response, 'duration', None),
+                    words=getattr(response, 'words', None),
+                    segments=getattr(response, 'segments', None)
+                )
+                print(f"[DEBUG] Validation successful - detected language: {validated.language}")
+            except ValidationError as e:
+                print(f"[ERROR] Transcription validation failed: {e}")
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Invalid transcription format: {str(e)}"
+                )
+            
+        except HTTPException:
+            # Re-raise validation errors
+            raise
         except Exception as e:
             print(f"[ERROR] Audio transcription failed: {type(e).__name__}: {str(e)}")
             import traceback
             traceback.print_exc()
-            raise
+            raise HTTPException(
+                status_code=500,
+                detail=f"Transcription failed: {str(e)}"
+            )
         
         transcription_id = f"trans_{uuid.uuid4().hex[:12]}"
         
@@ -111,19 +167,23 @@ class OpenAIService:
         if save_to_cache:
             await self.db.ai_transcriptions.insert_one({
                 "transcription_id": transcription_id,
-                "text": response.text,
-                "language": params.get("language", "pt-BR"),
+                "text": validated.text,
+                "language": validated.language,  # Now auto-detected
                 "model": model,
-                "duration": getattr(response, 'duration', None),
+                "duration": validated.duration,
+                "words_count": len(validated.words) if validated.words else None,
+                "segments_count": len(validated.segments) if validated.segments else None,
                 "created_at": datetime.now(timezone.utc).isoformat()
             })
         
         return {
             "transcription_id": transcription_id,
-            "text": response.text,
-            "language": params.get("language", "pt-BR"),
+            "text": validated.text,
+            "language": validated.language,  # Auto-detected or override
             "model": model,
-            "duration": getattr(response, 'duration', None)
+            "duration": validated.duration,
+            "words_count": len(validated.words) if validated.words else None,
+            "segments_count": len(validated.segments) if validated.segments else None
         }
     
     async def extract_concepts_from_text(
