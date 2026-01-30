@@ -1671,11 +1671,23 @@ class RecordingModule {
             let transcription;
             let concepts = null;
             
+            // 🔍 DEBUG: Log what we received from API
+            this.log.debug('📄 API Response received:', {
+                type: typeof result,
+                hasText: !!result?.text,
+                hasTranscription: !!result?.transcription,
+                hasConcepts: !!result?.concepts,
+                conceptsType: typeof result?.concepts,
+                conceptsKeys: result?.concepts ? Object.keys(result.concepts) : 'N/A',
+                fullStructure: JSON.stringify(result, null, 2)
+            });
+            
             if (typeof result === 'object' && result.text) {
                 // Enhanced format from orchestrate: { text, transcription, concepts }
                 transcription = result.text;
                 concepts = result.concepts;
                 this.log.debug(`✅ Received orchestrate response with ${concepts?.concepts?.length || 0} concepts`);
+                this.log.debug('📄 Concepts structure:', JSON.stringify(concepts, null, 2));
             } else if (typeof result === 'object' && result.transcription) {
                 // Alternative format
                 transcription = result.transcription.text || result.transcription;
@@ -1755,7 +1767,16 @@ class RecordingModule {
      */
     triggerConceptProcessing(transcription, preExtractedConcepts = null) {
         try {
-            this.log.debug('Triggering concept processing for new restaurant');
+            this.log.debug('🔵 Triggering concept processing for new restaurant');
+            
+            // 🔍 DEBUG: Log preExtractedConcepts in detail
+            this.log.debug('📄 preExtractedConcepts received:', {
+                exists: !!preExtractedConcepts,
+                type: typeof preExtractedConcepts,
+                isArray: Array.isArray(preExtractedConcepts),
+                length: Array.isArray(preExtractedConcepts) ? preExtractedConcepts.length : 'N/A',
+                structure: JSON.stringify(preExtractedConcepts, null, 2)
+            });
             
             // ✅ IF CONCEPTS PRE-EXTRACTED: Apply them directly
             if (preExtractedConcepts && Array.isArray(preExtractedConcepts) && preExtractedConcepts.length > 0) {
