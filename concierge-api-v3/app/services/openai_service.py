@@ -259,28 +259,40 @@ class OpenAIService:
             }
         )
         
-        # Phase 2: Use GPT-5.2 with Responses API
+        # Phase 2: Use GPT-5.2 with Chat Completions API (NOT Responses API)
+        # NOTE: Responses API doesn't support additionalProperties as schema in strict mode
         model = "gpt-5.2"
         
         try:
-            print(f"[DEBUG] Calling GPT-5.2 Responses API for concept extraction")
+            print(f"[DEBUG] Calling GPT-5.2 Chat Completions API for concept extraction")
             print(f"[DEBUG] Text length: {len(text)} chars, Categories: {len(categories)}")
             
-            # Call OpenAI Responses API with structured outputs
-            response = self.client.responses.parse(
+            # Get Pydantic schema for structured outputs
+            schema = ConceptExtractionOutput.model_json_schema()
+            
+            # Call OpenAI Chat Completions API with response_format (NO strict mode)
+            # strict: True doesn't work with Dict types (additionalProperties as schema)
+            response = self.client.chat.completions.create(
                 model=model,
-                input=[
+                messages=[
                     {"role": "user", "content": prompt}
                 ],
-                text_format=ConceptExtractionOutput,  # Pydantic schema for structured outputs
-                reasoning={"effort": "minimal"},  # Minimal reasoning (fastest valid option)
-                text={"verbosity": "low"}  # -40% output tokens
+                response_format={
+                    "type": "json_schema",
+                    "json_schema": {
+                        "name": "ConceptExtractionOutput",
+                        "schema": schema
+                        # NO strict: True - breaks with dynamic object keys
+                    }
+                }
             )
             
-            print(f"[DEBUG] Response received, parsing output")
+            print(f"[DEBUG] Response received, parsing JSON output")
             
-            # Phase 2: Pydantic validation built-in
-            validated = response.output_parsed  # Already a ConceptExtractionOutput instance
+            # Parse JSON and validate with Pydantic
+            import json
+            output_data = json.loads(response.choices[0].message.content)
+            validated = ConceptExtractionOutput(**output_data)
             
             print(f"[DEBUG] Validation successful - concepts: {validated.concepts}, confidence: {validated.confidence_score}")
             

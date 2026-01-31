@@ -100,13 +100,16 @@ class ConceptExtractionOutput(BaseModel):
     """
     Validated concept extraction from GPT-5.2 with structured outputs
     
-    Per OpenAI docs: All fields must be required. Use union with None for optional fields.
+    CRITICAL: OpenAI Structured Outputs in strict mode does NOT support
+    objects with additionalProperties as schema (Dict types with dynamic keys).
+    
+    Solution: Use response_format WITHOUT strict: True for dynamic schemas.
     
     This schema ensures concept extraction follows business rules:
     - Concepts organized by category (cuisine, menu, drinks, setting, etc)
     - Each category contains list of relevant concepts
     - Confidence score indicates extraction quality
-    - Optional reasoning for ambiguous cases
+    - Reasoning field is optional (can be null)
     
     Example:
         {
@@ -119,18 +122,21 @@ class ConceptExtractionOutput(BaseModel):
             "reasoning": null
         }
     """
-    # Required fields only
-    concepts: Dict[str, List[str]]
-    confidence_score: float
-    # Optional field with default
-    reasoning: Optional[str] = None
-    
-    model_config = {
-        "json_schema_extra": {
-            "required": ["concepts", "confidence_score"],
-            "additionalProperties": False
-        }
-    }
+    # Dict with dynamic keys requires additionalProperties as schema
+    concepts: Dict[str, List[str]] = Field(
+        ...,
+        description="Concepts organized by category"
+    )
+    confidence_score: float = Field(
+        ...,
+        ge=0.0,
+        le=1.0,
+        description="Confidence score (0.0 to 1.0)"
+    )
+    reasoning: Optional[str] = Field(
+        None,
+        description="Optional reasoning for concept extraction"
+    )
     
     @field_validator('concepts')
     @classmethod
