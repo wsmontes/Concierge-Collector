@@ -23,6 +23,38 @@ class ConceptModule {
         // New property to handle the queue of images for AI processing
         this.imageProcessingQueue = [];
         this.isProcessingQueue = false;
+        
+        // Category name mapping: API format -> UI format
+        this.categoryMap = {
+            'cuisine': 'Cuisine',
+            'menu': 'Menu',
+            'price_range': 'Price Range',
+            'mood': 'Mood',
+            'setting': 'Setting',
+            'crowd': 'Crowd',
+            'suitable_for': 'Suitable For',
+            'food_style': 'Food Style',
+            'drinks': 'Drinks',
+            'special_features': 'Special Features',
+            'covid_specials': 'Special Features',
+            'price_and_payment': 'Price Range'
+        };
+    }
+    
+    /**
+     * Normalize category name from API format to UI format
+     * @param {string} apiCategory - Category name from API (e.g., 'food_style', 'cuisine')
+     * @returns {string} - Normalized category name (e.g., 'Food Style', 'Cuisine')
+     */
+    normalizeCategoryName(apiCategory) {
+        const normalized = this.categoryMap[apiCategory.toLowerCase()];
+        if (normalized) {
+            return normalized;
+        }
+        // Fallback: capitalize first letter of each word
+        return apiCategory.split('_').map(word => 
+            word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()
+        ).join(' ');
     }
 
     setupEvents() {
@@ -1127,9 +1159,13 @@ class ConceptModule {
         
         // Update the UI with the filtered concepts
         for (const category in filteredConcepts) {
+            // ✅ Normalize category name from API format to UI format
+            const normalizedCategory = this.normalizeCategoryName(category);
+            console.log(`🔵 Category mapping: "${category}" -> "${normalizedCategory}"`);
+            
             for (const value of filteredConcepts[category]) {
-                console.log(`🔵 Adding concept: ${category} = ${value}`);
-                this.addConceptWithValidation(category, value);
+                console.log(`🔵 Adding concept: ${normalizedCategory} = ${value}`);
+                this.addConceptWithValidation(normalizedCategory, value);
             }
         }
         
