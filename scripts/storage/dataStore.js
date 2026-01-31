@@ -191,8 +191,20 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
                 }
             }
             
-            throw error;
+            // Don't throw - allow app to run in API-only mode without IndexedDB
+            this.log.warn('⚠️ Running in API-only mode (IndexedDB unavailable)');
+            this.isInitialized = false;
+            this.db = null;
+            return this;
         }
+    }
+
+    /**
+     * Check if database is available for operations
+     * Returns false if running in API-only mode
+     */
+    isDatabaseAvailable() {
+        return this.db !== null && this.isInitialized;
     }
 
     /**
@@ -369,6 +381,11 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
      * @returns {Promise<Object>} - Created entity with ID
      */
     async createEntity(entityData) {
+        if (!this.isDatabaseAvailable()) {
+            this.log.warn('⚠️ Database unavailable, operation skipped (API-only mode)');
+            return null;
+        }
+        
         try {
             const entity = {
                 entity_id: entityData.entity_id || `ent_${Date.now()}_${Math.random().toString(36).substr(2)}`,
@@ -400,6 +417,9 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
      * @returns {Promise<Object|null>} - Entity or null
      */
     async getEntity(entityId) {
+        if (!this.isDatabaseAvailable()) {
+            return null;
+        }
         try {
             return await this.db.entities.where('entity_id').equals(entityId).first();
         } catch (error) {
@@ -414,12 +434,10 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
      * @returns {Promise<Array>} - Array of entities
      */
     async getEntities(options = {}) {
+        if (!this.isDatabaseAvailable()) {
+            return [];
+        }
         try {
-            // Check if database is ready
-            if (!this.isDatabaseReady('entities')) {
-                this.log.warn('⚠️ Database not ready for getEntities, returning empty array');
-                return [];
-            }
             
             let query = this.db.entities.orderBy('createdAt');
             
@@ -461,6 +479,10 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
      * @returns {Promise<Object>} - Updated entity
      */
     async updateEntity(entityId, updates, expectedETag = null) {
+        if (!this.isDatabaseAvailable()) {
+            this.log.warn('⚠️ Database unavailable, update skipped');
+            return null;
+        }
         try {
             const entity = await this.getEntity(entityId);
             if (!entity) {
@@ -494,6 +516,10 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
      * @returns {Promise<boolean>} - Success status
      */
     async deleteEntity(entityId) {
+        if (!this.isDatabaseAvailable()) {
+            this.log.warn('⚠️ Database unavailable, delete skipped');
+            return false;
+        }
         try {
             const entity = await this.getEntity(entityId);
             if (!entity) {
@@ -528,6 +554,10 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
      * @returns {Promise<Object>} - Created curation with ID
      */
     async createCuration(curationData) {
+        if (!this.isDatabaseAvailable()) {
+            this.log.warn('⚠️ Database unavailable, curation creation skipped');
+            return null;
+        }
         try {
             const curation = {
                 curation_id: curationData.curation_id || `cur_${Date.now()}_${Math.random().toString(36).substr(2)}`,
@@ -561,6 +591,9 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
      * @returns {Promise<Object|null>} - Curation or null
      */
     async getCuration(curationId) {
+        if (!this.isDatabaseAvailable()) {
+            return null;
+        }
         try {
             return await this.db.curations.where('curation_id').equals(curationId).first();
         } catch (error) {
@@ -575,6 +608,9 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
      * @returns {Promise<Array>} - Array of curations
      */
     async getEntityCurations(entityId) {
+        if (!this.isDatabaseAvailable()) {
+            return [];
+        }
         try {
             return await this.db.curations
                 .where('entity_id')
@@ -646,6 +682,9 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
      * @param {Object} data - Data to sync
      */
     async addToSyncQueue(type, action, localId, entityId, data) {
+        if (!this.isDatabaseAvailable()) {
+            return; // Silently skip in API-only mode
+        }
         try {
             await this.db.syncQueue.add({
                 type,
@@ -667,11 +706,10 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
      * @returns {Promise<Array>} - Array of sync items
      */
     async getPendingSyncItems() {
+        if (!this.isDatabaseAvailable()) {
+            return [];
+        }
         try {
-            // Check if DataStore is properly initialized
-            if (!this.isInitialized || !this.db?.isOpen()) {
-                this.log.warn('⚠️ DataStore not initialized, returning empty sync items');
-                return [];
             }
 
             return await this.db.syncQueue.orderBy('createdAt').toArray();
@@ -902,6 +940,16 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
      * @returns {Promise<Object>} - Database stats
      */
     async getStats() {
+        if (!this.isDatabaseAvailable()) {
+            return {
+                entities: 0,
+                curations: 0,
+                curators: 0,
+                pendingSync: 0,
+                isInitialized: false,
+                apiOnlyMode: true
+            };
+        }
         try {
             const [entityCount, curationCount, curatorCount, queueCount] = await Promise.all([
                 this.db.entities.count(),
@@ -915,7 +963,8 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
                 curations: curationCount,
                 curators: curatorCount,
                 pendingSync: queueCount,
-                isInitialized: this.isInitialized
+                isInitialized: this.isInitialized,
+                apiOnlyMode: false
             };
         } catch (error) {
             this.log.error('❌ Failed to get stats:', error);
