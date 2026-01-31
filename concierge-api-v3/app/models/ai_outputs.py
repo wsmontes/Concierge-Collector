@@ -119,11 +119,18 @@ class ConceptExtractionOutput(BaseModel):
             "reasoning": null
         }
     """
-    # Required fields - all keys in properties must be in required array
+    # Required fields only
     concepts: Dict[str, List[str]]
     confidence_score: float
-    # Optional field - must have default value to exclude from required array
+    # Optional field with default
     reasoning: Optional[str] = None
+    
+    model_config = {
+        "json_schema_extra": {
+            "required": ["concepts", "confidence_score"],
+            "additionalProperties": False
+        }
+    }
     
     @field_validator('concepts')
     @classmethod
