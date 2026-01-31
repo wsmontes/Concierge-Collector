@@ -12,6 +12,7 @@
   "devDependencies": {
     "@vitest/coverage-v8": "^1.6.1",
     "@vitest/ui": "^1.0.4",
+    "dexie": "^4.3.0",
     "dotenv": "^17.2.3",
     "fake-indexeddb": "^5.0.2",
     "jsdom": "^23.2.0",

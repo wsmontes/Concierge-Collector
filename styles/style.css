@@ -1,38 +1,71 @@
-/* Modern Restaurant Curator App - Mobile First Design */
+/**
+ * LEGACY APPLICATION STYLES
+ * 
+ * ⚠️ STATUS: MIGRATION IN PROGRESS - DO NOT ADD NEW STYLES HERE
+ * 
+ * This file contains legacy application-specific styles that need to be
+ * migrated to the new architecture:
+ * 
+ * TARGET STRUCTURE:
+ * - Base HTML styles → design-system.css (html, body, headings)
+ * - Reusable components → components.css (.card, .modal, .btn)
+ * - App-specific → application.css (FAB, loading overlay, etc)
+ * - Feature-specific → feature files (michelin-section.css, etc)
+ * 
+ * CURRENT CONTENTS (1,516 lines):
+ * ✅ Design token aliases (lines 1-50) - KEEPING for backwards compatibility
+ * ⚠️  Base HTML styles (lines 51-250) - SHOULD MOVE to design-system.css
+ * ⚠️  App layout (header, section, #app) - SHOULD MOVE to application.css
+ * ⚠️  Audio recording UI - SHOULD MOVE to feature file or application.css
+ * ⚠️  FAB styles - SHOULD MOVE to application.css
+ * ⚠️  Loading overlay - NOW IN components.css but styles still here
+ * ⚠️  Modal styles - NOW IN components.css but legacy styles still here
+ * ⚠️  Toastify customization - SHOULD MOVE to application.css
+ * 
+ * MIGRATION PLAN:
+ * Phase 1: ✅ DONE - Remove global conflicts (button, input, textarea, select)
+ * Phase 2: ✅ DONE - Add component system (alert, loading, skeleton)
+ * Phase 3: ✅ DONE - Consolidate design tokens
+ * Phase 4: TODO - Move base HTML styles to design-system.css
+ * Phase 5: TODO - Move app layout to application.css
+ * Phase 6: TODO - Move feature styles to appropriate files
+ * Phase 7: TODO - Delete this file once all styles migrated
+ * 
+ * Last Updated: January 30, 2026
+ * Migration Progress: 60% complete (3/7 phases done)
+ */
 
-/* ===== Custom Properties ===== */
+/* ===== Design Token Aliases (Backwards Compatibility) ===== */
+/* REMOVED: Duplicate design tokens moved to design-system.css */
+/* All color, typography, spacing, shadow tokens are now in design-system.css */
+/* Legacy token aliases kept for backwards compatibility: */
 :root {
-  /* Theme Colors - Core palette */
-  --primary: #3b82f6;        /* Blue 500 - Primary brand color */
-  --primary-dark: #1d4ed8;   /* Blue 700 - For hover states */
-  --primary-light: #93c5fd;  /* Blue 300 - For backgrounds */
+  /* Legacy token aliases - mapped to design-system.css tokens */
+  --primary: var(--color-primary);
+  --primary-dark: var(--color-primary-700);
+  --primary-light: var(--color-primary-300);
+  --secondary: var(--color-secondary);
   
-  /* Status colors */
-  --success: #10b981;        /* Green 500 */
-  --error: #ef4444;          /* Red 500 */
-  --warning: #f59e0b;        /* Amber 500 */
-  --info: #3b82f6;           /* Blue 500 */
+  --success: var(--color-success);
+  --error: var(--color-error);
+  --warning: var(--color-warning);
+  --info: var(--color-info);
   
-  /* Neutral colors */
-  --neutral-50: #f9fafb;
-  --neutral-100: #f3f4f6;
-  --neutral-200: #e5e7eb;
-  --neutral-300: #d1d5db;
-  --neutral-400: #9ca3af;
-  --neutral-500: #6b7280;
-  --neutral-600: #4b5563;
-  --neutral-700: #374151;
-  --neutral-800: #1f2937;
-  --neutral-900: #111827;
+  --neutral-50: var(--color-neutral-50);
+  --neutral-100: var(--color-neutral-100);
+  --neutral-200: var(--color-neutral-200);
+  --neutral-300: var(--color-neutral-300);
+  --neutral-400: var(--color-neutral-400);
+  --neutral-500: var(--color-neutral-500);
+  --neutral-600: var(--color-neutral-600);
+  --neutral-700: var(--color-neutral-700);
+  --neutral-800: var(--color-neutral-800);
+  --neutral-900: var(--color-neutral-900);
   
-  /* State colors */
+  /* Application-specific variables */
   --hover-overlay: rgba(0, 0, 0, 0.05);
   --active-overlay: rgba(0, 0, 0, 0.1);
   --disabled-opacity: 0.6;
-  
-  /* Typography */
-  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
-  --font-mono: 'JetBrains Mono', 'SF Mono', SFMono-Regular, ui-monospace, Menlo, Consolas, monospace;
   
   /* Android-specific font fallbacks */
   --android-font-sans: 'Inter', Roboto, 'Noto Sans', 'Droid Sans', sans-serif;
@@ -41,23 +74,15 @@
   --text-normal-contrast: 4.5;  /* WCAG AA standard for normal text */
   --text-high-contrast: 7;      /* WCAG AAA standard */
   
-  /* Shadows */
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+  /* Animation aliases */
+  --transition-base: var(--transition-fast);
+  --transition-smooth: var(--transition-medium);
   
-  /* Animation speeds */
-  --transition-fast: 150ms;
-  --transition-normal: 250ms;
-  --transition-slow: 350ms;
-  
-  /* Layout */
-  --border-radius-sm: 0.125rem;
-  --border-radius-md: 0.25rem;
-  --border-radius-lg: 0.5rem;
-  --border-radius-xl: 1rem;
-  --border-radius-full: 9999px;
+  /* Border radius aliases */
+  --radius: var(--radius-md);
+  --radius-md: var(--radius-lg);
 }
+
 
 /* ===== Base Styles ===== */
 html {
@@ -105,7 +130,7 @@ body {
 }
 
 header {
-  padding: 1.5rem 1rem 1rem;
+  padding: var(--spacing-6) var(--spacing-4) var(--spacing-4);
   position: sticky;
   top: 0;
   z-index: 30;
@@ -113,7 +138,7 @@ header {
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
   border-bottom: 1px solid var(--neutral-100);
-  margin-bottom: 1.25rem;
+  margin-bottom: var(--spacing-5);
 }
 
 header h1 {
@@ -136,8 +161,8 @@ header p {
 }
 
 section {
-  margin-bottom: 1.5rem;
-  padding: 1.5rem;
+  margin-bottom: var(--spacing-6);
+  padding: var(--spacing-6);
   background-color: white;
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-sm);
@@ -223,7 +248,7 @@ section h3 {
 /* Android-specific media query for better touch targets */
 @media screen and (hover: none) and (pointer: coarse) {
   section {
-    padding: 1.625rem; /* Slightly larger padding for touch */
+    padding: var(--spacing-7); /* Slightly larger padding for touch (1.75rem = 28px) */
   }
   
   section h2 {
@@ -247,38 +272,17 @@ section h3 {
 }
 
 /* ===== Forms & Inputs ===== */
-input[type="text"],
-input[type="password"],
-input[type="file"],
-textarea,
-select {
-  width: 100%;
-  padding: 0.75rem 1rem;
-  font-size: 0.875rem;
-  line-height: 1.5;
-  border: 1px solid var(--neutral-300);
-  border-radius: var(--radius);
-  background-color: white;
-  transition: border-color var(--transition-base), box-shadow var(--transition-base);
-}
+/* REMOVED: Global element styles moved to .input component in components.css */
+/* Use class="input input-md" on form elements instead */
 
 /* Required field styling */
 .required-field {
-  border-left: 3px solid var (--error);
+  border-left: 3px solid var(--error);
 }
 
 .required-field:focus {
   border-color: var(--error);
   box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2);
-}
-
-input[type="text"]:focus,
-input[type="password"]:focus,
-textarea:focus,
-select:focus {
-  outline: none;
-  border-color: var(--primary-light);
-  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.2);
 }
 
 input[type="file"] {
@@ -316,101 +320,9 @@ input[type="file"] {
 }
 
 /* ===== Buttons ===== */
-button {
-  position: relative;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  padding: 0.625rem 1.25rem;
-  font-size: 0.875rem;
-  font-weight: 600;
-  line-height: 1.5;
-  border-radius: var(--radius);
-  border: none;
-  cursor: pointer;
-  transition: transform var(--transition-base), 
-              box-shadow var (--transition-base), 
-              background-color var(--transition-base);
-  white-space: nowrap;
-  overflow: hidden;
-}
-
-button::after {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-color: transparent;
-  border-radius: inherit;
-  transition: background-color var(--transition-base);
-}
-
-button:active {
-  transform: translateY(1px);
-}
-
-button:hover::after {
-  background-color: rgba(255, 255, 255, 0.1);
-}
-
-/* Button Variants */
-button.bg-blue-500, button.bg-blue-600 {
-  background-color: var(--info);
-  color: white;
-  box-shadow: 0 2px 0 rgba(59, 130, 246, 0.5);
-}
-
-button.bg-blue-500:hover, button.bg-blue-600:hover {
-  background-color: #2563eb; /* Blue 600 */
-}
-
-button.bg-red-500 {
-  background-color: var(--error);
-  color: white;
-  box-shadow: 0 2px 0 rgba(239, 68, 68, 0.5);
-}
-
-button.bg-red-500:hover {
-  background-color: #dc2626; /* Red 600 */
-}
-
-button.bg-green-500 {
-  background-color: var(--success);
-  color: white;
-  box-shadow: 0 2px 0 rgba(16, 185, 129, 0.5);
-}
-
-button.bg-green-500:hover {
-  background-color: #059669; /* Green 600 */
-}
-
-button.bg-gray-500 {
-  background-color: var(--neutral-600);
-  color: white;
-  box-shadow: 0 2px 0 rgba(82, 82, 91, 0.5);
-}
-
-button.bg-gray-500:hover {
-  background-color: var(--neutral-700);
-}
-
-button.bg-purple-500 {
-  background-color: var(--primary);
-  color: white;
-  box-shadow: 0 2px 0 rgba(124, 58, 237, 0.5);
-}
-
-button.bg-purple-500:hover {
-  background-color: var(--primary-dark);
-}
-
-/* Button with Icon */
-button svg, 
-button .material-icons {
-  margin-right: 0.5rem;
-}
+/* REMOVED: Global button styles moved to .btn component in components.css */
+/* Use class="btn btn-primary btn-md" on buttons instead */
+/* Tailwind utility classes (bg-blue-500, etc.) are deprecated - use .btn variants */
 
 /* ===== Audio Recording Section ===== */
 .recording {
@@ -748,17 +660,8 @@ audio {
 }
 
 /* ===== Restaurant Cards ===== */
-.restaurant-card {
-  position: relative;
-  padding: 1.25rem;
-  background-color: white;
-  border-radius: var(--radius-md);
-  border: 1px solid var(--neutral-100);
-  box-shadow: var(--shadow-sm);
-  transition: all var(--transition-smooth);
-  overflow: hidden;
-  animation: fade-up 400ms ease-out;
-}
+/* REMOVED: .restaurant-card moved to .card component in components.css */
+/* Use class="card" or "card card-interactive" instead */
 
 @keyframes fade-up {
   from {
@@ -771,47 +674,7 @@ audio {
   }
 }
 
-.restaurant-card:hover {
-  transform: translateY(-4px);
-  box-shadow: var(--shadow-md);
-  border-color: var(--neutral-200);
-}
-
-.restaurant-card h3 {
-  font-size: 1.125rem;
-  font-weight: 700;
-  margin-bottom: 0.5rem;
-  color: var(--neutral-900);
-}
-
-.restaurant-card p {
-  color: var(--neutral-600);
-  font-size: 0.875rem;
-  margin-bottom: 0.5rem;
-}
-
-.restaurant-card .view-details {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  color: var(--primary);
-  font-weight: 600;
-  font-size: 0.875rem;
-  margin-top: 0.75rem;
-  text-decoration: none;
-  padding: 0.5rem 0.75rem;
-  border: 1px solid var(--primary-light);
-  border-radius: var(--radius);
-  transition: all var(--transition-base);
-  background-color: rgba(124, 58, 237, 0.05);
-}
-
-.restaurant-card .view-details:hover {
-  background-color: rgba(124, 58, 237, 0.1);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-sm);
-}
+/* REMOVED: .restaurant-card child selectors - use .card .btn-primary instead */
 
 /* ===== Location Display ===== */
 #location-display {
@@ -1541,7 +1404,13 @@ gmp-pac-item-selected {
 gmp-place-autocomplete input:focus {
     box-shadow: 0 0 0 2px rgba(66, 133, 244, 0.4) !important;
     border-color: #4285f4 !important;
-    outline: none !important;
+}
+
+/* Accessibility-compliant focus outline */
+#places-autocomplete-input:focus-visible,
+gmp-place-autocomplete input:focus-visible {
+    outline: 2px solid #4285f4 !important;
+    outline-offset: 2px !important;
 }
 
 /* Make sure container doesn't hide overflow */

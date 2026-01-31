@@ -128,7 +128,7 @@ const V3DataTransformer = (function() {
             if (localEntity.sync) {
                 mongo.sync = {
                     serverId: localEntity.sync.serverId || null,
-                    status: localEntity.sync.status || 'pending',
+                    status: localEntity.syncStatus || 'pending',
                     lastSyncedAt: this.formatDate(localEntity.sync.lastSyncedAt)
                 };
             }

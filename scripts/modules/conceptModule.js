@@ -1357,46 +1357,25 @@ class ConceptModule {
             // Use the existing method to handle concepts that does proper validation
             // and renders the UI correctly
             if (extractedConcepts) {
-                // Transform API v3 response format to expected frontend format
+                // API v3 returns: {workflow, results: {concepts: {concepts: {category: [strings]}}}}
+                // Extract the actual concepts object
                 let conceptsData = extractedConcepts;
                 
                 console.log('🟡 Before transformation:', conceptsData);
                 
-                // API v3 returns: {workflow, results: {concepts: {concepts: [strings]}}}
-                // These are concept VALUES without category info
-                // Extract the actual concepts array
                 if (extractedConcepts.results && extractedConcepts.results.concepts) {
-                    conceptsData = extractedConcepts.results.concepts.concepts || [];
-                    console.log('🟢 After path extraction:', conceptsData);
+                    conceptsData = extractedConcepts.results.concepts.concepts || {};
+                    console.log('🟢 Extracted concepts dict:', conceptsData);
                 }
                 
-                // Transform string array to object format {category: [values]}
-                // Since API returns values without categories, we infer category from context
-                if (Array.isArray(conceptsData)) {
-                    console.log('🔵 Is array, transforming...');
-                    const transformed = { menu: [] }; // Default to menu category for food items
-                    
-                    for (const concept of conceptsData) {
-                        console.log('🔵 Processing concept:', concept);
-                        
-                        if (typeof concept === 'string') {
-                            // String concepts go to menu by default (food/drink items)
-                            transformed.menu.push(concept);
-                        }
-                        // Handle object concepts with category/value (future-proof)
-                        else if (concept && concept.category && concept.value) {
-                            if (!transformed[concept.category]) {
-                                transformed[concept.category] = [];
-                            }
-                            transformed[concept.category].push(concept.value);
-                        }
-                    }
-                    conceptsData = transformed;
-                    console.log('🟣 Final transformed:', conceptsData);
+                // Concepts should already be in correct format: {category: [values]}
+                // Example: {cuisine: ["italian"], menu: ["pasta", "pizza"], drinks: ["wine"]}
+                if (typeof conceptsData === 'object' && !Array.isArray(conceptsData)) {
+                    console.log('🟠 Calling handleExtractedConceptsWithValidation with:', conceptsData);
+                    this.handleExtractedConceptsWithValidation(conceptsData);
+                } else {
+                    console.error('⚠️ Unexpected concepts format:', typeof conceptsData, conceptsData);
                 }
-                
-                console.log('🟠 Calling handleExtractedConceptsWithValidation with:', conceptsData);
-                this.handleExtractedConceptsWithValidation(conceptsData);
             }
             
             // Populate restaurant name field if available

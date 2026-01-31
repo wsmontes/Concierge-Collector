@@ -63,8 +63,12 @@
 
 #staging-search-form input:focus {
     border-color: #9a0002;
-    outline: none;
     box-shadow: 0 0 0 2px rgba(154, 0, 2, 0.1);
+}
+
+#staging-search-form input:focus-visible {
+    outline: 2px solid #9a0002;
+    outline-offset: 2px;
 }
 
 /* Enhanced dropdown styling */
@@ -80,8 +84,12 @@
 
 #staging-search-form select:focus {
     border-color: #9a0002;
-    outline: none;
     box-shadow: 0 0 0 2px rgba(154, 0, 2, 0.1);
+}
+
+#staging-search-form select:focus-visible {
+    outline: 2px solid #9a0002;
+    outline-offset: 2px;
 }
 
 #staging-search-form select:disabled {

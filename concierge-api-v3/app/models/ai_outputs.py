@@ -18,7 +18,7 @@ Date: 2026-01-30
 """
 
 from pydantic import BaseModel, Field, field_validator
-from typing import List, Optional
+from typing import List, Optional, Dict
 
 
 # =============================================================================
@@ -101,22 +101,24 @@ class ConceptExtractionOutput(BaseModel):
     Validated concept extraction from GPT-5.2 with structured outputs
     
     This schema ensures concept extraction follows business rules:
-    - 2-8 concepts per extraction
-    - Concepts must be from approved category list
+    - Concepts organized by category (cuisine, menu, drinks, setting, etc)
+    - Each category contains list of relevant concepts
     - Confidence score indicates extraction quality
     - Optional reasoning for ambiguous cases
     
     Example:
         {
-            "concepts": ["Italian", "Fine Dining", "Romantic"],
+            "concepts": {
+                "cuisine": ["Italian", "Mediterranean"],
+                "menu": ["pasta carbonara", "tiramisu"],
+                "setting": ["romantic", "upscale"]
+            },
             "confidence_score": 0.95,
             "reasoning": null
         }
     """
-    concepts: List[str] = Field(
-        min_length=2, 
-        max_length=8,
-        description="Restaurant concepts from approved categories"
+    concepts: Dict[str, List[str]] = Field(
+        description="Concepts organized by category"
     )
     confidence_score: float = Field(
         ge=0.0, 
@@ -131,10 +133,20 @@ class ConceptExtractionOutput(BaseModel):
     
     @field_validator('concepts')
     @classmethod
-    def deduplicate_concepts(cls, v: List[str]) -> List[str]:
-        """Remove duplicates while preserving order"""
-        seen = set()
-        return [x for x in v if not (x in seen or seen.add(x))]
+    def validate_concepts(cls, v: Dict[str, List[str]]) -> Dict[str, List[str]]:
+        """Validate concepts structure and remove duplicates per category"""
+        if not v:
+            raise ValueError("concepts dict cannot be empty")
+        
+        result = {}
+        for category, concepts_list in v.items():
+            if not isinstance(concepts_list, list):
+                raise ValueError(f"Category '{category}' must have a list of concepts")
+            # Remove duplicates while preserving order
+            seen = set()
+            result[category] = [x for x in concepts_list if not (x in seen or seen.add(x))]
+        
+        return result
 
 
 # =============================================================================

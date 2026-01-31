@@ -415,13 +415,13 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
                                         <span class="font-medium">Status:</span> 
                                         ${this.getSyncStatusBadge(entity)}
                                     </p>
-                                    ${entity.sync.serverId ? `<p><span class="font-medium">Server ID:</span> ${entity.sync.serverId}</p>` : ''}
-                                    ${entity.sync.lastSyncedAt ? `<p><span class="font-medium">Last synced:</span> ${new Date(entity.sync.lastSyncedAt).toLocaleString()}</p>` : ''}
+                                    ${entity.sync && entity.sync.serverId ? `<p><span class="font-medium">Server ID:</span> ${entity.sync.serverId}</p>` : ''}
+                                    ${entity.sync && entity.sync.lastSyncedAt ? `<p><span class="font-medium">Last synced:</span> ${new Date(entity.sync.lastSyncedAt).toLocaleString()}</p>` : ''}
                                 </div>
-                                ${entity.sync.status === 'pending' || entity.sync.status === 'conflict' ? `
+                                ${entity.syncStatus === 'pending' || entity.syncStatus === 'conflict' ? `
                                     <button class="btn-sync-entity mt-2 w-full text-sm py-2 px-4 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center justify-center gap-2">
                                         <span class="material-icons text-sm">sync</span>
-                                        ${entity.sync.status === 'conflict' ? 'Resolve Conflict' : 'Sync Now'}
+                                        ${entity.syncStatus === 'conflict' ? 'Resolve Conflict' : 'Sync Now'}
                                     </button>
                                 ` : ''}
                             </div>
