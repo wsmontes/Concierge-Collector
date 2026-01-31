@@ -284,7 +284,7 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
             
             // Don't throw - allow app to run in API-only mode without IndexedDB
             this.log.warn('⚠️ Running in API-only mode (IndexedDB unavailable)');
-            this.isInitialized = false;
+            this.isInitialized = true;  // ✅ FIXED: Mark as initialized even in API-only mode
             this.db = null;
             return this;
         }
