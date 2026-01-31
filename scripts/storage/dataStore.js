@@ -43,6 +43,10 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
             this.log.debug('🚀 Initializing V3 Entity Store...');
             this.db = new Dexie(dbName);
             
+            // Get expected version from window (set in index.html)
+            const EXPECTED_SCHEMA_VERSION = window.SCHEMA_VERSION || 8;
+            const EXPECTED_CODE_VERSION = window.APP_VERSION || '8.0.0';
+            
             // Define all schema versions for automatic migration
             // Version 3: Original V3 Entity-Curation Schema
             this.db.version(3).stores({
@@ -102,6 +106,68 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
                 pendingAudio: '++id, restaurantId, draftId, timestamp, retryCount, status'
             });
 
+            // Version 9: Fix nested property - Use flat syncStatus instead of sync.status
+            this.db.version(9).stores({
+                // Core V3 Tables with FLAT syncStatus property + compound indexes
+                entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt, etag, syncStatus, [type+syncStatus], [createdBy+createdAt]',
+                curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt, updatedAt, etag, syncStatus, [entity_id+curator_id], [curator_id+createdAt]',
+                curators: '++id, curator_id, name, email, status, createdAt, lastActive',
+                
+                // System Tables with compound index for FIFO queue
+                syncQueue: '++id, type, action, local_id, entity_id, data, createdAt, retryCount, lastError, syncStatus, [syncStatus+createdAt]',
+                settings: 'key',
+                
+                // Recording Module Legacy Tables
+                draftRestaurants: '++id, curatorId, name, timestamp, lastModified, hasAudio',
+                pendingAudio: '++id, restaurantId, draftId, timestamp, retryCount, status',
+                
+                // ✅ CLEANUP: Remove unused tables
+                drafts: null,  // Removed - duplicated by draftRestaurants
+                cache: null    // Removed - zero usage in code
+            });
+
+            // Migration: Convert sync.status to syncStatus
+            this.db.version(9).upgrade(async tx => {
+                this.log.debug('🔄 Migrating to schema v9: sync.status → syncStatus');
+                
+                // Migrate entities
+                const entities = await tx.table('entities').toArray();
+                for (const entity of entities) {
+                    if (entity.sync && entity.sync.status) {
+                        entity.syncStatus = entity.sync.status;
+                        delete entity.sync;
+                        await tx.table('entities').put(entity);
+                    } else if (!entity.syncStatus) {
+                        entity.syncStatus = 'synced';
+                        await tx.table('entities').put(entity);
+                    }
+                }
+                
+                // Migrate curations
+                const curations = await tx.table('curations').toArray();
+                for (const curation of curations) {
+                    if (curation.sync && curation.sync.status) {
+                        curation.syncStatus = curation.sync.status;
+                        delete curation.sync;
+                        await tx.table('curations').put(curation);
+                    } else if (!curation.syncStatus) {
+                        curation.syncStatus = 'synced';
+                        await tx.table('curations').put(curation);
+                    }
+                }
+                
+                // Migrate syncQueue
+                const queueItems = await tx.table('syncQueue').toArray();
+                for (const item of queueItems) {
+                    if (!item.syncStatus) {
+                        item.syncStatus = 'pending';
+                        await tx.table('syncQueue').put(item);
+                    }
+                }
+                
+                this.log.debug('✅ Schema v9 migration complete');
+            });
+
             // Add hooks for automatic timestamps and validation
             this.addDatabaseHooks();
             
@@ -114,6 +180,31 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
             // Verify database is ready before proceeding
             if (!this.db.isOpen()) {
                 throw new Error('Database failed to open properly');
+            }
+            
+            // ✅ SCHEMA VERSION CHECK: Detect cache issues
+            const actualSchemaVersion = this.db.verno;
+            
+            if (actualSchemaVersion < EXPECTED_SCHEMA_VERSION) {
+                this.log.error('❌ SCHEMA MISMATCH DETECTED!');
+                this.log.error(`   Expected schema: v${EXPECTED_SCHEMA_VERSION}`);
+                this.log.error(`   Actual schema: v${actualSchemaVersion}`);
+                this.log.error(`   Code version: ${EXPECTED_CODE_VERSION}`);
+                this.log.error('');
+                this.log.error('⚠️ POSSIBLE CACHE ISSUE:');
+                this.log.error('   Browser may be using cached old JavaScript.');
+                this.log.error('   Action required: Hard reload (Ctrl+Shift+R or Cmd+Shift+R)');
+                
+                // Show user-friendly notification
+                if (window.SafetyUtils) {
+                    window.SafetyUtils.showNotification(
+                        'App update detected. Please hard reload: Ctrl+Shift+R (Windows/Linux) or Cmd+Shift+R (Mac)',
+                        'warning',
+                        15000
+                    );
+                }
+            } else {
+                this.log.debug(`✅ Schema version OK: v${actualSchemaVersion}`);
             }
             
             this.log.debug('✅ Database opened, initializing default data...');
@@ -372,6 +463,83 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
     }
 
     // ========================================
+    // VALIDATION HELPERS
+    // ========================================
+
+    /**
+     * Validate entity data before saving
+     * @param {Object} entityData - Entity data to validate
+     * @throws {Error} If validation fails
+     */
+    validateEntityData(entityData) {
+        // Required: name
+        if (!entityData.name || typeof entityData.name !== 'string' || entityData.name.trim().length === 0) {
+            throw new Error('Entity name is required and must be a non-empty string');
+        }
+        
+        if (entityData.name.length > 500) {
+            throw new Error('Entity name must be 500 characters or less');
+        }
+        
+        // Validate type enum
+        const validTypes = ['restaurant', 'hotel', 'venue', 'bar', 'cafe', 'other'];
+        const type = entityData.type || 'restaurant';
+        if (!validTypes.includes(type)) {
+            throw new Error(`Invalid entity type: ${type}. Must be one of: ${validTypes.join(', ')}`);
+        }
+        
+        // Validate status enum
+        const validStatuses = ['active', 'inactive', 'draft'];
+        const status = entityData.status || 'active';
+        if (!validStatuses.includes(status)) {
+            throw new Error(`Invalid status: ${status}. Must be one of: ${validStatuses.join(', ')}`);
+        }
+        
+        // Validate entity_id format if provided
+        if (entityData.entity_id && !entityData.entity_id.match(/^(entity_|rest_|ent_)/)) {
+            throw new Error(`Invalid entity_id format: ${entityData.entity_id}. Must start with entity_, rest_, or ent_`);
+        }
+    }
+
+    /**
+     * Validate curation data before saving
+     * @param {Object} curationData - Curation data to validate
+     * @throws {Error} If validation fails
+     */
+    validateCurationData(curationData) {
+        // Required: entity_id
+        if (!curationData.entity_id || typeof curationData.entity_id !== 'string') {
+            throw new Error('entity_id is required and must be a string');
+        }
+        
+        // Required: curator_id
+        if (!curationData.curator_id || typeof curationData.curator_id !== 'string') {
+            throw new Error('curator_id is required and must be a string');
+        }
+        
+        // Validate curation_id format if provided
+        if (curationData.curation_id && !curationData.curation_id.match(/^cur_/)) {
+            throw new Error(`Invalid curation_id format: ${curationData.curation_id}. Must start with cur_`);
+        }
+    }
+
+    /**
+     * Generate entity_id with proper format
+     * @returns {string} - Generated entity_id
+     */
+    generateEntityId() {
+        return `ent_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    }
+
+    /**
+     * Generate curation_id with proper format
+     * @returns {string} - Generated curation_id
+     */
+    generateCurationId() {
+        return `cur_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    }
+
+    // ========================================
     // ENTITY OPERATIONS
     // ========================================
 
@@ -387,22 +555,47 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
         }
         
         try {
-            const entity = {
-                entity_id: entityData.entity_id || `ent_${Date.now()}_${Math.random().toString(36).substr(2)}`,
-                type: entityData.type || 'restaurant',
-                name: entityData.name,
-                status: entityData.status || 'active',
-                createdBy: entityData.createdBy,
-                data: entityData.data || {}
-            };
+            // ✅ Validate data BEFORE transaction
+            this.validateEntityData(entityData);
+            
+            // Generate entity_id if not provided
+            const entity_id = entityData.entity_id || this.generateEntityId();
+            
+            let createdEntity;
+            
+            // ✅ TRANSACTION: Ensure entity + syncQueue both succeed or both fail
+            await this.db.transaction('rw', [this.db.entities, this.db.syncQueue], async () => {
+                const entity = {
+                    entity_id,
+                    type: entityData.type || 'restaurant',
+                    name: entityData.name.trim(),
+                    status: entityData.status || 'active',
+                    externalId: entityData.externalId || null,
+                    metadata: entityData.metadata || [],
+                    data: entityData.data || {},
+                    createdBy: entityData.createdBy || null,
+                    version: 1,
+                    syncStatus: 'pending'  // Flat property for schema v9
+                };
 
-            const id = await this.db.entities.add(entity);
-            const createdEntity = await this.db.entities.get(id);
+                const id = await this.db.entities.add(entity);
+                createdEntity = await this.db.entities.get(id);
+                
+                // Add to sync queue (atomic with entity creation)
+                await this.db.syncQueue.add({
+                    type: 'entity',
+                    action: 'create',
+                    local_id: id,
+                    entity_id: createdEntity.entity_id,
+                    data: createdEntity,
+                    createdAt: new Date(),
+                    retryCount: 0,
+                    syncStatus: 'pending',
+                    lastError: null
+                });
+            });
             
-            // Add to sync queue
-            await this.addToSyncQueue('entity', 'create', id, createdEntity.entity_id, createdEntity);
-            
-            this.log.debug(`✅ Created entity: ${entity.name} (${entity.entity_id})`);
+            this.log.debug(`✅ Created entity (atomic): ${createdEntity.name} (${createdEntity.entity_id})`);
             return createdEntity;
             
         } catch (error) {
@@ -429,6 +622,40 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
     }
 
     /**
+     * Get entities by curator with optional date filter (optimized)
+     * @param {string} curatorId - Curator ID
+     * @param {Date|string} since - Optional minimum date
+     * @returns {Promise<Array>} - Array of entities
+     */
+    async getEntitiesByCurator(curatorId, since = null) {
+        if (!this.isDatabaseAvailable()) {
+            return [];
+        }
+        try {
+            if (since) {
+                // ✅ OPTIMIZED: Use compound index [createdBy+createdAt]
+                const sinceDate = typeof since === 'string' ? new Date(since) : since;
+                return await this.db.entities
+                    .where('[createdBy+createdAt]')
+                    .between(
+                        [curatorId, sinceDate],
+                        [curatorId, new Date('2099-12-31')]
+                    )
+                    .toArray();
+            } else {
+                // Use simple index
+                return await this.db.entities
+                    .where('createdBy')
+                    .equals(curatorId)
+                    .toArray();
+            }
+        } catch (error) {
+            this.log.error('❌ Failed to get entities by curator:', error);
+            return [];
+        }
+    }
+
+    /**
      * Get entities with filtering and pagination
      * @param {Object} options - Query options
      * @returns {Promise<Array>} - Array of entities
@@ -438,20 +665,38 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
             return [];
         }
         try {
+            let query;
             
-            let query = this.db.entities.orderBy('createdAt');
+            // ✅ OPTIMIZED: Use indexes instead of filter() for better performance
+            if (options.createdBy && options.since) {
+                // Use compound index [createdBy+createdAt]
+                query = this.db.entities
+                    .where('[createdBy+createdAt]')
+                    .between(
+                        [options.createdBy, new Date(options.since)],
+                        [options.createdBy, new Date('2099-12-31')]
+                    );
+            } else if (options.createdBy) {
+                // Use createdBy index
+                query = this.db.entities.where('createdBy').equals(options.createdBy);
+            } else if (options.type) {
+                // Use type index
+                query = this.db.entities.where('type').equals(options.type);
+            } else if (options.status) {
+                // Use status index
+                query = this.db.entities.where('status').equals(options.status);
+            } else {
+                // Default: order by createdAt
+                query = this.db.entities.orderBy('createdAt');
+            }
             
-            // Apply filters
-            if (options.type) {
+            // Apply remaining filters (use filter only when necessary)
+            if (options.type && !options.type) {
                 query = query.filter(entity => entity.type === options.type);
             }
             
-            if (options.status) {
+            if (options.status && options.createdBy) {
                 query = query.filter(entity => entity.status === options.status);
-            }
-            
-            if (options.createdBy) {
-                query = query.filter(entity => entity.createdBy === options.createdBy);
             }
             
             // Apply pagination
@@ -494,14 +739,29 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
                 throw new Error(`ETag mismatch. Expected: ${expectedETag}, Got: ${entity.etag}`);
             }
             
-            await this.db.entities.where('entity_id').equals(entityId).modify(updates);
+            let updatedEntity;
             
-            const updatedEntity = await this.getEntity(entityId);
+            // ✅ TRANSACTION: Ensure entity update + syncQueue both succeed or both fail
+            await this.db.transaction('rw', [this.db.entities, this.db.syncQueue], async () => {
+                await this.db.entities.where('entity_id').equals(entityId).modify(updates);
+                
+                updatedEntity = await this.getEntity(entityId);
+                
+                // Add to sync queue (atomic with entity update)
+                await this.db.syncQueue.add({
+                    type: 'entity',
+                    action: 'update',
+                    local_id: entity.id,
+                    entity_id: entityId,
+                    data: updatedEntity,
+                    createdAt: new Date(),
+                    retryCount: 0,
+                    syncStatus: 'pending',
+                    lastError: null
+                });
+            });
             
-            // Add to sync queue
-            await this.addToSyncQueue('entity', 'update', entity.id, entityId, updatedEntity);
-            
-            this.log.debug(`✅ Updated entity: ${entityId}`);
+            this.log.debug(`✅ Updated entity (atomic): ${entityId}`);
             return updatedEntity;
             
         } catch (error) {
@@ -526,20 +786,165 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
                 throw new Error(`Entity not found: ${entityId}`);
             }
             
-            // Delete related curations first
-            await this.db.curations.where('entity_id').equals(entityId).delete();
+            // ✅ TRANSACTION: Ensure entity + curations + syncQueue all deleted atomically
+            await this.db.transaction('rw', [this.db.entities, this.db.curations, this.db.syncQueue], async () => {
+                // Delete related curations first
+                await this.db.curations.where('entity_id').equals(entityId).delete();
+                
+                // Delete entity
+                await this.db.entities.where('entity_id').equals(entityId).delete();
+                
+                // Add to sync queue (atomic with deletion)
+                await this.db.syncQueue.add({
+                    type: 'entity',
+                    action: 'delete',
+                    local_id: entity.id,
+                    entity_id: entityId,
+                    data: null,
+                    createdAt: new Date(),
+                    retryCount: 0,
+                    syncStatus: 'pending',
+                    lastError: null
+                });
+            });
             
-            // Delete entity
-            await this.db.entities.where('entity_id').equals(entityId).delete();
-            
-            // Add to sync queue
-            await this.addToSyncQueue('entity', 'delete', entity.id, entityId, null);
-            
-            this.log.debug(`✅ Deleted entity: ${entityId}`);
+            this.log.debug(`✅ Deleted entity (atomic): ${entityId}`);
             return true;
             
         } catch (error) {
             this.log.error('❌ Failed to delete entity:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Bulk create entities (optimized for large imports)
+     * @param {Array<Object>} entities - Array of entity data
+     * @returns {Promise<Array<number>>} - Array of created IDs
+     */
+    async bulkCreateEntities(entities) {
+        if (!this.isDatabaseAvailable()) {
+            this.log.warn('⚠️ Database unavailable, bulk create skipped');
+            return [];
+        }
+        
+        if (!Array.isArray(entities) || entities.length === 0) {
+            throw new Error('entities must be a non-empty array');
+        }
+        
+        try {
+            // ✅ Validate ALL entities BEFORE transaction
+            this.log.debug(`🔍 Validating ${entities.length} entities...`);
+            entities.forEach((entity, index) => {
+                try {
+                    this.validateEntityData(entity);
+                } catch (error) {
+                    throw new Error(`Validation failed for entity at index ${index}: ${error.message}`);
+                }
+            });
+            
+            let ids;
+            
+            // ✅ TRANSACTION: Bulk insert entities + syncQueue atomically
+            await this.db.transaction('rw', [this.db.entities, this.db.syncQueue], async () => {
+                // Prepare entities with defaults
+                const preparedEntities = entities.map(e => ({
+                    entity_id: e.entity_id || this.generateEntityId(),
+                    type: e.type || 'restaurant',
+                    name: e.name.trim(),
+                    status: e.status || 'active',
+                    externalId: e.externalId || null,
+                    metadata: e.metadata || [],
+                    data: e.data || {},
+                    createdBy: e.createdBy || null,
+                    version: 1,
+                    syncStatus: 'pending'
+                }));
+                
+                // ✅ Bulk add (10-100x faster than individual adds)
+                ids = await this.db.entities.bulkAdd(preparedEntities, { allKeys: true });
+                
+                // ✅ Bulk add to sync queue
+                const syncItems = preparedEntities.map((e, index) => ({
+                    type: 'entity',
+                    action: 'create',
+                    local_id: ids[index],
+                    entity_id: e.entity_id,
+                    data: e,
+                    createdAt: new Date(),
+                    retryCount: 0,
+                    syncStatus: 'pending',
+                    lastError: null
+                }));
+                
+                await this.db.syncQueue.bulkAdd(syncItems);
+            });
+            
+            this.log.debug(`✅ Bulk created ${ids.length} entities (atomic)`);
+            return ids;
+            
+        } catch (error) {
+            this.log.error('❌ Failed to bulk create entities:', error);
+            throw error;
+        }
+    }
+
+    /**
+     * Bulk update entities (optimized for large updates)
+     * @param {Array<{entityId: string, updates: Object}>} items - Array of {entityId, updates}
+     * @returns {Promise<number>} - Number of updated entities
+     */
+    async bulkUpdateEntities(items) {
+        if (!this.isDatabaseAvailable()) {
+            this.log.warn('⚠️ Database unavailable, bulk update skipped');
+            return 0;
+        }
+        
+        if (!Array.isArray(items) || items.length === 0) {
+            throw new Error('items must be a non-empty array');
+        }
+        
+        try {
+            let updated = 0;
+            
+            // ✅ TRANSACTION: Bulk updates atomically
+            await this.db.transaction('rw', [this.db.entities, this.db.syncQueue], async () => {
+                for (const item of items) {
+                    const { entityId, updates } = item;
+                    
+                    // Check entity exists
+                    const entity = await this.db.entities.where('entity_id').equals(entityId).first();
+                    if (!entity) {
+                        this.log.warn(`⚠️ Entity ${entityId} not found, skipping`);
+                        continue;
+                    }
+                    
+                    // Apply update
+                    await this.db.entities.where('entity_id').equals(entityId).modify(updates);
+                    
+                    // Add to sync queue
+                    const updatedEntity = await this.db.entities.where('entity_id').equals(entityId).first();
+                    await this.db.syncQueue.add({
+                        type: 'entity',
+                        action: 'update',
+                        local_id: entity.id,
+                        entity_id: entityId,
+                        data: updatedEntity,
+                        createdAt: new Date(),
+                        retryCount: 0,
+                        syncStatus: 'pending',
+                        lastError: null
+                    });
+                    
+                    updated++;
+                }
+            });
+            
+            this.log.debug(`✅ Bulk updated ${updated} entities (atomic)`);
+            return updated;
+            
+        } catch (error) {
+            this.log.error('❌ Failed to bulk update entities:', error);
             throw error;
         }
     }
@@ -559,24 +964,59 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
             return null;
         }
         try {
-            const curation = {
-                curation_id: curationData.curation_id || `cur_${Date.now()}_${Math.random().toString(36).substr(2)}`,
-                entity_id: curationData.entity_id,
-                curator_id: curationData.curator_id,
-                category: curationData.category || 'general',
-                concept: curationData.concept || 'review',
-                items: curationData.items || [],
-                notes: curationData.notes || {},
-                metadata: curationData.metadata || {}
-            };
+            // ✅ Validate data BEFORE transaction
+            this.validateCurationData(curationData);
+            
+            // ✅ Verify entity exists BEFORE transaction
+            const entity = await this.db.entities
+                .where('entity_id')
+                .equals(curationData.entity_id)
+                .first();
+            
+            if (!entity) {
+                throw new Error(`Entity ${curationData.entity_id} not found. Cannot create curation for non-existent entity.`);
+            }
+            
+            // Generate curation_id if not provided
+            const curation_id = curationData.curation_id || this.generateCurationId();
+            
+            let createdCuration;
+            
+            // ✅ TRANSACTION: Ensure curation + syncQueue both succeed or both fail
+            await this.db.transaction('rw', [this.db.curations, this.db.syncQueue], async () => {
+                const curation = {
+                    curation_id,
+                    entity_id: curationData.entity_id,
+                    curator_id: curationData.curator_id,
+                    curatorName: curationData.curatorName || 'Unknown',
+                    categories: curationData.categories || {},
+                    category: curationData.category || 'general',
+                    concept: curationData.concept || 'review',
+                    items: curationData.items || [],
+                    notes: curationData.notes || { public: null, private: null },
+                    metadata: curationData.metadata || {},
+                    version: 1,
+                    syncStatus: 'pending'  // Flat property for schema v9
+                };
 
-            const id = await this.db.curations.add(curation);
-            const createdCuration = await this.db.curations.get(id);
+                const id = await this.db.curations.add(curation);
+                createdCuration = await this.db.curations.get(id);
+                
+                // Add to sync queue (atomic with curation creation)
+                await this.db.syncQueue.add({
+                    type: 'curation',
+                    action: 'create',
+                    local_id: id,
+                    entity_id: createdCuration.entity_id,
+                    data: createdCuration,
+                    createdAt: new Date(),
+                    retryCount: 0,
+                    syncStatus: 'pending',
+                    lastError: null
+                });
+            });
             
-            // Add to sync queue
-            await this.addToSyncQueue('curation', 'create', id, createdCuration.curation_id, createdCuration);
-            
-            this.log.debug(`✅ Created curation: ${curation.curation_id} for entity: ${curation.entity_id}`);
+            this.log.debug(`✅ Created curation (atomic): ${createdCuration.curation_id} for entity: ${createdCuration.entity_id}`);
             return createdCuration;
             
         } catch (error) {
@@ -615,10 +1055,34 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
             return await this.db.curations
                 .where('entity_id')
                 .equals(entityId)
-                .orderBy('createdAt')
-                .toArray();
+                .sortBy('createdAt');
         } catch (error) {
             this.log.error('❌ Failed to get entity curations:', error);
+            return [];
+        }
+    }
+
+    /**
+     * Get curations by entity and curator (optimized with compound index)
+     * @param {string} entityId - Entity ID
+     * @param {string} curatorId - Curator ID
+     * @returns {Promise<Array>} - Array of curations
+     */
+    async getEntityCurationsByCurator(entityId, curatorId) {
+        if (!this.isDatabaseAvailable()) {
+            return [];
+        }
+        try {
+            // ✅ OPTIMIZED: Use compound index [entity_id+curator_id]
+            return await this.db.curations
+                .where('[entity_id+curator_id]')
+                .between(
+                    [entityId, curatorId],
+                    [entityId, curatorId]
+                )
+                .toArray();
+        } catch (error) {
+            this.log.error('❌ Failed to get entity curations by curator:', error);
             return [];
         }
     }
@@ -710,9 +1174,14 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
             return [];
         }
         try {
-            }
-
-            return await this.db.syncQueue.orderBy('createdAt').toArray();
+            // ✅ OPTIMIZED: Use compound index [syncStatus+createdAt] for FIFO order
+            return await this.db.syncQueue
+                .where('[syncStatus+createdAt]')
+                .between(
+                    ['pending', new Date(0)],
+                    ['pending', new Date('2099-12-31')]
+                )
+                .toArray();
         } catch (error) {
             this.log.error('❌ Failed to get pending sync items:', error);
             return [];
