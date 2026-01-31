@@ -4,7 +4,22 @@
     <!-- Add meta viewport tag for proper mobile rendering -->
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    
+    <!-- Cache Control: Force fresh HTML load -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
+    
     <title>Concierge Collector</title>
+    
+    <!-- Application Version - UPDATE ON EACH DEPLOYMENT -->
+    <script>
+        window.APP_VERSION = '9.1.0'; // ✅ Updated for API-only mode fixes
+        window.SCHEMA_VERSION = 9;
+    </script>
+    
+    <!-- Version Check - Force reload on new version -->
+    <script src="scripts/core/versionCheck.js"></script>
     <!-- Favicon -->
     <link rel="icon" href="images/favicon.ico" sizes="any">
     <link rel="icon" type="image/png" sizes="48x48" href="images/icon48.png">
@@ -44,14 +59,14 @@
     <link rel="stylesheet" href="styles/sync-badges.css">
     <link rel="stylesheet" href="styles/mobile-enhancements.css">
     
-    <!-- 5. Legacy Support (will be deprecated after migration) -->
+    <!-- 5. Legacy Application Styles (migration in progress - 60% complete) -->
     <link rel="stylesheet" href="styles/style.css">
     
     <!-- Centralized Configuration (MUST load first) -->
-    <script src="scripts/core/config.js"></script>
+    <script src="scripts/core/config.js?v=9.0.0"></script>
     
     <!-- Centralized Logging (loads after config) -->
-    <script src="scripts/core/logger.js"></script>
+    <script src="scripts/core/logger.js?v=9.0.0"></script>
     
     <!-- OAuth Callback Protection (prevents page reload during OAuth callback) -->
     <script>
@@ -91,7 +106,7 @@
     </script>
     
     <!-- Restaurant validator utility -->
-    <script src="scripts/utils/restaurantValidator.js" defer></script>
+    <script src="scripts/utils/restaurantValidator.js?v=9.0.0" defer></script>
     
     <!-- Michelin module removed - data will be imported via batch script -->
     <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.0/lame.min.js"></script>
@@ -171,11 +186,11 @@
                         </div>
                         
                         <div class="mt-4 flex justify-between">
-                            <button id="discard-recording" class="btn btn-outline btn-md">
+                            <button id="discard-recording" class="btn btn-outline btn-md" aria-label="Discard audio recording">
                                 <span class="material-icons mr-1" aria-hidden="true">delete</span>
                                 Discard
                             </button>
-                            <button id="transcribe-audio" class="btn btn-success btn-md hidden">
+                            <button id="transcribe-audio" class="btn btn-success btn-md hidden" aria-label="Transcribe audio recording">
                                 <span class="material-icons mr-1" aria-hidden="true">description</span>
                                 Transcribe
                             </button>
@@ -193,11 +208,11 @@
             </h2>
             <div id="transcription-text" class="border p-4 rounded h-40 overflow-y-auto mb-4"></div>
             <div class="flex justify-between">
-                <button id="discard-transcription" class="btn btn-outline btn-md">
+                <button id="discard-transcription" class="btn btn-outline btn-md" aria-label="Go back to audio recording">
                     <span class="material-icons mr-1" aria-hidden="true">arrow_back</span>
                     Back
                 </button>
-                <button id="extract-concepts" class="btn btn-success btn-md">
+                <button id="extract-concepts" class="btn btn-success btn-md" aria-label="Extract restaurant concepts from transcription">
                     <span class="material-icons mr-1" aria-hidden="true">category</span>
                     Extract Concepts
                 </button>
@@ -218,7 +233,7 @@
                         <div class="flex-grow relative">
                             <input type="text" id="restaurant-name" class="input input-md" placeholder="Restaurant Name">
                         </div>
-                        <button id="places-lookup-btn" type="button" class="btn btn-primary btn-sm" title="Get from Google Places">
+                        <button id="places-lookup-btn" type="button" class="btn btn-primary btn-sm" title="Get from Google Places" aria-label="Search Google Places for restaurant">
                             <span class="material-icons mr-1" aria-hidden="true">travel_explore</span>
                             Places
                         </button>
@@ -232,7 +247,7 @@
                         <span class="material-icons mr-2 text-blue-500">location_on</span>
                         Location:
                     </label>
-                    <button id="get-location" class="btn btn-primary btn-md">
+                    <button id="get-location" class="btn btn-primary btn-md" aria-label="Get current location using GPS">
                         <span class="material-icons mr-2" aria-hidden="true">my_location</span>
                         Get Current Location
                     </button>
@@ -245,11 +260,11 @@
                         Photos:
                     </label>
                     <div class="photo-buttons-container">
-                        <button type="button" id="take-photo" class="btn btn-success btn-md mr-2">
+                        <button type="button" id="take-photo" class="btn btn-success btn-md mr-2" aria-label="Take photo with camera">
                             <span class="material-icons mr-1" aria-hidden="true">photo_camera</span>
                             Take Photo
                         </button>
-                        <button type="button" id="gallery-photo" class="btn btn-primary btn-md">
+                        <button type="button" id="gallery-photo" class="btn btn-primary btn-md" aria-label="Select photo from gallery">
                             <span class="material-icons mr-1" aria-hidden="true">photo_library</span>
                             Gallery
                         </button>
@@ -281,7 +296,7 @@
                     </label>
                     <textarea id="restaurant-transcription" class="input input-md h-32" placeholder="No transcription available" spellcheck="true"></textarea>
                     <div class="mt-2 flex justify-end">
-                        <button id="reprocess-concepts" class="btn btn-secondary btn-md">
+                        <button id="reprocess-concepts" class="btn btn-secondary btn-md" aria-label="Reprocess restaurant concepts">
                             <span class="material-icons mr-1" aria-hidden="true">refresh</span>
                             Reprocess Concepts
                         </button>
@@ -295,7 +310,7 @@
                     </label>
                     <textarea id="restaurant-description" class="input input-md h-20" placeholder="Short restaurant description" maxlength="200"></textarea>
                     <div class="mt-2 flex justify-end">
-                        <button id="generate-description" class="btn btn-warning btn-md">
+                        <button id="generate-description" class="btn btn-warning btn-md" aria-label="Generate AI description">
                             <span class="material-icons mr-1" aria-hidden="true">auto_awesome</span>
                             Generate Description
                         </button>
@@ -335,7 +350,7 @@
 
         <!-- Find Entity Search -->
         <div class="mb-6">
-            <button id="find-entity-btn" class="btn btn-primary btn-lg w-full shadow-md hidden">
+            <button id="find-entity-btn" class="btn btn-primary btn-lg w-full shadow-md hidden" aria-label="Find existing restaurant entity">
                 <span class="material-icons mr-2" aria-hidden="true">search</span>
                 <span class="font-medium">Find Entity</span>
             </button>
@@ -358,6 +373,7 @@
                         id="tab-curations" 
                         class="view-tab active py-4 px-1 border-b-2 border-blue-500 font-medium text-blue-600 focus:outline-none"
                         data-tab="curations"
+                        aria-label="View curations tab"
                     >
                         <span class="material-icons text-sm align-middle mr-1">edit_note</span>
                         Curations
@@ -366,6 +382,7 @@
                         id="tab-entities" 
                         class="view-tab py-4 px-1 border-b-2 border-transparent font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300 focus:outline-none"
                         data-tab="entities"
+                        aria-label="View entities tab"
                     >
                         <span class="material-icons text-sm align-middle mr-1">restaurant</span>
                         Entities
@@ -374,6 +391,7 @@
                         id="tab-reviews" 
                         class="view-tab py-4 px-1 border-b-2 border-transparent font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300 focus:outline-none"
                         data-tab="reviews"
+                        aria-label="View reviews tab"
                     >
                         <span class="material-icons text-sm align-middle mr-1">mic</span>
                         Reviews
@@ -393,14 +411,14 @@
                                 type="text" 
                                 id="curation-search" 
                                 placeholder="Search curations..." 
-                                class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                class="input input-md w-full pl-10"
                             />
                         </div>
                     </div>
 
                     <!-- Status Filter -->
                     <div>
-                        <select id="curation-status-filter" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <select id="curation-status-filter" class="select select-md w-full">
                             <option value="all">All Status</option>
                             <option value="draft">Draft</option>
                             <option value="done">Done</option>
@@ -431,7 +449,7 @@
 
                     <!-- Type Filter -->
                     <div>
-                        <select id="entity-type-filter" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <select id="entity-type-filter" class="select select-md w-full">
                             <option value="all">All Types</option>
                             <option value="restaurant">Restaurants</option>
                             <option value="bar">Bars</option>
@@ -442,7 +460,7 @@
 
                     <!-- City Filter -->
                     <div>
-                        <select id="entity-city-filter" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <select id="entity-city-filter" class="select select-md w-full">
                             <option value="all">All Cities</option>
                         </select>
                     </div>
@@ -479,7 +497,7 @@
                 Export/Import Data
             </h2>
             <div class="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
-                <button id="export-data" class="btn btn-primary btn-md">
+                <button id="export-data" class="btn btn-primary btn-md" aria-label="Export all restaurant data to JSON">
                     <span class="material-icons mr-1" aria-hidden="true">file_download</span>
                     Export Data
                 </button>
@@ -494,7 +512,7 @@
                                aria-describedby="import-file-description">
                         <span id="import-file-description" class="sr-only">Select a JSON or ZIP file containing restaurant data to import</span>
                     </div>
-                    <button id="import-data" class="btn btn-success btn-md w-full">
+                    <button id="import-data" class="btn btn-success btn-md w-full" aria-label="Import restaurant data from selected file">
                         <span class="material-icons mr-1" aria-hidden="true">file_upload</span>
                         Import Data
                     </button>
@@ -510,7 +528,7 @@
                                aria-describedby="import-concierge-file-description">
                         <span id="import-concierge-file-description" class="sr-only">Select a JSON file containing Concierge restaurant data</span>
                     </div>
-                    <button id="import-concierge-data" class="btn btn-secondary btn-md w-full">
+                    <button id="import-concierge-data" class="btn btn-secondary btn-md w-full" aria-label="Import Concierge restaurant data from selected file">
                         <span class="material-icons mr-1" aria-hidden="true">cloud_sync</span>
                         Import Concierge Data
                     </button>
@@ -519,37 +537,37 @@
         </section>
 
         <!-- Quick Action Modal -->
-        <div id="quick-action-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
-            <div class="bg-white p-6 rounded-lg max-w-sm w-full shadow-xl border border-gray-100">
-                <div class="flex items-center mb-6">
+        <div id="quick-action-modal" class="modal-backdrop hidden">
+            <div class="modal modal-sm" role="dialog" aria-modal="true" aria-labelledby="quick-action-title">
+                <div class="modal-header">
                     <span class="material-icons mr-2 text-blue-500">add_circle</span>
-                    <h3 class="text-xl font-semibold">Quick Actions</h3>
-                    <button id="close-quick-modal" class="text-gray-500 hover:text-gray-800 text-xl">&times;</button>
-                </div>
-                <div class="grid grid-cols-1 gap-4">
-                    <button id="quick-record" class="btn btn-danger btn-lg">
-                        <span class="material-icons mr-2" aria-hidden="true">mic</span>
-                        Record Review
+                    <h3 class="modal-title" id="quick-action-title">Quick Actions</h3>
+                    <button id="close-quick-modal" class="modal-close" aria-label="Close quick actions modal">
+                        <span class="material-icons">close</span>
                     </button>
+                </div>
+                <div class="modal-body">
+                    <div class="grid grid-cols-1 gap-4">
+                        <button id="quick-record" class="btn btn-danger btn-lg" aria-label="Start recording audio review">
+                            <span class="material-icons mr-2" aria-hidden="true">mic</span>
+                            Record Review
+                        </button>
                     
-                    <button id="quick-location" class="btn btn-primary btn-lg">
+                    <button id="quick-location" class="btn btn-primary btn-lg" aria-label="Get current GPS location">
                         <span class="material-icons mr-2" aria-hidden="true">location_on</span>
                         Get Location
                     </button>
                     
-                    <button id="quick-photo" class="btn btn-success btn-lg">
+                    <button id="quick-photo" class="btn btn-success btn-lg" aria-label="Take photos with camera">
                         <span class="material-icons mr-2" aria-hidden="true">photo_camera</span>
                         Take Photos
                     </button>
                     
-                    <button id="quick-manual" class="btn btn-secondary btn-lg">
+                    <button id="quick-manual" class="btn btn-secondary btn-lg" aria-label="Create manual restaurant entry">
                         <span class="material-icons mr-2" aria-hidden="true">edit</span>
                         Manual Entry
                     </button>
-                </div>
-            </div>
-        </div>
-        
+                    </div>
         <!-- Floating Action Button -->
         <div id="fab" class="fixed bottom-6 right-6 bg-blue-600 text-white rounded-full w-16 h-16 flex items-center justify-center shadow-lg cursor-pointer">
             <span class="material-icons text-2xl">add</span>
@@ -560,7 +578,7 @@
             <h3 class="text-sm font-semibold uppercase text-gray-500 pl-4 mb-2">Synchronization</h3>
             
             <div class="px-4">
-                <button id="sync-button" class="btn btn-primary btn-md w-full mb-2">
+                <button id="sync-button" class="btn btn-primary btn-md w-full mb-2" aria-label="Synchronize data with server">
                     <span class="material-icons mr-2" aria-hidden="true">sync</span>
                     Sync Data
                 </button>
@@ -568,7 +586,7 @@
             </div>
             
             <div class="px-4 mt-2">
-                <button id="open-sync-settings" class="btn btn-outline btn-sm w-full mb-2">
+                <button id="open-sync-settings" class="btn btn-outline btn-sm w-full mb-2" aria-label="Open synchronization settings">
                     <span class="material-icons text-sm mr-1" aria-hidden="true">settings</span>
                     Sync Settings
                 </button>
@@ -592,11 +610,11 @@
                 <span class="toolbar-info-title">Edit Restaurant</span>
             </div>
             <div class="toolbar-actions">
-                <button id="discard-restaurant" class="btn btn-outline btn-md">
+                <button id="discard-restaurant" class="btn btn-outline btn-md" aria-label="Discard restaurant changes">
                     <span class="material-icons" aria-hidden="true">close</span>
                     <span>Discard</span>
                 </button>
-                <button id="save-restaurant" class="btn btn-success btn-md">
+                <button id="save-restaurant" class="btn btn-success btn-md" aria-label="Save restaurant">
                     <span class="material-icons" aria-hidden="true">check</span>
                     <span>Save</span>
                 </button>
@@ -611,11 +629,11 @@
                 <span class="toolbar-info-title">Edit Curator</span>
             </div>
             <div class="toolbar-actions">
-                <button id="cancel-curator-compact" class="btn btn-outline btn-md">
+                <button id="cancel-curator-compact" class="btn btn-outline btn-md" aria-label="Cancel curator changes">
                     <span class="material-icons" aria-hidden="true">close</span>
                     <span>Cancel</span>
                 </button>
-                <button id="save-curator-compact" class="btn btn-primary btn-md">
+                <button id="save-curator-compact" class="btn btn-primary btn-md" aria-label="Save curator">
                     <span class="material-icons" aria-hidden="true">check</span>
                     <span>Save</span>
                 </button>
@@ -624,14 +642,16 @@
     </div>
 
     <!-- Add the sync settings modal elements -->
-    <div id="sync-settings-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
-        <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="text-xl font-bold">Sync Settings</h2>
-                <button id="close-sync-settings" class="text-gray-500 hover:text-gray-800 text-xl">&times;</button>
+    <div id="sync-settings-modal" class="modal-backdrop hidden">
+        <div class="modal modal-md" role="dialog" aria-modal="true" aria-labelledby="sync-settings-title">
+            <div class="modal-header">
+                <h2 class="modal-title" id="sync-settings-title">Sync Settings</h2>
+                <button id="close-sync-settings" class="modal-close" aria-label="Close sync settings modal">
+                    <span class="material-icons">close</span>
+                </button>
             </div>
             
-            <div class="mb-6">
+            <div class="modal-body">
                 <h3 class="text-lg font-medium mb-4">Auto-Sync Configuration</h3>
                 
                 <div class="mb-4">
@@ -657,12 +677,12 @@
                 </div>
             </div>
             
-            <div class="flex justify-between">
-                <button id="save-sync-settings" class="btn btn-primary btn-md">
+            <div class="modal-footer">
+                <button id="save-sync-settings" class="btn btn-primary btn-md" aria-label="Save synchronization settings">
                     Save Settings
                 </button>
                 
-                <button id="manual-sync" class="btn btn-success btn-md">
+                <button id="manual-sync" class="btn btn-success btn-md" aria-label="Synchronize data now">
                     <span class="material-icons mr-1" aria-hidden="true">sync</span>
                     Sync Now
                 </button>
@@ -677,94 +697,94 @@
     <script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
 
     <!-- Core utilities - load before any other scripts -->
-    <script src="scripts/ui-core/uiUtils.js"></script>
-    <script src="scripts/core/moduleWrapper.js"></script>
+    <script src="scripts/ui-core/uiUtils.js?v=9.0.0"></script>
+    <script src="scripts/core/moduleWrapper.js?v=9.0.0"></script>
     
     <!-- NEW: Architectural Managers (load early - other modules depend on these) -->
-    <script src="scripts/ui-core/modalManager.js"></script>
-    <script src="scripts/managers/stateStore.js"></script>
-    <script src="scripts/managers/progressManager.js"></script>
-    <script src="scripts/ui-core/navigationManager.js"></script>
-    <script src="scripts/managers/errorManager.js"></script>
-    <script src="scripts/managers/formManager.js"></script>
+    <script src="scripts/ui-core/modalManager.js?v=9.0.0"></script>
+    <script src="scripts/managers/stateStore.js?v=9.0.0"></script>
+    <script src="scripts/managers/progressManager.js?v=9.0.0"></script>
+    <script src="scripts/ui-core/navigationManager.js?v=9.0.0"></script>
+    <script src="scripts/managers/errorManager.js?v=9.0.0"></script>
+    <script src="scripts/managers/formManager.js?v=9.0.0"></script>
     
     <!-- Phase 3-4: Mobile, Performance & UX Enhancements -->
-    <script src="scripts/ui-core/bottomSheet.js"></script>
-    <script src="scripts/ui-core/gestureManager.js"></script>
-    <script src="scripts/ui-core/skeletonLoader.js"></script>
-    <script src="scripts/ui-core/lazyLoader.js"></script>
-    <script src="scripts/ui-core/optimisticUI.js"></script>
-    <script src="scripts/ui-core/emptyStateManager.js"></script>
-    <script src="scripts/ui-core/accessibilityChecker.js"></script>
+    <script src="scripts/ui-core/bottomSheet.js?v=9.0.0"></script>
+    <script src="scripts/ui-core/gestureManager.js?v=9.0.0"></script>
+    <script src="scripts/ui-core/skeletonLoader.js?v=9.0.0"></script>
+    <script src="scripts/ui-core/lazyLoader.js?v=9.0.0"></script>
+    <script src="scripts/ui-core/optimisticUI.js?v=9.0.0"></script>
+    <script src="scripts/ui-core/emptyStateManager.js?v=9.0.0"></script>
+    <script src="scripts/ui-core/accessibilityChecker.js?v=9.0.0"></script>
     
     <!-- Entity-Curation Backend - Core Data Layer -->
     <!-- migrationManager.js REMOVED: Clean break strategy, no migration needed -->
-    <script src="scripts/storage/dataStore.js"></script>
-    <script src="scripts/services/apiService.js"></script>
-    <script src="scripts/sync/syncManagerV3.js"></script>
-    <script src="scripts/sync/importManager.js"></script>
+    <script src="scripts/storage/dataStore.js?v=9.0.0"></script>
+    <script src="scripts/services/apiService.js?v=9.0.0"></script>
+    <script src="scripts/sync/syncManagerV3.js?v=9.0.0"></script>
+    <script src="scripts/sync/importManager.js?v=9.0.0"></script>
     
     <!-- UI Components -->
-    <script src="scripts/ui/cardFactory.js"></script>
-    <script src="scripts/ui/conflictResolutionModal.js"></script>
+    <script src="scripts/ui/cardFactory.js?v=9.0.0"></script>
+    <script src="scripts/ui/conflictResolutionModal.js?v=9.0.0"></script>
     
     <!-- Compatibility Layer for Legacy UI Modules -->
-    <script src="scripts/storage/dataStorageWrapper.js"></script>
+    <script src="scripts/storage/dataStorageWrapper.js?v=9.0.0"></script>
     
     <!-- Application modules - keeping essential ones -->
-    <script src="scripts/services/promptTemplate.js"></script>
-    <script src="scripts/services/conceptMatcher.js"></script>
-    <script src="scripts/audioRecorder.js"></script>
-    <script src="scripts/uiManager.js"></script>
+    <script src="scripts/services/promptTemplate.js?v=9.0.0"></script>
+    <script src="scripts/services/conceptMatcher.js?v=9.0.0"></script>
+    <script src="scripts/audioRecorder.js?v=9.0.0"></script>
+    <script src="scripts/uiManager.js?v=9.0.0"></script>
     
     <!-- Module implementations - V3 Compatible -->
-    <script src="scripts/modules/safetyUtils.js"></script>
-    <script src="scripts/modules/uiUtilsModule.js"></script>
-    <script src="scripts/modules/pendingAudioManager.js"></script>
-    <script src="scripts/modules/draftRestaurantManager.js"></script>
-    <script src="scripts/modules/curatorModule.js"></script>
-    <script src="scripts/modules/recordingModule.js?v=20260130-1152"></script>
-    <script src="scripts/modules/transcriptionModule.js"></script>
-    <script src="scripts/modules/conceptModule.js?v=20260130-1209"></script>
-    <script src="scripts/modules/entityModule.js"></script>
-    <script src="scripts/modules/syncStatusModule.js"></script>
+    <script src="scripts/modules/safetyUtils.js?v=9.0.0"></script>
+    <script src="scripts/modules/uiUtilsModule.js?v=9.0.0"></script>
+    <script src="scripts/modules/pendingAudioManager.js?v=9.0.0"></script>
+    <script src="scripts/modules/draftRestaurantManager.js?v=9.0.0"></script>
+    <script src="scripts/modules/curatorModule.js?v=9.0.0"></script>
+    <script src="scripts/modules/recordingModule.js?v=9.0.0"></script>
+    <script src="scripts/modules/transcriptionModule.js?v=9.0.0"></script>
+    <script src="scripts/modules/conceptModule.js?v=9.0.0"></script>
+    <script src="scripts/modules/entityModule.js?v=9.0.0"></script>
+    <script src="scripts/modules/syncStatusModule.js?v=9.0.0"></script>
     <!-- DEPRECATED: <script src="scripts/modules/exportImportModule.js"></script> -->
-    <script src="scripts/modules/quickActionModule.js"></script>
+    <script src="scripts/modules/quickActionModule.js?v=9.0.0"></script>
     <!-- REMOVED: michelinStagingModule.js - Michelin data will be batch imported -->
     
     <!-- V3 Data Services (Sprint 1, Day 3 - MongoDB ↔ IndexedDB compatibility) -->
-    <script src="scripts/services/V3DataTransformer.js"></script>
+    <script src="scripts/services/V3DataTransformer.js?v=9.0.0"></script>
     
     <!-- Google Places Services (Sprint 1, Day 2 - Service-based architecture) -->
-    <script src="scripts/services/googlePlaces/PlacesCache.js"></script>
-    <script src="scripts/services/googlePlaces/PlacesFormatter.js"></script>
-    <script src="scripts/services/googlePlaces/PlacesService.js"></script>
+    <script src="scripts/services/googlePlaces/PlacesCache.js?v=9.0.0"></script>
+    <script src="scripts/services/googlePlaces/PlacesFormatter.js?v=9.0.0"></script>
+    <script src="scripts/services/googlePlaces/PlacesService.js?v=9.0.0"></script>
     
     <!-- Places Orchestration Service (Unified API endpoint) -->
-    <script src="scripts/services/PlacesOrchestrationService.js"></script>
+    <script src="scripts/services/PlacesOrchestrationService.js?v=9.0.0"></script>
     
     <!-- Places Automation (Sprint 2, Day 4 - Entity automation) -->
-    <script src="scripts/services/PlacesAutomation.js"></script>
+    <script src="scripts/services/PlacesAutomation.js?v=9.0.0"></script>
     
     <!-- Google Places Module (refactored to use services) -->
-    <script src="scripts/modules/placesModule.js"></script>
-    <script src="scripts/modules/audioUtils.js"></script>
+    <script src="scripts/modules/placesModule.js?v=9.0.0"></script>
+    <script src="scripts/modules/audioUtils.js?v=9.0.0"></script>
 
     <!-- Authentication Module (must load before accessControl.js) -->
-    <script src="scripts/auth.js"></script>
+    <script src="scripts/auth.js?v=9.0.0"></script>
 
     <!-- Curator Profile Module (must load after auth.js) -->
-    <script src="scripts/curatorProfile.js"></script>
+    <script src="scripts/curatorProfile.js?v=9.0.0"></script>
 
     <!-- Find Entity Modal (Google Places search interface) -->
-    <script src="scripts/services/findEntityModal.js"></script>
+    <script src="scripts/services/findEntityModal.js?v=9.0.0"></script>
 
     <!-- Access Control (must load before main.js) -->
-    <script src="scripts/auth/accessControl.js"></script>
+    <script src="scripts/auth/accessControl.js?v=9.0.0"></script>
 
     <!-- Core application scripts -->
-    <script src="scripts/core/main.js"></script>
-    <script src="scripts/sync/syncSettingsManager.js"></script>
+    <script src="scripts/core/main.js?v=9.0.0"></script>
+    <script src="scripts/sync/syncSettingsManager.js?v=9.0.0"></script>
 
     <!-- Ensure this appears after all other scripts -->
     <script>
