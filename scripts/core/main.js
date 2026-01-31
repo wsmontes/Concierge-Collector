@@ -555,14 +555,10 @@ function ensureRecordingModuleInitialized(uiManager) {
             console.log('🔄 Final check - ensuring recording module is properly initialized');
             
             if (uiManager && uiManager.recordingModule) {
-                // Make sure recording module has setup its events
-                if (typeof uiManager.recordingModule.setupEvents === 'function') {
-                    uiManager.recordingModule.setupEvents();
-                    console.log('✅ Recording module event setup reinforced');
-                    
-                    // Make module available globally for debugging if needed
-                    window.recordingModule = uiManager.recordingModule;
-                }
+                console.log('✅ Recording module already initialized by UI Manager');
+                
+                // Make module available globally for debugging if needed
+                window.recordingModule = uiManager.recordingModule;
             } else {
                 console.warn('⚠️ Recording module STILL not found in UI Manager after initialization attempts');
                 console.log('🔍 Final debug info:', {
@@ -576,9 +572,7 @@ function ensureRecordingModuleInitialized(uiManager) {
                     console.log('🚨 Last resort: attempting to initialize recording module in ensureRecordingModuleInitialized');
                     try {
                         uiManager.recordingModule = new RecordingModule(uiManager);
-                        if (typeof uiManager.recordingModule.setupEvents === 'function') {
-                            uiManager.recordingModule.setupEvents();
-                        }
+                        // Module auto-setup events during construction
                         window.recordingModule = uiManager.recordingModule;
                         console.log('✅ Recording module successfully initialized as last resort');
                     } catch (error) {

@@ -210,11 +210,81 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         return await response.json();
     }
 
-    async createEntity(entity) {
-        const response = await this.request('POST', 'entities', {
-            body: JSON.stringify(entity)
+    // ========================================
+    // CONFLICT RESOLUTION HELPERS
+    // ========================================
+
+    /**
+     * Merge local updates with server entity
+     * Strategy: Server wins for conflicts (last-write-wins)
+     * @param {Object} localUpdates - Local changes
+     * @param {Object} serverEntity - Server version
+     * @returns {Object} - Merged updates
+     */
+    mergeUpdates(localUpdates, serverEntity) {
+        const merged = { ...localUpdates };
+        
+        // Check each field for conflicts
+        Object.keys(localUpdates).forEach(key => {
+            if (serverEntity[key] !== undefined && 
+                JSON.stringify(localUpdates[key]) !== JSON.stringify(serverEntity[key])) {
+                this.log.warn(`⚠️ Conflict on field '${key}': server version kept, local change discarded`);
+                // Server wins - remove from merged updates
+                delete merged[key];
+            }
         });
-        return await response.json();
+        
+        return merged;
+    }
+
+    /**
+     * Check if error is a conflict error
+     * @param {Error} error - Error to check
+     * @returns {boolean}
+     */
+    isConflictError(error) {
+        return error.status === 409 || 
+               error.message?.includes('409') || 
+               error.message?.includes('conflict') ||
+               error.message?.includes('version mismatch');
+    }
+
+    /**
+     * Check if error is a duplicate error
+     * @param {Error} error - Error to check
+     * @returns {boolean}
+     */
+    isDuplicateError(error) {
+        return error.status === 409 || 
+               error.status === 500 && (
+                   error.message?.includes('already exists') ||
+                   error.message?.includes('duplicate') ||
+                   error.message?.includes('E11000')  // MongoDB duplicate key error
+               );
+    }
+
+    async createEntity(entity) {
+        try {
+            const response = await this.request('POST', 'entities', {
+                body: JSON.stringify(entity)
+            });
+            return await response.json();
+        } catch (error) {
+            // ✅ Handle duplicate entity (idempotency)
+            if (this.isDuplicateError(error)) {
+                this.log.warn(`⚠️ Entity ${entity.entity_id} already exists, fetching from server...`);
+                
+                try {
+                    // Fetch existing entity instead of failing
+                    return await this.getEntity(entity.entity_id);
+                } catch (fetchError) {
+                    this.log.error('❌ Failed to fetch existing entity:', fetchError);
+                    throw error;  // Throw original error if fetch fails
+                }
+            }
+            
+            throw error;
+        }
     }
 
     async getEntity(entityId) {
@@ -237,17 +307,46 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         return await response.json();
     }
 
-    async updateEntity(entityId, updates, currentVersion) {
+    async updateEntity(entityId, updates, currentVersion, retryCount = 0) {
         if (currentVersion === undefined) {
             throw new Error('Current version required for optimistic locking');
         }
         
-        const endpoint = AppConfig.api.backend.endpoints.entityById.replace('{id}', entityId);
-        const response = await this.request('PATCH', endpoint, {
-            headers: { 'If-Match': String(currentVersion) },
-            body: JSON.stringify(updates)
-        });
-        return await response.json();
+        try {
+            const endpoint = AppConfig.api.backend.endpoints.entityById.replace('{id}', entityId);
+            const response = await this.request('PATCH', endpoint, {
+                headers: { 'If-Match': String(currentVersion) },
+                body: JSON.stringify(updates)
+            });
+            return await response.json();
+        } catch (error) {
+            // ✅ Handle version conflict with auto-merge and retry
+            if (this.isConflictError(error) && retryCount < 3) {
+                this.log.warn(`⚠️ Version conflict for ${entityId} (attempt ${retryCount + 1}/3), attempting merge...`);
+                
+                try {
+                    // Fetch latest version from server
+                    const latest = await this.getEntity(entityId);
+                    
+                    // Merge changes (server wins for conflicts)
+                    const merged = this.mergeUpdates(updates, latest);
+                    
+                    // If no fields left to update after merge, consider it synced
+                    if (Object.keys(merged).length === 0) {
+                        this.log.warn('⚠️ All local changes conflicted with server, using server version');
+                        return latest;
+                    }
+                    
+                    // Retry with merged updates and new version
+                    return await this.updateEntity(entityId, merged, latest.version, retryCount + 1);
+                } catch (mergeError) {
+                    this.log.error('❌ Failed to merge and retry:', mergeError);
+                    throw error;  // Throw original conflict error
+                }
+            }
+            
+            throw error;
+        }
     }
 
     async deleteEntity(entityId) {
@@ -260,10 +359,27 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
     }
 
     async createCuration(curation) {
-        const response = await this.request('POST', 'curations', {
-            body: JSON.stringify(curation)
-        });
-        return await response.json();
+        try {
+            const response = await this.request('POST', 'curations', {
+                body: JSON.stringify(curation)
+            });
+            return await response.json();
+        } catch (error) {
+            // ✅ Handle duplicate curation (idempotency)
+            if (this.isDuplicateError(error)) {
+                this.log.warn(`⚠️ Curation ${curation.curation_id} already exists, fetching from server...`);
+                
+                try {
+                    // Fetch existing curation instead of failing
+                    return await this.getCuration(curation.curation_id);
+                } catch (fetchError) {
+                    this.log.error('❌ Failed to fetch existing curation:', fetchError);
+                    throw error;  // Throw original error if fetch fails
+                }
+            }
+            
+            throw error;
+        }
     }
 
     async getCuration(curationId) {
@@ -329,9 +445,21 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
             this.log.debug(`🔑 Token available: ${!!AuthService.getToken()}`);
             this.log.debug(`🌐 Language: ${language || 'pt-BR'}`);
             
+            // Validate audio blob
+            if (!audioBlob || audioBlob.size === 0) {
+                throw new Error('Invalid audio blob: empty or null');
+            }
+            
+            this.log.debug(`📦 Audio blob: type=${audioBlob.type}, size=${audioBlob.size} bytes`);
+            
             // Convert Blob to base64 - API V3 expects JSON with base64 audio_file
             const base64Audio = await this.blobToBase64(audioBlob);
             this.log.debug(`📦 Audio converted to base64 (${base64Audio.length} chars)`);
+            
+            // Validate base64 output
+            if (!base64Audio || base64Audio.length < 100) {
+                throw new Error('Base64 conversion failed: output too short');
+            }
             
             // API V3 orchestrate endpoint expects JSON, not FormData
             const requestBody = {

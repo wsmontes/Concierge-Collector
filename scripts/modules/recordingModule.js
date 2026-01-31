@@ -1609,6 +1609,15 @@ class RecordingModule {
             
             // Reset recording tool state after successful transcription
             this.resetRecordingToolState();
+            // Validate audio blob before processing
+            if (!audioBlob || audioBlob.size === 0) {
+                this.log.error('Invalid audio blob: empty or null');
+                this.updateProcessingStatus('transcription', 'error');
+                throw new Error('Recording failed: No audio data captured');
+            }
+            
+            this.log.debug(`Processing audio blob: type=${audioBlob.type}, size=${audioBlob.size} bytes`);
+            
         } catch (error) {
             this.log.error('Error processing recording:', error);
             this.updateProcessingStatus('transcription', 'error');
