@@ -287,6 +287,18 @@ if (typeof window.UIManager === 'undefined') {
                     return;
                 }
 
+                // ⚠️ FIXED: Check if database is available (API-only mode)
+                if (!window.DataStore.isDatabaseAvailable()) {
+                    container.innerHTML = `
+                        <div class="col-span-full text-center py-12">
+                            <span class="material-icons text-6xl text-yellow-300 mb-4">cloud_queue</span>
+                            <p class="text-gray-500 mb-2">Running in API-only mode</p>
+                            <p class="text-sm text-gray-400">Local curations not available without IndexedDB</p>
+                        </div>
+                    `;
+                    return;
+                }
+
                 // Get curations by current curator from IndexedDB
                 const curations = await window.DataStore.db.curations
                     .where('curator_id')

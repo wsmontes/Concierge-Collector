@@ -725,6 +725,17 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
      */
     async getSyncStatus() {
         try {
+            // ⚠️ FIXED: Check if database is available (API-only mode)
+            if (!window.DataStore.isDatabaseAvailable()) {
+                return {
+                    pendingEntities: 0,
+                    conflictEntities: 0,
+                    pendingCurations: 0,
+                    conflictCurations: 0,
+                    lastSyncTime: null
+                };
+            }
+
             const pendingEntities = await window.DataStore.db.entities
                 .where('syncStatus').equals('pending')
                 .count();
