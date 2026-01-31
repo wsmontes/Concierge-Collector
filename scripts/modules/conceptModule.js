@@ -1445,6 +1445,51 @@ class ConceptModule {
         }
     }
 
+    /**
+     * Process pre-extracted concepts from orchestrate API (avoids redundant API call)
+     * @param {string} transcriptionText - The transcription text
+     * @param {object} preExtractedConcepts - Concepts already extracted by orchestrate endpoint
+     */
+    async processPreExtractedConcepts(transcriptionText, preExtractedConcepts) {
+        try {
+            console.log('✅ Processing pre-extracted concepts from orchestrate');
+            console.log('🔴 RAW PRE-EXTRACTED CONCEPTS:', preExtractedConcepts);
+            
+            SafetyUtils.showLoading('Processing concepts...');
+            
+            // Show concepts section
+            this.uiManager.showConceptsSection();
+            
+            // Extract concepts dict from API response
+            let conceptsData = preExtractedConcepts;
+            
+            console.log('🟡 Before transformation:', conceptsData);
+            
+            if (preExtractedConcepts.concepts) {
+                conceptsData = preExtractedConcepts.concepts;
+                console.log('🟢 Extracted concepts dict:', conceptsData);
+            }
+            
+            // Concepts should be in format: {category: [values]}
+            if (typeof conceptsData === 'object' && !Array.isArray(conceptsData)) {
+                console.log('🟠 Calling handleExtractedConceptsWithValidation with:', conceptsData);
+                this.handleExtractedConceptsWithValidation(conceptsData);
+            } else {
+                console.error('⚠️ Unexpected pre-extracted concepts format:', typeof conceptsData, conceptsData);
+            }
+            
+            // Generate description based on transcription
+            await this.generateDescription(transcriptionText);
+            
+            SafetyUtils.hideLoading();
+            
+        } catch (error) {
+            SafetyUtils.hideLoading();
+            this.log.error('Error processing pre-extracted concepts:', error);
+            SafetyUtils.showNotification('Error processing concepts', 'error');
+        }
+    }
+
     // Continue with more concept-related methods like loadConceptSuggestions, showConceptDisambiguationDialog, etc.
     // ... (code for loadConceptSuggestions and showConceptDisambiguationDialog would go here)
 

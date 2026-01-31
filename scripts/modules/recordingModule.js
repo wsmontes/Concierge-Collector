@@ -1971,16 +1971,26 @@ class RecordingModule {
     /**
      * Trigger concept processing pipeline after a successful transcription
      * @param {string} transcription - The transcribed text
+     * @param {object} preExtractedConcepts - Optional pre-extracted concepts from orchestrate API
      */
-    triggerConceptProcessing(transcription) {
+    triggerConceptProcessing(transcription, preExtractedConcepts = null) {
         try {
             this.log.debug('Triggering concept processing for new restaurant');
+            this.log.debug('Pre-extracted concepts available:', !!preExtractedConcepts);
             
             // Method 1: Use conceptModule directly if available
             if (this.uiManager && this.uiManager.conceptModule && 
                 typeof this.uiManager.conceptModule.processConcepts === 'function') {
                 this.log.debug('Using uiManager.conceptModule.processConcepts');
-                this.uiManager.conceptModule.processConcepts(transcription);
+                
+                // ✅ Pass pre-extracted concepts if available to avoid redundant API call
+                if (preExtractedConcepts) {
+                    this.log.debug('✅ Using pre-extracted concepts from orchestrate, skipping redundant API call');
+                    this.uiManager.conceptModule.processPreExtractedConcepts(transcription, preExtractedConcepts);
+                } else {
+                    this.log.debug('⚠️ No pre-extracted concepts, will make separate API call');
+                    this.uiManager.conceptModule.processConcepts(transcription);
+                }
                 return;
             }
             
