@@ -63,10 +63,10 @@
     <link rel="stylesheet" href="styles/style.css">
     
     <!-- Centralized Configuration (MUST load first) -->
-    <script src="scripts/core/config.js?v=9.0.0"></script>
+    <script src="scripts/core/config.js?v=9.2.0"></script>
     
     <!-- Centralized Logging (loads after config) -->
-    <script src="scripts/core/logger.js?v=9.0.0"></script>
+    <script src="scripts/core/logger.js?v=9.2.0"></script>
     
     <!-- OAuth Callback Protection (prevents page reload during OAuth callback) -->
     <script>
@@ -106,7 +106,7 @@
     </script>
     
     <!-- Restaurant validator utility -->
-    <script src="scripts/utils/restaurantValidator.js?v=9.0.0" defer></script>
+    <script src="scripts/utils/restaurantValidator.js?v=9.2.0" defer></script>
     
     <!-- Michelin module removed - data will be imported via batch script -->
     <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.0/lame.min.js"></script>
@@ -697,94 +697,94 @@
     <script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
 
     <!-- Core utilities - load before any other scripts -->
-    <script src="scripts/ui-core/uiUtils.js?v=9.0.0"></script>
-    <script src="scripts/core/moduleWrapper.js?v=9.0.0"></script>
+    <script src="scripts/ui-core/uiUtils.js?v=9.2.0"></script>
+    <script src="scripts/core/moduleWrapper.js?v=9.2.0"></script>
     
     <!-- NEW: Architectural Managers (load early - other modules depend on these) -->
-    <script src="scripts/ui-core/modalManager.js?v=9.0.0"></script>
-    <script src="scripts/managers/stateStore.js?v=9.0.0"></script>
-    <script src="scripts/managers/progressManager.js?v=9.0.0"></script>
-    <script src="scripts/ui-core/navigationManager.js?v=9.0.0"></script>
-    <script src="scripts/managers/errorManager.js?v=9.0.0"></script>
-    <script src="scripts/managers/formManager.js?v=9.0.0"></script>
+    <script src="scripts/ui-core/modalManager.js?v=9.2.0"></script>
+    <script src="scripts/managers/stateStore.js?v=9.2.0"></script>
+    <script src="scripts/managers/progressManager.js?v=9.2.0"></script>
+    <script src="scripts/ui-core/navigationManager.js?v=9.2.0"></script>
+    <script src="scripts/managers/errorManager.js?v=9.2.0"></script>
+    <script src="scripts/managers/formManager.js?v=9.2.0"></script>
     
     <!-- Phase 3-4: Mobile, Performance & UX Enhancements -->
-    <script src="scripts/ui-core/bottomSheet.js?v=9.0.0"></script>
-    <script src="scripts/ui-core/gestureManager.js?v=9.0.0"></script>
-    <script src="scripts/ui-core/skeletonLoader.js?v=9.0.0"></script>
-    <script src="scripts/ui-core/lazyLoader.js?v=9.0.0"></script>
-    <script src="scripts/ui-core/optimisticUI.js?v=9.0.0"></script>
-    <script src="scripts/ui-core/emptyStateManager.js?v=9.0.0"></script>
-    <script src="scripts/ui-core/accessibilityChecker.js?v=9.0.0"></script>
+    <script src="scripts/ui-core/bottomSheet.js?v=9.2.0"></script>
+    <script src="scripts/ui-core/gestureManager.js?v=9.2.0"></script>
+    <script src="scripts/ui-core/skeletonLoader.js?v=9.2.0"></script>
+    <script src="scripts/ui-core/lazyLoader.js?v=9.2.0"></script>
+    <script src="scripts/ui-core/optimisticUI.js?v=9.2.0"></script>
+    <script src="scripts/ui-core/emptyStateManager.js?v=9.2.0"></script>
+    <script src="scripts/ui-core/accessibilityChecker.js?v=9.2.0"></script>
     
     <!-- Entity-Curation Backend - Core Data Layer -->
     <!-- migrationManager.js REMOVED: Clean break strategy, no migration needed -->
-    <script src="scripts/storage/dataStore.js?v=9.0.0"></script>
-    <script src="scripts/services/apiService.js?v=9.0.0"></script>
-    <script src="scripts/sync/syncManagerV3.js?v=9.0.0"></script>
-    <script src="scripts/sync/importManager.js?v=9.0.0"></script>
+    <script src="scripts/storage/dataStore.js?v=9.2.0"></script>
+    <script src="scripts/services/apiService.js?v=9.2.0"></script>
+    <script src="scripts/sync/syncManagerV3.js?v=9.2.0"></script>
+    <script src="scripts/sync/importManager.js?v=9.2.0"></script>
     
     <!-- UI Components -->
-    <script src="scripts/ui/cardFactory.js?v=9.0.0"></script>
-    <script src="scripts/ui/conflictResolutionModal.js?v=9.0.0"></script>
+    <script src="scripts/ui/cardFactory.js?v=9.2.0"></script>
+    <script src="scripts/ui/conflictResolutionModal.js?v=9.2.0"></script>
     
     <!-- Compatibility Layer for Legacy UI Modules -->
-    <script src="scripts/storage/dataStorageWrapper.js?v=9.0.0"></script>
+    <script src="scripts/storage/dataStorageWrapper.js?v=9.2.0"></script>
     
     <!-- Application modules - keeping essential ones -->
-    <script src="scripts/services/promptTemplate.js?v=9.0.0"></script>
-    <script src="scripts/services/conceptMatcher.js?v=9.0.0"></script>
-    <script src="scripts/audioRecorder.js?v=9.0.0"></script>
-    <script src="scripts/uiManager.js?v=9.0.0"></script>
+    <script src="scripts/services/promptTemplate.js?v=9.2.0"></script>
+    <script src="scripts/services/conceptMatcher.js?v=9.2.0"></script>
+    <script src="scripts/audioRecorder.js?v=9.2.0"></script>
+    <script src="scripts/uiManager.js?v=9.2.0"></script>
     
     <!-- Module implementations - V3 Compatible -->
-    <script src="scripts/modules/safetyUtils.js?v=9.0.0"></script>
-    <script src="scripts/modules/uiUtilsModule.js?v=9.0.0"></script>
-    <script src="scripts/modules/pendingAudioManager.js?v=9.0.0"></script>
-    <script src="scripts/modules/draftRestaurantManager.js?v=9.0.0"></script>
-    <script src="scripts/modules/curatorModule.js?v=9.0.0"></script>
-    <script src="scripts/modules/recordingModule.js?v=9.0.0"></script>
-    <script src="scripts/modules/transcriptionModule.js?v=9.0.0"></script>
-    <script src="scripts/modules/conceptModule.js?v=9.0.0"></script>
-    <script src="scripts/modules/entityModule.js?v=9.0.0"></script>
-    <script src="scripts/modules/syncStatusModule.js?v=9.0.0"></script>
+    <script src="scripts/modules/safetyUtils.js?v=9.2.0"></script>
+    <script src="scripts/modules/uiUtilsModule.js?v=9.2.0"></script>
+    <script src="scripts/modules/pendingAudioManager.js?v=9.2.0"></script>
+    <script src="scripts/modules/draftRestaurantManager.js?v=9.2.0"></script>
+    <script src="scripts/modules/curatorModule.js?v=9.2.0"></script>
+    <script src="scripts/modules/recordingModule.js?v=9.2.0"></script>
+    <script src="scripts/modules/transcriptionModule.js?v=9.2.0"></script>
+    <script src="scripts/modules/conceptModule.js?v=9.2.0"></script>
+    <script src="scripts/modules/entityModule.js?v=9.2.0"></script>
+    <script src="scripts/modules/syncStatusModule.js?v=9.2.0"></script>
     <!-- DEPRECATED: <script src="scripts/modules/exportImportModule.js"></script> -->
-    <script src="scripts/modules/quickActionModule.js?v=9.0.0"></script>
+    <script src="scripts/modules/quickActionModule.js?v=9.2.0"></script>
     <!-- REMOVED: michelinStagingModule.js - Michelin data will be batch imported -->
     
     <!-- V3 Data Services (Sprint 1, Day 3 - MongoDB ↔ IndexedDB compatibility) -->
-    <script src="scripts/services/V3DataTransformer.js?v=9.0.0"></script>
+    <script src="scripts/services/V3DataTransformer.js?v=9.2.0"></script>
     
     <!-- Google Places Services (Sprint 1, Day 2 - Service-based architecture) -->
-    <script src="scripts/services/googlePlaces/PlacesCache.js?v=9.0.0"></script>
-    <script src="scripts/services/googlePlaces/PlacesFormatter.js?v=9.0.0"></script>
-    <script src="scripts/services/googlePlaces/PlacesService.js?v=9.0.0"></script>
+    <script src="scripts/services/googlePlaces/PlacesCache.js?v=9.2.0"></script>
+    <script src="scripts/services/googlePlaces/PlacesFormatter.js?v=9.2.0"></script>
+    <script src="scripts/services/googlePlaces/PlacesService.js?v=9.2.0"></script>
     
     <!-- Places Orchestration Service (Unified API endpoint) -->
-    <script src="scripts/services/PlacesOrchestrationService.js?v=9.0.0"></script>
+    <script src="scripts/services/PlacesOrchestrationService.js?v=9.2.0"></script>
     
     <!-- Places Automation (Sprint 2, Day 4 - Entity automation) -->
-    <script src="scripts/services/PlacesAutomation.js?v=9.0.0"></script>
+    <script src="scripts/services/PlacesAutomation.js?v=9.2.0"></script>
     
     <!-- Google Places Module (refactored to use services) -->
-    <script src="scripts/modules/placesModule.js?v=9.0.0"></script>
-    <script src="scripts/modules/audioUtils.js?v=9.0.0"></script>
+    <script src="scripts/modules/placesModule.js?v=9.2.0"></script>
+    <script src="scripts/modules/audioUtils.js?v=9.2.0"></script>
 
     <!-- Authentication Module (must load before accessControl.js) -->
-    <script src="scripts/auth.js?v=9.0.0"></script>
+    <script src="scripts/auth.js?v=9.2.0"></script>
 
     <!-- Curator Profile Module (must load after auth.js) -->
-    <script src="scripts/curatorProfile.js?v=9.0.0"></script>
+    <script src="scripts/curatorProfile.js?v=9.2.0"></script>
 
     <!-- Find Entity Modal (Google Places search interface) -->
-    <script src="scripts/services/findEntityModal.js?v=9.0.0"></script>
+    <script src="scripts/services/findEntityModal.js?v=9.2.0"></script>
 
     <!-- Access Control (must load before main.js) -->
-    <script src="scripts/auth/accessControl.js?v=9.0.0"></script>
+    <script src="scripts/auth/accessControl.js?v=9.2.0"></script>
 
     <!-- Core application scripts -->
-    <script src="scripts/core/main.js?v=9.0.0"></script>
-    <script src="scripts/sync/syncSettingsManager.js?v=9.0.0"></script>
+    <script src="scripts/core/main.js?v=9.2.0"></script>
+    <script src="scripts/sync/syncSettingsManager.js?v=9.2.0"></script>
 
     <!-- Ensure this appears after all other scripts -->
     <script>
