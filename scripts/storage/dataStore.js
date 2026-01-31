@@ -243,30 +243,63 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
                         }
                     }
                     
-                    // Strategy 3: Close and delete database
+                    // Strategy 3: AGGRESSIVE database deletion using native API
                     if (this.db) {
                         this.db.close();
                     }
                     
-                    await Dexie.delete(dbName);
-                    this.log.warn('🗑️ Corrupted database deleted');
+                    // Try Dexie delete first
+                    try {
+                        await Dexie.delete(dbName);
+                        this.log.warn('🗑️ Dexie delete attempted');
+                    } catch (dexieError) {
+                        this.log.warn('⚠️ Dexie delete failed:', dexieError.message);
+                    }
                     
-                    // Strategy 4: Try to delete ALL databases as last resort
+                    // Strategy 4: Use native IndexedDB deleteDatabase (more reliable)
+                    await new Promise((resolve, reject) => {
+                        const deleteRequest = window.indexedDB.deleteDatabase(dbName);
+                        deleteRequest.onsuccess = () => {
+                            this.log.warn('✅ Native IndexedDB delete successful');
+                            resolve();
+                        };
+                        deleteRequest.onerror = (event) => {
+                            this.log.warn('⚠️ Native delete error:', event.target.error);
+                            resolve(); // Continue anyway
+                        };
+                        deleteRequest.onblocked = () => {
+                            this.log.warn('⚠️ Delete blocked - database may be open in another tab');
+                            resolve(); // Continue anyway
+                        };
+                        // Timeout after 5 seconds
+                        setTimeout(() => {
+                            this.log.warn('⏱️ Delete timeout - continuing anyway');
+                            resolve();
+                        }, 5000);
+                    });
+                    
+                    // Strategy 5: Try to delete ALL related databases
                     try {
                         const databases = await indexedDB.databases();
                         this.log.warn(`🔍 Found ${databases.length} IndexedDB databases`);
                         for (const dbInfo of databases) {
-                            if (dbInfo.name && dbInfo.name.includes('Concierge')) {
-                                this.log.warn(`🗑️ Deleting related database: ${dbInfo.name}`);
-                                await Dexie.delete(dbInfo.name);
+                            if (dbInfo.name && (dbInfo.name.includes('Concierge') || dbInfo.name === dbName)) {
+                                this.log.warn(`🗑️ Deleting: ${dbInfo.name}`);
+                                await new Promise((resolve) => {
+                                    const req = window.indexedDB.deleteDatabase(dbInfo.name);
+                                    req.onsuccess = () => resolve();
+                                    req.onerror = () => resolve(); // Continue on error
+                                    req.onblocked = () => resolve(); // Continue if blocked
+                                    setTimeout(resolve, 3000); // Timeout
+                                });
                             }
                         }
                     } catch (e) {
                         this.log.warn('⚠️ Could not enumerate databases:', e.message);
                     }
                     
-                    // Wait longer for cleanup
-                    await new Promise(resolve => setTimeout(resolve, 1000));
+                    // Wait for filesystem sync
+                    await new Promise(resolve => setTimeout(resolve, 2000));
                     
                     // Try initialization again (only once - isRetry=true prevents infinite loop)
                     this.log.warn('🔄 Retrying database initialization...');
@@ -274,11 +307,23 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
                     
                 } catch (recoveryError) {
                     this.log.error('❌ Auto-recovery failed:', recoveryError);
-                    this.log.error('⚠️ Manual fix required:');
-                    this.log.error('   1. Open browser settings');
-                    this.log.error('   2. Clear site data for concierge-collector-web.onrender.com');
-                    this.log.error('   3. Or use Incognito/Private mode');
-                    this.log.error('   4. Check browser storage quota (may be full)');
+                    
+                    // Show user-friendly error with manual fix option
+                    this.log.error('⚠️ CRITICAL: IndexedDB corrupted and auto-recovery failed');
+                    this.log.error('📋 Manual fix options:');
+                    this.log.error('   1. Close ALL tabs of this site');
+                    this.log.error('   2. Open a NEW tab and try again');
+                    this.log.error('   3. Clear browser site data if problem persists');
+                    this.log.error('   4. Use Incognito/Private mode as workaround');
+                    
+                    // Try to show a UI notification
+                    if (typeof window !== 'undefined' && window.UIManager && window.UIManager.showNotification) {
+                        window.UIManager.showNotification(
+                            'Database corrupted - please close all tabs and reopen',
+                            'error',
+                            10000
+                        );
+                    }
                 }
             }
             
