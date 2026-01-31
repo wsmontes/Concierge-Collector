@@ -365,6 +365,12 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
      */
     async processServerEntity(serverEntity) {
         try {
+            // ⚠️ FIXED: Check if database is available (API-only mode)
+            if (!window.DataStore.isDatabaseAvailable()) {
+                this.log.debug(`Skipping processServerEntity in API-only mode: ${serverEntity.name}`);
+                return;
+            }
+
             // Get local entity
             const localEntity = await window.DataStore.getEntity(serverEntity.entity_id);
 
@@ -398,7 +404,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                 } else if (localVersion > serverVersion) {
                     // Local is newer - mark for push
                     await window.DataStore.db.entities.update(serverEntity.entity_id, {
-                        'sync.status': 'pending'
+                        'syncStatus': 'pending'
                     });
                     this.log.debug(`Local entity newer: ${serverEntity.name} (v${localVersion} > v${serverVersion})`);
                 }
@@ -504,7 +510,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                     this.log.debug(`Updated local curation: ${serverCuration.curation_id} (v${localVersion} → v${serverVersion})`);
                 } else if (localVersion > serverVersion) {
                     await window.DataStore.db.curations.update(serverCuration.curation_id, {
-                        'sync.status': 'pending'
+                        'syncStatus': 'pending'
                     });
                     this.log.debug(`Local curation newer: ${serverCuration.curation_id}`);
                 }
@@ -523,7 +529,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             
             // Find all entities with pending sync
             const pendingEntities = await window.DataStore.db.entities
-                .where('sync.status').equals('pending')
+                .where('syncStatus').equals('pending')
                 .toArray();
 
             if (pendingEntities.length === 0) {
@@ -550,7 +556,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         if (!hasChanges) {
                             this.log.debug(`No changes for entity ${entity.name}, skipping`);
                             await window.DataStore.db.entities.update(entity.entity_id, {
-                                'sync.status': 'synced'
+                                'syncStatus': 'synced'
                             });
                             continue;
                         }
@@ -568,7 +574,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         // Update local with new version
                         await window.DataStore.db.entities.update(entity.entity_id, {
                             version: updated.version,
-                            'sync.status': 'synced',
+                            'syncStatus': 'synced',
                             'sync.lastSyncedAt': new Date().toISOString()
                         });
                         pushed++;
@@ -585,7 +591,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         // Update local with server ID
                         await window.DataStore.db.entities.update(entity.entity_id, {
                             'sync.serverId': created._id,
-                            'sync.status': 'synced',
+                            'syncStatus': 'synced',
                             'sync.lastSyncedAt': new Date().toISOString()
                         });
                         pushed++;
@@ -595,7 +601,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                     if (error.message.includes('409') || error.message.includes('conflict')) {
                         // Version conflict - mark for manual resolution
                         await window.DataStore.db.entities.update(entity.entity_id, {
-                            'sync.status': 'conflict'
+                            'syncStatus': 'conflict'
                         });
                         conflicts++;
                         this.log.warn(`Conflict detected for entity: ${entity.name}`);
@@ -625,7 +631,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             this.log.debug('⬆️ Pushing pending curations to server...');
             
             const pendingCurations = await window.DataStore.db.curations
-                .where('sync.status').equals('pending')
+                .where('syncStatus').equals('pending')
                 .toArray();
 
             if (pendingCurations.length === 0) {
@@ -652,7 +658,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         if (!hasChanges) {
                             this.log.debug(`No changes for curation ${curation.curation_id}, skipping`);
                             await window.DataStore.db.curations.update(curation.curation_id, {
-                                'sync.status': 'synced'
+                                'syncStatus': 'synced'
                             });
                             continue;
                         }
@@ -668,7 +674,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
 
                         await window.DataStore.db.curations.update(curation.curation_id, {
                             version: updated.version,
-                            'sync.status': 'synced',
+                            'syncStatus': 'synced',
                             'sync.lastSyncedAt': new Date().toISOString()
                         });
                         pushed++;
@@ -683,7 +689,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
 
                         await window.DataStore.db.curations.update(curation.curation_id, {
                             'sync.serverId': created._id,
-                            'sync.status': 'synced',
+                            'syncStatus': 'synced',
                             'sync.lastSyncedAt': new Date().toISOString()
                         });
                         pushed++;
@@ -692,7 +698,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                 } catch (error) {
                     if (error.message.includes('409') || error.message.includes('conflict')) {
                         await window.DataStore.db.curations.update(curation.curation_id, {
-                            'sync.status': 'conflict'
+                            'syncStatus': 'conflict'
                         });
                         conflicts++;
                         this.log.warn(`Conflict detected for curation: ${curation.curation_id}`);
@@ -720,19 +726,19 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
     async getSyncStatus() {
         try {
             const pendingEntities = await window.DataStore.db.entities
-                .where('sync.status').equals('pending')
+                .where('syncStatus').equals('pending')
                 .count();
 
             const conflictEntities = await window.DataStore.db.entities
-                .where('sync.status').equals('conflict')
+                .where('syncStatus').equals('conflict')
                 .count();
 
             const pendingCurations = await window.DataStore.db.curations
-                .where('sync.status').equals('pending')
+                .where('syncStatus').equals('pending')
                 .count();
 
             const conflictCurations = await window.DataStore.db.curations
-                .where('sync.status').equals('conflict')
+                .where('syncStatus').equals('conflict')
                 .count();
 
             return {
@@ -765,11 +771,11 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
     async getConflicts() {
         try {
             const conflictEntities = await window.DataStore.db.entities
-                .where('sync.status').equals('conflict')
+                .where('syncStatus').equals('conflict')
                 .toArray();
 
             const conflictCurations = await window.DataStore.db.curations
-                .where('sync.status').equals('conflict')
+                .where('syncStatus').equals('conflict')
                 .toArray();
 
             return {
@@ -847,7 +853,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                     await this.storeItemState('entity', id, updated);
                     
                     await window.DataStore.db.entities.update(id, {
-                        'sync.status': 'synced',
+                        'syncStatus': 'synced',
                         'sync.lastSyncedAt': new Date().toISOString(),
                         version: updated.version
                     });
@@ -861,7 +867,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                     await this.storeItemState('curation', id, updated);
                     
                     await window.DataStore.db.curations.update(id, {
-                        'sync.status': 'synced',
+                        'syncStatus': 'synced',
                         'sync.lastSyncedAt': new Date().toISOString(),
                         version: updated.version
                     });
