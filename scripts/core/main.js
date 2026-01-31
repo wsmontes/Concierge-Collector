@@ -135,13 +135,20 @@ async function initializeApp() {
             throw new Error('DataStore failed to initialize properly');
         }
         
-        // CRITICAL: Validate DataStore.db is ready before proceeding
-        // This prevents race conditions where modules try to access db before it's open
-        if (!window.DataStore.db || !window.DataStore.db.isOpen()) {
-            throw new Error('DataStore.db is not ready - async initialization incomplete');
-        }
+        // Check if running in API-only mode (IndexedDB unavailable)
+        const isApiOnlyMode = !window.DataStore.isDatabaseAvailable();
         
-        console.log('✅ DataStore initialized successfully - db is ready and open');
+        if (isApiOnlyMode) {
+            console.warn('⚠️ DataStore running in API-only mode (IndexedDB unavailable)');
+            console.warn('⚠️ Local data persistence disabled - all operations will be API-only');
+        } else {
+            // CRITICAL: Validate DataStore.db is ready before proceeding
+            // This prevents race conditions where modules try to access db before it's open
+            if (!window.DataStore.db || !window.DataStore.db.isOpen()) {
+                throw new Error('DataStore.db is not ready - async initialization incomplete');
+            }
+            console.log('✅ DataStore initialized successfully - db is ready and open');
+        }
         
         // Initialize utility managers that depend on DataStore
         console.log('🔄 Initializing utility managers...');
