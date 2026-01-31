@@ -1369,13 +1369,22 @@ class ConceptModule {
                     console.log('🟢 After path extraction:', conceptsData);
                 }
                 
-                // Transform from array format [{category, value}] to object format {category: [values]}
+                // Transform from array format to object format {category: [values]}
                 if (Array.isArray(conceptsData)) {
                     console.log('🔵 Is array, transforming...');
                     const transformed = {};
                     for (const concept of conceptsData) {
                         console.log('🔵 Processing concept:', concept);
-                        if (concept.category && concept.value) {
+                        
+                        // Handle string concepts (simple list)
+                        if (typeof concept === 'string') {
+                            if (!transformed['general']) {
+                                transformed['general'] = [];
+                            }
+                            transformed['general'].push(concept);
+                        }
+                        // Handle object concepts with category/value
+                        else if (concept && concept.category && concept.value) {
                             if (!transformed[concept.category]) {
                                 transformed[concept.category] = [];
                             }
