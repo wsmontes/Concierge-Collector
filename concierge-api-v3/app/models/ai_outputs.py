@@ -133,12 +133,6 @@ class ConceptExtractionOutput(BaseModel):
         description="Brief explanation if ambiguous or uncertain"
     )
     
-    model_config = {
-        "json_schema_extra": {
-            "required": ["concepts", "confidence_score"]  # Explicit required array for OpenAI
-        }
-    }
-    
     @field_validator('concepts')
     @classmethod
     def validate_concepts(cls, v: Dict[str, List[str]]) -> Dict[str, List[str]]:
