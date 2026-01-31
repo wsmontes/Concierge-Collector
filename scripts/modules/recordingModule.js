@@ -1576,18 +1576,9 @@ class RecordingModule {
                 await window.PendingAudioManager.updateAudio(audioId, { status: 'processing' });
             }
             
-            // Utilize AudioUtils module if available for better conversion
-            let preparedBlob;
-            if (window.AudioUtils && typeof window.AudioUtils.convertToMP3 === 'function') {
-                preparedBlob = await window.AudioUtils.convertToMP3(audioBlob);
-                this.log.debug('Using AudioUtils for conversion');
-            } else {
-                // Fallback to built-in conversion
-                preparedBlob = await this.convertToMP3(audioBlob);
-                this.log.debug('Using built-in conversion');
-            }
-            
-            const transcription = await this.transcribeAudio(preparedBlob);
+            // Send webm directly - OpenAI Whisper supports webm natively
+            // Fake MP3 conversion was causing "corrupted" errors
+            const transcription = await this.transcribeAudio(audioBlob);
             
             // ✅ transcription is now an object: { text, transcription, concepts }
             this.processTranscription(transcription);
