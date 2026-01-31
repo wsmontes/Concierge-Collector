@@ -620,13 +620,19 @@ class ConceptModule {
     }
     
     async renderConcepts() {
-        this.log.debug('renderConcepts called');
-        this.log.debug('conceptsContainer:', this.uiManager.conceptsContainer);
-        this.log.debug('currentConcepts:', this.uiManager.currentConcepts);
+        console.log('🎨 renderConcepts called');
+        console.log('🎨 conceptsContainer:', this.uiManager.conceptsContainer);
+        console.log('🎨 currentConcepts:', this.uiManager.currentConcepts);
+        console.log('🎨 currentConcepts length:', this.uiManager.currentConcepts?.length || 0);
         
+        if (!this.uiManager.conceptsContainer) {
+            console.error('❌ conceptsContainer not found!');
+            return;
+        }
         
         // Clear the container
         this.uiManager.conceptsContainer.innerHTML = '';
+        console.log('🎨 Container cleared');
         
         // Group concepts by category if they exist
         const conceptsByCategory = {};
@@ -1092,8 +1098,9 @@ class ConceptModule {
      * @param {object} extractedConcepts - The concepts extracted from AI
      */
     handleExtractedConceptsWithValidation(extractedConcepts) {
-        this.log.debug('handleExtractedConceptsWithValidation called');
-        this.log.debug('Current concepts before processing:', this.uiManager.currentConcepts);
+        console.log('🔵 handleExtractedConceptsWithValidation called');
+        console.log('🔵 extractedConcepts:', extractedConcepts);
+        console.log('🔵 Current concepts before processing:', this.uiManager.currentConcepts);
         
         // Filter out concepts that the restaurant already has
         const filteredConcepts = {};
@@ -1115,19 +1122,22 @@ class ConceptModule {
                 }
             }
         }
-        
-        this.log.debug('Filtered concepts to add:', filteredConcepts);
+        console.log('🔵 Filtered concepts to add:', filteredConcepts);
         
         // Update the UI with the filtered concepts
         for (const category in filteredConcepts) {
             for (const value of filteredConcepts[category]) {
+                console.log(`🔵 Adding concept: ${category} = ${value}`);
                 this.addConceptWithValidation(category, value);
             }
         }
         
-        this.log.debug('Current concepts after adding:', this.uiManager.currentConcepts);
+        console.log('🔵 Current concepts after adding:', this.uiManager.currentConcepts);
+        console.log('🔵 About to call renderConcepts()');
         
         // Render the concepts UI
+        this.renderConcepts();
+        console.log('🔵 renderConcepts() completed'ts UI
         this.renderConcepts();
         
         // Notify user about the results
