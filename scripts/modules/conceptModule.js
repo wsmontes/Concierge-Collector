@@ -646,7 +646,7 @@ class ConceptModule {
             }
         }
         
-        this.log.debug('conceptsByCategory:', conceptsByCategory);
+        console.log('🎨 conceptsByCategory:', conceptsByCategory);
         
         // Add section for each category, regardless if there are concepts or not
         const categories = [
@@ -656,13 +656,14 @@ class ConceptModule {
         
         // Check if we have any concepts at all
         let hasAnyConcepts = this.uiManager.currentConcepts && this.uiManager.currentConcepts.length > 0;
+        console.log('🎨 hasAnyConcepts:', hasAnyConcepts);
+        console.log('🎨 conceptsSection.hidden:', this.uiManager.conceptsSection?.classList?.contains('hidden'));
         
-        // If no concepts and not in manual entry mode, show the message
-        if (!hasAnyConcepts && this.uiManager.conceptsSection.classList.contains('hidden')) {
-            this.uiManager.conceptsContainer.innerHTML = '<p class="text-gray-500">No concepts extracted.</p>';
-            return;
+        // ✅ FIX: Always render categories if section is visible, regardless of whether concepts exist yet
+        // The old logic prevented rendering when section was shown but empty
+        if (!hasAnyConcepts) {
+            console.log('⚠️ No concepts to render yet, but will show empty categories');
         }
-        
         
         for (const category of categories) {
             const categorySection = document.createElement('div');
