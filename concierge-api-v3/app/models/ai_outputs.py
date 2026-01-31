@@ -100,6 +100,8 @@ class ConceptExtractionOutput(BaseModel):
     """
     Validated concept extraction from GPT-5.2 with structured outputs
     
+    Per OpenAI docs: All fields must be required. Use union with None for optional fields.
+    
     This schema ensures concept extraction follows business rules:
     - Concepts organized by category (cuisine, menu, drinks, setting, etc)
     - Each category contains list of relevant concepts
@@ -117,21 +119,10 @@ class ConceptExtractionOutput(BaseModel):
             "reasoning": null
         }
     """
-    model_config = {"strict": True}  # Strict mode for OpenAI structured outputs
-    
-    concepts: Dict[str, List[str]] = Field(
-        description="Concepts organized by category"
-    )
-    confidence_score: float = Field(
-        ge=0.0, 
-        le=1.0,
-        description="Confidence in extraction quality (0.0-1.0)"
-    )
-    reasoning: Optional[str] = Field(
-        default=None,
-        max_length=200,
-        description="Brief explanation if ambiguous or uncertain"
-    )
+    # Required fields - defined directly without Field() per OpenAI docs
+    concepts: Dict[str, List[str]]
+    confidence_score: float
+    reasoning: str | None  # Union type for optional field (None is allowed value)
     
     @field_validator('concepts')
     @classmethod
