@@ -125,11 +125,9 @@ def search_curations(
     # Get total count
     total = db.curations.count_documents(query)
     
-    # Get paginated results
+    # Get paginated results - materialize cursor to avoid blocking
     cursor = db.curations.find(query).skip(offset).limit(limit)
-    items = []
-    for doc in cursor:
-        items.append(Curation(**doc))
+    items = [Curation(**doc) for doc in cursor]
     
     return PaginatedResponse(
         items=items,
@@ -153,11 +151,8 @@ def get_entity_curations(
             detail=f"Entity {entity_id} not found"
         )
     
-    # Get curations
-    cursor = db.curations.find({"entity_id": entity_id})
-    curations = []
-    for doc in cursor:
-        curations.append(Curation(**doc))
+    # Get curations - materialize cursor
+    curations = [Curation(**doc) for doc in db.curations.find({"entity_id": entity_id})]
     
     return curations
 

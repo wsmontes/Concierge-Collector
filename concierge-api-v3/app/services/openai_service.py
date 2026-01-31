@@ -366,14 +366,8 @@ class OpenAIService:
                     {
                         "role": "user",
                         "content": [
-                            {"type": "text", "text": prompt},
-                            {
-                                "type": "image_url",
-                                "image_url": {
-                                    "url": image_url,
-                                    "detail": config["config"].get("detail", "high")
-                                }
-                            }
+                            {"type": "input_text", "text": prompt},
+                            {"type": "input_image", "image_url": image_url}
                         ]
                     }
                 ],
@@ -394,6 +388,13 @@ class OpenAIService:
             raise HTTPException(
                 status_code=400,
                 detail=f"Invalid image analysis format: {str(e)}"
+            )
+        except BadRequestError as e:
+            # Handle OpenAI validation errors (invalid URL, etc.)
+            print(f"[ERROR] OpenAI BadRequest: {str(e)}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid image data: {str(e)}"
             )
         except Exception as e:
             print(f"[ERROR] Image analysis failed: {type(e).__name__}: {str(e)}")

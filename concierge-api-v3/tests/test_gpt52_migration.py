@@ -31,7 +31,7 @@ class TestGPT52AudioTranscription:
         response = await async_client.post(
             "/api/v3/ai/orchestrate",
             json=request_body,
-            headers={"Authorization": f"Bearer {auth_token}"}
+            headers={"X-API-Key": auth_token}
         )
         
         # Should not crash without language parameter
@@ -65,7 +65,7 @@ class TestGPT52AudioTranscription:
         response = await async_client.post(
             "/api/v3/ai/orchestrate",
             json=request_body,
-            headers={"Authorization": f"Bearer {auth_token}"}
+            headers={"X-API-Key": auth_token}
         )
         
         assert response.status_code != 500
@@ -92,7 +92,7 @@ class TestGPT52AudioTranscription:
         response = await async_client.post(
             "/api/v3/ai/orchestrate",
             json=request_body,
-            headers={"Authorization": f"Bearer {auth_token}"}
+            headers={"X-API-Key": auth_token}
         )
         
         if response.status_code == 200:
@@ -123,7 +123,7 @@ class TestGPT52ConceptExtraction:
         response = await async_client.post(
             "/api/v3/ai/orchestrate",
             json=request_body,
-            headers={"Authorization": f"Bearer {auth_token}"}
+            headers={"X-API-Key": auth_token}
         )
         
         assert response.status_code != 500
@@ -166,7 +166,7 @@ class TestGPT52ConceptExtraction:
         response = await async_client.post(
             "/api/v3/ai/orchestrate",
             json=request_body,
-            headers={"Authorization": f"Bearer {auth_token}"}
+            headers={"X-API-Key": auth_token}
         )
         
         if response.status_code == 200:
@@ -198,7 +198,7 @@ class TestGPT52ImageAnalysis:
         response = await async_client.post(
             "/api/v3/ai/orchestrate",
             json=request_body,
-            headers={"Authorization": f"Bearer {auth_token}"}
+            headers={"X-API-Key": auth_token}
         )
         
         assert response.status_code != 500
@@ -252,7 +252,7 @@ class TestGPT52ImageAnalysis:
         response = await async_client.post(
             "/api/v3/ai/orchestrate",
             json=request_body,
-            headers={"Authorization": f"Bearer {auth_token}"}
+            headers={"X-API-Key": auth_token}
         )
         
         if response.status_code == 200:
@@ -280,7 +280,7 @@ class TestGPT52ErrorHandling:
         response = await async_client.post(
             "/api/v3/ai/orchestrate",
             json=request_body,
-            headers={"Authorization": f"Bearer {auth_token}"}
+            headers={"X-API-Key": auth_token}
         )
         
         # Should never return 500 - structured outputs prevent this
@@ -297,7 +297,7 @@ class TestGPT52ErrorHandling:
         response = await async_client.post(
             "/api/v3/ai/orchestrate",
             json=request_body,
-            headers={"Authorization": f"Bearer {auth_token}"}
+            headers={"X-API-Key": auth_token}
         )
         
         # Should handle gracefully (400 for too long, 503 if API fails)
