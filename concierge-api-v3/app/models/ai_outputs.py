@@ -135,8 +135,9 @@ class ConceptExtractionOutput(BaseModel):
     @classmethod
     def validate_concepts(cls, v: Dict[str, List[str]]) -> Dict[str, List[str]]:
         """Validate concepts structure and remove duplicates per category"""
+        # Allow empty dict for minimal format (transcription-only mode)
         if not v:
-            raise ValueError("concepts dict cannot be empty")
+            return {}
         
         result = {}
         for category, concepts_list in v.items():
