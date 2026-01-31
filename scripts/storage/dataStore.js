@@ -131,21 +131,51 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
         } catch (error) {
             this.log.error('❌ Failed to initialize V3 Entity Store:', error);
             
-            // Auto-recovery: Try to delete and recreate corrupted database
+            // Auto-recovery: Try multiple strategies for IndexedDB issues
             if (!isRetry && error.name === 'UnknownError' && error.message.includes('backing store')) {
                 this.log.warn('🔄 IndexedDB corrupted, attempting auto-recovery...');
                 try {
-                    // Close existing connection if any
+                    // Strategy 1: Check if IndexedDB is available
+                    if (!window.indexedDB) {
+                        this.log.error('❌ IndexedDB not available in this browser');
+                        throw new Error('IndexedDB not supported');
+                    }
+                    
+                    // Strategy 2: Check storage quota
+                    if (navigator.storage && navigator.storage.estimate) {
+                        const estimate = await navigator.storage.estimate();
+                        const percentUsed = (estimate.usage / estimate.quota) * 100;
+                        this.log.warn(`📊 Storage usage: ${(estimate.usage / 1024 / 1024).toFixed(2)}MB / ${(estimate.quota / 1024 / 1024).toFixed(2)}MB (${percentUsed.toFixed(1)}%)`);
+                        
+                        if (percentUsed > 90) {
+                            this.log.error('❌ Storage quota almost full - this may be causing IndexedDB failures');
+                        }
+                    }
+                    
+                    // Strategy 3: Close and delete database
                     if (this.db) {
                         this.db.close();
                     }
                     
-                    // Delete corrupted database
                     await Dexie.delete(dbName);
                     this.log.warn('🗑️ Corrupted database deleted');
                     
-                    // Wait a moment for cleanup
-                    await new Promise(resolve => setTimeout(resolve, 500));
+                    // Strategy 4: Try to delete ALL databases as last resort
+                    try {
+                        const databases = await indexedDB.databases();
+                        this.log.warn(`🔍 Found ${databases.length} IndexedDB databases`);
+                        for (const dbInfo of databases) {
+                            if (dbInfo.name && dbInfo.name.includes('Concierge')) {
+                                this.log.warn(`🗑️ Deleting related database: ${dbInfo.name}`);
+                                await Dexie.delete(dbInfo.name);
+                            }
+                        }
+                    } catch (e) {
+                        this.log.warn('⚠️ Could not enumerate databases:', e.message);
+                    }
+                    
+                    // Wait longer for cleanup
+                    await new Promise(resolve => setTimeout(resolve, 1000));
                     
                     // Try initialization again (only once - isRetry=true prevents infinite loop)
                     this.log.warn('🔄 Retrying database initialization...');
@@ -153,7 +183,11 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
                     
                 } catch (recoveryError) {
                     this.log.error('❌ Auto-recovery failed:', recoveryError);
-                    this.log.error('⚠️ Manual fix required: Clear browser data (IndexedDB) for this site');
+                    this.log.error('⚠️ Manual fix required:');
+                    this.log.error('   1. Open browser settings');
+                    this.log.error('   2. Clear site data for concierge-collector-web.onrender.com');
+                    this.log.error('   3. Or use Incognito/Private mode');
+                    this.log.error('   4. Check browser storage quota (may be full)');
                 }
             }
             
