@@ -125,9 +125,21 @@ class OpenAIService:
                 # Decode base64 string to bytes
                 audio_bytes = base64.b64decode(audio_data)
                 print(f"[DEBUG] Decoded to {len(audio_bytes)} bytes")
-                # Create file-like object
+                
+                # Detect format from magic bytes
+                audio_format = "webm"  # default
+                if audio_bytes.startswith(b'\xff\xfb') or audio_bytes.startswith(b'\xff\xf3') or audio_bytes.startswith(b'ID3'):
+                    audio_format = "mp3"
+                elif audio_bytes.startswith(b'RIFF'):
+                    audio_format = "wav"
+                elif audio_bytes.startswith(b'OggS'):
+                    audio_format = "ogg"
+                elif audio_bytes.startswith(b'\x1a\x45\xdf\xa3'):
+                    audio_format = "webm"
+                
+                # Create file-like object with correct extension
                 audio_file = io.BytesIO(audio_bytes)
-                audio_file.name = "audio.mp3"  # OpenAI needs filename for format detection
+                audio_file.name = f"audio.{audio_format}"
                 print(f"[DEBUG] Created BytesIO object with name: {audio_file.name}")
             else:
                 print(f"[DEBUG] Received file object type: {type(audio_data)}")
