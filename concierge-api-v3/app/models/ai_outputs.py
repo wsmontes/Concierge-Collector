@@ -117,18 +117,18 @@ class ConceptExtractionOutput(BaseModel):
             "reasoning": null
         }
     """
+    model_config = {"strict": True}  # Strict mode for OpenAI structured outputs
+    
     concepts: Dict[str, List[str]] = Field(
-        ...,  # Required field (no default)
         description="Concepts organized by category"
     )
     confidence_score: float = Field(
-        ...,  # Required field
         ge=0.0, 
         le=1.0,
         description="Confidence in extraction quality (0.0-1.0)"
     )
     reasoning: Optional[str] = Field(
-        None,  # Explicitly optional
+        default=None,
         max_length=200,
         description="Brief explanation if ambiguous or uncertain"
     )

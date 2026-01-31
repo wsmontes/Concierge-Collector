@@ -1,8 +1,34 @@
 # GPT-5.2 Migration Progress Tracker
 
 **Started:** 2026-01-30  
-**Last Updated:** 2026-01-30  
-**Status:** Phase 3 ✅ (Core Migration Complete)
+**Last Updated:** 2026-01-31 03:45 AM  
+**Status:** Phase 3 ✅ (Core Migration Complete + Hotfix Applied)
+
+---
+
+## 🔴 **HOTFIX - 2026-01-31 03:45 AM**
+
+**Issue:** Production error 500 on `/api/v3/ai/orchestrate` endpoint  
+**Root Cause:** Invalid JSON Schema for OpenAI Responses API
+
+**Error Message:**
+```
+openai.BadRequestError: Error code: 400 - "Invalid schema for response_format 'ConceptExtractionOutput': 
+In context=(), 'required' is required to be supplied and to be an array including every key in properties."
+```
+
+**Fix Applied:**
+- Made `concepts` and `confidence_score` required fields (using `...` instead of defaults)
+- Made `description`, `detected_items`, `confidence_score` required in ImageAnalysisOutput
+- Added explicit `model_config` with `required` array for OpenAI compatibility
+- Updated field validators to handle required fields correctly
+
+**Commit:** `d7a22a9 - fix: Correct Pydantic schema for OpenAI Responses API`
+
+**Testing Required:**
+- [x] Transcription working (verified in logs - gpt-4o-transcribe successful)
+- [ ] Concept extraction working (needs production test)
+- [ ] Image analysis working (needs production test)
 
 ---
 
