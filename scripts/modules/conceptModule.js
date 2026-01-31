@@ -1362,28 +1362,28 @@ class ConceptModule {
                 
                 console.log('🟡 Before transformation:', conceptsData);
                 
-                // API v3 returns: {workflow, results: {concepts: {concepts: [{category, value}], confidence_score}}}
+                // API v3 returns: {workflow, results: {concepts: {concepts: [strings]}}}
+                // These are concept VALUES without category info
                 // Extract the actual concepts array
                 if (extractedConcepts.results && extractedConcepts.results.concepts) {
                     conceptsData = extractedConcepts.results.concepts.concepts || [];
                     console.log('🟢 After path extraction:', conceptsData);
                 }
                 
-                // Transform from array format to object format {category: [values]}
+                // Transform string array to object format {category: [values]}
+                // Since API returns values without categories, we infer category from context
                 if (Array.isArray(conceptsData)) {
                     console.log('🔵 Is array, transforming...');
-                    const transformed = {};
+                    const transformed = { menu: [] }; // Default to menu category for food items
+                    
                     for (const concept of conceptsData) {
                         console.log('🔵 Processing concept:', concept);
                         
-                        // Handle string concepts (simple list)
                         if (typeof concept === 'string') {
-                            if (!transformed['general']) {
-                                transformed['general'] = [];
-                            }
-                            transformed['general'].push(concept);
+                            // String concepts go to menu by default (food/drink items)
+                            transformed.menu.push(concept);
                         }
-                        // Handle object concepts with category/value
+                        // Handle object concepts with category/value (future-proof)
                         else if (concept && concept.category && concept.value) {
                             if (!transformed[concept.category]) {
                                 transformed[concept.category] = [];
