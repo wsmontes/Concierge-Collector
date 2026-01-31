@@ -273,7 +273,7 @@ class OpenAIService:
                     {"role": "user", "content": prompt}
                 ],
                 text_format=ConceptExtractionOutput,  # Pydantic schema for structured outputs
-                reasoning={"effort": "none"},  # No chain-of-thought (fastest)
+                reasoning={"effort": "minimal"},  # Minimal reasoning (fastest valid option)
                 text={"verbosity": "low"}  # -40% output tokens
             )
             
