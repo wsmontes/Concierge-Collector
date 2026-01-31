@@ -119,10 +119,11 @@ class ConceptExtractionOutput(BaseModel):
             "reasoning": null
         }
     """
-    # Required fields - defined directly without Field() per OpenAI docs
+    # Required fields - all keys in properties must be in required array
     concepts: Dict[str, List[str]]
     confidence_score: float
-    reasoning: str | None  # Union type for optional field (None is allowed value)
+    # Optional field - must have default value to exclude from required array
+    reasoning: Optional[str] = None
     
     @field_validator('concepts')
     @classmethod
