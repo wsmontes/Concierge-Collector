@@ -36,12 +36,11 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
     /**
      * Initialize V3 database with entity-curation model
      */
-    async initializeDatabase() {
+    async initializeDatabase(isRetry = false) {
+        const dbName = 'ConciergeCollector';
+        
         try {
             this.log.debug('🚀 Initializing V3 Entity Store...');
-            
-            // Use final database name (no version suffix - Dexie handles versioning)
-            const dbName = 'ConciergeCollector';
             this.db = new Dexie(dbName);
             
             // Define all schema versions for automatic migration
@@ -131,6 +130,33 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
             
         } catch (error) {
             this.log.error('❌ Failed to initialize V3 Entity Store:', error);
+            
+            // Auto-recovery: Try to delete and recreate corrupted database
+            if (!isRetry && error.name === 'UnknownError' && error.message.includes('backing store')) {
+                this.log.warn('🔄 IndexedDB corrupted, attempting auto-recovery...');
+                try {
+                    // Close existing connection if any
+                    if (this.db) {
+                        this.db.close();
+                    }
+                    
+                    // Delete corrupted database
+                    await Dexie.delete(dbName);
+                    this.log.warn('🗑️ Corrupted database deleted');
+                    
+                    // Wait a moment for cleanup
+                    await new Promise(resolve => setTimeout(resolve, 500));
+                    
+                    // Try initialization again (only once - isRetry=true prevents infinite loop)
+                    this.log.warn('🔄 Retrying database initialization...');
+                    return await this.initializeDatabase(true);
+                    
+                } catch (recoveryError) {
+                    this.log.error('❌ Auto-recovery failed:', recoveryError);
+                    this.log.error('⚠️ Manual fix required: Clear browser data (IndexedDB) for this site');
+                }
+            }
+            
             throw error;
         }
     }
