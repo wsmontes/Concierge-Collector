@@ -6,6 +6,7 @@ import pytest
 from httpx import AsyncClient
 import base64
 import json
+from pathlib import Path
 
 
 @pytest.mark.openai
@@ -47,9 +48,11 @@ class TestAIOrchestrate:
         
         This is the actual workflow that users were experiencing errors with.
         """
-        # Create a minimal valid audio file (base64 encoded)
-        # This is a tiny WAV file header
-        fake_audio = base64.b64encode(b"RIFF" + b"\x00" * 40).decode()
+        # Load real audio file from fixtures
+        audio_path = Path(__file__).parent / "fixtures" / "test_audio.mp3"
+        with open(audio_path, "rb") as f:
+            audio_data = f.read()
+        fake_audio = base64.b64encode(audio_data).decode()
         
         request_data = {
             "audio_file": fake_audio,
@@ -198,11 +201,14 @@ class TestAIEndpointErrorHandling:
     @pytest.mark.asyncio
     async def test_orchestrate_with_very_large_audio(self, async_client, auth_headers):
         """Test handling of audio files that are too large"""
-        # Create a large base64 string (simulating 100MB audio)
-        large_audio = base64.b64encode(b"x" * (100 * 1024 * 1024)).decode()
+        # Load real audio file
+        audio_path = Path(__file__).parent / "fixtures" / "test_audio.mp3"
+        with open(audio_path, "rb") as f:
+            audio_data = f.read()
+        large_audio = base64.b64encode(audio_data).decode()
         
         request_data = {
-            "audio_file": large_audio[:1000],  # Just use a portion for testing
+            "audio_file": large_audio,  # Use full audio for real transcription test
             "language": "pt-BR",
             "entity_type": "restaurant"
         }

@@ -27,7 +27,7 @@ OPENAI_CONFIGS = [
         "config": {
             "language": "pt-BR",
             "temperature": 0.2,
-            "response_format": "verbose_json",
+            "response_format": "json",
             "timestamp_granularities": ["word", "segment"]
         },
         "cache_ttl_hours": 24,

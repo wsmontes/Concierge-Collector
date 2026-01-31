@@ -31,6 +31,7 @@ from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 
 from openai import OpenAI
+from openai import BadRequestError
 from motor.motor_asyncio import AsyncIOMotorClient, AsyncIOMotorDatabase
 from pymongo import MongoClient
 from pydantic import ValidationError
@@ -162,6 +163,13 @@ class OpenAIService:
         except HTTPException:
             # Re-raise validation errors
             raise
+        except BadRequestError as e:
+            # Handle OpenAI validation errors (invalid audio, etc.)
+            print(f"[ERROR] OpenAI BadRequest: {str(e)}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Invalid audio data: {str(e)}"
+            )
         except Exception as e:
             print(f"[ERROR] Audio transcription failed: {type(e).__name__}: {str(e)}")
             import traceback

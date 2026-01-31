@@ -189,6 +189,9 @@ async def orchestrate(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=str(e)
         )
+    except HTTPException:
+        # Re-raise HTTPException from services (already has correct status code)
+        raise
     except Exception as e:
         logger.error(f"[AI Orchestrate] ✗ Exception: {str(e)}", exc_info=True)
         logger.error("=" * 60)
