@@ -118,15 +118,17 @@ class ConceptExtractionOutput(BaseModel):
         }
     """
     concepts: Dict[str, List[str]] = Field(
+        default_factory=dict,
         description="Concepts organized by category"
     )
     confidence_score: float = Field(
+        default=0.0,
         ge=0.0, 
         le=1.0,
         description="Confidence in extraction quality (0.0-1.0)"
     )
     reasoning: Optional[str] = Field(
-        None,
+        default=None,
         max_length=200,
         description="Brief explanation if ambiguous or uncertain"
     )
