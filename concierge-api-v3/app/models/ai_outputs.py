@@ -118,28 +118,34 @@ class ConceptExtractionOutput(BaseModel):
         }
     """
     concepts: Dict[str, List[str]] = Field(
-        default_factory=dict,
+        ...,  # Required field (no default)
         description="Concepts organized by category"
     )
     confidence_score: float = Field(
-        default=0.0,
+        ...,  # Required field
         ge=0.0, 
         le=1.0,
         description="Confidence in extraction quality (0.0-1.0)"
     )
     reasoning: Optional[str] = Field(
-        default=None,
+        None,  # Explicitly optional
         max_length=200,
         description="Brief explanation if ambiguous or uncertain"
     )
+    
+    model_config = {
+        "json_schema_extra": {
+            "required": ["concepts", "confidence_score"]  # Explicit required array for OpenAI
+        }
+    }
     
     @field_validator('concepts')
     @classmethod
     def validate_concepts(cls, v: Dict[str, List[str]]) -> Dict[str, List[str]]:
         """Validate concepts structure and remove duplicates per category"""
-        # Allow empty dict for minimal format (transcription-only mode)
         if not v:
-            return {}
+            # Must have at least empty dict (required field)
+            raise ValueError("Concepts dictionary is required (can be empty)")
         
         result = {}
         for category, concepts_list in v.items():
@@ -187,16 +193,18 @@ class ImageAnalysisOutput(BaseModel):
                 {"name": "red wine", "confidence": 0.85, "category": "drink"}
             ],
             "cuisine_inference": "Italian",
-            "ambiance": "romantic, upscale"
+            "ambiance": "romantic, upscale",
+            "confidence_score": 0.9
         }
     """
     description: str = Field(
+        ...,  # Required
         min_length=10,
         max_length=500,
         description="Natural language description of the image"
     )
     detected_items: List[DetectedItem] = Field(
-        default_factory=list,
+        ...,  # Required (can be empty list)
         max_length=20,
         description="Items detected in the image"
     )
@@ -211,11 +219,17 @@ class ImageAnalysisOutput(BaseModel):
         description="Ambiance description (e.g., 'casual', 'romantic', 'modern')"
     )
     confidence_score: float = Field(
+        ...,  # Required
         ge=0.0,
         le=1.0,
-        default=0.5,
         description="Overall analysis confidence"
     )
+    
+    model_config = {
+        "json_schema_extra": {
+            "required": ["description", "detected_items", "confidence_score"]
+        }
+    }
     
     @field_validator('detected_items')
     @classmethod
