@@ -171,6 +171,14 @@ class RecordingModule {
     }
     
     /**
+     * Setup events (public method called by uiManager)
+     * Alias for attachEventHandlers for compatibility
+     */
+    setupEvents() {
+        this.attachEventHandlers();
+    }
+    
+    /**
      * Attach event handlers to buttons
      */
     attachEventHandlers() {
