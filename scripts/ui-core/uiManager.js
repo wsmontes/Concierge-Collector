@@ -148,7 +148,14 @@ if (typeof window.UIManager === 'undefined') {
             
             // Initialize modules that need DOM setup
             if (this.recordingModule && typeof this.recordingModule.initialize === 'function') {
+                console.log('[UIManager] Calling recordingModule.initialize()...');
                 this.recordingModule.initialize();
+                console.log('[UIManager] recordingModule.initialize() completed');
+            } else {
+                console.warn('[UIManager] recordingModule not available or no initialize method', {
+                    hasRecordingModule: !!this.recordingModule,
+                    hasInitialize: this.recordingModule && typeof this.recordingModule.initialize === 'function'
+                });
             }
             
             // Setup events for each module if they exist
