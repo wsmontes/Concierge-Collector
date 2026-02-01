@@ -105,6 +105,9 @@
         })();
     </script>
     
+    <!-- CRITICAL: Load ModuleWrapper FIRST - utils depend on it -->
+    <script src="scripts/core/moduleWrapper.js?v=9.2.0"></script>
+    
     <!-- Shared UI Utilities - NO DEFER: Required by services -->
     <script src="scripts/utils/uiHelpers.js?v=9.2.0"></script>
     <script src="scripts/utils/errorHandling.js?v=9.2.0"></script>
@@ -704,7 +707,6 @@
 
     <!-- Core utilities - load before any other scripts -->
     <script src="scripts/ui-core/uiUtils.js?v=9.2.0"></script>
-    <script src="scripts/core/moduleWrapper.js?v=9.2.0"></script>
     
     <!-- NEW: Architectural Managers (load early - other modules depend on these) -->
     <script src="scripts/ui-core/modalManager.js?v=9.2.0"></script>
