@@ -26,13 +26,15 @@ export default defineConfig({
         'node_modules/**',
         'archive/**',
         'concierge-api-v3/**',
-        '*.config.js'
+        '*.config.js',
+        'scripts/modules/*.original*.js',
+        'scripts/legacy/**'
       ],
-      // Minimum thresholds
-      statements: 70,
-      branches: 60,
-      functions: 70,
-      lines: 70
+      // Minimum thresholds (target: 90%)
+      statements: 90,
+      branches: 85,
+      functions: 90,
+      lines: 90
     },
     
     // Test timeout (30 seconds for integration tests)
