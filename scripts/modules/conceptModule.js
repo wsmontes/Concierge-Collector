@@ -1231,6 +1231,8 @@ class ConceptModule {
         const transcriptionTextarea = document.getElementById('restaurant-transcription');
         const transcription = transcriptionTextarea ? transcriptionTextarea.value.trim() : '';
         
+        console.log('🔄 REPROCESS - Transcription text:', transcription);
+        
         if (!transcription) {
             SafetyUtils.showNotification('Please provide a transcription first', 'error');
             return;
@@ -1241,6 +1243,7 @@ class ConceptModule {
             
             // First extract concepts
             const concepts = await this.extractConcepts(transcription);
+            console.log('🔄 REPROCESS - Extracted concepts:', concepts);
             this.uiManager.currentConcepts = concepts;
             this.renderConcepts();
             
@@ -1307,9 +1310,13 @@ class ConceptModule {
             // Use ApiService V3 to extract concepts
             const result = await window.ApiService.extractConcepts(transcription, 'restaurant');
             
+            console.log('🟢 extractConcepts - RAW API RESULT:', result);
+            
             // API V3 returns concepts in the format we need
             // result = { concepts: [{category, value, confidence}], ...}
             const conceptsArray = result.concepts || [];
+            
+            console.log('🟢 extractConcepts - Returning conceptsArray:', conceptsArray);
             
             // Here we also run generateDescription explicitly to ensure it happens
             this.log.debug("Concepts extracted successfully, generating description...");
