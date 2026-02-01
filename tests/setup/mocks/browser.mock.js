@@ -132,6 +132,14 @@ export function setupAudioContextMock() {
     
     decodeAudioData: vi.fn(async () => mockAudioBuffer),
     
+    createBufferSource: vi.fn(() => ({
+      buffer: null,
+      connect: vi.fn(),
+      disconnect: vi.fn(),
+      start: vi.fn(),
+      stop: vi.fn()
+    })),
+    
     createMediaStreamSource: vi.fn(() => ({
       connect: vi.fn(),
       disconnect: vi.fn()
@@ -156,6 +164,18 @@ export function setupAudioContextMock() {
  * Setup all browser mocks
  */
 export function setupBrowserMocks() {
+  // Add arrayBuffer() method to Blob prototype for jsdom compatibility
+  if (typeof Blob !== 'undefined' && !Blob.prototype.arrayBuffer) {
+    Blob.prototype.arrayBuffer = async function() {
+      return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(reader.result);
+        reader.onerror = reject;
+        reader.readAsArrayBuffer(this);
+      });
+    };
+  }
+  
   setupMediaRecorderMock();
   setupGetUserMediaMock(true);
   setupAudioContextMock();
