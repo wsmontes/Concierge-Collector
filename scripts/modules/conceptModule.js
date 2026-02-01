@@ -1311,10 +1311,22 @@ class ConceptModule {
             const result = await window.ApiService.extractConcepts(transcription, 'restaurant');
             
             console.log('🟢 extractConcepts - RAW API RESULT:', result);
+            console.log('🟢 extractConcepts - result.results:', result.results);
+            console.log('🟢 extractConcepts - result.results?.concepts:', result.results?.concepts);
             
-            // API V3 returns concepts in the format we need
-            // result = { concepts: [{category, value, confidence}], ...}
-            const conceptsArray = result.concepts || [];
+            // API V3 orchestrate returns: {workflow, results: {concepts: {concepts: {...}}}}
+            // We need to extract the nested concepts object
+            let conceptsData = null;
+            if (result.results && result.results.concepts && result.results.concepts.concepts) {
+                conceptsData = result.results.concepts.concepts;
+            } else if (result.concepts) {
+                conceptsData = result.concepts;
+            }
+            
+            console.log('🟢 extractConcepts - conceptsData extracted:', conceptsData);
+            
+            // Convert to format expected by rest of code (if needed)
+            const conceptsArray = conceptsData || [];
             
             console.log('🟢 extractConcepts - Returning conceptsArray:', conceptsArray);
             
