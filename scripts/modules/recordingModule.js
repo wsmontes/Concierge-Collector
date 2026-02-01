@@ -1738,6 +1738,11 @@ class RecordingModule {
                 textarea.value = transcription;
                 textarea.dispatchEvent(new Event('input'));
                 
+                // Show the concepts section with Save/Discard toolbar if not editing
+                if (!this.uiManager.isEditingRestaurant && this.uiManager.showConceptsSection) {
+                    this.uiManager.showConceptsSection();
+                }
+                
                 // ✅ Trigger concept processing (will use pre-extracted concepts if available)
                 this.triggerConceptProcessing(transcription, concepts?.concepts);
             }
@@ -1756,80 +1761,6 @@ class RecordingModule {
             setTimeout(() => {
                 this.resetRecordingToolState();
             }, 100);
-        }
-    }
-
-    /**
-     * Trigger concept processing pipeline after a successful transcription
-     * ✅ NOW ACCEPTS PRE-EXTRACTED CONCEPTS to skip second API call
-     * @param {string} transcription - The transcribed text
-     * @param {Array} preExtractedConcepts - Optional concepts already extracted by orchestrate
-     */
-    triggerConceptProcessing(transcription, preExtractedConcepts = null) {
-        try {
-            this.log.debug('🔵 Triggering concept processing for new restaurant');
-            
-            // 🔍 DEBUG: Log preExtractedConcepts in detail
-            this.log.debug('📄 preExtractedConcepts received:', {
-                exists: !!preExtractedConcepts,
-                type: typeof preExtractedConcepts,
-                isArray: Array.isArray(preExtractedConcepts),
-                length: Array.isArray(preExtractedConcepts) ? preExtractedConcepts.length : 'N/A',
-                structure: JSON.stringify(preExtractedConcepts, null, 2)
-            });
-            
-            // ✅ IF CONCEPTS PRE-EXTRACTED: Apply them directly
-            if (preExtractedConcepts && Array.isArray(preExtractedConcepts) && preExtractedConcepts.length > 0) {
-                this.log.debug(`✅ Using ${preExtractedConcepts.length} pre-extracted concepts from orchestrate`);
-                
-                // Method 1: Use conceptModule with direct concept application
-                if (this.uiManager && this.uiManager.conceptModule) {
-                    if (typeof this.uiManager.conceptModule.displayConcepts === 'function') {
-                        this.uiManager.conceptModule.displayConcepts(preExtractedConcepts);
-                        return;
-                    }
-                }
-                
-                // Method 2: Use global conceptModule
-                if (window.conceptModule && typeof window.conceptModule.displayConcepts === 'function') {
-                    window.conceptModule.displayConcepts(preExtractedConcepts);
-                    return;
-                }
-                
-                this.log.warn('No method to apply pre-extracted concepts, falling back to standard processing');
-            }
-            
-            // FALLBACK: Standard concept extraction (will make another API call)
-            this.log.debug('Using standard concept processing (will call extractConcepts API)');
-            
-            // Method 1: Use conceptModule directly if available
-            if (this.uiManager && this.uiManager.conceptModule && 
-                typeof this.uiManager.conceptModule.processConcepts === 'function') {
-                this.log.debug('Using uiManager.conceptModule.processConcepts');
-                this.uiManager.conceptModule.processConcepts(transcription);
-                return;
-            }
-            
-            // Method 2: Find globally available conceptModule
-            if (window.conceptModule && typeof window.conceptModule.processConcepts === 'function') {
-                this.log.debug('Using global conceptModule.processConcepts');
-                window.conceptModule.processConcepts(transcription);
-                return;
-            }
-            
-            // Method 3: Use the reprocessConcepts function if available
-            const reprocessButton = document.getElementById('reprocess-concepts');
-            if (reprocessButton) {
-                this.log.debug('Using reprocess-concepts button click as fallback');
-                reprocessButton.click();
-                return;
-            }
-            
-            // Method 4: Notify the user that manual processing is needed
-            this.log.warn('No automatic concept processing available, user needs to click "Reprocess Concepts" manually');
-            this.showProcessingNotification();
-        } catch (error) {
-            this.log.error('Error triggering concept processing:', error);
         }
     }
 
