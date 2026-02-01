@@ -35,13 +35,22 @@ class ConceptExtractionService {
      * @returns {Promise<Array>} - Extracted concepts
      */
     async extractFromTranscription(transcription, options = {}) {
-        this.log.debug('Extracting concepts from transcription', {
-            length: transcription?.length || 0
-        });
-        
-        if (!transcription || !transcription.trim()) {
+        // Fail-fast: validate input
+        if (!transcription || typeof transcription !== 'string') {
+            this.log.warn('⚠️ Invalid transcription input:', typeof transcription);
             return [];
         }
+        
+        const trimmed = transcription.trim();
+        if (!trimmed) {
+            this.log.debug('Empty transcription, skipping extraction');
+            return [];
+        }
+        
+        this.log.debug('🧠 Extracting concepts from transcription', {
+            length: trimmed.length,
+            maxConcepts: options.maxConcepts || 20
+        });
         
         try {
             const response = await window.apiUtils.callAPI('/ai/extract-concepts', {
@@ -63,7 +72,10 @@ class ConceptExtractionService {
             const data = await response.json();
             const concepts = data.concepts || [];
             
-            this.log.debug(`Extracted ${concepts.length} concepts from transcription`);
+            this.log.debug(`✅ Extracted ${concepts.length} concepts from transcription`, {
+                categories: [...new Set(concepts.map(c => c.category))].join(', '),
+                total: concepts.length
+            });
             
             return this.normalizeConcepts(concepts);
             

@@ -72,27 +72,29 @@ class ImageProcessingService {
      */
     async processQueue() {
         if (this.isProcessing) {
-            this.log.debug('Already processing queue');
+            this.log.debug('⚠️ Queue already being processed, skipping');
             return;
         }
         
         if (this.queue.length === 0) {
-            this.log.debug('Queue empty, nothing to process');
+            this.log.debug('✅ Queue empty, nothing to process');
             return;
         }
         
         this.isProcessing = true;
-        this.log.debug(`Starting queue processing: ${this.queue.length} items`);
+        const totalItems = this.queue.length;
+        this.log.debug(`🚀 Starting queue processing: ${totalItems} items`);
         
         while (this.queue.length > 0) {
             const item = this.queue.shift();
+            const itemNumber = totalItems - this.queue.length;
             this.currentItem = item;
             
             try {
                 item.status = 'processing';
                 item.startedAt = new Date();
                 
-                this.log.debug(`Processing item ${item.id}`);
+                this.log.debug(`📸 Processing item ${itemNumber}/${totalItems} (ID: ${item.id})`);
                 
                 const result = await this.processImage(
                     item.imageData,
@@ -105,10 +107,11 @@ class ImageProcessingService {
                 
                 this.stats.successful++;
                 
-                this.log.debug(`Item ${item.id} completed successfully`);
+                const duration = (item.completedAt - item.startedAt) / 1000;
+                this.log.debug(`✅ Item ${itemNumber}/${totalItems} completed in ${duration.toFixed(2)}s`);
                 
             } catch (error) {
-                this.log.error(`Item ${item.id} failed:`, error);
+                this.log.error(`❌ Item ${itemNumber}/${totalItems} failed:`, error.message);
                 
                 item.status = 'failed';
                 item.error = error.message;

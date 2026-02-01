@@ -86,6 +86,14 @@ class AudioRecordingService {
      * @returns {Promise<MediaStream>}
      */
     async getMediaStream(constraints = null) {
+        // Fail-fast: check browser support first
+        const supportCheck = this.checkBrowserSupport();
+        if (!supportCheck.supported) {
+            const error = new Error(supportCheck.error);
+            this.log.error('❌ Browser does not support audio recording');
+            throw error;
+        }
+        
         const finalConstraints = constraints || this.getAudioConstraints(true);
         
         try {
@@ -97,7 +105,10 @@ class AudioRecordingService {
                 throw new Error('No audio tracks in media stream');
             }
             
-            this.log.debug('Media stream obtained successfully');
+            this.log.debug('✅ Media stream obtained successfully', {
+                tracks: stream.getTracks().length,
+                constraints: finalConstraints
+            });
             return stream;
             
         } catch (error) {
@@ -242,12 +253,23 @@ class AudioRecordingService {
     async stopRecording() {
         return await window.errorHandling.safeExecute(
             async () => {
-                // Check if recording
+                // Fail-fast: check recording state
                 if (!this.isRecording || !this.mediaRecorder) {
-                    throw new Error('No active recording to stop');
+                    const error = new Error('No active recording to stop');
+                    this.log.warn('⚠️ Attempted to stop recording but none active');
+                    throw error;
                 }
                 
                 // Check recorder state
+                if (this.mediaRecorder.state === 'inactive') {
+                    this.log.warn('⚠️ MediaRecorder already inactive');
+                    throw new Error('MediaRecorder already stopped');
+                }
+                
+                this.log.debug('🛑 Stopping recording...', {
+                    state: this.mediaRecorder.state,
+                    chunksCollected: this.audioChunks.length
+                });
                 if (this.mediaRecorder.state === 'inactive') {
                     throw new Error('MediaRecorder already inactive');
                 }
