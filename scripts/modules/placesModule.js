@@ -161,39 +161,14 @@ if (typeof window.PlacesModule === 'undefined') {
             this.debugLog('Module cleanup completed');
         }
         
-        /**
-         * Safe storage access with fallback handling
-         * @param {string} key - Storage key
-         * @param {string} defaultValue - Default value if key not found
-         * @returns {string} - Retrieved or default value
-         */
         safeGetStorageItem(key, defaultValue = '') {
-            try {
-                return localStorage.getItem(key) || defaultValue;
-            } catch (error) {
-                this.debugLog(`Error accessing localStorage for key ${key}:`, error);
-                return defaultValue;
-            }
+            return window.uiHelpers.safeGetStorageItem(key, defaultValue);
         }
         
-        /**
-         * Safe storage write with error handling
-         * @param {string} key - Storage key
-         * @param {string} value - Value to store
-         */
         safeSetStorageItem(key, value) {
-            try {
-                localStorage.setItem(key, value);
-            } catch (error) {
-                this.debugLog(`Error writing to localStorage for key ${key}:`, error);
-            }
+            return window.uiHelpers.safeSetStorageItem(key, value);
         }
         
-        /**
-         * Enhanced logging with performance tracking
-         * @param {string} message - The message to log
-         * @param {...any} args - Additional arguments to log
-         */
         debugLog(message, ...args) {
             if ((this.debugEnabled || this.isDevelopmentMode()) && window.console && typeof window.console.log === 'function') {
                 const timestamp = new Date().toISOString();
@@ -218,79 +193,16 @@ if (typeof window.PlacesModule === 'undefined') {
             return new Promise(resolve => setTimeout(resolve, ms));
         }
         
-        /**
-         * Show notification using available notification system
-         * @param {string} message - Notification message
-         * @param {string} type - Notification type (success, error, warning, info)
-         */
         showNotification(message, type = 'success') {
-            try {
-                // Try SafetyUtils first
-                if (window.SafetyUtils && typeof window.SafetyUtils.safeShowNotification === 'function') {
-                    window.SafetyUtils.safeShowNotification(message, type, 'PlacesModule');
-                    return;
-                }
-                
-                // Fallback to uiUtils
-                if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
-                    window.uiUtils.showNotification(message, type);
-                    return;
-                }
-                
-                // Console fallback
-                this.log.debug(`[${type.toUpperCase()}] ${message}`);
-            } catch (error) {
-                this.log.error('Error showing notification:', error);
-            }
+            window.uiHelpers.showNotification(message, type, 'PlacesModule');
         }
         
-        /**
-         * Enhanced loading display using SafetyUtils patterns
-         * @param {string} message - Loading message
-         */
         safeShowLoading(message = 'Loading...') {
-            try {
-                // First try SafetyUtils for consistency
-                if (window.SafetyUtils && typeof window.SafetyUtils.safeShowLoading === 'function') {
-                    window.SafetyUtils.safeShowLoading(message, 'PlacesModule');
-                    return;
-                }
-                
-                // Fallback to uiUtils
-                if (window.uiUtils && typeof window.uiUtils.showLoading === 'function') {
-                    window.uiUtils.showLoading(message);
-                    return;
-                }
-                
-                // Console fallback
-                this.log.debug(`Loading: ${message}`);
-            } catch (error) {
-                this.log.error('Error showing loading:', error);
-            }
+            window.uiHelpers.showLoading(message, 'PlacesModule');
         }
         
-        /**
-         * Enhanced loading hiding using SafetyUtils patterns
-         */
         safeHideLoading() {
-            try {
-                // First try SafetyUtils for consistency
-                if (window.SafetyUtils && typeof window.SafetyUtils.safeHideLoading === 'function') {
-                    window.SafetyUtils.safeHideLoading('PlacesModule');
-                    return;
-                }
-                
-                // Fallback to uiUtils
-                if (window.uiUtils && typeof window.uiUtils.hideLoading === 'function') {
-                    window.uiUtils.hideLoading();
-                    return;
-                }
-                
-                // Console fallback
-                this.log.debug('Loading complete');
-            } catch (error) {
-                this.log.error('Error hiding loading:', error);
-            }
+            window.uiHelpers.hideLoading('PlacesModule');
         }
         
         /**
