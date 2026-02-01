@@ -734,8 +734,8 @@
     <!-- Application modules - keeping essential ones -->
     <script src="scripts/services/promptTemplate.js?v=9.2.0"></script>
     <script src="scripts/services/conceptMatcher.js?v=9.2.0"></script>
-    <script src="scripts/audioRecorder.js?v=9.2.0"></script>
-    <script src="scripts/uiManager.js?v=9.2.0"></script>
+    <script src="scripts/legacy/audioRecorder.js?v=9.2.0"></script>
+    <script src="scripts/ui-core/uiManager.js?v=9.2.0"></script>
     
     <!-- Module implementations - V3 Compatible -->
     <script src="scripts/modules/safetyUtils.js?v=9.2.0"></script>
@@ -771,10 +771,10 @@
     <script src="scripts/modules/audioUtils.js?v=9.2.0"></script>
 
     <!-- Authentication Module (must load before accessControl.js) -->
-    <script src="scripts/auth.js?v=9.2.0"></script>
+    <script src="scripts/auth/auth.js?v=9.2.0"></script>
 
     <!-- Curator Profile Module (must load after auth.js) -->
-    <script src="scripts/curatorProfile.js?v=9.2.0"></script>
+    <script src="scripts/auth/curatorProfile.js?v=9.2.0"></script>
 
     <!-- Find Entity Modal (Google Places search interface) -->
     <script src="scripts/services/findEntityModal.js?v=9.2.0"></script>
