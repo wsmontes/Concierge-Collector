@@ -1973,7 +1973,7 @@ class RecordingModule {
      * @param {string} transcription - The transcribed text
      * @param {object} preExtractedConcepts - Optional pre-extracted concepts from orchestrate API
      */
-    triggerConceptProcessing(transcription, preExtractedConcepts = null) {
+    async triggerConceptProcessing(transcription, preExtractedConcepts = null) {
         try {
             this.log.debug('Triggering concept processing for new restaurant');
             this.log.debug('Pre-extracted concepts available:', !!preExtractedConcepts);
