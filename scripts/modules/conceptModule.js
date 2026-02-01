@@ -1174,8 +1174,7 @@ class ConceptModule {
         
         // Render the concepts UI
         this.renderConcepts();
-        console.log('🔵 renderConcepts() completed'ts UI
-        this.renderConcepts();
+        console.log('🔵 renderConcepts() completed');
         
         // Notify user about the results
         if (duplicateCount > 0) {
