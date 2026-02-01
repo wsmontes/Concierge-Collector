@@ -59,12 +59,13 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
     getAuthHeaders() {
         // Get OAuth token from AuthService
         if (typeof AuthService === 'undefined') {
-            this.log.warn('AuthService not available');
+            this.log.warn('⚠️ AuthService not available - requests will be unauthenticated');
             return {};
         }
         
         const token = AuthService.getToken();
         if (!token) {
+            this.log.debug('⚠️ No OAuth token available - write operations will fail with 401');
             return {};
         }
         
@@ -87,6 +88,13 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
     }
 
     async request(method, endpoint, options = {}) {
+        // Fail-fast: validate required parameters
+        if (!endpoint) {
+            const error = new Error('Endpoint is required for API request');
+            this.log.error('API request failed: missing endpoint');
+            throw error;
+        }
+        
         // Extract endpoint name and query string if present
         const [endpointName, queryString] = endpoint.split('?');
         const endpointPath = AppConfig.api.backend.endpoints[endpointName] || endpointName;
@@ -176,7 +184,10 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         try {
             errorDetails = await response.json();
             if (errorDetails.detail) errorMessage = errorDetails.detail;
-        } catch (e) {}
+        } catch (parseError) {
+            // Failed to parse JSON error response - body might not be JSON
+            this.log.debug('Could not parse error response as JSON:', parseError.message);
+        }
         
         switch (response.status) {
             case 403:
@@ -223,16 +234,25 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
      */
     mergeUpdates(localUpdates, serverEntity) {
         const merged = { ...localUpdates };
+        let conflictCount = 0;
         
         // Check each field for conflicts
         Object.keys(localUpdates).forEach(key => {
             if (serverEntity[key] !== undefined && 
                 JSON.stringify(localUpdates[key]) !== JSON.stringify(serverEntity[key])) {
-                this.log.warn(`⚠️ Conflict on field '${key}': server version kept, local change discarded`);
+                conflictCount++;
+                this.log.warn(`⚠️ Conflict #${conflictCount} on field '${key}':`);
+                this.log.warn(`   Local value: ${JSON.stringify(localUpdates[key]).substring(0, 100)}`);
+                this.log.warn(`   Server value: ${JSON.stringify(serverEntity[key]).substring(0, 100)}`);
+                this.log.warn(`   Resolution: Server wins, local change discarded`);
                 // Server wins - remove from merged updates
                 delete merged[key];
             }
         });
+        
+        if (conflictCount > 0) {
+            this.log.warn(`⚠️ Total conflicts resolved: ${conflictCount}`);
+        }
         
         return merged;
     }

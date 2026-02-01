@@ -105,6 +105,12 @@
         })();
     </script>
     
+    <!-- Shared UI Utilities -->
+    <script src="scripts/utils/uiHelpers.js?v=9.2.0" defer></script>
+    <script src="scripts/utils/errorHandling.js?v=9.2.0" defer></script>
+    <script src="scripts/utils/apiUtils.js?v=9.2.0" defer></script>
+    <script src="scripts/utils/audioUtils.js?v=9.2.0" defer></script>
+    
     <!-- Restaurant validator utility -->
     <script src="scripts/utils/restaurantValidator.js?v=9.2.0" defer></script>
     
@@ -734,8 +740,8 @@
     <!-- Application modules - keeping essential ones -->
     <script src="scripts/services/promptTemplate.js?v=9.2.0"></script>
     <script src="scripts/services/conceptMatcher.js?v=9.2.0"></script>
-    <script src="scripts/audioRecorder.js?v=9.2.0"></script>
-    <script src="scripts/uiManager.js?v=9.2.0"></script>
+    <script src="scripts/legacy/audioRecorder.js?v=9.2.0"></script>
+    <script src="scripts/ui-core/uiManager.js?v=9.2.0"></script>
     
     <!-- Module implementations - V3 Compatible -->
     <script src="scripts/modules/safetyUtils.js?v=9.2.0"></script>
@@ -760,6 +766,22 @@
     <script src="scripts/services/googlePlaces/PlacesFormatter.js?v=9.2.0"></script>
     <script src="scripts/services/googlePlaces/PlacesService.js?v=9.2.0"></script>
     
+    <!-- Audio Recording Services (Phase 1 Extraction) -->
+    <script src="scripts/services/AudioRecordingService.js?v=9.2.0"></script>
+    <script src="scripts/services/AudioConversionService.js?v=9.2.0"></script>
+    <script src="scripts/services/RecordingUIManager.js?v=9.2.0"></script>
+    <script src="scripts/services/RecordingStateManager.js?v=9.2.0"></script>
+    
+    <!-- Concept Services (Phase 2 Extraction) -->
+    <script src="scripts/services/ConceptValidationService.js?v=9.2.0"></script>
+    <script src="scripts/services/ImageProcessingService.js?v=9.2.0"></script>
+    <script src="scripts/services/ConceptUIManager.js?v=9.2.0"></script>
+    <script src="scripts/services/ConceptExtractionService.js?v=9.2.0"></script>
+    
+    <!-- Places Services (Phase 3 Extraction) -->
+    <script src="scripts/services/PlacesSearchService.js?v=9.2.0"></script>
+    <script src="scripts/services/PlacesUIManager.js?v=9.2.0"></script>
+    
     <!-- Places Orchestration Service (Unified API endpoint) -->
     <script src="scripts/services/PlacesOrchestrationService.js?v=9.2.0"></script>
     
@@ -771,10 +793,10 @@
     <script src="scripts/modules/audioUtils.js?v=9.2.0"></script>
 
     <!-- Authentication Module (must load before accessControl.js) -->
-    <script src="scripts/auth.js?v=9.2.0"></script>
+    <script src="scripts/auth/auth.js?v=9.2.0"></script>
 
     <!-- Curator Profile Module (must load after auth.js) -->
-    <script src="scripts/curatorProfile.js?v=9.2.0"></script>
+    <script src="scripts/auth/curatorProfile.js?v=9.2.0"></script>
 
     <!-- Find Entity Modal (Google Places search interface) -->
     <script src="scripts/services/findEntityModal.js?v=9.2.0"></script>

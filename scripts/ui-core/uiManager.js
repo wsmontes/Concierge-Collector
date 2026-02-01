@@ -653,7 +653,11 @@ if (typeof window.UIManager === 'undefined') {
         
         // Concept module delegations
         renderConcepts() {
-            this.conceptModule.renderConcepts();
+            if (this.conceptModule && typeof this.conceptModule.renderConcepts === 'function') {
+                this.conceptModule.renderConcepts();
+            } else {
+                console.warn('[uiManager] renderConcepts: conceptModule not available');
+            }
         }
         
         removeConcept(category, value) {
@@ -678,6 +682,79 @@ if (typeof window.UIManager === 'undefined') {
         
         handleExtractedConceptsWithValidation(extractedConcepts) {
             this.conceptModule.handleExtractedConceptsWithValidation(extractedConcepts);
+        }
+        
+        /**
+         * Populate form with analysis results from AI
+         * Called by RecordingModule after analyzing audio
+         * @param {Object} analysis - Analysis results from AI
+         * @param {boolean} isAdditional - Whether this is an additional recording
+         */
+        populateFromAnalysis(analysis, isAdditional = false) {
+            console.log('[uiManager] populateFromAnalysis called', { analysis, isAdditional });
+            
+            try {
+                // Show concepts section first
+                this.showConceptsSection();
+                
+                // Populate restaurant name if provided
+                if (analysis.name || analysis.restaurant_name) {
+                    const nameInput = document.getElementById('restaurant-name');
+                    if (nameInput && !nameInput.value) {
+                        nameInput.value = analysis.name || analysis.restaurant_name;
+                    }
+                }
+                
+                // Populate transcription if provided
+                if (analysis.transcription) {
+                    const transcriptionTextarea = document.getElementById('restaurant-transcription');
+                    if (transcriptionTextarea) {
+                        if (isAdditional) {
+                            // Append to existing transcription
+                            transcriptionTextarea.value += '\n\n' + analysis.transcription;
+                        } else {
+                            // Set as new transcription
+                            transcriptionTextarea.value = analysis.transcription;
+                        }
+                    }
+                }
+                
+                // Populate description if provided
+                if (analysis.description) {
+                    const descriptionInput = document.getElementById('restaurant-description');
+                    if (descriptionInput && !descriptionInput.value) {
+                        descriptionInput.value = analysis.description;
+                    }
+                }
+                
+                // Extract and add concepts if provided
+                if (analysis.concepts && this.conceptModule) {
+                    this.conceptModule.handleExtractedConceptsWithValidation(analysis.concepts);
+                }
+                
+                // Populate location if provided
+                if (analysis.location) {
+                    this.currentLocation = analysis.location;
+                    const locationDisplay = document.getElementById('location-display');
+                    if (locationDisplay) {
+                        locationDisplay.innerHTML = `
+                            <div class="p-3 bg-green-50 border border-green-200 rounded">
+                                <div class="flex items-center mb-1">
+                                    <span class="material-icons text-green-600 mr-1">check_circle</span>
+                                    <span class="font-semibold">Location captured</span>
+                                </div>
+                                <div class="text-sm text-gray-600">
+                                    ${analysis.location.address || `${analysis.location.latitude}, ${analysis.location.longitude}`}
+                                </div>
+                            </div>
+                        `;
+                    }
+                }
+                
+                console.log('[uiManager] Form populated with analysis results');
+            } catch (error) {
+                console.error('[uiManager] Error populating form from analysis:', error);
+            }
         }
         
         filterExistingConcepts(conceptsToFilter) {
