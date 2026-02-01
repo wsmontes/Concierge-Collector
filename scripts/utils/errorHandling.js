@@ -189,3 +189,4 @@ const ErrorHandler = ModuleWrapper.defineClass('ErrorHandler', class {
 
 // Create global singleton instance
 window.errorHandler = new ErrorHandler();
+window.errorHandling = window.errorHandler; // Alias for backward compatibility
