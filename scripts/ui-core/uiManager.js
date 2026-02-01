@@ -146,6 +146,11 @@ if (typeof window.UIManager === 'undefined') {
                 this.quickActionModule = new QuickActionModule(this);
             }
             
+            // Initialize modules that need DOM setup
+            if (this.recordingModule && typeof this.recordingModule.initialize === 'function') {
+                this.recordingModule.initialize();
+            }
+            
             // Setup events for each module if they exist
             if (this.curatorModule) this.curatorModule.setupEvents();
             if (this.recordingModule) this.recordingModule.setupEvents();
