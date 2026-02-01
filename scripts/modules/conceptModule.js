@@ -1225,13 +1225,14 @@ class ConceptModule {
         );
     }
 
-    // New function to reprocess concepts from edited transcription
+    /**
+     * Reprocess concepts from edited transcription (manual button click)
+     * This is the ONLY entry point for manual reprocessing
+     */
     async reprocessConcepts() {
-        this.log.debug('Reprocessing concepts...');
+        this.log.debug('Manual reprocess initiated');
         const transcriptionTextarea = document.getElementById('restaurant-transcription');
-        const transcription = transcriptionTextarea ? transcriptionTextarea.value.trim() : '';
-        
-        console.log('🔄 REPROCESS - Transcription text:', transcription);
+        const transcription = transcriptionTextarea?.value.trim();
         
         if (!transcription) {
             SafetyUtils.showNotification('Please provide a transcription first', 'error');
@@ -1241,31 +1242,31 @@ class ConceptModule {
         try {
             SafetyUtils.showLoading('Analyzing restaurant details...');
             
-            // First extract concepts
-            const concepts = await this.extractConcepts(transcription);
-            console.log('🔄 REPROCESS - Extracted concepts:', concepts);
+            // Call API directly
+            const result = await window.ApiService.extractConcepts(transcription, 'restaurant');
             
-            // Use handleExtractedConceptsWithValidation to properly process the concepts object
-            // This converts {cuisine: [], menu: []} to array format and handles validation
-            if (concepts && typeof concepts === 'object' && !Array.isArray(concepts)) {
-                console.log('🔄 REPROCESS - Converting concepts object to array format');
-                this.handleExtractedConceptsWithValidation(concepts, transcription);
+            // Extract nested concepts
+            let conceptsData = result?.results?.concepts?.concepts || 
+                              result?.concepts?.concepts || 
+                              result?.concepts;
+            
+            console.log('REPROCESS - Concepts extracted:', conceptsData);
+            
+            if (conceptsData && Object.keys(conceptsData).length > 0) {
+                // ALWAYS process through validation (converts object to array)
+                await this.handleExtractedConceptsWithValidation(conceptsData, transcription);
+                await this.generateDescription(transcription);
+                SafetyUtils.hideLoading();
+                SafetyUtils.showNotification('Concepts updated successfully');
             } else {
-                // Fallback for old array format (shouldn't happen anymore)
-                this.uiManager.currentConcepts = concepts || [];
-                this.renderConcepts();
+                SafetyUtils.hideLoading();
+                SafetyUtils.showNotification('No concepts extracted', 'warning');
             }
             
-            // Explicitly generate description after extracting concepts
-            // This step was missing or not working properly
-            await this.generateDescription(transcription);
-            
-            SafetyUtils.hideLoading();
-            SafetyUtils.showNotification('Concepts and description updated successfully');
         } catch (error) {
             SafetyUtils.hideLoading();
-            this.log.error('Error processing concepts:', error);
-            SafetyUtils.showNotification('Error processing restaurant details', 'error');
+            this.log.error('Error reprocessing:', error);
+            SafetyUtils.showNotification('Error processing concepts', 'error');
         }
     }
     
@@ -1477,46 +1478,46 @@ class ConceptModule {
      * @param {string} transcriptionText - The transcription text
      * @param {object} preExtractedConcepts - Concepts already extracted by orchestrate endpoint
      */
+    /**
+     * Process pre-extracted concepts from orchestrate API (avoids redundant API call)
+     * This is called ONLY when orchestrate endpoint returns concepts with the transcription
+     * @param {string} transcriptionText - The transcription text
+     * @param {object} preExtractedConcepts - Concepts already extracted by orchestrate endpoint
+     */
     async processPreExtractedConcepts(transcriptionText, preExtractedConcepts) {
+        console.log('=== PRE-EXTRACTED: START ===');
+        console.log('Transcription:', transcriptionText);
+        console.log('Raw concepts:', preExtractedConcepts);
+        
         try {
-            console.log('✅ Processing pre-extracted concepts from orchestrate');
-            console.log('� TRANSCRIPTION TEXT:', transcriptionText);
-            console.log('�🔴 RAW PRE-EXTRACTED CONCEPTS:', preExtractedConcepts);
-            
             SafetyUtils.showLoading('Processing concepts...');
-            
-            // Show concepts section
             this.uiManager.showConceptsSection();
             
-            // Extract concepts dict from API response
-            let conceptsData = preExtractedConcepts;
+            // Extract concepts dict (handle nested structure)
+            let conceptsData = preExtractedConcepts?.concepts || preExtractedConcepts;
+            console.log('Concepts to process:', conceptsData);
             
-            console.log('🟡 Before transformation:', conceptsData);
-            
-            if (preExtractedConcepts.concepts) {
-                conceptsData = preExtractedConcepts.concepts;
-                console.log('🟢 Extracted concepts dict:', conceptsData);
+            // Validate format: {category: [values]}
+            if (!conceptsData || typeof conceptsData !== 'object' || Array.isArray(conceptsData)) {
+                throw new Error('Invalid concepts format');
             }
             
-            // Concepts should be in format: {category: [values]}
-            if (typeof conceptsData === 'object' && !Array.isArray(conceptsData)) {
-                console.log('🟠 Calling handleExtractedConceptsWithValidation with:', conceptsData);
-                this.handleExtractedConceptsWithValidation(conceptsData);
-            } else {
-                console.error('⚠️ Unexpected pre-extracted concepts format:', typeof conceptsData, conceptsData);
-            }
+            // Process and render
+            await this.handleExtractedConceptsWithValidation(conceptsData, transcriptionText);
             
-            // Generate description based on transcription
+            // Generate description
             await this.generateDescription(transcriptionText);
             
+            console.log('=== PRE-EXTRACTED: COMPLETE ===');
             SafetyUtils.hideLoading();
             
         } catch (error) {
+            console.error('=== PRE-EXTRACTED: ERROR ===', error);
             SafetyUtils.hideLoading();
-            this.log.error('Error processing pre-extracted concepts:', error);
-            SafetyUtils.showNotification('Error processing concepts', 'error');
+            throw error; // Re-throw so caller knows it failed
         }
     }
+
 
     // Continue with more concept-related methods like loadConceptSuggestions, showConceptDisambiguationDialog, etc.
     // ... (code for loadConceptSuggestions and showConceptDisambiguationDialog would go here)

@@ -1983,19 +1983,30 @@ class RecordingModule {
                 typeof this.uiManager.conceptModule.processConcepts === 'function') {
                 this.log.debug('Using uiManager.conceptModule.processConcepts');
                 
-                // ✅ Pass pre-extracted concepts if available to avoid redundant API call
+                // Pass pre-extracted concepts if available to avoid redundant API call
                 if (preExtractedConcepts) {
-                    this.log.debug('✅ Using pre-extracted concepts from orchestrate, skipping redundant API call');
-                    await this.uiManager.conceptModule.processPreExtractedConcepts(transcription, preExtractedConcepts);
-                    console.log('✅ processPreExtractedConcepts completed, returning now');
-                    return; // ✅ CRITICAL: Return here to avoid fallback execution
+                    this.log.debug('Using pre-extracted concepts from orchestrate');
+                    try {
+                        await this.uiManager.conceptModule.processPreExtractedConcepts(transcription, preExtractedConcepts);
+                        console.log('=== PRE-EXTRACTED: Completed successfully, returning ===');
+                        return;
+                    } catch (error) {
+                        this.log.error('Error in processPreExtractedConcepts:', error);
+                        SafetyUtils.showNotification('Error processing concepts', 'error');
+                        return; // CRITICAL: Still return even on error
+                    }
                 } else {
-                    this.log.debug('⚠️ No pre-extracted concepts, will make separate API call');
-                    await this.uiManager.conceptModule.processConcepts(transcription);
-                    console.log('✅ processConcepts completed, returning now');
-                    return; // ✅ CRITICAL: Return here to avoid fallback execution
+                    this.log.debug('No pre-extracted concepts, will make separate API call');
+                    try {
+                        await this.uiManager.conceptModule.processConcepts(transcription);
+                        console.log('=== PROCESS: Completed successfully, returning ===');
+                        return;
+                    } catch (error) {
+                        this.log.error('Error in processConcepts:', error);
+                        SafetyUtils.showNotification('Error processing concepts', 'error');
+                        return;
+                    }
                 }
-                return;
             }
             
             // Method 2: Find globally available conceptModule
