@@ -1986,10 +1986,12 @@ class RecordingModule {
                 // ✅ Pass pre-extracted concepts if available to avoid redundant API call
                 if (preExtractedConcepts) {
                     this.log.debug('✅ Using pre-extracted concepts from orchestrate, skipping redundant API call');
-                    this.uiManager.conceptModule.processPreExtractedConcepts(transcription, preExtractedConcepts);
+                    await this.uiManager.conceptModule.processPreExtractedConcepts(transcription, preExtractedConcepts);
+                    return; // ✅ CRITICAL: Return here to avoid fallback execution
                 } else {
                     this.log.debug('⚠️ No pre-extracted concepts, will make separate API call');
-                    this.uiManager.conceptModule.processConcepts(transcription);
+                    await this.uiManager.conceptModule.processConcepts(transcription);
+                    return; // ✅ CRITICAL: Return here to avoid fallback execution
                 }
                 return;
             }
