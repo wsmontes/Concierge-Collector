@@ -1244,8 +1244,17 @@ class ConceptModule {
             // First extract concepts
             const concepts = await this.extractConcepts(transcription);
             console.log('🔄 REPROCESS - Extracted concepts:', concepts);
-            this.uiManager.currentConcepts = concepts;
-            this.renderConcepts();
+            
+            // Use handleExtractedConceptsWithValidation to properly process the concepts object
+            // This converts {cuisine: [], menu: []} to array format and handles validation
+            if (concepts && typeof concepts === 'object' && !Array.isArray(concepts)) {
+                console.log('🔄 REPROCESS - Converting concepts object to array format');
+                this.handleExtractedConceptsWithValidation(concepts, transcription);
+            } else {
+                // Fallback for old array format (shouldn't happen anymore)
+                this.uiManager.currentConcepts = concepts || [];
+                this.renderConcepts();
+            }
             
             // Explicitly generate description after extracting concepts
             // This step was missing or not working properly
