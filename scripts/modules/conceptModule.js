@@ -1452,7 +1452,8 @@ class ConceptModule {
     async processPreExtractedConcepts(transcriptionText, preExtractedConcepts) {
         try {
             console.log('✅ Processing pre-extracted concepts from orchestrate');
-            console.log('🔴 RAW PRE-EXTRACTED CONCEPTS:', preExtractedConcepts);
+            console.log('� TRANSCRIPTION TEXT:', transcriptionText);
+            console.log('�🔴 RAW PRE-EXTRACTED CONCEPTS:', preExtractedConcepts);
             
             SafetyUtils.showLoading('Processing concepts...');
             
