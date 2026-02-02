@@ -14,7 +14,7 @@
     
     <!-- Application Version - UPDATE ON EACH DEPLOYMENT -->
     <script>
-        window.APP_VERSION = '9.2.0'; // ✅ Audio recording validation fixes
+        window.APP_VERSION = '9.2.1'; // ✅ Fixed missing recording control buttons
         window.SCHEMA_VERSION = 9;
     </script>
     
@@ -162,6 +162,25 @@
                 Record Your Restaurant Review
             </h2>
             <p class="text-sm text-gray-600 mb-4">Maximum recording time: 5 minutes</p>
+            
+            <!-- Recording Controls -->
+            <div class="recording-controls flex flex-wrap items-center gap-3 mb-4">
+                <button id="start-record" class="bg-red-600 hover:bg-red-700 text-white px-4 py-3 rounded flex items-center text-lg md:text-base">
+                    <span class="material-icons mr-1">mic</span>
+                    Start Recording
+                </button>
+                <button id="stop-record" class="bg-gray-600 hover:bg-gray-700 text-white px-4 py-3 rounded flex items-center text-lg md:text-base hidden">
+                    <span class="material-icons mr-1">stop</span>
+                    Stop Recording
+                </button>
+                <div id="recording-time" class="px-4 py-3 bg-white border rounded text-lg md:text-base font-mono hidden">00:00</div>
+                <div id="recording-status" class="text-base md:text-sm text-gray-600 ml-2"></div>
+            </div>
+            
+            <!-- Audio Visualizer -->
+            <div id="audio-visualizer" class="h-16 mb-4 bg-black rounded overflow-hidden hidden">
+                <canvas id="audio-visualizer-canvas" class="w-full h-full"></canvas>
+            </div>
             
             <!-- Add the circular timer section -->
             <div class="flex flex-col items-center" id="circular-timer-container">
