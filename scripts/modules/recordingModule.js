@@ -79,9 +79,15 @@ class RecordingModule {
     ensureRecordingInterfaceExists() {
         let recordingSection = document.getElementById('recording-section');
         
-        if (!recordingSection) {
+        if (recordingSection) {
+            // Section exists, just make sure it's visible
+            recordingSection.classList.remove('hidden');
+            this.log.debug('Recording section found in HTML, using existing');
+        } else {
+            // Section doesn't exist, create it
             recordingSection = this.createRecordingSection();
             this.insertRecordingSection(recordingSection);
+            this.log.debug('Recording section created dynamically');
         }
         
         // Validate structure
@@ -354,21 +360,25 @@ class RecordingModule {
         try {
             this.uiService.showProgress('Transcribing audio...', 0, isAdditional);
             
-            // Use ApiService V3 for transcription
+            // Use ApiService V3 for transcription (orchestrate endpoint returns both transcription + concepts)
             if (!window.ApiService) {
                 throw new Error('ApiService not available');
             }
             
             const result = await window.ApiService.transcribeAudio(this.currentAudioBlob, 'pt-BR');
             
-            // Extract transcription from orchestrate response
+            // Extract transcription and concepts from orchestrate response
             const transcription = result.transcription || result.results?.transcription || '';
+            const concepts = result.concepts || result.results?.concepts || [];
             
             if (!transcription) {
                 throw new Error('No transcription returned from API');
             }
             
-            this.log.debug('Transcription complete:', transcription.substring(0, 100));
+            this.log.debug('Transcription complete:', { 
+                text: transcription.substring(0, 100),
+                conceptCount: concepts.length 
+            });
             
             // Store transcription
             this.currentTranscription = transcription;
@@ -376,8 +386,14 @@ class RecordingModule {
             // Update UI with transcription
             this.displayTranscription(transcription, isAdditional);
             
+            // Also display concepts if available
+            if (concepts.length > 0 && this.uiManager?.conceptModule) {
+                this.uiManager.currentConcepts = concepts;
+                this.uiManager.conceptModule.displayConcepts(concepts);
+            }
+            
             this.uiService.hideProgress(isAdditional);
-            this.uiService.showSuccess('Transcription complete!', isAdditional);
+            this.uiService.showSuccess(`Transcription complete! Found ${concepts.length} concepts.`, isAdditional);
             
         } catch (error) {
             this.log.error('Transcription failed:', error);
@@ -388,58 +404,14 @@ class RecordingModule {
     }
     
     /**
-     * Handle analyze recording (transcribe + extract concepts)
+     * Handle analyze recording (alias for transcribe since orchestrate does both)
      * @param {boolean} isAdditional
      */
     async handleAnalyze(isAdditional = false) {
-        this.log.debug('Analyze clicked', { isAdditional });
-        
-        if (!this.currentAudioBlob) {
-            this.uiService.showError('No recording to analyze');
-            return;
-        }
-        
-        try {
-            // Use ApiService V3 orchestrate endpoint (does both transcription and concept extraction)
-            if (!window.ApiService) {
-                throw new Error('ApiService not available');
-            }
-            
-            this.uiService.showProgress('Transcribing and analyzing audio...', 0, isAdditional);
-            
-            const result = await window.ApiService.transcribeAudio(this.currentAudioBlob, 'pt-BR');
-            
-            // Extract data from orchestrate response
-            const transcription = result.transcription || result.results?.transcription || '';
-            const concepts = result.concepts || result.results?.concepts || [];
-            
-            if (!transcription) {
-                throw new Error('No transcription returned from API');
-            }
-            
-            this.log.debug('Analysis complete:', { transcription: transcription.substring(0, 100), conceptCount: concepts.length });
-            
-            // Store results
-            this.currentTranscription = transcription;
-            
-            // Display transcription
-            this.displayTranscription(transcription, isAdditional);
-            
-            // Send concepts to conceptModule for display
-            if (this.uiManager?.conceptModule && concepts.length > 0) {
-                this.uiManager.currentConcepts = concepts;
-                this.uiManager.conceptModule.displayConcepts(concepts);
-            }
-            
-            this.uiService.hideProgress(isAdditional);
-            this.uiService.showSuccess(`Analysis complete! Found ${concepts.length} concepts.`, isAdditional);
-            
-        } catch (error) {
-            this.log.error('Analysis failed:', error);
-            this.uiService.hideProgress(isAdditional);
-            const errorMsg = error?.message || error || 'Analysis failed';
-            this.uiService.showError(errorMsg, isAdditional);
-        }
+        // Orchestrate endpoint already does transcription + concept extraction
+        // So analyze is the same as transcribe
+        this.log.debug('Analyze clicked, delegating to transcribe');
+        return await this.handleTranscribe(isAdditional);
     }
     
     /**
@@ -461,11 +433,16 @@ class RecordingModule {
             `;
         }
         
-        // Also update main transcription textarea if available
+        // Also update main transcription div if available (it's a div, not textarea)
         const transcriptionText = document.getElementById('transcription-text');
         if (transcriptionText && !isAdditional) {
-            transcriptionText.value = transcription;
-            transcriptionText.dispatchEvent(new Event('input')); // Trigger auto-save
+            transcriptionText.textContent = transcription;
+        }
+        
+        // Show transcription section
+        const transcriptionSection = document.getElementById('transcription-section');
+        if (transcriptionSection && !isAdditional) {
+            transcriptionSection.classList.remove('hidden');
         }
     }
     

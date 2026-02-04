@@ -53,24 +53,15 @@ class ConceptExtractionService {
         });
         
         try {
-            const response = await window.apiUtils.callAPI('/ai/extract-concepts', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                    text: transcription,
-                    options: {
-                        maxConcepts: options.maxConcepts || 20,
-                        includeCategories: options.includeCategories || null
-                    }
-                })
-            });
-            
-            if (!response.ok) {
-                throw new Error(`Concept extraction failed: ${response.statusText}`);
+            // Use ApiService V3 extractConcepts method
+            if (!window.ApiService) {
+                throw new Error('ApiService not available');
             }
             
-            const data = await response.json();
-            const concepts = data.concepts || [];
+            const result = await window.ApiService.extractConcepts(transcription, 'restaurant');
+            
+            // Extract concepts from result
+            const concepts = result.concepts || result.results?.concepts || [];
             
             this.log.debug(`✅ Extracted ${concepts.length} concepts from transcription`, {
                 categories: [...new Set(concepts.map(c => c.category))].join(', '),
