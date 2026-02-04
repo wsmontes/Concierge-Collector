@@ -27,6 +27,12 @@ const ErrorHandler = ModuleWrapper.defineClass('ErrorHandler', class {
     handleApiError(error, context = '', moduleName = '') {
         const prefix = moduleName ? `[${moduleName}] ` : '';
         
+        // Handle undefined or null error
+        if (!error) {
+            this.log.error(`${prefix}${context}: Error is undefined or null`);
+            return 'An unknown error occurred';
+        }
+        
         // Log error with full context
         this.log.error(`${prefix}${context}:`, error);
         
@@ -34,7 +40,7 @@ const ErrorHandler = ModuleWrapper.defineClass('ErrorHandler', class {
         let userMessage = 'An error occurred';
         
         // Check if error has response property (HTTP errors)
-        if (error && error.response) {
+        if (error.response) {
             // HTTP error responses
             switch (error.response.status) {
                 case 400:
@@ -58,7 +64,7 @@ const ErrorHandler = ModuleWrapper.defineClass('ErrorHandler', class {
                     userMessage = 'Server error. Please try again later.';
                     break;
                 default:
-                    userMessage = `Error: ${error.response.statusText || error.message}`;
+                    userMessage = `Error: ${error.response.statusText || error.message || 'Unknown error'}`;
             }
         } else if (error.message) {
             // Network or other errors
@@ -69,6 +75,9 @@ const ErrorHandler = ModuleWrapper.defineClass('ErrorHandler', class {
             } else {
                 userMessage = error.message;
             }
+        } else if (typeof error === 'string') {
+            // Error is a string
+            userMessage = error;
         }
         
         return userMessage;
@@ -107,18 +116,38 @@ const ErrorHandler = ModuleWrapper.defineClass('ErrorHandler', class {
      * Wrap function execution with error handling
      * @param {Function} fn - Function to execute
      * @param {string} context - Context description
-     * @param {string} moduleName - Module name
+     * @param {string|Object} moduleNameOrOptions - Module name or options object {showError, throwError, moduleName}
      * @param {boolean} showNotification - Whether to show error notification
      * @returns {Promise<any>} Result or null on error
      */
-    async safeExecute(fn, context = '', moduleName = '', showNotification = true) {
+    async safeExecute(fn, context = '', moduleNameOrOptions = '', showNotification = true) {
+        // Support both old signature and new options object
+        let moduleName = '';
+        let throwError = false;
+        let showError = showNotification;
+        
+        if (typeof moduleNameOrOptions === 'object') {
+            // New options format
+            moduleName = moduleNameOrOptions.moduleName || '';
+            throwError = moduleNameOrOptions.throwError || false;
+            showError = moduleNameOrOptions.showError !== undefined ? moduleNameOrOptions.showError : true;
+        } else {
+            // Old format: moduleNameOrOptions is a string
+            moduleName = moduleNameOrOptions;
+        }
+        
         try {
             return await fn();
         } catch (error) {
             const message = this.handleApiError(error, context, moduleName);
             
-            if (showNotification && window.uiHelpers) {
+            if (showError && window.uiHelpers) {
                 window.uiHelpers.showNotification(message, 'error', moduleName);
+            }
+            
+            // Re-throw if requested
+            if (throwError) {
+                throw error;
             }
             
             return null;
