@@ -225,7 +225,8 @@ class RecordingModule {
                     await handler();
                 } catch (error) {
                     this.log.error(`Error in ${id} handler:`, error);
-                    this.uiService.showError(error.message);
+                    const errorMsg = error?.message || error || 'Unknown error';
+                    this.uiService.showError(errorMsg);
                 }
             });
         }
@@ -238,7 +239,13 @@ class RecordingModule {
     async handleStartRecording(isAdditional = false) {
         this.log.debug('Start recording clicked', { isAdditional });
         
-        // Check state
+        // Check if already recording
+        if (this.stateManager.isRecording()) {
+            this.log.warn('Already recording, ignoring start request');
+            return;
+        }
+        
+        // Check state transition
         if (!this.stateManager.transitionTo(this.stateManager.STATES.RECORDING)) {
             this.uiService.showError('Cannot start recording in current state');
             return;
@@ -264,8 +271,9 @@ class RecordingModule {
             
         } catch (error) {
             this.log.error('Start recording failed:', error);
-            this.stateManager.transitionTo(this.stateManager.STATES.ERROR, { error });
-            this.uiService.showError(this.formatRecordingError(error), isAdditional);
+            this.stateManager.transitionTo(this.stateManager.STATES.IDLE);
+            const errorMsg = this.formatRecordingError(error);
+            this.uiService.showError(errorMsg, isAdditional);
             this.uiService.reset(isAdditional);
         }
     }
@@ -324,8 +332,9 @@ class RecordingModule {
             
         } catch (error) {
             this.log.error('Stop recording failed:', error);
-            this.stateManager.transitionTo(this.stateManager.STATES.ERROR, { error });
-            this.uiService.showError(error.message, isAdditional);
+            this.stateManager.transitionTo(this.stateManager.STATES.IDLE);
+            const errorMsg = error?.message || error || 'Stop recording failed';
+            this.uiService.showError(errorMsg, isAdditional);
             this.uiService.reset(isAdditional);
         }
     }
