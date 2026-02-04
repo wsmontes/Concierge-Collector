@@ -191,14 +191,12 @@ class RecordingModule {
         // Main recording controls
         this.attachHandler('start-record', () => this.handleStartRecording());
         this.attachHandler('stop-record', () => this.handleStopRecording());
-        this.attachHandler('transcribe-recording', () => this.handleTranscribe());
-        this.attachHandler('analyze-recording', () => this.handleAnalyze());
+        this.attachHandler('discard-recording', () => this.handleDiscardRecording());
         
         // Additional recording controls
         this.attachHandler('additional-start-record', () => this.handleStartRecording(true));
         this.attachHandler('additional-stop-record', () => this.handleStopRecording(true));
-        this.attachHandler('transcribe-additional-recording', () => this.handleTranscribe(true));
-        this.attachHandler('analyze-additional-recording', () => this.handleAnalyze(true));
+        this.attachHandler('discard-additional-recording', () => this.handleDiscardRecording(true));
     }
     
     /**
@@ -336,6 +334,10 @@ class RecordingModule {
             // Transition to completed
             this.stateManager.transitionTo(this.stateManager.STATES.COMPLETED);
             
+            // 🔥 AUTOMATIC FLOW: Transcribe + extract concepts automatically
+            this.log.debug('Starting automatic transcription + concept extraction...');
+            await this.processRecordingAutomatically(isAdditional);
+            
         } catch (error) {
             this.log.error('Stop recording failed:', error);
             this.stateManager.transitionTo(this.stateManager.STATES.IDLE);
@@ -346,37 +348,50 @@ class RecordingModule {
     }
     
     /**
-     * Handle transcribe recording
+     * Handle discard recording
      * @param {boolean} isAdditional
      */
-    async handleTranscribe(isAdditional = false) {
-        this.log.debug('Transcribe clicked', { isAdditional });
+    async handleDiscardRecording(isAdditional = false) {
+        this.log.debug('Discard recording clicked', { isAdditional });
         
+        if (confirm('Are you sure you want to discard this recording?')) {
+            this.resetRecording(isAdditional);
+            this.uiService.showSuccess('Recording discarded', isAdditional);
+        }
+    }
+    
+    /**
+     * Process recording automatically (transcription + concepts)
+     * Called automatically after stop recording
+     * @param {boolean} isAdditional
+     */
+    async processRecordingAutomatically(isAdditional = false) {
         if (!this.currentAudioBlob) {
-            this.uiService.showError('No recording to transcribe');
+            this.log.warn('No audio blob to process');
             return;
         }
         
         try {
-            this.uiService.showProgress('Transcribing audio...', 0, isAdditional);
+            this.uiService.showProgress('Processing your review...', 0, isAdditional);
             
-            // Use ApiService V3 for transcription (orchestrate endpoint returns both transcription + concepts)
+            // Use ApiService V3 orchestrate endpoint (returns both transcription + concepts)
             if (!window.ApiService) {
                 throw new Error('ApiService not available');
             }
             
+            this.log.debug('Calling API orchestrate endpoint...');
             const result = await window.ApiService.transcribeAudio(this.currentAudioBlob, 'pt-BR');
             
-            // Extract transcription and concepts from orchestrate response
-            const transcription = result.transcription || result.results?.transcription || '';
-            const concepts = result.concepts || result.results?.concepts || [];
+            // Extract data from orchestrate response
+            const transcription = result.transcription || result.results?.transcription?.text || '';
+            const concepts = result.concepts || result.results?.concepts?.concepts || [];
             
             if (!transcription) {
                 throw new Error('No transcription returned from API');
             }
             
-            this.log.debug('Transcription complete:', { 
-                text: transcription.substring(0, 100),
+            this.log.debug('Processing complete:', { 
+                transcriptionLength: transcription.length,
                 conceptCount: concepts.length 
             });
             
@@ -386,32 +401,48 @@ class RecordingModule {
             // Update UI with transcription
             this.displayTranscription(transcription, isAdditional);
             
-            // Also display concepts if available
-            if (concepts.length > 0 && this.uiManager?.conceptModule) {
-                this.uiManager.currentConcepts = concepts;
-                this.uiManager.conceptModule.displayConcepts(concepts);
+            // Display concepts immediately (requirement: "logo após a transcrição")
+            if (concepts.length > 0) {
+                if (this.uiManager?.conceptModule) {
+                    this.uiManager.currentConcepts = concepts;
+                    this.uiManager.conceptModule.displayConcepts(concepts);
+                } else if (window.ConceptModule) {
+                    window.ConceptModule.displayConcepts(concepts);
+                }
             }
             
             this.uiService.hideProgress(isAdditional);
-            this.uiService.showSuccess(`Transcription complete! Found ${concepts.length} concepts.`, isAdditional);
+            this.uiService.showSuccess(
+                `✅ Review processed! Found ${concepts.length} concepts. You can now edit and save.`,
+                isAdditional
+            );
             
         } catch (error) {
-            this.log.error('Transcription failed:', error);
+            this.log.error('Automatic processing failed:', error);
             this.uiService.hideProgress(isAdditional);
-            const errorMsg = error?.message || error || 'Transcription failed';
-            this.uiService.showError(errorMsg, isAdditional);
+            const errorMsg = error?.message || error || 'Processing failed';
+            this.uiService.showError(`Processing failed: ${errorMsg}. You can try again.`, isAdditional);
         }
     }
     
     /**
-     * Handle analyze recording (alias for transcribe since orchestrate does both)
+     * Handle transcribe recording (DEPRECATED - now automatic)
+     * Kept for backward compatibility
+     * @param {boolean} isAdditional
+     */
+    async handleTranscribe(isAdditional = false) {
+        this.log.warn('handleTranscribe is deprecated - processing is now automatic');
+        return await this.processRecordingAutomatically(isAdditional);
+    }
+    
+    /**
+     * Handle analyze recording (DEPRECATED - now automatic)
+     * Kept for backward compatibility
      * @param {boolean} isAdditional
      */
     async handleAnalyze(isAdditional = false) {
-        // Orchestrate endpoint already does transcription + concept extraction
-        // So analyze is the same as transcribe
-        this.log.debug('Analyze clicked, delegating to transcribe');
-        return await this.handleTranscribe(isAdditional);
+        this.log.warn('handleAnalyze is deprecated - processing is now automatic');
+        return await this.processRecordingAutomatically(isAdditional);
     }
     
     /**

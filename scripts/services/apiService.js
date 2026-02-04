@@ -482,10 +482,16 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
             }
             
             // API V3 orchestrate endpoint expects JSON, not FormData
+            // IMPORTANT: Never save automatically to MongoDB - user must click Save button
             const requestBody = {
                 audio_file: base64Audio,
                 language: language || 'pt-BR',
-                entity_type: 'restaurant'
+                entity_type: 'restaurant',
+                output: {
+                    save_to_db: false,        // Never auto-save to MongoDB
+                    return_results: true,     // Always return full results
+                    format: 'full'            // Return complete data
+                }
             };
             
             this.log.debug('🚀 Sending transcription request...');
