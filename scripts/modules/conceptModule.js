@@ -589,6 +589,36 @@ class ConceptModule {
     }
     
     /**
+     * Display concepts in UI (called from recordingModule)
+     * @param {Array} concepts - Array of {category, value, confidence}
+     */
+    displayConcepts(concepts) {
+        this.log.debug(`Displaying ${concepts.length} concepts`);
+        
+        if (!Array.isArray(concepts) || concepts.length === 0) {
+            this.log.warn('No concepts to display');
+            return;
+        }
+        
+        // Merge with existing concepts
+        const mergeResult = this.extractionService.mergeConcepts(
+            this.uiManager.currentConcepts || [],
+            concepts,
+            { checkSimilarity: true }
+        );
+        
+        this.uiManager.currentConcepts = mergeResult.merged;
+        this.renderConcepts();
+        this.autoSaveDraft();
+        
+        // Show concepts section
+        const conceptsSection = document.getElementById('concepts-section');
+        if (conceptsSection) {
+            conceptsSection.classList.remove('hidden');
+        }
+    }
+    
+    /**
      * Get concept statistics
      * @returns {Object}
      */

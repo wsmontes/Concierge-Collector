@@ -354,8 +354,19 @@ class RecordingModule {
         try {
             this.uiService.showProgress('Transcribing audio...', 0, isAdditional);
             
-            // Call transcription API
-            const transcription = await this.transcribeAudio(this.currentAudioBlob);
+            // Use ApiService V3 for transcription
+            if (!window.ApiService) {
+                throw new Error('ApiService not available');
+            }
+            
+            const result = await window.ApiService.transcribeAudio(this.currentAudioBlob, 'pt-BR');
+            
+            // Extract transcription from orchestrate response
+            const transcription = result.transcription || result.results?.transcription || '';
+            
+            if (!transcription) {
+                throw new Error('No transcription returned from API');
+            }
             
             this.log.debug('Transcription complete:', transcription.substring(0, 100));
             
@@ -370,12 +381,14 @@ class RecordingModule {
             
         } catch (error) {
             this.log.error('Transcription failed:', error);
-            this.uiService.showError(error.message, isAdditional);
+            this.uiService.hideProgress(isAdditional);
+            const errorMsg = error?.message || error || 'Transcription failed';
+            this.uiService.showError(errorMsg, isAdditional);
         }
     }
     
     /**
-     * Handle analyze recording
+     * Handle analyze recording (transcribe + extract concepts)
      * @param {boolean} isAdditional
      */
     async handleAnalyze(isAdditional = false) {
@@ -387,79 +400,46 @@ class RecordingModule {
         }
         
         try {
-            // First transcribe if not done
-            if (!this.currentTranscription) {
-                this.uiService.showProgress('Transcribing audio...', 0, isAdditional);
-                this.currentTranscription = await this.transcribeAudio(this.currentAudioBlob);
+            // Use ApiService V3 orchestrate endpoint (does both transcription and concept extraction)
+            if (!window.ApiService) {
+                throw new Error('ApiService not available');
             }
             
-            // Then analyze
-            this.uiService.showProgress('Analyzing restaurant details...', 50, isAdditional);
+            this.uiService.showProgress('Transcribing and analyzing audio...', 0, isAdditional);
             
-            const analysis = await this.analyzeRecording(this.currentTranscription);
+            const result = await window.ApiService.transcribeAudio(this.currentAudioBlob, 'pt-BR');
             
-            this.log.debug('Analysis complete:', analysis);
+            // Extract data from orchestrate response
+            const transcription = result.transcription || result.results?.transcription || '';
+            const concepts = result.concepts || result.results?.concepts || [];
             
-            // Populate form with analysis results
-            this.populateFormWithAnalysis(analysis, isAdditional);
+            if (!transcription) {
+                throw new Error('No transcription returned from API');
+            }
+            
+            this.log.debug('Analysis complete:', { transcription: transcription.substring(0, 100), conceptCount: concepts.length });
+            
+            // Store results
+            this.currentTranscription = transcription;
+            
+            // Display transcription
+            this.displayTranscription(transcription, isAdditional);
+            
+            // Send concepts to conceptModule for display
+            if (this.uiManager?.conceptModule && concepts.length > 0) {
+                this.uiManager.currentConcepts = concepts;
+                this.uiManager.conceptModule.displayConcepts(concepts);
+            }
             
             this.uiService.hideProgress(isAdditional);
-            this.uiService.showSuccess('Analysis complete!', isAdditional);
-            
-            // Reset for next recording
-            this.resetRecording(isAdditional);
+            this.uiService.showSuccess(`Analysis complete! Found ${concepts.length} concepts.`, isAdditional);
             
         } catch (error) {
             this.log.error('Analysis failed:', error);
-            this.uiService.showError(error.message, isAdditional);
+            this.uiService.hideProgress(isAdditional);
+            const errorMsg = error?.message || error || 'Analysis failed';
+            this.uiService.showError(errorMsg, isAdditional);
         }
-    }
-    
-    /**
-     * Transcribe audio using API
-     * @param {Blob} audioBlob
-     * @returns {Promise<string>}
-     */
-    async transcribeAudio(audioBlob) {
-        this.log.debug('Calling transcription API');
-        
-        // Convert blob to base64
-        const base64Audio = await window.audioUtils.blobToBase64(audioBlob);
-        
-        // Call API
-        const response = await window.apiUtils.callAPI('/ai/transcribe', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ audio: base64Audio })
-        });
-        
-        if (!response.ok) {
-            throw new Error(`Transcription failed: ${response.statusText}`);
-        }
-        
-        const data = await response.json();
-        return data.transcription || data.text || '';
-    }
-    
-    /**
-     * Analyze recording using AI
-     * @param {string} transcription
-     * @returns {Promise<Object>}
-     */
-    async analyzeRecording(transcription) {
-        this.log.debug('Calling analysis API');
-        
-        const response = await window.apiUtils.callAPI('/ai/analyze-review', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ transcription })
-        });
-        
-        if (!response.ok) {
-            throw new Error(`Analysis failed: ${response.statusText}`);
-        }
-        
-        return await response.json();
     }
     
     /**
@@ -480,21 +460,12 @@ class RecordingModule {
                 </div>
             `;
         }
-    }
-    
-    /**
-     * Populate form with analysis results
-     * @param {Object} analysis
-     * @param {boolean} isAdditional
-     */
-    populateFormWithAnalysis(analysis, isAdditional) {
-        this.log.debug('Populating form with analysis', analysis);
         
-        // Delegate to uiManager if available
-        if (this.uiManager && typeof this.uiManager.populateFromAnalysis === 'function') {
-            this.uiManager.populateFromAnalysis(analysis, isAdditional);
-        } else {
-            this.log.warn('uiManager.populateFromAnalysis not available');
+        // Also update main transcription textarea if available
+        const transcriptionText = document.getElementById('transcription-text');
+        if (transcriptionText && !isAdditional) {
+            transcriptionText.value = transcription;
+            transcriptionText.dispatchEvent(new Event('input')); // Trigger auto-save
         }
     }
     
