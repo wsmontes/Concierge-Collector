@@ -196,6 +196,22 @@ class RecordingModule {
     }
     
     /**
+     * Public method: Start recording (callable from main.js)
+     * @param {boolean} isAdditional
+     */
+    async startRecording(isAdditional = false) {
+        return await this.handleStartRecording(isAdditional);
+    }
+    
+    /**
+     * Public method: Stop recording (callable from main.js)
+     * @param {boolean} isAdditional
+     */
+    async stopRecording(isAdditional = false) {
+        return await this.handleStopRecording(isAdditional);
+    }
+    
+    /**
      * Attach event handler with error handling
      * @param {string} id - Element ID
      * @param {Function} handler - Click handler

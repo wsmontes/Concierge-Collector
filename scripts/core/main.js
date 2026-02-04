@@ -581,44 +581,9 @@ function ensureRecordingModuleInitialized(uiManager) {
                 }
             }
             
-            // Try to attach handlers to any existing buttons regardless
-            const buttons = [
-                { id: 'start-record', handler: startRecording },
-                { id: 'stop-record', handler: stopRecording },
-                { id: 'additional-record-start', handler: startAdditionalRecording },
-                { id: 'additional-record-stop', handler: stopAdditionalRecording }
-            ];
-            
-            buttons.forEach(({id, handler}) => {
-                const btn = document.getElementById(id);
-                if (btn) {
-                    // Add a direct click handler
-                    btn.addEventListener('click', () => {
-                        console.log(`Direct handler for ${id} clicked`);
-                        if (typeof handler === 'function') {
-                            handler();
-                        }
-                    });
-                }
-            });
-            
-            // Helper functions
-            function startRecording() {
-                if (uiManager && uiManager.recordingModule) {
-                    uiManager.recordingModule.startRecording();
-                }
-            }
-            
-            function stopRecording() {
-                if (uiManager && uiManager.recordingModule) {
-                    uiManager.recordingModule.stopRecording();
-                }
-            }
-            
-            function startAdditionalRecording() {
-                if (uiManager) uiManager.isRecordingAdditional = true;
-                startRecording();
-            }
+            // Event handlers are now managed by recordingModule.setupEvents()
+            // No need to attach duplicate handlers here
+            console.log('✅ Recording module event handlers are managed by recordingModule.setupEvents()');
             
             function stopAdditionalRecording() {
                 stopRecording();

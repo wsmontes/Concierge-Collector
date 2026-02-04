@@ -33,7 +33,8 @@ const ErrorHandler = ModuleWrapper.defineClass('ErrorHandler', class {
         // Determine user-friendly message
         let userMessage = 'An error occurred';
         
-        if (error.response) {
+        // Check if error has response property (HTTP errors)
+        if (error && error.response) {
             // HTTP error responses
             switch (error.response.status) {
                 case 400:

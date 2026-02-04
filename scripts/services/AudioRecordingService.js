@@ -186,7 +186,7 @@ class AudioRecordingService {
     /**
      * Start audio recording
      * @param {Object} options - Recording options {isAdditional, maxDuration}
-     * @returns {Promise<void>}
+     * @returns {Promise<MediaStream>} - The media stream being recorded
      */
     async startRecording(options = {}) {
         const { isAdditional = false, maxDuration = this.maxDuration } = options;
@@ -239,6 +239,9 @@ class AudioRecordingService {
                         });
                     }
                 }, maxDuration);
+                
+                // Return the media stream for visualizer
+                return this.mediaStream;
                 
             },
             'Start recording',
