@@ -620,6 +620,17 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         this.log.debug(`✅ Created entity ${entity.name} on server`);
                     }
                 } catch (error) {
+                    // Check if error is "already exists" (entity was created in previous sync but client didn't update status)
+                    if (error.message.includes('already exists')) {
+                        this.log.warn(`Entity ${entity.name} already exists on server, marking as synced`);
+                        await window.DataStore.db.entities.update(entity.entity_id, {
+                            'sync.status': 'synced',
+                            'sync.lastSyncedAt': new Date().toISOString()
+                        });
+                        pushed++;
+                        continue;
+                    }
+                    
                     if (error.message.includes('409') || error.message.includes('conflict')) {
                         // Version conflict - mark for manual resolution
                         await window.DataStore.db.entities.update(entity.entity_id, {
@@ -719,6 +730,17 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         this.log.debug(`✅ Created curation ${curation.curation_id} on server`);
                     }
                 } catch (error) {
+                    // Check if error is "already exists" (curation was created in previous sync but client didn't update status)
+                    if (error.message.includes('already exists')) {
+                        this.log.warn(`Curation ${curation.curation_id} already exists on server, marking as synced`);
+                        await window.DataStore.db.curations.update(curation.curation_id, {
+                            'sync.status': 'synced',
+                            'sync.lastSyncedAt': new Date().toISOString()
+                        });
+                        pushed++;
+                        continue;
+                    }
+                    
                     if (error.message.includes('409') || error.message.includes('conflict')) {
                         await window.DataStore.db.curations.update(curation.curation_id, {
                             'sync.status': 'conflict'
