@@ -382,10 +382,15 @@ class ConceptModule {
                 }
             } else {
                 // Create new entity
+                // Generate unique entity_id (UUID format compatible with API V3)
+                const entityId = `rest_${name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}_${Date.now()}`;
+                
                 const entity = {
+                    entity_id: entityId,  // UUID for V3 sync
                     type: 'restaurant',
                     name: name,
                     curator_id: this.uiManager.currentCurator.id,
+                    curator_email: window.AuthService?.userEmail || 'unknown',
                     created_by: this.uiManager.currentCurator.id.toString(),
                     createdBy: this.uiManager.currentCurator.id.toString(),
                     data: {
@@ -399,16 +404,22 @@ class ConceptModule {
                     createdAt: new Date(),
                     updated_at: new Date(),
                     updatedAt: new Date(),
-                    source: 'local'
+                    source: 'local',
+                    sync: {
+                        status: 'pending',
+                        lastAttempt: null,
+                        error: null
+                    }
                 };
                 
-                // Save to IndexedDB (id auto-incremented by Dexie)
-                restaurantId = await window.dataStore.db.entities.add(entity);
-                this.log.debug(`✅ Restaurant saved locally with ID: ${restaurantId}`);
+                // Save to IndexedDB
+                const localId = await window.dataStore.db.entities.add(entity);
+                restaurantId = entityId;  // Use UUID for sync, not auto-increment id
+                this.log.debug(`✅ Restaurant saved locally with entity_id: ${restaurantId}`);
                 
                 // Queue for sync
                 if (window.dataStore) {
-                    await window.dataStore.addToSyncQueue('entity', 'create', restaurantId, null, entity);
+                    await window.dataStore.addToSyncQueue('entity', 'create', localId, entityId, entity);
                     syncStatus = 'pending';
                     this.log.debug('✅ Restaurant queued for sync to server');
                 }
