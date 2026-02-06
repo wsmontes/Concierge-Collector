@@ -1302,15 +1302,39 @@ class ConceptModule {
             // Use ApiService V3 to extract concepts
             const result = await window.ApiService.extractConcepts(transcription, 'restaurant');
             
-            // API V3 returns concepts in the format we need
-            // result = { concepts: [{category, value, confidence}], ...}
-            const conceptsArray = result.concepts || [];
+            console.log('🟣 extractConcepts - API Response:', result);
+            console.log('🟣 extractConcepts - Full JSON:', JSON.stringify(result, null, 2));
+            
+            // API V3 returns: {workflow, results: {concepts: {concepts: [{category, value}]}}}
+            // Extract the actual concepts array from the nested structure
+            let conceptsData = [];
+            
+            if (result.results && result.results.concepts && result.results.concepts.concepts) {
+                const rawConcepts = result.results.concepts.concepts;
+                console.log('🟣 extractConcepts - Raw concepts:', rawConcepts);
+                
+                // Handle both array and object formats
+                if (Array.isArray(rawConcepts)) {
+                    conceptsData = rawConcepts;
+                } else if (typeof rawConcepts === 'object' && Object.keys(rawConcepts).length > 0) {
+                    // Convert object {category: [values]} to array [{category, value}]
+                    for (const [category, values] of Object.entries(rawConcepts)) {
+                        if (Array.isArray(values)) {
+                            for (const value of values) {
+                                conceptsData.push({ category, value });
+                            }
+                        }
+                    }
+                }
+            }
+            
+            console.log('🟣 extractConcepts - Final concepts array:', conceptsData);
             
             // Here we also run generateDescription explicitly to ensure it happens
             this.log.debug("Concepts extracted successfully, generating description...");
             await this.generateDescription(transcription);
             
-            return conceptsArray;
+            return conceptsData;
         } catch (error) {
             this.log.error('Error extracting concepts:', error);
             throw error;
