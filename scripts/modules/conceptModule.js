@@ -564,9 +564,10 @@ class ConceptModule {
             const photosPreview = document.getElementById('photos-preview');
             if (photosPreview) photosPreview.innerHTML = '';
             
-            // Show restaurant list and reload it
-            this.uiManager.showRestaurantListSection();
-            this.uiManager.restaurantModule.loadRestaurantList(this.uiManager.currentCurator.id);
+            // Refresh entity list to show the newly saved restaurant
+            if (window.entityModule) {
+                await window.entityModule.loadEntities();
+            }
         } catch (error) {
             SafetyUtils.hideLoading();
             this.log.error('Error saving restaurant:', error);
