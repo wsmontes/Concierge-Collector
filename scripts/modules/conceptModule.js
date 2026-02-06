@@ -389,6 +389,7 @@ class ConceptModule {
                     entity_id: entityId,  // UUID for V3 sync
                     type: 'restaurant',
                     name: name,
+                    status: 'active',  // Required for entity filtering in UI
                     curator_id: this.uiManager.currentCurator.id,
                     curator_email: window.AuthService?.userEmail || 'unknown',
                     created_by: this.uiManager.currentCurator.id.toString(),
@@ -425,69 +426,61 @@ class ConceptModule {
                 }
             }
             
-            // If curating an imported entity, update entity data and create curation
-            if (isImportedEntity && entityToUpdate) {
-                this.log.debug('🎨 Updating imported entity and creating curation');
-                
-                // Update entity if name or location changed
-                const entityNeedsUpdate = 
-                    entityToUpdate.name !== name ||
-                    JSON.stringify(entityToUpdate.location) !== JSON.stringify(this.uiManager.currentLocation);
-                
-                if (entityNeedsUpdate) {
-                    this.log.debug('📝 Entity data changed, updating...');
-                    
-                    // Get curation notes if available
-                    const publicNotes = document.getElementById('curation-notes-public')?.value.trim() || '';
-                    const privateNotes = document.getElementById('curation-notes-private')?.value.trim() || '';
-                    
-                    // Update entity via API
-                    const updatedEntity = {
-                        ...entityToUpdate,
-                        name: name,
-                        data: {
-                            ...entityToUpdate.data,
-                            location: this.uiManager.currentLocation || entityToUpdate.data.location
-                        }
-                    };
-                    
-                    await window.ApiService.createEntity(updatedEntity);
-                    this.log.debug('✅ Entity updated');
+            // Create curation for ALL saved restaurants (not just imported)
+            this.log.debug('🎨 Creating curation for restaurant:', restaurantId);
+            
+            // Get curation notes if available
+            const publicNotes = document.getElementById('curation-notes-public')?.value.trim() || '';
+            const privateNotes = document.getElementById('curation-notes-private')?.value.trim() || '';
+            
+            const user = window.AuthService?.currentUser;
+            if (!user) {
+                throw new Error('User not authenticated');
+            }
+            
+            // Get current curator for curator_id
+            const curator = window.CuratorProfile?.getCurrentCurator();
+            if (!curator) {
+                throw new Error('Curator not found');
+            }
+            
+            const curationId = `curation_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            const curation = {
+                curation_id: curationId,
+                entity_id: restaurantId,
+                curator_id: curator.curator_id,  // Required by loadCurations() filter
+                curator: {
+                    id: user.email,
+                    name: user.email.split('@')[0],
+                    email: user.email
+                },
+                content: {
+                    transcription: transcription || null,
+                    description: description || null
+                },
+                concepts: this.convertConceptsToCategories(this.uiManager.currentConcepts || []),
+                notes: {
+                    public: publicNotes || null,
+                    private: privateNotes || null
+                },
+                sources: ['manual_curation'],
+                created_at: new Date(),
+                createdAt: new Date(),
+                sync: {
+                    status: 'pending',
+                    lastAttempt: null,
+                    error: null
                 }
-                
-                // Create curation
-                const publicNotes = document.getElementById('curation-notes-public')?.value.trim() || '';
-                const privateNotes = document.getElementById('curation-notes-private')?.value.trim() || '';
-                
-                const user = window.AuthService?.currentUser;
-                if (!user) {
-                    throw new Error('User not authenticated');
-                }
-                
-                const curation = {
-                    curation_id: `curation_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
-                    entity_id: restaurantId,
-                    curator: {
-                        id: user.email,
-                        name: user.email.split('@')[0],
-                        email: user.email
-                    },
-                    content: {
-                        transcription: transcription || null  // ✅ ÁUDIO GRAVADO AQUI
-                    },
-                    concepts: this.convertConceptsToCategories(this.uiManager.currentConcepts || []),
-                    notes: {
-                        public: publicNotes || null,
-                        private: privateNotes || null
-                    },
-                    sources: ['google_places', 'manual_curation']
-                };
-                
-                this.log.debug('📤 Creating curation:', curation.curation_id);
-                await window.ApiService.createCuration(curation);
-                this.log.debug('✅ Curation created successfully');
-                
-                syncStatus = 'synced';
+            };
+            
+            // Save curation to IndexedDB
+            await window.DataStore.db.curations.add(curation);
+            this.log.debug('✅ Curation saved locally:', curationId);
+            
+            // Queue curation for sync to server
+            if (window.dataStore) {
+                await window.dataStore.addToSyncQueue('curation', 'create', null, curationId, curation);
+                this.log.debug('✅ Curation queued for sync to server');
             }
             
             SafetyUtils.hideLoading();
