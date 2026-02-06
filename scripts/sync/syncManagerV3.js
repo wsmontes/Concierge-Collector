@@ -704,6 +704,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                     
                     } else {
                         const cleanCuration = this.extractChangedFields(curation);
+                        this.log.debug(`🔍 Sending curation to backend:`, JSON.stringify(cleanCuration, null, 2));
                         const created = await window.ApiService.createCuration(cleanCuration);
 
                         // Store state for future change detection
