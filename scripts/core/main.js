@@ -204,6 +204,8 @@ async function initializeApp() {
             } catch (syncError) {
                 console.error('❌ Sync Manager V3 initialization failed:', syncError);
                 console.warn('⚠️ Continuing without sync functionality');
+                // Clean up failed instance to prevent partial functionality
+                window.SyncManager = null;
             }
         } else {
             console.warn('⚠️ Sync Manager V3 not available');
@@ -678,13 +680,19 @@ function triggerInitialSync() {
             
             // Perform full sync with entity-curation model
             try {
-                let syncResults;
-                if (window.SyncManager && typeof window.SyncManager.fullSync === 'function') {
-                    console.log('🔄 Using SyncManager for full sync...');
-                    syncResults = await window.SyncManager.fullSync();
-                } else {
-                    throw new Error('SyncManager fullSync method not available');
+                // Verify SyncManager is properly initialized
+                if (!window.SyncManager) {
+                    console.warn('⚠️ SyncManager not available, skipping sync');
+                    return;
                 }
+                
+                if (typeof window.SyncManager.fullSync !== 'function') {
+                    console.warn('⚠️ SyncManager.fullSync not available (initialization may have failed)');
+                    return;
+                }
+                
+                console.log('🔄 Using SyncManager for full sync...');
+                const syncResults = await window.SyncManager.fullSync();
                 
                 // Log detailed sync results
                 console.log('✅ Sync results:', syncResults);
