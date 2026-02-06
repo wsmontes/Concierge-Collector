@@ -395,12 +395,12 @@ class ConceptModule {
                     created_by: this.uiManager.currentCurator.id.toString(),
                     createdBy: this.uiManager.currentCurator.id.toString(),
                     data: {
-                        concepts: this.uiManager.currentConcepts || [],
-                        transcription: transcription || '',
-                        description: description || ''
+                        // Entity data contains only structural/factual data
+                        location: this.uiManager.currentLocation || {},
+                        photos: this.uiManager.currentPhotos || [],
+                        contacts: {},  // Reserved for future use
+                        attributes: {}  // Reserved for future use
                     },
-                    location: this.uiManager.currentLocation || {},
-                    photos: this.uiManager.currentPhotos || [],
                     created_at: new Date(),
                     createdAt: new Date(),
                     updated_at: new Date(),
@@ -433,7 +433,7 @@ class ConceptModule {
             const publicNotes = document.getElementById('curation-notes-public')?.value.trim() || '';
             const privateNotes = document.getElementById('curation-notes-private')?.value.trim() || '';
             
-            const user = window.AuthService?.currentUser;
+            const user = window.AuthService?.getCurrentUser();
             if (!user) {
                 throw new Error('User not authenticated');
             }
@@ -445,6 +445,13 @@ class ConceptModule {
             }
             
             const curationId = `curation_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            
+            // Combine transcription and description into public notes
+            const publicNotesContent = [
+                transcription || '',
+                publicNotes || ''
+            ].filter(Boolean).join('\n\n');
+            
             const curation = {
                 curation_id: curationId,
                 entity_id: restaurantId,
@@ -454,13 +461,11 @@ class ConceptModule {
                     name: user.email.split('@')[0],
                     email: user.email
                 },
-                content: {
-                    transcription: transcription || null,
-                    description: description || null
-                },
-                concepts: this.convertConceptsToCategories(this.uiManager.currentConcepts || []),
+                // Categories: organized concepts by type
+                categories: this.convertConceptsToCategories(this.uiManager.currentConcepts || []),
+                // Notes: public contains transcription + description, private for internal notes
                 notes: {
-                    public: publicNotes || null,
+                    public: publicNotesContent || null,
                     private: privateNotes || null
                 },
                 sources: ['manual_curation'],
@@ -590,25 +595,34 @@ class ConceptModule {
      * @returns {Object} - Categories object organized by concept type
      */
     convertConceptsToCategories(concepts) {
+        /**
+         * Converts concept array to curation categories structure.
+         * Input: [{category: "Cuisine", value: "Italian"}, ...]
+         * Output: {Cuisine: ["Italian"], Mood: ["Romantic"]}
+         */
         const categories = {};
         
         if (!concepts || concepts.length === 0) {
             return categories;
         }
         
-        // Group concepts by their concept_name (category)
+        // Group concepts by category name
         concepts.forEach(concept => {
-            const categoryName = concept.concept_name || concept.category || 'general';
+            // Get category name (standardized to lowercase for MongoDB compatibility)
+            const categoryName = (concept.category || concept.concept_name || 'general').toLowerCase();
+            // Get concept value
+            const value = concept.value || concept.name || concept.item || '';
+            
+            if (!value) return;  // Skip empty values
             
             if (!categories[categoryName]) {
                 categories[categoryName] = [];
             }
             
-            categories[categoryName].push({
-                name: concept.name || concept.item || '',
-                rating: concept.rating || 0,
-                description: concept.description || ''
-            });
+            // Only add if not already in array (avoid duplicates)
+            if (!categories[categoryName].includes(value)) {
+                categories[categoryName].push(value);
+            }
         });
         
         return categories;
