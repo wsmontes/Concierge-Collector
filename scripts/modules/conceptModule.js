@@ -621,6 +621,10 @@ class ConceptModule {
     
     async renderConcepts() {
         this.log.debug('renderConcepts called');
+        console.log('🟠 RENDER - renderConcepts called');
+        console.log('🟠 RENDER - currentConcepts:', this.uiManager.currentConcepts);
+        console.log('🟠 RENDER - currentConcepts length:', this.uiManager.currentConcepts?.length);
+        console.log('🟠 RENDER - Sample concept:', this.uiManager.currentConcepts?.[0]);
         this.log.debug('conceptsContainer:', this.uiManager.conceptsContainer);
         this.log.debug('currentConcepts:', this.uiManager.currentConcepts);
         
@@ -632,14 +636,19 @@ class ConceptModule {
         const conceptsByCategory = {};
         
         if (this.uiManager.currentConcepts && this.uiManager.currentConcepts.length > 0) {
+            console.log('🟠 RENDER - Grouping concepts by category...');
             for (const concept of this.uiManager.currentConcepts) {
+                console.log('🟠 RENDER - Processing concept:', concept);
                 if (!conceptsByCategory[concept.category]) {
                     conceptsByCategory[concept.category] = [];
                 }
                 conceptsByCategory[concept.category].push(concept);
             }
+        } else {
+            console.log('🟠 RENDER - No concepts to group');
         }
         
+        console.log('🟠 RENDER - conceptsByCategory:', conceptsByCategory);
         this.log.debug('conceptsByCategory:', conceptsByCategory);
         
         // Add section for each category, regardless if there are concepts or not
