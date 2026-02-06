@@ -1026,8 +1026,11 @@ class ConceptModule {
     isDuplicateConcept(category, value) {
         if (!this.uiManager.currentConcepts) return false;
         
+        // Normalize category for consistent comparison
+        const normalizedCategory = this.normalizeCategoryName(category);
+        
         return this.uiManager.currentConcepts.some(concept => 
-            concept.category === category && 
+            concept.category === normalizedCategory && 
             concept.value.toLowerCase() === value.toLowerCase()
         );
     }
@@ -1072,19 +1075,50 @@ class ConceptModule {
         // Validate concept is not empty
         if (!value || value.trim() === '') return false;
         
+        // Normalize category to Title Case to match UI categories
+        const normalizedCategory = this.normalizeCategoryName(category);
+        
         // Check for duplicates
-        if (this.isDuplicateConcept(category, value)) {
-            this.showDuplicateConceptWarning(category, value);
+        if (this.isDuplicateConcept(normalizedCategory, value)) {
+            this.showDuplicateConceptWarning(normalizedCategory, value);
             return false;
         }
         
-        // Add the concept
+        // Add the concept with normalized category
         this.uiManager.currentConcepts.push({
-            category,
+            category: normalizedCategory,
             value: value.trim()
         });
         
         return true;
+    }
+    
+    /**
+     * Normalize category name to Title Case
+     * @param {string} category - Category name in any case
+     * @returns {string} - Normalized category name matching UI categories
+     */
+    normalizeCategoryName(category) {
+        // Map of lowercase to proper case
+        const categoryMap = {
+            'cuisine': 'Cuisine',
+            'menu': 'Menu',
+            'price range': 'Price Range',
+            'price_range': 'Price Range',
+            'mood': 'Mood',
+            'setting': 'Setting',
+            'crowd': 'Crowd',
+            'suitable for': 'Suitable For',
+            'suitable_for': 'Suitable For',
+            'food style': 'Food Style',
+            'food_style': 'Food Style',
+            'drinks': 'Drinks',
+            'special features': 'Special Features',
+            'special_features': 'Special Features'
+        };
+        
+        const lowerCategory = category.toLowerCase();
+        return categoryMap[lowerCategory] || category;
     }
     
     /**
@@ -1173,8 +1207,11 @@ class ConceptModule {
             return false;
         }
         
+        // Normalize category for comparison
+        const normalizedCategory = this.normalizeCategoryName(category);
+        
         return this.uiManager.currentConcepts.some(concept => 
-            concept.category === category && 
+            concept.category === normalizedCategory && 
             concept.value.toLowerCase() === value.toLowerCase()
         );
     }
