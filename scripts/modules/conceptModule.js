@@ -1389,6 +1389,11 @@ class ConceptModule {
             console.log('🔴 RAW API RESPONSE:', extractedConcepts);
             console.log('🔴 RAW API RESPONSE STRINGIFIED:', JSON.stringify(extractedConcepts, null, 2));
             
+            // Show detailed results structure
+            if (extractedConcepts && extractedConcepts.results) {
+                console.log('🔴 RESULTS STRUCTURE:', JSON.stringify(extractedConcepts.results, null, 2));
+            }
+            
             // Show concepts section
             this.uiManager.showConceptsSection();
             
