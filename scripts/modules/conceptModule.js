@@ -1222,6 +1222,10 @@ class ConceptModule {
         const transcriptionTextarea = document.getElementById('restaurant-transcription');
         const transcription = transcriptionTextarea ? transcriptionTextarea.value.trim() : '';
         
+        console.log('🔵 REPROCESS - Text from textarea:', transcription);
+        console.log('🔵 REPROCESS - Textarea element:', transcriptionTextarea);
+        console.log('🔵 REPROCESS - Text length:', transcription.length);
+        
         if (!transcription) {
             SafetyUtils.showNotification('Please provide a transcription first', 'error');
             return;
