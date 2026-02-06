@@ -102,6 +102,12 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             // Remove internal fields before sending
             const cleaned = { ...item };
             delete cleaned._lastSyncedState;
+            
+            // Clean curation-specific fields
+            if (cleaned.curation_id) {
+                return this.cleanCurationForSync(cleaned);
+            }
+            
             return cleaned;
         }
 
@@ -133,6 +139,28 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
 
         this.log.debug(`Extracted changes: ${Object.keys(changes).length} fields modified`);
         return changes;
+    }
+    
+    /**
+     * Clean curation object for backend sync
+     * Removes fields that are not in CurationCreate schema
+     */
+    cleanCurationForSync(curation) {
+        const cleaned = {
+            curation_id: curation.curation_id,
+            entity_id: curation.entity_id,
+            curator: curation.curator,
+            categories: curation.categories || {},
+            notes: curation.notes || {},
+            sources: curation.sources || []
+        };
+        
+        // Include version if present (for updates)
+        if (curation.version !== undefined) {
+            cleaned.version = curation.version;
+        }
+        
+        return cleaned;
     }
 
     /**
