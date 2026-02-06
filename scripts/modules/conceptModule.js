@@ -1320,8 +1320,10 @@ class ConceptModule {
                     // Convert object {category: [values]} to array [{category, value}]
                     for (const [category, values] of Object.entries(rawConcepts)) {
                         if (Array.isArray(values)) {
+                            // Normalize category name to Title Case (cuisine → Cuisine)
+                            const normalizedCategory = this.normalizeCategoryName(category);
                             for (const value of values) {
-                                conceptsData.push({ category, value });
+                                conceptsData.push({ category: normalizedCategory, value });
                             }
                         }
                     }
@@ -1329,6 +1331,7 @@ class ConceptModule {
             }
             
             console.log('🟣 extractConcepts - Final concepts array:', conceptsData);
+            console.log('🟣 extractConcepts - Sample concept:', conceptsData[0]);
             
             // Here we also run generateDescription explicitly to ensure it happens
             this.log.debug("Concepts extracted successfully, generating description...");
