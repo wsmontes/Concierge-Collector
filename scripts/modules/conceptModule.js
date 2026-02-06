@@ -621,10 +621,6 @@ class ConceptModule {
     
     async renderConcepts() {
         this.log.debug('renderConcepts called');
-        console.log('🟠 RENDER - renderConcepts called');
-        console.log('🟠 RENDER - currentConcepts:', this.uiManager.currentConcepts);
-        console.log('🟠 RENDER - currentConcepts length:', this.uiManager.currentConcepts?.length);
-        console.log('🟠 RENDER - Sample concept:', this.uiManager.currentConcepts?.[0]);
         this.log.debug('conceptsContainer:', this.uiManager.conceptsContainer);
         this.log.debug('currentConcepts:', this.uiManager.currentConcepts);
         
@@ -636,19 +632,14 @@ class ConceptModule {
         const conceptsByCategory = {};
         
         if (this.uiManager.currentConcepts && this.uiManager.currentConcepts.length > 0) {
-            console.log('🟠 RENDER - Grouping concepts by category...');
             for (const concept of this.uiManager.currentConcepts) {
-                console.log('🟠 RENDER - Processing concept:', concept);
                 if (!conceptsByCategory[concept.category]) {
                     conceptsByCategory[concept.category] = [];
                 }
                 conceptsByCategory[concept.category].push(concept);
             }
-        } else {
-            console.log('🟠 RENDER - No concepts to group');
         }
         
-        console.log('🟠 RENDER - conceptsByCategory:', conceptsByCategory);
         this.log.debug('conceptsByCategory:', conceptsByCategory);
         
         // Add section for each category, regardless if there are concepts or not
@@ -1231,10 +1222,6 @@ class ConceptModule {
         const transcriptionTextarea = document.getElementById('restaurant-transcription');
         const transcription = transcriptionTextarea ? transcriptionTextarea.value.trim() : '';
         
-        console.log('🔵 REPROCESS - Text from textarea:', transcription);
-        console.log('🔵 REPROCESS - Textarea element:', transcriptionTextarea);
-        console.log('🔵 REPROCESS - Text length:', transcription.length);
-        
         if (!transcription) {
             SafetyUtils.showNotification('Please provide a transcription first', 'error');
             return;
@@ -1311,16 +1298,12 @@ class ConceptModule {
             // Use ApiService V3 to extract concepts
             const result = await window.ApiService.extractConcepts(transcription, 'restaurant');
             
-            console.log('🟣 extractConcepts - API Response:', result);
-            console.log('🟣 extractConcepts - Full JSON:', JSON.stringify(result, null, 2));
-            
             // API V3 returns: {workflow, results: {concepts: {concepts: [{category, value}]}}}
             // Extract the actual concepts array from the nested structure
             let conceptsData = [];
             
             if (result.results && result.results.concepts && result.results.concepts.concepts) {
                 const rawConcepts = result.results.concepts.concepts;
-                console.log('🟣 extractConcepts - Raw concepts:', rawConcepts);
                 
                 // Handle both array and object formats
                 if (Array.isArray(rawConcepts)) {
@@ -1338,9 +1321,6 @@ class ConceptModule {
                     }
                 }
             }
-            
-            console.log('🟣 extractConcepts - Final concepts array:', conceptsData);
-            console.log('🟣 extractConcepts - Sample concept:', conceptsData[0]);
             
             // Here we also run generateDescription explicitly to ensure it happens
             this.log.debug("Concepts extracted successfully, generating description...");
@@ -1426,14 +1406,6 @@ class ConceptModule {
                 'restaurant'
             );
             
-            console.log('🔴 RAW API RESPONSE:', extractedConcepts);
-            console.log('🔴 RAW API RESPONSE STRINGIFIED:', JSON.stringify(extractedConcepts, null, 2));
-            
-            // Show detailed results structure
-            if (extractedConcepts && extractedConcepts.results) {
-                console.log('🔴 RESULTS STRUCTURE:', JSON.stringify(extractedConcepts.results, null, 2));
-            }
-            
             // Show concepts section
             this.uiManager.showConceptsSection();
             
@@ -1443,28 +1415,18 @@ class ConceptModule {
                 // Transform API v3 response format to expected frontend format
                 let conceptsData = extractedConcepts;
                 
-                console.log('🟡 Before transformation:', conceptsData);
-                
                 // API v3 returns: {workflow, results: {concepts: {concepts: [{category, value}], confidence_score}}}
                 // Extract the actual concepts array
                 if (extractedConcepts.results && extractedConcepts.results.concepts) {
-                    console.log('🟢 Found results.concepts:', extractedConcepts.results.concepts);
                     conceptsData = extractedConcepts.results.concepts.concepts || [];
-                    console.log('🟢 After path extraction:', conceptsData);
                 } else {
-                    console.log('⚠️ No results.concepts found in response');
-                    console.log('⚠️ Available keys in extractedConcepts:', Object.keys(extractedConcepts));
-                    if (extractedConcepts.results) {
-                        console.log('⚠️ Available keys in results:', Object.keys(extractedConcepts.results));
-                    }
+                    conceptsData = [];
                 }
                 
                 // Transform from array format [{category, value}] to object format {category: [values]}
                 if (Array.isArray(conceptsData)) {
-                    console.log('🔵 Is array, transforming...');
                     const transformed = {};
                     for (const concept of conceptsData) {
-                        console.log('🔵 Processing concept:', concept);
                         if (concept.category && concept.value) {
                             if (!transformed[concept.category]) {
                                 transformed[concept.category] = [];
@@ -1473,10 +1435,8 @@ class ConceptModule {
                         }
                     }
                     conceptsData = transformed;
-                    console.log('🟣 Final transformed:', conceptsData);
                 }
                 
-                console.log('🟠 Calling handleExtractedConceptsWithValidation with:', conceptsData);
                 this.handleExtractedConceptsWithValidation(conceptsData);
             }
             
