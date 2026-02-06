@@ -790,6 +790,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                             sync: {
                                 ...current.sync,
                                 status: 'conflict'
+                            }
                         });
                         conflicts++;
                         this.log.warn(`Conflict detected for curation: ${curation.curation_id}`);
