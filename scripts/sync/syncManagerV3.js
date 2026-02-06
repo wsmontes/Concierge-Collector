@@ -428,7 +428,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                     const current = await window.DataStore.db.entities.get(serverEntity.entity_id);
                     await window.DataStore.db.entities.update(serverEntity.entity_id, {
                         sync: {
-                            ...current.sync,
+                            ...(current?.sync || {}),
                             status: 'pending'
                         }
                     });
@@ -538,7 +538,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                     const current = await window.DataStore.db.curations.get(serverCuration.curation_id);
                     await window.DataStore.db.curations.update(serverCuration.curation_id, {
                         sync: {
-                            ...current.sync,
+                            ...(current?.sync || {}),
                             status: 'pending'
                         }
                     });
@@ -588,7 +588,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                             const current = await window.DataStore.db.entities.get(entity.entity_id);
                             await window.DataStore.db.entities.update(entity.entity_id, {
                                 sync: {
-                                    ...current.sync,
+                                    ...(current?.sync || {}),
                                     status: 'synced'
                                 }
                             });
@@ -610,7 +610,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         await window.DataStore.db.entities.update(entity.entity_id, {
                             version: updated.version,
                             sync: {
-                                ...current.sync,
+                                ...(current?.sync || {}),
                                 status: 'synced',
                                 lastSyncedAt: new Date().toISOString()
                             }
@@ -630,7 +630,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         const current = await window.DataStore.db.entities.get(entity.entity_id);
                         await window.DataStore.db.entities.update(entity.entity_id, {
                             sync: {
-                                ...current.sync,
+                                ...(current?.sync || {}),
                                 serverId: created._id,
                                 status: 'synced',
                                 lastSyncedAt: new Date().toISOString()
@@ -646,7 +646,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         const current = await window.DataStore.db.entities.get(entity.entity_id);
                         await window.DataStore.db.entities.update(entity.entity_id, {
                             sync: {
-                                ...current.sync,
+                                ...(current?.sync || {}),
                                 status: 'synced',
                                 lastSyncedAt: new Date().toISOString()
                             }
@@ -660,7 +660,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         const current = await window.DataStore.db.entities.get(entity.entity_id);
                         await window.DataStore.db.entities.update(entity.entity_id, {
                             sync: {
-                                ...current.sync,
+                                ...(current?.sync || {}),
                                 status: 'conflict'
                             }
                         });
@@ -721,7 +721,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                             const current = await window.DataStore.db.curations.get(curation.curation_id);
                             await window.DataStore.db.curations.update(curation.curation_id, {
                                 sync: {
-                                    ...current.sync,
+                                    ...(current?.sync || {}),
                                     status: 'synced'
                                 }
                             });
@@ -741,7 +741,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         await window.DataStore.db.curations.update(curation.curation_id, {
                             version: updated.version,
                             sync: {
-                                ...current.sync,
+                                ...(current?.sync || {}),
                                 status: 'synced',
                                 lastSyncedAt: new Date().toISOString()
                             }
@@ -759,7 +759,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         const current = await window.DataStore.db.curations.get(curation.curation_id);
                         await window.DataStore.db.curations.update(curation.curation_id, {
                             sync: {
-                                ...current.sync,
+                                ...(current?.sync || {}),
                                 serverId: created._id,
                                 status: 'synced',
                                 lastSyncedAt: new Date().toISOString()
@@ -775,7 +775,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         const current = await window.DataStore.db.curations.get(curation.curation_id);
                         await window.DataStore.db.curations.update(curation.curation_id, {
                             sync: {
-                                ...current.sync,
+                                ...(current?.sync || {}),
                                 status: 'synced',
                                 lastSyncedAt: new Date().toISOString()
                             }
@@ -788,7 +788,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         const current = await window.DataStore.db.curations.get(curation.curation_id);
                         await window.DataStore.db.curations.update(curation.curation_id, {
                             sync: {
-                                ...current.sync,
+                                ...(current?.sync || {}),
                                 status: 'conflict'
                             }
                         });
