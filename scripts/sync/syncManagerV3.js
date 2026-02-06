@@ -730,6 +730,8 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         this.log.debug(`✅ Created curation ${curation.curation_id} on server`);
                     }
                 } catch (error) {
+                    console.error('❌ [SYNC ERROR] Failed to push curation:', error.message);
+                    
                     // Check if error is "already exists" (curation was created in previous sync but client didn't update status)
                     if (error.message.includes('already exists')) {
                         this.log.warn(`Curation ${curation.curation_id} already exists on server, marking as synced`);

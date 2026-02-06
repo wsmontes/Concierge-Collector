@@ -193,7 +193,14 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
                 errorMessage = 'Validation error - check your input data';
                 break;
             case 428: errorMessage = 'Version information required for update'; break;
-            case 500: errorMessage = 'Server error - please try again later'; break;
+            case 500: 
+                // Include server error details if available
+                if (errorDetails?.detail) {
+                    errorMessage = `Server error: ${errorDetails.detail}`;
+                } else {
+                    errorMessage = 'Server error - please try again later';
+                }
+                break;
         }
         
         this.log.error(errorMessage);
