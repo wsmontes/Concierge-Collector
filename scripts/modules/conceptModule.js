@@ -579,6 +579,11 @@ class ConceptModule {
             if (window.entityModule) {
                 await window.entityModule.loadEntities();
             }
+            
+            // Navigate to main screen (restaurant list) after successful save
+            if (this.uiManager && typeof this.uiManager.showRestaurantListSection === 'function') {
+                this.uiManager.showRestaurantListSection();
+            }
         } catch (error) {
             SafetyUtils.hideLoading();
             this.log.error('Error saving restaurant:', error);
