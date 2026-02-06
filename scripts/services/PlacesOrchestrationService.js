@@ -22,8 +22,8 @@ const PlacesOrchestrationService = (function() {
     class PlacesOrchestrationServiceClass {
         constructor() {
             this.log = Logger.module('PlacesOrchestration');
-            this.baseUrl = window.AppConfig?.apiBaseUrl || 'http://localhost:8000';
-            this.orchestrateEndpoint = `${this.baseUrl}/api/v3/places/orchestrate`;
+            this.baseUrl = window.AppConfig?.api?.backend?.baseUrl || 'http://localhost:8000/api/v3';
+            this.orchestrateEndpoint = `${this.baseUrl}/places/orchestrate`;
             
             // Request tracking
             this.requestCount = 0;

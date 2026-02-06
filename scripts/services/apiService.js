@@ -56,31 +56,85 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         }
     }
 
-    getAuthHeaders() {
-        // Get OAuth token from AuthService
-        if (typeof AuthService === 'undefined') {
-            this.log.warn('⚠️ AuthService not available - requests will be unauthenticated');
-            return {};
+    /**
+     * Get V3 API key from localStorage
+     * @returns {string|null}
+     */
+    getApiKey() {
+        try {
+            if (typeof AppConfig !== 'undefined' && typeof AppConfig.getV3ApiKey === 'function') {
+                return AppConfig.getV3ApiKey();
+            }
+            return localStorage.getItem('api_key_v3');
+        } catch (error) {
+            this.log.warn('⚠️ Error retrieving API key:', error);
+            return null;
         }
-        
-        const token = AuthService.getToken();
-        if (!token) {
-            this.log.debug('⚠️ No OAuth token available - write operations will fail with 401');
-            return {};
+    }
+
+    /**
+     * Store V3 API key in localStorage
+     * @param {string} apiKey
+     */
+    setApiKey(apiKey) {
+        try {
+            if (typeof AppConfig !== 'undefined' && typeof AppConfig.setV3ApiKey === 'function') {
+                AppConfig.setV3ApiKey(apiKey);
+                return;
+            }
+            localStorage.setItem('api_key_v3', apiKey);
+        } catch (error) {
+            this.log.warn('⚠️ Error storing API key:', error);
         }
-        
-        return { 'Authorization': `Bearer ${token}` };
+    }
+
+    /**
+     * Remove V3 API key from localStorage
+     */
+    removeApiKey() {
+        try {
+            if (typeof AppConfig !== 'undefined' && AppConfig.storage?.keys?.apiKeyV3) {
+                localStorage.removeItem(AppConfig.storage.keys.apiKeyV3);
+                return;
+            }
+            localStorage.removeItem('api_key_v3');
+        } catch (error) {
+            this.log.warn('⚠️ Error removing API key:', error);
+        }
+    }
+
+    getAuthHeaders(method = 'GET') {
+        const headers = {};
+
+        // OAuth token (if available)
+        if (typeof AuthService !== 'undefined' && typeof AuthService.getToken === 'function') {
+            const token = AuthService.getToken();
+            if (token) {
+                headers['Authorization'] = `Bearer ${token}`;
+            }
+        }
+
+        // API key for write operations (fallback or parallel auth)
+        const isWrite = ['POST', 'PATCH', 'PUT', 'DELETE'].includes(method.toUpperCase());
+        if (isWrite) {
+            const apiKey = this.getApiKey();
+            if (apiKey) {
+                headers['X-API-Key'] = apiKey;
+            }
+        }
+
+        return headers;
     }
 
     async validateApiKey(apiKey = null) {
         // Deprecated: kept for backward compatibility
-        // Now checks if OAuth token is valid
+        // Returns true if OAuth is authenticated or API key exists
         try {
-            if (typeof AuthService === 'undefined') {
-                return false;
+            if (typeof AuthService !== 'undefined' && AuthService.isAuthenticated()) {
+                return true;
             }
-            
-            return AuthService.isAuthenticated();
+            const resolvedKey = apiKey || this.getApiKey();
+            return !!resolvedKey;
         } catch (error) {
             this.log.debug('Validation error:', error);
             return false;
@@ -106,7 +160,7 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         // Put custom headers FIRST, then auth headers LAST to ensure auth is never overridden
         const headers = {
             ...(options.headers || {}),     // Custom headers first (if any)
-            ...this.getAuthHeaders()        // OAuth token LAST - never overridden
+            ...this.getAuthHeaders(method)  // Auth headers LAST - never overridden
         };
         
         // Only add Content-Type for non-FormData requests
@@ -127,7 +181,7 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
                     this.log.debug('Retrying request with refreshed token...');
                     
                     // Get fresh auth headers AFTER token refresh
-                    const freshAuthHeaders = this.getAuthHeaders();
+                    const freshAuthHeaders = this.getAuthHeaders(method);
                     this.log.debug('Fresh auth headers:', Object.keys(freshAuthHeaders));
                     
                     // Custom headers first, auth LAST
@@ -551,15 +605,32 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         return await response.json();
     }
 
-    async analyzeImage(imageBlob, prompt) {
-        // Convert image to base64 - API V3 expects JSON with base64 image_file
-        const base64Image = await this.blobToBase64(imageBlob);
-        
+    async analyzeImage(imageInput, prompt = null) {
+        let base64Image = null;
+
+        if (imageInput instanceof Blob) {
+            base64Image = await this.blobToBase64(imageInput);
+        } else if (typeof imageInput === 'string') {
+            base64Image = imageInput.includes(',') ? imageInput.split(',')[1] : imageInput;
+        }
+
+        if (!base64Image) {
+            throw new Error('Invalid image input: missing base64 data');
+        }
+
         const requestBody = {
             image_file: base64Image,
-            prompt: prompt,
-            entity_type: 'restaurant'
+            entity_type: 'restaurant',
+            output: {
+                save_to_db: false,
+                return_results: true,
+                format: 'full'
+            }
         };
+
+        if (prompt) {
+            requestBody.prompt = prompt;
+        }
         
         const response = await this.request('POST', 'aiOrchestrate', {
             body: JSON.stringify(requestBody)

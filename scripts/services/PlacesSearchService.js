@@ -9,19 +9,21 @@
  * - Get place details
  * - Handle API rate limiting
  * 
- * Dependencies: PlacesService (existing), apiUtils
+ * Dependencies: ApiService or PlacesService
  */
 
 class PlacesSearchService {
     constructor() {
         this.log = Logger.module('PlacesSearchService');
         
-        // Validate dependencies
-        if (!window.PlacesService) {
-            throw new Error('PlacesService not loaded');
-        }
+        // Prefer backend API via ApiService when available
+        this.apiService = window.ApiService || null;
+        this.placesService = window.PlacesService || null;
+        this.mode = this.apiService ? 'backend' : 'client';
         
-        this.placesService = window.PlacesService;
+        if (!this.apiService && !this.placesService) {
+            throw new Error('No Places service available');
+        }
         
         // Rate limiting
         this.lastSearchTime = 0;
@@ -50,13 +52,33 @@ class PlacesSearchService {
         this.stats.searches++;
         
         try {
-            const results = await this.placesService.searchNearby({
-                latitude: params.latitude,
-                longitude: params.longitude,
-                radius: params.radius || 5000,
-                type: params.type || 'restaurant',
-                keyword: params.keyword || ''
-            });
+            let results = [];
+            
+            if (this.mode === 'backend') {
+                const response = await this.apiService.searchPlaces(
+                    params.keyword || '',
+                    {
+                        latitude: params.latitude,
+                        longitude: params.longitude
+                    },
+                    params.radius || 5000,
+                    params.type || 'restaurant'
+                );
+                
+                if (response?.status && response.status !== 'OK' && response.status !== 'ZERO_RESULTS') {
+                    throw new Error(response.error_message || `Places search failed: ${response.status}`);
+                }
+                
+                results = response?.results || [];
+            } else {
+                results = await this.placesService.searchNearby({
+                    latitude: params.latitude,
+                    longitude: params.longitude,
+                    radius: params.radius || 5000,
+                    type: params.type || 'restaurant',
+                    keyword: params.keyword || ''
+                });
+            }
             
             this.stats.successful++;
             this.log.debug(`Found ${results.length} places`);
@@ -85,11 +107,29 @@ class PlacesSearchService {
         this.stats.searches++;
         
         try {
-            const results = await this.placesService.searchByText(query, {
-                location: options.location,
-                radius: options.radius || 5000,
-                type: options.type || 'restaurant'
-            });
+            let results = [];
+            
+            if (this.mode === 'backend') {
+                const location = options.location || null;
+                const response = await this.apiService.searchPlaces(
+                    query,
+                    location,
+                    options.radius || null,
+                    options.type || 'restaurant'
+                );
+                
+                if (response?.status && response.status !== 'OK' && response.status !== 'ZERO_RESULTS') {
+                    throw new Error(response.error_message || `Places search failed: ${response.status}`);
+                }
+                
+                results = response?.results || [];
+            } else {
+                results = await this.placesService.searchByText(query, {
+                    location: options.location,
+                    radius: options.radius || 5000,
+                    type: options.type || 'restaurant'
+                });
+            }
             
             this.stats.successful++;
             this.log.debug(`Found ${results.length} places`);
@@ -112,7 +152,14 @@ class PlacesSearchService {
         this.log.debug('Getting place details', { placeId });
         
         try {
-            const details = await this.placesService.getPlaceDetails(placeId);
+            let details;
+            
+            if (this.mode === 'backend') {
+                const response = await this.apiService.getPlaceDetails(placeId);
+                details = response?.result || response;
+            } else {
+                details = await this.placesService.getPlaceDetails(placeId);
+            }
             
             this.log.debug('Place details retrieved', {
                 name: details.name,
@@ -141,6 +188,11 @@ class PlacesSearchService {
         }
         
         try {
+            if (this.mode === 'backend') {
+                this.log.warn('Autocomplete not supported in backend mode');
+                return [];
+            }
+            
             const predictions = await this.placesService.autocomplete(input, {
                 types: options.types || ['restaurant', 'cafe'],
                 location: options.location,

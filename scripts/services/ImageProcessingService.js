@@ -9,7 +9,7 @@
  * - Handle batch processing
  * - Track processing status
  * 
- * Dependencies: apiUtils, errorHandling
+ * Dependencies: ApiService, errorHandling
  */
 
 class ImageProcessingService {
@@ -30,8 +30,8 @@ class ImageProcessingService {
         };
         
         // Validate dependencies
-        if (!window.apiUtils) {
-            throw new Error('apiUtils not loaded');
+        if (!window.ApiService) {
+            throw new Error('ApiService not loaded');
         }
     }
     
@@ -145,36 +145,20 @@ class ImageProcessingService {
             throw new Error('Image base64 data is required');
         }
         
-        // Prepare API request
-        const requestData = {
-            image: imageData.base64,
-            format: imageData.format || 'jpeg',
-            options: {
-                extractConcepts: options.extractConcepts !== false,
-                detectObjects: options.detectObjects !== false,
-                maxConcepts: options.maxConcepts || 10
-            }
-        };
+        const prompt = window.promptTemplates?.imageConceptExtraction?.user || null;
         
-        // Call AI image analysis API
-        const response = await window.apiUtils.callAPI('/ai/analyze-image', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(requestData)
-        });
+        const result = await window.ApiService.analyzeImage(
+            imageData.base64,
+            prompt
+        );
         
-        if (!response.ok) {
-            throw new Error(`Image analysis failed: ${response.statusText}`);
-        }
-        
-        const result = await response.json();
+        const imageAnalysis = result?.results?.image_analysis || result?.image_analysis || result;
         
         this.log.debug('Image analysis complete', {
-            conceptsFound: result.concepts?.length || 0,
-            objectsFound: result.objects?.length || 0
+            conceptsFound: imageAnalysis?.concepts?.length || 0
         });
         
-        return result;
+        return imageAnalysis;
     }
     
     /**

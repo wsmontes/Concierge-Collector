@@ -257,6 +257,65 @@ const PlacesFormatter = (function() {
             
             return Array.from(keywords);
         }
+
+        /**
+         * Format place details for import into the form
+         * Supports both legacy Places JS objects and Places API (New) responses
+         * @param {Object} place - Place details object
+         * @returns {Object} - Normalized place data
+         */
+        formatPlaceForImport(place) {
+            if (!place || typeof place !== 'object') {
+                return {
+                    name: '',
+                    description: '',
+                    location: null,
+                    address: '',
+                    phone: '',
+                    website: '',
+                    googlePlaceId: '',
+                    googleMapsUrl: '',
+                    photos: []
+                };
+            }
+
+            const name = place.name || place.displayName?.text || '';
+            const address = place.formatted_address || place.formattedAddress || place.shortFormattedAddress || place.vicinity || '';
+            const location = place.geometry?.location
+                ? {
+                    latitude: typeof place.geometry.location.lat === 'function'
+                        ? place.geometry.location.lat()
+                        : place.geometry.location.lat,
+                    longitude: typeof place.geometry.location.lng === 'function'
+                        ? place.geometry.location.lng()
+                        : place.geometry.location.lng
+                }
+                : place.location
+                    ? {
+                        latitude: place.location.latitude,
+                        longitude: place.location.longitude
+                    }
+                    : null;
+
+            const phone = place.formatted_phone_number || place.nationalPhoneNumber || place.internationalPhoneNumber || '';
+            const website = place.website || place.websiteUri || '';
+            const googlePlaceId = place.place_id || place.placeId || place.id || '';
+            const googleMapsUrl = place.googleMapsUrl || place.googleMapsUri || place.url || '';
+
+            const photos = this.formatPhotos(place.photos || []);
+
+            return {
+                name,
+                description: this.extractDescription(place),
+                location,
+                address,
+                phone,
+                website,
+                googlePlaceId,
+                googleMapsUrl,
+                photos
+            };
+        }
         
         /**
          * Format place photos for display

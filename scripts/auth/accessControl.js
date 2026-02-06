@@ -63,6 +63,10 @@ const AccessControl = (function() {
         const tokenExpiry = localStorage.getItem('oauth_token_expiry');
         const expiryDate = tokenExpiry ? new Date(parseInt(tokenExpiry)).toLocaleString() : 'N/A';
 
+        const existingApiKey = (typeof AppConfig !== 'undefined' && typeof AppConfig.getV3ApiKey === 'function')
+            ? AppConfig.getV3ApiKey()
+            : localStorage.getItem('api_key_v3');
+
         const overlay = document.createElement('div');
         overlay.id = 'access-control-overlay';
         overlay.innerHTML = `
@@ -82,6 +86,25 @@ const AccessControl = (function() {
                         </svg>
                         Sign in with Google
                     </button>
+
+                    <div class="access-divider">
+                        <span>or</span>
+                    </div>
+
+                    <div class="access-api-key">
+                        <label for="api-key-input" class="access-api-key-label">Use API key</label>
+                        <input
+                            id="api-key-input"
+                            type="password"
+                            class="access-api-key-input"
+                            placeholder="API key"
+                            value="${existingApiKey ? existingApiKey : ''}"
+                            autocomplete="off"
+                        />
+                        <button id="api-key-continue" class="access-api-key-btn">
+                            Continue with API key
+                        </button>
+                    </div>
                     
                     ${errorMessage ? `<div class="access-error">${errorMessage}</div>` : ''}
                     
@@ -139,6 +162,38 @@ const AccessControl = (function() {
                 showLoginPrompt(error.message || 'Login failed. Please try again.');
             }
         });
+
+        const apiKeyContinue = document.getElementById('api-key-continue');
+        if (apiKeyContinue) {
+            apiKeyContinue.addEventListener('click', async () => {
+                try {
+                    const input = document.getElementById('api-key-input');
+                    const apiKey = input?.value?.trim();
+
+                    if (!apiKey) {
+                        showLoginPrompt('API key is required');
+                        return;
+                    }
+
+                    if (typeof AppConfig !== 'undefined' && typeof AppConfig.setV3ApiKey === 'function') {
+                        AppConfig.setV3ApiKey(apiKey);
+                    } else {
+                        localStorage.setItem('api_key_v3', apiKey);
+                    }
+
+                    console.log('[AccessControl] API key stored, starting application');
+                    const existingOverlay = document.getElementById('access-control-overlay');
+                    if (existingOverlay) {
+                        existingOverlay.remove();
+                    }
+
+                    initializeApp();
+                } catch (error) {
+                    console.error('[AccessControl] API key login failed:', error);
+                    showLoginPrompt(error.message || 'API key login failed');
+                }
+            });
+        }
     }
 
     /**
