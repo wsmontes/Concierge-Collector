@@ -1387,6 +1387,7 @@ class ConceptModule {
             );
             
             console.log('🔴 RAW API RESPONSE:', extractedConcepts);
+            console.log('🔴 RAW API RESPONSE STRINGIFIED:', JSON.stringify(extractedConcepts, null, 2));
             
             // Show concepts section
             this.uiManager.showConceptsSection();
@@ -1402,8 +1403,15 @@ class ConceptModule {
                 // API v3 returns: {workflow, results: {concepts: {concepts: [{category, value}], confidence_score}}}
                 // Extract the actual concepts array
                 if (extractedConcepts.results && extractedConcepts.results.concepts) {
+                    console.log('🟢 Found results.concepts:', extractedConcepts.results.concepts);
                     conceptsData = extractedConcepts.results.concepts.concepts || [];
                     console.log('🟢 After path extraction:', conceptsData);
+                } else {
+                    console.log('⚠️ No results.concepts found in response');
+                    console.log('⚠️ Available keys in extractedConcepts:', Object.keys(extractedConcepts));
+                    if (extractedConcepts.results) {
+                        console.log('⚠️ Available keys in results:', Object.keys(extractedConcepts.results));
+                    }
                 }
                 
                 // Transform from array format [{category, value}] to object format {category: [values]}
