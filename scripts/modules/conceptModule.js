@@ -598,7 +598,7 @@ class ConceptModule {
         /**
          * Converts concept array to curation categories structure.
          * Input: [{category: "Cuisine", value: "Italian"}, ...]
-         * Output: {Cuisine: ["Italian"], Mood: ["Romantic"]}
+         * Output: {cuisine: ["Italian"], mood: ["romantic"]}
          */
         const categories = {};
         
@@ -608,8 +608,10 @@ class ConceptModule {
         
         // Group concepts by category name
         concepts.forEach(concept => {
-            // Get category name (standardized to lowercase for MongoDB compatibility)
-            const categoryName = (concept.category || concept.concept_name || 'general').toLowerCase();
+            // Get category name and normalize: lowercase + replace spaces with underscores
+            const rawCategory = concept.category || concept.concept_name || 'general';
+            const categoryName = rawCategory.toLowerCase().replace(/\s+/g, '_');
+            
             // Get concept value
             const value = concept.value || concept.name || concept.item || '';
             
