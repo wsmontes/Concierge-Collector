@@ -498,9 +498,9 @@ class ConceptModule {
             SafetyUtils.showNotification(message);
             
             // ✅ Trigger immediate sync if entity is pending
-            if (syncStatus === 'pending' && window.SyncManagerV3) {
+            if (syncStatus === 'pending' && window.SyncManager) {
                 this.log.debug('🚀 Triggering immediate background sync');
-                window.SyncManagerV3.quickSync().catch(err => {
+                window.SyncManager.quickSync().catch(err => {
                     this.log.warn('Background sync failed, will retry automatically:', err);
                 });
             }
