@@ -103,6 +103,25 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
                 pendingAudio: '++id, restaurantId, draftId, timestamp, retryCount, status'
             });
 
+            // Version 91: Reset after "zona" cleanup - same schema as v8
+            // Incrementing version to bypass v90 from previous unstable code
+            this.db.version(91).stores({
+                // Core V3 Tables with sync.status indexed
+                entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt, etag, sync.status',
+                curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt, updatedAt, etag, sync.status',
+                curators: '++id, curator_id, name, email, status, createdAt, lastActive',
+                
+                // System Tables
+                drafts: '++id, type, data, curator_id, createdAt, lastModified',
+                syncQueue: '++id, type, action, local_id, entity_id, data, createdAt, retryCount, lastError',
+                settings: 'key',
+                cache: 'key, expires',
+                
+                // Recording Module Legacy Tables
+                draftRestaurants: '++id, curatorId, name, timestamp, lastModified, hasAudio',
+                pendingAudio: '++id, restaurantId, draftId, timestamp, retryCount, status'
+            });
+
             // Add hooks for automatic timestamps and validation
             this.addDatabaseHooks();
             
