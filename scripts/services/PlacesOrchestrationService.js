@@ -129,9 +129,11 @@ const PlacesOrchestrationService = (function () {
             const response = await this.orchestrate(request);
 
             // Details returns array with single item, extract it
-            return response.results && response.results.length > 0
-                ? response.results[0]
-                : null;
+            // Wrap in {result: ...} format for compatibility with findEntityModal.importEntity()
+            if (response.results && response.results.length > 0) {
+                return { result: response.results[0] };
+            }
+            return null;
         }
 
         /**
@@ -190,11 +192,22 @@ const PlacesOrchestrationService = (function () {
             try {
                 this.requestCount++;
 
+                // Build headers with auth token
+                const headers = {
+                    'Content-Type': 'application/json'
+                };
+
+                // Add OAuth Bearer token if AuthService is available
+                if (typeof AuthService !== 'undefined' && AuthService.getToken) {
+                    const token = AuthService.getToken();
+                    if (token) {
+                        headers['Authorization'] = `Bearer ${token}`;
+                    }
+                }
+
                 const response = await fetch(this.orchestrateEndpoint, {
                     method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
+                    headers: headers,
                     body: JSON.stringify(request)
                 });
 
