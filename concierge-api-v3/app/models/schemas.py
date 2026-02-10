@@ -130,7 +130,7 @@ class Curation(CurationBase):
     """Complete Curation with system fields"""
     id: str = Field(..., alias="_id")
     curation_id: str
-    entity__id: Optional[str] = None
+    entity_id: Optional[str] = None
     curatorid: Optional[str] = None
     curator: CuratorInfo
     embeddings: Optional[List[Dict]] = None
