@@ -305,41 +305,10 @@ window.FindEntityModal = class FindEntityModal {
      * Load nearby restaurants automatically on modal open
      */
     async loadNearbyRestaurants() {
-        this.showLoading(true);
-
-        try {
-            // Verify ApiService is available
-            if (!window.ApiService) {
-                throw new Error('ApiService not available. Please ensure the application is fully loaded.');
-            }
-
-            const location = await this.getUserLocation();
-
-            // Fetch nearby restaurants from API V3
-            const url = `/places/nearby?latitude=${location.latitude}&longitude=${location.longitude}&radius=${this.filters.radius}`;
-            const response = await window.ApiService.request('GET', url);
-            const data = await response.json();
-
-            console.log('🌐 API Response:', {
-                hasData: !!data,
-                hasResults: !!data?.results,
-                resultsCount: data?.results?.length,
-                firstResult: data?.results?.[0],
-                status: data?.status
-            });
-
-            if (data && data.results) {
-                this.currentResults = data.results;
-                this.displayResults(this.currentResults);
-            } else {
-                this.showError('No restaurants found nearby');
-            }
-        } catch (error) {
-            console.error('Error loading nearby restaurants:', error);
-            this.showError('Failed to load nearby restaurants: ' + error.message);
-        } finally {
-            this.showLoading(false);
-        }
+        console.log('🔄 Initial load: Triggering search with default filters');
+        // We use performSearch to ensure consistency with the UI filters
+        // The UI defaults to Type: Restaurant, so this will fetch restaurants.
+        await this.performSearch();
     }
 
     /**
