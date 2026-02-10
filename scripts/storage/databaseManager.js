@@ -520,6 +520,11 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
         const orphans = [];
         
         for (const curation of curations) {
+            // Skip if entity_id is null/undefined (valid state for unlinked curations)
+            if (!curation.entity_id) {
+                continue;
+            }
+            
             const entity = await this.db.entities.get(curation.entity_id);
             if (!entity) {
                 orphans.push(curation);
