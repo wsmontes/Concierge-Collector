@@ -567,9 +567,17 @@ if (typeof window.UIManager === 'undefined') {
             card.dataset.curationId = curation.curation_id;
             
             const date = curation.created_at ? new Date(curation.created_at).toLocaleDateString() : 'Unknown date';
-            const concepts = curation.concepts || [];
-            const conceptNames = concepts.slice(0, 3).map(c => c.name).join(', ');
             
+            // Extract concept names from categories object
+            const categories = curation.categories || {};
+            const conceptNames = [];
+            Object.entries(categories).forEach(([categoryName, values]) => {
+                if (Array.isArray(values)) {
+                    conceptNames.push(...values.slice(0, 2)); // Take first 2 from each category
+                }
+            });
+            const conceptDisplay = conceptNames.slice(0, 3).join(', ');
+            const totalConcepts = Object.values(categories).flat().length;            
             card.innerHTML = `
                 <div class="flex items-start gap-3 mb-3">
                     <span class="material-icons text-2xl text-amber-600">rate_review</span>
@@ -580,10 +588,10 @@ if (typeof window.UIManager === 'undefined') {
                     <span class="px-3 py-1 bg-amber-100 text-amber-800 text-xs font-medium rounded-full">Needs Entity</span>
                 </div>
                 
-                ${conceptNames ? `
+                ${conceptDisplay ? `
                     <div class="mb-3">
-                        <p class="text-sm font-medium text-gray-700 mb-1">Concepts:</p>
-                        <p class="text-sm text-gray-600">${conceptNames}${concepts.length > 3 ? '...' : ''}</p>
+                        <p class="text-sm font-medium text-gray-700 mb-1">Concepts (${totalConcepts}):</p>
+                        <p class="text-sm text-gray-600">${conceptDisplay}${conceptNames.length > 3 ? '...' : ''}</p>
                     </div>
                 ` : ''}
                 
@@ -627,8 +635,10 @@ if (typeof window.UIManager === 'undefined') {
          */
         handleViewReviewDetails(curation) {
             console.log('View review details:', curation);
+            const categories = curation.categories || {};
+            const totalConcepts = Object.values(categories).flat().length;
             // TODO: Implement review details modal
-            alert(`Review ID: ${curation.curation_id}\nConcepts: ${curation.concepts?.length || 0}`);
+            alert(`Review ID: ${curation.curation_id}\nConcepts: ${totalConcepts}\nCategories: ${Object.keys(categories).join(', ')}`);
         }
 
         /**

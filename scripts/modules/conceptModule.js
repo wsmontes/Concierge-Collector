@@ -338,156 +338,83 @@ class ConceptModule {
         const description = descriptionInput ? descriptionInput.value.trim() : '';
         
         try {
-            SafetyUtils.showLoading(this.uiManager.isEditingRestaurant ? 'Updating restaurant...' : 'Saving restaurant...');
+            SafetyUtils.showLoading(this.uiManager.isEditingRestaurant ? 'Updating restaurant...' : 'Saving curation...');
             
-            let restaurantId;
+            let entityId = null; // ✅ NEW: Start with null - entity matching comes later
             let syncStatus = 'local-only';
-            let isImportedEntity = false;
-            let entityToUpdate = null;
             
-            // Check if we're curating an imported entity
+            // Check if we're curating an existing/imported entity
             if (this.uiManager.importedEntityId && this.uiManager.importedEntityData) {
-                isImportedEntity = true;
-                entityToUpdate = this.uiManager.importedEntityData;
-                restaurantId = this.uiManager.importedEntityId;
-                this.log.debug('🎨 Creating curation for imported entity:', restaurantId);
+                entityId = this.uiManager.importedEntityId;
+                this.log.debug('🎨 Creating curation for existing entity:', entityId);
+            } else if (this.uiManager.isEditingRestaurant && this.uiManager.editingRestaurantId) {
+                entityId = this.uiManager.editingRestaurantId;
+                this.log.debug('🎨 Updating curation for entity:', entityId);
+            } else {
+                // ✅ NEW: No entity yet - save as orphaned curation (draft)
+                this.log.debug('📝 Creating curation draft (no entity match yet)');
             }
             
-            if (this.uiManager.isEditingRestaurant) {
-                // Update existing restaurant
-                const entity = await window.dataStore.db.entities.get(this.uiManager.editingRestaurantId);
-                if (!entity) throw new Error('Entity not found');
-                
-                // Update entity fields
-                entity.name = name;
-                entity.curator_id = this.uiManager.currentCurator.id;
-                
-                // Build updated data object following V3 structure
-                const updatedData = entity.data || {};
-                
-                // Update location (only if has data)
-                const currentLocation = this.uiManager.currentLocation;
-                if (currentLocation && Object.keys(currentLocation).length > 0) {
-                    updatedData.location = {
-                        ...(currentLocation.address && { address: currentLocation.address }),
-                        ...(currentLocation.city && { city: currentLocation.city }),
-                        ...(currentLocation.country && { country: currentLocation.country }),
-                        ...(currentLocation.coordinates && { coordinates: currentLocation.coordinates })
-                    };
-                }
-                
-                // Update media/photos (V3 structure)
-                const currentPhotos = this.uiManager.currentPhotos;
-                if (currentPhotos && currentPhotos.length > 0) {
-                    updatedData.media = updatedData.media || {};
-                    updatedData.media.photos = currentPhotos;
-                } else if (updatedData.media && updatedData.media.photos) {
-                    // Clear photos if none selected
-                    delete updatedData.media.photos;
-                    if (Object.keys(updatedData.media).length === 0) {
-                        delete updatedData.media;
+            // ✅ UPDATE existing entity only if editing
+            if (this.uiManager.isEditingRestaurant && entityId) {
+                const entity = await window.dataStore.db.entities.get(entityId);
+                if (entity) {
+                    // Update entity fields
+                    entity.name = name;
+                    entity.curator_id = this.uiManager.currentCurator.id;
+                    
+                    // Build updated data object following V3 structure
+                    const updatedData = entity.data || {};
+                    
+                    // Update location (only if has data)
+                    const currentLocation = this.uiManager.currentLocation;
+                    if (currentLocation && Object.keys(currentLocation).length > 0) {
+                        updatedData.location = {
+                            ...(currentLocation.address && { address: currentLocation.address }),
+                            ...(currentLocation.city && { city: currentLocation.city }),
+                            ...(currentLocation.country && { country: currentLocation.country }),
+                            ...(currentLocation.coordinates && { coordinates: currentLocation.coordinates })
+                        };
                     }
-                }
-                
-                entity.data = updatedData;
-                entity.updated_at = new Date();
-                entity.updatedAt = new Date();
-                entity.version = (entity.version || 1) + 1;  // Increment version for optimistic locking
-                
-                // Save to IndexedDB
-                await window.dataStore.db.entities.put(entity);
-                restaurantId = entity.entity_id;  // V3 uses entity_id (UUID), not .id
-                
-                // Queue for sync
-                if (window.dataStore) {
-                    await window.dataStore.addToSyncQueue('entity', 'update', entity.entity_id, entity.entity_id, entity);
-                    syncStatus = 'pending';
-                }
-            } else {
-                // Create new entity
-                // Generate unique entity_id (UUID format compatible with API V3)
-                const entityId = `rest_${name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}_${Date.now()}`;
-                
-                // Build data object following V3 structure - only include non-empty fields
-                const entityData = {};
-                
-                // Location (only if has data)
-                const currentLocation = this.uiManager.currentLocation;
-                if (currentLocation && Object.keys(currentLocation).length > 0) {
-                    entityData.location = {
-                        ...(currentLocation.address && { address: currentLocation.address }),
-                        ...(currentLocation.city && { city: currentLocation.city }),
-                        ...(currentLocation.country && { country: currentLocation.country }),
-                        ...(currentLocation.coordinates && { coordinates: currentLocation.coordinates })
-                    };
-                }
-                
-                // Media (photos, videos, etc) - V3 structure
-                const currentPhotos = this.uiManager.currentPhotos;
-                if (currentPhotos && currentPhotos.length > 0) {
-                    entityData.media = {
-                        photos: currentPhotos
-                    };
-                }
-                
-                // Contacts (only if available)
-                // Will be populated by Places API or user input in future
-                
-                // Attributes (cuisine, price range, etc)
-                // Will be populated from concepts in future
-                
-                const entity = {
-                    entity_id: entityId,  // UUID for V3 sync
-                    type: 'restaurant',
-                    name: name,
-                    status: 'active',  // Required for entity filtering in UI
-                    curator_id: this.uiManager.currentCurator.id,
-                    curator_email: window.AuthService?.userEmail || 'unknown',
-                    created_by: this.uiManager.currentCurator.id.toString(),
-                    createdBy: this.uiManager.currentCurator.id.toString(),
                     
-                    // V3 data structure - flexible storage following best practices
-                    data: entityData,
-                    
-                    // Metadata array for tracking data sources (V3 standard)
-                    metadata: [{
-                        type: 'manual_creation',
-                        source: 'concierge_collector',
-                        importedAt: new Date().toISOString(),
-                        data: {
-                            created_by_curator: this.uiManager.currentCurator.name,
-                            creation_method: 'manual'
+                    // Update media/photos (V3 structure)
+                    const currentPhotos = this.uiManager.currentPhotos;
+                    if (currentPhotos && currentPhotos.length > 0) {
+                        updatedData.media = updatedData.media || {};
+                        updatedData.media.photos = currentPhotos;
+                    } else if (updatedData.media && updatedData.media.photos) {
+                        // Clear photos if none selected
+                        delete updatedData.media.photos;
+                        if (Object.keys(updatedData.media).length === 0) {
+                            delete updatedData.media;
                         }
-                    }],
-                    
-                    created_at: new Date(),
-                    createdAt: new Date(),
-                    updated_at: new Date(),
-                    updatedAt: new Date(),
-                    source: 'local',
-                    version: 1,  // V3 optimistic locking
-                    sync: {
-                        status: 'pending',
-                        lastAttempt: null,
-                        error: null
                     }
-                };
-                
-                // Save to IndexedDB
-                const localId = await window.dataStore.db.entities.add(entity);
-                restaurantId = entityId;  // Use UUID for sync, not auto-increment id
-                this.log.debug(`✅ Restaurant saved locally with entity_id: ${restaurantId}`);
-                
-                // Queue for sync
-                if (window.dataStore) {
-                    await window.dataStore.addToSyncQueue('entity', 'create', localId, entityId, entity);
-                    syncStatus = 'pending';
-                    this.log.debug('✅ Restaurant queued for sync to server');
+                    
+                    entity.data = updatedData;
+                    entity.updated_at = new Date();
+                    entity.updatedAt = new Date();
+                    entity.version = (entity.version || 1) + 1;  // Increment version for optimistic locking
+                    
+                    // Save to IndexedDB
+                    await window.dataStore.db.entities.put(entity);
+                    this.log.debug(`✅ Entity updated: ${entityId}`);
+                    
+                    // Queue for sync
+                    if (window.dataStore) {
+                        await window.dataStore.addToSyncQueue('entity', 'update', entity.entity_id, entity.entity_id, entity);
+                        syncStatus = 'pending';
+                    }
+                } else {
+                    this.log.warn('Entity not found for update, creating orphaned curation');
+                    entityId = null; // Reset to null if entity not found
                 }
             }
+            
+            // ✅ NEW: DO NOT create entity automatically
+            // Entity creation will be done separately through matching or explicit creation
             
             // Create curation for ALL saved restaurants (not just imported)
-            this.log.debug('🎨 Creating curation for restaurant:', restaurantId);
+            this.log.debug('🎨 Creating curation with entity_id:', entityId);
             
             // Get curation notes if available
             const publicNotes = document.getElementById('curation-notes-public')?.value.trim() || '';
@@ -514,7 +441,7 @@ class ConceptModule {
             
             const curation = {
                 curation_id: curationId,
-                entity_id: restaurantId,
+                entity_id: entityId,  // null for orphaned curations, ID for matched entities
                 curator_id: curator.curator_id,  // Required by loadCurations() filter
                 curator: {
                     id: user.email,
@@ -550,10 +477,15 @@ class ConceptModule {
             
             SafetyUtils.hideLoading();
             
-            // Show appropriate notification based on sync status
-            let message = this.uiManager.isEditingRestaurant ? 
-                'Restaurant updated successfully' : 
-                'Restaurant saved successfully';
+            // Show appropriate notification based on entity match status
+            let message;
+            if (!entityId) {
+                message = 'Curation draft saved (no entity match yet)';
+            } else if (this.uiManager.isEditingRestaurant) {
+                message = 'Curation updated for entity';
+            } else {
+                message = 'Curation saved for entity';
+            }
             
             // Note: Background sync is asynchronous (fire-and-forget)
             // The actual sync status will be reflected in the restaurant list badge
