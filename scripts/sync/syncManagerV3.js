@@ -511,7 +511,13 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
 
             this.stats.curationsPulled = totalPulled;
             this.stats.lastPullAt = new Date().toISOString();
-            this.stats.lastCurationPullAt = syncStartTime;
+            
+            // Only update lastCurationPullAt if we successfully pulled curations
+            // This prevents marking sync as complete when nothing was found
+            if (totalPulled > 0) {
+                this.stats.lastCurationPullAt = syncStartTime;
+            }
+            
             await this.saveSyncMetadata();
 
             this.log.info(`✅ Pulled ${totalPulled} curations (${totalProcessed} processed in ${batchCount} batches)`);
