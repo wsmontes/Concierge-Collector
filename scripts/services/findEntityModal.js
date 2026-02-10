@@ -213,10 +213,14 @@ window.FindEntityModal = class FindEntityModal {
         filters.forEach(filterId => {
             const filterElement = document.getElementById(filterId);
             if (filterElement) {
+                console.log(`✅ Attaching change listener to ${filterId}`);
                 filterElement.addEventListener('change', () => {
+                    console.log(`🔄 Filter changed: ${filterId}`);
                     this.updateFiltersFromUI();
                     this.performSearch();
                 });
+            } else {
+                console.error(`❌ Filter element not found: ${filterId}`);
             }
         });
     }
@@ -230,6 +234,8 @@ window.FindEntityModal = class FindEntityModal {
         this.filters.minRating = parseFloat(document.getElementById('entity-rating-filter')?.value || '0');
         const radiusValue = document.getElementById('entity-radius-filter')?.value || '2000';
         this.filters.radius = radiusValue === 'worldwide' ? 'worldwide' : parseInt(radiusValue);
+
+        console.log('📊 Filters updated from UI:', JSON.stringify(this.filters));
     }
 
     /**
