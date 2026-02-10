@@ -771,15 +771,38 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                 } catch (error) {
                     // Check if error is "already exists" (curation was created in previous sync but client didn't update status)
                     if (error.message.includes('already exists')) {
-                        this.log.warn(`Curation ${curation.curation_id} already exists on server, marking as synced`);
-                        const current = await window.DataStore.db.curations.get(curation.curation_id);
-                        await window.DataStore.db.curations.update(curation.curation_id, {
-                            sync: {
-                                ...(current?.sync || {}),
-                                status: 'synced',
-                                lastSyncedAt: new Date().toISOString()
-                            }
-                        });
+                        this.log.warn(`Curation ${curation.curation_id} already exists on server, fetching serverId...`);
+                        
+                        try {
+                            // Try to get the curation from server to obtain its serverId
+                            const serverCuration = await window.ApiService.getCuration(curation.curation_id);
+                            
+                            // Update with serverId so future syncs will use PATCH instead of POST
+                            await window.DataStore.db.curations.update(curation.curation_id, {
+                                sync: {
+                                    ...(curation.sync || {}),
+                                    serverId: serverCuration._id,
+                                    status: 'synced',
+                                    lastSyncedAt: new Date().toISOString()
+                                }
+                            });
+                            
+                            // Store state for future change detection
+                            await this.storeItemState('curation', curation.curation_id, serverCuration);
+                            
+                            this.log.info(`✅ Resolved duplicate: ${curation.curation_id} mapped to serverId ${serverCuration._id}`);
+                        } catch (fetchError) {
+                            // If we can't fetch the curation, just mark as synced without serverId
+                            this.log.warn(`Could not fetch serverId for ${curation.curation_id}, marking as synced anyway`);
+                            await window.DataStore.db.curations.update(curation.curation_id, {
+                                sync: {
+                                    ...(curation.sync || {}),
+                                    status: 'synced',
+                                    lastSyncedAt: new Date().toISOString()
+                                }
+                            });
+                        }
+                        
                         pushed++;
                         continue;
                     }
