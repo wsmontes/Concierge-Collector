@@ -361,15 +361,38 @@ class ConceptModule {
                 // Update entity fields
                 entity.name = name;
                 entity.curator_id = this.uiManager.currentCurator.id;
-                entity.data = {
-                    concepts: this.uiManager.currentConcepts || [],
-                    transcription: transcription || '',
-                    description: description || ''
-                };
-                entity.location = this.uiManager.currentLocation || {};
-                entity.photos = this.uiManager.currentPhotos || [];
+                
+                // Build updated data object following V3 structure
+                const updatedData = entity.data || {};
+                
+                // Update location (only if has data)
+                const currentLocation = this.uiManager.currentLocation;
+                if (currentLocation && Object.keys(currentLocation).length > 0) {
+                    updatedData.location = {
+                        ...(currentLocation.address && { address: currentLocation.address }),
+                        ...(currentLocation.city && { city: currentLocation.city }),
+                        ...(currentLocation.country && { country: currentLocation.country }),
+                        ...(currentLocation.coordinates && { coordinates: currentLocation.coordinates })
+                    };
+                }
+                
+                // Update media/photos (V3 structure)
+                const currentPhotos = this.uiManager.currentPhotos;
+                if (currentPhotos && currentPhotos.length > 0) {
+                    updatedData.media = updatedData.media || {};
+                    updatedData.media.photos = currentPhotos;
+                } else if (updatedData.media && updatedData.media.photos) {
+                    // Clear photos if none selected
+                    delete updatedData.media.photos;
+                    if (Object.keys(updatedData.media).length === 0) {
+                        delete updatedData.media;
+                    }
+                }
+                
+                entity.data = updatedData;
                 entity.updated_at = new Date();
                 entity.updatedAt = new Date();
+                entity.version = (entity.version || 1) + 1;  // Increment version for optimistic locking
                 
                 // Save to IndexedDB
                 await window.dataStore.db.entities.put(entity);
@@ -385,6 +408,34 @@ class ConceptModule {
                 // Generate unique entity_id (UUID format compatible with API V3)
                 const entityId = `rest_${name.toLowerCase().replace(/[^a-z0-9]+/g, '_')}_${Date.now()}`;
                 
+                // Build data object following V3 structure - only include non-empty fields
+                const entityData = {};
+                
+                // Location (only if has data)
+                const currentLocation = this.uiManager.currentLocation;
+                if (currentLocation && Object.keys(currentLocation).length > 0) {
+                    entityData.location = {
+                        ...(currentLocation.address && { address: currentLocation.address }),
+                        ...(currentLocation.city && { city: currentLocation.city }),
+                        ...(currentLocation.country && { country: currentLocation.country }),
+                        ...(currentLocation.coordinates && { coordinates: currentLocation.coordinates })
+                    };
+                }
+                
+                // Media (photos, videos, etc) - V3 structure
+                const currentPhotos = this.uiManager.currentPhotos;
+                if (currentPhotos && currentPhotos.length > 0) {
+                    entityData.media = {
+                        photos: currentPhotos
+                    };
+                }
+                
+                // Contacts (only if available)
+                // Will be populated by Places API or user input in future
+                
+                // Attributes (cuisine, price range, etc)
+                // Will be populated from concepts in future
+                
                 const entity = {
                     entity_id: entityId,  // UUID for V3 sync
                     type: 'restaurant',
@@ -394,18 +445,27 @@ class ConceptModule {
                     curator_email: window.AuthService?.userEmail || 'unknown',
                     created_by: this.uiManager.currentCurator.id.toString(),
                     createdBy: this.uiManager.currentCurator.id.toString(),
-                    data: {
-                        // Entity data contains only structural/factual data
-                        location: this.uiManager.currentLocation || {},
-                        photos: this.uiManager.currentPhotos || [],
-                        contacts: {},  // Reserved for future use
-                        attributes: {}  // Reserved for future use
-                    },
+                    
+                    // V3 data structure - flexible storage following best practices
+                    data: entityData,
+                    
+                    // Metadata array for tracking data sources (V3 standard)
+                    metadata: [{
+                        type: 'manual_creation',
+                        source: 'concierge_collector',
+                        importedAt: new Date().toISOString(),
+                        data: {
+                            created_by_curator: this.uiManager.currentCurator.name,
+                            creation_method: 'manual'
+                        }
+                    }],
+                    
                     created_at: new Date(),
                     createdAt: new Date(),
                     updated_at: new Date(),
                     updatedAt: new Date(),
                     source: 'local',
+                    version: 1,  // V3 optimistic locking
                     sync: {
                         status: 'pending',
                         lastAttempt: null,
