@@ -837,7 +837,28 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         
                         try {
                             // Try to get the curation from server to obtain its serverId
-                            const serverCuration = await window.ApiService.getCuration(curation.curation_id);
+                            let serverCuration;
+                            try {
+                                serverCuration = await window.ApiService.getCuration(curation.curation_id);
+                            } catch (getError) {
+                                // If GET fails (404), try searching via curator_id
+                                if (getError.message.includes('404') || getError.message.includes('not found')) {
+                                    this.log.debug('GET failed, trying via search endpoint...');
+                                    const searchResult = await window.ApiService.listCurations({
+                                        curator_id: curation.curator_id,
+                                        limit: 1000  // Get all curator's curations
+                                    });
+                                    
+                                    // Find the specific curation by ID
+                                    serverCuration = searchResult.items?.find(c => c._id === curation.curation_id);
+                                    
+                                    if (!serverCuration) {
+                                        throw new Error('Curation not found in search results');
+                                    }
+                                } else {
+                                    throw getError;
+                                }
+                            }
                             
                             // Update with serverId so future syncs will use PATCH instead of POST
                             await window.DataStore.db.curations.update(curation.curation_id, {
@@ -854,13 +875,14 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                             
                             this.log.info(`✅ Resolved duplicate: ${curation.curation_id} mapped to serverId ${serverCuration._id}`);
                         } catch (fetchError) {
-                            // If we can't fetch the curation, just mark as synced without serverId
-                            this.log.warn(`Could not fetch serverId for ${curation.curation_id}, marking as synced anyway`);
+                            // If we still can't find it, mark as error to avoid infinite retry loop
+                            this.log.error(`Cannot resolve serverId for ${curation.curation_id}: ${fetchError.message}`);
                             await window.DataStore.db.curations.update(curation.curation_id, {
                                 sync: {
                                     ...(curation.sync || {}),
-                                    status: 'synced',
-                                    lastSyncedAt: new Date().toISOString()
+                                    status: 'error',
+                                    error: `Duplicate exists but unreachable: ${fetchError.message}`,
+                                    lastAttempt: new Date().toISOString()
                                 }
                             });
                         }
