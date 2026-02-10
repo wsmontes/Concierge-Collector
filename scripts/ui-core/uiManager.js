@@ -543,91 +543,92 @@ if (typeof window.UIManager === 'undefined') {
             return card;
         }
 
-        * Handle linking a review to an entity
-        */
+        /**
+         * Handle linking a review to an entity
+         */
         async handleLinkReviewToEntity(curation) {
-        console.log('Link review to entity:', curation.curation_id);
+            console.log('Link review to entity:', curation.curation_id);
 
-        if(!window.findEntityModal) {
-            // Initialize if not exists
-            if (typeof FindEntityModal !== 'undefined') {
-        window.findEntityModal = new FindEntityModal();
-    } else {
-        alert('FindEntityModal not available');
-        return;
-    }
-}
+            if (!window.findEntityModal) {
+                // Initialize if not exists
+                if (typeof FindEntityModal !== 'undefined') {
+                    window.findEntityModal = new FindEntityModal();
+                } else {
+                    alert('FindEntityModal not available');
+                    return;
+                }
+            }
 
-// Open modal in selection mode
-window.findEntityModal.open({
-    onEntitySelected: async (entity) => {
-        await this.linkReviewToEntity(curation, entity);
-    }
-});
+            // Open modal in selection mode
+            window.findEntityModal.open({
+                onEntitySelected: async (entity) => {
+                    await this.linkReviewToEntity(curation, entity);
+                }
+            });
         }
 
         /**
          * Perform the actual linking of review to entity
          */
         async linkReviewToEntity(curation, entity) {
-    console.log('🔗 Linking review:', curation.curation_id, 'to entity:', entity.entity_id);
+            console.log('🔗 Linking review:', curation.curation_id, 'to entity:', entity.entity_id);
 
-    try {
-        this.showLoading('Linking review to entity...');
+            try {
+                this.showLoading('Linking review to entity...');
 
-        // 1. Update the curation object
-        const updatedCuration = {
-            ...curation,
-            entity_id: entity.entity_id,
-            updated_at: new Date().toISOString(),
-            sync: {
-                ...curation.sync,
-                status: 'pending', // Mark for sync
-                lastModified: new Date().toISOString()
+                // 1. Update the curation object
+                const updatedCuration = {
+                    ...curation,
+                    entity_id: entity.entity_id,
+                    updated_at: new Date().toISOString(),
+                    sync: {
+                        ...curation.sync,
+                        status: 'pending', // Mark for sync
+                        lastModified: new Date().toISOString()
+                    }
+                };
+
+                // 2. Save to local database
+                await window.DataStore.db.curations.put(updatedCuration);
+
+                // 3. Trigger background sync if available
+                if (window.SyncManager) {
+                    window.SyncManager.triggerSync();
+                }
+
+                // 4. Show success and refresh view
+                this.showNotification(`Review linked to "${entity.name}"`, 'success');
+
+                // Refresh current view (Curations tab)
+                await this.loadCurations();
+
+            } catch (error) {
+                console.error('Failed to link review:', error);
+                this.showNotification('Failed to link review: ' + error.message, 'error');
+            } finally {
+                this.hideLoading();
             }
-        };
-
-        // 2. Save to local database
-        await window.DataStore.db.curations.put(updatedCuration);
-
-        // 3. Trigger background sync if available
-        if (window.SyncManager) {
-            window.SyncManager.triggerSync();
         }
 
-        // 4. Show success and refresh view
-        this.showNotification(`Review linked to "${entity.name}"`, 'success');
+        /**
+         * Handle viewing review details
+         */
+        handleViewReviewDetails(curation) {
+            console.log('View review details:', curation);
 
-        // Refresh current view (Curations tab)
-        await this.loadCurations();
+            if (!window.modalManager) {
+                console.warn('ModalManager not available');
+                alert(`Review ID: ${curation.curation_id}`);
+                return;
+            }
 
-    } catch (error) {
-        console.error('Failed to link review:', error);
-        this.showNotification('Failed to link review: ' + error.message, 'error');
-    } finally {
-        this.hideLoading();
-    }
-}
+            const categories = curation.categories || {};
+            const totalConcepts = Object.values(categories).flat().length;
+            const date = curation.created_at ? new Date(curation.created_at).toLocaleString() : 'Unknown';
 
-/**
- * Handle viewing review details
- */
-handleViewReviewDetails(curation) {
-    console.log('View review details:', curation);
-
-    if (!window.modalManager) {
-        console.warn('ModalManager not available');
-        alert(`Review ID: ${curation.curation_id}`);
-        return;
-    }
-
-    const categories = curation.categories || {};
-    const totalConcepts = Object.values(categories).flat().length;
-    const date = curation.created_at ? new Date(curation.created_at).toLocaleString() : 'Unknown';
-
-    const content = document.createElement('div');
-    content.className = 'space-y-4';
-    content.innerHTML = `
+            const content = document.createElement('div');
+            content.className = 'space-y-4';
+            content.innerHTML = `
                 <div class="bg-gray-50 p-3 rounded-lg border border-gray-200">
                     <p class="text-sm text-gray-500 mb-1">Created</p>
                     <p class="font-medium text-gray-900">${date}</p>
@@ -649,9 +650,9 @@ handleViewReviewDetails(curation) {
                     </h3>
                     
                     ${Object.keys(categories).length === 0 ?
-            '<p class="text-gray-500 italic text-sm">No concepts extracted</p>' :
-            '<div class="space-y-3">' +
-            Object.entries(categories).map(([category, items]) => `
+                    '<p class="text-gray-500 italic text-sm">No concepts extracted</p>' :
+                    '<div class="space-y-3">' +
+                    Object.entries(categories).map(([category, items]) => `
                             <div>
                                 <h4 class="text-xs font-bold uppercase text-gray-500 mb-1">${category}</h4>
                                 <div class="flex flex-wrap gap-2">
@@ -663,471 +664,471 @@ handleViewReviewDetails(curation) {
                                 </div>
                             </div>
                         `).join('') +
-            '</div>'
-        }
+                    '</div>'
+                }
                 </div>
             `;
 
-    window.modalManager.open({
-        title: 'Review Details',
-        content: content,
-        footer: `
+            window.modalManager.open({
+                title: 'Review Details',
+                content: content,
+                footer: `
                     <button class="btn-close-modal px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300" onclick="window.modalManager.closeAll()">
                         Close
                     </button>
                 `,
-        size: 'md'
-    });
-}
-
-/**
- * Initialize UI Utils module with proper reference to this manager
- */
-initializeUIUtilsModule() {
-    // Check if uiUtilsModule is already available globally
-    if (window.uiUtils) {
-        // Update the reference to this manager
-        window.uiUtils.uiManager = this;
-        this.uiUtilsModule = window.uiUtils;
-        console.log('Using global uiUtils instance with updated uiManager reference');
-    } else if (typeof UIUtilsModule !== 'undefined') {
-        // Create a new instance with reference to this manager
-        this.uiUtilsModule = new UIUtilsModule(this);
-        window.uiUtils = this.uiUtilsModule; // Also set it globally
-        console.log('Created new uiUtils instance with uiManager reference');
-    } else {
-        console.warn('UIUtilsModule not found, UI utility functions may be unavailable');
-    }
-}
-
-hideAllSections() {
-    // Hide all main content sections
-    if (this.recordingSection) this.recordingSection.classList.add('hidden');
-    if (this.transcriptionSection) this.transcriptionSection.classList.add('hidden');
-    if (this.conceptsSection) this.conceptsSection.classList.add('hidden');
-    if (this.restaurantListSection) this.restaurantListSection.classList.add('hidden');
-    if (this.exportImportSection) this.exportImportSection.classList.add('hidden');
-
-    // Hide list-only UI elements
-    if (this.findEntityBtn) this.findEntityBtn.classList.add('hidden');
-    if (this.syncSidebarSection) this.syncSidebarSection.classList.add('hidden');
-
-    // Hide all toolbars
-    if (this.restaurantEditToolbar) this.restaurantEditToolbar.classList.add('hidden');
-    if (this.curatorEditToolbar) this.curatorEditToolbar.classList.add('hidden');
-}
-
-// Core UI visibility functions
-showRestaurantFormSection() {
-    this.hideAllSections();
-    // Add null checks before accessing classList
-    if (this.curatorSection) this.curatorSection.classList.remove('hidden');
-    if (this.conceptsSection) this.conceptsSection.classList.remove('hidden');
-
-    // Show restaurant edit toolbar (same as edit mode)
-    if (this.restaurantEditToolbar) {
-        this.restaurantEditToolbar.classList.remove('hidden');
-
-        // Update toolbar title based on mode
-        const toolbarTitle = this.restaurantEditToolbar.querySelector('.toolbar-info-title');
-        if (toolbarTitle) {
-            toolbarTitle.textContent = this.isEditingRestaurant ? 'Edit Restaurant' : 'New Restaurant';
-        }
-    }
-
-    // Reset the current concepts if coming from manual entry
-    if (!this.currentConcepts || this.currentConcepts.length === 0) {
-        this.currentConcepts = [];
-        // Add blank concept container for manual entry
-        this.renderConcepts();
-    }
-}
-
-showRecordingSection() {
-    this.hideAllSections();
-    // Add null checks before accessing classList
-    if (this.curatorSection) this.curatorSection.classList.remove('hidden');
-    if (this.recordingSection) this.recordingSection.classList.remove('hidden');
-    // Keep restaurant list hidden during recording to focus on the task
-}
-
-showTranscriptionSection(transcription) {
-    this.hideAllSections();
-    // Add null checks before accessing classList
-    if (this.curatorSection) this.curatorSection.classList.remove('hidden');
-    if (this.transcriptionSection) this.transcriptionSection.classList.remove('hidden');
-    // Keep restaurant list hidden during transcription review to focus on the task
-
-    // Display the transcription
-    if (this.transcriptionText) {
-        this.transcriptionText.textContent = transcription;
-    }
-    this.originalTranscription = transcription;
-    this.translatedTranscription = null; // Reset translated text
-}
-
-showConceptsSection() {
-    this.hideAllSections();
-    // Add null checks before accessing classList
-    if (this.curatorSection) this.curatorSection.classList.remove('hidden');
-    if (this.conceptsSection) this.conceptsSection.classList.remove('hidden');
-
-    // Show restaurant edit toolbar
-    if (this.restaurantEditToolbar) {
-        this.restaurantEditToolbar.classList.remove('hidden');
-
-        // Update toolbar title based on mode
-        const toolbarTitle = this.restaurantEditToolbar.querySelector('.toolbar-info-title');
-        if (toolbarTitle) {
-            toolbarTitle.textContent = this.isEditingRestaurant ? 'Edit Restaurant' : 'New Restaurant';
-        }
-    }
-
-    // Only set transcription if we're coming from transcription screen
-    // AND we're not editing an existing restaurant
-    const transcriptionTextarea = document.getElementById('restaurant-transcription');
-
-    if (this.originalTranscription && !this.editingRestaurantId && transcriptionTextarea && !transcriptionTextarea.value) {
-        // Only update if the textarea is empty and we have a new transcription
-        transcriptionTextarea.value = this.originalTranscription;
-    }
-
-    // Render the extracted concepts
-    this.renderConcepts();
-
-    // Scroll to the concepts section smoothly
-    setTimeout(() => {
-        const conceptsSection = document.getElementById('concepts-section');
-        if (conceptsSection) {
-            conceptsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
-        }
-    }, 100);
-}
-
-showRestaurantListSection() {
-    this.hideAllSections();
-    // Show main list view elements
-    if (this.curatorSection) this.curatorSection.classList.remove('hidden');
-    if (this.restaurantListSection) this.restaurantListSection.classList.remove('hidden');
-    if (this.exportImportSection) this.exportImportSection.classList.remove('hidden');
-
-    // Show list-only UI elements
-    if (this.findEntityBtn) this.findEntityBtn.classList.remove('hidden');
-    if (this.syncSidebarSection) this.syncSidebarSection.classList.remove('hidden');
-}
-
-// Delegate to appropriate modules via uiUtilsModule
-showLoading(message) {
-    if (this.uiUtilsModule && typeof this.uiUtilsModule.showLoading === 'function') {
-        this.uiUtilsModule.showLoading(message);
-    } else if (window.uiUtils && typeof window.uiUtils.showLoading === 'function') {
-        window.uiUtils.showLoading(message);
-    } else {
-        console.warn('showLoading not available');
-        alert(message || 'Loading...');
-    }
-}
-
-hideLoading() {
-    if (this.uiUtilsModule && typeof this.uiUtilsModule.hideLoading === 'function') {
-        this.uiUtilsModule.hideLoading();
-    } else if (window.uiUtils && typeof window.uiUtils.hideLoading === 'function') {
-        window.uiUtils.hideLoading();
-    } else {
-        console.warn('hideLoading not available');
-    }
-}
-
-updateLoadingMessage(message) {
-    if (this.uiUtilsModule && typeof this.uiUtilsModule.updateLoadingMessage === 'function') {
-        this.uiUtilsModule.updateLoadingMessage(message);
-    } else if (window.uiUtils && typeof window.uiUtils.updateLoadingMessage === 'function') {
-        window.uiUtils.updateLoadingMessage(message);
-    } else {
-        console.warn('updateLoadingMessage not available');
-    }
-}
-
-showNotification(message, type) {
-    if (this.uiUtilsModule && typeof this.uiUtilsModule.showNotification === 'function') {
-        this.uiUtilsModule.showNotification(message, type);
-    } else if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
-        window.uiUtils.showNotification(message, type);
-    } else {
-        console.warn('showNotification not available');
-        alert(message);
-    }
-}
-
-getCurrentPosition() {
-    if (this.uiUtilsModule && typeof this.uiUtilsModule.getCurrentPosition === 'function') {
-        return this.uiUtilsModule.getCurrentPosition();
-    } else if (window.uiUtils && typeof window.uiUtils.getCurrentPosition === 'function') {
-        return window.uiUtils.getCurrentPosition();
-    } else {
-        console.warn('getCurrentPosition not available, using fallback');
-        return this.getFallbackPosition();
-    }
-}
-
-/**
- * Fallback position getter when uiUtils is unavailable
- * @returns {Promise<GeolocationPosition>}
- */
-getFallbackPosition() {
-    return new Promise((resolve, reject) => {
-        if (!navigator.geolocation) {
-            reject(new Error('Geolocation is not supported by your browser'));
-            return;
+                size: 'md'
+            });
         }
 
-        navigator.geolocation.getCurrentPosition(resolve, reject, {
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 0
-        });
-    });
-}
-
-// Additional delegation methods for core functionality
-
-// Concept module delegations
-renderConcepts() {
-    this.conceptModule.renderConcepts();
-}
-
-removeConcept(category, value) {
-    this.conceptModule.removeConcept(category, value);
-}
-
-showAddConceptDialog(category) {
-    this.conceptModule.showAddConceptDialog(category);
-}
-
-isDuplicateConcept(category, value) {
-    return this.conceptModule.isDuplicateConcept(category, value);
-}
-
-showDuplicateConceptWarning(category, value) {
-    this.conceptModule.showDuplicateConceptWarning(category, value);
-}
-
-addConceptWithValidation(category, value) {
-    return this.conceptModule.addConceptWithValidation(category, value);
-}
-
-handleExtractedConceptsWithValidation(extractedConcepts) {
-    this.conceptModule.handleExtractedConceptsWithValidation(extractedConcepts);
-}
-
-filterExistingConcepts(conceptsToFilter) {
-    return this.conceptModule.filterExistingConcepts(conceptsToFilter);
-}
-
-conceptAlreadyExists(category, value) {
-    return this.conceptModule.conceptAlreadyExists(category, value);
-}
-
-// Restaurant module delegations
-editRestaurant(restaurant) {
-    // Clear transcription data when editing a different restaurant
-    this.clearTranscriptionData();
-
-    this.restaurantModule.editRestaurant(restaurant);
-}
-
-/**
- * Clears transcription data when switching between restaurants
- */
-clearTranscriptionData() {
-    console.log('Clearing transcription data');
-    this.originalTranscription = null;
-    this.translatedTranscription = null;
-
-    // Also clear the transcription textarea in the restaurant form
-    const transcriptionTextarea = document.getElementById('restaurant-transcription');
-    if (transcriptionTextarea) {
-        transcriptionTextarea.value = '';
-    }
-
-    // Clear the transcription text element if it exists
-    if (this.transcriptionText) {
-        this.transcriptionText.textContent = '';
-    }
-
-    console.log('Transcription data cleared');
-}
-
-/**
- * Loads restaurant profile data
- */
-loadRestaurantProfile(restaurantData) {
-    // Clear transcription data to prevent leakage between restaurants
-    this.clearTranscriptionData();
-
-    // If this restaurant has a transcription, set it properly
-    if (restaurantData && restaurantData.transcription) {
-        const transcriptionTextarea = document.getElementById('restaurant-transcription');
-        if (transcriptionTextarea) {
-            transcriptionTextarea.value = restaurantData.transcription;
-        }
-    }
-
-    // ...existing code to load restaurant profile...
-}
-
-// Add clearTranscriptionData to any place where new restaurants are created
-newRestaurant() {
-    // Clear any existing transcription data
-    this.clearTranscriptionData();
-
-    // Reset editing state
-    this.isEditingRestaurant = false;
-    this.editingRestaurantId = null;
-
-    // ...existing code for creating new restaurant...
-}
-
-// Also ensure it's called after saving a restaurant
-saveRestaurant() {
-    // ...existing code for saving restaurant...
-
-    // Clear transcription data after saving
-    this.clearTranscriptionData();
-}
-
-/**
- * Updates the processing status indicators in the UI
- * @param {string} step - The processing step ('transcription' or 'analysis')
- * @param {string} status - The status ('pending', 'in-progress', 'completed', 'error')
- * @param {string} message - Optional custom message to display
- */
-updateProcessingStatus(step, status, message = null) {
-    const stepElement = document.getElementById(`${step}-status`);
-    if (!stepElement) return;
-
-    // Remove existing status classes
-    stepElement.classList.remove('in-progress', 'completed', 'error');
-
-    // Set icon and message based on status
-    const iconElement = stepElement.querySelector('.material-icons');
-    const textElement = stepElement.querySelector('span:not(.material-icons)');
-
-    if (iconElement && textElement) {
-        let icon = 'pending';
-        let statusClass = '';
-        let defaultMessage = step === 'transcription'
-            ? 'Transcribing your audio...'
-            : 'Analyzing restaurant details...';
-
-        switch (status) {
-            case 'in-progress':
-                icon = 'hourglass_top';
-                statusClass = 'in-progress';
-                break;
-            case 'completed':
-                icon = 'check_circle';
-                statusClass = 'completed';
-                defaultMessage = step === 'transcription'
-                    ? 'Transcription completed'
-                    : 'Analysis completed';
-                break;
-            case 'error':
-                icon = 'error';
-                statusClass = 'error';
-                defaultMessage = `Error during ${step}`;
-                break;
-            default: // pending
-                icon = 'pending';
-                break;
+        /**
+         * Initialize UI Utils module with proper reference to this manager
+         */
+        initializeUIUtilsModule() {
+            // Check if uiUtilsModule is already available globally
+            if (window.uiUtils) {
+                // Update the reference to this manager
+                window.uiUtils.uiManager = this;
+                this.uiUtilsModule = window.uiUtils;
+                console.log('Using global uiUtils instance with updated uiManager reference');
+            } else if (typeof UIUtilsModule !== 'undefined') {
+                // Create a new instance with reference to this manager
+                this.uiUtilsModule = new UIUtilsModule(this);
+                window.uiUtils = this.uiUtilsModule; // Also set it globally
+                console.log('Created new uiUtils instance with uiManager reference');
+            } else {
+                console.warn('UIUtilsModule not found, UI utility functions may be unavailable');
+            }
         }
 
-        iconElement.textContent = icon;
-        textElement.textContent = message || defaultMessage;
+        hideAllSections() {
+            // Hide all main content sections
+            if (this.recordingSection) this.recordingSection.classList.add('hidden');
+            if (this.transcriptionSection) this.transcriptionSection.classList.add('hidden');
+            if (this.conceptsSection) this.conceptsSection.classList.add('hidden');
+            if (this.restaurantListSection) this.restaurantListSection.classList.add('hidden');
+            if (this.exportImportSection) this.exportImportSection.classList.add('hidden');
 
-        if (statusClass) {
-            stepElement.classList.add(statusClass);
+            // Hide list-only UI elements
+            if (this.findEntityBtn) this.findEntityBtn.classList.add('hidden');
+            if (this.syncSidebarSection) this.syncSidebarSection.classList.add('hidden');
+
+            // Hide all toolbars
+            if (this.restaurantEditToolbar) this.restaurantEditToolbar.classList.add('hidden');
+            if (this.curatorEditToolbar) this.curatorEditToolbar.classList.add('hidden');
         }
-    }
-}
 
-/**
- * Shows the transcription section with the given text and updates the processing status
- * @param {string} transcriptionText - The transcription text
- * @override - This overrides the original method to update processing status
- */
-showTranscriptionSection(transcriptionText) {
-    // Update processing status
-    this.updateProcessingStatus('transcription', 'completed');
-    this.updateProcessingStatus('analysis', 'in-progress');
+        // Core UI visibility functions
+        showRestaurantFormSection() {
+            this.hideAllSections();
+            // Add null checks before accessing classList
+            if (this.curatorSection) this.curatorSection.classList.remove('hidden');
+            if (this.conceptsSection) this.conceptsSection.classList.remove('hidden');
 
-    // Proceed with original implementation
-    console.log('Showing transcription section');
-    this.hideAllSections(); // Changed from resetSections() to hideAllSections()
+            // Show restaurant edit toolbar (same as edit mode)
+            if (this.restaurantEditToolbar) {
+                this.restaurantEditToolbar.classList.remove('hidden');
 
-    // Add null check for curatorSection
-    if (this.curatorSection) this.curatorSection.classList.remove('hidden');
-    const transcriptionSection = document.getElementById('transcription-section');
-    if (transcriptionSection) {
-        transcriptionSection.classList.remove('hidden');
-    }
+                // Update toolbar title based on mode
+                const toolbarTitle = this.restaurantEditToolbar.querySelector('.toolbar-info-title');
+                if (toolbarTitle) {
+                    toolbarTitle.textContent = this.isEditingRestaurant ? 'Edit Restaurant' : 'New Restaurant';
+                }
+            }
 
-    const transcriptionTextElement = document.getElementById('transcription-text');
-    if (transcriptionTextElement) {
-        transcriptionTextElement.textContent = transcriptionText || 'No transcription available';
-        this.transcriptionText = transcriptionTextElement;
+            // Reset the current concepts if coming from manual entry
+            if (!this.currentConcepts || this.currentConcepts.length === 0) {
+                this.currentConcepts = [];
+                // Add blank concept container for manual entry
+                this.renderConcepts();
+            }
+        }
 
-        // Store the original transcription for potential reuse
-        this.originalTranscription = transcriptionText;
-    }
-}
+        showRecordingSection() {
+            this.hideAllSections();
+            // Add null checks before accessing classList
+            if (this.curatorSection) this.curatorSection.classList.remove('hidden');
+            if (this.recordingSection) this.recordingSection.classList.remove('hidden');
+            // Keep restaurant list hidden during recording to focus on the task
+        }
+
+        showTranscriptionSection(transcription) {
+            this.hideAllSections();
+            // Add null checks before accessing classList
+            if (this.curatorSection) this.curatorSection.classList.remove('hidden');
+            if (this.transcriptionSection) this.transcriptionSection.classList.remove('hidden');
+            // Keep restaurant list hidden during transcription review to focus on the task
+
+            // Display the transcription
+            if (this.transcriptionText) {
+                this.transcriptionText.textContent = transcription;
+            }
+            this.originalTranscription = transcription;
+            this.translatedTranscription = null; // Reset translated text
+        }
+
+        showConceptsSection() {
+            this.hideAllSections();
+            // Add null checks before accessing classList
+            if (this.curatorSection) this.curatorSection.classList.remove('hidden');
+            if (this.conceptsSection) this.conceptsSection.classList.remove('hidden');
+
+            // Show restaurant edit toolbar
+            if (this.restaurantEditToolbar) {
+                this.restaurantEditToolbar.classList.remove('hidden');
+
+                // Update toolbar title based on mode
+                const toolbarTitle = this.restaurantEditToolbar.querySelector('.toolbar-info-title');
+                if (toolbarTitle) {
+                    toolbarTitle.textContent = this.isEditingRestaurant ? 'Edit Restaurant' : 'New Restaurant';
+                }
+            }
+
+            // Only set transcription if we're coming from transcription screen
+            // AND we're not editing an existing restaurant
+            const transcriptionTextarea = document.getElementById('restaurant-transcription');
+
+            if (this.originalTranscription && !this.editingRestaurantId && transcriptionTextarea && !transcriptionTextarea.value) {
+                // Only update if the textarea is empty and we have a new transcription
+                transcriptionTextarea.value = this.originalTranscription;
+            }
+
+            // Render the extracted concepts
+            this.renderConcepts();
+
+            // Scroll to the concepts section smoothly
+            setTimeout(() => {
+                const conceptsSection = document.getElementById('concepts-section');
+                if (conceptsSection) {
+                    conceptsSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                }
+            }, 100);
+        }
+
+        showRestaurantListSection() {
+            this.hideAllSections();
+            // Show main list view elements
+            if (this.curatorSection) this.curatorSection.classList.remove('hidden');
+            if (this.restaurantListSection) this.restaurantListSection.classList.remove('hidden');
+            if (this.exportImportSection) this.exportImportSection.classList.remove('hidden');
+
+            // Show list-only UI elements
+            if (this.findEntityBtn) this.findEntityBtn.classList.remove('hidden');
+            if (this.syncSidebarSection) this.syncSidebarSection.classList.remove('hidden');
+        }
+
+        // Delegate to appropriate modules via uiUtilsModule
+        showLoading(message) {
+            if (this.uiUtilsModule && typeof this.uiUtilsModule.showLoading === 'function') {
+                this.uiUtilsModule.showLoading(message);
+            } else if (window.uiUtils && typeof window.uiUtils.showLoading === 'function') {
+                window.uiUtils.showLoading(message);
+            } else {
+                console.warn('showLoading not available');
+                alert(message || 'Loading...');
+            }
+        }
+
+        hideLoading() {
+            if (this.uiUtilsModule && typeof this.uiUtilsModule.hideLoading === 'function') {
+                this.uiUtilsModule.hideLoading();
+            } else if (window.uiUtils && typeof window.uiUtils.hideLoading === 'function') {
+                window.uiUtils.hideLoading();
+            } else {
+                console.warn('hideLoading not available');
+            }
+        }
+
+        updateLoadingMessage(message) {
+            if (this.uiUtilsModule && typeof this.uiUtilsModule.updateLoadingMessage === 'function') {
+                this.uiUtilsModule.updateLoadingMessage(message);
+            } else if (window.uiUtils && typeof window.uiUtils.updateLoadingMessage === 'function') {
+                window.uiUtils.updateLoadingMessage(message);
+            } else {
+                console.warn('updateLoadingMessage not available');
+            }
+        }
+
+        showNotification(message, type) {
+            if (this.uiUtilsModule && typeof this.uiUtilsModule.showNotification === 'function') {
+                this.uiUtilsModule.showNotification(message, type);
+            } else if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
+                window.uiUtils.showNotification(message, type);
+            } else {
+                console.warn('showNotification not available');
+                alert(message);
+            }
+        }
+
+        getCurrentPosition() {
+            if (this.uiUtilsModule && typeof this.uiUtilsModule.getCurrentPosition === 'function') {
+                return this.uiUtilsModule.getCurrentPosition();
+            } else if (window.uiUtils && typeof window.uiUtils.getCurrentPosition === 'function') {
+                return window.uiUtils.getCurrentPosition();
+            } else {
+                console.warn('getCurrentPosition not available, using fallback');
+                return this.getFallbackPosition();
+            }
+        }
+
+        /**
+         * Fallback position getter when uiUtils is unavailable
+         * @returns {Promise<GeolocationPosition>}
+         */
+        getFallbackPosition() {
+            return new Promise((resolve, reject) => {
+                if (!navigator.geolocation) {
+                    reject(new Error('Geolocation is not supported by your browser'));
+                    return;
+                }
+
+                navigator.geolocation.getCurrentPosition(resolve, reject, {
+                    enableHighAccuracy: true,
+                    timeout: 10000,
+                    maximumAge: 0
+                });
+            });
+        }
+
+        // Additional delegation methods for core functionality
+
+        // Concept module delegations
+        renderConcepts() {
+            this.conceptModule.renderConcepts();
+        }
+
+        removeConcept(category, value) {
+            this.conceptModule.removeConcept(category, value);
+        }
+
+        showAddConceptDialog(category) {
+            this.conceptModule.showAddConceptDialog(category);
+        }
+
+        isDuplicateConcept(category, value) {
+            return this.conceptModule.isDuplicateConcept(category, value);
+        }
+
+        showDuplicateConceptWarning(category, value) {
+            this.conceptModule.showDuplicateConceptWarning(category, value);
+        }
+
+        addConceptWithValidation(category, value) {
+            return this.conceptModule.addConceptWithValidation(category, value);
+        }
+
+        handleExtractedConceptsWithValidation(extractedConcepts) {
+            this.conceptModule.handleExtractedConceptsWithValidation(extractedConcepts);
+        }
+
+        filterExistingConcepts(conceptsToFilter) {
+            return this.conceptModule.filterExistingConcepts(conceptsToFilter);
+        }
+
+        conceptAlreadyExists(category, value) {
+            return this.conceptModule.conceptAlreadyExists(category, value);
+        }
+
+        // Restaurant module delegations
+        editRestaurant(restaurant) {
+            // Clear transcription data when editing a different restaurant
+            this.clearTranscriptionData();
+
+            this.restaurantModule.editRestaurant(restaurant);
+        }
+
+        /**
+         * Clears transcription data when switching between restaurants
+         */
+        clearTranscriptionData() {
+            console.log('Clearing transcription data');
+            this.originalTranscription = null;
+            this.translatedTranscription = null;
+
+            // Also clear the transcription textarea in the restaurant form
+            const transcriptionTextarea = document.getElementById('restaurant-transcription');
+            if (transcriptionTextarea) {
+                transcriptionTextarea.value = '';
+            }
+
+            // Clear the transcription text element if it exists
+            if (this.transcriptionText) {
+                this.transcriptionText.textContent = '';
+            }
+
+            console.log('Transcription data cleared');
+        }
+
+        /**
+         * Loads restaurant profile data
+         */
+        loadRestaurantProfile(restaurantData) {
+            // Clear transcription data to prevent leakage between restaurants
+            this.clearTranscriptionData();
+
+            // If this restaurant has a transcription, set it properly
+            if (restaurantData && restaurantData.transcription) {
+                const transcriptionTextarea = document.getElementById('restaurant-transcription');
+                if (transcriptionTextarea) {
+                    transcriptionTextarea.value = restaurantData.transcription;
+                }
+            }
+
+            // ...existing code to load restaurant profile...
+        }
+
+        // Add clearTranscriptionData to any place where new restaurants are created
+        newRestaurant() {
+            // Clear any existing transcription data
+            this.clearTranscriptionData();
+
+            // Reset editing state
+            this.isEditingRestaurant = false;
+            this.editingRestaurantId = null;
+
+            // ...existing code for creating new restaurant...
+        }
+
+        // Also ensure it's called after saving a restaurant
+        saveRestaurant() {
+            // ...existing code for saving restaurant...
+
+            // Clear transcription data after saving
+            this.clearTranscriptionData();
+        }
+
+        /**
+         * Updates the processing status indicators in the UI
+         * @param {string} step - The processing step ('transcription' or 'analysis')
+         * @param {string} status - The status ('pending', 'in-progress', 'completed', 'error')
+         * @param {string} message - Optional custom message to display
+         */
+        updateProcessingStatus(step, status, message = null) {
+            const stepElement = document.getElementById(`${step}-status`);
+            if (!stepElement) return;
+
+            // Remove existing status classes
+            stepElement.classList.remove('in-progress', 'completed', 'error');
+
+            // Set icon and message based on status
+            const iconElement = stepElement.querySelector('.material-icons');
+            const textElement = stepElement.querySelector('span:not(.material-icons)');
+
+            if (iconElement && textElement) {
+                let icon = 'pending';
+                let statusClass = '';
+                let defaultMessage = step === 'transcription'
+                    ? 'Transcribing your audio...'
+                    : 'Analyzing restaurant details...';
+
+                switch (status) {
+                    case 'in-progress':
+                        icon = 'hourglass_top';
+                        statusClass = 'in-progress';
+                        break;
+                    case 'completed':
+                        icon = 'check_circle';
+                        statusClass = 'completed';
+                        defaultMessage = step === 'transcription'
+                            ? 'Transcription completed'
+                            : 'Analysis completed';
+                        break;
+                    case 'error':
+                        icon = 'error';
+                        statusClass = 'error';
+                        defaultMessage = `Error during ${step}`;
+                        break;
+                    default: // pending
+                        icon = 'pending';
+                        break;
+                }
+
+                iconElement.textContent = icon;
+                textElement.textContent = message || defaultMessage;
+
+                if (statusClass) {
+                    stepElement.classList.add(statusClass);
+                }
+            }
+        }
+
+        /**
+         * Shows the transcription section with the given text and updates the processing status
+         * @param {string} transcriptionText - The transcription text
+         * @override - This overrides the original method to update processing status
+         */
+        showTranscriptionSection(transcriptionText) {
+            // Update processing status
+            this.updateProcessingStatus('transcription', 'completed');
+            this.updateProcessingStatus('analysis', 'in-progress');
+
+            // Proceed with original implementation
+            console.log('Showing transcription section');
+            this.hideAllSections(); // Changed from resetSections() to hideAllSections()
+
+            // Add null check for curatorSection
+            if (this.curatorSection) this.curatorSection.classList.remove('hidden');
+            const transcriptionSection = document.getElementById('transcription-section');
+            if (transcriptionSection) {
+                transcriptionSection.classList.remove('hidden');
+            }
+
+            const transcriptionTextElement = document.getElementById('transcription-text');
+            if (transcriptionTextElement) {
+                transcriptionTextElement.textContent = transcriptionText || 'No transcription available';
+                this.transcriptionText = transcriptionTextElement;
+
+                // Store the original transcription for potential reuse
+                this.originalTranscription = transcriptionText;
+            }
+        }
 
         /**
          * Refreshes UI components after data synchronization
          * @returns {Promise<void>}
          */
         async refreshAfterSync() {
-    console.log('Refreshing UI after synchronization...');
+            console.log('Refreshing UI after synchronization...');
 
-    // Refresh curator selector if available
-    if (this.curatorModule && typeof this.curatorModule.initializeCuratorSelector === 'function') {
-        this.curatorModule.curatorSelectorInitialized = false;
-        await this.curatorModule.initializeCuratorSelector();
-        console.log('Curator selector refreshed');
-    }
+            // Refresh curator selector if available
+            if (this.curatorModule && typeof this.curatorModule.initializeCuratorSelector === 'function') {
+                this.curatorModule.curatorSelectorInitialized = false;
+                await this.curatorModule.initializeCuratorSelector();
+                console.log('Curator selector refreshed');
+            }
 
-    // Refresh restaurant list if available
-    if (this.restaurantModule && typeof this.restaurantModule.loadRestaurantList === 'function') {
-        const currentCurator = await dataStorage.getCurrentCurator();
-        if (currentCurator) {
-            const filterEnabled = this.restaurantModule.getCurrentFilterState();
-            await this.restaurantModule.loadRestaurantList(currentCurator.id, filterEnabled);
-            console.log('Restaurant list refreshed');
+            // Refresh restaurant list if available
+            if (this.restaurantModule && typeof this.restaurantModule.loadRestaurantList === 'function') {
+                const currentCurator = await dataStorage.getCurrentCurator();
+                if (currentCurator) {
+                    const filterEnabled = this.restaurantModule.getCurrentFilterState();
+                    await this.restaurantModule.loadRestaurantList(currentCurator.id, filterEnabled);
+                    console.log('Restaurant list refreshed');
+                }
+            }
+
+            // Update any sync status indicators (both header and sidebar)
+            const syncStatusElements = [
+                document.getElementById('sync-status-header'),
+                document.getElementById('sync-status')
+            ].filter(Boolean);
+
+            if (syncStatusElements.length > 0) {
+                const lastSyncTime = await dataStorage.getLastSyncTime();
+                if (lastSyncTime) {
+                    const formattedTime = new Date(lastSyncTime).toLocaleString();
+                    syncStatusElements.forEach(el => {
+                        el.textContent = `Last sync: ${formattedTime}`;
+                    });
+                }
+            }
+
+            console.log('UI refresh after sync complete');
         }
-    }
-
-    // Update any sync status indicators (both header and sidebar)
-    const syncStatusElements = [
-        document.getElementById('sync-status-header'),
-        document.getElementById('sync-status')
-    ].filter(Boolean);
-
-    if (syncStatusElements.length > 0) {
-        const lastSyncTime = await dataStorage.getLastSyncTime();
-        if (lastSyncTime) {
-            const formattedTime = new Date(lastSyncTime).toLocaleString();
-            syncStatusElements.forEach(el => {
-                el.textContent = `Last sync: ${formattedTime}`;
-            });
-        }
-    }
-
-    console.log('UI refresh after sync complete');
-}
     });
 
-// Create a global instance only once
-window.uiManager = ModuleWrapper.createInstance('uiManager', 'UIManager');
+    // Create a global instance only once
+    window.uiManager = ModuleWrapper.createInstance('uiManager', 'UIManager');
 } else {
     console.warn('UIManager already defined, skipping redefinition');
 }
