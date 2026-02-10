@@ -54,11 +54,26 @@ window.FindEntityModal = class FindEntityModal {
         const style = document.createElement('style');
         style.id = 'find-entity-modal-styles';
         style.textContent = `
-            /* ===== Find Entity Modal ===== */
+            /* ===== Find Entity Modal — Global containment ===== */
+            #find-entity-modal,
+            #find-entity-modal *,
+            #find-entity-modal *::before,
+            #find-entity-modal *::after {
+                box-sizing: border-box;
+            }
+
             #find-entity-modal {
+                position: fixed;
+                inset: 0;
                 z-index: var(--z-modal-backdrop, 1040);
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                padding: 1rem;
+                background: rgba(0,0,0,0.45);
                 backdrop-filter: blur(6px);
                 -webkit-backdrop-filter: blur(6px);
+                overflow: hidden;
                 animation: fadeIn var(--transition-base, 250ms) var(--ease-out, ease-out);
             }
 
@@ -72,7 +87,6 @@ window.FindEntityModal = class FindEntityModal {
                 width: 100%;
                 max-width: 56rem;
                 max-height: calc(100vh - 2rem);
-                margin: 1rem;
                 overflow: hidden;
                 animation: slideInUp var(--transition-normal, 300ms) var(--ease-out, ease-out);
             }
@@ -131,6 +145,7 @@ window.FindEntityModal = class FindEntityModal {
                 background: var(--color-neutral-50, #f9fafb);
                 border-bottom: 1px solid var(--color-neutral-200, #e5e7eb);
                 flex-shrink: 0;
+                overflow: hidden;
             }
 
             /* Search bar row */
@@ -142,6 +157,7 @@ window.FindEntityModal = class FindEntityModal {
 
             #find-entity-modal .fem-search-input-wrapper {
                 flex: 1;
+                min-width: 0;
                 position: relative;
             }
 
@@ -264,6 +280,7 @@ window.FindEntityModal = class FindEntityModal {
             #find-entity-modal .fem-results-area {
                 flex: 1;
                 overflow-y: auto;
+                overflow-x: hidden;
                 padding: var(--spacing-4, 1rem) var(--spacing-5, 1.25rem);
                 min-height: 0;
             }
@@ -296,6 +313,7 @@ window.FindEntityModal = class FindEntityModal {
                 border: 1px solid var(--color-neutral-200, #e5e7eb);
                 border-radius: var(--radius-xl, 0.75rem);
                 padding: var(--spacing-4, 1rem);
+                overflow: hidden;
                 transition: all var(--transition-base, 250ms) var(--ease-out, ease-out);
             }
 
@@ -308,6 +326,7 @@ window.FindEntityModal = class FindEntityModal {
             #find-entity-modal .fem-place-card-body {
                 display: flex;
                 gap: var(--spacing-3, 0.75rem);
+                min-width: 0;
             }
 
             #find-entity-modal .fem-place-icon {
@@ -329,6 +348,7 @@ window.FindEntityModal = class FindEntityModal {
             #find-entity-modal .fem-place-info {
                 flex: 1;
                 min-width: 0;
+                overflow: hidden;
             }
 
             #find-entity-modal .fem-place-name {
@@ -503,7 +523,7 @@ window.FindEntityModal = class FindEntityModal {
      */
     createModalHTML() {
         const modalHTML = `
-            <div id="find-entity-modal" class="fixed inset-0 hidden flex items-center justify-center" style="background: rgba(0,0,0,0.45);">
+            <div id="find-entity-modal" class="hidden">
                 <div class="fem-dialog">
                     <!-- Header -->
                     <div class="fem-header">
@@ -655,14 +675,18 @@ window.FindEntityModal = class FindEntityModal {
         }
 
         // Filter changes trigger search
-        const filters = ['entity-type-filter', 'entity-price-filter', 'entity-rating-filter', 'entity-radius-filter'];
-        filters.forEach(filterId => {
+        const filterIds = ['entity-type-filter', 'entity-price-filter', 'entity-rating-filter', 'entity-radius-filter'];
+        filterIds.forEach(filterId => {
             const filterElement = document.getElementById(filterId);
             if (filterElement) {
-                filterElement.addEventListener('change', () => {
+                filterElement.addEventListener('change', (e) => {
+                    console.log(`🔄 Filter changed: ${filterId} → ${e.target.value}`);
                     this.updateFiltersFromUI();
+                    console.log('📊 Updated filters:', JSON.stringify(this.filters));
                     this.performSearch();
                 });
+            } else {
+                console.error(`❌ Filter element not found in DOM: ${filterId}`);
             }
         });
     }
@@ -780,9 +804,9 @@ window.FindEntityModal = class FindEntityModal {
             // Build API URL with parameters
             let url = `/places/nearby?latitude=${location.latitude}&longitude=${location.longitude}`;
 
-            // Only add type if not 'all'
+            // Always add type filter (backend uses includedTypes for Google API)
             if (this.filters.type && this.filters.type !== 'all') {
-                url += `&place_type=${this.filters.type}`;
+                url += `&place_type=${encodeURIComponent(this.filters.type)}`;
             }
 
             // CRITICAL FIX: When user types a keyword, omit radius so backend
@@ -804,6 +828,7 @@ window.FindEntityModal = class FindEntityModal {
             }
 
             console.log('🔗 Search URL:', url);
+            console.log('📊 Active filters:', JSON.stringify(this.filters));
             const response = await window.ApiService.request('GET', url);
             const data = await response.json();
 
