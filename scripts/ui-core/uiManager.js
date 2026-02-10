@@ -113,14 +113,23 @@ if (typeof window.UIManager === 'undefined') {
             this.initializeUIUtilsModule();
             
             // Initialize modules conditionally (only if not already initialized)
-            if (!this.curatorModule && typeof CuratorModule !== 'undefined') 
+            if (!this.curatorModule && typeof CuratorModule !== 'undefined') {
                 this.curatorModule = new CuratorModule(this);
+            }
             
-            if (!this.recordingModule && typeof RecordingModule !== 'undefined') 
+            if (!this.recordingModule && typeof RecordingModule !== 'undefined') {
                 this.recordingModule = new RecordingModule(this);
+                console.log('✅ RecordingModule initialized in UIManager.init()');
+            } else {
+                console.warn('⚠️ RecordingModule not initialized:', {
+                    alreadyExists: !!this.recordingModule,
+                    classAvailable: typeof RecordingModule !== 'undefined'
+                });
+            }
             
-            if (!this.transcriptionModule && typeof TranscriptionModule !== 'undefined') 
+            if (!this.transcriptionModule && typeof TranscriptionModule !== 'undefined') {
                 this.transcriptionModule = new TranscriptionModule(this);
+            }
             
             if (!this.conceptModule && typeof ConceptModule !== 'undefined') 
                 this.conceptModule = new ConceptModule(this);

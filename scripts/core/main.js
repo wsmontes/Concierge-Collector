@@ -224,26 +224,28 @@ async function initializeApp() {
         window.uiManager = new UIManager();
         window.uiManager.init();
         
-        // Ensure recording module is properly initialized
-        console.log('🔍 Checking RecordingModule availability:', {
-            RecordingModuleExists: typeof RecordingModule !== 'undefined',
-            uiManagerRecordingModule: !!window.uiManager.recordingModule,
+        // Verify recording module is properly initialized
+        console.log('🔍 Verifying RecordingModule initialization:', {
+            RecordingModuleClassExists: typeof RecordingModule !== 'undefined',
+            uiManagerRecordingModuleExists: !!window.uiManager.recordingModule,
             uiManagerExists: !!window.uiManager
         });
         
         if (!window.uiManager.recordingModule && typeof RecordingModule !== 'undefined') {
-            console.log('📦 Manually initializing recording module');
+            console.warn('⚠️ RecordingModule not initialized by UIManager - initializing manually');
             try {
                 window.uiManager.recordingModule = new RecordingModule(window.uiManager);
                 if (typeof window.uiManager.recordingModule.setupEvents === 'function') {
                     window.uiManager.recordingModule.setupEvents();
                 }
-                console.log('✅ Recording module manually initialized successfully');
+                console.log('✅ RecordingModule manually initialized (fallback)');
             } catch (error) {
-                console.error('❌ Failed to manually initialize recording module:', error);
+                console.error('❌ Failed to manually initialize RecordingModule:', error);
             }
         } else if (typeof RecordingModule === 'undefined') {
-            console.error('❌ RecordingModule class not found - check if script is loaded properly');
+            console.error('❌ RecordingModule class not found - script may not be loaded');
+        } else {
+            console.log('✅ RecordingModule already initialized by UIManager');
         }
         
         // Load curator info using DataStore
@@ -541,43 +543,45 @@ function cleanupBrowserData() {
 
 /**
  * Ensure the recording module is properly initialized after the UI Manager is created
+ * This is a safety check that should normally not be needed - serves as a diagnostic tool
  * @param {Object} uiManager - The UI Manager instance
  */
 function ensureRecordingModuleInitialized(uiManager) {
     // Wait for DOM to be fully ready
     setTimeout(() => {
         try {
-            console.log('🔄 Final check - ensuring recording module is properly initialized');
+            console.log('🔄 Final verification - checking RecordingModule state');
             
             if (uiManager && uiManager.recordingModule) {
-                // Make sure recording module has setup its events
+                // Module exists - verify events are set up
                 if (typeof uiManager.recordingModule.setupEvents === 'function') {
                     uiManager.recordingModule.setupEvents();
-                    console.log('✅ Recording module event setup reinforced');
+                    console.log('✅ RecordingModule events reinforced');
                     
                     // Make module available globally for debugging if needed
                     window.recordingModule = uiManager.recordingModule;
                 }
             } else {
-                console.warn('⚠️ Recording module STILL not found in UI Manager after initialization attempts');
-                console.log('🔍 Final debug info:', {
+                console.error('❌ RecordingModule STILL not initialized after all attempts');
+                console.log('🔍 Final diagnostic info:', {
                     uiManagerExists: !!uiManager,
                     recordingModuleExists: !!(uiManager && uiManager.recordingModule),
-                    RecordingModuleClassExists: typeof RecordingModule !== 'undefined'
+                    RecordingModuleClassExists: typeof RecordingModule !== 'undefined',
+                    timestamp: new Date().toISOString()
                 });
                 
-                // Last resort: try to initialize it here
+                // Emergency fallback: try to initialize it here
                 if (uiManager && !uiManager.recordingModule && typeof RecordingModule !== 'undefined') {
-                    console.log('🚨 Last resort: attempting to initialize recording module in ensureRecordingModuleInitialized');
+                    console.log('🚨 Emergency fallback: attempting RecordingModule initialization');
                     try {
                         uiManager.recordingModule = new RecordingModule(uiManager);
                         if (typeof uiManager.recordingModule.setupEvents === 'function') {
                             uiManager.recordingModule.setupEvents();
                         }
                         window.recordingModule = uiManager.recordingModule;
-                        console.log('✅ Recording module successfully initialized as last resort');
+                        console.log('✅ RecordingModule initialized via emergency fallback');
                     } catch (error) {
-                        console.error('❌ Last resort initialization also failed:', error);
+                        console.error('❌ Emergency fallback also failed:', error);
                     }
                 }
             }
