@@ -64,6 +64,18 @@ def _ensure_indexes():
         db.entities.create_index("data.place_id", unique=True, sparse=True, background=True)
         
         # Curations collection
+        # Check for and drop legacy unique index on entity_id if it exists
+        try:
+            indexes = db.curations.index_information()
+            for name, meta in indexes.items():
+                if "key" in meta and meta["key"] == [("entity_id", 1)] and meta.get("unique") is True:
+                    logger.warning(f"Found legacy unique index '{name}' on entity_id - Dropping...")
+                    db.curations.drop_index(name)
+                    logger.info("✅ Dropped legacy unique index")
+                    break
+        except Exception as e:
+            logger.warning(f"Error checking legacy indexes: {e}")
+
         db.curations.create_index("entity_id", background=True)
         db.curations.create_index("curator.id", background=True)
         db.curations.create_index("createdAt", background=True)

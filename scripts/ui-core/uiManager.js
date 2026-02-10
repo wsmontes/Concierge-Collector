@@ -27,12 +27,12 @@ if (typeof window.UIManager === 'undefined') {
             this.cancelCuratorButton = document.getElementById('cancel-curator');
             this.curatorNameDisplay = document.getElementById('curator-name-display');
             this.editCuratorButton = document.getElementById('edit-curator');
-            
+
             // Header elements (always visible)
             this.syncButtonHeader = document.getElementById('sync-button-header');
             this.syncStatusHeader = document.getElementById('sync-status-header');
             this.userProfileHeader = document.getElementById('user-profile-header');
-            
+
             // FAB and Quick Action elements
             this.fab = document.getElementById('fab');
             this.quickActionModal = document.getElementById('quick-action-modal');
@@ -41,17 +41,17 @@ if (typeof window.UIManager === 'undefined') {
             this.quickLocation = document.getElementById('quick-location');
             this.quickPhoto = document.getElementById('quick-photo');
             this.quickManual = document.getElementById('quick-manual');
-            
+
             // Sidebar elements (should be managed for visibility)
             this.syncSidebarSection = document.getElementById('sync-sidebar-section');
             this.syncButton = document.getElementById('sync-button');
             this.syncStatus = document.getElementById('sync-status');
             this.openSyncSettings = document.getElementById('open-sync-settings');
-            
+
             // Get restaurant list container
             this.restaurantsContainer = document.getElementById('restaurants-container');
             this.conceptsContainer = document.getElementById('concepts-container');
-            
+
             // Find Entity button (should only show in list view)
             this.findEntityBtn = document.getElementById('find-entity-btn');
 
@@ -61,14 +61,14 @@ if (typeof window.UIManager === 'undefined') {
             this.conceptsSection = document.getElementById('concepts-section');
             this.restaurantListSection = document.getElementById('entities-section'); // Fixed: was 'restaurant-list-section', but HTML has 'entities-section'
             this.exportImportSection = document.getElementById('export-import-section');
-            
+
             // Fixed toolbars
             this.restaurantEditToolbar = document.getElementById('restaurant-edit-toolbar');
             this.curatorEditToolbar = document.getElementById('curator-edit-toolbar');
-            
+
             // Loading overlay
             this.loadingOverlay = document.getElementById('loading-overlay');
-            
+
             // Form elements
             this.transcriptionText = document.getElementById('transcription-text');
 
@@ -77,12 +77,12 @@ if (typeof window.UIManager === 'undefined') {
                 curations: document.getElementById('tab-curations'),
                 entities: document.getElementById('tab-entities')
             };
-            
+
             this.views = {
                 curations: document.getElementById('curations-view'),
                 entities: document.getElementById('entities-view')
             };
-            
+
             this.containers = {
                 curations: document.getElementById('curations-container'),
                 entities: document.getElementById('entities-container')
@@ -96,7 +96,7 @@ if (typeof window.UIManager === 'undefined') {
          */
         init() {
             console.log('UIManager initializing...');
-            
+
             // State variables
             this.currentCurator = null;
             this.isEditingCurator = false;
@@ -105,15 +105,15 @@ if (typeof window.UIManager === 'undefined') {
             this.currentConcepts = [];
             this.currentLocation = null;
             this.currentPhotos = [];
-            
+
             // Initialize UI Utils module first to ensure availability of UI utility functions
             this.initializeUIUtilsModule();
-            
+
             // Initialize modules conditionally (only if not already initialized)
             if (!this.curatorModule && typeof CuratorModule !== 'undefined') {
                 this.curatorModule = new CuratorModule(this);
             }
-            
+
             if (!this.recordingModule && typeof RecordingModule !== 'undefined') {
                 this.recordingModule = new RecordingModule(this);
                 console.log('✅ RecordingModule initialized in UIManager.init()');
@@ -123,17 +123,17 @@ if (typeof window.UIManager === 'undefined') {
                     classAvailable: typeof RecordingModule !== 'undefined'
                 });
             }
-            
+
             if (!this.transcriptionModule && typeof TranscriptionModule !== 'undefined') {
                 this.transcriptionModule = new TranscriptionModule(this);
             }
-            
-            if (!this.conceptModule && typeof ConceptModule !== 'undefined') 
+
+            if (!this.conceptModule && typeof ConceptModule !== 'undefined')
                 this.conceptModule = new ConceptModule(this);
-            
-            if (!this.restaurantModule && typeof RestaurantModule !== 'undefined') 
+
+            if (!this.restaurantModule && typeof RestaurantModule !== 'undefined')
                 this.restaurantModule = new RestaurantModule(this);
-            
+
             if (!this.restaurantListModule && typeof RestaurantListModule !== 'undefined') {
                 this.restaurantListModule = new RestaurantListModule();
                 this.restaurantListModule.init({
@@ -143,15 +143,15 @@ if (typeof window.UIManager === 'undefined') {
                 // Expose to window for debugging
                 window.restaurantListModule = this.restaurantListModule;
             }
-            
-            if (!this.exportImportModule && typeof ExportImportModule !== 'undefined') 
+
+            if (!this.exportImportModule && typeof ExportImportModule !== 'undefined')
                 this.exportImportModule = new ExportImportModule(this);
-            
+
             // Initialize the quick action module safely
             if (!this.quickActionModule && typeof QuickActionModule !== 'undefined') {
                 this.quickActionModule = new QuickActionModule(this);
             }
-            
+
             // Setup events for each module if they exist
             if (this.curatorModule) this.curatorModule.setupEvents();
             if (this.recordingModule) this.recordingModule.setupEvents();
@@ -159,23 +159,23 @@ if (typeof window.UIManager === 'undefined') {
             if (this.conceptModule) this.conceptModule.setupEvents();
             if (this.restaurantModule) this.restaurantModule.setupEvents();
             if (this.exportImportModule) this.exportImportModule.setupEvents();
-            
+
             // Only set up quick action events if all required elements exist
             if (this.quickActionModule && this.fab && this.quickActionModal && this.closeQuickModal) {
                 this.quickActionModule.setupEvents();
             } else {
                 console.warn('Some quick action elements not found, skipping initialization');
             }
-            
+
             // Load curator info
             if (this.curatorModule) this.curatorModule.loadCuratorInfo();
-            
+
             // Set initial view state - show restaurant list, hide form
             this.showRestaurantListSection();
-            
+
             // Initialize tab system
             this.initTabSystem();
-            
+
             console.log('UIManager initialized');
         }
 
@@ -193,7 +193,7 @@ if (typeof window.UIManager === 'undefined') {
                     tabButton.addEventListener('click', () => this.switchTab(tabName));
                 }
             });
-            
+
             // Show default tab (curations)
             this.switchTab('curations');
         }
@@ -251,7 +251,7 @@ if (typeof window.UIManager === 'undefined') {
          * @param {string} tabName - Name of tab to load data for
          */
         loadTabData(tabName) {
-            switch(tabName) {
+            switch (tabName) {
                 case 'curations':
                     this.loadCurations();
                     break;
@@ -269,13 +269,13 @@ if (typeof window.UIManager === 'undefined') {
          */
         async loadCurations() {
             console.log('Loading curations view...');
-            
+
             const container = this.containers.curations;
             if (!container) {
                 console.warn('Curations container not found');
                 return;
             }
-            
+
             try {
                 // Get current curator
                 const curator = window.CuratorProfile?.getCurrentCurator();
@@ -296,7 +296,7 @@ if (typeof window.UIManager === 'undefined') {
                     .equals(curator.curator_id)
                     .reverse() // Most recent first
                     .toArray();
-                
+
                 if (curations.length === 0) {
                     container.innerHTML = `
                         <div class="col-span-full text-center py-12">
@@ -307,10 +307,10 @@ if (typeof window.UIManager === 'undefined') {
                     `;
                     return;
                 }
-                
+
                 // Get unique entity IDs from curations (filter out null/undefined)
                 const entityIds = [...new Set(curations.map(c => c.entity_id).filter(Boolean))];
-                
+
                 // Fetch entities for curations that have entity_id
                 const entitiesMap = new Map();
                 if (entityIds.length > 0) {
@@ -320,12 +320,12 @@ if (typeof window.UIManager === 'undefined') {
                         .toArray();
                     entities.forEach(entity => entitiesMap.set(entity.entity_id, entity));
                 }
-                
+
                 // Display curations with entity info
                 container.innerHTML = '';
                 curations.forEach(curation => {
                     const entity = curation.entity_id ? entitiesMap.get(curation.entity_id) : null;
-                    
+
                     // If entity exists, show curation card, otherwise show review-style card
                     if (entity) {
                         const card = window.CardFactory.createCurationCard(entity, curation);
@@ -336,7 +336,7 @@ if (typeof window.UIManager === 'undefined') {
                         container.appendChild(reviewCard);
                     }
                 });
-                
+
             } catch (error) {
                 console.error('Failed to load curations:', error);
                 container.innerHTML = `
@@ -356,13 +356,13 @@ if (typeof window.UIManager === 'undefined') {
          */
         async loadEntities() {
             console.log('Loading entities view...');
-            
+
             const container = this.containers.entities;
             if (!container) {
                 console.warn('Entities container not found');
                 return;
             }
-            
+
             try {
                 // Initialize pagination state if not exists
                 if (!this.entityPagination) {
@@ -372,10 +372,10 @@ if (typeof window.UIManager === 'undefined') {
                         hasMore: true
                     };
                 }
-                
+
                 // Get all entities
                 const entities = await window.DataStore.getEntities({ status: 'active' });
-                
+
                 if (entities.length === 0) {
                     container.innerHTML = `
                         <div class="col-span-full text-center py-12">
@@ -386,14 +386,14 @@ if (typeof window.UIManager === 'undefined') {
                     `;
                     return;
                 }
-                
+
                 // Reset pagination on fresh load
                 this.entityPagination.currentPage = 0;
                 this.entityPagination.totalItems = entities.length;
-                
+
                 // Display first page
                 this.renderEntitiesPage(entities);
-                
+
             } catch (error) {
                 console.error('Failed to load entities:', error);
                 container.innerHTML = `
@@ -404,22 +404,22 @@ if (typeof window.UIManager === 'undefined') {
                 `;
             }
         }
-        
+
         /**
          * Render a page of entities with pagination controls
          */
         renderEntitiesPage(allEntities) {
             const container = this.containers.entities;
             const { currentPage, pageSize } = this.entityPagination;
-            
+
             const start = currentPage * pageSize;
             const end = start + pageSize;
             const pageEntities = allEntities.slice(start, end);
             const totalPages = Math.ceil(allEntities.length / pageSize);
-            
+
             // Clear container
             container.innerHTML = '';
-            
+
             // Add pagination header
             const header = document.createElement('div');
             header.className = 'col-span-full mb-4 p-4 bg-blue-50 border border-blue-100 rounded-lg flex items-center justify-between';
@@ -440,18 +440,18 @@ if (typeof window.UIManager === 'undefined') {
                 </div>
             `;
             container.appendChild(header);
-            
+
             // Add pagination controls
             header.querySelector('#prev-page')?.addEventListener('click', () => {
                 this.entityPagination.currentPage--;
                 this.renderEntitiesPage(allEntities);
             });
-            
+
             header.querySelector('#next-page')?.addEventListener('click', () => {
                 this.entityPagination.currentPage++;
                 this.renderEntitiesPage(allEntities);
             });
-            
+
             // Display entities for this page
             pageEntities.forEach(entity => {
                 const card = window.CardFactory.createEntityCard(entity);
@@ -487,9 +487,9 @@ if (typeof window.UIManager === 'undefined') {
             const card = document.createElement('div');
             card.className = 'bg-amber-50 border-2 border-amber-200 rounded-xl p-5 hover:shadow-lg transition-all';
             card.dataset.curationId = curation.curation_id;
-            
+
             const date = curation.created_at ? new Date(curation.created_at).toLocaleDateString() : 'Unknown date';
-            
+
             // Extract concept names from categories object
             const categories = curation.categories || {};
             const conceptNames = [];
@@ -499,7 +499,7 @@ if (typeof window.UIManager === 'undefined') {
                 }
             });
             const conceptDisplay = conceptNames.slice(0, 3).join(', ');
-            const totalConcepts = Object.values(categories).flat().length;            
+            const totalConcepts = Object.values(categories).flat().length;
             card.innerHTML = `
                 <div class="flex items-start gap-3 mb-3">
                     <span class="material-icons text-2xl text-amber-600">rate_review</span>
@@ -528,39 +528,119 @@ if (typeof window.UIManager === 'undefined') {
                     </button>
                 </div>
             `;
-            
+
             // Add event listeners
             card.querySelector('.btn-link-entity')?.addEventListener('click', (e) => {
                 e.stopPropagation();
                 this.handleLinkReviewToEntity(curation);
             });
-            
+
             card.querySelector('.btn-view-details')?.addEventListener('click', (e) => {
                 e.stopPropagation();
                 this.handleViewReviewDetails(curation);
             });
-            
+
             return card;
         }
-        
+
         /**
          * Handle linking a review to an entity
          */
         async handleLinkReviewToEntity(curation) {
             console.log('Link review to entity:', curation.curation_id);
-            // TODO: Implement entity search/link modal
-            alert('Entity linking feature coming soon!');
+
+            if (!window.modalManager) {
+                alert('Entity linking feature coming soon!');
+                return;
+            }
+
+            window.modalManager.open({
+                title: 'Feature Coming Soon',
+                content: `
+                    <div class="text-center p-4">
+                        <span class="material-icons text-5xl text-blue-200 mb-4">link</span>
+                        <p class="text-gray-600 mb-2">The <strong>Entity Linking</strong> feature is currently under development.</p>
+                        <p class="text-sm text-gray-500">Soon you will be able to search for a restaurant and link this review to it.</p>
+                    </div>
+                `,
+                footer: `
+                    <button class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700" onclick="window.modalManager.closeAll()">
+                        Got it
+                    </button>
+                `,
+                size: 'sm'
+            });
         }
-        
+
         /**
          * Handle viewing review details
          */
         handleViewReviewDetails(curation) {
             console.log('View review details:', curation);
+
+            if (!window.modalManager) {
+                console.warn('ModalManager not available');
+                alert(`Review ID: ${curation.curation_id}`);
+                return;
+            }
+
             const categories = curation.categories || {};
             const totalConcepts = Object.values(categories).flat().length;
-            // TODO: Implement review details modal
-            alert(`Review ID: ${curation.curation_id}\nConcepts: ${totalConcepts}\nCategories: ${Object.keys(categories).join(', ')}`);
+            const date = curation.created_at ? new Date(curation.created_at).toLocaleString() : 'Unknown';
+
+            const content = document.createElement('div');
+            content.className = 'space-y-4';
+            content.innerHTML = `
+                <div class="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                    <p class="text-sm text-gray-500 mb-1">Created</p>
+                    <p class="font-medium text-gray-900">${date}</p>
+                </div>
+
+                ${curation.transcription ? `
+                    <div>
+                        <h3 class="font-semibold text-gray-700 mb-2">Transcription</h3>
+                        <div class="bg-white p-3 rounded border border-gray-200 text-gray-600 text-sm max-h-40 overflow-y-auto">
+                            ${curation.transcription}
+                        </div>
+                    </div>
+                ` : ''}
+
+                <div>
+                    <h3 class="font-semibold text-gray-700 mb-2 flex items-center justify-between">
+                        <span>Extracted Concepts</span>
+                        <span class="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">${totalConcepts}</span>
+                    </h3>
+                    
+                    ${Object.keys(categories).length === 0 ?
+                    '<p class="text-gray-500 italic text-sm">No concepts extracted</p>' :
+                    '<div class="space-y-3">' +
+                    Object.entries(categories).map(([category, items]) => `
+                            <div>
+                                <h4 class="text-xs font-bold uppercase text-gray-500 mb-1">${category}</h4>
+                                <div class="flex flex-wrap gap-2">
+                                    ${items.map(item => `
+                                        <span class="px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded border border-blue-100">
+                                            ${item}
+                                        </span>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        `).join('') +
+                    '</div>'
+                }
+                </div>
+            `;
+
+            window.modalManager.open({
+                title: 'Review Details',
+                content: content,
+                footer: `
+                    <button class="btn-close-modal px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300" onclick="window.modalManager.closeAll()">
+                        Close
+                    </button>
+                `,
+                size: 'md'
+            });
         }
 
         /**
@@ -590,11 +670,11 @@ if (typeof window.UIManager === 'undefined') {
             if (this.conceptsSection) this.conceptsSection.classList.add('hidden');
             if (this.restaurantListSection) this.restaurantListSection.classList.add('hidden');
             if (this.exportImportSection) this.exportImportSection.classList.add('hidden');
-            
+
             // Hide list-only UI elements
             if (this.findEntityBtn) this.findEntityBtn.classList.add('hidden');
             if (this.syncSidebarSection) this.syncSidebarSection.classList.add('hidden');
-            
+
             // Hide all toolbars
             if (this.restaurantEditToolbar) this.restaurantEditToolbar.classList.add('hidden');
             if (this.curatorEditToolbar) this.curatorEditToolbar.classList.add('hidden');
@@ -606,18 +686,18 @@ if (typeof window.UIManager === 'undefined') {
             // Add null checks before accessing classList
             if (this.curatorSection) this.curatorSection.classList.remove('hidden');
             if (this.conceptsSection) this.conceptsSection.classList.remove('hidden');
-            
+
             // Show restaurant edit toolbar (same as edit mode)
             if (this.restaurantEditToolbar) {
                 this.restaurantEditToolbar.classList.remove('hidden');
-                
+
                 // Update toolbar title based on mode
                 const toolbarTitle = this.restaurantEditToolbar.querySelector('.toolbar-info-title');
                 if (toolbarTitle) {
                     toolbarTitle.textContent = this.isEditingRestaurant ? 'Edit Restaurant' : 'New Restaurant';
                 }
             }
-            
+
             // Reset the current concepts if coming from manual entry
             if (!this.currentConcepts || this.currentConcepts.length === 0) {
                 this.currentConcepts = [];
@@ -640,7 +720,7 @@ if (typeof window.UIManager === 'undefined') {
             if (this.curatorSection) this.curatorSection.classList.remove('hidden');
             if (this.transcriptionSection) this.transcriptionSection.classList.remove('hidden');
             // Keep restaurant list hidden during transcription review to focus on the task
-            
+
             // Display the transcription
             if (this.transcriptionText) {
                 this.transcriptionText.textContent = transcription;
@@ -654,30 +734,30 @@ if (typeof window.UIManager === 'undefined') {
             // Add null checks before accessing classList
             if (this.curatorSection) this.curatorSection.classList.remove('hidden');
             if (this.conceptsSection) this.conceptsSection.classList.remove('hidden');
-            
+
             // Show restaurant edit toolbar
             if (this.restaurantEditToolbar) {
                 this.restaurantEditToolbar.classList.remove('hidden');
-                
+
                 // Update toolbar title based on mode
                 const toolbarTitle = this.restaurantEditToolbar.querySelector('.toolbar-info-title');
                 if (toolbarTitle) {
                     toolbarTitle.textContent = this.isEditingRestaurant ? 'Edit Restaurant' : 'New Restaurant';
                 }
             }
-            
+
             // Only set transcription if we're coming from transcription screen
             // AND we're not editing an existing restaurant
             const transcriptionTextarea = document.getElementById('restaurant-transcription');
-            
+
             if (this.originalTranscription && !this.editingRestaurantId && transcriptionTextarea && !transcriptionTextarea.value) {
                 // Only update if the textarea is empty and we have a new transcription
                 transcriptionTextarea.value = this.originalTranscription;
             }
-            
+
             // Render the extracted concepts
             this.renderConcepts();
-            
+
             // Scroll to the concepts section smoothly
             setTimeout(() => {
                 const conceptsSection = document.getElementById('concepts-section');
@@ -693,7 +773,7 @@ if (typeof window.UIManager === 'undefined') {
             if (this.curatorSection) this.curatorSection.classList.remove('hidden');
             if (this.restaurantListSection) this.restaurantListSection.classList.remove('hidden');
             if (this.exportImportSection) this.exportImportSection.classList.remove('hidden');
-            
+
             // Show list-only UI elements
             if (this.findEntityBtn) this.findEntityBtn.classList.remove('hidden');
             if (this.syncSidebarSection) this.syncSidebarSection.classList.remove('hidden');
@@ -710,7 +790,7 @@ if (typeof window.UIManager === 'undefined') {
                 alert(message || 'Loading...');
             }
         }
-        
+
         hideLoading() {
             if (this.uiUtilsModule && typeof this.uiUtilsModule.hideLoading === 'function') {
                 this.uiUtilsModule.hideLoading();
@@ -720,7 +800,7 @@ if (typeof window.UIManager === 'undefined') {
                 console.warn('hideLoading not available');
             }
         }
-        
+
         updateLoadingMessage(message) {
             if (this.uiUtilsModule && typeof this.uiUtilsModule.updateLoadingMessage === 'function') {
                 this.uiUtilsModule.updateLoadingMessage(message);
@@ -730,7 +810,7 @@ if (typeof window.UIManager === 'undefined') {
                 console.warn('updateLoadingMessage not available');
             }
         }
-        
+
         showNotification(message, type) {
             if (this.uiUtilsModule && typeof this.uiUtilsModule.showNotification === 'function') {
                 this.uiUtilsModule.showNotification(message, type);
@@ -752,7 +832,7 @@ if (typeof window.UIManager === 'undefined') {
                 return this.getFallbackPosition();
             }
         }
-        
+
         /**
          * Fallback position getter when uiUtils is unavailable
          * @returns {Promise<GeolocationPosition>}
@@ -763,7 +843,7 @@ if (typeof window.UIManager === 'undefined') {
                     reject(new Error('Geolocation is not supported by your browser'));
                     return;
                 }
-                
+
                 navigator.geolocation.getCurrentPosition(resolve, reject, {
                     enableHighAccuracy: true,
                     timeout: 10000,
@@ -773,49 +853,49 @@ if (typeof window.UIManager === 'undefined') {
         }
 
         // Additional delegation methods for core functionality
-        
+
         // Concept module delegations
         renderConcepts() {
             this.conceptModule.renderConcepts();
         }
-        
+
         removeConcept(category, value) {
             this.conceptModule.removeConcept(category, value);
         }
-        
+
         showAddConceptDialog(category) {
             this.conceptModule.showAddConceptDialog(category);
         }
-        
+
         isDuplicateConcept(category, value) {
             return this.conceptModule.isDuplicateConcept(category, value);
         }
-        
+
         showDuplicateConceptWarning(category, value) {
             this.conceptModule.showDuplicateConceptWarning(category, value);
         }
-        
+
         addConceptWithValidation(category, value) {
             return this.conceptModule.addConceptWithValidation(category, value);
         }
-        
+
         handleExtractedConceptsWithValidation(extractedConcepts) {
             this.conceptModule.handleExtractedConceptsWithValidation(extractedConcepts);
         }
-        
+
         filterExistingConcepts(conceptsToFilter) {
             return this.conceptModule.filterExistingConcepts(conceptsToFilter);
         }
-        
+
         conceptAlreadyExists(category, value) {
             return this.conceptModule.conceptAlreadyExists(category, value);
         }
-        
+
         // Restaurant module delegations
         editRestaurant(restaurant) {
             // Clear transcription data when editing a different restaurant
             this.clearTranscriptionData();
-            
+
             this.restaurantModule.editRestaurant(restaurant);
         }
 
@@ -826,28 +906,28 @@ if (typeof window.UIManager === 'undefined') {
             console.log('Clearing transcription data');
             this.originalTranscription = null;
             this.translatedTranscription = null;
-            
+
             // Also clear the transcription textarea in the restaurant form
             const transcriptionTextarea = document.getElementById('restaurant-transcription');
             if (transcriptionTextarea) {
                 transcriptionTextarea.value = '';
             }
-            
+
             // Clear the transcription text element if it exists
             if (this.transcriptionText) {
                 this.transcriptionText.textContent = '';
             }
-            
+
             console.log('Transcription data cleared');
         }
-        
+
         /**
          * Loads restaurant profile data
          */
         loadRestaurantProfile(restaurantData) {
             // Clear transcription data to prevent leakage between restaurants
             this.clearTranscriptionData();
-            
+
             // If this restaurant has a transcription, set it properly
             if (restaurantData && restaurantData.transcription) {
                 const transcriptionTextarea = document.getElementById('restaurant-transcription');
@@ -855,26 +935,26 @@ if (typeof window.UIManager === 'undefined') {
                     transcriptionTextarea.value = restaurantData.transcription;
                 }
             }
-            
+
             // ...existing code to load restaurant profile...
         }
-        
+
         // Add clearTranscriptionData to any place where new restaurants are created
         newRestaurant() {
             // Clear any existing transcription data
             this.clearTranscriptionData();
-            
+
             // Reset editing state
             this.isEditingRestaurant = false;
             this.editingRestaurantId = null;
-            
+
             // ...existing code for creating new restaurant...
         }
-        
+
         // Also ensure it's called after saving a restaurant
         saveRestaurant() {
             // ...existing code for saving restaurant...
-            
+
             // Clear transcription data after saving
             this.clearTranscriptionData();
         }
@@ -888,21 +968,21 @@ if (typeof window.UIManager === 'undefined') {
         updateProcessingStatus(step, status, message = null) {
             const stepElement = document.getElementById(`${step}-status`);
             if (!stepElement) return;
-            
+
             // Remove existing status classes
             stepElement.classList.remove('in-progress', 'completed', 'error');
-            
+
             // Set icon and message based on status
             const iconElement = stepElement.querySelector('.material-icons');
             const textElement = stepElement.querySelector('span:not(.material-icons)');
-            
+
             if (iconElement && textElement) {
                 let icon = 'pending';
                 let statusClass = '';
-                let defaultMessage = step === 'transcription' 
+                let defaultMessage = step === 'transcription'
                     ? 'Transcribing your audio...'
                     : 'Analyzing restaurant details...';
-                
+
                 switch (status) {
                     case 'in-progress':
                         icon = 'hourglass_top';
@@ -924,10 +1004,10 @@ if (typeof window.UIManager === 'undefined') {
                         icon = 'pending';
                         break;
                 }
-                
+
                 iconElement.textContent = icon;
                 textElement.textContent = message || defaultMessage;
-                
+
                 if (statusClass) {
                     stepElement.classList.add(statusClass);
                 }
@@ -943,23 +1023,23 @@ if (typeof window.UIManager === 'undefined') {
             // Update processing status
             this.updateProcessingStatus('transcription', 'completed');
             this.updateProcessingStatus('analysis', 'in-progress');
-            
+
             // Proceed with original implementation
             console.log('Showing transcription section');
             this.hideAllSections(); // Changed from resetSections() to hideAllSections()
-            
+
             // Add null check for curatorSection
             if (this.curatorSection) this.curatorSection.classList.remove('hidden');
             const transcriptionSection = document.getElementById('transcription-section');
             if (transcriptionSection) {
                 transcriptionSection.classList.remove('hidden');
             }
-            
+
             const transcriptionTextElement = document.getElementById('transcription-text');
             if (transcriptionTextElement) {
                 transcriptionTextElement.textContent = transcriptionText || 'No transcription available';
                 this.transcriptionText = transcriptionTextElement;
-                
+
                 // Store the original transcription for potential reuse
                 this.originalTranscription = transcriptionText;
             }
@@ -971,14 +1051,14 @@ if (typeof window.UIManager === 'undefined') {
          */
         async refreshAfterSync() {
             console.log('Refreshing UI after synchronization...');
-            
+
             // Refresh curator selector if available
             if (this.curatorModule && typeof this.curatorModule.initializeCuratorSelector === 'function') {
                 this.curatorModule.curatorSelectorInitialized = false;
                 await this.curatorModule.initializeCuratorSelector();
                 console.log('Curator selector refreshed');
             }
-            
+
             // Refresh restaurant list if available
             if (this.restaurantModule && typeof this.restaurantModule.loadRestaurantList === 'function') {
                 const currentCurator = await dataStorage.getCurrentCurator();
@@ -988,13 +1068,13 @@ if (typeof window.UIManager === 'undefined') {
                     console.log('Restaurant list refreshed');
                 }
             }
-            
+
             // Update any sync status indicators (both header and sidebar)
             const syncStatusElements = [
                 document.getElementById('sync-status-header'),
                 document.getElementById('sync-status')
             ].filter(Boolean);
-            
+
             if (syncStatusElements.length > 0) {
                 const lastSyncTime = await dataStorage.getLastSyncTime();
                 if (lastSyncTime) {
@@ -1004,7 +1084,7 @@ if (typeof window.UIManager === 'undefined') {
                     });
                 }
             }
-            
+
             console.log('UI refresh after sync complete');
         }
     });

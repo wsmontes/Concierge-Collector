@@ -302,7 +302,9 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
         this.container.innerHTML = '';
 
         entities.forEach(entity => {
-            const card = window.CardFactory.createEntityCard(entity);
+            const card = window.CardFactory.createEntityCard(entity, {
+                onClick: (e) => this.showEntityDetails(e)
+            });
             this.container.appendChild(card);
         });
     }
@@ -342,167 +344,136 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
     showEntityDetails(entity) {
         this.log.debug('Showing entity details:', entity.entity_id);
 
-        // Create modal
-        const modal = document.createElement('div');
-        modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto';
-        modal.innerHTML = `
-            <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full my-4 md:my-8">
-                <div class="p-4 md:p-6 max-h-[calc(100vh-4rem)] overflow-y-auto">
-                    <!-- Header -->
-                    <div class="flex justify-between items-start mb-4">
-                        <h2 class="text-2xl font-bold text-gray-900">${entity.name || 'Unknown'}</h2>
-                        <button class="btn-close-modal text-gray-500 hover:text-gray-700">
-                            <span class="material-icons">close</span>
-                        </button>
-                    </div>
+        if (!window.modalManager) {
+            this.log.error('ModalManager not available');
+            return;
+        }
 
-                    <!-- Details -->
-                    <div class="space-y-4">
-                        ${entity.data?.location ? `
-                            <div>
-                                <h3 class="font-semibold text-gray-700 mb-2">Location</h3>
-                                <p class="text-gray-600">${entity.data.location.address || 'N/A'}</p>
-                                <p class="text-sm text-gray-500">${entity.data.location.city || ''}, ${entity.data.location.country || ''}</p>
-                                ${entity.data.location.lat && entity.data.location.lng ? `
-                                    <p class="text-xs text-gray-400 mt-1">
-                                        ${entity.data.location.lat.toFixed(6)}, ${entity.data.location.lng.toFixed(6)}
-                                    </p>
-                                ` : ''}
-                            </div>
-                        ` : ''}
+        const content = document.createElement('div');
+        content.className = 'space-y-4';
+        content.innerHTML = `
+            ${entity.data?.location ? `
+                <div>
+                    <h3 class="font-semibold text-gray-700 mb-2">Location</h3>
+                    <p class="text-gray-600">${entity.data.location.address || 'N/A'}</p>
+                    <p class="text-sm text-gray-500">${entity.data.location.city || ''}, ${entity.data.location.country || ''}</p>
+                    ${entity.data.location.lat && entity.data.location.lng ? `
+                        <p class="text-xs text-gray-400 mt-1">
+                            ${entity.data.location.lat.toFixed(6)}, ${entity.data.location.lng.toFixed(6)}
+                        </p>
+                    ` : ''}
+                </div>
+            ` : ''}
 
-                        ${entity.data?.contacts ? `
-                            <div>
-                                <h3 class="font-semibold text-gray-700 mb-2">Contact</h3>
-                                ${entity.data.contacts.phone ? `<p class="text-gray-600">📞 ${entity.data.contacts.phone}</p>` : ''}
-                                ${entity.data.contacts.website ? `<p class="text-gray-600">🌐 <a href="${entity.data.contacts.website}" target="_blank" class="text-blue-600 hover:underline">${entity.data.contacts.website}</a></p>` : ''}
-                                ${entity.data.contacts.email ? `<p class="text-gray-600">📧 ${entity.data.contacts.email}</p>` : ''}
-                            </div>
-                        ` : ''}
+            ${entity.data?.contacts ? `
+                <div>
+                    <h3 class="font-semibold text-gray-700 mb-2">Contact</h3>
+                    ${entity.data.contacts.phone ? `<p class="text-gray-600">📞 ${entity.data.contacts.phone}</p>` : ''}
+                    ${entity.data.contacts.website ? `<p class="text-gray-600">🌐 <a href="${entity.data.contacts.website}" target="_blank" class="text-blue-600 hover:underline">${entity.data.contacts.website}</a></p>` : ''}
+                    ${entity.data.contacts.email ? `<p class="text-gray-600">📧 ${entity.data.contacts.email}</p>` : ''}
+                </div>
+            ` : ''}
 
-                        ${entity.data?.attributes ? `
-                            <div>
-                                <h3 class="font-semibold text-gray-700 mb-2">Attributes</h3>
-                                <div class="grid grid-cols-2 gap-2 text-sm">
-                                    ${entity.data.attributes.rating ? `<p><span class="font-medium">Rating:</span> ${entity.data.attributes.rating} ⭐</p>` : ''}
-                                    ${entity.data.attributes.user_ratings_total ? `<p><span class="font-medium">Reviews:</span> ${entity.data.attributes.user_ratings_total}</p>` : ''}
-                                    ${entity.data.attributes.price_level ? `<p><span class="font-medium">Price:</span> ${'$'.repeat(entity.data.attributes.price_level)}</p>` : ''}
-                                    ${entity.data.attributes.cuisine ? `<p><span class="font-medium">Cuisine:</span> ${entity.data.attributes.cuisine}</p>` : ''}
-                                </div>
-                            </div>
-                        ` : ''}
-
-                        <!-- Metadata -->
-                        <div class="border-t pt-4">
-                            <h3 class="font-semibold text-gray-700 mb-2">Metadata</h3>
-                            <div class="text-sm text-gray-600 space-y-1">
-                                <p><span class="font-medium">Entity ID:</span> ${entity.entity_id}</p>
-                                <p><span class="font-medium">Type:</span> ${entity.type || 'restaurant'}</p>
-                                <p><span class="font-medium">Status:</span> ${entity.status || 'active'}</p>
-                                <p><span class="font-medium">Version:</span> ${entity.version || 1}</p>
-                                <p><span class="font-medium">Created by:</span> ${entity.createdBy?.name || entity.createdBy || 'Unknown'}</p>
-                                <p><span class="font-medium">Created at:</span> ${entity.createdAt ? new Date(entity.createdAt).toLocaleString() : 'Unknown'}</p>
-                                ${entity.updatedAt ? `<p><span class="font-medium">Updated at:</span> ${new Date(entity.updatedAt).toLocaleString()}</p>` : ''}
-                            </div>
-                        </div>
-
-                        <!-- Sync Status -->
-                        ${entity.sync ? `
-                            <div class="border-t pt-4">
-                                <h3 class="font-semibold text-gray-700 mb-2">Sync Status</h3>
-                                <div class="text-sm text-gray-600 space-y-1">
-                                    <p class="flex items-center gap-2">
-                                        <span class="font-medium">Status:</span> 
-                                        ${this.getSyncStatusBadge(entity)}
-                                    </p>
-                                    ${entity.sync.serverId ? `<p><span class="font-medium">Server ID:</span> ${entity.sync.serverId}</p>` : ''}
-                                    ${entity.sync.lastSyncedAt ? `<p><span class="font-medium">Last synced:</span> ${new Date(entity.sync.lastSyncedAt).toLocaleString()}</p>` : ''}
-                                </div>
-                                ${entity.sync.status === 'pending' || entity.sync.status === 'conflict' ? `
-                                    <button class="btn-sync-entity mt-2 w-full text-sm py-2 px-4 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center justify-center gap-2">
-                                        <span class="material-icons text-sm">sync</span>
-                                        ${entity.sync.status === 'conflict' ? 'Resolve Conflict' : 'Sync Now'}
-                                    </button>
-                                ` : ''}
-                            </div>
-                        ` : ''}
-
-                        <!-- Actions -->
-                        <div class="border-t pt-4 flex gap-2">
-                            <button class="btn btn-primary flex-1 btn-curate-entity">
-                                <span class="material-icons text-sm mr-1">edit</span>
-                                Curate This Entity
-                            </button>
-                            <button class="btn btn-secondary flex-1">
-                                <span class="material-icons text-sm mr-1">delete</span>
-                                Delete Entity
-                            </button>
-                        </div>
+            ${entity.data?.attributes ? `
+                <div>
+                    <h3 class="font-semibold text-gray-700 mb-2">Attributes</h3>
+                    <div class="grid grid-cols-2 gap-2 text-sm">
+                        ${entity.data.attributes.rating ? `<p><span class="font-medium">Rating:</span> ${entity.data.attributes.rating} ⭐</p>` : ''}
+                        ${entity.data.attributes.user_ratings_total ? `<p><span class="font-medium">Reviews:</span> ${entity.data.attributes.user_ratings_total}</p>` : ''}
+                        ${entity.data.attributes.price_level ? `<p><span class="font-medium">Price:</span> ${'$'.repeat(entity.data.attributes.price_level)}</p>` : ''}
+                        ${entity.data.attributes.cuisine ? `<p><span class="font-medium">Cuisine:</span> ${entity.data.attributes.cuisine}</p>` : ''}
                     </div>
                 </div>
+            ` : ''}
+
+            <!-- Metadata -->
+            <div class="border-t pt-4">
+                <h3 class="font-semibold text-gray-700 mb-2">Metadata</h3>
+                <div class="text-sm text-gray-600 space-y-1">
+                    <p><span class="font-medium">Entity ID:</span> ${entity.entity_id}</p>
+                    <p><span class="font-medium">Type:</span> ${entity.type || 'restaurant'}</p>
+                    <p><span class="font-medium">Status:</span> ${entity.status || 'active'}</p>
+                    <p><span class="font-medium">Version:</span> ${entity.version || 1}</p>
+                </div>
             </div>
+
+            <!-- Sync Status -->
+            ${entity.sync ? `
+                <div class="border-t pt-4">
+                    <h3 class="font-semibold text-gray-700 mb-2">Sync Status</h3>
+                    <div class="text-sm text-gray-600 space-y-1">
+                        <p class="flex items-center gap-2">
+                            <span class="font-medium">Status:</span> 
+                            ${this.getSyncStatusBadge(entity)}
+                        </p>
+                    </div>
+                    ${entity.sync.status === 'pending' || entity.sync.status === 'conflict' ? `
+                        <button class="btn-sync-entity mt-2 w-full text-sm py-2 px-4 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center justify-center gap-2">
+                            <span class="material-icons text-sm">sync</span>
+                            ${entity.sync.status === 'conflict' ? 'Resolve Conflict' : 'Sync Now'}
+                        </button>
+                    ` : ''}
+                </div>
+            ` : ''}
         `;
 
-        // Add to body
-        document.body.appendChild(modal);
+        // Footer Actions
+        const footer = document.createElement('div');
+        footer.className = 'w-full flex gap-2';
+        footer.innerHTML = `
+            <button class="btn-curate-entity flex-1 py-2 px-4 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center justify-center gap-2">
+                <span class="material-icons text-sm">edit</span>
+                Curate This Entity
+            </button>
+            <button class="btn-delete-entity flex-1 py-2 px-4 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 flex items-center justify-center gap-2">
+                <span class="material-icons text-sm">delete</span>
+                Delete Entity
+            </button>
+        `;
 
-        // Close button
-        modal.querySelector('.btn-close-modal').addEventListener('click', () => {
-            modal.remove();
+        // Bind events
+        const modalId = window.modalManager.open({
+            title: entity.name || 'Unknown',
+            content: content,
+            footer: footer,
+            size: 'md'
         });
 
-        // Curate button
-        const curateButton = modal.querySelector('.btn-curate-entity');
-        if (curateButton) {
-            curateButton.addEventListener('click', () => {
-                modal.remove();
-                if (window.uiManager && typeof window.uiManager.editRestaurant === 'function') {
-                    window.uiManager.editRestaurant(entity);
-                } else {
-                    this.log.error('UIManager.editRestaurant not available');
-                }
-            });
-        }
+        // Event Listeners
+        setTimeout(() => {
+            const modalEl = document.getElementById(modalId);
+            if (!modalEl) return;
 
-        // Sync button (if exists)
-        const syncButton = modal.querySelector('.btn-sync-entity');
-        if (syncButton) {
-            syncButton.addEventListener('click', async () => {
-                try {
-                    syncButton.disabled = true;
-                    syncButton.innerHTML = '<span class="material-icons text-sm animate-spin">sync</span> Syncing...';
+            // Curate
+            const curateBtn = modalEl.querySelector('.btn-curate-entity');
+            if (curateBtn) {
+                curateBtn.addEventListener('click', () => {
+                    window.modalManager.close(modalId);
+                    if (window.uiManager && typeof window.uiManager.editRestaurant === 'function') {
+                        window.uiManager.editRestaurant(entity);
+                    }
+                });
+            }
 
-                    if (entity.sync?.status === 'conflict') {
-                        // Show conflict resolution UI
-                        await this.handleConflictResolution(entity);
-                    } else {
-                        // Trigger manual sync for this entity
-                        if (window.SyncManager && typeof window.SyncManager.pushEntities === 'function') {
+            // Sync
+            const syncBtn = modalEl.querySelector('.btn-sync-entity');
+            if (syncBtn) {
+                syncBtn.addEventListener('click', async () => {
+                    // Similar logic to before, simplified for modalManager
+                    try {
+                        syncBtn.innerHTML = '<span class="material-icons text-sm animate-spin">sync</span> Syncing...';
+                        if (window.SyncManager) {
                             await window.SyncManager.pushEntities();
                             this.log.info('Entity synced successfully');
-                        } else {
-                            this.log.warn('⚠️ Cannot sync - SyncManager not available');
                         }
+                        window.modalManager.close(modalId);
+                        await this.refresh();
+                    } catch (error) {
+                        alert('Sync failed: ' + error.message);
                     }
-
-                    // Close modal and refresh
-                    modal.remove();
-                    await this.refresh();
-                } catch (error) {
-                    this.log.error('Failed to sync entity:', error);
-                    alert('Failed to sync entity: ' + error.message);
-                    syncButton.disabled = false;
-                    syncButton.innerHTML = '<span class="material-icons text-sm">sync</span> Sync Now';
-                }
-            });
-        }
-
-        // Click outside to close
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                modal.remove();
+                });
             }
-        });
+        }, 0);
     }
 
     /**
