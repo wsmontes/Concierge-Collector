@@ -71,7 +71,8 @@ class OutputHandler:
             return {
                 "entity_id": results.get("entity", {}).get("entity_id"),
                 "curation_id": results.get("curation", {}).get("curation_id"),
-                "concepts": results.get("concepts", {}).get("concepts", [])
+                "concepts": results.get("concepts", {}).get("concepts", []),
+                "restaurant_name": results.get("concepts", {}).get("restaurant_name")
             }
         elif format_type == "ids_only":
             return {

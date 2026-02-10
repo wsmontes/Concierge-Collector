@@ -27,29 +27,29 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
     async initialize() {
         try {
             this.log.debug('🚀 Initializing V3 API Service...');
-            
+
             if (!this.baseUrl) {
                 throw new Error('API base URL not configured');
             }
-            
+
             // Check if user is authenticated
             if (typeof AuthService !== 'undefined' && AuthService.isAuthenticated()) {
                 this.log.debug('✅ User authenticated with OAuth');
             } else {
                 this.log.warn('⚠️ No authentication - write operations will fail');
             }
-            
+
             try {
                 await this.getInfo();
                 this.log.debug('✅ API connection verified');
             } catch (error) {
                 this.log.warn('⚠️ Could not connect to API:', error.message);
             }
-            
+
             this.isInitialized = true;
             this.log.debug('✅ V3 API Service initialized');
             return this;
-            
+
         } catch (error) {
             this.log.error('❌ Failed to initialize V3 API Service:', error);
             throw error;
@@ -62,12 +62,12 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
             this.log.warn('AuthService not available');
             return {};
         }
-        
+
         const token = AuthService.getToken();
         if (!token) {
             return {};
         }
-        
+
         return { 'Authorization': `Bearer ${token}` };
     }
 
@@ -78,7 +78,7 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
             if (typeof AuthService === 'undefined') {
                 return false;
             }
-            
+
             return AuthService.isAuthenticated();
         } catch (error) {
             this.log.debug('Validation error:', error);
@@ -92,7 +92,7 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         const endpointPath = AppConfig.api.backend.endpoints[endpointName] || endpointName;
         const fullPath = queryString ? `${endpointPath}?${queryString}` : endpointPath;
         const url = `${this.baseUrl}${fullPath}`;
-        
+
         // Build headers - don't set Content-Type for FormData (browser sets it with boundary)
         const isFormData = options.body instanceof FormData;
         // Put custom headers FIRST, then auth headers LAST to ensure auth is never overridden
@@ -100,16 +100,16 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
             ...(options.headers || {}),     // Custom headers first (if any)
             ...this.getAuthHeaders()        // OAuth token LAST - never overridden
         };
-        
+
         // Only add Content-Type for non-FormData requests
         if (!isFormData && !headers['Content-Type']) {
             headers['Content-Type'] = 'application/json';
         }
-        
+
         const fetchOptions = { method, headers, ...options };
-        
+
         this.log.debug(`${method} ${url}`);
-        
+
         try {
             const response = await fetch(url, fetchOptions);
             if (!response.ok) {
@@ -117,21 +117,21 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
                 if (shouldRetry) {
                     // Token was refreshed, retry with new token
                     this.log.debug('Retrying request with refreshed token...');
-                    
+
                     // Get fresh auth headers AFTER token refresh
                     const freshAuthHeaders = this.getAuthHeaders();
                     this.log.debug('Fresh auth headers:', Object.keys(freshAuthHeaders));
-                    
+
                     // Custom headers first, auth LAST
                     const retryHeaders = {
                         ...(options.headers || {}),
                         ...freshAuthHeaders  // Fresh OAuth token LAST
                     };
-                    
+
                     if (!isFormData && !retryHeaders['Content-Type']) {
                         retryHeaders['Content-Type'] = 'application/json';
                     }
-                    
+
                     const retryFetchOptions = { method, headers: retryHeaders, ...options };
                     const retryResponse = await fetch(url, retryFetchOptions);
                     if (!retryResponse.ok) {
@@ -149,7 +149,7 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
 
     async handleErrorResponse(response) {
         let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
-        
+
         // Check for 401 FIRST, before reading the body
         if (response.status === 401) {
             errorMessage = 'Authentication required or token expired';
@@ -170,21 +170,21 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
             this.log.error(errorMessage);
             throw new Error(errorMessage);
         }
-        
+
         // For non-401 errors, try to get error details from body
         let errorDetails = null;
         try {
             errorDetails = await response.json();
             if (errorDetails.detail) errorMessage = errorDetails.detail;
-        } catch (e) {}
-        
+        } catch (e) { }
+
         switch (response.status) {
             case 403:
                 errorMessage = 'Access forbidden - user not authorized';
                 break;
             case 404: errorMessage = 'Resource not found'; break;
             case 409: errorMessage = 'Version conflict - data was modified by another user'; break;
-            case 422: 
+            case 422:
                 // Log full validation error for debugging
                 if (errorDetails) {
                     console.error('🔴 Validation error details:', JSON.stringify(errorDetails, null, 2));
@@ -193,7 +193,7 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
                 errorMessage = 'Validation error - check your input data';
                 break;
             case 428: errorMessage = 'Version information required for update'; break;
-            case 500: 
+            case 500:
                 // Include server error details if available
                 if (errorDetails?.detail) {
                     errorMessage = `Server error: ${errorDetails.detail}`;
@@ -202,7 +202,7 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
                 }
                 break;
         }
-        
+
         this.log.error(errorMessage);
         throw new Error(errorMessage);
     }
@@ -237,7 +237,7 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         if (filters.since) params.append('since', filters.since);  // ✅ Incremental sync support
         if (filters.limit) params.append('limit', filters.limit);
         if (filters.offset) params.append('offset', filters.offset);
-        
+
         const queryString = params.toString();
         const endpoint = queryString ? `entities?${queryString}` : 'entities';
         const response = await this.request('GET', endpoint);
@@ -248,7 +248,7 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         if (currentVersion === undefined) {
             throw new Error('Current version required for optimistic locking');
         }
-        
+
         const endpoint = AppConfig.api.backend.endpoints.entityById.replace('{id}', entityId);
         const response = await this.request('PATCH', endpoint, {
             headers: { 'If-Match': String(currentVersion) },
@@ -286,7 +286,7 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         if (filters.since) params.append('since', filters.since);  // ✅ Incremental sync support
         if (filters.limit) params.append('limit', filters.limit);
         if (filters.offset) params.append('offset', filters.offset);
-        
+
         // Use /search endpoint for curations list
         const endpoint = `/curations/search?${params.toString()}`;
         const response = await this.request('GET', endpoint);
@@ -303,7 +303,7 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         if (currentVersion === undefined) {
             throw new Error('Current version required for optimistic locking');
         }
-        
+
         const endpoint = AppConfig.api.backend.endpoints.curationById.replace('{id}', curationId);
         const response = await this.request('PATCH', endpoint, {
             headers: { 'If-Match': String(currentVersion) },
@@ -335,30 +335,30 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
             this.log.debug(`📍 API URL: ${this.baseUrl}/ai/orchestrate`);
             this.log.debug(`🔑 Token available: ${!!AuthService.getToken()}`);
             this.log.debug(`🌐 Language: ${language || 'pt-BR'}`);
-            
+
             // Convert Blob to base64 - API V3 expects JSON with base64 audio_file
             const base64Audio = await this.blobToBase64(audioBlob);
             this.log.debug(`📦 Audio converted to base64 (${base64Audio.length} chars)`);
-            
+
             // API V3 orchestrate endpoint expects JSON, not FormData
             const requestBody = {
                 audio_file: base64Audio,
                 language: language || 'pt-BR',
                 entity_type: 'restaurant'
             };
-            
+
             this.log.debug('🚀 Sending transcription request...');
             const response = await this.request('POST', 'aiOrchestrate', {
                 body: JSON.stringify(requestBody)
             });
-            
+
             const result = await response.json();
             this.log.debug('✅ Transcription successful');
             return result;
-            
+
         } catch (error) {
             this.log.error('❌ Transcription error:', error);
-            
+
             // Provide more helpful error messages
             if (error.message.includes('Failed to fetch')) {
                 throw new Error('Backend server is not responding. Please check if the API service is running on Render.com');
@@ -367,11 +367,11 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
             } else if (error.message.includes('OPENAI_API_KEY')) {
                 throw new Error('OpenAI API key not configured on backend. Please contact administrator.');
             }
-            
+
             throw error;
         }
     }
-    
+
     /**
      * Convert Blob to base64 string
      * @private
@@ -391,7 +391,7 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
 
     async extractConcepts(text, entityType = 'restaurant') {
         const response = await this.request('POST', 'aiExtractConcepts', {
-            body: JSON.stringify({ 
+            body: JSON.stringify({
                 text,
                 entity_type: entityType,
                 // workflow_type will be auto-detected as 'audio_only' when text is present
@@ -407,13 +407,13 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
     async analyzeImage(imageBlob, prompt) {
         // Convert image to base64 - API V3 expects JSON with base64 image_file
         const base64Image = await this.blobToBase64(imageBlob);
-        
+
         const requestBody = {
             image_file: base64Image,
             prompt: prompt,
             entity_type: 'restaurant'
         };
-        
+
         const response = await this.request('POST', 'aiOrchestrate', {
             body: JSON.stringify(requestBody)
         });
@@ -430,7 +430,7 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         if (radius) params.append('radius', radius);
         // Default filter: only restaurants
         if (placeType) params.append('type', placeType);
-        
+
         const endpoint = `places/nearby?${params.toString()}`;
         const response = await this.request('GET', endpoint);
         return await response.json();
@@ -438,18 +438,18 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
 
     async getPlaceDetails(placeId) {
         this.log.debug(`🔍 Getting place details for: ${placeId}`);
-        
+
         if (!placeId) {
             throw new Error('Place ID is required');
         }
-        
+
         // Build the full endpoint path with the place ID
         const endpointTemplate = AppConfig.api.backend.endpoints.placesDetails;
         const endpointPath = endpointTemplate.replace('{id}', placeId);
-        
+
         this.log.debug(`📍 Endpoint template: ${endpointTemplate}`);
         this.log.debug(`📍 Endpoint path: ${endpointPath}`);
-        
+
         const response = await this.request('GET', endpointPath);
         return await response.json();
     }
@@ -473,13 +473,13 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
                 available: true,
                 info,
                 health,
-                hasApiKey: !!this.getApiKey()
+                hasApiKey: (typeof AuthService !== 'undefined' && AuthService.isAuthenticated())
             };
         } catch (error) {
             return {
                 available: false,
                 error: error.message,
-                hasApiKey: !!this.getApiKey()
+                hasApiKey: (typeof AuthService !== 'undefined' && AuthService.isAuthenticated())
             };
         }
     }

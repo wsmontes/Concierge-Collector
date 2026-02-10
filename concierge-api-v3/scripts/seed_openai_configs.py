@@ -62,6 +62,7 @@ Analise o seguinte texto de uma curadoria e extraia conceitos relevantes que des
 {categories}
 
 **Instruções:**
+- Extraia o nome do estabelecimento se mencionado explicitamente
 - Extraia APENAS conceitos que aparecem explicitamente ou implicitamente no texto
 - Use APENAS conceitos da lista de categorias disponíveis
 - Ignore conceitos não relacionados ao estabelecimento
@@ -69,7 +70,7 @@ Analise o seguinte texto de uma curadoria e extraia conceitos relevantes que des
 - Avalie sua confiança na análise (0.0 a 1.0)
 
 **Responda APENAS em JSON válido:**
-{{"concepts": ["concept1", "concept2", "concept3"], "confidence_score": 0.85}}""",
+{{"restaurant_name": "Nome do Restaurante", "concepts": ["concept1", "concept2", "concept3"], "confidence_score": 0.85}}""",
         "cache_ttl_hours": 168,
         "cache_by": "text_hash",
         "cost_per_token_input": 0.00003,

@@ -1,5 +1,6 @@
 <!DOCTYPE html>
 <html lang="en">
+
 <head>
     <!-- Add meta viewport tag for proper mobile rendering -->
     <meta charset="UTF-8">
@@ -19,87 +20,87 @@
     <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+        rel="stylesheet">
     <!-- CSS Libraries -->
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
     <link href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css" rel="stylesheet">
     <!-- Material Icons -->
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
-    
+
     <!-- Custom CSS - New Architecture -->
     <!-- 1. Design System Foundation (FIRST - design tokens, base styles) -->
     <link rel="stylesheet" href="styles/design-system.css">
-    
+
     <!-- 2. Component Library (reusable components) -->
     <link rel="stylesheet" href="styles/components.css">
-    
+
     <!-- 3. Application-specific Styles -->
     <link rel="stylesheet" href="styles/application.css">
-    
+
     <!-- 4. Feature-specific Styles -->
-    <link rel="stylesheet" href="styles/michelin-section.css">
-    <link rel="stylesheet" href="styles/michelin-staging.css">
     <link rel="stylesheet" href="styles/places-section.css">
     <link rel="stylesheet" href="styles/access-control.css">
     <link rel="stylesheet" href="styles/sync-badges.css">
     <link rel="stylesheet" href="styles/mobile-enhancements.css">
-    
+
     <!-- 5. Legacy Support (will be deprecated after migration) -->
     <link rel="stylesheet" href="styles/style.css">
-    
+
     <!-- Centralized Configuration (MUST load first) -->
     <script src="scripts/core/config.js"></script>
-    
+
     <!-- Centralized Logging (loads after config) -->
     <script src="scripts/core/logger.js"></script>
-    
+
     <!-- OAuth Callback Protection (prevents page reload during OAuth callback) -->
     <script>
-        (function() {
+        (function () {
             // Check if OAuth redirect is in progress
             const oauthRedirectInProgress = sessionStorage.getItem('oauth_redirect_in_progress');
             const oauthCallbackInProgress = sessionStorage.getItem('oauth_callback_in_progress');
-            
+
             if (oauthRedirectInProgress === 'true') {
                 console.log('[OAuth Protection] 🔒 Redirect in progress - allowing navigation');
                 // Don't clear - let the redirect happen
                 return;
             }
-            
+
             if (oauthCallbackInProgress === 'true') {
                 console.log('[OAuth Protection] Callback in progress - preventing hot reload');
-                
+
                 // Disable Live Server hot reload temporarily
                 if (window.stop) {
                     window.stop(); // Modern browsers
                 }
-                
+
                 // Mark as complete after 3 seconds (safety timeout)
-                setTimeout(function() {
+                setTimeout(function () {
                     if (sessionStorage.getItem('oauth_callback_in_progress') === 'true') {
                         console.log('[OAuth Protection] Timeout reached - clearing protection');
                         sessionStorage.removeItem('oauth_callback_in_progress');
                     }
                 }, 3000);
             }
-            
+
             // Clear redirect flag if we're back from OAuth
             if (oauthRedirectInProgress) {
                 sessionStorage.removeItem('oauth_redirect_in_progress');
             }
         })();
     </script>
-    
+
     <!-- Restaurant validator utility -->
     <script src="scripts/utils/restaurantValidator.js" defer></script>
-    
+
     <!-- Michelin module removed - data will be imported via batch script -->
     <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.0/lame.min.js"></script>
-    
+
     <!-- Add iOS detection script -->
     <script>
         // Detect iOS for special handling
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
             const userAgent = navigator.userAgent;
             const isIOS = /iPad|iPhone|iPod/.test(userAgent) && !window.MSStream;
             if (isIOS) {
@@ -108,6 +109,7 @@
         });
     </script>
 </head>
+
 <body class="bg-white">
     <div id="app" class="container mx-auto px-4 sm:px-6">
         <header class="mb-6 bg-white py-3 -mx-4 px-4 sm:mx-0 sm:px-0">
@@ -118,7 +120,7 @@
                     <img src="images/Lotier_Logo.webp" alt="Lotier Logo" class="h-12 sm:h-14 w-auto">
                     <h1 class="text-2xl sm:text-3xl font-bold text-gray-800">Collector</h1>
                 </div>
-                
+
                 <!-- Right: Sync Status and User Profile -->
                 <div class="flex items-center gap-2 sm:gap-4 flex-shrink-0">
                     <!-- Sync Status (populated by SyncStatusModule) -->
@@ -132,13 +134,14 @@
 
 
         <!-- Audio Recording Section -->
-        <section id="recording-section" class="mb-8 p-6 bg-white rounded-lg shadow-md border border-gray-100 hover:shadow-lg transition-all duration-300 hidden">
+        <section id="recording-section"
+            class="mb-8 p-6 bg-white rounded-lg shadow-md border border-gray-100 hover:shadow-lg transition-all duration-300 hidden">
             <h2 class="text-xl font-semibold mb-4 pb-3 border-b border-gray-100">
                 <span class="material-icons">mic</span>
                 Record Your Restaurant Review
             </h2>
             <p class="text-sm text-gray-600 mb-4">Maximum recording time: 5 minutes</p>
-            
+
             <!-- Add the circular timer section -->
             <div class="flex flex-col items-center" id="circular-timer-container">
                 <div class="timer-circle">
@@ -158,7 +161,7 @@
                     </div>
                     <div class="p-4">
                         <audio id="recorded-audio" controls="" class="w-full"></audio>
-                        
+
                         <div id="processing-status" class="mt-3">
                             <div id="transcription-status" class="processing-step">
                                 <span class="material-icons">pending</span>
@@ -169,7 +172,7 @@
                                 <span>Analyzing restaurant details...</span>
                             </div>
                         </div>
-                        
+
                         <div class="mt-4 flex justify-between">
                             <button id="discard-recording" class="btn btn-outline btn-md">
                                 <span class="material-icons mr-1" aria-hidden="true">delete</span>
@@ -186,7 +189,8 @@
         </section>
 
         <!-- Transcription Section -->
-        <section id="transcription-section" class="mb-8 p-6 bg-white rounded-lg shadow-md border border-gray-100 hover:shadow-lg transition-all duration-300 hidden">
+        <section id="transcription-section"
+            class="mb-8 p-6 bg-white rounded-lg shadow-md border border-gray-100 hover:shadow-lg transition-all duration-300 hidden">
             <h2 class="text-xl font-semibold mb-4 pb-3 border-b border-gray-100">
                 <span class="material-icons">description</span>
                 Transcription
@@ -205,348 +209,338 @@
         </section>
 
         <!-- Concepts Section -->
-        <section id="concepts-section" class="mb-8 p-6 bg-white rounded-lg shadow-md border border-gray-100 hover:shadow-lg transition-all duration-300 hidden">
+        <section id="concepts-section"
+            class="mb-8 p-6 bg-white rounded-lg shadow-md border border-gray-100 hover:shadow-lg transition-all duration-300 hidden">
             <h2 class="text-xl font-semibold mb-4 pb-3 border-b border-gray-100">
                 <span class="material-icons">category</span>
                 Restaurant Concepts
             </h2>
-                <div class="mb-6">
-                    <label for="restaurant-name" class="label label-required">
-                        Restaurant Name:
-                    </label>
-                    <div class="mb-4 flex items-center gap-2">
-                        <div class="flex-grow relative">
-                            <input type="text" id="restaurant-name" class="input input-md" placeholder="Restaurant Name">
-                        </div>
-                        <button id="places-lookup-btn" type="button" class="btn btn-primary btn-sm" title="Get from Google Places">
-                            <span class="material-icons mr-1" aria-hidden="true">travel_explore</span>
-                            Places
-                        </button>
+            <div class="mb-6">
+                <label for="restaurant-name" class="label label-required">
+                    Restaurant Name:
+                </label>
+                <div class="mb-4 flex items-center gap-2">
+                    <div class="flex-grow relative">
+                        <input type="text" id="restaurant-name" class="input input-md" placeholder="Restaurant Name">
                     </div>
-                    <div id="places-autocomplete-inline-container" class="mb-2 hidden"></div>
-                    <p class="helper-text error">This field is required</p>
-                </div>
-                
-                <div class="mb-6">
-                    <label class="block mb-2 font-medium flex items-center">
-                        <span class="material-icons mr-2 text-blue-500">location_on</span>
-                        Location:
-                    </label>
-                    <button id="get-location" class="btn btn-primary btn-md">
-                        <span class="material-icons mr-2" aria-hidden="true">my_location</span>
-                        Get Current Location
+                    <button id="places-lookup-btn" type="button" class="btn btn-primary btn-sm"
+                        title="Get from Google Places">
+                        <span class="material-icons mr-1" aria-hidden="true">travel_explore</span>
+                        Places
                     </button>
-                    <div id="location-display" class="text-sm"></div>
                 </div>
-                
-                <div class="mb-6">
-                    <label class="block mb-2 font-medium flex items-center">
-                        <span class="material-icons mr-2 text-blue-500">photo_camera</span>
-                        Photos:
-                    </label>
-                    <div class="photo-buttons-container">
-                        <button type="button" id="take-photo" class="btn btn-success btn-md mr-2">
-                            <span class="material-icons mr-1" aria-hidden="true">photo_camera</span>
-                            Take Photo
-                        </button>
-                        <button type="button" id="gallery-photo" class="btn btn-primary btn-md">
-                            <span class="material-icons mr-1" aria-hidden="true">photo_library</span>
-                            Gallery
-                        </button>
-                    </div>
-                    <!-- Hidden file inputs with labels for accessibility -->
-                    <label for="camera-input" class="sr-only">Take photo with camera</label>
-                    <input type="file" 
-                           id="camera-input" 
-                           accept="image/*" 
-                           capture="environment" 
-                           multiple 
-                           class="hidden"
-                           aria-label="Take photo with camera">
-                    <label for="gallery-input" class="sr-only">Select photos from gallery</label>
-                    <input type="file" 
-                           id="gallery-input" 
-                           accept="image/*" 
-                           multiple 
-                           class="hidden"
-                           aria-label="Select photos from gallery">
-                    <div id="photos-preview" class="grid grid-cols-2 gap-2 mt-3"></div>
-                </div>
-
-                <!-- New transcription section -->
-                <div class="mb-8 pb-4 border-b border-gray-200">
-                    <label for="restaurant-transcription" class="label flex items-center">
-                        <span class="material-icons mr-2 text-purple-500" aria-hidden="true">description</span>
-                        Transcription:
-                    </label>
-                    <textarea id="restaurant-transcription" class="input input-md h-32" placeholder="No transcription available" spellcheck="true"></textarea>
-                    <div class="mt-2 flex justify-end">
-                        <button id="reprocess-concepts" class="btn btn-secondary btn-md">
-                            <span class="material-icons mr-1" aria-hidden="true">refresh</span>
-                            Reprocess Concepts
-                        </button>
-                    </div>
-                </div>
-                
-                <!-- Restaurant Description -->
-                <div class="mb-6">
-                    <label for="restaurant-description" class="label">
-                        Description (30 words max):
-                    </label>
-                    <textarea id="restaurant-description" class="input input-md h-20" placeholder="Short restaurant description" maxlength="200"></textarea>
-                    <div class="mt-2 flex justify-end">
-                        <button id="generate-description" class="btn btn-warning btn-md">
-                            <span class="material-icons mr-1" aria-hidden="true">auto_awesome</span>
-                            Generate Description
-                        </button>
-                    </div>
-                    <p class="helper-text">This short description will be displayed in restaurant listings.</p>
-                </div>
-                
-                <!-- Curation Notes Section -->
-                <div class="mb-8 pb-4 border-b border-gray-200">
-                    <h3 class="text-lg font-semibold mb-4 flex items-center">
-                        <span class="material-icons mr-2 text-indigo-600" aria-hidden="true">edit_note</span>
-                        Curation Notes
-                    </h3>
-                    <div class="mb-4">
-                        <label for="curation-notes-public" class="label flex items-center">
-                            <span class="material-icons mr-2 text-green-600" aria-hidden="true">visibility</span>
-                            Public Notes
-                            <span class="text-gray-500 text-xs ml-2">(visible to guests)</span>
-                        </label>
-                        <textarea id="curation-notes-public" class="input input-md h-24" placeholder="Add your recommendations, highlights, or tips for guests..." spellcheck="true"></textarea>
-                        <p class="helper-text">Share your expertise and recommendations with guests</p>
-                    </div>
-                    <div class="mb-4">
-                        <label for="curation-notes-private" class="label flex items-center">
-                            <span class="material-icons mr-2 text-red-600" aria-hidden="true">visibility_off</span>
-                            Private Notes
-                            <span class="text-gray-500 text-xs ml-2">(for internal use only)</span>
-                        </label>
-                        <textarea id="curation-notes-private" class="input input-md h-24" placeholder="Internal notes, contact information, or reminders..." spellcheck="true"></textarea>
-                        <p class="helper-text">Internal notes only you and your team can see</p>
-                    </div>
-                </div>
-                
-                <div id="concepts-container" class="mb-6"></div>
+                <div id="places-autocomplete-inline-container" class="mb-2 hidden"></div>
+                <p class="helper-text error">This field is required</p>
             </div>
-        </section>
 
-        <!-- Find Entity Search -->
-        <div class="mb-6">
-            <button id="find-entity-btn" class="btn btn-primary btn-lg w-full shadow-md hidden">
-                <span class="material-icons mr-2" aria-hidden="true">search</span>
-                <span class="font-medium">Find Entity</span>
+            <div class="mb-6">
+                <label class="block mb-2 font-medium flex items-center">
+                    <span class="material-icons mr-2 text-blue-500">location_on</span>
+                    Location:
+                </label>
+                <button id="get-location" class="btn btn-primary btn-md">
+                    <span class="material-icons mr-2" aria-hidden="true">my_location</span>
+                    Get Current Location
+                </button>
+                <div id="location-display" class="text-sm"></div>
+            </div>
+
+            <div class="mb-6">
+                <label class="block mb-2 font-medium flex items-center">
+                    <span class="material-icons mr-2 text-blue-500">photo_camera</span>
+                    Photos:
+                </label>
+                <div class="photo-buttons-container">
+                    <button type="button" id="take-photo" class="btn btn-success btn-md mr-2">
+                        <span class="material-icons mr-1" aria-hidden="true">photo_camera</span>
+                        Take Photo
+                    </button>
+                    <button type="button" id="gallery-photo" class="btn btn-primary btn-md">
+                        <span class="material-icons mr-1" aria-hidden="true">photo_library</span>
+                        Gallery
+                    </button>
+                </div>
+                <!-- Hidden file inputs with labels for accessibility -->
+                <label for="camera-input" class="sr-only">Take photo with camera</label>
+                <input type="file" id="camera-input" accept="image/*" capture="environment" multiple class="hidden"
+                    aria-label="Take photo with camera">
+                <label for="gallery-input" class="sr-only">Select photos from gallery</label>
+                <input type="file" id="gallery-input" accept="image/*" multiple class="hidden"
+                    aria-label="Select photos from gallery">
+                <div id="photos-preview" class="grid grid-cols-2 gap-2 mt-3"></div>
+            </div>
+
+            <!-- New transcription section -->
+            <div class="mb-8 pb-4 border-b border-gray-200">
+                <label for="restaurant-transcription" class="label flex items-center">
+                    <span class="material-icons mr-2 text-purple-500" aria-hidden="true">description</span>
+                    Transcription:
+                </label>
+                <textarea id="restaurant-transcription" class="input input-md h-32"
+                    placeholder="No transcription available" spellcheck="true"></textarea>
+                <div class="mt-2 flex justify-end">
+                    <button id="reprocess-concepts" class="btn btn-secondary btn-md">
+                        <span class="material-icons mr-1" aria-hidden="true">refresh</span>
+                        Reprocess Concepts
+                    </button>
+                </div>
+            </div>
+
+            <!-- Restaurant Description -->
+            <div class="mb-6">
+                <label for="restaurant-description" class="label">
+                    Description (30 words max):
+                </label>
+                <textarea id="restaurant-description" class="input input-md h-20"
+                    placeholder="Short restaurant description" maxlength="200"></textarea>
+                <div class="mt-2 flex justify-end">
+                    <button id="generate-description" class="btn btn-warning btn-md">
+                        <span class="material-icons mr-1" aria-hidden="true">auto_awesome</span>
+                        Generate Description
+                    </button>
+                </div>
+                <p class="helper-text">This short description will be displayed in restaurant listings.</p>
+            </div>
+
+            <!-- Curation Notes Section -->
+            <div class="mb-8 pb-4 border-b border-gray-200">
+                <h3 class="text-lg font-semibold mb-4 flex items-center">
+                    <span class="material-icons mr-2 text-indigo-600" aria-hidden="true">edit_note</span>
+                    Curation Notes
+                </h3>
+                <div class="mb-4">
+                    <label for="curation-notes-public" class="label flex items-center">
+                        <span class="material-icons mr-2 text-green-600" aria-hidden="true">visibility</span>
+                        Public Notes
+                        <span class="text-gray-500 text-xs ml-2">(visible to guests)</span>
+                    </label>
+                    <textarea id="curation-notes-public" class="input input-md h-24"
+                        placeholder="Add your recommendations, highlights, or tips for guests..."
+                        spellcheck="true"></textarea>
+                    <p class="helper-text">Share your expertise and recommendations with guests</p>
+                </div>
+                <div class="mb-4">
+                    <label for="curation-notes-private" class="label flex items-center">
+                        <span class="material-icons mr-2 text-red-600" aria-hidden="true">visibility_off</span>
+                        Private Notes
+                        <span class="text-gray-500 text-xs ml-2">(for internal use only)</span>
+                    </label>
+                    <textarea id="curation-notes-private" class="input input-md h-24"
+                        placeholder="Internal notes, contact information, or reminders..." spellcheck="true"></textarea>
+                    <p class="helper-text">Internal notes only you and your team can see</p>
+                </div>
+            </div>
+
+            <div id="concepts-container" class="mb-6"></div>
+    </div>
+    </section>
+
+    <!-- Find Entity Search -->
+    <div class="mb-6">
+        <button id="find-entity-btn" class="btn btn-primary btn-lg w-full shadow-md hidden">
+            <span class="material-icons mr-2" aria-hidden="true">search</span>
+            <span class="font-medium">Find Entity</span>
+        </button>
+    </div>
+
+    <!-- Entities Section (Restaurants, Bars, Hotels, etc.) -->
+    <section id="entities-section"
+        class="mb-8 p-6 bg-white rounded-lg shadow-md border border-gray-100 hover:shadow-lg transition-all duration-300 hidden">
+        <!-- Header -->
+        <div class="flex justify-between items-center mb-4">
+            <h2 class="text-2xl font-bold flex items-center">
+                <span class="material-icons mr-2 text-green-500">restaurant</span>
+                My Collection
+            </h2>
+        </div>
+
+        <!-- Tab Navigation -->
+        <div class="mb-6 border-b border-gray-200">
+            <nav class="flex space-x-8" aria-label="View modes">
+                <button id="tab-curations"
+                    class="view-tab active py-4 px-1 border-b-2 border-blue-500 font-medium text-blue-600 focus:outline-none"
+                    data-tab="curations">
+                    <span class="material-icons text-sm align-middle mr-1">edit_note</span>
+                    Curations
+                </button>
+                <button id="tab-entities"
+                    class="view-tab py-4 px-1 border-b-2 border-transparent font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300 focus:outline-none"
+                    data-tab="entities">
+                    <span class="material-icons text-sm align-middle mr-1">restaurant</span>
+                    Entities
+                </button>
+            </nav>
+        </div>
+
+        <!-- Curations View -->
+        <div id="curations-view" class="view-content">
+            <!-- Search and Filters -->
+            <div class="mb-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+                <!-- Search -->
+                <div class="md:col-span-2">
+                    <div class="relative">
+                        <span class="material-icons absolute left-3 top-2.5 text-gray-400">search</span>
+                        <input type="text" id="curation-search" placeholder="Search curations..."
+                            class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                    </div>
+                </div>
+
+                <!-- Status Filter -->
+                <div>
+                    <select id="curation-status-filter"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <option value="all">All Status</option>
+                        <option value="draft">Draft</option>
+                        <option value="done">Done</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Curations Grid -->
+            <div id="curations-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+        </div>
+
+        <!-- Entities View -->
+        <div id="entities-view" class="view-content hidden">
+            <!-- Search and Filters -->
+            <div class="mb-4 grid grid-cols-1 md:grid-cols-4 gap-3">
+                <!-- Search -->
+                <div class="md:col-span-2">
+                    <div class="relative">
+                        <span class="material-icons absolute left-3 top-2.5 text-gray-400">search</span>
+                        <input type="text" id="entity-search" placeholder="Search entities..."
+                            class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                    </div>
+                </div>
+
+                <!-- Type Filter -->
+                <div>
+                    <select id="entity-type-filter"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <option value="all">All Types</option>
+                        <option value="restaurant">Restaurants</option>
+                        <option value="bar">Bars</option>
+                        <option value="hotel">Hotels</option>
+                        <option value="cafe">Cafés</option>
+                    </select>
+                </div>
+
+                <!-- City Filter -->
+                <div>
+                    <select id="entity-city-filter"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <option value="all">All Cities</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- Entity Grid -->
+            <div id="entities-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            </div>
+        </div>
+    </section>
+
+    <!-- Export/Import Section -->
+    <section id="export-import-section"
+        class="mb-8 p-6 bg-white rounded-lg shadow-md border border-gray-100 hover:shadow-lg transition-all duration-300 hidden">
+        <h2 class="text-xl font-semibold mb-4 pb-3 border-b border-gray-100">
+            <span class="material-icons">settings</span>
+            Export/Import Data
+        </h2>
+        <div class="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
+            <button id="export-data" class="btn btn-primary btn-md">
+                <span class="material-icons mr-1" aria-hidden="true">file_download</span>
+                Export Data
+            </button>
+            <div class="flex-1">
+                <div class="file-input-container mb-3">
+                    <span class="material-icons text-2xl mb-2 text-gray-400" aria-hidden="true">upload_file</span>
+                    <label for="import-file" class="mb-1 block">Select JSON or ZIP file to import</label>
+                    <input type="file" id="import-file" accept=".json,.zip" class="mb-2"
+                        aria-describedby="import-file-description">
+                    <span id="import-file-description" class="sr-only">Select a JSON or ZIP file containing restaurant
+                        data to import</span>
+                </div>
+                <button id="import-data" class="btn btn-success btn-md w-full">
+                    <span class="material-icons mr-1" aria-hidden="true">file_upload</span>
+                    Import Data
+                </button>
+            </div>
+            <div class="flex-1">
+                <div class="file-input-container mb-3">
+                    <span class="material-icons text-2xl mb-2 text-gray-400" aria-hidden="true">restaurant_menu</span>
+                    <label for="import-concierge-file" class="mb-1 block">Import Concierge restaurant data</label>
+                    <input type="file" id="import-concierge-file" accept=".json" class="mb-2"
+                        aria-describedby="import-concierge-file-description">
+                    <span id="import-concierge-file-description" class="sr-only">Select a JSON file containing Concierge
+                        restaurant data</span>
+                </div>
+                <button id="import-concierge-data" class="btn btn-secondary btn-md w-full">
+                    <span class="material-icons mr-1" aria-hidden="true">cloud_sync</span>
+                    Import Concierge Data
+                </button>
+            </div>
+        </div>
+    </section>
+
+    <!-- Quick Action Modal -->
+    <div id="quick-action-modal"
+        class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+        <div class="bg-white p-6 rounded-lg max-w-sm w-full shadow-xl border border-gray-100">
+            <div class="flex items-center mb-6">
+                <span class="material-icons mr-2 text-blue-500">add_circle</span>
+                <h3 class="text-xl font-semibold">Quick Actions</h3>
+                <button id="close-quick-modal" class="text-gray-500 hover:text-gray-800 text-xl">&times;</button>
+            </div>
+            <div class="grid grid-cols-1 gap-4">
+                <button id="quick-record" class="btn btn-danger btn-lg">
+                    <span class="material-icons mr-2" aria-hidden="true">mic</span>
+                    Record Review
+                </button>
+
+                <button id="quick-location" class="btn btn-primary btn-lg">
+                    <span class="material-icons mr-2" aria-hidden="true">location_on</span>
+                    Get Location
+                </button>
+
+                <button id="quick-photo" class="btn btn-success btn-lg">
+                    <span class="material-icons mr-2" aria-hidden="true">photo_camera</span>
+                    Take Photos
+                </button>
+
+                <button id="quick-manual" class="btn btn-secondary btn-lg">
+                    <span class="material-icons mr-2" aria-hidden="true">edit</span>
+                    Manual Entry
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Floating Action Button -->
+    <div id="fab"
+        class="fixed bottom-6 right-6 bg-blue-600 text-white rounded-full w-16 h-16 flex items-center justify-center shadow-lg cursor-pointer">
+        <span class="material-icons text-2xl">add</span>
+    </div>
+
+    <!-- Add these elements to your sidebar/menu navigation section -->
+    <div id="sync-sidebar-section" class="mb-4 border-t pt-4 hidden">
+        <h3 class="text-sm font-semibold uppercase text-gray-500 pl-4 mb-2">Synchronization</h3>
+
+        <div class="px-4">
+            <button id="sync-button" class="btn btn-primary btn-md w-full mb-2">
+                <span class="material-icons mr-2" aria-hidden="true">sync</span>
+                Sync Data
+            </button>
+            <div id="sync-status" class="text-xs text-center text-gray-500">Last sync: Never</div>
+        </div>
+
+        <div class="px-4 mt-2">
+            <button id="open-sync-settings" class="btn btn-outline btn-sm w-full mb-2">
+                <span class="material-icons text-sm mr-1" aria-hidden="true">settings</span>
+                Sync Settings
             </button>
         </div>
-
-        <!-- Entities Section (Restaurants, Bars, Hotels, etc.) -->
-        <section id="entities-section" class="mb-8 p-6 bg-white rounded-lg shadow-md border border-gray-100 hover:shadow-lg transition-all duration-300 hidden">
-            <!-- Header -->
-            <div class="flex justify-between items-center mb-4">
-                <h2 class="text-2xl font-bold flex items-center">
-                    <span class="material-icons mr-2 text-green-500">restaurant</span>
-                    My Collection
-                </h2>
-            </div>
-
-            <!-- Tab Navigation -->
-            <div class="mb-6 border-b border-gray-200">
-                <nav class="flex space-x-8" aria-label="View modes">
-                    <button 
-                        id="tab-curations" 
-                        class="view-tab active py-4 px-1 border-b-2 border-blue-500 font-medium text-blue-600 focus:outline-none"
-                        data-tab="curations"
-                    >
-                        <span class="material-icons text-sm align-middle mr-1">edit_note</span>
-                        Curations
-                    </button>
-                    <button 
-                        id="tab-entities" 
-                        class="view-tab py-4 px-1 border-b-2 border-transparent font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300 focus:outline-none"
-                        data-tab="entities"
-                    >
-                        <span class="material-icons text-sm align-middle mr-1">restaurant</span>
-                        Entities
-                    </button>
-                </nav>
-            </div>
-
-            <!-- Curations View -->
-            <div id="curations-view" class="view-content">
-                <!-- Search and Filters -->
-                <div class="mb-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <!-- Search -->
-                    <div class="md:col-span-2">
-                        <div class="relative">
-                            <span class="material-icons absolute left-3 top-2.5 text-gray-400">search</span>
-                            <input 
-                                type="text" 
-                                id="curation-search" 
-                                placeholder="Search curations..." 
-                                class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            />
-                        </div>
-                    </div>
-
-                    <!-- Status Filter -->
-                    <div>
-                        <select id="curation-status-filter" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                            <option value="all">All Status</option>
-                            <option value="draft">Draft</option>
-                            <option value="done">Done</option>
-                        </select>
-                    </div>
-                </div>
-
-                <!-- Curations Grid -->
-                <div id="curations-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
-            </div>
-
-            <!-- Entities View -->
-            <div id="entities-view" class="view-content hidden">
-                <!-- Search and Filters -->
-                <div class="mb-4 grid grid-cols-1 md:grid-cols-4 gap-3">
-                    <!-- Search -->
-                    <div class="md:col-span-2">
-                        <div class="relative">
-                            <span class="material-icons absolute left-3 top-2.5 text-gray-400">search</span>
-                            <input 
-                                type="text" 
-                                id="entity-search" 
-                                placeholder="Search entities..." 
-                                class="w-full pl-10 pr-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                            />
-                        </div>
-                    </div>
-
-                    <!-- Type Filter -->
-                    <div>
-                        <select id="entity-type-filter" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                            <option value="all">All Types</option>
-                            <option value="restaurant">Restaurants</option>
-                            <option value="bar">Bars</option>
-                            <option value="hotel">Hotels</option>
-                            <option value="cafe">Cafés</option>
-                        </select>
-                    </div>
-
-                    <!-- City Filter -->
-                    <div>
-                        <select id="entity-city-filter" class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
-                            <option value="all">All Cities</option>
-                        </select>
-                    </div>
-                </div>
-
-                <!-- Entity Grid -->
-                <div id="entities-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4"></div>
-            </div>
-        </section>
-
-        <!-- Export/Import Section -->
-        <section id="export-import-section" class="mb-8 p-6 bg-white rounded-lg shadow-md border border-gray-100 hover:shadow-lg transition-all duration-300 hidden">
-            <h2 class="text-xl font-semibold mb-4 pb-3 border-b border-gray-100">
-                <span class="material-icons">settings</span>
-                Export/Import Data
-            </h2>
-            <div class="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
-                <button id="export-data" class="btn btn-primary btn-md">
-                    <span class="material-icons mr-1" aria-hidden="true">file_download</span>
-                    Export Data
-                </button>
-                <div class="flex-1">
-                    <div class="file-input-container mb-3">
-                        <span class="material-icons text-2xl mb-2 text-gray-400" aria-hidden="true">upload_file</span>
-                        <label for="import-file" class="mb-1 block">Select JSON or ZIP file to import</label>
-                        <input type="file" 
-                               id="import-file" 
-                               accept=".json,.zip" 
-                               class="mb-2"
-                               aria-describedby="import-file-description">
-                        <span id="import-file-description" class="sr-only">Select a JSON or ZIP file containing restaurant data to import</span>
-                    </div>
-                    <button id="import-data" class="btn btn-success btn-md w-full">
-                        <span class="material-icons mr-1" aria-hidden="true">file_upload</span>
-                        Import Data
-                    </button>
-                </div>
-                <div class="flex-1">
-                    <div class="file-input-container mb-3">
-                        <span class="material-icons text-2xl mb-2 text-gray-400" aria-hidden="true">restaurant_menu</span>
-                        <label for="import-concierge-file" class="mb-1 block">Import Concierge restaurant data</label>
-                        <input type="file" 
-                               id="import-concierge-file" 
-                               accept=".json" 
-                               class="mb-2"
-                               aria-describedby="import-concierge-file-description">
-                        <span id="import-concierge-file-description" class="sr-only">Select a JSON file containing Concierge restaurant data</span>
-                    </div>
-                    <button id="import-concierge-data" class="btn btn-secondary btn-md w-full">
-                        <span class="material-icons mr-1" aria-hidden="true">cloud_sync</span>
-                        Import Concierge Data
-                    </button>
-                </div>
-            </div>
-        </section>
-
-        <!-- Quick Action Modal -->
-        <div id="quick-action-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
-            <div class="bg-white p-6 rounded-lg max-w-sm w-full shadow-xl border border-gray-100">
-                <div class="flex items-center mb-6">
-                    <span class="material-icons mr-2 text-blue-500">add_circle</span>
-                    <h3 class="text-xl font-semibold">Quick Actions</h3>
-                    <button id="close-quick-modal" class="text-gray-500 hover:text-gray-800 text-xl">&times;</button>
-                </div>
-                <div class="grid grid-cols-1 gap-4">
-                    <button id="quick-record" class="btn btn-danger btn-lg">
-                        <span class="material-icons mr-2" aria-hidden="true">mic</span>
-                        Record Review
-                    </button>
-                    
-                    <button id="quick-location" class="btn btn-primary btn-lg">
-                        <span class="material-icons mr-2" aria-hidden="true">location_on</span>
-                        Get Location
-                    </button>
-                    
-                    <button id="quick-photo" class="btn btn-success btn-lg">
-                        <span class="material-icons mr-2" aria-hidden="true">photo_camera</span>
-                        Take Photos
-                    </button>
-                    
-                    <button id="quick-manual" class="btn btn-secondary btn-lg">
-                        <span class="material-icons mr-2" aria-hidden="true">edit</span>
-                        Manual Entry
-                    </button>
-                </div>
-            </div>
-        </div>
-        
-        <!-- Floating Action Button -->
-        <div id="fab" class="fixed bottom-6 right-6 bg-blue-600 text-white rounded-full w-16 h-16 flex items-center justify-center shadow-lg cursor-pointer">
-            <span class="material-icons text-2xl">add</span>
-        </div>
-
-        <!-- Add these elements to your sidebar/menu navigation section -->
-        <div id="sync-sidebar-section" class="mb-4 border-t pt-4 hidden">
-            <h3 class="text-sm font-semibold uppercase text-gray-500 pl-4 mb-2">Synchronization</h3>
-            
-            <div class="px-4">
-                <button id="sync-button" class="btn btn-primary btn-md w-full mb-2">
-                    <span class="material-icons mr-2" aria-hidden="true">sync</span>
-                    Sync Data
-                </button>
-                <div id="sync-status" class="text-xs text-center text-gray-500">Last sync: Never</div>
-            </div>
-            
-            <div class="px-4 mt-2">
-                <button id="open-sync-settings" class="btn btn-outline btn-sm w-full mb-2">
-                    <span class="material-icons text-sm mr-1" aria-hidden="true">settings</span>
-                    Sync Settings
-                </button>
-            </div>
-        </div>
+    </div>
 
     </div>
 
@@ -597,44 +591,45 @@
     </div>
 
     <!-- Add the sync settings modal elements -->
-    <div id="sync-settings-modal" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
+    <div id="sync-settings-modal"
+        class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
         <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
             <div class="flex justify-between items-center mb-4">
                 <h2 class="text-xl font-bold">Sync Settings</h2>
                 <button id="close-sync-settings" class="text-gray-500 hover:text-gray-800 text-xl">&times;</button>
             </div>
-            
+
             <div class="mb-6">
                 <h3 class="text-lg font-medium mb-4">Auto-Sync Configuration</h3>
-                
+
                 <div class="mb-4">
                     <label for="sync-interval" class="label">Sync Interval (minutes)</label>
                     <input type="number" id="sync-interval" min="5" value="30" class="input input-md">
                     <p class="helper-text">Minimum: 5 minutes</p>
                 </div>
-                
+
                 <div class="flex items-center mb-4">
                     <input type="checkbox" id="sync-on-startup" class="checkbox mr-2" checked>
                     <label for="sync-on-startup">Sync on application startup</label>
                 </div>
             </div>
-            
+
             <div class="mb-6">
                 <h3 class="text-lg font-medium mb-2">Sync History</h3>
                 <div id="sync-history" class="text-sm border rounded p-3 max-h-40 overflow-y-auto">
                     <p class="text-gray-400 italic">Loading sync history...</p>
                 </div>
-                
+
                 <div id="sync-status" class="text-sm text-gray-600 mt-2">
                     Last sync: Never
                 </div>
             </div>
-            
+
             <div class="flex justify-between">
                 <button id="save-sync-settings" class="btn btn-primary btn-md">
                     Save Settings
                 </button>
-                
+
                 <button id="manual-sync" class="btn btn-success btn-md">
                     <span class="material-icons mr-1" aria-hidden="true">sync</span>
                     Sync Now
@@ -652,10 +647,10 @@
     <!-- Core utilities - load before any other scripts -->
     <script src="scripts/ui-core/uiUtils.js"></script>
     <script src="scripts/core/moduleWrapper.js"></script>
-    
+
     <!-- Database Management - Robust IndexedDB with migrations -->
     <script src="scripts/storage/databaseManager.js"></script>
-    
+
     <!-- NEW: Architectural Managers (load early - other modules depend on these) -->
     <script src="scripts/ui-core/modalManager.js"></script>
     <script src="scripts/managers/stateStore.js"></script>
@@ -663,7 +658,7 @@
     <script src="scripts/ui-core/navigationManager.js"></script>
     <script src="scripts/managers/errorManager.js"></script>
     <script src="scripts/managers/formManager.js"></script>
-    
+
     <!-- Phase 3-4: Mobile, Performance & UX Enhancements -->
     <script src="scripts/ui-core/bottomSheet.js"></script>
     <script src="scripts/ui-core/gestureManager.js"></script>
@@ -672,7 +667,7 @@
     <script src="scripts/ui-core/optimisticUI.js"></script>
     <script src="scripts/ui-core/emptyStateManager.js"></script>
     <script src="scripts/ui-core/accessibilityChecker.js"></script>
-    
+
     <!-- Entity-Curation Backend - Core Data Layer -->
     <!-- migrationManager.js REMOVED: Clean break strategy, no migration needed -->
     <script src="scripts/storage/databaseDiagnostics.js"></script>
@@ -680,20 +675,19 @@
     <script src="scripts/services/apiService.js"></script>
     <script src="scripts/sync/syncManagerV3.js"></script>
     <script src="scripts/sync/importManager.js"></script>
-    
+
     <!-- UI Components -->
     <script src="scripts/ui/cardFactory.js"></script>
     <script src="scripts/ui/conflictResolutionModal.js"></script>
-    
+
     <!-- Compatibility Layer for Legacy UI Modules -->
     <script src="scripts/storage/dataStorageWrapper.js"></script>
-    
+
     <!-- Application modules - keeping essential ones -->
     <script src="scripts/services/promptTemplate.js"></script>
     <script src="scripts/services/conceptMatcher.js"></script>
-    <script src="scripts/legacy/audioRecorder.js"></script>
     <script src="scripts/ui-core/uiManager.js"></script>
-    
+
     <!-- Module implementations - V3 Compatible -->
     <script src="scripts/modules/safetyUtils.js"></script>
     <script src="scripts/modules/uiUtilsModule.js"></script>
@@ -703,26 +697,27 @@
     <script src="scripts/modules/recordingModule.js?v=20260130-1152"></script>
     <script src="scripts/modules/transcriptionModule.js"></script>
     <script src="scripts/modules/conceptModule.js?v=20260130-1209"></script>
+    <script src="scripts/modules/restaurantModule.js"></script>
     <script src="scripts/modules/entityModule.js"></script>
     <script src="scripts/modules/syncStatusModule.js"></script>
     <!-- DEPRECATED: <script src="scripts/modules/exportImportModule.js"></script> -->
     <script src="scripts/modules/quickActionModule.js"></script>
-    <!-- REMOVED: michelinStagingModule.js - Michelin data will be batch imported -->
-    
+    <!-- REMOVED: michelinStagingModule.js and michelin CSS - Michelin data will be batch imported -->
+
     <!-- V3 Data Services (Sprint 1, Day 3 - MongoDB ↔ IndexedDB compatibility) -->
     <script src="scripts/services/V3DataTransformer.js"></script>
-    
+
     <!-- Google Places Services (Sprint 1, Day 2 - Service-based architecture) -->
     <script src="scripts/services/googlePlaces/PlacesCache.js"></script>
     <script src="scripts/services/googlePlaces/PlacesFormatter.js"></script>
     <script src="scripts/services/googlePlaces/PlacesService.js"></script>
-    
+
     <!-- Places Orchestration Service (Unified API endpoint) -->
     <script src="scripts/services/PlacesOrchestrationService.js"></script>
-    
+
     <!-- Places Automation (Sprint 2, Day 4 - Entity automation) -->
     <script src="scripts/services/PlacesAutomation.js"></script>
-    
+
     <!-- Google Places Module (refactored to use services) -->
     <script src="scripts/modules/placesModule.js"></script>
     <script src="scripts/modules/audioUtils.js"></script>
@@ -746,7 +741,7 @@
     <!-- Ensure this appears after all other scripts -->
     <script>
         // Initialize Places Search Module if needed
-        document.addEventListener('DOMContentLoaded', function() {
+        document.addEventListener('DOMContentLoaded', function () {
             console.log('DOM fully loaded, initializing modules if needed');
             // Check if module is already initialized
             if (!window.placesSearchModule && typeof PlacesSearchModule === 'function') {
@@ -756,4 +751,5 @@
         });
     </script>
 </body>
+
 </html>

@@ -177,6 +177,7 @@ class OpenAIService:
                 "concept_id": concept_id,
                 "text": text,
                 "concepts": result.get("concepts", []),
+                "restaurant_name": result.get("restaurant_name"),
                 "confidence_score": result.get("confidence_score", 0.0),
                 "entity_type": entity_type,
                 "model": config["model"],

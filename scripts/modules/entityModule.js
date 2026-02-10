@@ -34,25 +34,25 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
     async init(dependencies = {}) {
         try {
             this.log.debug('Initializing EntityModule...');
-            
+
             this.dataStore = dependencies.dataStore || window.dataStore;
-            
+
             if (!this.dataStore) {
                 throw new Error('dataStore dependency is required');
             }
-            
+
             // Get container reference
             this.container = document.getElementById('entities-container');
             if (!this.container) {
                 throw new Error('entities-container element not found');
             }
-            
+
             // Setup event listeners
             this.setupEvents();
-            
+
             // Load entities
             await this.loadEntities();
-            
+
             this.log.debug('EntityModule initialized successfully');
             return true;
         } catch (error) {
@@ -99,25 +99,25 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
     async loadEntities() {
         try {
             this.log.debug('Loading entities...');
-            
+
             // Get all entities
             const allEntities = await this.dataStore.getEntities({
                 status: 'active'
             });
-            
+
             this.log.debug(`Loaded ${allEntities.length} entities from IndexedDB`);
-            
+
             // Deduplicate by entity_id (keep latest by internal id)
             this.entities = this.deduplicateEntities(allEntities);
-            
+
             this.log.debug(`After deduplication: ${this.entities.length} unique entities`);
-            
+
             // Populate filters
             this.populateFilters();
-            
+
             // Display entities
             this.filterAndDisplayEntities();
-            
+
         } catch (error) {
             this.log.error('Failed to load entities:', error);
             this.container.innerHTML = '<p class="text-red-500">Failed to load entities</p>';
@@ -132,27 +132,27 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
      */
     deduplicateEntities(entities) {
         const uniqueMap = new Map();
-        
+
         for (const entity of entities) {
             // Extract Google Place ID from multiple possible locations
-            const placeId = entity.data?.externalId || 
-                           entity.data?.metadata?.[0]?.place_id ||
-                           entity.google_place_id ||
-                           entity.entity_id;
-            
+            const placeId = entity.data?.externalId ||
+                entity.data?.metadata?.[0]?.place_id ||
+                entity.google_place_id ||
+                entity.entity_id;
+
             // Use place_id as deduplication key (entity_id is the V3 UUID)
             const key = placeId || `local_${entity.entity_id}`;
-            
+
             // Keep entity with most recent updatedAt timestamp
             const existingEntity = uniqueMap.get(key);
             if (!existingEntity || new Date(entity.updatedAt) > new Date(existingEntity.updatedAt)) {
                 uniqueMap.set(key, entity);
             }
         }
-        
+
         const deduplicated = Array.from(uniqueMap.values());
         this.log.debug(`Deduplication: ${entities.length} → ${deduplicated.length} unique (by Google Place ID)`);
-        
+
         return deduplicated;
     }
 
@@ -165,11 +165,11 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
         this.entities.forEach(entity => {
             const city = this.extractCity(entity);
             // Only add valid string cities (not objects, not Unknown)
-            if (city && 
-                typeof city === 'string' && 
-                city !== 'Unknown' && 
+            if (city &&
+                typeof city === 'string' &&
+                city !== 'Unknown' &&
                 city.trim() !== '' &&
-                !city.includes('{') && 
+                !city.includes('{') &&
                 !city.includes('[')) {
                 cities.add(city);
             }
@@ -197,14 +197,14 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
         if (entity.data?.location?.city && typeof entity.data.location.city === 'string') {
             return entity.data.location.city;
         }
-        
+
         // Priority 2: addressComponents (Google Places)
         const addressComponents = entity.data?.addressComponents || [];
         if (Array.isArray(addressComponents)) {
             // Look for locality (city) in address components
-            const cityComponent = addressComponents.find(comp => 
+            const cityComponent = addressComponents.find(comp =>
                 comp.types && (
-                    comp.types.includes('locality') || 
+                    comp.types.includes('locality') ||
                     comp.types.includes('administrative_area_level_2')
                 )
             );
@@ -212,12 +212,12 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
                 return cityComponent.longText || cityComponent.shortText;
             }
         }
-        
+
         // Priority 3: Parse from formattedAddress
-        const address = entity.data?.formattedAddress || 
-                       entity.data?.address?.formattedAddress ||
-                       entity.data?.shortFormattedAddress;
-        
+        const address = entity.data?.formattedAddress ||
+            entity.data?.address?.formattedAddress ||
+            entity.data?.shortFormattedAddress;
+
         if (address && typeof address === 'string') {
             const parts = address.split(',').map(p => p.trim());
             if (parts.length >= 2) {
@@ -231,13 +231,13 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
                 city = city.replace(/\d{5}(-\d{4})?/g, '').trim();
                 city = city.replace(/\b\d+\b/g, '').trim();
                 city = city.replace(/\s+/g, ' ').trim();
-                
+
                 if (city && city.length > 1 && !city.includes('{') && !city.includes('[')) {
                     return city;
                 }
             }
         }
-        
+
         return 'Unknown';
     }
 
@@ -253,10 +253,10 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
                 const name = (entity.name || '').toLowerCase();
                 const city = this.extractCity(entity).toLowerCase();
                 const address = (entity.data?.formattedAddress || entity.data?.address?.formattedAddress || '').toLowerCase();
-                
-                return name.includes(this.searchQuery) || 
-                       city.includes(this.searchQuery) ||
-                       address.includes(this.searchQuery);
+
+                return name.includes(this.searchQuery) ||
+                    city.includes(this.searchQuery) ||
+                    address.includes(this.searchQuery);
             });
         }
 
@@ -272,7 +272,7 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
             );
         }        // Apply rating filter
         if (this.filters.rating > 0) {
-            filtered = filtered.filter(entity => 
+            filtered = filtered.filter(entity =>
                 (entity.data?.attributes?.rating || 0) >= this.filters.rating
             );
         }
@@ -325,13 +325,13 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
      */
     getSyncStatusBadge(entity) {
         const syncStatus = entity.sync?.status || 'pending';
-        
+
         const badges = {
             'synced': '<span class="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full flex items-center gap-1"><span class="material-icons text-xs">cloud_done</span>synced</span>',
             'pending': '<span class="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs rounded-full flex items-center gap-1"><span class="material-icons text-xs">cloud_upload</span>pending</span>',
             'conflict': '<span class="px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded-full flex items-center gap-1"><span class="material-icons text-xs">sync_problem</span>conflict</span>'
         };
-        
+
         return badges[syncStatus] || '';
     }
 
@@ -341,7 +341,7 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
      */
     showEntityDetails(entity) {
         this.log.debug('Showing entity details:', entity.entity_id);
-        
+
         // Create modal
         const modal = document.createElement('div');
         modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto';
@@ -429,7 +429,7 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
 
                         <!-- Actions -->
                         <div class="border-t pt-4 flex gap-2">
-                            <button class="btn btn-primary flex-1">
+                            <button class="btn btn-primary flex-1 btn-curate-entity">
                                 <span class="material-icons text-sm mr-1">edit</span>
                                 Curate This Entity
                             </button>
@@ -451,6 +451,19 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
             modal.remove();
         });
 
+        // Curate button
+        const curateButton = modal.querySelector('.btn-curate-entity');
+        if (curateButton) {
+            curateButton.addEventListener('click', () => {
+                modal.remove();
+                if (window.uiManager && typeof window.uiManager.editRestaurant === 'function') {
+                    window.uiManager.editRestaurant(entity);
+                } else {
+                    this.log.error('UIManager.editRestaurant not available');
+                }
+            });
+        }
+
         // Sync button (if exists)
         const syncButton = modal.querySelector('.btn-sync-entity');
         if (syncButton) {
@@ -458,7 +471,7 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
                 try {
                     syncButton.disabled = true;
                     syncButton.innerHTML = '<span class="material-icons text-sm animate-spin">sync</span> Syncing...';
-                    
+
                     if (entity.sync?.status === 'conflict') {
                         // Show conflict resolution UI
                         await this.handleConflictResolution(entity);
@@ -471,7 +484,7 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
                             this.log.warn('⚠️ Cannot sync - SyncManager not available');
                         }
                     }
-                    
+
                     // Close modal and refresh
                     modal.remove();
                     await this.refresh();
@@ -527,9 +540,9 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
                     </div>
                 </div>
             `;
-            
+
             document.body.appendChild(modal);
-            
+
             modal.querySelector('.btn-resolve-local').addEventListener('click', async () => {
                 try {
                     if (window.SyncManager && typeof window.SyncManager.resolveConflict === 'function') {
@@ -544,7 +557,7 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
                     reject(error);
                 }
             });
-            
+
             modal.querySelector('.btn-resolve-server').addEventListener('click', async () => {
                 try {
                     if (window.SyncManager && typeof window.SyncManager.resolveConflict === 'function') {
@@ -559,7 +572,7 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
                     reject(error);
                 }
             });
-            
+
             modal.querySelector('.btn-resolve-cancel').addEventListener('click', () => {
                 modal.remove();
                 reject(new Error('Conflict resolution cancelled'));

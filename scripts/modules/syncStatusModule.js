@@ -23,22 +23,27 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
     async init() {
         try {
             this.log.debug('Initializing SyncStatusModule...');
-            
+
             // Find or create container in header
             this.container = document.getElementById('sync-status-header');
             if (!this.container) {
                 this.log.warn('sync-status-header element not found');
                 return false;
             }
-            
+
             // Initial update
             await this.updateStatus();
-            
+
             // Auto-update every 30 seconds
             this.updateInterval = setInterval(() => {
                 this.updateStatus();
             }, 30000);
-            
+
+            // Listen for sync events for real-time updates
+            window.addEventListener('concierge:sync-start', () => this.updateStatus());
+            window.addEventListener('concierge:sync-complete', () => this.updateStatus());
+            window.addEventListener('concierge:sync-error', () => this.updateStatus());
+
             this.log.debug('SyncStatusModule initialized');
             return true;
         } catch (error) {
@@ -64,7 +69,7 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
             this.log.warn('Container not found for sync status update');
             return;
         }
-        
+
         if (!window.SyncManager) {
             // Show offline indicator if SyncManager not available
             this.container.innerHTML = `
@@ -78,7 +83,7 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
 
         try {
             const status = await window.SyncManager.getSyncStatus();
-            
+
             if (!status) {
                 this.container.innerHTML = `
                     <span class="flex items-center gap-1 text-xs sm:text-sm text-gray-400" title="Status unavailable">
@@ -188,10 +193,10 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
     showSyncDetails(status) {
         const modal = document.createElement('div');
         modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4';
-        
+
         const lastPullTime = status.lastSync.pull ? this.getTimeAgo(new Date(status.lastSync.pull)) : 'Never';
         const lastPushTime = status.lastSync.push ? this.getTimeAgo(new Date(status.lastSync.push)) : 'Never';
-        
+
         modal.innerHTML = `
             <div class="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
                 <div class="flex justify-between items-start mb-4">
@@ -288,14 +293,14 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
                 </div>
             </div>
         `;
-        
+
         document.body.appendChild(modal);
-        
+
         // Close button
         modal.querySelectorAll('.btn-close-modal').forEach(btn => {
             btn.addEventListener('click', () => modal.remove());
         });
-        
+
         // Manual sync button
         const syncButton = modal.querySelector('.btn-manual-sync-modal');
         if (syncButton) {
@@ -306,7 +311,7 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
                 modal.remove();
             });
         }
-        
+
         // View conflicts button
         const conflictsButton = modal.querySelector('.btn-view-conflicts-modal');
         if (conflictsButton) {
@@ -315,7 +320,7 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
                 this.showConflicts();
             });
         }
-        
+
         // Click outside to close
         modal.addEventListener('click', (e) => {
             if (e.target === modal) {
@@ -330,18 +335,18 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
     async handleManualSync() {
         try {
             this.log.debug('Triggering manual sync...');
-            
+
             if (!window.SyncManager) {
                 alert('Sync Manager not available');
                 return;
             }
 
             const result = await window.SyncManager.fullSync();
-            
+
             if (result.status === 'success') {
                 this.log.info('Manual sync completed successfully');
                 this.updateStatus();
-                
+
                 // Show success notification if available
                 if (window.SafetyUtils?.showNotification) {
                     window.SafetyUtils.showNotification('Sync completed successfully!', 'success');
@@ -362,7 +367,7 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
     async showConflicts() {
         try {
             const conflicts = await window.SyncManager.getConflicts();
-            
+
             if (!conflicts || (conflicts.entities.length === 0 && conflicts.curations.length === 0)) {
                 alert('No conflicts found');
                 return;
@@ -439,7 +444,7 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
      */
     getTimeAgo(date) {
         const seconds = Math.floor((new Date() - date) / 1000);
-        
+
         if (seconds < 60) return 'just now';
         if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
         if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;

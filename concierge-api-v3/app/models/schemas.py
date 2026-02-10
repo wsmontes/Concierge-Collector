@@ -107,6 +107,7 @@ class CurationBase(BaseModel):
     notes: Optional[CurationNotes] = None
     categories: CurationCategories = Field(default_factory=CurationCategories)
     sources: List[str] = Field(default_factory=list)
+    items: Optional[List[Dict[str, Any]]] = Field(default=None, description="Detailed items/concepts list")
 
 
 class CurationCreate(CurationBase):
@@ -124,6 +125,7 @@ class CurationUpdate(BaseModel):
     sources: Optional[List[str]] = None
     embeddings: Optional[List[Dict]] = None
     embeddings_metadata: Optional[Dict] = None
+    items: Optional[List[Dict[str, Any]]] = None
 
 
 class Curation(CurationBase):
