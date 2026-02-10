@@ -21,7 +21,7 @@ window.FindEntityModal = class FindEntityModal {
         this.currentResults = [];
         this.userLocation = null;
         this.isLoading = false;
-        
+
         // Filter state
         this.filters = {
             type: 'restaurant',
@@ -29,10 +29,11 @@ window.FindEntityModal = class FindEntityModal {
             minRating: 0,
             radius: 2000  // Can be number (meters) or 'worldwide' for no limit
         };
-        
+
+        this.onEntitySelected = null; // Callback for selection mode
         this.initialize();
     }
-    
+
     /**
      * Initialize modal HTML and event listeners
      */
@@ -40,7 +41,7 @@ window.FindEntityModal = class FindEntityModal {
         this.createModalHTML();
         this.attachEventListeners();
     }
-    
+
     /**
      * Create modal HTML structure
      */
@@ -151,17 +152,17 @@ window.FindEntityModal = class FindEntityModal {
                 </div>
             </div>
         `;
-        
+
         // Insert modal at end of body
         document.body.insertAdjacentHTML('beforeend', modalHTML);
-        
+
         // Cache DOM references
         this.modal = document.getElementById('find-entity-modal');
         this.searchInput = document.getElementById('entity-search-input');
         this.resultsContainer = document.getElementById('entity-search-results');
         this.loadingIndicator = document.getElementById('entity-search-loading');
     }
-    
+
     /**
      * Attach event listeners to modal controls
      */
@@ -171,33 +172,33 @@ window.FindEntityModal = class FindEntityModal {
         if (openBtn) {
             openBtn.addEventListener('click', () => this.open());
         }
-        
+
         // Close modal button
         const closeBtn = document.getElementById('close-find-entity-modal');
         if (closeBtn) {
             closeBtn.addEventListener('click', () => this.close());
         }
-        
+
         // Close on backdrop click
         this.modal.addEventListener('click', (e) => {
             if (e.target === this.modal) {
                 this.close();
             }
         });
-        
+
         // Close on ESC key
         document.addEventListener('keydown', (e) => {
             if (e.key === 'Escape' && !this.modal.classList.contains('hidden')) {
                 this.close();
             }
         });
-        
+
         // Search button
         const searchBtn = document.getElementById('search-entity-btn');
         if (searchBtn) {
             searchBtn.addEventListener('click', () => this.performSearch());
         }
-        
+
         // Search on Enter key
         if (this.searchInput) {
             this.searchInput.addEventListener('keypress', (e) => {
@@ -206,7 +207,7 @@ window.FindEntityModal = class FindEntityModal {
                 }
             });
         }
-        
+
         // Filter changes trigger search
         const filters = ['entity-type-filter', 'entity-price-filter', 'entity-rating-filter', 'entity-radius-filter'];
         filters.forEach(filterId => {
@@ -219,7 +220,7 @@ window.FindEntityModal = class FindEntityModal {
             }
         });
     }
-    
+
     /**
      * Update internal filter state from UI
      */
@@ -230,197 +231,210 @@ window.FindEntityModal = class FindEntityModal {
         const radiusValue = document.getElementById('entity-radius-filter')?.value || '2000';
         this.filters.radius = radiusValue === 'worldwide' ? 'worldwide' : parseInt(radiusValue);
     }
-    
+
     /**
      * Open modal and load nearby restaurants
      */
-    async open() {
-        this.modal.classList.remove('hidden');
-        document.body.style.overflow = 'hidden';
-        
-        // Get user location and load nearby restaurants
-        await this.loadNearbyRestaurants();
-    }
-    
-    /**
-     * Close modal
+    * options: {
+     *   onEntitySelected: function(entity) - specific callback for linking flow
+    * }
      */
-    close() {
-        this.modal.classList.add('hidden');
-        document.body.style.overflow = '';
+    async open(options = {}) {
+    this.modal.classList.remove('hidden');
+    document.body.style.overflow = 'hidden';
+
+    // Store callback if provided
+    this.onEntitySelected = options.onEntitySelected || null;
+
+    // Update header if in selection mode
+    const titleEl = this.modal.querySelector('h2');
+    if (titleEl) {
+        titleEl.textContent = this.onEntitySelected ? 'Select Entity to Link' : 'Find Entity';
     }
-    
+
+    // Get user location and load nearby restaurants
+    await this.loadNearbyRestaurants();
+}
+
+/**
+ * Close modal
+ */
+close() {
+    this.modal.classList.add('hidden');
+    document.body.style.overflow = '';
+}
+
     /**
      * Get user's current location
      */
     async getUserLocation() {
-        if (this.userLocation) {
-            return this.userLocation;
-        }
-        
-        try {
-            const position = await new Promise((resolve, reject) => {
-                if (!navigator.geolocation) {
-                    reject(new Error('Geolocation not supported'));
-                    return;
-                }
-                
-                navigator.geolocation.getCurrentPosition(resolve, reject, {
-                    enableHighAccuracy: true,
-                    timeout: 10000,
-                    maximumAge: 300000 // 5 minutes
-                });
-            });
-            
-            this.userLocation = {
-                latitude: position.coords.latitude,
-                longitude: position.coords.longitude
-            };
-            
-            return this.userLocation;
-        } catch (error) {
-            console.error('Error getting user location:', error);
-            // Fallback to São Paulo coordinates
-            this.userLocation = {
-                latitude: -23.5505,
-                longitude: -46.6333
-            };
-            return this.userLocation;
-        }
+    if (this.userLocation) {
+        return this.userLocation;
     }
-    
+
+    try {
+        const position = await new Promise((resolve, reject) => {
+            if (!navigator.geolocation) {
+                reject(new Error('Geolocation not supported'));
+                return;
+            }
+
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+                enableHighAccuracy: true,
+                timeout: 10000,
+                maximumAge: 300000 // 5 minutes
+            });
+        });
+
+        this.userLocation = {
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude
+        };
+
+        return this.userLocation;
+    } catch (error) {
+        console.error('Error getting user location:', error);
+        // Fallback to São Paulo coordinates
+        this.userLocation = {
+            latitude: -23.5505,
+            longitude: -46.6333
+        };
+        return this.userLocation;
+    }
+}
+
     /**
      * Load nearby restaurants automatically on modal open
      */
     async loadNearbyRestaurants() {
-        this.showLoading(true);
-        
-        try {
-            // Verify ApiService is available
-            if (!window.ApiService) {
-                throw new Error('ApiService not available. Please ensure the application is fully loaded.');
-            }
-            
-            const location = await this.getUserLocation();
-            
-            // Fetch nearby restaurants from API V3
-            const url = `/places/nearby?latitude=${location.latitude}&longitude=${location.longitude}&radius=${this.filters.radius}`;
-            const response = await window.ApiService.request('GET', url);
-            const data = await response.json();
-            
-            console.log('🌐 API Response:', {
-                hasData: !!data,
-                hasResults: !!data?.results,
-                resultsCount: data?.results?.length,
-                firstResult: data?.results?.[0],
-                status: data?.status
-            });
-            
-            if (data && data.results) {
-                this.currentResults = data.results;
-                this.displayResults(this.currentResults);
-            } else {
-                this.showError('No restaurants found nearby');
-            }
-        } catch (error) {
-            console.error('Error loading nearby restaurants:', error);
-            this.showError('Failed to load nearby restaurants: ' + error.message);
-        } finally {
-            this.showLoading(false);
+    this.showLoading(true);
+
+    try {
+        // Verify ApiService is available
+        if (!window.ApiService) {
+            throw new Error('ApiService not available. Please ensure the application is fully loaded.');
         }
+
+        const location = await this.getUserLocation();
+
+        // Fetch nearby restaurants from API V3
+        const url = `/places/nearby?latitude=${location.latitude}&longitude=${location.longitude}&radius=${this.filters.radius}`;
+        const response = await window.ApiService.request('GET', url);
+        const data = await response.json();
+
+        console.log('🌐 API Response:', {
+            hasData: !!data,
+            hasResults: !!data?.results,
+            resultsCount: data?.results?.length,
+            firstResult: data?.results?.[0],
+            status: data?.status
+        });
+
+        if (data && data.results) {
+            this.currentResults = data.results;
+            this.displayResults(this.currentResults);
+        } else {
+            this.showError('No restaurants found nearby');
+        }
+    } catch (error) {
+        console.error('Error loading nearby restaurants:', error);
+        this.showError('Failed to load nearby restaurants: ' + error.message);
+    } finally {
+        this.showLoading(false);
     }
-    
+}
+
     /**
      * Perform search based on filters and query
      */
     async performSearch() {
-        this.showLoading(true);
-        this.updateFiltersFromUI();
-        
-        try {
-            // Verify ApiService is available
-            if (!window.ApiService) {
-                throw new Error('ApiService not available. Please ensure the application is fully loaded.');
-            }
-            
-            const location = await this.getUserLocation();
-            const query = this.searchInput.value.trim();
-            
-            // Build API URL with parameters
-            let url = `/places/nearby?latitude=${location.latitude}&longitude=${location.longitude}`;
-            
-            // Only add type if not 'all'
-            if (this.filters.type && this.filters.type !== 'all') {
-                url += `&type=${this.filters.type}`;
-            }
-            
-            // Only add radius if not worldwide
-            if (this.filters.radius !== 'worldwide') {
-                url += `&radius=${this.filters.radius}`;
-            }
-            
-            if (query) {
-                url += `&keyword=${encodeURIComponent(query)}`;
-            }
-            
-            const response = await window.ApiService.request('GET', url);
-            const data = await response.json();
-            
-            if (data && data.results) {
-                // Apply client-side filters
-                let filteredResults = data.results;
-                
-                // Filter by price level
-                if (this.filters.priceLevel !== 'all') {
-                    const targetPrice = parseInt(this.filters.priceLevel);
-                    filteredResults = filteredResults.filter(place => place.price_level === targetPrice);
-                }
-                
-                // Filter by minimum rating
-                if (this.filters.minRating > 0) {
-                    filteredResults = filteredResults.filter(place => (place.rating || 0) >= this.filters.minRating);
-                }
-                
-                this.currentResults = filteredResults;
-                this.displayResults(filteredResults);
-            } else {
-                this.showError('No results found');
-            }
-        } catch (error) {
-            console.error('Error performing search:', error);
-            this.showError('Search failed: ' + error.message);
-        } finally {
-            this.showLoading(false);
+    this.showLoading(true);
+    this.updateFiltersFromUI();
+
+    try {
+        // Verify ApiService is available
+        if (!window.ApiService) {
+            throw new Error('ApiService not available. Please ensure the application is fully loaded.');
         }
+
+        const location = await this.getUserLocation();
+        const query = this.searchInput.value.trim();
+
+        // Build API URL with parameters
+        let url = `/places/nearby?latitude=${location.latitude}&longitude=${location.longitude}`;
+
+        // Only add type if not 'all'
+        if (this.filters.type && this.filters.type !== 'all') {
+            url += `&type=${this.filters.type}`;
+        }
+
+        // Only add radius if not worldwide
+        if (this.filters.radius !== 'worldwide') {
+            url += `&radius=${this.filters.radius}`;
+        }
+
+        if (query) {
+            url += `&keyword=${encodeURIComponent(query)}`;
+        }
+
+        const response = await window.ApiService.request('GET', url);
+        const data = await response.json();
+
+        if (data && data.results) {
+            // Apply client-side filters
+            let filteredResults = data.results;
+
+            // Filter by price level
+            if (this.filters.priceLevel !== 'all') {
+                const targetPrice = parseInt(this.filters.priceLevel);
+                filteredResults = filteredResults.filter(place => place.price_level === targetPrice);
+            }
+
+            // Filter by minimum rating
+            if (this.filters.minRating > 0) {
+                filteredResults = filteredResults.filter(place => (place.rating || 0) >= this.filters.minRating);
+            }
+
+            this.currentResults = filteredResults;
+            this.displayResults(filteredResults);
+        } else {
+            this.showError('No results found');
+        }
+    } catch (error) {
+        console.error('Error performing search:', error);
+        this.showError('Search failed: ' + error.message);
+    } finally {
+        this.showLoading(false);
     }
-    
-    /**
-     * Display search results
-     */
-    displayResults(results) {
-        console.log('📍 Displaying results:', results);
-        
-        // Debug: Check place_id in first result
-        if (results && results.length > 0) {
-            console.log('🔍 First result place_id check:', {
-                hasPlaceId: !!results[0].place_id,
-                placeId: results[0].place_id,
-                fullObject: results[0]
-            });
-        }
-        
-        if (!results || results.length === 0) {
-            this.resultsContainer.innerHTML = `
+}
+
+/**
+ * Display search results
+ */
+displayResults(results) {
+    console.log('📍 Displaying results:', results);
+
+    // Debug: Check place_id in first result
+    if (results && results.length > 0) {
+        console.log('🔍 First result place_id check:', {
+            hasPlaceId: !!results[0].place_id,
+            placeId: results[0].place_id,
+            fullObject: results[0]
+        });
+    }
+
+    if (!results || results.length === 0) {
+        this.resultsContainer.innerHTML = `
                 <div class="text-center text-gray-500 py-12">
                     <span class="material-icons text-6xl mb-4 text-gray-400">search_off</span>
                     <p class="text-lg">No results found</p>
                     <p class="text-sm mt-2">Try adjusting your filters or search query</p>
                 </div>
             `;
-            return;
-        }
-        
-        const resultsHTML = `
+        return;
+    }
+
+    const resultsHTML = `
             <div class="mb-4 text-sm text-gray-600">
                 Found <strong>${results.length}</strong> ${results.length === 1 ? 'result' : 'results'}
             </div>
@@ -428,29 +442,29 @@ window.FindEntityModal = class FindEntityModal {
                 ${results.map(place => this.createPlaceCard(place)).join('')}
             </div>
         `;
-        
-        this.resultsContainer.innerHTML = resultsHTML;
-        
-        // Attach import button handlers
-        this.attachImportHandlers();
+
+    this.resultsContainer.innerHTML = resultsHTML;
+
+    // Attach import button handlers
+    this.attachImportHandlers();
+}
+
+/**
+ * Create HTML card for a place
+ */
+createPlaceCard(place) {
+    // Debug: Log place_id for each card created
+    if (!place.place_id) {
+        console.warn('⚠️ Creating card for place without place_id:', place.name);
     }
-    
-    /**
-     * Create HTML card for a place
-     */
-    createPlaceCard(place) {
-        // Debug: Log place_id for each card created
-        if (!place.place_id) {
-            console.warn('⚠️ Creating card for place without place_id:', place.name);
-        }
-        
-        const rating = place.rating || 0;
-        const ratingStars = this.createStarRating(rating);
-        const priceLevel = place.price_level ? '$'.repeat(place.price_level) : 'N/A';
-        const status = place.business_status === 'OPERATIONAL' ? 'Open' : 'Closed';
-        const statusColor = place.business_status === 'OPERATIONAL' ? 'text-green-600' : 'text-red-600';
-        
-        return `
+
+    const rating = place.rating || 0;
+    const ratingStars = this.createStarRating(rating);
+    const priceLevel = place.price_level ? '$'.repeat(place.price_level) : 'N/A';
+    const status = place.business_status === 'OPERATIONAL' ? 'Open' : 'Closed';
+    const statusColor = place.business_status === 'OPERATIONAL' ? 'text-green-600' : 'text-red-600';
+
+    return `
             <div class="bg-white border border-gray-200 rounded-lg shadow-sm hover:shadow-md transition-shadow p-4">
                 <div class="flex gap-4">
                     <!-- Photo Placeholder -->
@@ -489,384 +503,393 @@ window.FindEntityModal = class FindEntityModal {
                 </button>
             </div>
         `;
+}
+
+/**
+ * Create star rating HTML
+ */
+createStarRating(rating) {
+    const fullStars = Math.floor(rating);
+    const hasHalfStar = rating % 1 >= 0.5;
+    const emptyStars = 5 - fullStars - (hasHalfStar ? 1 : 0);
+
+    let stars = '';
+    for (let i = 0; i < fullStars; i++) {
+        stars += '<span class="material-icons text-yellow-500" style="font-size: 16px;">star</span>';
     }
-    
-    /**
-     * Create star rating HTML
-     */
-    createStarRating(rating) {
-        const fullStars = Math.floor(rating);
-        const hasHalfStar = rating % 1 >= 0.5;
-        const emptyStars = 5 - fullStars - (hasHalfStar ? 1 : 0);
-        
-        let stars = '';
-        for (let i = 0; i < fullStars; i++) {
-            stars += '<span class="material-icons text-yellow-500" style="font-size: 16px;">star</span>';
-        }
-        if (hasHalfStar) {
-            stars += '<span class="material-icons text-yellow-500" style="font-size: 16px;">star_half</span>';
-        }
-        for (let i = 0; i < emptyStars; i++) {
-            stars += '<span class="material-icons text-gray-300" style="font-size: 16px;">star_border</span>';
-        }
-        
-        return stars;
+    if (hasHalfStar) {
+        stars += '<span class="material-icons text-yellow-500" style="font-size: 16px;">star_half</span>';
     }
-    
-    /**
-     * Attach click handlers to import buttons
-     */
-    attachImportHandlers() {
-        const importButtons = document.querySelectorAll('.import-entity-btn');
-        importButtons.forEach(button => {
-            button.addEventListener('click', async (e) => {
-                const placeId = e.currentTarget.getAttribute('data-place-id');
-                const placeName = e.currentTarget.getAttribute('data-place-name');
-                console.log('🎯 Import button clicked:', { placeId, placeName });
-                await this.importEntity(placeId, placeName, e.currentTarget);
-            });
+    for (let i = 0; i < emptyStars; i++) {
+        stars += '<span class="material-icons text-gray-300" style="font-size: 16px;">star_border</span>';
+    }
+
+    return stars;
+}
+
+/**
+ * Attach click handlers to import buttons
+ */
+attachImportHandlers() {
+    const importButtons = document.querySelectorAll('.import-entity-btn');
+    importButtons.forEach(button => {
+        button.addEventListener('click', async (e) => {
+            const placeId = e.currentTarget.getAttribute('data-place-id');
+            const placeName = e.currentTarget.getAttribute('data-place-name');
+            console.log('🎯 Import button clicked:', { placeId, placeName });
+            await this.importEntity(placeId, placeName, e.currentTarget);
         });
-    }
-    
+    });
+}
+
     /**
      * Import entity from Google Places
      */
     async importEntity(placeId, placeName, buttonElement) {
-        // Disable button and show loading
-        buttonElement.disabled = true;
-        buttonElement.innerHTML = '<span class="material-icons mr-2 text-sm animate-spin">refresh</span>Importing...';
-        
-        try {
-            // Validate place ID
-            if (!placeId || placeId.trim() === '') {
-                console.error('❌ Place ID is empty or undefined');
-                console.error('   Received placeId:', placeId);
-                console.error('   Button element:', buttonElement);
-                console.error('   data-place-id attribute:', buttonElement.getAttribute('data-place-id'));
-                throw new Error('Place ID is missing. This place cannot be imported. Please try a different search result.');
-            }
-            
-            console.log('✅ Place ID validated:', placeId);
-            
-            // Use PlacesOrchestrationService if available (with caching), otherwise fallback to ApiService
-            let placeDetails;
-            if (window.PlacesOrchestrationService) {
-                console.log('✅ Using PlacesOrchestrationService for place details (cached)');
-                placeDetails = await window.PlacesOrchestrationService.getPlaceDetails(placeId);
-            } else if (window.ApiService) {
-                console.log('⚠️ Using ApiService fallback for place details');
-                placeDetails = await window.ApiService.getPlaceDetails(placeId);
-            } else {
-                throw new Error('No Places service available. Please ensure the application is fully loaded.');
-            }
-            
-            if (!placeDetails || !placeDetails.result) {
-                throw new Error('Failed to fetch place details');
-            }
-            
-            const place = placeDetails.result;
-            
-            // Extract location - handle both old (geometry.location) and new (location) API formats
-            let coordinates;
-            if (place.location) {
-                // New Places API format
-                coordinates = [place.location.longitude, place.location.latitude];
-            } else if (place.geometry && place.geometry.location) {
-                // Old Places API format (fallback)
-                coordinates = [place.geometry.location.lng, place.geometry.location.lat];
-            } else {
-                throw new Error('Location data not available in place details');
-            }
-            
-            // Extract name - handle both displayName.text (new) and name (old) formats
-            const entityName = place.displayName?.text || place.name || placeName;
-            
-            // Extract address - handle both formattedAddress (new) and formatted_address (old)
-            const formattedAddress = place.formattedAddress || place.formatted_address || '';
-            
-            // Extract phone - handle both internationalPhoneNumber (new) and formatted_phone_number (old)
-            const phone = place.internationalPhoneNumber || place.formatted_phone_number || '';
-            
-            // Extract website - handle both websiteUri (new) and website (old)
-            const website = place.websiteUri || place.website || '';
-            
-            // Extract place_id - handle both id (new) and place_id (old)
-            const googlePlaceId = place.id?.replace('places/', '') || place.place_id || placeId;
-            
-            // Generate entity_id from place_id
-            const entityId = `entity_${googlePlaceId}`;
-            
-            // Create entity object from place data
-            const entity = {
-                entity_id: entityId,
-                type: this.mapPlaceTypeToEntityType(place.types),
-                name: entityName,
-                status: 'active',
-                externalId: googlePlaceId,
-                data: {
-                    google_place_id: googlePlaceId,
-                    source: 'google_places',
-                    address: {
-                        street: formattedAddress,
-                        city: this.extractCity(place.addressComponents || place.address_components),
-                        state: this.extractState(place.addressComponents || place.address_components),
-                        country: this.extractCountry(place.addressComponents || place.address_components),
-                        postal_code: this.extractPostalCode(place.addressComponents || place.address_components)
-                    },
-                    location: {
-                        type: 'Point',
-                        coordinates: coordinates
-                    },
-                    contact: {
-                        phone: phone,
-                        website: website
-                    },
-                    rating: place.rating || 0,
-                    price_level: place.priceLevel ? this.convertPriceLevel(place.priceLevel) : (place.price_level || 0)
-                }
-            };
-            
-            console.log('🔍 Entity object to create:', entity);
-            console.log('🔍 Place data received:', place);
-            console.log('🔍 Entity JSON:', JSON.stringify(entity, null, 2));
-            
-            // Create entity via API
-            const createdEntity = await window.ApiService.createEntity(entity);
+    // Disable button and show loading
+    buttonElement.disabled = true;
+    buttonElement.innerHTML = '<span class="material-icons mr-2 text-sm animate-spin">refresh</span>Importing...';
 
-            
-            if (createdEntity) {
-                // Success feedback
-                buttonElement.innerHTML = '<span class="material-icons mr-2 text-sm">check_circle</span>Imported!';
-                buttonElement.classList.remove('btn-primary');
-                buttonElement.classList.add('btn-success');
-                
-                // Show success notification
-                this.showNotification(`Successfully imported "${placeName}" as entity`, 'success');
-                
-                // Refresh entities list if available
-                if (window.dataStorage && typeof window.dataStorage.refreshEntities === 'function') {
-                    await window.dataStorage.refreshEntities();
-                }
-                
-                // Close the find entity modal
-                this.close();
-                
-                // Open curation page (concepts-section) with entity data pre-filled
-                console.log('🎨 Opening curation page for imported entity');
-                if (window.uiManager) {
-                    // Pre-fill entity data in the form
-                    this.populateEntityFormForCuration(entity, place);
-                    
-                    // Show the concepts section (curation page)
-                    window.uiManager.showRestaurantFormSection();
-                    
-                    // Mark that we're curating an imported entity (not editing)
-                    window.uiManager.isEditingRestaurant = false;
-                    window.uiManager.editingRestaurantId = null;
-                    window.uiManager.importedEntityId = entity.entity_id;
-                    window.uiManager.importedEntityData = entity;
-                } else {
-                    console.warn('⚠️ uiManager not available');
-                }
+    try {
+        // Validate place ID
+        if (!placeId || placeId.trim() === '') {
+            console.error('❌ Place ID is empty or undefined');
+            console.error('   Received placeId:', placeId);
+            console.error('   Button element:', buttonElement);
+            console.error('   data-place-id attribute:', buttonElement.getAttribute('data-place-id'));
+            throw new Error('Place ID is missing. This place cannot be imported. Please try a different search result.');
+        }
+
+        console.log('✅ Place ID validated:', placeId);
+
+        // Use PlacesOrchestrationService if available (with caching), otherwise fallback to ApiService
+        let placeDetails;
+        if (window.PlacesOrchestrationService) {
+            console.log('✅ Using PlacesOrchestrationService for place details (cached)');
+            placeDetails = await window.PlacesOrchestrationService.getPlaceDetails(placeId);
+        } else if (window.ApiService) {
+            console.log('⚠️ Using ApiService fallback for place details');
+            placeDetails = await window.ApiService.getPlaceDetails(placeId);
+        } else {
+            throw new Error('No Places service available. Please ensure the application is fully loaded.');
+        }
+
+        if (!placeDetails || !placeDetails.result) {
+            throw new Error('Failed to fetch place details');
+        }
+
+        const place = placeDetails.result;
+
+        // Extract location - handle both old (geometry.location) and new (location) API formats
+        let coordinates;
+        if (place.location) {
+            // New Places API format
+            coordinates = [place.location.longitude, place.location.latitude];
+        } else if (place.geometry && place.geometry.location) {
+            // Old Places API format (fallback)
+            coordinates = [place.geometry.location.lng, place.geometry.location.lat];
+        } else {
+            throw new Error('Location data not available in place details');
+        }
+
+        // Extract name - handle both displayName.text (new) and name (old) formats
+        const entityName = place.displayName?.text || place.name || placeName;
+
+        // Extract address - handle both formattedAddress (new) and formatted_address (old)
+        const formattedAddress = place.formattedAddress || place.formatted_address || '';
+
+        // Extract phone - handle both internationalPhoneNumber (new) and formatted_phone_number (old)
+        const phone = place.internationalPhoneNumber || place.formatted_phone_number || '';
+
+        // Extract website - handle both websiteUri (new) and website (old)
+        const website = place.websiteUri || place.website || '';
+
+        // Extract place_id - handle both id (new) and place_id (old)
+        const googlePlaceId = place.id?.replace('places/', '') || place.place_id || placeId;
+
+        // Generate entity_id from place_id
+        const entityId = `entity_${googlePlaceId}`;
+
+        // Create entity object from place data
+        const entity = {
+            entity_id: entityId,
+            type: this.mapPlaceTypeToEntityType(place.types),
+            name: entityName,
+            status: 'active',
+            externalId: googlePlaceId,
+            data: {
+                google_place_id: googlePlaceId,
+                source: 'google_places',
+                address: {
+                    street: formattedAddress,
+                    city: this.extractCity(place.addressComponents || place.address_components),
+                    state: this.extractState(place.addressComponents || place.address_components),
+                    country: this.extractCountry(place.addressComponents || place.address_components),
+                    postal_code: this.extractPostalCode(place.addressComponents || place.address_components)
+                },
+                location: {
+                    type: 'Point',
+                    coordinates: coordinates
+                },
+                contact: {
+                    phone: phone,
+                    website: website
+                },
+                rating: place.rating || 0,
+                price_level: place.priceLevel ? this.convertPriceLevel(place.priceLevel) : (place.price_level || 0)
             }
-        } catch (error) {
-            console.error('Error importing entity:', error);
-            buttonElement.innerHTML = '<span class="material-icons mr-2 text-sm">error</span>Failed';
-            buttonElement.classList.add('btn-danger');
-            this.showNotification(`Failed to import "${placeName}": ${error.message}`, 'error');
-        }
-    }
-    
-    /**
-     * Map Google Place types to entity types
-     */
-    mapPlaceTypeToEntityType(types) {
-        if (!types || types.length === 0) return 'restaurant';
-        
-        const typeMap = {
-            'restaurant': 'restaurant',
-            'cafe': 'cafe',
-            'bar': 'bar',
-            'bakery': 'bakery',
-            'food': 'restaurant'
         };
-        
-        for (const type of types) {
-            if (typeMap[type]) {
-                return typeMap[type];
+
+        console.log('🔍 Entity object to create:', entity);
+        console.log('🔍 Place data received:', place);
+        console.log('🔍 Entity JSON:', JSON.stringify(entity, null, 2));
+
+        // Create entity via API
+        const createdEntity = await window.ApiService.createEntity(entity);
+
+
+        if (createdEntity) {
+            // Success feedback
+            buttonElement.innerHTML = '<span class="material-icons mr-2 text-sm">check_circle</span>Imported!';
+            buttonElement.classList.remove('btn-primary');
+            buttonElement.classList.add('btn-success');
+
+            // Show success notification
+            this.showNotification(`Successfully imported "${placeName}" as entity`, 'success');
+
+            // Refresh entities list if available
+            if (window.dataStorage && typeof window.dataStorage.refreshEntities === 'function') {
+                await window.dataStorage.refreshEntities();
+            }
+
+            // Close the find entity modal
+            this.close();
+
+            // If we have a selection callback, use it and skip default navigation
+            if (this.onEntitySelected && typeof this.onEntitySelected === 'function') {
+                console.log('🔗 Executing onEntitySelected callback');
+                this.onEntitySelected(entity);
+                this.onEntitySelected = null; // Reset
+                return;
+            }
+
+            // Default behavior: Open curation page
+            // Open curation page (concepts-section) with entity data pre-filled
+            console.log('🎨 Opening curation page for imported entity');
+            if (window.uiManager) {
+                // Pre-fill entity data in the form
+                this.populateEntityFormForCuration(entity, place);
+
+                // Show the concepts section (curation page)
+                window.uiManager.showRestaurantFormSection();
+
+                // Mark that we're curating an imported entity (not editing)
+                window.uiManager.isEditingRestaurant = false;
+                window.uiManager.editingRestaurantId = null;
+                window.uiManager.importedEntityId = entity.entity_id;
+                window.uiManager.importedEntityData = entity;
+            } else {
+                console.warn('⚠️ uiManager not available');
             }
         }
-        
-        return 'restaurant';
+    } catch (error) {
+        console.error('Error importing entity:', error);
+        buttonElement.innerHTML = '<span class="material-icons mr-2 text-sm">error</span>Failed';
+        buttonElement.classList.add('btn-danger');
+        this.showNotification(`Failed to import "${placeName}": ${error.message}`, 'error');
     }
-    
-    /**
-     * Convert Google Places API (New) price level to numeric value
-     */
-    convertPriceLevel(priceLevel) {
-        if (!priceLevel) return 0;
-        
-        const priceMap = {
-            'PRICE_LEVEL_FREE': 0,
-            'PRICE_LEVEL_INEXPENSIVE': 1,
-            'PRICE_LEVEL_MODERATE': 2,
-            'PRICE_LEVEL_EXPENSIVE': 3,
-            'PRICE_LEVEL_VERY_EXPENSIVE': 4
-        };
-        
-        return priceMap[priceLevel] || 0;
-    }
-    
-    /**
-     * Extract city from address components
-     */
-    extractCity(components) {
-        if (!components) return '';
-        const cityComponent = components.find(c => 
-            c.types.includes('locality') || 
-            c.types.includes('administrative_area_level_2')
-        );
-        return cityComponent ? (cityComponent.longText || cityComponent.long_name || '') : '';
-    }
-    
-    /**
-     * Extract state from address components
-     */
-    extractState(components) {
-        if (!components) return '';
-        const stateComponent = components.find(c => c.types.includes('administrative_area_level_1'));
-        return stateComponent ? (stateComponent.shortText || stateComponent.short_name || '') : '';
-    }
-    
-    /**
-     * Extract country from address components
-     */
-    extractCountry(components) {
-        if (!components) return '';
-        const countryComponent = components.find(c => c.types.includes('country'));
-        return countryComponent ? (countryComponent.longText || countryComponent.long_name || '') : '';
-    }
-    
-    /**
-     * Extract postal code from address components
-     */
-    extractPostalCode(components) {
-        if (!components) return '';
-        const postalComponent = components.find(c => c.types.includes('postal_code'));
-        return postalComponent ? (postalComponent.longText || postalComponent.long_name || '') : '';
-    }
-    
-    /**
-     * Populate entity form for curation
-     * Pre-fills the concepts-section form with imported entity data
-     */
-    populateEntityFormForCuration(entity, placeDetails) {
-        console.log('📝 Populating form with entity data for curation');
-        
-        // Restaurant name
-        const nameInput = document.getElementById('restaurant-name');
-        if (nameInput) {
-            nameInput.value = entity.name || '';
+}
+
+/**
+ * Map Google Place types to entity types
+ */
+mapPlaceTypeToEntityType(types) {
+    if (!types || types.length === 0) return 'restaurant';
+
+    const typeMap = {
+        'restaurant': 'restaurant',
+        'cafe': 'cafe',
+        'bar': 'bar',
+        'bakery': 'bakery',
+        'food': 'restaurant'
+    };
+
+    for (const type of types) {
+        if (typeMap[type]) {
+            return typeMap[type];
         }
-        
-        // Location (coordinates)
-        if (entity.data?.location?.coordinates && window.uiManager) {
-            window.uiManager.currentLocation = {
-                latitude: entity.data.location.coordinates[1],
-                longitude: entity.data.location.coordinates[0]
-            };
-            
-            // Update location display
-            const locationDisplay = document.getElementById('location-display');
-            if (locationDisplay) {
-                locationDisplay.innerHTML = `
+    }
+
+    return 'restaurant';
+}
+
+/**
+ * Convert Google Places API (New) price level to numeric value
+ */
+convertPriceLevel(priceLevel) {
+    if (!priceLevel) return 0;
+
+    const priceMap = {
+        'PRICE_LEVEL_FREE': 0,
+        'PRICE_LEVEL_INEXPENSIVE': 1,
+        'PRICE_LEVEL_MODERATE': 2,
+        'PRICE_LEVEL_EXPENSIVE': 3,
+        'PRICE_LEVEL_VERY_EXPENSIVE': 4
+    };
+
+    return priceMap[priceLevel] || 0;
+}
+
+/**
+ * Extract city from address components
+ */
+extractCity(components) {
+    if (!components) return '';
+    const cityComponent = components.find(c =>
+        c.types.includes('locality') ||
+        c.types.includes('administrative_area_level_2')
+    );
+    return cityComponent ? (cityComponent.longText || cityComponent.long_name || '') : '';
+}
+
+/**
+ * Extract state from address components
+ */
+extractState(components) {
+    if (!components) return '';
+    const stateComponent = components.find(c => c.types.includes('administrative_area_level_1'));
+    return stateComponent ? (stateComponent.shortText || stateComponent.short_name || '') : '';
+}
+
+/**
+ * Extract country from address components
+ */
+extractCountry(components) {
+    if (!components) return '';
+    const countryComponent = components.find(c => c.types.includes('country'));
+    return countryComponent ? (countryComponent.longText || countryComponent.long_name || '') : '';
+}
+
+/**
+ * Extract postal code from address components
+ */
+extractPostalCode(components) {
+    if (!components) return '';
+    const postalComponent = components.find(c => c.types.includes('postal_code'));
+    return postalComponent ? (postalComponent.longText || postalComponent.long_name || '') : '';
+}
+
+/**
+ * Populate entity form for curation
+ * Pre-fills the concepts-section form with imported entity data
+ */
+populateEntityFormForCuration(entity, placeDetails) {
+    console.log('📝 Populating form with entity data for curation');
+
+    // Restaurant name
+    const nameInput = document.getElementById('restaurant-name');
+    if (nameInput) {
+        nameInput.value = entity.name || '';
+    }
+
+    // Location (coordinates)
+    if (entity.data?.location?.coordinates && window.uiManager) {
+        window.uiManager.currentLocation = {
+            latitude: entity.data.location.coordinates[1],
+            longitude: entity.data.location.coordinates[0]
+        };
+
+        // Update location display
+        const locationDisplay = document.getElementById('location-display');
+        if (locationDisplay) {
+            locationDisplay.innerHTML = `
                     <p class="text-green-600">Location from Google Places:</p>
                     <p>Latitude: ${entity.data.location.coordinates[1].toFixed(6)}</p>
                     <p>Longitude: ${entity.data.location.coordinates[0].toFixed(6)}</p>
                     <p class="text-sm text-gray-600 mt-1">${entity.data.address.street}</p>
                 `;
-            }
-        }
-        
-        // Description (can leave empty for curator to add)
-        const descriptionInput = document.getElementById('restaurant-description');
-        if (descriptionInput) {
-            descriptionInput.value = '';
-        }
-        
-        // Transcription (empty - curator will add via recording)
-        const transcriptionTextarea = document.getElementById('restaurant-transcription');
-        if (transcriptionTextarea) {
-            transcriptionTextarea.value = '';
-        }
-        
-        // Curation notes (empty - curator will add)
-        const publicNotesTextarea = document.getElementById('curation-notes-public');
-        if (publicNotesTextarea) {
-            publicNotesTextarea.value = '';
-        }
-        
-        const privateNotesTextarea = document.getElementById('curation-notes-private');
-        if (privateNotesTextarea) {
-            privateNotesTextarea.value = '';
-        }
-        
-        // Clear photos (curator will add new ones)
-        if (window.uiManager) {
-            window.uiManager.currentPhotos = [];
-        }
-        const photosPreview = document.getElementById('photos-preview');
-        if (photosPreview) {
-            photosPreview.innerHTML = '';
-        }
-        
-        // Clear concepts (curator will add via AI or manually)
-        if (window.uiManager) {
-            window.uiManager.currentConcepts = [];
-        }
-        
-        console.log('✅ Form populated with entity data, ready for curation');
-    }
-    
-    /**
-     * Show/hide loading indicator
-     */
-    showLoading(show) {
-        this.isLoading = show;
-        if (show) {
-            this.loadingIndicator.classList.remove('hidden');
-            this.resultsContainer.classList.add('hidden');
-        } else {
-            this.loadingIndicator.classList.add('hidden');
-            this.resultsContainer.classList.remove('hidden');
         }
     }
-    
-    /**
-     * Show error message
-     */
-    showError(message) {
-        this.resultsContainer.innerHTML = `
+
+    // Description (can leave empty for curator to add)
+    const descriptionInput = document.getElementById('restaurant-description');
+    if (descriptionInput) {
+        descriptionInput.value = '';
+    }
+
+    // Transcription (empty - curator will add via recording)
+    const transcriptionTextarea = document.getElementById('restaurant-transcription');
+    if (transcriptionTextarea) {
+        transcriptionTextarea.value = '';
+    }
+
+    // Curation notes (empty - curator will add)
+    const publicNotesTextarea = document.getElementById('curation-notes-public');
+    if (publicNotesTextarea) {
+        publicNotesTextarea.value = '';
+    }
+
+    const privateNotesTextarea = document.getElementById('curation-notes-private');
+    if (privateNotesTextarea) {
+        privateNotesTextarea.value = '';
+    }
+
+    // Clear photos (curator will add new ones)
+    if (window.uiManager) {
+        window.uiManager.currentPhotos = [];
+    }
+    const photosPreview = document.getElementById('photos-preview');
+    if (photosPreview) {
+        photosPreview.innerHTML = '';
+    }
+
+    // Clear concepts (curator will add via AI or manually)
+    if (window.uiManager) {
+        window.uiManager.currentConcepts = [];
+    }
+
+    console.log('✅ Form populated with entity data, ready for curation');
+}
+
+/**
+ * Show/hide loading indicator
+ */
+showLoading(show) {
+    this.isLoading = show;
+    if (show) {
+        this.loadingIndicator.classList.remove('hidden');
+        this.resultsContainer.classList.add('hidden');
+    } else {
+        this.loadingIndicator.classList.add('hidden');
+        this.resultsContainer.classList.remove('hidden');
+    }
+}
+
+/**
+ * Show error message
+ */
+showError(message) {
+    this.resultsContainer.innerHTML = `
             <div class="text-center text-red-600 py-12">
                 <span class="material-icons text-6xl mb-4">error_outline</span>
                 <p class="text-lg font-semibold">Error</p>
                 <p class="text-sm mt-2">${message}</p>
             </div>
         `;
+}
+
+/**
+ * Show notification (reuse existing notification system if available)
+ */
+showNotification(message, type = 'info') {
+    // Check if there's a notification system available
+    if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
+        window.uiUtils.showNotification(message, type);
+    } else {
+        // Fallback to console
+        console.log(`[${type.toUpperCase()}] ${message}`);
     }
-    
-    /**
-     * Show notification (reuse existing notification system if available)
-     */
-    showNotification(message, type = 'info') {
-        // Check if there's a notification system available
-        if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
-            window.uiUtils.showNotification(message, type);
-        } else {
-            // Fallback to console
-            console.log(`[${type.toUpperCase()}] ${message}`);
-        }
-    }
+}
 };
 
 // Auto-initialize when DOM is ready
