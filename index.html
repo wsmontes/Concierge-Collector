@@ -680,6 +680,9 @@
     <script src="scripts/ui-core/uiUtils.js"></script>
     <script src="scripts/core/moduleWrapper.js"></script>
     
+    <!-- Database Management - Robust IndexedDB with migrations -->
+    <script src="scripts/storage/databaseManager.js"></script>
+    
     <!-- NEW: Architectural Managers (load early - other modules depend on these) -->
     <script src="scripts/ui-core/modalManager.js"></script>
     <script src="scripts/managers/stateStore.js"></script>
@@ -699,6 +702,7 @@
     
     <!-- Entity-Curation Backend - Core Data Layer -->
     <!-- migrationManager.js REMOVED: Clean break strategy, no migration needed -->
+    <script src="scripts/storage/databaseDiagnostics.js"></script>
     <script src="scripts/storage/dataStore.js"></script>
     <script src="scripts/services/apiService.js"></script>
     <script src="scripts/sync/syncManagerV3.js"></script>

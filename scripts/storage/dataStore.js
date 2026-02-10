@@ -35,108 +35,28 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
 
     /**
      * Initialize V3 database with entity-curation model
+     * Now using DatabaseManager for robust migrations and recovery
      */
     async initializeDatabase() {
         try {
-            this.log.debug('🚀 Initializing V3 Entity Store...');
+            this.log.debug('🚀 Initializing V3 Entity Store with DatabaseManager...');
             
-            // Use final database name (no version suffix - Dexie handles versioning)
-            const dbName = 'ConciergeCollector';
-            this.db = new Dexie(dbName);
-            
-            // Define all schema versions for automatic migration
-            // Version 3: Original V3 Entity-Curation Schema
-            this.db.version(3).stores({
-                entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt',
-                curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt',
-                drafts: '++id, type, curator_id, createdAt, lastModified',
-                curators: '++id, curator_id, name, email, status, createdAt, lastActive',
-                pendingSync: '++id, type, local_id, action, createdAt, retryCount',
-                settings: 'key',
-                appMetadata: 'key'
-            });
-            
-            // Version 6: Multi-Curator + Entity-Agnostic Schema
-            // Note: Using version 6 to be higher than any existing versions
-            this.db.version(6).stores({
-                // Core V3 Tables with enhancements
-                entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt, etag',
-                curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt, updatedAt, etag',
-                curators: '++id, curator_id, name, email, status, createdAt, lastActive',
-                
-                // System Tables
-                drafts: '++id, type, data, curator_id, createdAt, lastModified',
-                syncQueue: '++id, type, action, local_id, entity_id, data, createdAt, retryCount, lastError',
-                settings: 'key',
-                cache: 'key, expires'
-            });
-
-            // Version 7: Add sync.status index for sync manager queries
-            this.db.version(7).stores({
-                // Core V3 Tables with sync.status indexed
-                entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt, etag, sync.status',
-                curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt, updatedAt, etag, sync.status',
-                curators: '++id, curator_id, name, email, status, createdAt, lastActive',
-                
-                // System Tables
-                drafts: '++id, type, data, curator_id, createdAt, lastModified',
-                syncQueue: '++id, type, action, local_id, entity_id, data, createdAt, retryCount, lastError',
-                settings: 'key',
-                cache: 'key, expires'
-            });
-
-            // Version 8: Add legacy recording module tables for backward compatibility
-            this.db.version(8).stores({
-                // Core V3 Tables with sync.status indexed
-                entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt, etag, sync.status',
-                curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt, updatedAt, etag, sync.status',
-                curators: '++id, curator_id, name, email, status, createdAt, lastActive',
-                
-                // System Tables
-                drafts: '++id, type, data, curator_id, createdAt, lastModified',
-                syncQueue: '++id, type, action, local_id, entity_id, data, createdAt, retryCount, lastError',
-                settings: 'key',
-                cache: 'key, expires',
-                
-                // Recording Module Legacy Tables
-                draftRestaurants: '++id, curatorId, name, timestamp, lastModified, hasAudio',
-                pendingAudio: '++id, restaurantId, draftId, timestamp, retryCount, status'
-            });
-
-            // Version 91: Reset after "zona" cleanup - same schema as v8
-            // Incrementing version to bypass v90 from previous unstable code
-            this.db.version(91).stores({
-                // Core V3 Tables with sync.status indexed
-                entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt, etag, sync.status',
-                curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt, updatedAt, etag, sync.status',
-                curators: '++id, curator_id, name, email, status, createdAt, lastActive',
-                
-                // System Tables
-                drafts: '++id, type, data, curator_id, createdAt, lastModified',
-                syncQueue: '++id, type, action, local_id, entity_id, data, createdAt, retryCount, lastError',
-                settings: 'key',
-                cache: 'key, expires',
-                
-                // Recording Module Legacy Tables
-                draftRestaurants: '++id, curatorId, name, timestamp, lastModified, hasAudio',
-                pendingAudio: '++id, restaurantId, draftId, timestamp, retryCount, status'
-            });
-
-            // Add hooks for automatic timestamps and validation
-            this.addDatabaseHooks();
-            
-            // Open the database and wait for it to be ready
-            await this.db.open();
-            
-            // Wait a moment for Dexie to fully initialize the object stores
-            await new Promise(resolve => setTimeout(resolve, 100));
-            
-            // Verify database is ready before proceeding
-            if (!this.db.isOpen()) {
-                throw new Error('Database failed to open properly');
+            // Use DatabaseManager for robust initialization
+            if (!window.DatabaseManager) {
+                this.log.warn('⚠️ DatabaseManager not available, falling back to manual init');
+                return await this.initializeDatabaseManual();
             }
             
-            this.log.debug('✅ Database opened, initializing default data...');
+            // Create DatabaseManager instance
+            this.dbManager = new window.DatabaseManager();
+            
+            // Initialize with automatic migrations and validation
+            this.db = await this.dbManager.initialize();
+            
+            this.log.debug('✅ DatabaseManager initialized database successfully');
+            
+            // Add hooks for automatic timestamps and validation
+            this.addDatabaseHooks();
             
             // Initialize default data (this will create tables on first use)
             await this.initializeDefaultData();
@@ -150,8 +70,123 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
             
         } catch (error) {
             this.log.error('❌ Failed to initialize V3 Entity Store:', error);
+            
+            // Try to recover
+            if (this.dbManager) {
+                this.log.warn('Attempting recovery...');
+                const recovered = await this.dbManager.attemptRecovery();
+                if (recovered) {
+                    this.db = this.dbManager.getDatabase();
+                    this.isInitialized = true;
+                    return this;
+                }
+            }
+            
             throw error;
         }
+    }
+
+    /**
+     * Manual database initialization (fallback if DatabaseManager not available)
+     */
+    async initializeDatabaseManual() {
+        this.log.debug('Using manual database initialization...');
+        
+        // Use final database name (no version suffix - Dexie handles versioning)
+        const dbName = 'ConciergeCollector';
+        this.db = new Dexie(dbName);
+        
+        // Define all schema versions for automatic migration
+        // Version 3: Original V3 Entity-Curation Schema
+        this.db.version(3).stores({
+            entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt',
+            curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt',
+            drafts: '++id, type, curator_id, createdAt, lastModified',
+            curators: '++id, curator_id, name, email, status, createdAt, lastActive',
+            pendingSync: '++id, type, local_id, action, createdAt, retryCount',
+            settings: 'key',
+            appMetadata: 'key'
+        });
+        
+        // Version 6: Multi-Curator + Entity-Agnostic Schema
+        // Note: Using version 6 to be higher than any existing versions
+        this.db.version(6).stores({
+            // Core V3 Tables with enhancements
+            entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt, etag',
+            curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt, updatedAt, etag',
+            curators: '++id, curator_id, name, email, status, createdAt, lastActive',
+            
+            // System Tables
+            drafts: '++id, type, data, curator_id, createdAt, lastModified',
+            syncQueue: '++id, type, action, local_id, entity_id, data, createdAt, retryCount, lastError',
+            settings: 'key',
+            cache: 'key, expires'
+        });
+
+        // Version 7: Add sync.status index for sync manager queries
+        this.db.version(7).stores({
+            // Core V3 Tables with sync.status indexed
+            entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt, etag, sync.status',
+            curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt, updatedAt, etag, sync.status',
+            curators: '++id, curator_id, name, email, status, createdAt, lastActive',
+            
+            // System Tables
+            drafts: '++id, type, data, curator_id, createdAt, lastModified',
+            syncQueue: '++id, type, action, local_id, entity_id, data, createdAt, retryCount, lastError',
+            settings: 'key',
+            cache: 'key, expires'
+        });
+
+        // Version 8: Add legacy recording module tables for backward compatibility
+        this.db.version(8).stores({
+            // Core V3 Tables with sync.status indexed
+            entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt, etag, sync.status',
+            curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt, updatedAt, etag, sync.status',
+            curators: '++id, curator_id, name, email, status, createdAt, lastActive',
+            
+            // System Tables
+            drafts: '++id, type, data, curator_id, createdAt, lastModified',
+            syncQueue: '++id, type, action, local_id, entity_id, data, createdAt, retryCount, lastError',
+            settings: 'key',
+            cache: 'key, expires',
+            
+            // Recording Module Legacy Tables
+            draftRestaurants: '++id, curatorId, name, timestamp, lastModified, hasAudio',
+            pendingAudio: '++id, restaurantId, draftId, timestamp, retryCount, status'
+        });
+
+        // Version 91: Reset after "zona" cleanup - same schema as v8
+        // Incrementing version to bypass v90 from previous unstable code
+        this.db.version(91).stores({
+            // Core V3 Tables with sync.status indexed
+            entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt, etag, sync.status',
+            curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt, updatedAt, etag, sync.status',
+            curators: '++id, curator_id, name, email, status, createdAt, lastActive',
+            
+            // System Tables
+            drafts: '++id, type, data, curator_id, createdAt, lastModified',
+            syncQueue: '++id, type, action, local_id, entity_id, data, createdAt, retryCount, lastError',
+            settings: 'key',
+            cache: 'key, expires',
+            
+            // Recording Module Legacy Tables
+            draftRestaurants: '++id, curatorId, name, timestamp, lastModified, hasAudio',
+            pendingAudio: '++id, restaurantId, draftId, timestamp, retryCount, status'
+        });
+        
+        // Open the database and wait for it to be ready
+        await this.db.open();
+        
+        // Wait a moment for Dexie to fully initialize the object stores
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
+        // Verify database is ready before proceeding
+        if (!this.db.isOpen()) {
+            throw new Error('Database failed to open properly');
+        }
+        
+        this.log.debug('✅ Database opened with manual initialization');
+        return this;
     }
 
     /**
