@@ -16,20 +16,35 @@
  * - Response caching
  */
 
-const PlacesOrchestrationService = (function() {
+const PlacesOrchestrationService = (function () {
     'use strict';
 
     class PlacesOrchestrationServiceClass {
         constructor() {
             this.log = Logger.module('PlacesOrchestration');
-            this.baseUrl = window.AppConfig?.apiBaseUrl || 'http://localhost:8000';
-            this.orchestrateEndpoint = `${this.baseUrl}/api/v3/places/orchestrate`;
-            
+
+            // Get base URL from config or default
+            // AppConfig.api.backend.baseUrl usually includes /api/v3 (e.g., http://localhost:8000/api/v3)
+            const configBaseUrl = window.AppConfig?.api?.backend?.baseUrl;
+
+            if (configBaseUrl) {
+                // Remove trailing slash if present
+                const cleanBase = configBaseUrl.replace(/\/$/, '');
+                // If config already has /api/v3, do not append it again
+                // The endpoint is /places/orchestrate relative to the API base
+                this.orchestrateEndpoint = `${cleanBase}/places/orchestrate`;
+            } else {
+                // Fallback default
+                this.orchestrateEndpoint = 'http://localhost:8000/api/v3/places/orchestrate';
+            }
+
+            this.log.debug('Initialized with endpoint:', this.orchestrateEndpoint);
+
             // Request tracking
             this.requestCount = 0;
             this.errorCount = 0;
             this.cacheHits = 0;
-            
+
             // Simple in-memory cache
             this.cache = new Map();
             this.cacheTTL = 5 * 60 * 1000; // 5 minutes
@@ -109,13 +124,13 @@ const PlacesOrchestrationService = (function() {
          */
         async getPlaceDetails(placeId) {
             const request = { place_id: placeId };
-            
+
             this.log.debug('Place details:', placeId);
             const response = await this.orchestrate(request);
-            
+
             // Details returns array with single item, extract it
-            return response.results && response.results.length > 0 
-                ? response.results[0] 
+            return response.results && response.results.length > 0
+                ? response.results[0]
                 : null;
         }
 
@@ -130,7 +145,7 @@ const PlacesOrchestrationService = (function() {
             }
 
             const request = { place_ids: placeIds };
-            
+
             this.log.debug('Bulk details:', placeIds.length, 'places');
             return this.orchestrate(request);
         }
@@ -164,7 +179,7 @@ const PlacesOrchestrationService = (function() {
             // Check cache first
             const cacheKey = this.getCacheKey(request);
             const cached = this.getFromCache(cacheKey);
-            
+
             if (cached) {
                 this.cacheHits++;
                 this.log.debug('Cache hit:', cacheKey);
@@ -174,7 +189,7 @@ const PlacesOrchestrationService = (function() {
             // Make API call
             try {
                 this.requestCount++;
-                
+
                 const response = await fetch(this.orchestrateEndpoint, {
                     method: 'POST',
                     headers: {
@@ -189,12 +204,12 @@ const PlacesOrchestrationService = (function() {
                 }
 
                 const data = await response.json();
-                
+
                 this.log.debug(`Operation: ${data.operation}, Results: ${data.total_results}`);
-                
+
                 // Cache successful response
                 this.setCache(cacheKey, data);
-                
+
                 return data;
 
             } catch (error) {
@@ -318,7 +333,7 @@ const PlacesOrchestrationService = (function() {
                 errors: this.errorCount,
                 cacheHits: this.cacheHits,
                 cacheSize: this.cache.size,
-                cacheHitRate: this.requestCount > 0 
+                cacheHitRate: this.requestCount > 0
                     ? ((this.cacheHits / (this.requestCount + this.cacheHits)) * 100).toFixed(2) + '%'
                     : '0%'
             };
