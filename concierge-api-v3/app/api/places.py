@@ -242,7 +242,7 @@ async def search_nearby(
     latitude: float = Query(..., description="Latitude for search center"),
     longitude: float = Query(..., description="Longitude for search center"),
     radius: Optional[int] = Query(None, ge=1, le=50000, description="Search radius in meters (omit for worldwide with keyword)"),
-    type: Optional[str] = Query(None, description="Place type filter (restaurant, cafe, bar, bakery, food)"),
+    place_type: Optional[str] = Query(None, description="Place type filter (restaurant, cafe, bar, bakery, food)"),
     keyword: Optional[str] = Query(None, description="Keyword search (enables Text Search if no radius)"),
     max_results: int = Query(20, ge=1, le=20, description="Maximum results to return"),
     language: Optional[str] = Query("pt-BR", description="Language code (e.g., pt-BR, en, es)"),
@@ -253,31 +253,7 @@ async def search_nearby(
 ):
     """
     Hybrid search endpoint: Nearby Search or Text Search
-    
-    - Uses **Nearby Search** when radius is provided
-    - Uses **Text Search** when keyword is provided without radius (worldwide search)
-    - Supports advanced filters: minRating, openNow, priceLevels
-    - Supports localization: language and region codes
-    
-    Args:
-        latitude: Center latitude for search
-        longitude: Center longitude for search  
-        radius: Search radius in meters (1-50000), omit for worldwide with keyword
-        type: Place type (restaurant, cafe, bar, etc.)
-        keyword: Search query text (enables Text Search if no radius)
-        max_results: Maximum results (1-20, API limit)
-        language: Language code (pt-BR, en, es, etc.)
-        region: Region code (BR, US, ES, etc.)
-        min_rating: Minimum rating filter (1.0-5.0)
-        open_now: Only return places open now
-        price_levels: Comma-separated price levels
-        
-    Returns:
-        NearbySearchResponse with place results
-        
-    Examples:
-        Nearby: GET /api/v3/places/nearby?latitude=-23.55&longitude=-46.63&radius=2000&type=restaurant
-        Worldwide: GET /api/v3/places/nearby?latitude=-23.55&longitude=-46.63&keyword=Osteria+Francescana&type=restaurant
+    ...
     """
     try:
         # Validate API key
@@ -291,12 +267,12 @@ async def search_nearby(
         use_text_search = keyword and not radius
         
         if use_text_search:
-            logger.info(f"Text Search: keyword='{keyword}', type={type}, language={language}")
+            logger.info(f"Text Search: keyword='{keyword}', type={place_type}, language={language}")
             return await _text_search(
                 keyword=keyword,
                 latitude=latitude,
                 longitude=longitude,
-                type=type,
+                place_type=place_type,
                 max_results=max_results,
                 language=language,
                 region=region,
@@ -308,12 +284,12 @@ async def search_nearby(
             # Default to nearby search
             if not radius:
                 radius = 5000  # Default 5km
-            logger.info(f"Nearby Search: lat={latitude}, lng={longitude}, radius={radius}, type={type}")
+            logger.info(f"Nearby Search: lat={latitude}, lng={longitude}, radius={radius}, type={place_type}")
             return await _nearby_search(
                 latitude=latitude,
                 longitude=longitude,
                 radius=radius,
-                type=type,
+                place_type=place_type,
                 max_results=max_results,
                 language=language,
                 region=region,
@@ -336,7 +312,7 @@ async def _nearby_search(
     latitude: float,
     longitude: float,
     radius: int,
-    type: Optional[str],
+    place_type: Optional[str],
     max_results: int,
     language: Optional[str],
     region: Optional[str],
@@ -365,9 +341,9 @@ async def _nearby_search(
     }
     
     # Add type filter if provided
-    if type:
-        payload["includedTypes"] = [type]
-        logger.info(f"🔍 Applying type filter: includedTypes=['{type}']")
+    if place_type:
+        payload["includedTypes"] = [place_type]
+        logger.info(f"🔍 Applying type filter: includedTypes=['{place_type}']")
     else:
         logger.info("⚠️ No type filter provided for nearby search")
     
@@ -462,7 +438,7 @@ async def _text_search(
     keyword: str,
     latitude: float,
     longitude: float,
-    type: Optional[str],
+    place_type: Optional[str],
     max_results: int,
     language: Optional[str],
     region: Optional[str],
@@ -492,8 +468,8 @@ async def _text_search(
     }
     
     # Add type filter if provided
-    if type:
-        payload["includedType"] = type
+    if place_type:
+        payload["includedType"] = place_type
     
     # Add filters
     if min_rating:

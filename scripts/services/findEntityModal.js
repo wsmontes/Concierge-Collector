@@ -338,7 +338,7 @@ window.FindEntityModal = class FindEntityModal {
 
             // Only add type if not 'all'
             if (this.filters.type && this.filters.type !== 'all') {
-                url += `&type=${this.filters.type}`;
+                url += `&place_type=${this.filters.type}`;
             }
 
             // Only add radius if not worldwide
