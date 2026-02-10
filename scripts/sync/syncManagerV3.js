@@ -27,7 +27,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             maxRetries: 3,
             retryDelay: 2000,           // 2 seconds
             backgroundSyncInterval: 60000, // 60 seconds
-            batchSize: 50,              // Pull 50 items at a time
+            batchSize: 10,              // Pull 10 items at a time (Render free tier limitation)
             conflictRetryDelay: 5000    // 5 seconds before retrying conflict
         };
         
@@ -449,17 +449,21 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             // ✅ INCREMENTAL SYNC: Only fetch curations updated after last pull
             const since = this.stats.lastCurationPullAt;
             if (since) {
-                this.log.debug(`⏱️ Incremental sync: fetching curations updated after ${since}`);
+                this.log.info(`⏱️ Incremental sync: fetching curations updated after ${since}`);
             } else {
-                this.log.debug('⬇️ Full sync: fetching all curations');
+                this.log.info('⬇️ Full sync: fetching all curations');
             }
             
             let offset = 0;
             let totalPulled = 0;
+            let totalProcessed = 0;
             let hasMore = true;
-            const syncStartTime = new Date().toISOString();  // ✅ NEW: Capture sync start time
+            let batchCount = 0;
+            const syncStartTime = new Date().toISOString();
 
             while (hasMore) {
+                batchCount++;
+                
                 // Fetch batch from server with optional ?since parameter
                 const params = {
                     limit: this.config.batchSize,
@@ -471,42 +475,65 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                     params.since = since;
                 }
                 
+                this.log.debug(`Fetching batch ${batchCount}: offset=${offset}, limit=${this.config.batchSize}`);
+                
                 const response = await window.ApiService.listCurations(params);
 
                 if (!response.items || response.items.length === 0) {
+                    this.log.debug(`No more curations to fetch (batch ${batchCount})`);
                     hasMore = false;
                     break;
                 }
+                
+                this.log.debug(`Received ${response.items.length} curations in batch ${batchCount}`);
 
                 // Process each curation
                 for (const serverCuration of response.items) {
-                    await this.processServerCuration(serverCuration);
-                    totalPulled++;
+                    totalProcessed++;
+                    const saved = await this.processServerCuration(serverCuration);
+                    if (saved) {
+                        totalPulled++;
+                    }
                 }
+                
+                this.log.debug(`Processed ${response.items.length} curations, ${totalPulled} saved so far`);
 
                 offset += response.items.length;
                 
                 if (response.items.length < this.config.batchSize) {
+                    this.log.debug(`Last batch (${response.items.length} < ${this.config.batchSize})`);
                     hasMore = false;
+                } else {
+                    // Add small delay between batches to avoid overwhelming the API
+                    await new Promise(resolve => setTimeout(resolve, 500));
                 }
             }
 
             this.stats.curationsPulled = totalPulled;
             this.stats.lastPullAt = new Date().toISOString();
+            this.stats.lastCurationPullAt = syncStartTime;
             await this.saveSyncMetadata();
 
-            this.log.debug(`✅ Pulled ${totalPulled} curations`);
+            this.log.info(`✅ Pulled ${totalPulled} curations (${totalProcessed} processed in ${batchCount} batches)`);
         } catch (error) {
             this.log.error('Failed to pull curations:', error);
+            this.log.error('Error details:', error.message);
+            this.log.error('Stack:', error.stack);
             throw error;
         }
     }
 
     /**
      * Process a server curation (compare version and update if needed)
+     * @returns {boolean} - true if curation was saved/updated
      */
     async processServerCuration(serverCuration) {
         try {
+            if (!serverCuration || !serverCuration.curation_id) {
+                this.log.warn('Invalid curation received (missing curation_id):', serverCuration);
+                return false;
+            }
+            
             const localCuration = await window.DataStore.getCuration(serverCuration.curation_id);
 
             if (!localCuration) {
@@ -520,6 +547,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                     }
                 });
                 this.log.debug(`Created local curation: ${serverCuration.curation_id}`);
+                return true;
             } else {
                 const serverVersion = serverCuration.version || 0;
                 const localVersion = localCuration.version || 0;
@@ -534,19 +562,35 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         }
                     });
                     this.log.debug(`Updated local curation: ${serverCuration.curation_id} (v${localVersion} → v${serverVersion})`);
+                    return true;
                 } else if (localVersion > serverVersion) {
-                    const current = await window.DataStore.db.curations.get(serverCuration.curation_id);
-                    await window.DataStore.db.curations.update(serverCuration.curation_id, {
-                        sync: {
-                            ...(current?.sync || {}),
-                            status: 'pending'
-                        }
-                    });
-                    this.log.debug(`Local curation newer: ${serverCuration.curation_id}`);
+                    // Mark as pending for push
+                    const current = await window.DataStore.db.curations
+                        .where('curation_id')
+                        .equals(serverCuration.curation_id)
+                        .first();
+                    
+                    if (current && current.id) {
+                        await window.DataStore.db.curations.update(current.id, {
+                            sync: {
+                                ...(current.sync || {}),
+                                status: 'pending'
+                            }
+                        });
+                        this.log.debug(`Local curation newer: ${serverCuration.curation_id}`);
+                    }
+                    return false;
+                } else {
+                    // Same version, no action needed
+                    this.log.debug(`Curation up to date: ${serverCuration.curation_id}`);
+                    return false;
                 }
             }
         } catch (error) {
-            this.log.error('Failed to process server curation:', error);
+            this.log.error(`Failed to process curation ${serverCuration?.curation_id}:`, error);
+            this.log.error('Error details:', error.message);
+            // Don't throw - continue processing other curations
+            return false;
         }
     }
 

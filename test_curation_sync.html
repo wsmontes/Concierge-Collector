@@ -1,0 +1,198 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Curation Sync</title>
+    <style>
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            max-width: 800px;
+            margin: 50px auto;
+            padding: 20px;
+            background: #f5f5f5;
+        }
+        .container {
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            margin-bottom: 20px;
+        }
+        button {
+            background: #4CAF50;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 5px;
+        }
+        button:hover {
+            background: #45a049;
+        }
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+        }
+        #log {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 20px;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 14px;
+            max-height: 500px;
+            overflow-y: auto;
+            margin-top: 20px;
+        }
+        .success {
+            color: #4CAF50;
+        }
+        .error {
+            color: #f44336;
+        }
+        .warning {
+            color: #ff9800;
+        }
+        .info {
+            color: #2196F3;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>🔄 Curation Sync Test</h1>
+        <p>Test if curations are syncing correctly from the server to local IndexedDB.</p>
+        
+        <div>
+            <button onclick="testSync()">Run Full Sync Test</button>
+            <button onclick="clearLog()">Clear Log</button>
+            <button onclick="location.reload()">Refresh Page</button>
+        </div>
+        
+        <div id="log"></div>
+    </div>
+
+    <script>
+        function log(message, type = 'info') {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            const entry = document.createElement('div');
+            entry.className = type;
+            entry.textContent = `[${timestamp}] ${message}`;
+            logDiv.appendChild(entry);
+            logDiv.scrollTop = logDiv.scrollHeight;
+            console.log(message);
+        }
+
+        function clearLog() {
+            document.getElementById('log').innerHTML = '';
+        }
+
+        async function testSync() {
+            log('🚀 Starting Curation Sync Test', 'info');
+            log('═══════════════════════════════════════', 'info');
+            
+            try {
+                // Check if app is loaded
+                if (typeof window.SyncManager === 'undefined') {
+                    log('❌ SyncManager not loaded. Please open index.html first and come back.', 'error');
+                    return;
+                }
+                
+                if (typeof window.DataStore === 'undefined') {
+                    log('❌ DataStore not loaded', 'error');
+                    return;
+                }
+                
+                log('✅ App modules loaded', 'success');
+                
+                // Check current state
+                log('\n📊 Current State:', 'info');
+                const beforeCount = await window.DataStore.db.curations.count();
+                log(`   Curations in local DB: ${beforeCount}`, 'info');
+                log(`   Batch size: ${window.SyncManager.config.batchSize}`, 'info');
+                
+                // Clear curations for clean test
+                if (beforeCount > 0) {
+                    log('\n🗑️  Clearing existing curations for clean test...', 'warning');
+                    await window.DataStore.db.curations.clear();
+                    log('   Cleared', 'success');
+                }
+                
+                // Run sync
+                log('\n🔄 Running fullSync()...', 'info');
+                const startTime = Date.now();
+                
+                const result = await window.SyncManager.fullSync();
+                
+                const duration = ((Date.now() - startTime) / 1000).toFixed(2);
+                log(`\n✅ Sync completed in ${duration}s`, 'success');
+                log(`   Status: ${result.status}`, 'info');
+                
+                // Check results
+                log('\n📈 Results:', 'info');
+                const stats = window.SyncManager.stats;
+                log(`   Entities pulled: ${stats.entitiesPulled}`, 'info');
+                log(`   Curations pulled: ${stats.curationsPulled}`, stats.curationsPulled > 0 ? 'success' : 'error');
+                log(`   Entities pushed: ${stats.entitiesPushed}`, 'info');
+                log(`   Curations pushed: ${stats.curationsPushed}`, 'info');
+                
+                // Verify in database
+                const afterCount = await window.DataStore.db.curations.count();
+                log(`\n💾 Database verification:`, 'info');
+                log(`   Curations in DB: ${afterCount}`, afterCount > 0 ? 'success' : 'error');
+                
+                if (afterCount > 0) {
+                    // Check for TESTE_NASA
+                    const testeCurations = await window.DataStore.db.curations
+                        .where('entity_id')
+                        .equals('rest_teste_nasa_1770698630896')
+                        .toArray();
+                    
+                    log(`\n🚀 TESTE_NASA check:`, 'info');
+                    if (testeCurations.length > 0) {
+                        log(`   ✅ Found ${testeCurations.length} curation(s)`, 'success');
+                        testeCurations.forEach(c => {
+                            log(`      - ${c.curation_id}: ${c.categories?.primary?.[0] || 'no category'}`, 'info');
+                        });
+                    } else {
+                        log(`   ⚠️  No curations found for TESTE_NASA`, 'warning');
+                    }
+                    
+                    // Show sample curations
+                    const samples = await window.DataStore.db.curations.limit(3).toArray();
+                    log(`\n📄 Sample curations:`, 'info');
+                    samples.forEach((c, i) => {
+                        log(`   ${i+1}. ${c.curation_id}`, 'info');
+                        log(`      Entity: ${c.entity_id}`, 'info');
+                        log(`      Category: ${c.categories?.primary?.[0] || 'none'}`, 'info');
+                    });
+                    
+                    log('\n🎉 SUCCESS! Curations synced successfully!', 'success');
+                } else {
+                    log('\n❌ FAILURE: No curations in database after sync', 'error');
+                    log('   Check the browser console for errors', 'error');
+                }
+                
+            } catch (error) {
+                log(`\n❌ Test failed: ${error.message}`, 'error');
+                log(`   ${error.stack}`, 'error');
+            }
+            
+            log('\n═══════════════════════════════════════', 'info');
+            log('Test complete', 'info');
+        }
+
+        // Auto-run on load
+        window.addEventListener('load', () => {
+            log('Page loaded. Click "Run Full Sync Test" to start.', 'info');
+        });
+    </script>
+</body>
+</html>
