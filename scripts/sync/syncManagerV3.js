@@ -156,6 +156,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
         const cleaned = {
             curation_id: curation.curation_id,
             entity_id: curation.entity_id,
+            curator_id: curation.curator_id,  // Required by MongoDB schema
             curator: curation.curator,
             categories: curation.categories || {},
             notes: curation.notes || {},

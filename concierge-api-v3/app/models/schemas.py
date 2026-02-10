@@ -113,6 +113,7 @@ class CurationCreate(CurationBase):
     """Curation creation request"""
     curation_id: str = Field(..., description="Unique curation ID")
     entity_id: Optional[str] = Field(None, description="Entity this curation is about (null for orphaned curations)")
+    curator_id: str = Field(..., description="Curator ID for filtering")
     curator: CuratorInfo
 
 
@@ -129,7 +130,8 @@ class Curation(CurationBase):
     """Complete Curation with system fields"""
     id: str = Field(..., alias="_id")
     curation_id: str
-    entity_id: Optional[str] = None
+    entity__id: str
+    curatorid: Optional[str] = None
     curator: CuratorInfo
     embeddings: Optional[List[Dict]] = None
     embeddings_metadata: Optional[Dict] = None

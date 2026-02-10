@@ -81,14 +81,12 @@ if (typeof window.UIManager === 'undefined') {
             
             this.views = {
                 curations: document.getElementById('curations-view'),
-                entities: document.getElementById('entities-view'),
-                reviews: document.getElementById('reviews-view')
+                entities: document.getElementById('entities-view')
             };
             
             this.containers = {
                 curations: document.getElementById('curations-container'),
-                entities: document.getElementById('entities-container'),
-                reviews: document.getElementById('reviews-container')
+                entities: document.getElementById('entities-container')
             };
 
             this.currentTab = 'curations'; // Default tab
@@ -249,7 +247,7 @@ if (typeof window.UIManager === 'undefined') {
          * Load Tab Data
          * 
          * Loads and renders data for the specified tab.
-         * Filters data based on tab type (curations/entities/reviews).
+         * Filters data based on tab type (curations/entities).
          * 
          * @param {string} tabName - Name of tab to load data for
          */
@@ -260,9 +258,6 @@ if (typeof window.UIManager === 'undefined') {
                     break;
                 case 'entities':
                     this.loadEntities();
-                    break;
-                case 'reviews':
-                    this.loadReviews();
                     break;
             }
         }
@@ -486,78 +481,6 @@ if (typeof window.UIManager === 'undefined') {
          * Loads and displays curations WITHOUT entity associations.
          * These are orphaned curations awaiting entity matching.
          */
-        async loadReviews() {
-            console.log('Loading reviews view...');
-            
-            const container = this.containers.reviews;
-            if (!container) {
-                console.warn('Reviews container not found');
-                return;
-            }
-            
-            try {
-                // Get current curator
-                const curator = window.CuratorProfile?.getCurrentCurator();
-                if (!curator) {
-                    container.innerHTML = `
-                        <div class="col-span-full text-center py-12">
-                            <span class="material-icons text-6xl text-gray-300 mb-4">person_off</span>
-                            <p class="text-gray-500 mb-2">Curator not logged in</p>
-                            <p class="text-sm text-gray-400">Please log in to see your reviews</p>
-                        </div>
-                    `;
-                    return;
-                }
-
-                // Get curations WITHOUT entity_id (orphaned reviews)
-                const allCurations = await window.DataStore.db.curations
-                    .where('curator_id')
-                    .equals(curator.curator_id)
-                    .toArray();
-                
-                // Filter for curations without entity_id
-                const orphanedCurations = allCurations.filter(c => !c.entity_id);
-                
-                if (orphanedCurations.length === 0) {
-                    container.innerHTML = `
-                        <div class="col-span-full text-center py-12">
-                            <span class="material-icons text-6xl text-gray-300 mb-4">check_circle</span>
-                            <p class="text-gray-500 mb-2">All reviews are linked to entities</p>
-                            <p class="text-sm text-gray-400">No orphaned reviews found</p>
-                        </div>
-                    `;
-                    return;
-                }
-                
-                // Display orphaned curations as review cards
-                container.innerHTML = `
-                    <div class="col-span-full mb-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
-                        <div class="flex items-center gap-2">
-                            <span class="material-icons text-amber-600">warning</span>
-                            <div>
-                                <p class="font-medium text-amber-900">Unmatched Reviews</p>
-                                <p class="text-sm text-amber-700">These curations need to be linked to entities</p>
-                            </div>
-                        </div>
-                    </div>
-                `;
-                
-                orphanedCurations.forEach(curation => {
-                    const reviewCard = this.createReviewCard(curation);
-                    container.appendChild(reviewCard);
-                });
-                
-            } catch (error) {
-                console.error('Failed to load reviews:', error);
-                container.innerHTML = `
-                    <div class="col-span-full text-center py-12 text-red-500">
-                        <span class="material-icons text-6xl mb-4">error</span>
-                        <p>Failed to load reviews</p>
-                    </div>
-                `;
-            }
-        }
-        
         /**
          * Create a review card for orphaned curations
          */
