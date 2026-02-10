@@ -75,8 +75,7 @@ if (typeof window.UIManager === 'undefined') {
             // Tab system
             this.tabs = {
                 curations: document.getElementById('tab-curations'),
-                entities: document.getElementById('tab-entities'),
-                reviews: document.getElementById('tab-reviews')
+                entities: document.getElementById('tab-entities')
             };
             
             this.views = {
