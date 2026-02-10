@@ -81,7 +81,6 @@ const PlacesAutomation = ModuleWrapper.defineClass('PlacesAutomation', class {
         } else if (imported > 0 && !window.SyncManager) {
             this.log.warn('⚠️ Cannot sync - SyncManager not available');
         }
-        }
         
         return { 
             count: imported, 

@@ -520,9 +520,10 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             
             // Only update lastCurationPullAt if we successfully pulled curations
             // This prevents marking sync as complete when nothing was found
-            if Use current time (not syncStartTime) to mark when sync actually completed
+            // Use current time (not syncStartTime) to mark when sync actually completed
             if (totalPulled > 0) {
-                this.stats.lastCurationPullAt = new Date().toISOString()
+                this.stats.lastCurationPullAt = new Date().toISOString();
+            }
             
             await this.saveSyncMetadata();
 
