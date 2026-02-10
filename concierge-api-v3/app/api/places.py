@@ -367,6 +367,9 @@ async def _nearby_search(
     # Add type filter if provided
     if type:
         payload["includedTypes"] = [type]
+        logger.info(f"🔍 Applying type filter: includedTypes=['{type}']")
+    else:
+        logger.info("⚠️ No type filter provided for nearby search")
     
     # Add filters
     if min_rating:
@@ -376,6 +379,8 @@ async def _nearby_search(
         levels = [f"PRICE_LEVEL_{level.strip().upper()}" for level in price_levels.split(',')]
         payload["priceLevels"] = levels
     
+    logger.info(f"📤 Places API Payload: {payload}")
+
     # Headers with comprehensive field mask (100 most important fields)
     # Note: searchNearby requires 'places.' prefix for fields
     field_mask = get_enhanced_field_mask(include_reviews=False, include_photos=True, detail_level="standard", use_prefix=True)

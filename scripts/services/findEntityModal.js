@@ -350,6 +350,7 @@ window.FindEntityModal = class FindEntityModal {
                 url += `&keyword=${encodeURIComponent(query)}`;
             }
 
+            console.log('🔗 Fetching URL:', url);
             const response = await window.ApiService.request('GET', url);
             const data = await response.json();
 
