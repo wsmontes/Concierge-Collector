@@ -64,7 +64,7 @@ def _ensure_indexes():
         db.entities.create_index("data.place_id", unique=True, sparse=True, background=True)
         
         # Curations collection
-        db.curations.create_index("entity_id", unique=True, background=True)
+        db.curations.create_index("entity_id", background=True)
         db.curations.create_index("curator.id", background=True)
         db.curations.create_index("createdAt", background=True)
         
