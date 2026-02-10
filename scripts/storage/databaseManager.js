@@ -177,15 +177,34 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
                 
                 this.log.info(`Legacy database is at version ${actualVersion}, adding _meta table`);
                 
-                // Define schemas for all versions up to and including the _meta upgrade
+                // Define schemas for all versions
                 this.db = new Dexie(this.dbName);
                 
-                // Keep existing schema at its current version
-                this.db.version(actualVersion).stores({});
+                // Preserve existing schema at current version (without _meta)
+                this.db.version(actualVersion).stores({
+                    entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt, etag, sync.status',
+                    curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt, updatedAt, etag, sync.status',
+                    curators: '++id, curator_id, name, email, status, createdAt, lastActive',
+                    drafts: '++id, type, data, curator_id, createdAt, lastModified',
+                    syncQueue: '++id, type, action, local_id, entity_id, data, createdAt, retryCount, lastError',
+                    settings: 'key',
+                    cache: 'key, expires',
+                    draftRestaurants: '++id, curatorId, name, timestamp, lastModified, hasAudio',
+                    pendingAudio: '++id, restaurantId, draftId, timestamp, retryCount, status'
+                });
                 
                 // Add new version that includes _meta
                 this.db.version(actualVersion + 1).stores({
-                    _meta: 'key'  // Only add the new table
+                    entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt, etag, sync.status',
+                    curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt, updatedAt, etag, sync.status',
+                    curators: '++id, curator_id, name, email, status, createdAt, lastActive',
+                    drafts: '++id, type, data, curator_id, createdAt, lastModified',
+                    syncQueue: '++id, type, action, local_id, entity_id, data, createdAt, retryCount, lastError',
+                    settings: 'key',
+                    cache: 'key, expires',
+                    draftRestaurants: '++id, curatorId, name, timestamp, lastModified, hasAudio',
+                    pendingAudio: '++id, restaurantId, draftId, timestamp, retryCount, status',
+                    _meta: 'key'  // Add the new table
                 }).upgrade(tx => {
                     // Add version tracking record during upgrade
                     return tx.table('_meta').add({ key: 'version', value: this.currentVersion });
