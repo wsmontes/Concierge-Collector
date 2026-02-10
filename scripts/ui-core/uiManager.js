@@ -270,8 +270,8 @@ if (typeof window.UIManager === 'undefined') {
         /**
          * Load Curations
          * 
-         * Loads and displays curated entities with status tags.
-         * Shows only entities that have been curated by current user.
+         * Loads and displays ALL curations made by current user.
+         * Shows curations as cards with entity information when available.
          */
         async loadCurations() {
             console.log('Loading curations view...');
@@ -296,10 +296,11 @@ if (typeof window.UIManager === 'undefined') {
                     return;
                 }
 
-                // Get curations by current curator from IndexedDB
+                // Get ALL curations by current curator from IndexedDB
                 const curations = await window.DataStore.db.curations
                     .where('curator_id')
                     .equals(curator.curator_id)
+                    .reverse() // Most recent first
                     .toArray();
                 
                 if (curations.length === 0) {
@@ -313,31 +314,33 @@ if (typeof window.UIManager === 'undefined') {
                     return;
                 }
                 
-                // Get unique entity IDs from curations
-                const entityIds = [...new Set(curations.map(c => c.entity_id))];
+                // Get unique entity IDs from curations (filter out null/undefined)
+                const entityIds = [...new Set(curations.map(c => c.entity_id).filter(Boolean))];
                 
-                // Fetch entities for these curations
-                const entities = await window.DataStore.db.entities
-                    .where('entity_id')
-                    .anyOf(entityIds)
-                    .toArray();
-                
-                if (entities.length === 0) {
-                    container.innerHTML = `
-                        <div class="col-span-full text-center py-12">
-                            <span class="material-icons text-6xl text-gray-300 mb-4">error</span>
-                            <p class="text-gray-500 mb-2">Entities not found</p>
-                            <p class="text-sm text-gray-400">Curations exist but entities are missing</p>
-                        </div>
-                    `;
-                    return;
+                // Fetch entities for curations that have entity_id
+                const entitiesMap = new Map();
+                if (entityIds.length > 0) {
+                    const entities = await window.DataStore.db.entities
+                        .where('entity_id')
+                        .anyOf(entityIds)
+                        .toArray();
+                    entities.forEach(entity => entitiesMap.set(entity.entity_id, entity));
                 }
                 
-                // Display entities
+                // Display curations with entity info
                 container.innerHTML = '';
-                entities.forEach(entity => {
-                    const card = window.CardFactory.createEntityCard(entity);
-                    container.appendChild(card);
+                curations.forEach(curation => {
+                    const entity = curation.entity_id ? entitiesMap.get(curation.entity_id) : null;
+                    
+                    // If entity exists, show curation card, otherwise show review-style card
+                    if (entity) {
+                        const card = window.CardFactory.createCurationCard(entity, curation);
+                        container.appendChild(card);
+                    } else {
+                        // Orphaned curation (no entity link) - show as review
+                        const reviewCard = this.createReviewCard(curation);
+                        container.appendChild(reviewCard);
+                    }
                 });
                 
             } catch (error) {
@@ -354,8 +357,8 @@ if (typeof window.UIManager === 'undefined') {
         /**
          * Load Entities
          * 
-         * Loads and displays entities without curations.
-         * Shows recently ingested entities awaiting curation.
+         * Loads and displays entities with pagination.
+         * Shows all active entities with infinite scroll support.
          */
         async loadEntities() {
             console.log('Loading entities view...');
@@ -367,6 +370,15 @@ if (typeof window.UIManager === 'undefined') {
             }
             
             try {
+                // Initialize pagination state if not exists
+                if (!this.entityPagination) {
+                    this.entityPagination = {
+                        currentPage: 0,
+                        pageSize: 20,
+                        hasMore: true
+                    };
+                }
+                
                 // Get all entities
                 const entities = await window.DataStore.getEntities({ status: 'active' });
                 
@@ -381,12 +393,12 @@ if (typeof window.UIManager === 'undefined') {
                     return;
                 }
                 
-                // Display entities
-                container.innerHTML = '';
-                entities.forEach(entity => {
-                    const card = window.CardFactory.createEntityCard(entity);
-                    container.appendChild(card);
-                });
+                // Reset pagination on fresh load
+                this.entityPagination.currentPage = 0;
+                this.entityPagination.totalItems = entities.length;
+                
+                // Display first page
+                this.renderEntitiesPage(entities);
                 
             } catch (error) {
                 console.error('Failed to load entities:', error);
@@ -397,6 +409,60 @@ if (typeof window.UIManager === 'undefined') {
                     </div>
                 `;
             }
+        }
+        
+        /**
+         * Render a page of entities with pagination controls
+         */
+        renderEntitiesPage(allEntities) {
+            const container = this.containers.entities;
+            const { currentPage, pageSize } = this.entityPagination;
+            
+            const start = currentPage * pageSize;
+            const end = start + pageSize;
+            const pageEntities = allEntities.slice(start, end);
+            const totalPages = Math.ceil(allEntities.length / pageSize);
+            
+            // Clear container
+            container.innerHTML = '';
+            
+            // Add pagination header
+            const header = document.createElement('div');
+            header.className = 'col-span-full mb-4 p-4 bg-blue-50 border border-blue-100 rounded-lg flex items-center justify-between';
+            header.innerHTML = `
+                <div class="text-sm text-gray-600">
+                    Showing <span class="font-semibold">${start + 1}</span>-<span class="font-semibold">${Math.min(end, allEntities.length)}</span> of <span class="font-semibold">${allEntities.length}</span> entities
+                </div>
+                <div class="flex gap-2">
+                    <button id="prev-page" class="px-3 py-1 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" ${currentPage === 0 ? 'disabled' : ''}>
+                        <span class="material-icons text-sm">chevron_left</span>
+                    </button>
+                    <div class="px-3 py-1 text-sm font-medium">
+                        Page ${currentPage + 1} of ${totalPages}
+                    </div>
+                    <button id="next-page" class="px-3 py-1 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" ${currentPage >= totalPages - 1 ? 'disabled' : ''}>
+                        <span class="material-icons text-sm">chevron_right</span>
+                    </button>
+                </div>
+            `;
+            container.appendChild(header);
+            
+            // Add pagination controls
+            header.querySelector('#prev-page')?.addEventListener('click', () => {
+                this.entityPagination.currentPage--;
+                this.renderEntitiesPage(allEntities);
+            });
+            
+            header.querySelector('#next-page')?.addEventListener('click', () => {
+                this.entityPagination.currentPage++;
+                this.renderEntitiesPage(allEntities);
+            });
+            
+            // Display entities for this page
+            pageEntities.forEach(entity => {
+                const card = window.CardFactory.createEntityCard(entity);
+                container.appendChild(card);
+            });
         }
 
         /**
@@ -417,24 +483,152 @@ if (typeof window.UIManager === 'undefined') {
         /**
          * Load Reviews
          * 
-         * Loads and displays transcripts without entity associations.
-         * Shows all recordings/transcripts by current user.
+         * Loads and displays curations WITHOUT entity associations.
+         * These are orphaned curations awaiting entity matching.
          */
-        loadReviews() {
+        async loadReviews() {
             console.log('Loading reviews view...');
             
-            // TODO: Implement reviews loading from recordings/transcriptions
-            // For now, show empty state
             const container = this.containers.reviews;
-            if (container) {
+            if (!container) {
+                console.warn('Reviews container not found');
+                return;
+            }
+            
+            try {
+                // Get current curator
+                const curator = window.CuratorProfile?.getCurrentCurator();
+                if (!curator) {
+                    container.innerHTML = `
+                        <div class="col-span-full text-center py-12">
+                            <span class="material-icons text-6xl text-gray-300 mb-4">person_off</span>
+                            <p class="text-gray-500 mb-2">Curator not logged in</p>
+                            <p class="text-sm text-gray-400">Please log in to see your reviews</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                // Get curations WITHOUT entity_id (orphaned reviews)
+                const allCurations = await window.DataStore.db.curations
+                    .where('curator_id')
+                    .equals(curator.curator_id)
+                    .toArray();
+                
+                // Filter for curations without entity_id
+                const orphanedCurations = allCurations.filter(c => !c.entity_id);
+                
+                if (orphanedCurations.length === 0) {
+                    container.innerHTML = `
+                        <div class="col-span-full text-center py-12">
+                            <span class="material-icons text-6xl text-gray-300 mb-4">check_circle</span>
+                            <p class="text-gray-500 mb-2">All reviews are linked to entities</p>
+                            <p class="text-sm text-gray-400">No orphaned reviews found</p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                // Display orphaned curations as review cards
                 container.innerHTML = `
-                    <div class="text-center py-12">
-                        <span class="material-icons text-6xl text-gray-300 mb-4">mic_off</span>
-                        <p class="text-gray-500">No reviews yet</p>
-                        <p class="text-sm text-gray-400 mt-2">Start recording to create reviews</p>
+                    <div class="col-span-full mb-4 p-4 bg-amber-50 border border-amber-200 rounded-lg">
+                        <div class="flex items-center gap-2">
+                            <span class="material-icons text-amber-600">warning</span>
+                            <div>
+                                <p class="font-medium text-amber-900">Unmatched Reviews</p>
+                                <p class="text-sm text-amber-700">These curations need to be linked to entities</p>
+                            </div>
+                        </div>
+                    </div>
+                `;
+                
+                orphanedCurations.forEach(curation => {
+                    const reviewCard = this.createReviewCard(curation);
+                    container.appendChild(reviewCard);
+                });
+                
+            } catch (error) {
+                console.error('Failed to load reviews:', error);
+                container.innerHTML = `
+                    <div class="col-span-full text-center py-12 text-red-500">
+                        <span class="material-icons text-6xl mb-4">error</span>
+                        <p>Failed to load reviews</p>
                     </div>
                 `;
             }
+        }
+        
+        /**
+         * Create a review card for orphaned curations
+         */
+        createReviewCard(curation) {
+            const card = document.createElement('div');
+            card.className = 'bg-amber-50 border-2 border-amber-200 rounded-xl p-5 hover:shadow-lg transition-all';
+            card.dataset.curationId = curation.curation_id;
+            
+            const date = curation.created_at ? new Date(curation.created_at).toLocaleDateString() : 'Unknown date';
+            const concepts = curation.concepts || [];
+            const conceptNames = concepts.slice(0, 3).map(c => c.name).join(', ');
+            
+            card.innerHTML = `
+                <div class="flex items-start gap-3 mb-3">
+                    <span class="material-icons text-2xl text-amber-600">rate_review</span>
+                    <div class="flex-1">
+                        <h3 class="font-bold text-lg text-gray-900 mb-1">Unmatched Review</h3>
+                        <p class="text-sm text-gray-600">Created: ${date}</p>
+                    </div>
+                    <span class="px-3 py-1 bg-amber-100 text-amber-800 text-xs font-medium rounded-full">Needs Entity</span>
+                </div>
+                
+                ${conceptNames ? `
+                    <div class="mb-3">
+                        <p class="text-sm font-medium text-gray-700 mb-1">Concepts:</p>
+                        <p class="text-sm text-gray-600">${conceptNames}${concepts.length > 3 ? '...' : ''}</p>
+                    </div>
+                ` : ''}
+                
+                <div class="flex gap-2 pt-3 border-t border-amber-200">
+                    <button class="btn-link-entity px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-1">
+                        <span class="material-icons text-sm">link</span>
+                        Link to Entity
+                    </button>
+                    <button class="btn-view-details px-3 py-1 text-sm bg-gray-600 text-white rounded hover:bg-gray-700 flex items-center gap-1">
+                        <span class="material-icons text-sm">visibility</span>
+                        View Details
+                    </button>
+                </div>
+            `;
+            
+            // Add event listeners
+            card.querySelector('.btn-link-entity')?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.handleLinkReviewToEntity(curation);
+            });
+            
+            card.querySelector('.btn-view-details')?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.handleViewReviewDetails(curation);
+            });
+            
+            return card;
+        }
+        
+        /**
+         * Handle linking a review to an entity
+         */
+        async handleLinkReviewToEntity(curation) {
+            console.log('Link review to entity:', curation.curation_id);
+            // TODO: Implement entity search/link modal
+            alert('Entity linking feature coming soon!');
+        }
+        
+        /**
+         * Handle viewing review details
+         */
+        handleViewReviewDetails(curation) {
+            console.log('View review details:', curation);
+            // TODO: Implement review details modal
+            alert(`Review ID: ${curation.curation_id}\nConcepts: ${curation.concepts?.length || 0}`);
         }
 
         /**
