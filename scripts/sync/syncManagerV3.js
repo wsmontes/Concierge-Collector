@@ -12,6 +12,13 @@
  * - Sync metadata tracking (lastPullAt, lastPushAt)
  */
 
+// Debug: Verify dependencies are available
+if (typeof ModuleWrapper === 'undefined') {
+    console.error('[SyncManagerV3] ❌ ModuleWrapper not available - cannot define class');
+} else {
+    console.log('[SyncManagerV3] ✅ ModuleWrapper available, defining class...');
+}
+
 const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
     constructor() {
         this.log = Logger.module('SyncManagerV3');
@@ -1144,5 +1151,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
     }
 });
 
-// Export for use in other modules
+// Export for use in other modules  
+console.log('[SyncManagerV3] Exporting class to window.SyncManagerV3');
 window.SyncManagerV3 = SyncManagerV3;
+console.log('[SyncManagerV3] ✅ Class exported, window.SyncManagerV3 =', typeof window.SyncManagerV3);

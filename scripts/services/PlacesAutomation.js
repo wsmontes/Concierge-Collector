@@ -70,7 +70,7 @@ const PlacesAutomation = ModuleWrapper.defineClass('PlacesAutomation', class {
         this.log.info(`✅ Import complete: ${imported} imported, ${duplicates} duplicates, ${errors} errors`);
         
         // Trigger immediate sync if entities were imported
-        if (imported > 0 && window.SyncManager) {
+        if (imported > 0 && window.SyncManager && typeof window.SyncManager.quickSync === 'function') {
             this.log.info(`🔄 Triggering immediate sync for ${imported} entities...`);
             try {
                 await window.SyncManager.quickSync();
@@ -78,6 +78,9 @@ const PlacesAutomation = ModuleWrapper.defineClass('PlacesAutomation', class {
             } catch (e) {
                 this.log.warn(`⚠️ Sync failed, will retry on background sync:`, e);
             }
+        } else if (imported > 0 && !window.SyncManager) {
+            this.log.warn('⚠️ Cannot sync - SyncManager not available');
+        }
         }
         
         return { 

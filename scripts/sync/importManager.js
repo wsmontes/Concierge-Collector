@@ -134,7 +134,7 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
             const results = await window.dataStore.importConciergeData(data);
             
             // Trigger sync if online
-            if (navigator.onLine && window.SyncManager) {
+            if (navigator.onLine && window.SyncManager && typeof window.SyncManager.quickSync === 'function') {
                 SafetyUtils.showLoading('🔄 Syncing with server...');
                 try {
                     await window.SyncManager.quickSync();
@@ -142,6 +142,8 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
                     this.log.warn('Sync after import failed:', syncError);
                     // Don't fail the import if sync fails
                 }
+            } else if (navigator.onLine && !window.SyncManager) {
+                this.log.warn('⚠️ Cannot sync after import - SyncManager not available');
             }
             
             SafetyUtils.hideLoading();

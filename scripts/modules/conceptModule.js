@@ -567,11 +567,13 @@ class ConceptModule {
             SafetyUtils.showNotification(message);
             
             // ✅ Trigger immediate sync if entity is pending
-            if (syncStatus === 'pending' && window.SyncManager) {
+            if (syncStatus === 'pending' && window.SyncManager && typeof window.SyncManager.quickSync === 'function') {
                 this.log.debug('🚀 Triggering immediate background sync');
                 window.SyncManager.quickSync().catch(err => {
                     this.log.warn('Background sync failed, will retry automatically:', err);
                 });
+            } else if (syncStatus === 'pending' && !window.SyncManager) {
+                this.log.warn('⚠️ Cannot trigger sync - SyncManager not available');
             }
             
             // Clean up pending audio and draft data for this restaurant

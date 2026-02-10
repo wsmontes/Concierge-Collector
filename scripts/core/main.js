@@ -170,6 +170,7 @@ async function initializeApp() {
         }
         
         // Initialize Sync Manager V3 (depends on DataStore and ApiService)
+        console.log('🔍 Checking for SyncManagerV3... Type:', typeof window.SyncManagerV3);
         if (window.SyncManagerV3) {
             console.log('🔄 Initializing Sync Manager V3...');
             try {
@@ -209,6 +210,10 @@ async function initializeApp() {
             }
         } else {
             console.warn('⚠️ Sync Manager V3 not available');
+            console.warn('   • Check if scripts/sync/syncManagerV3.js loaded correctly');
+            console.warn('   • Check browser console for loading errors');
+            console.warn('   • SyncManager will not be available - app will continue without sync');
+            window.SyncManager = null; // Explicitly set to null for safety
         }
         
         // Initialize Import Manager

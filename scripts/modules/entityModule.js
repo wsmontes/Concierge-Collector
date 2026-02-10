@@ -464,9 +464,11 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
                         await this.handleConflictResolution(entity);
                     } else {
                         // Trigger manual sync for this entity
-                        if (window.SyncManager) {
+                        if (window.SyncManager && typeof window.SyncManager.pushEntities === 'function') {
                             await window.SyncManager.pushEntities();
                             this.log.info('Entity synced successfully');
+                        } else {
+                            this.log.warn('⚠️ Cannot sync - SyncManager not available');
                         }
                     }
                     
@@ -530,8 +532,10 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
             
             modal.querySelector('.btn-resolve-local').addEventListener('click', async () => {
                 try {
-                    if (window.SyncManager) {
+                    if (window.SyncManager && typeof window.SyncManager.resolveConflict === 'function') {
                         await window.SyncManager.resolveConflict('entity', entity.entity_id, 'local');
+                    } else {
+                        this.log.warn('⚠️ Cannot resolve conflict - SyncManager not available');
                     }
                     modal.remove();
                     resolve();
@@ -543,8 +547,10 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
             
             modal.querySelector('.btn-resolve-server').addEventListener('click', async () => {
                 try {
-                    if (window.SyncManager) {
+                    if (window.SyncManager && typeof window.SyncManager.resolveConflict === 'function') {
                         await window.SyncManager.resolveConflict('entity', entity.entity_id, 'server');
+                    } else {
+                        this.log.warn('⚠️ Cannot resolve conflict - SyncManager not available');
                     }
                     modal.remove();
                     resolve();
