@@ -187,8 +187,8 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
             case 422: 
                 // Log full validation error for debugging
                 if (errorDetails) {
-                    console.error('🔴 Validation error details:', errorDetails);
-                    this.log.error('Validation error details:', errorDetails);
+                    console.error('🔴 Validation error details:', JSON.stringify(errorDetails, null, 2));
+                    this.log.error('Validation error details:', JSON.stringify(errorDetails, null, 2));
                 }
                 errorMessage = 'Validation error - check your input data';
                 break;

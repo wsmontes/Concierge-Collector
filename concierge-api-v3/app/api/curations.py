@@ -63,13 +63,14 @@ def create_curation(
     
     **Authentication Required:** Include `Authorization: Bearer <token>` OR `X-API-Key: <key>` header
     """
-    # Verify entity exists
-    entity = db.entities.find_one({"_id": curation.entity_id})
-    if not entity:
-        raise HTTPException(
-            status_code=404,
-            detail=f"Entity {curation.entity_id} not found"
-        )
+    # Verify entity exists (skip for orphaned curations)
+    if curation.entity_id:
+        entity = db.entities.find_one({"_id": curation.entity_id})
+        if not entity:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Entity {curation.entity_id} not found"
+            )
     
     # Prepare document
     doc = curation.model_dump()
@@ -353,7 +354,7 @@ def semantic_search_curations(
         }
         
         # Include entity data if requested
-        if request.include_entity:
+        if request.include_entity and curation.get("entity_id"):
             entity = db.entities.find_one({"_id": curation["entity_id"]})
             if entity:
                 result_data["entity"] = {
@@ -456,8 +457,11 @@ def hybrid_search(
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate embedding: {str(e)}")
     
-    # Fetch all curations with embeddings
-    curations = list(db.curations.find({"embeddings": {"$exists": True, "$ne": []}}))
+    # Fetch all curations with embeddings (skip orphaned curations without entity_id)
+    curations = list(db.curations.find({
+        "embeddings": {"$exists": True, "$ne": []},
+        "entity_id": {"$ne": None, "$exists": True}
+    }))
     
     for curation in curations:
         entity_id = curation["entity_id"]
