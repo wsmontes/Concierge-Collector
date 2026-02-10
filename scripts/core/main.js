@@ -541,100 +541,8 @@ function cleanupBrowserData() {
     }
 }
 
-/**
- * Ensure the recording module is properly initialized after the UI Manager is created
- * This is a safety check that should normally not be needed - serves as a diagnostic tool
- * @param {Object} uiManager - The UI Manager instance
- */
-function ensureRecordingModuleInitialized(uiManager) {
-    // Wait for DOM to be fully ready
-    setTimeout(() => {
-        try {
-            console.log('🔄 Final verification - checking RecordingModule state');
-            
-            if (uiManager && uiManager.recordingModule) {
-                // Module exists - verify events are set up
-                if (typeof uiManager.recordingModule.setupEvents === 'function') {
-                    uiManager.recordingModule.setupEvents();
-                    console.log('✅ RecordingModule events reinforced');
-                    
-                    // Make module available globally for debugging if needed
-                    window.recordingModule = uiManager.recordingModule;
-                }
-            } else {
-                console.error('❌ RecordingModule STILL not initialized after all attempts');
-                console.log('🔍 Final diagnostic info:', {
-                    uiManagerExists: !!uiManager,
-                    recordingModuleExists: !!(uiManager && uiManager.recordingModule),
-                    RecordingModuleClassExists: typeof RecordingModule !== 'undefined',
-                    timestamp: new Date().toISOString()
-                });
-                
-                // Emergency fallback: try to initialize it here
-                if (uiManager && !uiManager.recordingModule && typeof RecordingModule !== 'undefined') {
-                    console.log('🚨 Emergency fallback: attempting RecordingModule initialization');
-                    try {
-                        uiManager.recordingModule = new RecordingModule(uiManager);
-                        if (typeof uiManager.recordingModule.setupEvents === 'function') {
-                            uiManager.recordingModule.setupEvents();
-                        }
-                        window.recordingModule = uiManager.recordingModule;
-                        console.log('✅ RecordingModule initialized via emergency fallback');
-                    } catch (error) {
-                        console.error('❌ Emergency fallback also failed:', error);
-                    }
-                }
-            }
-            
-            // Try to attach handlers to any existing buttons regardless
-            const buttons = [
-                { id: 'start-record', handler: startRecording },
-                { id: 'stop-record', handler: stopRecording },
-                { id: 'additional-record-start', handler: startAdditionalRecording },
-                { id: 'additional-record-stop', handler: stopAdditionalRecording }
-            ];
-            
-            buttons.forEach(({id, handler}) => {
-                const btn = document.getElementById(id);
-                if (btn) {
-                    // Add a direct click handler
-                    btn.addEventListener('click', () => {
-                        console.log(`Direct handler for ${id} clicked`);
-                        if (typeof handler === 'function') {
-                            handler();
-                        }
-                    });
-                }
-            });
-            
-            // Helper functions
-            function startRecording() {
-                if (uiManager && uiManager.recordingModule) {
-                    uiManager.recordingModule.startRecording();
-                }
-            }
-            
-            function stopRecording() {
-                if (uiManager && uiManager.recordingModule) {
-                    uiManager.recordingModule.stopRecording();
-                }
-            }
-            
-            function startAdditionalRecording() {
-                if (uiManager) uiManager.isRecordingAdditional = true;
-                startRecording();
-            }
-            
-            function stopAdditionalRecording() {
-                stopRecording();
-                if (uiManager) uiManager.isRecordingAdditional = false;
-            }
-            
-        } catch (error) {
-            console.error('Error ensuring recording module initialization:', error);
-        }
-    }, 1000); // Wait 1 second after initialization
-}
+// NOTE: ensureRecordingModuleInitialized() removed - no longer needed
+// RecordingModule now properly initializes in UIManager.init() after fixing script paths
 
 /**
  * Triggers initial synchronization with the server after application initialization
@@ -814,16 +722,8 @@ function loadPlacesModule() {
     document.head.appendChild(script);
 }
 
-// Add this to your existing initialization code
+// Sprint 2, Day 4: Setup Quick Import Nearby button handler
 document.addEventListener('DOMContentLoaded', () => {
-    // ... existing initialization code ...
-    
-    // After UI Manager is created, call our new function
-    if (window.uiManager) {
-        ensureRecordingModuleInitialized(window.uiManager);
-    }
-    
-    // Sprint 2, Day 4: Quick Import Nearby button handler
     const importNearbyBtn = document.getElementById('import-nearby-btn');
     if (importNearbyBtn) {
         importNearbyBtn.addEventListener('click', handleQuickImportNearby);
