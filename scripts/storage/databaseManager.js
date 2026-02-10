@@ -162,17 +162,48 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
                 await this.createFreshDatabase();
             } else if (existingVersion === 'legacy') {
                 // Old database without _meta table
-                // Add _meta table and mark current version
-                this.log.info('Legacy database detected - adding version tracking');
-                await this.openDatabase();
+                // Need to close and recreate with new schema including _meta
+                this.log.info('Legacy database detected - upgrading schema');
                 
-                // Try to add _meta table
-                try {
-                    await this.db._meta.put({ key: 'version', value: this.currentVersion });
-                    this.log.info('✅ Version tracking added to legacy database');
-                } catch (error) {
-                    this.log.warn('Could not add version tracking:', error);
+                // Close any existing connection
+                if (this.db) {
+                    this.db.close();
                 }
+                
+                // Increment version to trigger Dexie upgrade
+                const oldDb = new Dexie(this.dbName);
+                const oldVersion = await oldDb.verno;
+                oldDb.close();
+                
+                const newVersion = Math.max(this.currentVersion, oldVersion + 1);
+                
+                // Open with new version that includes _meta
+                this.db = new Dexie(this.dbName);
+                this.db.version(newVersion).stores({
+                    // Core V3 Tables with sync.status indexed
+                    entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt, etag, sync.status',
+                    curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt, updatedAt, etag, sync.status',
+                    curators: '++id, curator_id, name, email, status, createdAt, lastActive',
+                    
+                    // System Tables
+                    drafts: '++id, type, data, curator_id, createdAt, lastModified',
+                    syncQueue: '++id, type, action, local_id, entity_id, data, createdAt, retryCount, lastError',
+                    settings: 'key',
+                    cache: 'key, expires',
+                    
+                    // Recording Module Legacy Tables
+                    draftRestaurants: '++id, curatorId, name, timestamp, lastModified, hasAudio',
+                    pendingAudio: '++id, restaurantId, draftId, timestamp, retryCount, status',
+                    
+                    // Metadata table for version tracking (new)
+                    _meta: 'key'
+                });
+                
+                await this.db.open();
+                
+                // Now we can safely add version tracking
+                await this.db._meta.put({ key: 'version', value: this.currentVersion });
+                this.log.info('✅ Legacy database upgraded with version tracking');
                 
                 // Run validation and repair
                 await this.validateAndRepair();
