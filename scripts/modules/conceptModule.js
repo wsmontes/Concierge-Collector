@@ -381,7 +381,10 @@ class ConceptModule {
 
             // ✅ UPDATE existing entity only if editing
             if (this.uiManager.isEditingRestaurant && entityId) {
-                const entity = await window.dataStore.db.entities.get(entityId);
+                const entity = await window.dataStore.db.entities
+                    .where('entity_id')
+                    .equals(entityId)
+                    .first();
                 if (entity) {
                     // Update entity fields
                     entity.name = name;

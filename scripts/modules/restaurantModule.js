@@ -23,8 +23,18 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
         this.currentCuration = null;
         this.isEditMode = false;
 
-        // Cache DOM elements
-        this.formSection = document.getElementById('concepts-section'); // Reusing concepts-section as the main form area based on index.html structure
+        // Cache DOM elements (moved to initElements for reliability)
+        this.initElements();
+    }
+
+    /**
+     * Cache DOM elements if not already cached
+     */
+    initElements() {
+        if (this._elementsInitialized) return;
+
+        this.log.debug('Initializing DOM elements...');
+        this.formSection = document.getElementById('concepts-section');
         this.restaurantNameInput = document.getElementById('restaurant-name');
         this.locationDisplay = document.getElementById('location-display');
         this.descriptionInput = document.getElementById('restaurant-description');
@@ -38,12 +48,15 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
         this.placesLookupBtn = document.getElementById('places-lookup-btn');
         this.getLocationBtn = document.getElementById('get-location');
         this.generateDescriptionBtn = document.getElementById('generate-description');
+
+        this._elementsInitialized = true;
     }
 
     /**
      * Initialize module
      */
     init() {
+        this.initElements();
         this.log.debug('RestaurantModule initialized');
     }
 
@@ -102,8 +115,14 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
         // If curation exists but entity is missing, try to load entity
         if (curation && curation.entity_id && !this.currentEntity) {
             try {
-                // Use standardized window.dataStore
-                this.currentEntity = await (window.dataStore?.db || window.DataStore?.db).entities.get(curation.entity_id);
+                // Use standardized window.dataStore with correct index lookup
+                const db = window.dataStore?.db || window.DataStore?.db;
+                if (db) {
+                    this.currentEntity = await db.entities
+                        .where('entity_id')
+                        .equals(curation.entity_id)
+                        .first();
+                }
             } catch (e) {
                 this.log.warn('Could not load entity for curation:', curation.entity_id);
             }
@@ -140,9 +159,11 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
             return;
         }
 
-        // Name
+        // Name (with fallbacks)
         if (this.restaurantNameInput) {
-            this.restaurantNameInput.value = entity.name || '';
+            this.restaurantNameInput.value = entity.name ||
+                entity.restaurant_name ||
+                '';
         }
 
         // Location
@@ -196,8 +217,8 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
      * Populate form with curation data
      */
     populateCurationData(curation) {
-        // If entity is missing, use curation.restaurant_name (canonical field)
-        if (!this.currentEntity && this.restaurantNameInput) {
+        // Use curation.restaurant_name if input is still empty (canonical field)
+        if (this.restaurantNameInput && !this.restaurantNameInput.value) {
             const name = curation.restaurant_name ||
                 curation.name ||
                 (curation.categories?.restaurant_name && curation.categories.restaurant_name[0]);
