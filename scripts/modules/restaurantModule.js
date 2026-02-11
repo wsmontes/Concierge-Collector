@@ -146,6 +146,9 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
     /**
      * Populate form with entity details
      */
+    /**
+     * Populate form with entity details
+     */
     populateEntityDetails(entity) {
         // Clear/reset fields first
         if (this.restaurantNameInput) this.restaurantNameInput.value = '';
@@ -160,7 +163,7 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
             if (h2) {
                 linkedIndicator = document.createElement('div');
                 linkedIndicator.id = 'linked-entity-indicator';
-                linkedIndicator.className = 'mb-4 px-3 py-2 bg-blue-50 text-blue-700 text-xs font-semibold rounded-lg flex items-center gap-2 border border-blue-100 hidden';
+                linkedIndicator.className = 'mb-4 px-4 py-3 bg-blue-50 text-blue-900 text-sm rounded-lg border border-blue-100 hidden shadow-sm';
                 h2.insertAdjacentElement('afterend', linkedIndicator);
             }
         }
@@ -170,30 +173,112 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
             return;
         }
 
-        // Show linked status if applicable
-        if (linkedIndicator && entity.name) {
+        // --- Data Extraction ---
+
+        // 1. Name
+        const name = entity.name || entity.restaurant_name || 'Unknown Entity';
+
+        // 2. Address (Robust extraction)
+        const address = entity.data?.formattedAddress ||
+            entity.data?.address?.formattedAddress ||
+            entity.data?.location?.address ||
+            entity.data?.vicinity ||
+            'Location not set';
+
+        // 3. Phone
+        const phone = entity.data?.contact?.phone ||
+            entity.data?.contacts?.phone ||
+            entity.data?.formattedPhone ||
+            entity.data?.internationalPhone ||
+            null;
+
+        // 4. Website
+        const website = entity.data?.contact?.website ||
+            entity.data?.contacts?.website ||
+            entity.data?.website ||
+            null;
+
+        // 5. Rating
+        const rating = entity.data?.attributes?.rating ||
+            entity.data?.rating ||
+            null;
+
+        const userRatingsTotal = entity.data?.attributes?.user_ratings_total ||
+            entity.data?.userRatingsTotal ||
+            0;
+
+        // --- UI Updates ---
+
+        // Show linked status with details
+        if (linkedIndicator) {
+            let detailsHtml = '';
+
+            // Phone
+            if (phone) {
+                detailsHtml += `
+                    <div class="flex items-center gap-2 mt-1 text-blue-800">
+                        <span class="material-icons text-sm w-4">phone</span>
+                        <a href="tel:${phone}" class="hover:underline">${phone}</a>
+                    </div>`;
+            }
+
+            // Website
+            if (website) {
+                // Shorten URL for display
+                let displayUrl = website.replace(/^https?:\/\//, '').replace(/^www\./, '');
+                if (displayUrl.length > 30) displayUrl = displayUrl.substring(0, 27) + '...';
+
+                detailsHtml += `
+                    <div class="flex items-center gap-2 mt-1 text-blue-800">
+                        <span class="material-icons text-sm w-4">language</span>
+                        <a href="${website}" target="_blank" class="hover:underline text-blue-700 font-medium">${displayUrl}</a>
+                    </div>`;
+            }
+
+            // Rating
+            if (rating) {
+                detailsHtml += `
+                    <div class="flex items-center gap-1 mt-1 text-amber-700">
+                        <span class="material-icons text-sm w-4 text-amber-500">star</span>
+                        <span class="font-bold">${rating}</span>
+                        <span class="text-xs text-amber-600">(${userRatingsTotal} reviews)</span>
+                    </div>`;
+            }
+
+            // Address (in indicator too, for completeness)
+            if (address && address !== 'Location not set') {
+                detailsHtml += `
+                    <div class="flex items-center gap-2 mt-1 text-gray-600">
+                        <span class="material-icons text-sm w-4">place</span>
+                        <span class="line-clamp-1" title="${address}">${address}</span>
+                    </div>`;
+            }
+
             linkedIndicator.innerHTML = `
-                <span class="material-icons text-sm">link</span>
-                Linked to: <span class="font-bold">${entity.name}</span>
-                ${entity.type ? `(${entity.type})` : ''}
+                <div class="flex flex-col gap-1">
+                    <div class="flex items-center gap-2 border-b border-blue-200 pb-2 mb-1">
+                        <span class="material-icons text-blue-600">link</span>
+                        <span class="font-bold text-lg text-blue-800">${name}</span>
+                        ${entity.type ? `<span class="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full uppercase tracking-wider font-semibold">${entity.type}</span>` : ''}
+                    </div>
+                    <div class="pl-1 space-y-1">
+                        ${detailsHtml}
+                    </div>
+                </div>
             `;
             linkedIndicator.classList.remove('hidden');
         }
 
-        // Name (with fallbacks)
+        // Name Input
         if (this.restaurantNameInput) {
-            this.restaurantNameInput.value = entity.name ||
-                entity.restaurant_name ||
-                '';
+            this.restaurantNameInput.value = name;
         }
 
-        // Location
+        // Location Display
         if (this.locationDisplay) {
-            const address = entity.data?.formattedAddress ||
-                entity.data?.address?.formattedAddress ||
-                entity.data?.location?.address ||
-                'Location not set';
             this.locationDisplay.textContent = address;
+            // Add title attribute for tooltip on long addresses
+            this.locationDisplay.title = address;
         }
 
         // Description - populate if exists in entity, otherwise leave for curation
