@@ -89,6 +89,7 @@ if (typeof window.UIManager === 'undefined') {
             };
 
             this.currentTab = 'curations'; // Default tab
+            this.currentView = null; // Track active view state
         }
 
         /**
@@ -1106,6 +1107,10 @@ if (typeof window.UIManager === 'undefined') {
                 return;
             }
 
+            // Track current view state
+            this.currentView = viewName;
+            console.log(`[UIManager] switchView → ${viewName}`);
+
             // Hide elements
             config.hide.forEach(elementName => {
                 const element = this[elementName];
@@ -1124,9 +1129,9 @@ if (typeof window.UIManager === 'undefined') {
         }
 
         hideAllSections() {
-            // Deprecated: logic moved to switchView
-            // Keeping for potential legacy calls but it should not be used
-            console.warn('hideAllSections is deprecated. Use switchView instead.');
+            // Deprecated: forwarding to switchView('list') as safe default
+            console.warn('hideAllSections is deprecated. Forwarding to switchView("list").');
+            this.switchView('list');
         }
 
         // Core UI visibility functions
@@ -1154,6 +1159,12 @@ if (typeof window.UIManager === 'undefined') {
         }
 
         showTranscriptionSection(transcription) {
+            // Update processing status (preserved from legacy override)
+            if (typeof this.updateProcessingStatus === 'function') {
+                this.updateProcessingStatus('transcription', 'completed');
+                this.updateProcessingStatus('analysis', 'in-progress');
+            }
+
             this.switchView('transcription');
 
             // Display the transcription
@@ -1442,36 +1453,8 @@ if (typeof window.UIManager === 'undefined') {
             }
         }
 
-        /**
-         * Shows the transcription section with the given text and updates the processing status
-         * @param {string} transcriptionText - The transcription text
-         * @override - This overrides the original method to update processing status
-         */
-        showTranscriptionSection(transcriptionText) {
-            // Update processing status
-            this.updateProcessingStatus('transcription', 'completed');
-            this.updateProcessingStatus('analysis', 'in-progress');
-
-            // Proceed with original implementation
-            console.log('Showing transcription section');
-            this.hideAllSections(); // Changed from resetSections() to hideAllSections()
-
-            // Add null check for curatorSection
-            if (this.curatorSection) this.curatorSection.classList.remove('hidden');
-            const transcriptionSection = document.getElementById('transcription-section');
-            if (transcriptionSection) {
-                transcriptionSection.classList.remove('hidden');
-            }
-
-            const transcriptionTextElement = document.getElementById('transcription-text');
-            if (transcriptionTextElement) {
-                transcriptionTextElement.textContent = transcriptionText || 'No transcription available';
-                this.transcriptionText = transcriptionTextElement;
-
-                // Store the original transcription for potential reuse
-                this.originalTranscription = transcriptionText;
-            }
-        }
+        // NOTE: showTranscriptionSection is defined at L1156 using switchView('transcription').
+        // A legacy override that was here has been removed to prevent bypassing switchView.
 
         /**
          * Refreshes UI components after data synchronization

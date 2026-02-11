@@ -263,12 +263,8 @@ async function initializeApp() {
 
                 if (initialized) {
                     console.log('✅ Entity Module initialized');
-
-                    // Show entities section
-                    const entitiesSection = document.getElementById('entities-section');
-                    if (entitiesSection) {
-                        entitiesSection.classList.remove('hidden');
-                    }
+                    // NOTE: entities-section visibility is managed by UIManager.switchView('list')
+                    // Do NOT manipulate it directly here
                 } else {
                     console.warn('⚠️ Entity Module initialization failed');
                 }
