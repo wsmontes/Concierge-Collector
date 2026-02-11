@@ -1503,6 +1503,66 @@ if (typeof window.UIManager === 'undefined') {
                 }
             }
         }
+
+        /**
+         * Resolve sync conflict (delegates to SyncManager)
+         * @param {string} type - 'entity' or 'curation'
+         * @param {string} id - Item ID
+         */
+        async resolveConflict(type, id) {
+            console.log(`Resolving conflict for ${type} ${id}`);
+
+            if (window.SyncManager && typeof window.SyncManager.resolveConflict === 'function') {
+                await window.SyncManager.resolveConflict(type, id);
+
+                // Refresh views after resolution
+                if (type === 'curation') {
+                    await this.loadCurations();
+                } else if (type === 'entity') {
+                    // Logic to refresh entity view
+                    if (this.currentTab === 'entities') {
+                        // Refresh entity list 
+                        // Note: Entity list refresh logic might be inside restaurantListModule or similar
+                        if (this.restaurantListModule && typeof this.restaurantListModule.refresh === 'function') {
+                            this.restaurantListModule.refresh();
+                        }
+                    }
+                }
+            } else {
+                console.error('SyncManager not available for conflict resolution');
+                window.uiUtils.showNotification('Sync service not available', 'error');
+            }
+        }
+
+        /**
+         * Resolve sync conflict (delegates to SyncManager)
+         * @param {string} type - 'entity' or 'curation'
+         * @param {string} id - Item ID
+         */
+        async resolveConflict(type, id) {
+            console.log(`Resolving conflict for ${type} ${id}`);
+
+            if (window.SyncManager && typeof window.SyncManager.resolveConflict === 'function') {
+                await window.SyncManager.resolveConflict(type, id);
+
+                // Refresh views after resolution
+                if (type === 'curation') {
+                    await this.loadCurations();
+                } else if (type === 'entity') {
+                    // Logic to refresh entity view
+                    if (this.currentTab === 'entities') {
+                        // Refresh entity list 
+                        // Note: Entity list refresh logic might be inside restaurantListModule or similar
+                        if (this.restaurantListModule && typeof this.restaurantListModule.refresh === 'function') {
+                            this.restaurantListModule.refresh();
+                        }
+                    }
+                }
+            } else {
+                console.error('SyncManager not available for conflict resolution');
+                window.uiUtils.showNotification('Sync service not available', 'error');
+            }
+        }
     });
 
     // Create a global instance only once

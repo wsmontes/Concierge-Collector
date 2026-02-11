@@ -289,6 +289,9 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
             } else if (syncStatus === 'error') {
                 syncIcon = 'error_outline';
                 syncColor = 'text-red-500';
+            } else if (syncStatus === 'conflict') {
+                syncIcon = 'warning';
+                syncColor = 'text-orange-600 bg-orange-50 px-2 py-0.5 rounded cursor-pointer hover:bg-orange-100 border border-orange-200';
             }
 
             // Create Meta Info Row with standardized badge component
@@ -304,7 +307,9 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                     <span class="text-gray-300 text-xs">|</span>
                     
                     <!-- Sync Status -->
-                    <div class="flex items-center gap-1 ${syncColor}" title="Sync Status: ${syncStatus}">
+                    <div class="flex items-center gap-1 ${syncColor} ${syncStatus === 'conflict' ? 'conflict-badge' : ''}" 
+                         title="${syncStatus === 'conflict' ? 'Click to resolve conflict' : `Sync Status: ${syncStatus}`}"
+                         ${syncStatus === 'conflict' ? `onclick="event.stopPropagation(); window.uiManager.resolveConflict('${curation.entity_id ? 'curation' : 'entity'}', '${curation.curation_id}')"` : ''}>
                         <span class="material-icons text-[14px]">${syncIcon}</span>
                         <span class="text-[11px] font-medium capitalize">${syncStatus === 'pending' ? 'Syncing...' : syncStatus}</span>
                     </div>
