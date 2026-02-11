@@ -280,7 +280,8 @@ if (typeof window.UIManager === 'undefined') {
 
             // Toggle Find Entity Button visibility
             if (this.findEntityBtn) {
-                if (tabName === 'entities') {
+                // Show button on both main list tabs (entities and curations)
+                if (tabName === 'entities' || tabName === 'curations') {
                     this.findEntityBtn.classList.remove('hidden');
                 } else {
                     this.findEntityBtn.classList.add('hidden');
