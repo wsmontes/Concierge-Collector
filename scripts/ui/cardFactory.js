@@ -37,6 +37,7 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
             onClick = null
         } = options;
 
+        const card = document.createElement('div');
         // Added h-full, flex, flex-col for equal height cards
         card.className = 'bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-lg hover:border-blue-300 transition-all duration-200 cursor-pointer group h-full flex flex-col justify-between relative';
         card.dataset.entityId = entity.entity_id;
