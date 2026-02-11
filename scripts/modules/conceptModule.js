@@ -468,7 +468,7 @@ class ConceptModule {
             const curation = {
                 curation_id: curationId,
                 entity_id: entityId,  // null for orphaned curations, ID for matched entities
-                name: name,           // Fallback name for orphaned curations
+                restaurant_name: name, // Name for orphaned curations (as requested)
                 curator_id: curator.curator_id,  // Required by loadCurations() filter
                 curator: {
                     id: user.email,

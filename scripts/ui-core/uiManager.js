@@ -750,8 +750,8 @@ if (typeof window.UIManager === 'undefined') {
             });
             const conceptDisplay = conceptNames.slice(0, 3).join(', ');
             const totalConcepts = Object.values(categories).flat().length;
-            const restaurantName = curation.name ||
-                curation.restaurant_name ||
+            const restaurantName = curation.restaurant_name ||
+                curation.name ||
                 (curation.categories?.restaurant_name && curation.categories.restaurant_name[0]) ||
                 'Unmatched Review';
 

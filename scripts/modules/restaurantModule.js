@@ -196,13 +196,11 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
      * Populate form with curation data
      */
     populateCurationData(curation) {
-        // If entity is missing, try to get name from curation record with multiple fallbacks
+        // If entity is missing, use curation.restaurant_name (canonical field)
         if (!this.currentEntity && this.restaurantNameInput) {
-            const name = curation.name ||
-                curation.restaurant_name ||
-                (curation.categories?.restaurant_name && curation.categories.restaurant_name[0]) ||
-                (curation.structured_data?.name) ||
-                (curation.structured_data?.restaurant_name);
+            const name = curation.restaurant_name ||
+                curation.name ||
+                (curation.categories?.restaurant_name && curation.categories.restaurant_name[0]);
 
             if (name) {
                 this.restaurantNameInput.value = name;
