@@ -1099,6 +1099,36 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
     }
 
     /**
+     * Helper to clean up any duplicate records causing sync issues
+     * @param {string} type - 'entity' or 'curation'
+     * @param {string} id - Business ID string
+     * @returns {Promise<Object>} - The surviving record to use as base mechanism
+     */
+    async cleanupDuplicates(type, id) {
+        const table = type === 'entity' ? window.DataStore.db.entities : window.DataStore.db.curations;
+        const keyField = type === 'entity' ? 'entity_id' : 'curation_id';
+
+        const records = await table.where(keyField).equals(id).toArray();
+
+        if (records.length <= 1) return records[0];
+
+        this.log.warn(`Found ${records.length} duplicates for ${type} ${id}. Cleaning up...`);
+
+        // Keep the one with the lowest ID (oldest) as it's likely the original
+        // Or keep the one that is NOT 'synced' if we want to resolve conflict? 
+        // Actually, simple FIFO by numeric ID is safest for Dexie.
+        records.sort((a, b) => a.id - b.id);
+
+        const survivor = records[0];
+        const toDelete = records.slice(1);
+
+        await table.bulkDelete(toDelete.map(r => r.id));
+        this.log.info(`Deleted ${toDelete.length} duplicates, keeping id=${survivor.id}`);
+
+        return survivor;
+    }
+
+    /**
      * Resolve conflict by choosing local or server version
      * @param {string} type - 'entity' or 'curation'
      * @param {string} id - entity_id or curation_id
@@ -1145,6 +1175,9 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                     return; // User cancelled
                 }
             }
+
+            // Ensure we are working with a clean state (no duplicates)
+            await this.cleanupDuplicates(type, id);
 
             // Apply resolution
             if (resolution === 'local') {
