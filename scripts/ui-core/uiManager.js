@@ -1486,7 +1486,7 @@ if (typeof window.UIManager === 'undefined') {
 
                     // Refresh current view if needed
                     if (this.currentTab === 'curations') {
-                        await this.refreshCurations();
+                        await this.loadCurations();
                     } else if (this.currentTab === 'entities') {
                         // If we are in entities tab, we might be editing one
                         if (this.restaurantModule?.currentEntity) {
