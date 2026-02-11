@@ -781,18 +781,21 @@ if (typeof window.UIManager === 'undefined') {
                     </div>
                 ` : ''}
                 
-                <div class="flex gap-2 pt-3 border-t border-amber-200">
-                    <button class="btn-edit-curation px-3 py-1 text-sm bg-amber-600 text-white rounded hover:bg-amber-700 flex items-center gap-1">
-                        <span class="material-icons text-sm">edit</span>
-                        Edit
+                <div class="flex flex-wrap gap-2 pt-4 border-t border-amber-200 mt-auto">
+                    <button class="btn-edit-curation px-3 py-1.5 text-sm bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors flex items-center gap-1.5 shadow-sm">
+                        <span class="material-icons text-[18px]">edit</span>
+                        <span class="font-medium">Edit</span>
                     </button>
-                    <button class="btn-link-entity px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-1">
-                        <span class="material-icons text-sm">link</span>
-                        Link to Entity
+                    <button class="btn-link-entity px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1.5 shadow-sm">
+                        <span class="material-icons text-[18px]">link</span>
+                        <span class="font-medium">Link</span>
                     </button>
-                    <button class="btn-view-details px-3 py-1 text-sm bg-gray-600 text-white rounded hover:bg-gray-700 flex items-center gap-1">
-                        <span class="material-icons text-sm">visibility</span>
-                        View Details
+                    <button class="btn-view-details px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-1.5">
+                        <span class="material-icons text-[18px]">visibility</span>
+                        <span class="font-medium">Details</span>
+                    </button>
+                    <button class="btn-delete-curation ml-auto p-2 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-lg transition-all border border-transparent hover:border-red-100" title="Delete Review">
+                        <span class="material-icons text-[22px]">delete_outline</span>
                     </button>
                 </div>
             `;
@@ -806,6 +809,11 @@ if (typeof window.UIManager === 'undefined') {
             card.querySelector('.btn-link-entity')?.addEventListener('click', (e) => {
                 e.stopPropagation();
                 this.handleLinkReviewToEntity(curation);
+            });
+
+            card.querySelector('.btn-delete-curation')?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.confirmDeleteCuration(curation.curation_id);
             });
 
             card.querySelector('.btn-view-details')?.addEventListener('click', (e) => {
@@ -1405,6 +1413,43 @@ if (typeof window.UIManager === 'undefined') {
             }
 
             console.log('UI refresh after sync complete');
+        }
+
+        /**
+         * Confirm and delete a curation
+         * @param {string} curationId - Curation ID to delete
+         */
+        async confirmDeleteCuration(curationId) {
+            const confirmed = await window.uiUtils.confirmDialog(
+                'Delete Curation?',
+                'Are you sure you want to delete this curation? It will be removed from your local database and the server.',
+                'Delete',
+                'cancel'
+            );
+
+            if (confirmed) {
+                try {
+                    this.showLoading('Deleting curation...');
+                    await window.DataStore.deleteCuration(curationId);
+
+                    // Refresh current view if needed
+                    if (this.currentTab === 'curations') {
+                        await this.refreshCurations();
+                    } else if (this.currentTab === 'entities') {
+                        // If we are in entities tab, we might be editing one
+                        if (this.restaurantModule?.currentEntity) {
+                            await this.restaurantModule.loadEntityCurations(this.restaurantModule.currentEntity.entity_id);
+                        }
+                    }
+
+                    window.uiUtils.showNotification('Curation deleted successfully', 'success');
+                } catch (error) {
+                    this.log.error('Failed to delete curation:', error);
+                    window.uiUtils.showNotification('Failed to delete curation: ' + error.message, 'error');
+                } finally {
+                    this.hideLoading();
+                }
+            }
         }
     });
 

@@ -14,7 +14,7 @@ import os
 import numpy as np
 
 from app.models.schemas import (
-    Curation, CurationCreate, CurationUpdate, PaginatedResponse,
+    Curation, CurationCreate, CurationUpdate, PaginatedResponse, CurationStatus,
     SemanticSearchRequest, SemanticSearchResponse, SemanticSearchResult, ConceptMatch,
     HybridSearchRequest, HybridSearchResponse, HybridSearchResult
 )
@@ -97,6 +97,8 @@ def create_curation(
 def search_curations(
     entity_id: Optional[str] = Query(None),
     curator_id: Optional[str] = Query(None),
+    status: Optional[CurationStatus] = Query(None),
+    include_deleted: bool = Query(False),
     since: Optional[str] = Query(None, description="ISO timestamp - only return curations updated after this time"),
     limit: int = Query(50, ge=1, le=1000),
     offset: int = Query(0, ge=0),
@@ -122,6 +124,13 @@ def search_curations(
             query["updatedAt"] = {"$gte": since_dt}
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid since timestamp format. Use ISO 8601.")
+    
+    # ✅ STATUS FILTERING
+    if status:
+        query["status"] = status
+    elif not include_deleted:
+        # Default: exclude deleted items
+        query["status"] = {"$ne": "deleted"}
     
     # Get total count
     total = db.curations.count_documents(query)
@@ -154,8 +163,11 @@ def get_entity_curations(
             detail=f"Entity {entity_id} not found"
         )
     
-    # Get curations
-    cursor = db.curations.find({"entity_id": entity_id})
+    # Get curations (exclude deleted by default)
+    cursor = db.curations.find({
+        "entity_id": entity_id,
+        "status": {"$ne": "deleted"}
+    })
     curations = []
     for doc in cursor:
         curations.append(Curation(**doc))
@@ -238,13 +250,24 @@ def delete_curation(
     db: Database = Depends(get_database),
     auth: dict = Depends(verify_auth)  # Support both API key and JWT
 ):
-    """Delete curation
+    """Delete curation (Soft Delete)
     
+    Marks the curation as 'deleted' instead of removing from DB.
     **Authentication Required:** Include `Authorization: Bearer <token>` OR `X-API-Key: <key>` header
     """
-    result = db.curations.delete_one({"_id": curation_id})
+    result = db.curations.update_one(
+        {"_id": curation_id},
+        {
+            "$set": {
+                "status": "deleted",
+                "updatedAt": datetime.now(timezone.utc),
+                "updatedBy": auth.get("user")
+            },
+            "$inc": {"version": 1}
+        }
+    )
     
-    if result.deleted_count == 0:
+    if result.matched_count == 0:
         raise HTTPException(
             status_code=404,
             detail=f"Curation {curation_id} not found"

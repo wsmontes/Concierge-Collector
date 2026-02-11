@@ -245,40 +245,78 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
     createCurationCard(entity, curation, options = {}) {
         const card = this.createEntityCard(entity, options);
 
-        // Add curation badge
-        const header = card.querySelector('.absolute.top-3.right-3');
-        if (header && curation) {
+        if (curation) {
             const status = curation.status || 'draft';
             const statusColors = {
                 draft: 'bg-yellow-100 text-yellow-800',
+                linked: 'bg-blue-100 text-blue-800',
+                active: 'bg-green-100 text-green-800',
                 done: 'bg-green-100 text-green-800',
                 pending: 'bg-blue-100 text-blue-800'
             };
 
-            const badge = document.createElement('div');
-            badge.className = `${statusColors[status] || statusColors.draft} rounded-full px-3 py-1 text-xs font-medium shadow-sm flex items-center gap-1`;
+            // 1. Clean up top-right header (keep only entity type icon)
+            // No changes needed to createEntityCard, it already has the icon.
+            // We just don't insert buttons there anymore.
+
+            // 2. Create Curation Actions Row
+            const actionsRow = document.createElement('div');
+            actionsRow.className = 'mt-4 pt-4 border-t border-gray-100 flex items-center justify-between';
 
             const curatorName = curation.curator?.name || 'Unknown';
-            badge.innerHTML = `
-                <span class="material-icons text-[10px]">person</span>
-                <span>${curatorName} • ${status.charAt(0).toUpperCase() + status.slice(1)}</span>
+            const badgeClass = statusColors[status] || statusColors.draft;
+
+            actionsRow.innerHTML = `
+                <div class="flex flex-col gap-1">
+                    <div class="flex items-center gap-2">
+                        <span class="${badgeClass} rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider shadow-sm">
+                            ${status}
+                        </span>
+                        <div class="flex items-center gap-1 text-xs text-gray-500">
+                            <span class="material-icons text-[14px]">person</span>
+                            <span class="font-medium">${curatorName}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="flex items-center gap-2">
+                    <button class="btn-edit-curation p-2 bg-gray-50 text-gray-600 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-all border border-gray-100 hover:border-blue-100 shadow-sm" title="Edit Curation">
+                        <span class="material-icons text-[20px]">edit</span>
+                    </button>
+                    <button class="btn-delete-curation p-2 bg-gray-50 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-lg transition-all border border-gray-100 hover:border-red-100 shadow-sm" title="Delete Curation">
+                        <span class="material-icons text-[20px]">delete_outline</span>
+                    </button>
+                </div>
             `;
 
-            // Add Edit Button
-            const editBtn = document.createElement('button');
-            editBtn.className = 'ml-1 bg-white hover:bg-gray-100 text-gray-700 rounded-full pb-0.5 px-2 flex items-center justify-center shadow-sm border border-gray-200 transition-colors cursor-pointer z-20';
-            editBtn.title = 'Edit Curation';
-            editBtn.innerHTML = '<span class="material-icons text-sm">edit</span>';
-            editBtn.onclick = (e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (window.uiManager && typeof window.uiManager.editCuration === 'function') {
-                    window.uiManager.editCuration(curation);
-                }
-            };
+            // Add event listeners to buttons
+            const editBtn = actionsRow.querySelector('.btn-edit-curation');
+            const deleteBtn = actionsRow.querySelector('.btn-delete-curation');
 
-            header.insertBefore(editBtn, header.firstChild);
-            header.insertBefore(badge, editBtn);
+            if (editBtn) {
+                editBtn.onclick = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (window.uiManager && typeof window.uiManager.editCuration === 'function') {
+                        window.uiManager.editCuration(curation);
+                    }
+                };
+            }
+
+            if (deleteBtn) {
+                deleteBtn.onclick = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (window.uiManager && typeof window.uiManager.confirmDeleteCuration === 'function') {
+                        window.uiManager.confirmDeleteCuration(curation.curation_id);
+                    }
+                };
+            }
+
+            // Append actions row to the card's main content area (p-5 div)
+            const contentArea = card.querySelector('.p-5');
+            if (contentArea) {
+                contentArea.appendChild(actionsRow);
+            }
         }
 
         return card;

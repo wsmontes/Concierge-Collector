@@ -469,6 +469,7 @@ class ConceptModule {
                 curation_id: curationId,
                 entity_id: entityId,  // null for orphaned curations, ID for matched entities
                 restaurant_name: name, // Name for orphaned curations (as requested)
+                status: entityId ? 'linked' : 'draft',
                 curator_id: curator.curator_id,  // Required by loadCurations() filter
                 curator: {
                     id: user.email,

@@ -17,7 +17,7 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
         this.db = null;
         this.isInitialized = false;
         this.syncQueue = new Set();
-        
+
         // Don't auto-initialize in constructor, wait for explicit call
     }
 
@@ -29,7 +29,7 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
             this.log.debug('EntityStore already initialized');
             return this;
         }
-        
+
         return await this.initializeDatabase();
     }
 
@@ -40,37 +40,37 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
     async initializeDatabase() {
         try {
             this.log.debug('🚀 Initializing V3 Entity Store with DatabaseManager...');
-            
+
             // Use DatabaseManager for robust initialization
             if (!window.DatabaseManager) {
                 this.log.warn('⚠️ DatabaseManager not available, falling back to manual init');
                 return await this.initializeDatabaseManual();
             }
-            
+
             // Create DatabaseManager instance
             this.dbManager = new window.DatabaseManager();
-            
+
             // Initialize with automatic migrations and validation
             this.db = await this.dbManager.initialize();
-            
+
             this.log.debug('✅ DatabaseManager initialized database successfully');
-            
+
             // Add hooks for automatic timestamps and validation
             this.addDatabaseHooks();
-            
+
             // Initialize default data (this will create tables on first use)
             await this.initializeDefaultData();
-            
+
             // Verify database is working by testing basic operations
             await this.validateDatabaseOperations();
-            
+
             this.isInitialized = true;
             this.log.debug('✅ V3 Entity Store initialized successfully');
             return this;
-            
+
         } catch (error) {
             this.log.error('❌ Failed to initialize V3 Entity Store:', error);
-            
+
             // Try to recover
             if (this.dbManager) {
                 this.log.warn('Attempting recovery...');
@@ -81,7 +81,7 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
                     return this;
                 }
             }
-            
+
             throw error;
         }
     }
@@ -91,11 +91,11 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
      */
     async initializeDatabaseManual() {
         this.log.debug('Using manual database initialization...');
-        
+
         // Use final database name (no version suffix - Dexie handles versioning)
         const dbName = 'ConciergeCollector';
         this.db = new Dexie(dbName);
-        
+
         // Define all schema versions for automatic migration
         // Version 3: Original V3 Entity-Curation Schema
         this.db.version(3).stores({
@@ -107,7 +107,7 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
             settings: 'key',
             appMetadata: 'key'
         });
-        
+
         // Version 6: Multi-Curator + Entity-Agnostic Schema
         // Note: Using version 6 to be higher than any existing versions
         this.db.version(6).stores({
@@ -115,7 +115,7 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
             entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt, etag',
             curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt, updatedAt, etag',
             curators: '++id, curator_id, name, email, status, createdAt, lastActive',
-            
+
             // System Tables
             drafts: '++id, type, data, curator_id, createdAt, lastModified',
             syncQueue: '++id, type, action, local_id, entity_id, data, createdAt, retryCount, lastError',
@@ -129,7 +129,7 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
             entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt, etag, sync.status',
             curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt, updatedAt, etag, sync.status',
             curators: '++id, curator_id, name, email, status, createdAt, lastActive',
-            
+
             // System Tables
             drafts: '++id, type, data, curator_id, createdAt, lastModified',
             syncQueue: '++id, type, action, local_id, entity_id, data, createdAt, retryCount, lastError',
@@ -143,13 +143,13 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
             entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt, etag, sync.status',
             curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt, updatedAt, etag, sync.status',
             curators: '++id, curator_id, name, email, status, createdAt, lastActive',
-            
+
             // System Tables
             drafts: '++id, type, data, curator_id, createdAt, lastModified',
             syncQueue: '++id, type, action, local_id, entity_id, data, createdAt, retryCount, lastError',
             settings: 'key',
             cache: 'key, expires',
-            
+
             // Recording Module Legacy Tables
             draftRestaurants: '++id, curatorId, name, timestamp, lastModified, hasAudio',
             pendingAudio: '++id, restaurantId, draftId, timestamp, retryCount, status'
@@ -162,29 +162,29 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
             entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt, etag, sync.status',
             curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt, updatedAt, etag, sync.status',
             curators: '++id, curator_id, name, email, status, createdAt, lastActive',
-            
+
             // System Tables
             drafts: '++id, type, data, curator_id, createdAt, lastModified',
             syncQueue: '++id, type, action, local_id, entity_id, data, createdAt, retryCount, lastError',
             settings: 'key',
             cache: 'key, expires',
-            
+
             // Recording Module Legacy Tables
             draftRestaurants: '++id, curatorId, name, timestamp, lastModified, hasAudio',
             pendingAudio: '++id, restaurantId, draftId, timestamp, retryCount, status'
         });
-        
+
         // Open the database and wait for it to be ready
         await this.db.open();
-        
+
         // Wait a moment for Dexie to fully initialize the object stores
         await new Promise(resolve => setTimeout(resolve, 100));
-        
+
         // Verify database is ready before proceeding
         if (!this.db.isOpen()) {
             throw new Error('Database failed to open properly');
         }
-        
+
         this.log.debug('✅ Database opened with manual initialization');
         return this;
     }
@@ -200,9 +200,9 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
         // DISABLED: Preservation of user data is critical
         // The MigrationManager in main.js handles V1 → V3 migration
         // Only after migration is complete and verified should old databases be removed
-        
+
         this.log.debug('🔒 Legacy database cleanup DISABLED - preserving user data for migration');
-        
+
         // Future: Add cleanup logic ONLY after migration success confirmation
         // Example:
         // const migrationComplete = localStorage.getItem('migration_v3_complete');
@@ -222,7 +222,7 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
             obj.updatedAt = now;
             obj.etag = this.generateETag();
         });
-        
+
         this.db.entities.hook('updating', (modifications, primKey, obj, trans) => {
             modifications.updatedAt = new Date();
             modifications.etag = this.generateETag();
@@ -235,7 +235,7 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
             obj.updatedAt = now;
             obj.etag = this.generateETag();
         });
-        
+
         this.db.curations.hook('updating', (modifications, primKey, obj, trans) => {
             modifications.updatedAt = new Date();
             modifications.etag = this.generateETag();
@@ -248,24 +248,24 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
     async validateDatabaseOperations() {
         try {
             this.log.debug('🔍 Validating V3 database operations...');
-            
+
             // Test basic read operations to ensure database is functional
             // These operations are safe and will only access existing tables
-            
+
             // Test settings table (should have default data)
             const settingsCount = await this.db.settings.count();
             this.log.debug(`✅ Settings table accessible (${settingsCount} entries)`);
-            
+
             // Test curators table (should have default curator)
             const curatorsCount = await this.db.curators.count();
             this.log.debug(`✅ Curators table accessible (${curatorsCount} entries)`);
-            
+
             // Test basic functionality
             await this.getSetting('test_key', 'default_value');
             this.log.debug('✅ Basic database operations working');
-            
+
             this.log.debug('✅ Database operations validation complete');
-            
+
         } catch (error) {
             this.log.error('❌ Database operations validation failed:', error);
             throw error;
@@ -278,47 +278,47 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
     async initializeDefaultData() {
         try {
             this.log.debug('🔄 Initializing default data...');
-            
+
             // Test database readiness by checking if we can access tables
             // Do this one at a time to avoid overwhelming Dexie during initialization
             this.log.debug('📊 Verifying table access...');
-            
+
             const entitiesCount = await this.db.entities.count();
             this.log.debug(`✅ Entities table ready (${entitiesCount} entries)`);
-            
+
             const curationsCount = await this.db.curations.count();
             this.log.debug(`✅ Curations table ready (${curationsCount} entries)`);
-            
+
             const curatorsCount = await this.db.curators.count();
             this.log.debug(`✅ Curators table ready (${curatorsCount} entries)`);
-            
+
             const syncQueueCount = await this.db.syncQueue.count();
             this.log.debug(`✅ SyncQueue table ready (${syncQueueCount} entries)`);
-            
+
             const settingsCount = await this.db.settings.count();
             this.log.debug(`✅ Settings table ready (${settingsCount} entries)`);
-            
+
             // Create default curator if none exists
             if (curatorsCount === 0) {
-            const defaultCurator = {
-                curator_id: 'default_curator_v3',
-                name: 'Default Curator',
-                email: 'curator@concierge.com',
-                status: 'active',
-                createdAt: new Date(),
-                lastActive: new Date()
-            };
-            
-            await this.db.curators.add(defaultCurator);
-            
-            // Set as current curator
-            await this.setSetting('currentCuratorId', 'default_curator_v3');
-            
-            this.log.debug('✅ Created default curator');
-        }
-        
-        this.log.debug('✅ All database tables initialized');
-        
+                const defaultCurator = {
+                    curator_id: 'default_curator_v3',
+                    name: 'Default Curator',
+                    email: 'curator@concierge.com',
+                    status: 'active',
+                    createdAt: new Date(),
+                    lastActive: new Date()
+                };
+
+                await this.db.curators.add(defaultCurator);
+
+                // Set as current curator
+                await this.setSetting('currentCuratorId', 'default_curator_v3');
+
+                this.log.debug('✅ Created default curator');
+            }
+
+            this.log.debug('✅ All database tables initialized');
+
         } catch (error) {
             this.log.error('❌ Failed to initialize default data:', error);
             throw error;
@@ -341,14 +341,14 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
         if (!this.db?.isOpen()) {
             return false;
         }
-        
+
         if (tableName) {
             return this.db.tables.some(table => table.name === tableName);
         }
-        
+
         // Check all required tables exist
         const requiredTables = ['entities', 'curations', 'curators', 'syncQueue', 'settings'];
-        return requiredTables.every(table => 
+        return requiredTables.every(table =>
             this.db.tables.some(dbTable => dbTable.name === table)
         );
     }
@@ -375,13 +375,13 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
 
             const id = await this.db.entities.add(entity);
             const createdEntity = await this.db.entities.get(id);
-            
+
             // Add to sync queue
             await this.addToSyncQueue('entity', 'create', id, createdEntity.entity_id, createdEntity);
-            
+
             this.log.debug(`✅ Created entity: ${entity.name} (${entity.entity_id})`);
             return createdEntity;
-            
+
         } catch (error) {
             this.log.error('❌ Failed to create entity:', error);
             throw error;
@@ -414,33 +414,33 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
                 this.log.warn('⚠️ Database not ready for getEntities, returning empty array');
                 return [];
             }
-            
+
             let query = this.db.entities.orderBy('createdAt');
-            
+
             // Apply filters
             if (options.type) {
                 query = query.filter(entity => entity.type === options.type);
             }
-            
+
             if (options.status) {
                 query = query.filter(entity => entity.status === options.status);
             }
-            
+
             if (options.createdBy) {
                 query = query.filter(entity => entity.createdBy === options.createdBy);
             }
-            
+
             // Apply pagination
             if (options.offset) {
                 query = query.offset(options.offset);
             }
-            
+
             if (options.limit) {
                 query = query.limit(options.limit);
             }
-            
+
             return await query.toArray();
-            
+
         } catch (error) {
             this.log.error('❌ Failed to get entities:', error);
             return [];
@@ -460,22 +460,22 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
             if (!entity) {
                 throw new Error(`Entity not found: ${entityId}`);
             }
-            
+
             // Optimistic locking check
             if (expectedETag && entity.etag !== expectedETag) {
                 throw new Error(`ETag mismatch. Expected: ${expectedETag}, Got: ${entity.etag}`);
             }
-            
+
             await this.db.entities.where('entity_id').equals(entityId).modify(updates);
-            
+
             const updatedEntity = await this.getEntity(entityId);
-            
+
             // Add to sync queue
             await this.addToSyncQueue('entity', 'update', entity.id, entityId, updatedEntity);
-            
+
             this.log.debug(`✅ Updated entity: ${entityId}`);
             return updatedEntity;
-            
+
         } catch (error) {
             this.log.error('❌ Failed to update entity:', error);
             throw error;
@@ -493,19 +493,19 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
             if (!entity) {
                 throw new Error(`Entity not found: ${entityId}`);
             }
-            
+
             // Delete related curations first
             await this.db.curations.where('entity_id').equals(entityId).delete();
-            
+
             // Delete entity
             await this.db.entities.where('entity_id').equals(entityId).delete();
-            
+
             // Add to sync queue
             await this.addToSyncQueue('entity', 'delete', entity.id, entityId, null);
-            
+
             this.log.debug(`✅ Deleted entity: ${entityId}`);
             return true;
-            
+
         } catch (error) {
             this.log.error('❌ Failed to delete entity:', error);
             throw error;
@@ -527,6 +527,7 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
                 curation_id: curationData.curation_id || `cur_${Date.now()}_${Math.random().toString(36).substr(2)}`,
                 entity_id: curationData.entity_id,
                 curator_id: curationData.curator_id,
+                status: curationData.status || (curationData.entity_id ? 'linked' : 'draft'),
                 category: curationData.category || 'general',
                 concept: curationData.concept || 'review',
                 items: curationData.items || [],
@@ -536,13 +537,13 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
 
             const id = await this.db.curations.add(curation);
             const createdCuration = await this.db.curations.get(id);
-            
+
             // Add to sync queue
             await this.addToSyncQueue('curation', 'create', id, createdCuration.curation_id, createdCuration);
-            
+
             this.log.debug(`✅ Created curation: ${curation.curation_id} for entity: ${curation.entity_id}`);
             return createdCuration;
-            
+
         } catch (error) {
             this.log.error('❌ Failed to create curation:', error);
             throw error;
@@ -573,11 +574,44 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
             return await this.db.curations
                 .where('entity_id')
                 .equals(entityId)
+                .filter(curation => curation.status !== 'deleted')
                 .orderBy('createdAt')
                 .toArray();
         } catch (error) {
             this.log.error('❌ Failed to get entity curations:', error);
             return [];
+        }
+    }
+
+    /**
+     * Delete a curation (Soft Delete)
+     * @param {string} curationId - Curation ID
+     * @returns {Promise<boolean>} - Success or failure
+     */
+    async deleteCuration(curationId) {
+        try {
+            const curation = await this.getCuration(curationId);
+            if (!curation) throw new Error('Curation not found');
+
+            // Soft delete locally
+            await this.db.curations.update(curation.id, {
+                status: 'deleted',
+                sync: {
+                    ...(curation.sync || {}),
+                    status: 'pending'
+                }
+            });
+
+            // If it was already on server, add to sync queue as 'update' (to status=deleted)
+            // Or if we have a dedicated 'deleteCuration' sync action, we could use that.
+            // Following 'update_one' approach in backend, we treat it as an update.
+            await this.addToSyncQueue('curation', 'update', curation.id, curation.curation_id, { status: 'deleted' });
+
+            this.log.debug(`✅ Soft-deleted curation: ${curationId}`);
+            return true;
+        } catch (error) {
+            this.log.error('❌ Failed to delete curation:', error);
+            throw error;
         }
     }
 
@@ -595,10 +629,10 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
                 this.log.warn('⚠️ Database not ready for getCurrentCurator, returning null');
                 return null;
             }
-            
+
             const curatorId = await this.getSetting('currentCuratorId');
             if (!curatorId) return null;
-            
+
             return await this.db.curators.where('curator_id').equals(curatorId).first();
         } catch (error) {
             this.log.error('❌ Failed to get current curator:', error);
@@ -614,12 +648,12 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
     async setCurrentCurator(curatorId) {
         try {
             await this.setSetting('currentCuratorId', curatorId);
-            
+
             // Update lastActive
             await this.db.curators.where('curator_id').equals(curatorId).modify({
                 lastActive: new Date()
             });
-            
+
             this.log.debug(`✅ Set current curator: ${curatorId}`);
         } catch (error) {
             this.log.error('❌ Failed to set current curator:', error);
@@ -703,7 +737,7 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
                 this.log.warn('⚠️ Database not ready for getSetting, returning default value');
                 return defaultValue;
             }
-            
+
             const setting = await this.db.settings.get(key);
             return setting ? setting.value : defaultValue;
         } catch (error) {
@@ -765,18 +799,18 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
     async importConciergeData(conciergeData) {
         try {
             this.log.debug('🔄 Starting Concierge data import...');
-            
+
             const results = {
                 entities: { created: 0, skipped: 0 },
                 curations: { created: 0, skipped: 0 },
                 errors: []
             };
-            
+
             const curator = await this.getCurrentCurator();
             if (!curator) {
                 throw new Error('No current curator available for import');
             }
-            
+
             // Process each restaurant
             for (const [restaurantName, restaurantData] of Object.entries(conciergeData)) {
                 try {
@@ -785,7 +819,7 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
                         .where('name').equals(restaurantName)
                         .and(entity => entity.type === 'restaurant')
                         .first();
-                    
+
                     let entity;
                     if (existingEntity) {
                         entity = existingEntity;
@@ -805,29 +839,29 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
                         results.entities.created++;
                         this.log.debug(`✅ Created entity: ${restaurantName}`);
                     }
-                    
+
                     // Check if curation already exists
                     const existingCuration = await this.db.curations
                         .where('entity_id').equals(entity.entity_id)
                         .and(curation => curation.concept === 'concierge_import')
                         .first();
-                    
+
                     if (existingCuration) {
                         results.curations.skipped++;
                         this.log.debug(`⏭️ Curation already exists for: ${restaurantName}`);
                         continue;
                     }
-                    
+
                     // Create curation with concept data
                     const items = [];
-                    
+
                     // Process all concept categories
                     const categories = [
-                        'cuisine', 'menu', 'food_style', 'drinks', 'setting', 
-                        'mood', 'crowd', 'suitable_for', 'special_features', 
+                        'cuisine', 'menu', 'food_style', 'drinks', 'setting',
+                        'mood', 'crowd', 'suitable_for', 'special_features',
                         'covid_specials', 'price_and_payment', 'price_range'
                     ];
-                    
+
                     categories.forEach(category => {
                         if (restaurantData[category] && Array.isArray(restaurantData[category])) {
                             restaurantData[category].forEach(item => {
@@ -836,8 +870,8 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
                                         name: item.trim(),
                                         description: `${category} concept`,
                                         rating: 3,
-                                        metadata: { 
-                                            category, 
+                                        metadata: {
+                                            category,
                                             source: 'concierge_import',
                                             importedAt: new Date()
                                         }
@@ -846,7 +880,7 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
                             });
                         }
                     });
-                    
+
                     if (items.length > 0) {
                         await this.createCuration({
                             entity_id: entity.entity_id,
@@ -864,11 +898,11 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
                                 originalData: restaurantData
                             }
                         });
-                        
+
                         results.curations.created++;
                         this.log.debug(`✅ Created curation for: ${restaurantName} with ${items.length} items`);
                     }
-                    
+
                 } catch (itemError) {
                     results.errors.push({
                         restaurant: restaurantName,
@@ -877,10 +911,10 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
                     this.log.error(`❌ Failed to import ${restaurantName}:`, itemError);
                 }
             }
-            
+
             this.log.debug(`✅ Import completed: ${results.entities.created} entities, ${results.curations.created} curations, ${results.errors.length} errors`);
             return results;
-            
+
         } catch (error) {
             this.log.error('❌ Failed to import Concierge data:', error);
             throw error;
@@ -903,7 +937,7 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
                 this.db.curators.count(),
                 this.db.syncQueue.count()
             ]);
-            
+
             return {
                 entities: entityCount,
                 curations: curationCount,
@@ -923,14 +957,14 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
     async resetDatabase() {
         try {
             this.log.warn('🗑️ Resetting V3 database...');
-            
+
             if (this.db) {
                 this.db.close();
             }
-            
+
             await Dexie.delete(AppConfig.database.name);
             await this.initializeDatabase();
-            
+
             this.log.debug('✅ Database reset completed');
         } catch (error) {
             this.log.error('❌ Failed to reset database:', error);

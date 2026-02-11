@@ -170,6 +170,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             curation_id: curation.curation_id,
             curator_id: curation.curator_id,  // Required by MongoDB schema
             curator: curation.curator,
+            status: curation.status || (curation.entity_id ? 'linked' : 'draft'),
             categories: curation.categories || {},
             notes: curation.notes || {},
             sources: curation.sources || [],
@@ -593,6 +594,12 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             }
 
             if (!localCuration) {
+                // If the server says it's deleted but we don't have it, just skip
+                if (serverCuration.status === 'deleted') {
+                    this.log.debug(`Skipping deleted curation from server: ${serverCuration.curation_id}`);
+                    return false;
+                }
+
                 // New curation from server
                 await window.DataStore.db.curations.put({
                     ...normalizedCuration,
@@ -605,6 +612,13 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                 this.log.debug(`Created local curation: ${serverCuration.curation_id}`);
                 return true;
             } else {
+                // If server says it's deleted, remove it locally
+                if (serverCuration.status === 'deleted') {
+                    await window.DataStore.db.curations.delete(localCuration.id);
+                    this.log.debug(`Deleted local curation (server mark as deleted): ${serverCuration.curation_id}`);
+                    return true;
+                }
+
                 const serverVersion = serverCuration.version || 0;
                 const localVersion = localCuration.version || 0;
 

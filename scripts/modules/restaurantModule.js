@@ -336,6 +336,7 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
                 ...(this.currentCuration?.id && { id: this.currentCuration.id }),
                 curation_id: this.currentCuration?.curation_id || crypto.randomUUID(),
                 entity_id: this.currentEntity?.entity_id || null, // Allow orphaned curations
+                status: (this.currentEntity?.entity_id) ? 'linked' : 'draft',
                 restaurant_name: this.restaurantNameInput?.value ||
                     (this.currentEntity?.name || this.currentEntity?.restaurant_name) ||
                     'Unmatched Review',

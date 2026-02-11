@@ -102,8 +102,12 @@ class CurationCategories(BaseModel):
     model_config = ConfigDict(extra='allow')  # Allow any additional fields from MongoDB
 
 
+CurationStatus = Literal["draft", "linked", "active", "deleted", "archived"]
+
+
 class CurationBase(BaseModel):
     """Base Curation model"""
+    status: CurationStatus = Field(default="draft", description="Curation lifecycle status")
     notes: Optional[CurationNotes] = None
     categories: CurationCategories = Field(default_factory=CurationCategories)
     sources: List[str] = Field(default_factory=list)
@@ -121,6 +125,7 @@ class CurationCreate(CurationBase):
 class CurationUpdate(BaseModel):
     """Curation update request (all optional for PATCH)"""
     entity_id: Optional[str] = None
+    status: Optional[CurationStatus] = None
     notes: Optional[CurationNotes] = None
     categories: Optional[CurationCategories] = None
     sources: Optional[List[str]] = None
