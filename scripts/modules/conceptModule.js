@@ -556,7 +556,7 @@ class ConceptModule {
                 sources: existingCuration?.sources || window.SourceUtils.determineSourcesFromContext({
                     hasAudio: !!(transcription && transcription.trim()),
                     hasPhotos: this.uiManager?.currentPhotos?.length > 0,
-                    hasPlaceId: !!(entity?.data?.place_id || entity?.place_id),
+                    hasPlaceId: !!(this.uiManager.importedEntityData?.data?.place_id || this.uiManager.importedEntityData?.place_id),
                     isImport: false // Logic can be expanded if needed
                 }),
                 created_at: existingCuration?.created_at || new Date().toISOString(),
