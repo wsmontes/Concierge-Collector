@@ -553,7 +553,12 @@ class ConceptModule {
                     private: privateNotes || null
                 },
                 unstructured_text: transcription || null,
-                sources: existingCuration?.sources || this.detectSourcesFromContext(transcription, entity),
+                sources: existingCuration?.sources || window.SourceUtils.determineSourcesFromContext({
+                    hasAudio: !!(transcription && transcription.trim()),
+                    hasPhotos: this.uiManager?.currentPhotos?.length > 0,
+                    hasPlaceId: !!(entity?.data?.place_id || entity?.place_id),
+                    isImport: false // Logic can be expanded if needed
+                }),
                 created_at: existingCuration?.created_at || new Date().toISOString(),
                 createdAt: existingCuration?.createdAt || new Date(),
                 updated_at: new Date().toISOString(),
@@ -731,27 +736,27 @@ class ConceptModule {
      */
     detectSourcesFromContext(transcription, entity) {
         const sources = [];
-        
+
         // If has transcription, came from audio
         if (transcription && transcription.trim()) {
             sources.push('audio');
         }
-        
+
         // If has photos in current session
         if (this.uiManager?.currentPhotos?.length > 0) {
             sources.push('image');
         }
-        
+
         // If entity has place_id, came from Google Places
         if (entity?.data?.place_id || entity?.place_id) {
             sources.push('google_places');
         }
-        
+
         // If no specific source detected, mark as manual entry
         if (sources.length === 0) {
             sources.push('manual');
         }
-        
+
         this.log.debug('Detected sources from context:', sources);
         return sources;
     }

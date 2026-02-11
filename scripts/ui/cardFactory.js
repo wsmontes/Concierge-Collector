@@ -273,31 +273,9 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
             const curatorName = curation.curator?.name || 'Unknown';
             const badgeClass = statusColors[status] || statusColors.draft;
 
-            // Determine Source and Sync Status using intelligent detection
-            const detectCurationSource = (curation, entity) => {
-                const sources = curation.sources || [];
 
-                // Priority order for source detection
-                if (sources.includes('audio')) {
-                    return { name: 'Voice Note', icon: 'mic', color: 'purple' };
-                }
-                if (sources.includes('image')) {
-                    return { name: 'Photo', icon: 'photo_camera', color: 'pink' };
-                }
-                if (sources.includes('text')) {
-                    return { name: 'Text Input', icon: 'text_fields', color: 'blue' };
-                }
-                if (sources.includes('google_places') || entity?.data?.place_id || entity?.place_id) {
-                    return { name: 'Google Places', icon: 'place', color: 'green' };
-                }
-                if (sources.includes('import')) {
-                    return { name: 'Imported', icon: 'file_upload', color: 'amber' };
-                }
-                // Default fallback
-                return { name: 'Manual Entry', icon: 'edit', color: 'gray' };
-            };
-
-            const sourceInfo = detectCurationSource(curation, entity);
+            // Use centralized SourceUtils for consistent logic and styling
+            const sourceInfo = window.SourceUtils.detectSource(curation, entity);
 
             let syncStatus = curation.sync?.status || 'local';
             let syncIcon = 'cloud_off';
@@ -314,13 +292,13 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                 syncColor = 'text-red-500';
             }
 
-            // Create Meta Info Row with improved visual design
+            // Create Meta Info Row with standardized badge component
             const metaInfo = `
                 <div class="flex items-center gap-2 mt-2">
-                    <!-- Source Badge -->
-                    <div class="flex items-center gap-1.5 px-2.5 py-0.5 bg-${sourceInfo.color}-100 rounded-full">
-                        <span class="material-icons text-[13px] text-${sourceInfo.color}-600">${sourceInfo.icon}</span>
-                        <span class="text-[10px] font-bold uppercase tracking-wide text-${sourceInfo.color}-700">${sourceInfo.name}</span>
+                    <!-- Source Badge (Standardized) -->
+                    <div class="data-badge ${sourceInfo.className}">
+                        <span class="material-icons">${sourceInfo.icon}</span>
+                        ${sourceInfo.label}
                     </div>
                     
                     <!-- Divider -->
