@@ -2427,48 +2427,37 @@ class RecordingModule {
 
     /**
      * Show pending audio indicator badge
-     * @param {number} count - Number of pending audios
+     * Uses the static #pending-audio-badge element from HTML
      */
     async showPendingAudioBadge() {
         try {
             if (!window.PendingAudioManager) return;
 
+            const badge = document.getElementById('pending-audio-badge');
+            if (!badge) {
+                // Element might not be in DOM yet; retry once after a short delay
+                setTimeout(() => this.showPendingAudioBadge(), 500);
+                return;
+            }
+
             const counts = await window.PendingAudioManager.getAudioCounts();
             const pendingCount = counts.pending + counts.processing + counts.failed;
 
             if (pendingCount === 0) {
-                // Remove badge if no pending audios
-                const existingBadge = document.getElementById('pending-audio-badge');
-                if (existingBadge) {
-                    existingBadge.remove();
-                }
+                badge.classList.add('hidden');
+                badge.textContent = '';
                 return;
             }
 
-            // Find or create badge container
-            const recordingSection = document.getElementById('recording-section');
-            if (!recordingSection) return;
-
-            const header = recordingSection.querySelector('h2');
-            if (!header) return;
-
-            // Remove existing badge
-            let badge = document.getElementById('pending-audio-badge');
-            if (badge) {
-                badge.remove();
-            }
-
-            // Create new badge
-            badge = document.createElement('span');
-            badge.id = 'pending-audio-badge';
-            badge.className = 'ml-2 bg-yellow-500 text-white text-xs px-2 py-1 rounded-full cursor-pointer hover:bg-yellow-600';
+            // Update badge text and show it
             badge.textContent = `${pendingCount} pending`;
-            badge.title = 'Click to view pending recordings';
+            badge.classList.remove('hidden');
 
-            // Add click handler to show pending audio list
-            badge.addEventListener('click', () => this.showPendingAudioList());
-
-            header.appendChild(badge);
+            // Attach click handler (once)
+            if (!badge._pamClickAttached) {
+                badge.addEventListener('click', () => this.showPendingAudioList());
+                badge._pamClickAttached = true;
+            }
         } catch (error) {
             this.log.error('Error showing pending audio badge:', error);
         }

@@ -16,6 +16,7 @@ window.PendingAudioModal = class PendingAudioModal {
         this.listContainer = null;
         this.isOpen = false;
         this.audios = [];
+        this._objectUrls = []; // Track blob URLs for cleanup
         this.initialize();
     }
 
@@ -228,9 +229,20 @@ window.PendingAudioModal = class PendingAudioModal {
                 margin-top: 1px;
             }
 
+            /* ── Audio player ─────────────── */
+            #pending-audio-modal .pam-card-player {
+                margin-bottom: 0.5rem;
+            }
+            #pending-audio-modal .pam-card-player audio {
+                width: 100%;
+                height: 36px;
+                border-radius: 8px;
+            }
+
             #pending-audio-modal .pam-card-actions {
                 display: flex;
                 gap: 0.5rem;
+                flex-wrap: wrap;
             }
 
             #pending-audio-modal .pam-btn {
@@ -265,6 +277,14 @@ window.PendingAudioModal = class PendingAudioModal {
             }
             #pending-audio-modal .pam-btn-delete:hover {
                 background: #fecaca;
+            }
+
+            #pending-audio-modal .pam-btn-download {
+                background: #e0e7ff;
+                color: #3730a3;
+            }
+            #pending-audio-modal .pam-btn-download:hover {
+                background: #c7d2fe;
             }
 
             /* ── Footer ──────────────────── */
@@ -349,6 +369,10 @@ window.PendingAudioModal = class PendingAudioModal {
     close() {
         if (!this.isOpen) return;
         this.isOpen = false;
+
+        // Revoke all object URLs to free memory
+        this._objectUrls.forEach(url => URL.revokeObjectURL(url));
+        this._objectUrls = [];
 
         if (this.modal) {
             this.modal.remove();
@@ -465,7 +489,27 @@ window.PendingAudioModal = class PendingAudioModal {
             return;
         }
 
+        // Revoke old object URLs before re-render
+        this._objectUrls.forEach(url => URL.revokeObjectURL(url));
+        this._objectUrls = [];
+
         this.listContainer.innerHTML = this.audios.map(audio => this.renderCard(audio)).join('');
+
+        // Create audio players with blob URLs
+        this.listContainer.querySelectorAll('.pam-card-player[data-audio-id]').forEach(container => {
+            const audioId = parseInt(container.dataset.audioId, 10);
+            const audio = this.audios.find(a => a.id === audioId);
+            if (audio?.audioBlob) {
+                const url = URL.createObjectURL(audio.audioBlob);
+                this._objectUrls.push(url);
+                const el = document.createElement('audio');
+                el.controls = true;
+                el.preload = 'metadata';
+                el.src = url;
+                container.appendChild(el);
+            }
+        });
+
         this.attachCardListeners();
     }
 
@@ -496,6 +540,8 @@ window.PendingAudioModal = class PendingAudioModal {
             `;
         }
 
+        const hasBlob = !!audio.audioBlob;
+
         return `
             <div class="pam-card" data-audio-id="${audio.id}">
                 <div class="pam-card-header">
@@ -513,6 +559,8 @@ window.PendingAudioModal = class PendingAudioModal {
                     ${audio.isAdditional ? '<span><span class="material-icons">add_circle</span>Additional</span>' : ''}
                 </div>
 
+                ${hasBlob ? `<div class="pam-card-player" data-audio-id="${audio.id}"></div>` : ''}
+
                 ${errorHtml}
 
                 <div class="pam-card-actions">
@@ -520,6 +568,12 @@ window.PendingAudioModal = class PendingAudioModal {
                         <button class="pam-btn pam-btn-retry" data-action="retry" data-id="${audio.id}">
                             <span class="material-icons">refresh</span>
                             Retry
+                        </button>
+                    ` : ''}
+                    ${hasBlob ? `
+                        <button class="pam-btn pam-btn-download" data-action="download" data-id="${audio.id}">
+                            <span class="material-icons">download</span>
+                            MP3
                         </button>
                     ` : ''}
                     <button class="pam-btn pam-btn-delete" data-action="delete" data-id="${audio.id}">
@@ -578,6 +632,8 @@ window.PendingAudioModal = class PendingAudioModal {
                     await this.retryAudio(id, btn);
                 } else if (action === 'delete') {
                     await this.deleteAudio(id, btn);
+                } else if (action === 'download') {
+                    this.downloadAudio(id);
                 }
             });
         });
@@ -701,6 +757,40 @@ window.PendingAudioModal = class PendingAudioModal {
         } catch (error) {
             console.error('Clear all failed:', error);
             this.showToast('Failed to clear recordings', 'error');
+        }
+    }
+
+    /**
+     * Download audio blob as MP3 file
+     */
+    downloadAudio(id) {
+        const audio = this.audios.find(a => a.id === id);
+        if (!audio?.audioBlob) {
+            this.showToast('Audio data not available', 'error');
+            return;
+        }
+
+        try {
+            const blob = new Blob([audio.audioBlob], { type: 'audio/mpeg' });
+            const url = URL.createObjectURL(blob);
+
+            const ts = audio.timestamp
+                ? new Date(audio.timestamp).toISOString().replace(/[:.]/g, '-').slice(0, 19)
+                : 'recording';
+            const filename = `pending-audio-${ts}.mp3`;
+
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+            this.showToast('Download started', 'success');
+        } catch (error) {
+            console.error('Download failed:', error);
+            this.showToast('Failed to download audio', 'error');
         }
     }
 
