@@ -52,32 +52,44 @@ class ConceptModule {
     setupEvents() {
         this.log.debug('Setting up concepts events...');
 
-        // Restaurant name input with auto-save
+        // Restaurant name input with auto-save and dirty flag
         const nameInput = document.getElementById('restaurant-name');
         if (nameInput) {
-            nameInput.addEventListener('focus', () => {
-                this.log.debug('Restaurant name input focused');
-            });
-
-            // Auto-save draft on name change
             nameInput.addEventListener('input', () => {
+                this.uiManager.formIsDirty = true;
                 this.autoSaveDraft();
             });
         }
 
-        // Auto-save on transcription changes
+        // Auto-save and dirty flag on transcription changes
         const transcriptionTextarea = document.getElementById('restaurant-transcription');
         if (transcriptionTextarea) {
             transcriptionTextarea.addEventListener('input', () => {
+                this.uiManager.formIsDirty = true;
                 this.autoSaveDraft();
             });
         }
 
-        // Auto-save on description changes
+        // Auto-save and dirty flag on description changes
         const descriptionInput = document.getElementById('restaurant-description');
         if (descriptionInput) {
             descriptionInput.addEventListener('input', () => {
+                this.uiManager.formIsDirty = true;
                 this.autoSaveDraft();
+            });
+        }
+
+        // Dirty flag for public/private notes
+        const publicNotes = document.getElementById('curation-notes-public');
+        if (publicNotes) {
+            publicNotes.addEventListener('input', () => {
+                this.uiManager.formIsDirty = true;
+            });
+        }
+        const privateNotes = document.getElementById('curation-notes-private');
+        if (privateNotes) {
+            privateNotes.addEventListener('input', () => {
+                this.uiManager.formIsDirty = true;
             });
         }
 
@@ -89,6 +101,9 @@ class ConceptModule {
                 try {
                     // Use our safe wrapper method instead of direct call
                     SafetyUtils.showLoading('Getting your location...');
+
+                    // Mark as dirty when location changes
+                    this.uiManager.formIsDirty = true;
 
                     // Use safe method to get position
                     let position;
@@ -138,7 +153,13 @@ class ConceptModule {
         const discardBtn = document.getElementById('discard-restaurant');
         if (discardBtn) {
             discardBtn.addEventListener('click', async () => {
-                if (confirm('Are you sure you want to discard this restaurant? All unsaved changes and recordings will be deleted.')) {
+                // Only ask for confirmation if the form is dirty
+                if (this.uiManager.formIsDirty) {
+                    if (confirm('Are you sure you want to discard this restaurant? All unsaved changes and recordings will be deleted.')) {
+                        await this.discardRestaurant();
+                    }
+                } else {
+                    // Just discard/cancel without asking if nothing was changed
                     await this.discardRestaurant();
                 }
             });
@@ -149,6 +170,7 @@ class ConceptModule {
         if (saveBtn) {
             saveBtn.addEventListener('click', async () => {
                 await this.saveRestaurant();
+                this.uiManager.formIsDirty = false; // Reset after save
             });
         }
 
@@ -337,7 +359,11 @@ class ConceptModule {
         this.uiManager.currentLocation = null;
         this.uiManager.currentPhotos = [];
         this.uiManager.isEditingRestaurant = false;
+
+        // Save the ID before clearing it to decide where to navigate
+        const wasEditingId = this.uiManager.editingRestaurantId;
         this.uiManager.editingRestaurantId = null;
+        this.uiManager.formIsDirty = false;
 
         // Reset save button text
         const saveBtn = document.getElementById('save-restaurant');
@@ -364,7 +390,20 @@ class ConceptModule {
         const photosPreview = document.getElementById('photos-preview');
         if (photosPreview) photosPreview.innerHTML = '';
 
-        this.uiManager.showRecordingSection();
+        const publicNotes = document.getElementById('curation-notes-public');
+        if (publicNotes) publicNotes.value = '';
+
+        const privateNotes = document.getElementById('curation-notes-private');
+        if (privateNotes) privateNotes.value = '';
+
+        // Navigate back to the main view (Home)
+        // This shows both the recording section and the restaurant list
+        this.uiManager.showRestaurantListSection();
+
+        // If we were editing, refresh the list to make sure it's clean
+        if (wasEditingId) {
+            this.uiManager.loadCurations();
+        }
     }
 
     async saveRestaurant() {
@@ -1044,6 +1083,7 @@ class ConceptModule {
                     category: mostSimilar.category,
                     value: mostSimilar.value
                 });
+                this.uiManager.formIsDirty = true;
 
                 // Show notification about using existing concept
                 const notification = `Using existing concept: ${mostSimilar.value}`;
@@ -1077,6 +1117,7 @@ class ConceptModule {
         modalContainer.querySelector('#use-new').addEventListener('click', () => {
             // Add the new concept anyway
             this.uiManager.currentConcepts.push(newConcept);
+            this.uiManager.formIsDirty = true;
             this.renderConcepts();
 
             document.body.removeChild(modalContainer);
@@ -1313,6 +1354,7 @@ class ConceptModule {
             // First extract concepts
             const concepts = await this.extractConcepts(transcription);
             this.uiManager.currentConcepts = concepts;
+            this.uiManager.formIsDirty = true;
             this.renderConcepts();
 
             // Explicitly generate description after extracting concepts

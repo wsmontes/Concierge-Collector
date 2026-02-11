@@ -273,6 +273,17 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
             const curatorName = curation.curator?.name || 'Unknown';
             const badgeClass = statusColors[status] || statusColors.draft;
 
+            // If linked, show what it's linked to
+            let linkedInfo = '';
+            if (status === 'linked' && entity) {
+                linkedInfo = `
+                    <div class="flex items-center gap-1 text-[10px] text-blue-600 font-semibold mt-1">
+                        <span class="material-icons text-[12px]">link</span>
+                        <span>Linked to: ${entity.name}</span>
+                    </div>
+                `;
+            }
+
             actionsRow.innerHTML = `
                 <div class="flex flex-col gap-1">
                     <div class="flex items-center gap-2">
@@ -284,6 +295,7 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                             <span class="font-medium">${curatorName}</span>
                         </div>
                     </div>
+                    ${linkedInfo}
                 </div>
                 <div class="flex items-center gap-2">
                     <button class="btn-edit-curation p-2 bg-gray-50 text-gray-600 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-all border border-gray-100 hover:border-blue-100 shadow-sm" title="Edit Curation">

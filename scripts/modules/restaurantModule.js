@@ -60,14 +60,8 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
         this.log.debug('RestaurantModule initialized');
     }
 
-    /**
-     * Setup event listeners
-     */
     setupEvents() {
-        if (this.discardButton) {
-            this.discardButton.addEventListener('click', () => this.handleDiscard());
-        }
-
+        // Discard listener removed: Centralized in ConceptModule
         // Save listener removed: ConceptModule.saveRestaurant handles this consistently
         // to support AI features and avoid duplicate saves.
     }
@@ -142,6 +136,11 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
         } else {
             this.resetCurationForm();
         }
+
+        // Reset dirty flag after initial population
+        if (this.uiManager) {
+            this.uiManager.formIsDirty = false;
+        }
     }
 
     /**
@@ -153,10 +152,32 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
         if (this.locationDisplay) this.locationDisplay.textContent = 'Location not set';
         if (this.descriptionInput) this.descriptionInput.value = '';
 
+        // Add or clear "Linked to" indicator
+        let linkedIndicator = document.getElementById('linked-entity-indicator');
+        if (!linkedIndicator) {
+            const container = document.getElementById('concepts-section');
+            const h2 = container?.querySelector('h2');
+            if (h2) {
+                linkedIndicator = document.createElement('div');
+                linkedIndicator.id = 'linked-entity-indicator';
+                linkedIndicator.className = 'mb-4 px-3 py-2 bg-blue-50 text-blue-700 text-xs font-semibold rounded-lg flex items-center gap-2 border border-blue-100 hidden';
+                h2.insertAdjacentElement('afterend', linkedIndicator);
+            }
+        }
+
         if (!entity) {
-            // If orphaned curation, maybe try to guess name from something else?
-            // For now, leave empty as it's truly orphaned.
+            if (linkedIndicator) linkedIndicator.classList.add('hidden');
             return;
+        }
+
+        // Show linked status if applicable
+        if (linkedIndicator && entity.name) {
+            linkedIndicator.innerHTML = `
+                <span class="material-icons text-sm">link</span>
+                Linked to: <span class="font-bold">${entity.name}</span>
+                ${entity.type ? `(${entity.type})` : ''}
+            `;
+            linkedIndicator.classList.remove('hidden');
         }
 
         // Name (with fallbacks)

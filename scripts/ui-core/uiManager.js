@@ -105,6 +105,7 @@ if (typeof window.UIManager === 'undefined') {
             this.currentConcepts = [];
             this.currentLocation = null;
             this.currentPhotos = [];
+            this.formIsDirty = false;
 
             // Curation filtering state
             this.curationFilters = {
