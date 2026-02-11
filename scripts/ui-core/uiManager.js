@@ -592,8 +592,8 @@ if (typeof window.UIManager === 'undefined') {
                 await window.DataStore.db.curations.put(updatedCuration);
 
                 // 3. Trigger background sync if available
-                if (window.SyncManager) {
-                    window.SyncManager.triggerSync();
+                if (window.SyncManager && typeof window.SyncManager.syncAll === 'function') {
+                    window.SyncManager.syncAll().catch(err => console.warn('Background sync failed:', err));
                 }
 
                 // 4. Show success and refresh view
