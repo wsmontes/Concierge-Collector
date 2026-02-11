@@ -896,7 +896,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                                     const updated = await window.ApiService.updateCuration(
                                         curation.curation_id,
                                         changedFields,
-                                        curation.version
+                                        serverCuration.version || curation.version
                                     );
                                     await this.storeItemState('curation', curation.curation_id, updated);
                                     await window.DataStore.db.curations.update(curation.curation_id, {
