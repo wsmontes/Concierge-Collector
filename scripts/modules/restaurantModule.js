@@ -229,7 +229,18 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
         }
 
         if (this.transcriptionInput) {
-            this.transcriptionInput.value = curation.unstructured_text || curation.transcription || '';
+            let transcription = curation.unstructured_text || curation.transcription || '';
+
+            // Fallback: If transcription is empty but public notes has content, 
+            // check if it looks like a mixed transcription (legacy data)
+            const publicNotes = curation.notes?.public || curation.structured_data?.notes_public || '';
+            if (!transcription && publicNotes && publicNotes.length > 50) {
+                // Heuristic: If public notes are long and we have no transcription,
+                // it's likely the mixed data we want to "repair" in the UI
+                transcription = publicNotes;
+            }
+
+            this.transcriptionInput.value = transcription;
         }
 
         // Handle both V3 top-level notes and legacy structured_data notes
@@ -322,11 +333,14 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
             // Gather Data
             const curationData = {
                 curation_id: this.currentCuration?.curation_id || crypto.randomUUID(),
-                entity_id: this.currentEntity.entity_id,
+                entity_id: this.currentEntity?.entity_id || null, // Allow orphaned curations
+                restaurant_name: this.restaurantNameInput?.value ||
+                    (this.currentEntity?.name || this.currentEntity?.restaurant_name) ||
+                    'Unmatched Review',
                 curator_id: currentCurator.curator_id,
                 unstructured_text: this.transcriptionInput?.value || '',
                 notes: {
-                    public: (this.descriptionInput?.value ? `[Description]: ${this.descriptionInput.value}\n\n` : '') + (this.publicNotesInput?.value || ''),
+                    public: this.publicNotesInput?.value || '',
                     private: this.privateNotesInput?.value || ''
                 },
                 categories: this.getConceptsGrouped(),

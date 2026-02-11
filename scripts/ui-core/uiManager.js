@@ -754,6 +754,7 @@ if (typeof window.UIManager === 'undefined') {
             const restaurantName = curation.restaurant_name ||
                 curation.name ||
                 (curation.categories?.restaurant_name && curation.categories.restaurant_name[0]) ||
+                curation.restaurantName ||
                 'Unmatched Review';
 
             const curatorName = curation.curator?.name || curation.curatorName || 'Unknown';
@@ -1080,6 +1081,7 @@ if (typeof window.UIManager === 'undefined') {
         showRestaurantListSection() {
             this.hideAllSections();
             // Show main list view elements
+            if (this.recordingSection) this.recordingSection.classList.remove('hidden');
             if (this.curatorSection) this.curatorSection.classList.remove('hidden');
             if (this.restaurantListSection) this.restaurantListSection.classList.remove('hidden');
             if (this.exportImportSection) this.exportImportSection.classList.remove('hidden');
