@@ -791,7 +791,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
 
                         // Only update if there are actual changes
                         const hasChanges = Object.keys(changedFields).some(
-                            key => !['entity_id', 'curation_id', 'version'].includes(key)
+                            key => !['curation_id', 'version'].includes(key)
                         );
 
                         if (!hasChanges) {
@@ -876,22 +876,64 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                                 }
                             }
 
-                            // Update with serverId so future syncs will use PATCH instead of POST
+                            // Update local with serverId so future syncs use PATCH
                             await window.DataStore.db.curations.update(curation.curation_id, {
                                 sync: {
                                     ...(curation.sync || {}),
-                                    serverId: serverCuration._id,
-                                    status: 'synced',
-                                    lastSyncedAt: new Date().toISOString()
+                                    serverId: serverCuration._id
                                 }
                             });
 
-                            // Store state for future change detection
-                            await this.storeItemState('curation', curation.curation_id, serverCuration);
-
                             this.log.info(`✅ Resolved duplicate: ${curation.curation_id} mapped to serverId ${serverCuration._id}`);
+
+                            // Now push local changes via PATCH (e.g. entity_id link)
+                            try {
+                                const changedFields = this.extractChangedFields(curation);
+                                const hasChanges = Object.keys(changedFields).some(
+                                    key => !['curation_id', 'version'].includes(key)
+                                );
+                                if (hasChanges) {
+                                    const updated = await window.ApiService.updateCuration(
+                                        curation.curation_id,
+                                        changedFields,
+                                        curation.version
+                                    );
+                                    await this.storeItemState('curation', curation.curation_id, updated);
+                                    await window.DataStore.db.curations.update(curation.curation_id, {
+                                        version: updated.version,
+                                        sync: {
+                                            ...(curation.sync || {}),
+                                            serverId: serverCuration._id,
+                                            status: 'synced',
+                                            lastSyncedAt: new Date().toISOString()
+                                        }
+                                    });
+                                    this.log.info(`✅ Pushed pending changes for ${curation.curation_id}`);
+                                } else {
+                                    await this.storeItemState('curation', curation.curation_id, serverCuration);
+                                    await window.DataStore.db.curations.update(curation.curation_id, {
+                                        sync: {
+                                            ...(curation.sync || {}),
+                                            serverId: serverCuration._id,
+                                            status: 'synced',
+                                            lastSyncedAt: new Date().toISOString()
+                                        }
+                                    });
+                                }
+                            } catch (patchError) {
+                                this.log.warn(`Could not push changes after resolving duplicate: ${patchError.message}`);
+                                // Still mark as synced with serverId so next sync can PATCH
+                                await this.storeItemState('curation', curation.curation_id, serverCuration);
+                                await window.DataStore.db.curations.update(curation.curation_id, {
+                                    sync: {
+                                        ...(curation.sync || {}),
+                                        serverId: serverCuration._id,
+                                        status: 'pending',
+                                        lastSyncedAt: new Date().toISOString()
+                                    }
+                                });
+                            }
                         } catch (fetchError) {
-                            // If we still can't find it, mark as error to avoid infinite retry loop
                             this.log.error(`Cannot resolve serverId for ${curation.curation_id}: ${fetchError.message}`);
                             await window.DataStore.db.curations.update(curation.curation_id, {
                                 sync: {
