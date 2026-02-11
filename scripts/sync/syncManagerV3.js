@@ -1204,7 +1204,8 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                 this.log.debug(`Applying server version for ${type} ${id}`);
 
                 if (type === 'entity') {
-                    await window.DataStore.db.entities.put({
+                    const currentEntity = await window.DataStore.db.entities.where('entity_id').equals(id).first();
+                    const entityToSave = {
                         ...server,
                         entity_id: id,  // Preserve local ID
                         sync: {
@@ -1212,12 +1213,18 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                             status: 'synced',
                             lastSyncedAt: new Date().toISOString()
                         }
-                    });
+                    };
 
+                    if (currentEntity) {
+                        entityToSave.id = currentEntity.id; // Preserve local PK
+                    }
+
+                    await window.DataStore.db.entities.put(entityToSave);
                     await this.storeItemState('entity', id, server);
 
                 } else if (type === 'curation') {
-                    await window.DataStore.db.curations.put({
+                    const currentCuration = await window.DataStore.db.curations.where('curation_id').equals(id).first();
+                    const curationToSave = {
                         ...server,
                         curation_id: id,  // Preserve local ID
                         sync: {
@@ -1225,8 +1232,13 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                             status: 'synced',
                             lastSyncedAt: new Date().toISOString()
                         }
-                    });
+                    };
 
+                    if (currentCuration) {
+                        curationToSave.id = currentCuration.id; // Preserve local PK
+                    }
+
+                    await window.DataStore.db.curations.put(curationToSave);
                     await this.storeItemState('curation', id, server);
                 }
 
@@ -1274,7 +1286,8 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         server.version  // Use server version for optimistic lock
                     );
 
-                    await window.DataStore.db.entities.put({
+                    const currentEntity = await window.DataStore.db.entities.where('entity_id').equals(id).first();
+                    const entityToSave = {
                         ...updated,
                         entity_id: id,
                         sync: {
@@ -1282,8 +1295,13 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                             status: 'synced',
                             lastSyncedAt: new Date().toISOString()
                         }
-                    });
+                    };
 
+                    if (currentEntity) {
+                        entityToSave.id = currentEntity.id; // Preserve local PK
+                    }
+
+                    await window.DataStore.db.entities.put(entityToSave);
                     await this.storeItemState('entity', id, updated);
 
                 } else if (type === 'curation') {
@@ -1293,7 +1311,8 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         server.version
                     );
 
-                    await window.DataStore.db.curations.put({
+                    const currentCuration = await window.DataStore.db.curations.where('curation_id').equals(id).first();
+                    const curationToSave = {
                         ...updated,
                         curation_id: id,
                         sync: {
@@ -1301,8 +1320,13 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                             status: 'synced',
                             lastSyncedAt: new Date().toISOString()
                         }
-                    });
+                    };
 
+                    if (currentCuration) {
+                        curationToSave.id = currentCuration.id; // Preserve local PK
+                    }
+
+                    await window.DataStore.db.curations.put(curationToSave);
                     await this.storeItemState('curation', id, updated);
                 }
             }
