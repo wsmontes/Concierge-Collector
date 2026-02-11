@@ -246,11 +246,18 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
         const card = this.createEntityCard(entity, options);
 
         if (curation) {
-            const status = curation.status || 'draft';
+            // Determine status with proper fallback
+            let status = curation.status;
+            if (!status) {
+                status = curation.entity_id ? 'linked' : 'draft';
+            }
+
             const statusColors = {
                 draft: 'bg-yellow-100 text-yellow-800',
                 linked: 'bg-blue-100 text-blue-800',
                 active: 'bg-green-100 text-green-800',
+                archived: 'bg-gray-100 text-gray-800',
+                deleted: 'bg-red-100 text-red-800',
                 done: 'bg-green-100 text-green-800',
                 pending: 'bg-blue-100 text-blue-800'
             };

@@ -359,9 +359,34 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
             };
 
             // Save to DataStore
-            await window.DataStore.db.curations.put(curationData);
+            const recordId = await window.DataStore.db.curations.put(curationData);
+            this.log.info('Curation saved with record ID:', recordId);
 
-            this.log.info('Curation saved:', curationData);
+            // Clean up pending audio and drafts
+            try {
+                const draftId = window.DraftRestaurantManager?.currentDraftId;
+                const entityId = curationData.entity_id;
+
+                if (window.PendingAudioManager) {
+                    if (entityId) {
+                        await window.PendingAudioManager.deleteAudios({ restaurantId: entityId });
+                    }
+                    if (draftId) {
+                        await window.PendingAudioManager.deleteAudios({ draftId });
+                    }
+                }
+
+                if (draftId && window.DraftRestaurantManager) {
+                    await window.DraftRestaurantManager.deleteDraft(draftId);
+                }
+
+                // Update pending audio badge if available
+                if (this.uiManager?.recordingModule?.showPendingAudioBadge) {
+                    await this.uiManager.recordingModule.showPendingAudioBadge();
+                }
+            } catch (cleanupError) {
+                this.log.warn('Cleanup after save failed (non-fatal):', cleanupError);
+            }
 
             // Trigger Sync if online
             if (navigator.onLine && window.SyncManager) {

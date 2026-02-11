@@ -137,8 +137,10 @@ class ConceptModule {
         // Discard restaurant button
         const discardBtn = document.getElementById('discard-restaurant');
         if (discardBtn) {
-            discardBtn.addEventListener('click', () => {
-                this.discardRestaurant();
+            discardBtn.addEventListener('click', async () => {
+                if (confirm('Are you sure you want to discard this restaurant? All unsaved changes and recordings will be deleted.')) {
+                    await this.discardRestaurant();
+                }
             });
         }
 
@@ -301,8 +303,36 @@ class ConceptModule {
         }
     }
 
-    discardRestaurant() {
-        this.log.debug('Discard restaurant button clicked');
+    async discardRestaurant() {
+        this.log.debug('Discarding restaurant and cleaning up...');
+
+        const draftId = window.DraftRestaurantManager?.currentDraftId;
+        const entityId = this.uiManager.editingRestaurantId;
+
+        // 1. Cleanup data
+        try {
+            if (window.PendingAudioManager) {
+                if (entityId) {
+                    await window.PendingAudioManager.deleteAudios({ restaurantId: entityId });
+                }
+                if (draftId) {
+                    await window.PendingAudioManager.deleteAudios({ draftId });
+                }
+            }
+
+            if (draftId && window.DraftRestaurantManager) {
+                await window.DraftRestaurantManager.deleteDraft(draftId);
+            }
+
+            // Update pending audio badge
+            if (this.uiManager.recordingModule && typeof this.uiManager.recordingModule.showPendingAudioBadge === 'function') {
+                await this.uiManager.recordingModule.showPendingAudioBadge();
+            }
+        } catch (error) {
+            this.log.error('Error during discard cleanup:', error);
+        }
+
+        // 2. Reset UI state
         this.uiManager.currentConcepts = [];
         this.uiManager.currentLocation = null;
         this.uiManager.currentPhotos = [];
@@ -542,28 +572,26 @@ class ConceptModule {
             }
 
             // Clean up pending audio and draft data for this restaurant
-            // DISABLED: Draft and PendingAudio managers use old database schema
-            /*
             try {
                 const draftId = window.DraftRestaurantManager?.currentDraftId;
-                
+
                 // Delete pending audio associated with this restaurant or draft
                 if (window.PendingAudioManager) {
-                    if (restaurantId) {
-                        await window.PendingAudioManager.deleteAudios({ restaurantId });
+                    if (entityId) {
+                        await window.PendingAudioManager.deleteAudios({ restaurantId: entityId });
                     }
                     if (draftId) {
                         await window.PendingAudioManager.deleteAudios({ draftId });
                     }
                     this.log.debug('Pending audio cleaned up after restaurant save');
                 }
-                
+
                 // Delete draft restaurant
                 if (draftId && window.DraftRestaurantManager) {
                     await window.DraftRestaurantManager.deleteDraft(draftId);
                     this.log.debug('Draft restaurant cleaned up after save');
                 }
-                
+
                 // Update pending audio badge
                 if (this.uiManager.recordingModule && typeof this.uiManager.recordingModule.showPendingAudioBadge === 'function') {
                     await this.uiManager.recordingModule.showPendingAudioBadge();
@@ -572,7 +600,6 @@ class ConceptModule {
                 this.log.error('Error cleaning up after restaurant save:', cleanupError);
                 // Don't throw - the restaurant was saved successfully
             }
-            */
 
             // Reset state
             this.uiManager.isEditingRestaurant = false;

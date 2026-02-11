@@ -570,15 +570,50 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
      * @returns {Promise<Array>} - Array of curations
      */
     async getEntityCurations(entityId) {
+        return await this.getCurations({ entityId, excludeDeleted: true });
+    }
+
+    /**
+     * Get curations with filtering
+     * @param {Object} options - Query options
+     * @returns {Promise<Array>} - Array of curations
+     */
+    async getCurations(options = {}) {
         try {
-            return await this.db.curations
-                .where('entity_id')
-                .equals(entityId)
-                .filter(curation => curation.status !== 'deleted')
-                .orderBy('createdAt')
-                .toArray();
+            if (!this.isDatabaseReady('curations')) return [];
+
+            let query = this.db.curations;
+
+            // Use index if possible
+            if (options.entityId) {
+                query = query.where('entity_id').equals(options.entityId);
+            } else if (options.curatorId) {
+                query = query.where('curator_id').equals(options.curatorId);
+            } else {
+                query = query.orderBy('createdAt');
+            }
+
+            let results = await query.toArray();
+
+            // Reverse if requested (most recent first)
+            if (options.reverse) {
+                results.reverse();
+            }
+
+            // Apply soft-delete filter by default
+            const excludeDeleted = options.excludeDeleted !== false;
+            if (excludeDeleted) {
+                results = results.filter(c => c.status !== 'deleted' && c.status !== 'DELETED');
+            }
+
+            // Apply other filters
+            if (options.status && options.status !== 'all') {
+                results = results.filter(c => c.status === options.status);
+            }
+
+            return results;
         } catch (error) {
-            this.log.error('❌ Failed to get entity curations:', error);
+            this.log.error('❌ Failed to get curations:', error);
             return [];
         }
     }

@@ -337,11 +337,47 @@ if (typeof window.UIManager === 'undefined') {
                 return;
             }
 
-            try {
-                // Get ALL curations from IndexedDB
-                const curations = await window.DataStore.db.curations
-                    .reverse() // Most recent first
+            // Get ALL active curations using centralized query logic
+            const curations = await window.DataStore.getCurations({
+                reverse: true,
+                excludeDeleted: true
+            });
+
+            if (curations.length === 0) {
+                container.innerHTML = `
+                        <div class="col-span-full text-center py-12">
+                            <span class="material-icons text-6xl text-gray-300 mb-4">rate_review</span>
+                            <p class="text-gray-500 mb-2">No curations yet</p>
+                            <p class="text-sm text-gray-400">Start curating entities by clicking on them</p>
+                        </div>
+                    `;
+                return;
+            }
+
+            // Get unique entity IDs from curations
+            const entityIds = [...new Set(curations.map(c => c.entity_id).filter(Boolean))];
+
+            // Fetch entities for curations that have entity_id
+            const entitiesMap = new Map();
+            if (entityIds.length > 0) {
+                const entities = await window.DataStore.db.entities
+                    .where('entity_id')
+                    .anyOf(entityIds)
                     .toArray();
+                entities.forEach(entity => entitiesMap.set(entity.entity_id, entity));
+            }
+
+            // Cache for filtering
+            this.curationsCache = curations;
+            this.curationsEntitiesMap = entitiesMap;
+
+            // Populate dynamic filters
+            try {
+                // Get ALL active curations using centralized query logic
+                const curations = await window.DataStore.getCurations({
+                    reverse: true,
+                    excludeDeleted: true
+                });
 
                 if (curations.length === 0) {
                     container.innerHTML = `
@@ -440,6 +476,20 @@ if (typeof window.UIManager === 'undefined') {
                 });
                 cityFilter.value = currentValue || 'all';
             }
+
+            // Populate Type Filter
+            const typeFilter = document.getElementById('curation-type-filter');
+            if (typeFilter) {
+                const currentValue = typeFilter.value;
+                typeFilter.innerHTML = '<option value="all">All Types</option>';
+                Array.from(types).sort().forEach(type => {
+                    const option = document.createElement('option');
+                    option.value = type;
+                    option.textContent = type.charAt(0).toUpperCase() + type.slice(1);
+                    typeFilter.appendChild(option);
+                });
+                typeFilter.value = currentValue || 'all';
+            }
         }
 
         /**
@@ -453,7 +503,7 @@ if (typeof window.UIManager === 'undefined') {
 
             // 1. Search filter (Entity name or notes)
             if (this.curationFilters.search) {
-                const query = this.curationFilters.search;
+                const query = this.curationFilters.search.toLowerCase();
                 filtered = filtered.filter(curation => {
                     const entity = curation.entity_id ? this.curationsEntitiesMap.get(curation.entity_id) : null;
                     const entityName = (entity?.name || '').toLowerCase();
@@ -494,11 +544,11 @@ if (typeof window.UIManager === 'undefined') {
             container.innerHTML = '';
             if (filtered.length === 0) {
                 container.innerHTML = `
-                    <div class="col-span-full text-center py-12">
-                        <span class="material-icons text-6xl text-gray-300 mb-4">search_off</span>
-                        <p class="text-gray-500">No curations match your filters</p>
-                    </div>
-                `;
+                        <div class="col-span-full text-center py-12">
+                            <span class="material-icons text-6xl text-gray-300 mb-4">search_off</span>
+                            <p class="text-gray-500">No curations match your filters</p>
+                        </div>
+                    `;
                 return;
             }
 
@@ -541,12 +591,12 @@ if (typeof window.UIManager === 'undefined') {
                     return;
                 }
 
-                // Get ALL curations by current curator from IndexedDB
-                const curations = await window.DataStore.db.curations
-                    .where('curator_id')
-                    .equals(curator.curator_id)
-                    .reverse() // Most recent first
-                    .toArray();
+                // Get curations by current curator using centralized query logic
+                const curations = await window.DataStore.getCurations({
+                    curatorId: curator.curator_id,
+                    reverse: true,
+                    excludeDeleted: true
+                });
 
                 if (curations.length === 0) {
                     container.innerHTML = `
@@ -629,12 +679,12 @@ if (typeof window.UIManager === 'undefined') {
 
                 if (entities.length === 0) {
                     container.innerHTML = `
-                        <div class="col-span-full text-center py-12">
-                            <span class="material-icons text-6xl text-gray-300 mb-4">store</span>
-                            <p class="text-gray-500 mb-2">No entities yet</p>
-                            <p class="text-sm text-gray-400">Use the Find Entity button to add places</p>
-                        </div>
-                    `;
+                            <div class="col-span-full text-center py-12">
+                                <span class="material-icons text-6xl text-gray-300 mb-4">store</span>
+                                <p class="text-gray-500 mb-2">No entities yet</p>
+                                <p class="text-sm text-gray-400">Use the Find Entity button to add places</p>
+                            </div>
+                        `;
                     return;
                 }
 
@@ -648,11 +698,11 @@ if (typeof window.UIManager === 'undefined') {
             } catch (error) {
                 console.error('Failed to load entities:', error);
                 container.innerHTML = `
-                    <div class="col-span-full text-center py-12 text-red-500">
-                        <span class="material-icons text-6xl mb-4">error</span>
-                        <p>Failed to load entities</p>
-                    </div>
-                `;
+                        <div class="col-span-full text-center py-12 text-red-500">
+                            <span class="material-icons text-6xl mb-4">error</span>
+                            <p>Failed to load entities</p>
+                        </div>
+                    `;
             }
         }
 
@@ -861,6 +911,7 @@ if (typeof window.UIManager === 'undefined') {
                 const updatedCuration = {
                     ...curation,
                     entity_id: entity.entity_id,
+                    status: 'linked', // Update status to reflect linking
                     updated_at: new Date().toISOString(),
                     sync: {
                         ...curation.sync,

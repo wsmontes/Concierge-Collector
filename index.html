@@ -473,40 +473,68 @@
         class="mb-8 p-6 bg-white rounded-lg shadow-md border border-gray-100 hover:shadow-lg transition-all duration-300 hidden">
         <h2 class="text-xl font-semibold mb-4 pb-3 border-b border-gray-100">
             <span class="material-icons">settings</span>
-            Export/Import Data
+            Data Management
         </h2>
-        <div class="flex flex-col md:flex-row space-y-4 md:space-y-0 md:space-x-4">
-            <button id="export-data" class="btn btn-primary btn-md">
-                <span class="material-icons mr-1" aria-hidden="true">file_download</span>
-                Export Data
-            </button>
-            <div class="flex-1">
-                <div class="file-input-container mb-3">
-                    <span class="material-icons text-2xl mb-2 text-gray-400" aria-hidden="true">upload_file</span>
-                    <label for="import-file" class="mb-1 block">Select JSON or ZIP file to import</label>
-                    <input type="file" id="import-file" accept=".json,.zip" class="mb-2"
-                        aria-describedby="import-file-description">
-                    <span id="import-file-description" class="sr-only">Select a JSON or ZIP file containing restaurant
-                        data to import</span>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <!-- Part 1: Export/Import -->
+            <div>
+                <h3 class="text-lg font-medium mb-4 text-gray-700 flex items-center">
+                    <span class="material-icons mr-2 text-blue-500">import_export</span>
+                    Export / Import
+                </h3>
+                <div class="space-y-4">
+                    <button id="export-data" class="btn btn-primary btn-md w-full">
+                        <span class="material-icons mr-1" aria-hidden="true">file_download</span>
+                        Export All Data (JSON)
+                    </button>
+
+                    <div class="p-4 border border-dashed border-gray-300 rounded-lg">
+                        <label for="import-file" class="block text-sm font-medium text-gray-600 mb-2">Import from
+                            JSON/ZIP</label>
+                        <input type="file" id="import-file" accept=".json,.zip" class="text-sm w-full mb-2">
+                        <button id="import-data" class="btn btn-success btn-sm w-full">
+                            <span class="material-icons text-sm mr-1">file_upload</span>
+                            Import File
+                        </button>
+                    </div>
                 </div>
-                <button id="import-data" class="btn btn-success btn-md w-full">
-                    <span class="material-icons mr-1" aria-hidden="true">file_upload</span>
-                    Import Data
-                </button>
             </div>
-            <div class="flex-1">
-                <div class="file-input-container mb-3">
-                    <span class="material-icons text-2xl mb-2 text-gray-400" aria-hidden="true">restaurant_menu</span>
-                    <label for="import-concierge-file" class="mb-1 block">Import Concierge restaurant data</label>
-                    <input type="file" id="import-concierge-file" accept=".json" class="mb-2"
-                        aria-describedby="import-concierge-file-description">
-                    <span id="import-concierge-file-description" class="sr-only">Select a JSON file containing Concierge
-                        restaurant data</span>
+
+            <!-- Part 2: Storage & Maintenance -->
+            <div>
+                <h3 class="text-lg font-medium mb-4 text-gray-700 flex items-center">
+                    <span class="material-icons mr-2 text-purple-500">storage</span>
+                    Storage & Maintenance
+                </h3>
+                <div class="space-y-4">
+                    <div class="p-4 bg-purple-50 rounded-lg border border-purple-100">
+                        <h4 class="text-sm font-semibold text-purple-800 mb-1">Audio Optimization</h4>
+                        <p class="text-xs text-purple-700 mb-3">Large audio blobs can consume significant disk space.
+                            Only unprocessed recordings are kept normally.</p>
+
+                        <div id="storage-info" class="text-xs text-purple-600 mb-3">
+                            Calculating storage usage...
+                        </div>
+
+                        <button id="purge-audio-btn"
+                            class="btn btn-secondary btn-sm w-full bg-purple-600 hover:bg-purple-700 border-none">
+                            <span class="material-icons text-sm mr-1">cleaning_services</span>
+                            Purge Processed Audio
+                        </button>
+                    </div>
+
+                    <div class="p-4 bg-red-50 rounded-lg border border-red-100">
+                        <h4 class="text-sm font-semibold text-red-800 mb-1">Safe Reset</h4>
+                        <p class="text-xs text-red-700 mb-3">Clears all local cache and pending syncs without deleting
+                            your saved restaurants.</p>
+                        <button id="safe-reset-btn"
+                            class="btn btn-outline btn-sm w-full border-red-300 text-red-600 hover:bg-red-50">
+                            <span class="material-icons text-sm mr-1">restart_alt</span>
+                            Clear Local Cache
+                        </button>
+                    </div>
                 </div>
-                <button id="import-concierge-data" class="btn btn-secondary btn-md w-full">
-                    <span class="material-icons mr-1" aria-hidden="true">cloud_sync</span>
-                    Import Concierge Data
-                </button>
             </div>
         </div>
     </section>
