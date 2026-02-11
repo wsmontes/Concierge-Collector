@@ -375,7 +375,7 @@
         <!-- Curations View -->
         <div id="curations-view" class="view-content">
             <!-- Search and Filters -->
-            <div class="mb-4 grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div class="mb-4 grid grid-cols-1 md:grid-cols-6 gap-3">
                 <!-- Search -->
                 <div class="md:col-span-2">
                     <div class="relative">
@@ -392,6 +392,34 @@
                         <option value="all">All Status</option>
                         <option value="draft">Draft</option>
                         <option value="done">Done</option>
+                    </select>
+                </div>
+
+                <!-- Curator Filter -->
+                <div>
+                    <select id="curation-curator-filter"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <option value="all">All Curators</option>
+                    </select>
+                </div>
+
+                <!-- City Filter -->
+                <div>
+                    <select id="curation-city-filter"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <option value="all">All Cities</option>
+                    </select>
+                </div>
+
+                <!-- Type Filter -->
+                <div>
+                    <select id="curation-type-filter"
+                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500">
+                        <option value="all">All Types</option>
+                        <option value="restaurant">Restaurants</option>
+                        <option value="bar">Bars</option>
+                        <option value="hotel">Hotels</option>
+                        <option value="cafe">Cafés</option>
                     </select>
                 </div>
             </div>

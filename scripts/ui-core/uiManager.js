@@ -106,6 +106,15 @@ if (typeof window.UIManager === 'undefined') {
             this.currentLocation = null;
             this.currentPhotos = [];
 
+            // Curation filtering state
+            this.curationFilters = {
+                search: '',
+                status: 'all',
+                curator: 'all',
+                city: 'all',
+                type: 'all'
+            };
+
             // Initialize UI Utils module first to ensure availability of UI utility functions
             this.initializeUIUtilsModule();
 
@@ -175,6 +184,9 @@ if (typeof window.UIManager === 'undefined') {
 
             // Initialize tab system
             this.initTabSystem();
+
+            // Setup global curation filters
+            this.setupCurationEvents();
 
             console.log('UIManager initialized');
         }
@@ -262,12 +274,250 @@ if (typeof window.UIManager === 'undefined') {
         }
 
         /**
+         * Setup event listeners for curation search and filters
+         */
+        setupCurationEvents() {
+            // Search input
+            const searchInput = document.getElementById('curation-search');
+            if (searchInput) {
+                searchInput.addEventListener('input', (e) => {
+                    this.curationFilters.search = e.target.value.toLowerCase();
+                    this.filterAndDisplayCurations();
+                });
+            }
+
+            // Status filter
+            const statusFilter = document.getElementById('curation-status-filter');
+            if (statusFilter) {
+                statusFilter.addEventListener('change', (e) => {
+                    this.curationFilters.status = e.target.value;
+                    this.filterAndDisplayCurations();
+                });
+            }
+
+            // Curator filter
+            const curatorFilter = document.getElementById('curation-curator-filter');
+            if (curatorFilter) {
+                curatorFilter.addEventListener('change', (e) => {
+                    this.curationFilters.curator = e.target.value;
+                    this.filterAndDisplayCurations();
+                });
+            }
+
+            // City filter
+            const cityFilter = document.getElementById('curation-city-filter');
+            if (cityFilter) {
+                cityFilter.addEventListener('change', (e) => {
+                    this.curationFilters.city = e.target.value;
+                    this.filterAndDisplayCurations();
+                });
+            }
+
+            // Type filter
+            const typeFilter = document.getElementById('curation-type-filter');
+            if (typeFilter) {
+                typeFilter.addEventListener('change', (e) => {
+                    this.curationFilters.type = e.target.value;
+                    this.filterAndDisplayCurations();
+                });
+            }
+        }
+
+        /**
          * Load Curations
          * 
-         * Loads and displays ALL curations made by current user.
-         * Shows curations as cards with entity information when available.
+         * Displays all curations with global filtering.
          */
         async loadCurations() {
+            console.log('Loading curations view...');
+
+            const container = this.containers.curations;
+            if (!container) {
+                console.warn('Curations container not found');
+                return;
+            }
+
+            try {
+                // Get ALL curations from IndexedDB
+                const curations = await window.DataStore.db.curations
+                    .reverse() // Most recent first
+                    .toArray();
+
+                if (curations.length === 0) {
+                    container.innerHTML = `
+                        <div class="col-span-full text-center py-12">
+                            <span class="material-icons text-6xl text-gray-300 mb-4">rate_review</span>
+                            <p class="text-gray-500 mb-2">No curations yet</p>
+                            <p class="text-sm text-gray-400">Start curating entities by clicking on them</p>
+                        </div>
+                    `;
+                    return;
+                }
+
+                // Get unique entity IDs from curations
+                const entityIds = [...new Set(curations.map(c => c.entity_id).filter(Boolean))];
+
+                // Fetch entities for curations that have entity_id
+                const entitiesMap = new Map();
+                if (entityIds.length > 0) {
+                    const entities = await window.DataStore.db.entities
+                        .where('entity_id')
+                        .anyOf(entityIds)
+                        .toArray();
+                    entities.forEach(entity => entitiesMap.set(entity.entity_id, entity));
+                }
+
+                // Cache for filtering
+                this.curationsCache = curations;
+                this.curationsEntitiesMap = entitiesMap;
+
+                // Populate dynamic filters
+                this.populateCurationFilters(curations, entitiesMap);
+
+                // Initial display
+                this.filterAndDisplayCurations();
+
+            } catch (error) {
+                console.error('Failed to load curations:', error);
+                container.innerHTML = `
+                    <div class="col-span-full text-center py-12 text-red-500">
+                        <span class="material-icons text-6xl mb-4">error</span>
+                        <p>Failed to load curations</p>
+                    </div>
+                `;
+            }
+        }
+
+        /**
+         * Populates the curation filter dropdowns dynamically
+         */
+        populateCurationFilters(curations, entitiesMap) {
+            const curators = new Map();
+            const cities = new Set();
+            const types = new Set();
+
+            curations.forEach(curation => {
+                // Collect curators
+                if (curation.curator && curation.curator.id) {
+                    curators.set(curation.curator.id, curation.curator.name || curation.curator.id);
+                } else if (curation.curator_id) {
+                    curators.set(curation.curator_id, curation.curator_id);
+                }
+
+                // Collect city and type from linked entity
+                const entity = curation.entity_id ? entitiesMap.get(curation.entity_id) : null;
+                if (entity) {
+                    if (entity.type) types.add(entity.type);
+                    const city = window.CardFactory.extractCity(entity);
+                    if (city && city !== 'Unknown') cities.add(city);
+                }
+            });
+
+            // Populate Curator filter
+            const curatorFilter = document.getElementById('curation-curator-filter');
+            if (curatorFilter) {
+                const currentValue = curatorFilter.value;
+                curatorFilter.innerHTML = '<option value="all">All Curators</option>';
+                Array.from(curators.entries()).sort((a, b) => a[1].localeCompare(b[1])).forEach(([id, name]) => {
+                    const option = document.createElement('option');
+                    option.value = id;
+                    option.textContent = name;
+                    curatorFilter.appendChild(option);
+                });
+                curatorFilter.value = currentValue || 'all';
+            }
+
+            // Populate City filter
+            const cityFilter = document.getElementById('curation-city-filter');
+            if (cityFilter) {
+                const currentValue = cityFilter.value;
+                cityFilter.innerHTML = '<option value="all">All Cities</option>';
+                Array.from(cities).sort().forEach(city => {
+                    const option = document.createElement('option');
+                    option.value = city;
+                    option.textContent = city;
+                    cityFilter.appendChild(option);
+                });
+                cityFilter.value = currentValue || 'all';
+            }
+        }
+
+        /**
+         * Filter and display curations based on current filter state
+         */
+        filterAndDisplayCurations() {
+            const container = this.containers.curations;
+            if (!container || !this.curationsCache) return;
+
+            let filtered = [...this.curationsCache];
+
+            // 1. Search filter (Entity name or notes)
+            if (this.curationFilters.search) {
+                const query = this.curationFilters.search;
+                filtered = filtered.filter(curation => {
+                    const entity = curation.entity_id ? this.curationsEntitiesMap.get(curation.entity_id) : null;
+                    const entityName = (entity?.name || '').toLowerCase();
+                    const notes = (curation.notes?.public || '').toLowerCase();
+                    const curatorName = (curation.curator?.name || '').toLowerCase();
+                    return entityName.includes(query) || notes.includes(query) || curatorName.includes(query);
+                });
+            }
+
+            // 2. Status filter
+            if (this.curationFilters.status !== 'all') {
+                filtered = filtered.filter(curation => (curation.status || 'draft') === this.curationFilters.status);
+            }
+
+            // 3. Curator filter
+            if (this.curationFilters.curator !== 'all') {
+                filtered = filtered.filter(curation => (curation.curator?.id || curation.curator_id) === this.curationFilters.curator);
+            }
+
+            // 4. City filter
+            if (this.curationFilters.city !== 'all') {
+                filtered = filtered.filter(curation => {
+                    const entity = curation.entity_id ? this.curationsEntitiesMap.get(curation.entity_id) : null;
+                    return entity && window.CardFactory.extractCity(entity) === this.curationFilters.city;
+                });
+            }
+
+            // 5. Type filter
+            if (this.curationFilters.type !== 'all') {
+                filtered = filtered.filter(curation => {
+                    const entity = curation.entity_id ? this.curationsEntitiesMap.get(curation.entity_id) : null;
+                    return entity && entity.type === this.curationFilters.type;
+                });
+            }
+
+            // Display
+            container.innerHTML = '';
+            if (filtered.length === 0) {
+                container.innerHTML = `
+                    <div class="col-span-full text-center py-12">
+                        <span class="material-icons text-6xl text-gray-300 mb-4">search_off</span>
+                        <p class="text-gray-500">No curations match your filters</p>
+                    </div>
+                `;
+                return;
+            }
+
+            filtered.forEach(curation => {
+                const entity = curation.entity_id ? this.curationsEntitiesMap.get(curation.entity_id) : null;
+                if (entity) {
+                    const card = window.CardFactory.createCurationCard(entity, curation);
+                    container.appendChild(card);
+                } else {
+                    const reviewCard = this.createReviewCard(curation);
+                    container.appendChild(reviewCard);
+                }
+            });
+        }
+
+        /**
+         * Load Curation Details (Legacy/Alternate)
+         * @deprecated Use loadCurations with filtering instead
+         */
+        async loadCurationsOld() {
             console.log('Loading curations view...');
 
             const container = this.containers.curations;
