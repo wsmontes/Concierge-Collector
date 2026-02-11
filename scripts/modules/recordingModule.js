@@ -106,34 +106,34 @@ class RecordingModule {
                 
                 <!-- Circular timer and audio preview section -->
                 <div id="circular-timer-section" class="hidden">
-                    <div id="timer" class="text-center text-4xl font-bold mb-2">00:00</div>
+                    <div id="timer" class="text-center text-4xl font-bold mb-2 text-gray-800 font-mono">00:00</div>
                     <div class="flex justify-center gap-2">
-                        <button id="discard-recording" class="px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded text-lg md:text-base">
-                            <span class="material-icons mr-1">delete</span>
-                            Discard Recording
+                        <button id="discard-recording" class="px-6 py-2 bg-white border border-red-200 text-red-600 hover:bg-red-50 rounded-full shadow-sm hover:shadow text-base transition-colors flex items-center">
+                            <span class="material-icons mr-1 text-sm">delete</span>
+                            Discard
                         </button>
                     </div>
                 </div>
                 
-                <div id="audio-preview" class="hidden mt-4">
-                    <h3 class="text-lg font-semibold mb-2">Recording Preview</h3>
-                    <audio id="recorded-audio" controls class="w-full mb-3"></audio>
-                    <div class="flex gap-2 flex-wrap">
-                        <button id="transcribe-recording" class="px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded text-lg md:text-base">
-                            <span class="material-icons mr-1">transcribe</span>
-                            Transcribe Recording
+                <div id="audio-preview" class="hidden mt-4 bg-gray-50 p-4 rounded-xl border border-gray-100">
+                    <h3 class="text-sm font-semibold mb-2 text-gray-500 uppercase tracking-wider">Recording Preview</h3>
+                    <audio id="recorded-audio" controls class="w-full mb-4 rounded-lg shadow-sm"></audio>
+                    <div class="flex gap-3 flex-wrap">
+                        <button id="transcribe-recording" class="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md hover:shadow-lg transition-all text-base font-medium flex justify-center items-center">
+                            <span class="material-icons mr-2">transcribe</span>
+                            Transcribe
                         </button>
-                        <button id="analyze-recording" class="px-4 py-3 bg-green-600 hover:bg-green-700 text-white rounded text-lg md:text-base">
-                            <span class="material-icons mr-1">analytics</span>
-                            Analyze Recording
+                        <button id="analyze-recording" class="flex-1 px-4 py-3 bg-emerald-600 hover:bg-emerald-700 text-white rounded-xl shadow-md hover:shadow-lg transition-all text-base font-medium flex justify-center items-center">
+                            <span class="material-icons mr-2">analytics</span>
+                            Analyze
                         </button>
                     </div>
-                    <div id="transcription-status" class="mt-2 hidden">
-                        <span class="material-icons text-yellow-500 mr-1">pending</span>
+                    <div id="transcription-status" class="mt-3 hidden text-sm text-gray-600 flex items-center">
+                        <span class="material-icons text-blue-500 mr-2 animate-spin text-sm">sync</span>
                         Transcribing your audio...
                     </div>
-                    <div id="analysis-status" class="mt-2 hidden">
-                        <span class="material-icons text-yellow-500 mr-1">pending</span>
+                    <div id="analysis-status" class="mt-3 hidden text-sm text-gray-600 flex items-center">
+                        <span class="material-icons text-emerald-500 mr-2 animate-spin text-sm">sync</span>
                         Analyzing restaurant details...
                     </div>
                 </div>
@@ -176,16 +176,16 @@ class RecordingModule {
                 // Add start button with mobile-friendly styling
                 const newStartBtn = document.createElement('button');
                 newStartBtn.id = 'start-record';
-                newStartBtn.className = 'bg-red-600 hover:bg-red-700 text-white px-4 py-3 rounded flex items-center text-lg md:text-base';
-                newStartBtn.innerHTML = '<span class="material-icons mr-1">mic</span>Start Recording';
+                newStartBtn.className = 'bg-red-600 hover:bg-red-700 text-white px-6 py-3 rounded-full shadow-md hover:shadow-lg transition-all transform hover:scale-105 flex items-center text-lg md:text-base font-medium';
+                newStartBtn.innerHTML = '<span class="material-icons mr-2">mic</span>Start Recording';
                 controlsContainer.appendChild(newStartBtn);
                 this.log.debug('Added missing start-record button');
 
                 // Add stop button with mobile-friendly styling
                 const newStopBtn = document.createElement('button');
                 newStopBtn.id = 'stop-record';
-                newStopBtn.className = 'bg-gray-600 hover:bg-gray-700 text-white px-4 py-3 rounded flex items-center text-lg md:text-base hidden';
-                newStopBtn.innerHTML = '<span class="material-icons mr-1">stop</span>Stop Recording';
+                newStopBtn.className = 'bg-gray-800 hover:bg-gray-900 text-white px-6 py-3 rounded-full shadow-md hover:shadow-lg transition-all flex items-center text-lg md:text-base font-medium hidden';
+                newStopBtn.innerHTML = '<span class="material-icons mr-2">stop</span>Stop Recording';
                 controlsContainer.appendChild(newStopBtn);
                 this.log.debug('Added missing stop-record button');
 
@@ -193,7 +193,7 @@ class RecordingModule {
                 if (!recordingSection.querySelector('#recording-time')) {
                     const timeDisplay = document.createElement('div');
                     timeDisplay.id = 'recording-time';
-                    timeDisplay.className = 'px-4 py-3 bg-white border rounded text-lg md:text-base font-mono hidden';
+                    timeDisplay.className = 'px-4 py-2 bg-white border border-gray-200 rounded-full shadow-sm text-lg md:text-base font-mono hidden text-red-600 font-bold';
                     timeDisplay.textContent = '00:00';
                     controlsContainer.appendChild(timeDisplay);
                 }
