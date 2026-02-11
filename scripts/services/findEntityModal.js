@@ -558,11 +558,80 @@ window.FindEntityModal = class FindEntityModal {
                             <div class="fem-filter-group">
                                 <span class="fem-filter-label">Type</span>
                                 <select id="fem-type-filter" class="fem-filter-select">
-                                    <option value="restaurant">Restaurant</option>
-                                    <option value="cafe">Café</option>
-                                    <option value="bar">Bar</option>
-                                    <option value="bakery">Bakery</option>
-                                    <option value="food">Food</option>
+                                    <optgroup label="General">
+                                        <option value="restaurant" selected>Restaurant</option>
+                                        <option value="cafe">Café</option>
+                                        <option value="coffee_shop">Coffee Shop</option>
+                                        <option value="bar">Bar</option>
+                                        <option value="pub">Pub</option>
+                                        <option value="wine_bar">Wine Bar</option>
+                                        <option value="bar_and_grill">Bar & Grill</option>
+                                        <option value="bakery">Bakery</option>
+                                        <option value="deli">Deli</option>
+                                        <option value="diner">Diner</option>
+                                        <option value="food_court">Food Court</option>
+                                        <option value="cafeteria">Cafeteria</option>
+                                    </optgroup>
+                                    <optgroup label="By Cuisine">
+                                        <option value="american_restaurant">American</option>
+                                        <option value="asian_restaurant">Asian</option>
+                                        <option value="brazilian_restaurant">Brazilian</option>
+                                        <option value="chinese_restaurant">Chinese</option>
+                                        <option value="french_restaurant">French</option>
+                                        <option value="greek_restaurant">Greek</option>
+                                        <option value="indian_restaurant">Indian</option>
+                                        <option value="indonesian_restaurant">Indonesian</option>
+                                        <option value="italian_restaurant">Italian</option>
+                                        <option value="japanese_restaurant">Japanese</option>
+                                        <option value="korean_restaurant">Korean</option>
+                                        <option value="lebanese_restaurant">Lebanese</option>
+                                        <option value="mediterranean_restaurant">Mediterranean</option>
+                                        <option value="mexican_restaurant">Mexican</option>
+                                        <option value="middle_eastern_restaurant">Middle Eastern</option>
+                                        <option value="spanish_restaurant">Spanish</option>
+                                        <option value="thai_restaurant">Thai</option>
+                                        <option value="turkish_restaurant">Turkish</option>
+                                        <option value="vietnamese_restaurant">Vietnamese</option>
+                                        <option value="afghani_restaurant">Afghani</option>
+                                        <option value="african_restaurant">African</option>
+                                    </optgroup>
+                                    <optgroup label="By Style">
+                                        <option value="fine_dining_restaurant">Fine Dining</option>
+                                        <option value="fast_food_restaurant">Fast Food</option>
+                                        <option value="buffet_restaurant">Buffet</option>
+                                        <option value="breakfast_restaurant">Breakfast</option>
+                                        <option value="brunch_restaurant">Brunch</option>
+                                        <option value="barbecue_restaurant">Barbecue</option>
+                                        <option value="hamburger_restaurant">Hamburger</option>
+                                        <option value="pizza_restaurant">Pizza</option>
+                                        <option value="ramen_restaurant">Ramen</option>
+                                        <option value="seafood_restaurant">Seafood</option>
+                                        <option value="steak_house">Steak House</option>
+                                        <option value="sushi_restaurant">Sushi</option>
+                                        <option value="sandwich_shop">Sandwich Shop</option>
+                                        <option value="vegan_restaurant">Vegan</option>
+                                        <option value="vegetarian_restaurant">Vegetarian</option>
+                                    </optgroup>
+                                    <optgroup label="Sweets & Drinks">
+                                        <option value="dessert_restaurant">Dessert Restaurant</option>
+                                        <option value="dessert_shop">Dessert Shop</option>
+                                        <option value="ice_cream_shop">Ice Cream</option>
+                                        <option value="donut_shop">Donut Shop</option>
+                                        <option value="chocolate_shop">Chocolate Shop</option>
+                                        <option value="candy_store">Candy Store</option>
+                                        <option value="confectionery">Confectionery</option>
+                                        <option value="acai_shop">Açaí Shop</option>
+                                        <option value="bagel_shop">Bagel Shop</option>
+                                        <option value="juice_shop">Juice Shop</option>
+                                        <option value="tea_house">Tea House</option>
+                                    </optgroup>
+                                    <optgroup label="Special">
+                                        <option value="cat_cafe">Cat Café</option>
+                                        <option value="dog_cafe">Dog Café</option>
+                                        <option value="meal_delivery">Meal Delivery</option>
+                                        <option value="meal_takeaway">Meal Takeaway</option>
+                                        <option value="night_club">Night Club</option>
+                                    </optgroup>
                                 </select>
                             </div>
                             <div class="fem-filter-group">
