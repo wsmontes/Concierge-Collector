@@ -2476,14 +2476,17 @@ class RecordingModule {
      */
     async showPendingAudioList() {
         try {
-            if (!window.PendingAudioManager) return;
+            if (!window.PendingAudioModal) {
+                this.log.warn('PendingAudioModal not available');
+                return;
+            }
 
-            const audios = await window.PendingAudioManager.getAudios();
+            // Create singleton modal instance
+            if (!this._pendingAudioModal) {
+                this._pendingAudioModal = new window.PendingAudioModal();
+            }
 
-            // Create modal or section to show pending audios
-            alert(`You have ${audios.length} pending audio recordings.\n\nThis feature will show a detailed list in a future update.`);
-
-            // TODO: Implement full UI for viewing and managing pending audios
+            await this._pendingAudioModal.open();
         } catch (error) {
             this.log.error('Error showing pending audio list:', error);
         }
