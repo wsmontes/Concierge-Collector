@@ -424,8 +424,6 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             this.stats.lastPullAt = new Date().toISOString();
             this.stats.lastEntityPullAt = syncStartTime;
             await this.saveSyncMetadata();
-
-            this.log.debug(`✅ Pulled ${totalPulled} entities`);
         } catch (error) {
             this.log.error('Failed to pull entities:', error);
             throw error;

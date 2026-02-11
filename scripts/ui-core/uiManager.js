@@ -189,7 +189,34 @@ if (typeof window.UIManager === 'undefined') {
             // Setup global curation filters
             this.setupCurationEvents();
 
+            // Setup global sync/data events
+            this.setupGlobalEvents();
+
             console.log('UIManager initialized');
+        }
+
+        /**
+         * Setup global event listeners for data changes
+         */
+        setupGlobalEvents() {
+            // Refresh view when conflict is resolved
+            window.addEventListener('concierge:conflict-resolved', (e) => {
+                console.log('UI: Conflict resolved, refreshing view...', e.detail);
+                // Small delay to ensure DB write is committed
+                setTimeout(() => this.loadTabData(this.currentTab), 100);
+            });
+
+            // Refresh view when sync completes (e.g. manual sync or background sync)
+            window.addEventListener('concierge:sync-complete', (e) => {
+                console.log('UI: Sync complete, refreshing view...', e.detail);
+                this.loadTabData(this.currentTab);
+            });
+
+            // Refresh when entity is linked
+            window.addEventListener('concierge:entity-linked', (e) => {
+                console.log('UI: Entity linked, refreshing view...', e.detail);
+                this.loadTabData(this.currentTab);
+            });
         }
 
         /**
