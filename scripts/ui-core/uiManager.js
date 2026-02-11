@@ -755,6 +755,8 @@ if (typeof window.UIManager === 'undefined') {
                 (curation.categories?.restaurant_name && curation.categories.restaurant_name[0]) ||
                 'Unmatched Review';
 
+            const curatorName = curation.curator?.name || curation.curatorName || 'Unknown';
+
             card.innerHTML = `
                 <div class="flex items-start gap-3 mb-3">
                     <span class="material-icons text-2xl text-amber-600">rate_review</span>
