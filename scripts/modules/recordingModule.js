@@ -189,8 +189,8 @@ class RecordingModule {
                 controlsContainer.appendChild(newStopBtn);
                 this.log.debug('Added missing stop-record button');
 
-                // Add recording time display if missing
-                if (!recordingSection.querySelector('#recording-time')) {
+                // Add recording time display if missing AND strict check that we don't have the circular timer
+                if (!recordingSection.querySelector('#recording-time') && !recordingSection.querySelector('#timer')) {
                     const timeDisplay = document.createElement('div');
                     timeDisplay.id = 'recording-time';
                     timeDisplay.className = 'px-4 py-2 bg-white border border-gray-200 rounded-full shadow-sm text-lg md:text-base font-mono hidden text-red-600 font-bold';
@@ -269,6 +269,17 @@ class RecordingModule {
                 if (!isAdditionalRecording && element.parentNode) {
                     element.parentNode.removeChild(element);
                 }
+            }
+        }
+
+        // Cleanup legacy recording-time if we have the new circular timer
+        const circularTimer = document.getElementById('timer');
+        const legacyTimer = document.getElementById('recording-time');
+
+        if (circularTimer && legacyTimer) {
+            this.log.debug('Removing legacy recording-time element because circular timer exists');
+            if (legacyTimer.parentNode) {
+                legacyTimer.parentNode.removeChild(legacyTimer);
             }
         }
     }
@@ -702,7 +713,16 @@ class RecordingModule {
                     // Standard recording mode UI
                     if (startBtn) startBtn.classList.add('hidden');
                     if (stopBtn) stopBtn.classList.remove('hidden');
-                    if (recordingTime) recordingTime.classList.remove('hidden');
+
+                    // Only show linear recording time if circular timer is NOT present
+                    const circularTimer = document.getElementById('timer');
+                    if (recordingTime && circularTimer) {
+                        // Nuclear option: remove it entirely
+                        recordingTime.remove();
+                    } else if (recordingTime) {
+                        recordingTime.classList.remove('hidden');
+                    }
+
                     if (audioVisualizer) audioVisualizer.classList.remove('hidden');
                     if (recordingStatus) {
                         recordingStatus.innerHTML = `
@@ -972,17 +992,24 @@ class RecordingModule {
             const formattedTime = `${minutes}:${seconds}`;
 
             // Update all available timers for consistency
-            const allTimers = [
-                mainTimer,
-                additionalTimer,
-                document.getElementById('timer')
-            ];
+            const circularTimer = document.getElementById('timer');
+            const mainTimer = document.getElementById('recording-time');
+            const additionalTimer = document.getElementById('additional-recording-time');
+
+            const allTimers = [circularTimer, mainTimer, additionalTimer];
 
             allTimers.forEach(timer => {
                 if (timer) {
                     // Update timer text
                     timer.textContent = formattedTime;
-                    timer.classList.remove('hidden');
+
+                    // Logic to avoid duplicate timers:
+                    // If this is the main linear timer and we have a circular timer, keep linear hidden
+                    if (timer === mainTimer && circularTimer) {
+                        timer.classList.add('hidden');
+                    } else {
+                        timer.classList.remove('hidden');
+                    }
 
                     // Update progress ring if present
                     const timerCircle = timer.closest('.timer-circle');
@@ -1017,7 +1044,6 @@ class RecordingModule {
             });
 
             // Update circular timer pulsating effect if present
-            const circularTimer = document.getElementById('timer');
             if (circularTimer) {
                 const pulsateElement = circularTimer.parentElement.querySelector('.timer-pulse');
                 if (pulsateElement) {
