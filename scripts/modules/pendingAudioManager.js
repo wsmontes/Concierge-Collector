@@ -35,24 +35,33 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
 
     /**
      * Save audio recording to pending storage
-     * @param {Object} data - Audio data
-     * @param {Blob} data.audioBlob - The audio blob
-     * @param {number} data.restaurantId - Restaurant ID (optional)
-     * @param {number} data.draftId - Draft restaurant ID (optional)
-     * @param {boolean} data.isAdditional - Is this an additional recording?
+     * @param {Blob} audioBlob - The audio blob
+     * @param {Object} options - Additional options
+     * @param {number} options.restaurantId - Restaurant ID (optional)
+     * @param {number} options.draftId - Draft restaurant ID (optional)
+     * @param {boolean} options.isAdditional - Is this an additional recording?
      * @returns {Promise<number>} - Pending audio ID
      */
-    async saveAudio(data) {
+    async saveAudio(audioBlob, options = {}) {
         try {
+            // Support both: saveAudio(blob, opts) and legacy saveAudio({audioBlob, ...})
+            let blob = audioBlob;
+            let opts = options;
+            if (audioBlob && !(audioBlob instanceof Blob) && audioBlob.audioBlob) {
+                // Legacy call: saveAudio({ audioBlob, restaurantId, ... })
+                blob = audioBlob.audioBlob;
+                opts = audioBlob;
+            }
+
             const audioData = {
-                audioBlob: data.audioBlob,
-                restaurantId: data.restaurantId || null,
-                draftId: data.draftId || null,
+                audioBlob: blob,
+                restaurantId: opts.restaurantId || null,
+                draftId: opts.draftId || null,
                 timestamp: new Date(),
                 retryCount: 0,
                 lastError: null,
                 status: 'pending',
-                isAdditional: data.isAdditional || false
+                isAdditional: opts.isAdditional || false
             };
 
             const id = await this.dataStorage.db.pendingAudio.add(audioData);
