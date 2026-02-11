@@ -251,8 +251,14 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         }
 
         const endpoint = AppConfig.api.backend.endpoints.entityById.replace('{id}', entityId);
+
+        const headers = {};
+        if (currentVersion !== null && currentVersion !== undefined) {
+            headers['If-Match'] = String(currentVersion);
+        }
+
         const response = await this.request('PATCH', endpoint, {
-            headers: { 'If-Match': String(currentVersion) },
+            headers,
             body: JSON.stringify(updates)
         });
         return await response.json();
@@ -306,8 +312,14 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         }
 
         const endpoint = AppConfig.api.backend.endpoints.curationById.replace('{id}', curationId);
+
+        const headers = {};
+        if (currentVersion !== null && currentVersion !== undefined) {
+            headers['If-Match'] = String(currentVersion);
+        }
+
         const response = await this.request('PATCH', endpoint, {
-            headers: { 'If-Match': String(currentVersion) },
+            headers,
             body: JSON.stringify(updates)
         });
         return await response.json();
