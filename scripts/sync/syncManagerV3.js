@@ -443,6 +443,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                     // Server is newer - update local
                     await window.DataStore.db.entities.put({
                         ...serverEntity,
+                        id: localEntity.id, // ✅ Critical: Use local primary key to update existing record
                         sync: {
                             serverId: serverEntity._id || localEntity.sync?.serverId || null,
                             status: 'synced',
@@ -452,10 +453,9 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                     this.log.debug(`Updated local entity: ${serverEntity.name} (v${localVersion} → v${serverVersion})`);
                 } else if (localVersion > serverVersion) {
                     // Local is newer - mark for push
-                    const current = await window.DataStore.db.entities.get(serverEntity.entity_id);
-                    await window.DataStore.db.entities.update(serverEntity.entity_id, {
+                    await window.DataStore.db.entities.update(localEntity.id, {
                         sync: {
-                            ...(current?.sync || {}),
+                            ...(localEntity.sync || {}),
                             status: 'pending'
                         }
                     });
@@ -588,6 +588,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                 if (serverVersion > localVersion) {
                     await window.DataStore.db.curations.put({
                         ...serverCuration,
+                        id: localCuration.id, // ✅ Critical: Use local primary key
                         sync: {
                             serverId: serverCuration._id || localCuration.sync?.serverId || null,
                             status: 'synced',
@@ -662,10 +663,9 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
 
                         if (!hasChanges) {
                             this.log.debug(`No changes for entity ${entity.name}, skipping`);
-                            const current = await window.DataStore.db.entities.get(entity.entity_id);
-                            await window.DataStore.db.entities.update(entity.entity_id, {
+                            await window.DataStore.db.entities.update(entity.id, {
                                 sync: {
-                                    ...(current?.sync || {}),
+                                    ...(entity.sync || {}),
                                     status: 'synced'
                                 }
                             });
@@ -680,14 +680,13 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         );
 
                         // Store current state for future change detection
-                        await this.storeItemState('entity', entity.entity_id, updated);
+                        await this.storeItemState('entity', entity.id, updated);
 
                         // Update local with new version
-                        const current = await window.DataStore.db.entities.get(entity.entity_id);
-                        await window.DataStore.db.entities.update(entity.entity_id, {
+                        await window.DataStore.db.entities.update(entity.id, {
                             version: updated.version,
                             sync: {
-                                ...(current?.sync || {}),
+                                ...(entity.sync || {}),
                                 status: 'synced',
                                 lastSyncedAt: new Date().toISOString()
                             }
@@ -701,13 +700,12 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         const created = await window.ApiService.createEntity(cleanEntity);
 
                         // Store state for future change detection
-                        await this.storeItemState('entity', entity.entity_id, created);
+                        await this.storeItemState('entity', entity.id, created);
 
                         // Update local with server ID
-                        const current = await window.DataStore.db.entities.get(entity.entity_id);
-                        await window.DataStore.db.entities.update(entity.entity_id, {
+                        await window.DataStore.db.entities.update(entity.id, {
                             sync: {
-                                ...(current?.sync || {}),
+                                ...(entity.sync || {}),
                                 serverId: created._id,
                                 status: 'synced',
                                 lastSyncedAt: new Date().toISOString()
@@ -720,10 +718,9 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                     // Check if error is "already exists" (entity was created in previous sync but client didn't update status)
                     if (error.message.includes('already exists')) {
                         this.log.warn(`Entity ${entity.name} already exists on server, marking as synced`);
-                        const current = await window.DataStore.db.entities.get(entity.entity_id);
-                        await window.DataStore.db.entities.update(entity.entity_id, {
+                        await window.DataStore.db.entities.update(entity.id, {
                             sync: {
-                                ...(current?.sync || {}),
+                                ...(entity.sync || {}),
                                 status: 'synced',
                                 lastSyncedAt: new Date().toISOString()
                             }
@@ -734,10 +731,9 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
 
                     if (error.message.includes('409') || error.message.includes('conflict')) {
                         // Version conflict - mark for manual resolution
-                        const current = await window.DataStore.db.entities.get(entity.entity_id);
-                        await window.DataStore.db.entities.update(entity.entity_id, {
+                        await window.DataStore.db.entities.update(entity.id, {
                             sync: {
-                                ...(current?.sync || {}),
+                                ...(entity.sync || {}),
                                 status: 'conflict'
                             }
                         });
@@ -796,10 +792,9 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
 
                         if (!hasChanges) {
                             this.log.debug(`No changes for curation ${curation.curation_id}, skipping`);
-                            const current = await window.DataStore.db.curations.get(curation.curation_id);
-                            await window.DataStore.db.curations.update(curation.curation_id, {
+                            await window.DataStore.db.curations.update(curation.id, {
                                 sync: {
-                                    ...(current?.sync || {}),
+                                    ...(curation.sync || {}),
                                     status: 'synced'
                                 }
                             });
@@ -813,13 +808,12 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         );
 
                         // Store current state for future change detection
-                        await this.storeItemState('curation', curation.curation_id, updated);
+                        await this.storeItemState('curation', curation.id, updated);
 
-                        const current = await window.DataStore.db.curations.get(curation.curation_id);
-                        await window.DataStore.db.curations.update(curation.curation_id, {
+                        await window.DataStore.db.curations.update(curation.id, {
                             version: updated.version,
                             sync: {
-                                ...(current?.sync || {}),
+                                ...(curation.sync || {}),
                                 status: 'synced',
                                 lastSyncedAt: new Date().toISOString()
                             }
@@ -832,12 +826,11 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         const created = await window.ApiService.createCuration(cleanCuration);
 
                         // Store state for future change detection
-                        await this.storeItemState('curation', curation.curation_id, created);
+                        await this.storeItemState('curation', curation.id, created);
 
-                        const current = await window.DataStore.db.curations.get(curation.curation_id);
-                        await window.DataStore.db.curations.update(curation.curation_id, {
+                        await window.DataStore.db.curations.update(curation.id, {
                             sync: {
-                                ...(current?.sync || {}),
+                                ...(curation.sync || {}),
                                 serverId: created._id,
                                 status: 'synced',
                                 lastSyncedAt: new Date().toISOString()
@@ -877,7 +870,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                             }
 
                             // Update local with serverId so future syncs use PATCH
-                            await window.DataStore.db.curations.update(curation.curation_id, {
+                            await window.DataStore.db.curations.update(curation.id, {
                                 sync: {
                                     ...(curation.sync || {}),
                                     serverId: serverCuration._id
@@ -898,8 +891,8 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                                         changedFields,
                                         serverCuration.version || curation.version || 1
                                     );
-                                    await this.storeItemState('curation', curation.curation_id, updated);
-                                    await window.DataStore.db.curations.update(curation.curation_id, {
+                                    await this.storeItemState('curation', curation.id, updated);
+                                    await window.DataStore.db.curations.update(curation.id, {
                                         version: updated.version,
                                         sync: {
                                             ...(curation.sync || {}),
@@ -910,8 +903,8 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                                     });
                                     this.log.info(`✅ Pushed pending changes for ${curation.curation_id}`);
                                 } else {
-                                    await this.storeItemState('curation', curation.curation_id, serverCuration);
-                                    await window.DataStore.db.curations.update(curation.curation_id, {
+                                    await this.storeItemState('curation', curation.id, serverCuration);
+                                    await window.DataStore.db.curations.update(curation.id, {
                                         sync: {
                                             ...(curation.sync || {}),
                                             serverId: serverCuration._id,
@@ -923,8 +916,8 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                             } catch (patchError) {
                                 this.log.warn(`Could not push changes after resolving duplicate: ${patchError.message}`);
                                 // Still mark as synced with serverId so next sync can PATCH
-                                await this.storeItemState('curation', curation.curation_id, serverCuration);
-                                await window.DataStore.db.curations.update(curation.curation_id, {
+                                await this.storeItemState('curation', curation.id, serverCuration);
+                                await window.DataStore.db.curations.update(curation.id, {
                                     sync: {
                                         ...(curation.sync || {}),
                                         serverId: serverCuration._id,
@@ -935,7 +928,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                             }
                         } catch (fetchError) {
                             this.log.error(`Cannot resolve serverId for ${curation.curation_id}: ${fetchError.message}`);
-                            await window.DataStore.db.curations.update(curation.curation_id, {
+                            await window.DataStore.db.curations.update(curation.id, {
                                 sync: {
                                     ...(curation.sync || {}),
                                     status: 'error',
@@ -950,10 +943,9 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                     }
 
                     if (error.message.includes('409') || error.message.includes('conflict')) {
-                        const current = await window.DataStore.db.curations.get(curation.curation_id);
-                        await window.DataStore.db.curations.update(curation.curation_id, {
+                        await window.DataStore.db.curations.update(curation.id, {
                             sync: {
-                                ...(current?.sync || {}),
+                                ...(curation.sync || {}),
                                 status: 'conflict'
                             }
                         });
