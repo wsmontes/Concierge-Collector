@@ -459,7 +459,8 @@ if (typeof window.UIManager === 'undefined') {
                     const entityName = (entity?.name || '').toLowerCase();
                     const notes = (curation.notes?.public || '').toLowerCase();
                     const curatorName = (curation.curator?.name || '').toLowerCase();
-                    return entityName.includes(query) || notes.includes(query) || curatorName.includes(query);
+                    const transcription = (curation.unstructured_text || curation.transcription || '').toLowerCase();
+                    return entityName.includes(query) || notes.includes(query) || transcription.includes(query) || curatorName.includes(query);
                 });
             }
 
