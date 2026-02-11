@@ -54,8 +54,8 @@ const ConflictResolutionModal = ModuleWrapper.defineClass('ConflictResolutionMod
         modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50';
 
         modal.innerHTML = `
-            <!-- Responsive Container: w-full, max-w-5xl (was 6xl), max-h-[90vh] -->
-            <div class="bg-white rounded-xl shadow-2xl w-full max-w-5xl mx-4 max-h-[90vh] flex flex-col transform transition-all">
+            <!-- Responsive Container: w-full, max-w-5xl, max-h-[85vh] -->
+            <div class="bg-white rounded-xl shadow-2xl w-full max-w-5xl mx-4 my-8 h-auto max-h-[85vh] flex flex-col transform transition-all relative" onclick="event.stopPropagation()">
                 <!-- Header -->
                 <div class="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex flex-shrink-0 items-center justify-between">
                     <div class="flex items-center gap-3">
@@ -400,6 +400,15 @@ const ConflictResolutionModal = ModuleWrapper.defineClass('ConflictResolutionMod
         document.getElementById('conflict-merge').addEventListener('click', () => {
             this.resolve('merge');
         });
+
+        // Close on backdrop click
+        if (this.modal) {
+            this.modal.addEventListener('click', (e) => {
+                if (e.target === this.modal) {
+                    this.close('cancel');
+                }
+            });
+        }
     }
 
     /**
