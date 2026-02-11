@@ -256,8 +256,13 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
             };
 
             const badge = document.createElement('div');
-            badge.className = `${statusColors[status] || statusColors.draft} rounded-full px-3 py-1 text-xs font-medium shadow-sm`;
-            badge.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+            badge.className = `${statusColors[status] || statusColors.draft} rounded-full px-3 py-1 text-xs font-medium shadow-sm flex items-center gap-1`;
+
+            const curatorName = curation.curator?.name || 'Unknown';
+            badge.innerHTML = `
+                <span class="material-icons text-[10px]">person</span>
+                <span>${curatorName} • ${status.charAt(0).toUpperCase() + status.slice(1)}</span>
+            `;
 
             header.insertBefore(badge, header.firstChild);
         }

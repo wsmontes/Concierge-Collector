@@ -19,7 +19,7 @@ if (typeof ModuleWrapper === 'undefined') {
     console.log('[SyncManagerV3] ✅ ModuleWrapper available, defining class...');
 }
 
-const CURRENT_SYNC_VERSION = 2; // Increment this to force all clients to full re-sync
+const CURRENT_SYNC_VERSION = 4; // Increment this to force all clients to full re-sync
 
 const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
     constructor() {
@@ -313,9 +313,11 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             this.emitSyncEvent('sync-start');
             this.log.info('�� Starting full sync...');
 
-            // 1. Pull from server (server → client)
-            await this.pullEntities();
-            await this.pullCurations();
+            // 1. Pull from server (server → client) - RUN IN PARALLEL for speed
+            await Promise.all([
+                this.pullEntities().catch(e => this.log.error('Pull entities failed:', e)),
+                this.pullCurations().catch(e => this.log.error('Pull curations failed:', e))
+            ]);
 
             // 2. Push to server (client → server)
             await this.pushEntities();
@@ -583,10 +585,17 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
 
             const localCuration = await window.DataStore.getCuration(serverCuration.curation_id);
 
+            // NORMALIZE: Ensure top-level curator_id exists for Dexie filtering
+            // IMPORTANT: We do this before the version check to ensure older local records are corrected
+            const normalizedCuration = { ...serverCuration };
+            if (!normalizedCuration.curator_id && normalizedCuration.curator && normalizedCuration.curator.id) {
+                normalizedCuration.curator_id = normalizedCuration.curator.id;
+            }
+
             if (!localCuration) {
                 // New curation from server
                 await window.DataStore.db.curations.put({
-                    ...serverCuration,
+                    ...normalizedCuration,
                     sync: {
                         serverId: serverCuration._id || null,
                         status: 'synced',
@@ -599,9 +608,9 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                 const serverVersion = serverCuration.version || 0;
                 const localVersion = localCuration.version || 0;
 
-                if (serverVersion > localVersion) {
+                if (serverVersion > localVersion || !localCuration.curator_id) {
                     await window.DataStore.db.curations.put({
-                        ...serverCuration,
+                        ...normalizedCuration,
                         id: localCuration.id, // ✅ Critical: Use local primary key
                         sync: {
                             serverId: serverCuration._id || localCuration.sync?.serverId || null,
@@ -609,7 +618,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                             lastSyncedAt: new Date().toISOString()
                         }
                     });
-                    this.log.debug(`Updated local curation: ${serverCuration.curation_id} (v${localVersion} → v${serverVersion})`);
+                    this.log.debug(`Updated local curation: ${serverCuration.curation_id} (force update for normalization or version)`);
                     return true;
                 } else if (localVersion > serverVersion) {
                     // Mark as pending for push
@@ -1037,6 +1046,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
 
             // Reset local stats
             this.stats.lastPullAt = null;
+            this.stats.lastEntityPullAt = null;
             this.stats.lastCurationPullAt = null;
             this.stats.lastPushAt = null;
 
