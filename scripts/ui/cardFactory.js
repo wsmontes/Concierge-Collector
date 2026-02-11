@@ -273,16 +273,45 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
             const curatorName = curation.curator?.name || 'Unknown';
             const badgeClass = statusColors[status] || statusColors.draft;
 
-            // If linked, show what it's linked to
-            let linkedInfo = '';
-            if (status === 'linked' && entity) {
-                linkedInfo = `
-                    <div class="flex items-center gap-1 text-[10px] text-blue-600 font-semibold mt-1">
-                        <span class="material-icons text-[12px]">link</span>
-                        <span>Linked to: ${entity.name}</span>
-                    </div>
-                `;
+            // Determine Source and Sync Status
+            let sourceName = 'Manual';
+            let sourceIcon = 'edit';
+            if (entity?.place_id) {
+                sourceName = 'Google';
+                sourceIcon = 'place';
+            } else if (curation.sources?.includes('import')) {
+                sourceName = 'Imported';
+                sourceIcon = 'file_upload';
             }
+
+            let syncStatus = curation.sync?.status || 'local';
+            let syncIcon = 'cloud_off';
+            let syncColor = 'text-gray-400';
+
+            if (syncStatus === 'synced') {
+                syncIcon = 'cloud_done';
+                syncColor = 'text-green-500';
+            } else if (syncStatus === 'pending') {
+                syncIcon = 'cloud_upload';
+                syncColor = 'text-amber-500';
+            } else if (syncStatus === 'error') {
+                syncIcon = 'error_outline';
+                syncColor = 'text-red-500';
+            }
+
+            // Create Meta Info Row (Source + Sync) instead of redundant "Linked to"
+            const metaInfo = `
+                <div class="flex items-center gap-3 mt-1.5 pl-1">
+                    <div class="flex items-center gap-1 text-[10px] text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100" title="Data Source">
+                        <span class="material-icons text-[12px] text-gray-400">${sourceIcon}</span>
+                        <span>${sourceName}</span>
+                    </div>
+                    <div class="flex items-center gap-1 text-[10px] ${syncColor} bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100" title="Sync Status: ${syncStatus}">
+                        <span class="material-icons text-[12px]">${syncIcon}</span>
+                        <span class="capitalize">${syncStatus === 'pending' ? 'Syncing...' : syncStatus}</span>
+                    </div>
+                </div>
+            `;
 
             actionsRow.innerHTML = `
                 <div class="flex flex-col gap-1">
@@ -295,7 +324,7 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                             <span class="font-medium">${curatorName}</span>
                         </div>
                     </div>
-                    ${linkedInfo}
+                    ${metaInfo}
                 </div>
                 <div class="flex items-center gap-2">
                     <button class="btn-edit-curation p-2 bg-gray-50 text-gray-600 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-all border border-gray-100 hover:border-blue-100 shadow-sm" title="Edit Curation">
