@@ -763,8 +763,9 @@ class CuratorModule {
                 // Display curator info (compact UI only)
                 this.displayCuratorInfoCompact();
 
-                // Show recording section since we have a curator
-                this.uiManager.showRecordingSection();
+                // NOTE: Do NOT call showRecordingSection() here.
+                // The initial view is set by UIManager.init() → switchView('list').
+                // Recording section should only appear when user explicitly clicks record.
 
                 // Load restaurants with filtering
                 const filterEnabled = await dataStorage.getSetting('filterByActiveCurator', true);
