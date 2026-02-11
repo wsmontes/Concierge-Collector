@@ -273,16 +273,31 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
             const curatorName = curation.curator?.name || 'Unknown';
             const badgeClass = statusColors[status] || statusColors.draft;
 
-            // Determine Source and Sync Status
-            let sourceName = 'Manual';
-            let sourceIcon = 'edit';
-            if (entity?.place_id) {
-                sourceName = 'Google';
-                sourceIcon = 'place';
-            } else if (curation.sources?.includes('import')) {
-                sourceName = 'Imported';
-                sourceIcon = 'file_upload';
-            }
+            // Determine Source and Sync Status using intelligent detection
+            const detectCurationSource = (curation, entity) => {
+                const sources = curation.sources || [];
+                
+                // Priority order for source detection
+                if (sources.includes('audio')) {
+                    return { name: 'Voice Note', icon: 'mic', color: 'purple' };
+                }
+                if (sources.includes('image')) {
+                    return { name: 'Photo', icon: 'photo_camera', color: 'pink' };
+                }
+                if (sources.includes('text')) {
+                    return { name: 'Text Input', icon: 'text_fields', color: 'blue' };
+                }
+                if (sources.includes('google_places') || entity?.data?.place_id || entity?.place_id) {
+                    return { name: 'Google Places', icon: 'place', color: 'green' };
+                }
+                if (sources.includes('import')) {
+                    return { name: 'Imported', icon: 'file_upload', color: 'amber' };
+                }
+                // Default fallback
+                return { name: 'Manual Entry', icon: 'edit', color: 'gray' };
+            };
+
+            const sourceInfo = detectCurationSource(curation, entity);
 
             let syncStatus = curation.sync?.status || 'local';
             let syncIcon = 'cloud_off';
@@ -299,16 +314,22 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                 syncColor = 'text-red-500';
             }
 
-            // Create Meta Info Row (Source + Sync) instead of redundant "Linked to"
+            // Create Meta Info Row with improved visual design
             const metaInfo = `
-                <div class="flex items-center gap-3 mt-1.5 pl-1">
-                    <div class="flex items-center gap-1 text-[10px] text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100" title="Data Source">
-                        <span class="material-icons text-[12px] text-gray-400">${sourceIcon}</span>
-                        <span>${sourceName}</span>
+                <div class="flex items-center gap-2 mt-2">
+                    <!-- Source Badge -->
+                    <div class="flex items-center gap-1.5 px-2 py-1 bg-white border border-${sourceInfo.color}-300 rounded-md shadow-sm">
+                        <span class="material-icons text-[14px] text-${sourceInfo.color}-600">${sourceInfo.icon}</span>
+                        <span class="text-[11px] font-medium text-${sourceInfo.color}-700">${sourceInfo.name}</span>
                     </div>
-                    <div class="flex items-center gap-1 text-[10px] ${syncColor} bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100" title="Sync Status: ${syncStatus}">
-                        <span class="material-icons text-[12px]">${syncIcon}</span>
-                        <span class="capitalize">${syncStatus === 'pending' ? 'Syncing...' : syncStatus}</span>
+                    
+                    <!-- Divider -->
+                    <span class="text-gray-300 text-xs">|</span>
+                    
+                    <!-- Sync Status -->
+                    <div class="flex items-center gap-1 ${syncColor}" title="Sync Status: ${syncStatus}">
+                        <span class="material-icons text-[14px]">${syncIcon}</span>
+                        <span class="text-[11px] font-medium capitalize">${syncStatus === 'pending' ? 'Syncing...' : syncStatus}</span>
                     </div>
                 </div>
             `;
