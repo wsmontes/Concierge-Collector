@@ -679,6 +679,10 @@ class ConceptModule {
             // Navigate to main screen (restaurant list) after successful save
             if (this.uiManager && typeof this.uiManager.showRestaurantListSection === 'function') {
                 this.uiManager.showRestaurantListSection();
+                // Reload curations data so the newly saved card appears
+                if (typeof this.uiManager.loadTabData === 'function') {
+                    this.uiManager.loadTabData(this.uiManager.currentTab || 'curations');
+                }
             }
         } catch (error) {
             SafetyUtils.hideLoading();
