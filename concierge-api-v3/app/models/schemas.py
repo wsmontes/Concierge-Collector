@@ -120,6 +120,7 @@ class CurationCreate(CurationBase):
 
 class CurationUpdate(BaseModel):
     """Curation update request (all optional for PATCH)"""
+    entity_id: Optional[str] = None
     notes: Optional[CurationNotes] = None
     categories: Optional[CurationCategories] = None
     sources: Optional[List[str]] = None

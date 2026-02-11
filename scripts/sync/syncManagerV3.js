@@ -809,7 +809,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         const updated = await window.ApiService.updateCuration(
                             curation.curation_id,
                             changedFields,  // ✅ Only changed fields
-                            curation.version
+                            curation.version || 1
                         );
 
                         // Store current state for future change detection
@@ -896,7 +896,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                                     const updated = await window.ApiService.updateCuration(
                                         curation.curation_id,
                                         changedFields,
-                                        serverCuration.version || curation.version
+                                        serverCuration.version || curation.version || 1
                                     );
                                     await this.storeItemState('curation', curation.curation_id, updated);
                                     await window.DataStore.db.curations.update(curation.curation_id, {
