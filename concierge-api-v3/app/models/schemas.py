@@ -134,7 +134,7 @@ class Curation(CurationBase):
     id: str = Field(..., alias="_id")
     curation_id: str
     entity_id: Optional[str] = None
-    curatorid: Optional[str] = None
+    curator_id: Optional[str] = None
     curator: CuratorInfo
     embeddings: Optional[List[Dict]] = None
     embeddings_metadata: Optional[Dict] = None
