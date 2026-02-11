@@ -390,13 +390,18 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
                                 <h3 class="font-semibold text-lg mb-3">Entities (${conflicts.entities.length})</h3>
                                 <div class="space-y-2">
                                     ${conflicts.entities.map(entity => `
-                                        <div class="border rounded p-3">
-                                            <div class="font-medium">${entity.name}</div>
-                                            <div class="text-sm text-gray-500">ID: ${entity.entity_id}</div>
-                                            <div class="text-sm text-gray-500">Version: ${entity.version}</div>
-                                            <button class="mt-2 text-sm text-blue-600 hover:underline" onclick="window.EntityModule?.showEntityDetails(${JSON.stringify(entity).replace(/"/g, '&quot;')})">
-                                                View Details
-                                            </button>
+                                        <div class="border rounded p-3 bg-red-50 border-red-100 mb-2">
+                                            <div class="font-medium text-red-900">${entity.name}</div>
+                                            <div class="text-xs text-red-700 mb-2">ID: ${entity.entity_id}</div>
+                                            <div class="flex gap-2">
+                                                <button class="btn-resolve-conflict text-xs bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700" 
+                                                    data-type="entity" data-id="${entity.entity_id}">
+                                                    Resolve
+                                                </button>
+                                                <button class="text-xs text-blue-600 hover:underline" onclick="window.EntityModule?.showEntityDetails(${JSON.stringify(entity).replace(/"/g, '&quot;')})">
+                                                    View Details
+                                                </button>
+                                            </div>
                                         </div>
                                     `).join('')}
                                 </div>
@@ -408,10 +413,13 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
                                 <h3 class="font-semibold text-lg mb-3">Curations (${conflicts.curations.length})</h3>
                                 <div class="space-y-2">
                                     ${conflicts.curations.map(curation => `
-                                        <div class="border rounded p-3">
-                                            <div class="font-medium">Curation ${curation.curation_id}</div>
-                                            <div class="text-sm text-gray-500">Entity: ${curation.entity_id}</div>
-                                            <div class="text-sm text-gray-500">Version: ${curation.version}</div>
+                                        <div class="border rounded p-3 bg-red-50 border-red-100">
+                                            <div class="font-medium text-red-900">Curation ${curation.curation_id}</div>
+                                            <div class="text-xs text-red-700 mb-2">Entity: ${curation.entity_id || 'N/A'}</div>
+                                            <button class="btn-resolve-conflict text-xs bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700" 
+                                                data-type="curation" data-id="${curation.curation_id}">
+                                                Resolve Conflict
+                                            </button>
                                         </div>
                                     `).join('')}
                                 </div>
@@ -422,6 +430,17 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
             `;
 
             document.body.appendChild(modal);
+
+            // Handle Resolve Clicks
+            modal.querySelectorAll('.btn-resolve-conflict').forEach(btn => {
+                btn.addEventListener('click', (e) => {
+                    const { type, id } = e.target.dataset;
+                    modal.remove(); // Close list modal
+                    if (window.uiManager && window.uiManager.resolveConflict) {
+                        window.uiManager.resolveConflict(type, id);
+                    }
+                });
+            });
 
             modal.querySelector('.btn-close').addEventListener('click', () => {
                 modal.remove();
