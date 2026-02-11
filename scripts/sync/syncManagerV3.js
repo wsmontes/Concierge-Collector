@@ -19,9 +19,12 @@ if (typeof ModuleWrapper === 'undefined') {
     console.log('[SyncManagerV3] ✅ ModuleWrapper available, defining class...');
 }
 
+const CURRENT_SYNC_VERSION = 2; // Increment this to force all clients to full re-sync
+
 const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
     constructor() {
         this.log = Logger.module('SyncManagerV3');
+        this.syncVersion = 0; // Loaded from metadata
 
         // State
         this.isOnline = navigator.onLine;
@@ -220,9 +223,19 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             const metadata = await window.DataStore.getSetting('sync_metadata', {});
             this.stats.lastPullAt = metadata.lastPullAt || null;
             this.stats.lastPushAt = metadata.lastPushAt || null;
-            this.stats.lastEntityPullAt = metadata.lastEntityPullAt || null;  // ✅ NEW: Track per-type
-            this.stats.lastCurationPullAt = metadata.lastCurationPullAt || null;  // ✅ NEW: Track per-type
-            this.log.debug('Sync metadata loaded:', this.stats);
+            this.stats.lastEntityPullAt = metadata.lastEntityPullAt || null;
+            this.stats.lastCurationPullAt = metadata.lastCurationPullAt || null;
+            this.syncVersion = metadata.syncVersion || 1; // Default to 1 if not present
+
+            this.log.debug('Sync metadata loaded:', { ...this.stats, syncVersion: this.syncVersion });
+
+            // Detect version mismatch and trigger automatic reset
+            if (this.syncVersion < CURRENT_SYNC_VERSION) {
+                this.log.info(`🔄 Sync version mismatch (${this.syncVersion} < ${CURRENT_SYNC_VERSION}). Resetting metadata...`);
+                await this.resetSyncMetadata();
+                this.syncVersion = CURRENT_SYNC_VERSION;
+                await this.saveSyncMetadata();
+            }
         } catch (error) {
             this.log.error('Failed to load sync metadata:', error);
         }
@@ -236,8 +249,9 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             await window.DataStore.setSetting('sync_metadata', {
                 lastPullAt: this.stats.lastPullAt,
                 lastPushAt: this.stats.lastPushAt,
-                lastEntityPullAt: this.stats.lastEntityPullAt,  // ✅ NEW
-                lastCurationPullAt: this.stats.lastCurationPullAt  // ✅ NEW
+                lastEntityPullAt: this.stats.lastEntityPullAt,
+                lastCurationPullAt: this.stats.lastCurationPullAt,
+                syncVersion: this.syncVersion || CURRENT_SYNC_VERSION
             });
         } catch (error) {
             this.log.error('Failed to save sync metadata:', error);
@@ -1011,6 +1025,29 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
         } catch (error) {
             this.log.error('Failed to get sync status:', error);
             return null;
+        }
+    }
+
+    /**
+     * Reset all sync metadata (timestamps) to force a full re-pull on next sync
+     */
+    async resetSyncMetadata() {
+        try {
+            this.log.info('🔄 Resetting sync metadata...');
+
+            // Reset local stats
+            this.stats.lastPullAt = null;
+            this.stats.lastCurationPullAt = null;
+            this.stats.lastPushAt = null;
+
+            // Save to database
+            await this.saveSyncMetadata();
+
+            this.log.info('✅ Sync metadata reset successfully');
+            return true;
+        } catch (error) {
+            this.log.error('Failed to reset sync metadata:', error);
+            return false;
         }
     }
 

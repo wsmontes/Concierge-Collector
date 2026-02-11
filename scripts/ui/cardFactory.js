@@ -40,10 +40,10 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
         const card = document.createElement('div');
         card.className = 'bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-lg hover:border-blue-300 transition-all duration-200 cursor-pointer group';
         card.dataset.entityId = entity.entity_id;
-        
+
         const name = entity.name || 'Unknown';
         const type = entity.type || 'restaurant';
-        
+
         // Extract city using robust method
         const city = this.extractCity(entity);
         const neighborhood = entity.data?.address?.neighborhood || entity.data?.location?.neighborhood || '';
@@ -53,10 +53,10 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
         const cuisine = entity.data?.attributes?.cuisine || entity.data?.cuisine || [];
         const phone = entity.data?.contact?.phone || entity.data?.contacts?.phone || entity.data?.phone || '';
         const website = entity.data?.contact?.website || entity.data?.website || '';
-        
+
         // Get first cuisine type if available
         const cuisineType = Array.isArray(cuisine) && cuisine.length > 0 ? cuisine[0] : '';
-        
+
         // Format location string
         let locationStr = city;
         if (neighborhood && neighborhood !== city) {
@@ -65,10 +65,10 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
         if (country && country !== city) {
             locationStr += ` • ${country}`;
         }
-        
+
         // Price level indicator
         const priceIndicator = priceLevel > 0 ? '€'.repeat(priceLevel) : '';
-        
+
         card.innerHTML = `
             <div class="relative">
                 <!-- Header with type icon -->
@@ -133,7 +133,7 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                 <div class="absolute inset-0 bg-gradient-to-t from-blue-50/0 to-blue-50/0 group-hover:from-blue-50/30 group-hover:to-transparent transition-all duration-200 pointer-events-none"></div>
             </div>
         `;
-        
+
         // Click handler
         if (onClick) {
             card.addEventListener('click', () => onClick(entity));
@@ -142,7 +142,7 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                 console.log('Entity clicked:', entity.entity_id);
             });
         }
-        
+
         return card;
     }
 
@@ -174,17 +174,22 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
      */
     extractCity(entity) {
         // Priority 1: Direct city field (Michelin import)
-        if (entity.data?.location?.city && typeof entity.data.location.city === 'string') {
+        if (entity.data?.location?.city && typeof entity.data.location.city === 'string' && entity.data.location.city.trim() !== '') {
             return entity.data.location.city;
         }
-        
-        // Priority 2: addressComponents (Google Places)
+
+        // Priority 2: Direct city field in address
+        if (entity.data?.address?.city && typeof entity.data.address.city === 'string' && entity.data.address.city.trim() !== '') {
+            return entity.data.address.city;
+        }
+
+        // Priority 3: addressComponents (Google Places)
         const addressComponents = entity.data?.addressComponents || [];
         if (Array.isArray(addressComponents)) {
             // Look for locality (city) in address components
-            const cityComponent = addressComponents.find(comp => 
+            const cityComponent = addressComponents.find(comp =>
                 comp.types && (
-                    comp.types.includes('locality') || 
+                    comp.types.includes('locality') ||
                     comp.types.includes('administrative_area_level_2')
                 )
             );
@@ -192,32 +197,41 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                 return cityComponent.longText || cityComponent.shortText;
             }
         }
-        
-        // Priority 3: Parse from formattedAddress
-        const address = entity.data?.formattedAddress || 
-                       entity.data?.address?.formattedAddress ||
-                       entity.data?.shortFormattedAddress;
-        
-        if (address && typeof address === 'string') {
+
+        // Priority 4: Parse from street (Michelin format often puts it there) or formattedAddress
+        const address = entity.data?.formattedAddress ||
+            entity.data?.address?.formattedAddress ||
+            entity.data?.shortFormattedAddress ||
+            entity.data?.address?.street; // Fallback to street string
+
+        if (address && typeof address === 'string' && address.trim() !== '') {
             const parts = address.split(',').map(p => p.trim());
             if (parts.length >= 2) {
                 // Get second-to-last part (usually city before state/country)
                 let city = parts[parts.length - 2];
-                // If that's a number/postal, try other parts
-                if (/^\d+/.test(city) && parts.length >= 3) {
-                    city = parts[parts.length - 3];
+                // If it's a number/postal or looks like a country/state abbreviation, try other parts
+                // Common case: "555 Johnson St, Victoria, BC V8W 0B2, Canada" -> parts are ["555 Johnson St", "Victoria", "BC V8W 0B2", "Canada"]
+                // Here parts.length = 4. 4-2 = 2 -> parts[2] = "BC V8W 0B2" (State/Postal). 4-3 = 1 -> parts[1] = "Victoria"
+
+                if (parts.length >= 3) {
+                    // Check if second-to-last looks like state/postal
+                    const secondToLast = parts[parts.length - 2];
+                    if (/^[A-Z]{2}\s\w+/.test(secondToLast) || /^\d+/.test(secondToLast)) {
+                        city = parts[parts.length - 3];
+                    }
                 }
+
                 // Clean up
                 city = city.replace(/\d{5}(-\d{4})?/g, '').trim();
                 city = city.replace(/\b\d+\b/g, '').trim();
                 city = city.replace(/\s+/g, ' ').trim();
-                
+
                 if (city && city.length > 1 && !city.includes('{') && !city.includes('[')) {
                     return city;
                 }
             }
         }
-        
+
         return 'Unknown';
     }
 
@@ -230,7 +244,7 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
      */
     createCurationCard(entity, curation, options = {}) {
         const card = this.createEntityCard(entity, options);
-        
+
         // Add curation badge
         const header = card.querySelector('.absolute.top-3.right-3');
         if (header && curation) {
@@ -240,14 +254,14 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                 done: 'bg-green-100 text-green-800',
                 pending: 'bg-blue-100 text-blue-800'
             };
-            
+
             const badge = document.createElement('div');
             badge.className = `${statusColors[status] || statusColors.draft} rounded-full px-3 py-1 text-xs font-medium shadow-sm`;
             badge.textContent = status.charAt(0).toUpperCase() + status.slice(1);
-            
+
             header.insertBefore(badge, header.firstChild);
         }
-        
+
         return card;
     }
 
@@ -266,7 +280,7 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
 
         const container = document.createElement('div');
         container.className = 'col-span-full text-center py-12';
-        
+
         container.innerHTML = `
             <span class="material-icons text-6xl text-gray-300 mb-4">${icon}</span>
             <p class="text-gray-500 mb-2 font-medium">${title}</p>
@@ -277,14 +291,14 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                 </button>
             ` : ''}
         `;
-        
+
         if (action?.onClick) {
             const button = container.querySelector('button');
             if (button) {
                 button.addEventListener('click', action.onClick);
             }
         }
-        
+
         return container;
     }
 
@@ -295,7 +309,7 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
     createSkeletonCard() {
         const card = document.createElement('div');
         card.className = 'bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden animate-pulse';
-        
+
         card.innerHTML = `
             <div class="p-5">
                 <div class="flex justify-between mb-3">
@@ -313,7 +327,7 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                 </div>
             </div>
         `;
-        
+
         return card;
     }
 });
