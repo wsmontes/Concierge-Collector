@@ -69,19 +69,56 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
     async editRestaurant(entity) {
         this.log.info('Editing restaurant:', entity);
 
+        // 1. Load existing curation for this entity if it exists
+        const currentCurator = window.CuratorProfile?.getCurrentCurator();
+        let curation = null;
+        if (currentCurator && window.DataStore) {
+            curation = await window.DataStore.db.curations
+                .where('[entity_id+curator_id]')
+                .equals([entity.entity_id, currentCurator.curator_id])
+                .first();
+        }
+
+        // 2. Delegate to generic editCuration (will handle form show and population)
+        // If no curation exists, editCuration handles starting fresh for this entity
+        await this.editCuration(curation, entity);
+    }
+
+    /**
+     * Edit a specific curation object
+     * @param {Object} curation - The curation object to edit (can be null for fresh curation)
+     * @param {Object} entity - Optional entity linked to this curation
+     */
+    async editCuration(curation, entity = null) {
+        this.log.info('Edit curation:', { curation, entity });
+
+        this.currentCuration = curation;
         this.currentEntity = entity;
-        this.isEditMode = true; // We are always "editing" a curation context for an entity
+        this.isEditMode = true;
+
+        // If curation exists but entity is missing, try to load entity
+        if (curation && curation.entity_id && !this.currentEntity) {
+            try {
+                this.currentEntity = await window.DataStore.db.entities.get(curation.entity_id);
+            } catch (e) {
+                this.log.warn('Could not load entity for curation:', curation.entity_id);
+            }
+        }
 
         // 1. Show the form UI
         if (this.uiManager && typeof this.uiManager.showRestaurantFormSection === 'function') {
             this.uiManager.showRestaurantFormSection();
         }
 
-        // 2. Populate Entity Details (Read-only or editable depending on requirement)
-        this.populateEntityDetails(entity);
+        // 2. Populate Entity Details (even if null, to reset)
+        this.populateEntityDetails(this.currentEntity);
 
-        // 3. Load existing curation for this entity if it exists
-        await this.loadExistingCuration(entity.entity_id);
+        // 3. Populate Curation Data
+        if (curation) {
+            this.populateCurationData(curation);
+        } else {
+            this.resetCurationForm();
+        }
     }
 
     /**
@@ -147,12 +184,16 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
      * Populate form with curation data
      */
     populateCurationData(curation) {
-        if (this.transcriptionInput) this.transcriptionInput.value = curation.unstructured_text || '';
+        if (this.transcriptionInput) this.transcriptionInput.value = curation.unstructured_text || curation.transcription || '';
 
-        const structured = curation.structured_data || {};
-        if (this.publicNotesInput) this.publicNotesInput.value = structured.notes_public || '';
-        if (this.privateNotesInput) this.privateNotesInput.value = structured.notes_private || '';
-        if (this.descriptionInput && structured.description) this.descriptionInput.value = structured.description;
+        // Handle both V3 top-level notes and legacy structured_data notes
+        const publicNotes = curation.notes?.public || curation.structured_data?.notes_public || '';
+        const privateNotes = curation.notes?.private || curation.structured_data?.notes_private || '';
+        const description = curation.structured_data?.description || '';
+
+        if (this.publicNotesInput) this.publicNotesInput.value = publicNotes;
+        if (this.privateNotesInput) this.privateNotesInput.value = privateNotes;
+        if (this.descriptionInput && description) this.descriptionInput.value = description;
 
         // Concepts
         // We need to tell ConceptModule to render these concepts

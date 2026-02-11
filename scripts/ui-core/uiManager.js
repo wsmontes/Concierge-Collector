@@ -774,6 +774,10 @@ if (typeof window.UIManager === 'undefined') {
                 ` : ''}
                 
                 <div class="flex gap-2 pt-3 border-t border-amber-200">
+                    <button class="btn-edit-curation px-3 py-1 text-sm bg-amber-600 text-white rounded hover:bg-amber-700 flex items-center gap-1">
+                        <span class="material-icons text-sm">edit</span>
+                        Edit
+                    </button>
                     <button class="btn-link-entity px-3 py-1 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center gap-1">
                         <span class="material-icons text-sm">link</span>
                         Link to Entity
@@ -786,6 +790,11 @@ if (typeof window.UIManager === 'undefined') {
             `;
 
             // Add event listeners
+            card.querySelector('.btn-edit-curation')?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.editCuration(curation);
+            });
+
             card.querySelector('.btn-link-entity')?.addEventListener('click', (e) => {
                 e.stopPropagation();
                 this.handleLinkReviewToEntity(curation);
@@ -1191,6 +1200,13 @@ if (typeof window.UIManager === 'undefined') {
             this.clearTranscriptionData();
 
             this.restaurantModule.editRestaurant(restaurant);
+        }
+
+        /**
+         * Edit a specific curation
+         */
+        editCuration(curation) {
+            this.restaurantModule.editCuration(curation);
         }
 
         /**

@@ -264,7 +264,21 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                 <span>${curatorName} • ${status.charAt(0).toUpperCase() + status.slice(1)}</span>
             `;
 
-            header.insertBefore(badge, header.firstChild);
+            // Add Edit Button
+            const editBtn = document.createElement('button');
+            editBtn.className = 'ml-1 bg-white hover:bg-gray-100 text-gray-700 rounded-full pb-0.5 px-2 flex items-center justify-center shadow-sm border border-gray-200 transition-colors cursor-pointer z-20';
+            editBtn.title = 'Edit Curation';
+            editBtn.innerHTML = '<span class="material-icons text-sm">edit</span>';
+            editBtn.onclick = (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (window.uiManager && typeof window.uiManager.editCuration === 'function') {
+                    window.uiManager.editCuration(curation);
+                }
+            };
+
+            header.insertBefore(editBtn, header.firstChild);
+            header.insertBefore(badge, editBtn);
         }
 
         return card;
