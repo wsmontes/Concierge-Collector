@@ -279,14 +279,8 @@ if (typeof window.UIManager === 'undefined') {
             });
 
             // Toggle Find Entity Button visibility
-            if (this.findEntityBtn) {
-                // Show button on both main list tabs (entities and curations)
-                if (tabName === 'entities' || tabName === 'curations') {
-                    this.findEntityBtn.classList.remove('hidden');
-                } else {
-                    this.findEntityBtn.classList.add('hidden');
-                }
-            }
+            // REMOVED: Button is now fixed and managed by showRestaurantListSection
+            // It should validly appear on ALL tabs within the list section
 
             // Trigger data load for the selected tab
             this.loadTabData(tabName);
