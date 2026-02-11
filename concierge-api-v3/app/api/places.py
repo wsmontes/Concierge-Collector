@@ -340,12 +340,15 @@ async def _nearby_search(
         "regionCode": region or "BR"
     }
     
-    # Add type filter if provided
+    # Add type filter - default to food-related types if none specified
     if place_type:
         payload["includedTypes"] = [place_type]
         logger.info(f"🔍 Applying type filter: includedTypes=['{place_type}']")
     else:
-        logger.info("⚠️ No type filter provided for nearby search")
+        # Default to food-related types to avoid returning hotels, tourist attractions, etc.
+        default_food_types = ["restaurant", "cafe", "bar", "bakery"]
+        payload["includedTypes"] = default_food_types
+        logger.info(f"🍽️ No type filter provided - defaulting to food types: {default_food_types}")
     
     # Add filters
     if min_rating:
@@ -467,9 +470,13 @@ async def _text_search(
         }
     }
     
-    # Add type filter if provided
+    # Add type filter - default to 'restaurant' if none specified
+    # Note: Text Search API only supports a single includedType (not an array)
     if place_type:
         payload["includedType"] = place_type
+    else:
+        payload["includedType"] = "restaurant"
+        logger.info("🍽️ No type filter provided for text search - defaulting to 'restaurant'")
     
     # Add filters
     if min_rating:

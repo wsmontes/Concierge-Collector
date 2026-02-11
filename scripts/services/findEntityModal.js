@@ -543,13 +543,13 @@ window.FindEntityModal = class FindEntityModal {
                                 <span class="material-icons">search</span>
                                 <input 
                                     type="text" 
-                                    id="entity-search-input" 
+                                    id="fem-search-input" 
                                     class="fem-search-input"
                                     placeholder="Search by name, cuisine, or location..."
                                     autocomplete="off"
                                 >
                             </div>
-                            <button id="search-entity-btn" class="fem-search-btn">
+                            <button id="fem-search-btn-action" class="fem-search-btn">
                                 <span class="material-icons" style="font-size:1.125rem">search</span>
                                 Search
                             </button>
@@ -557,7 +557,7 @@ window.FindEntityModal = class FindEntityModal {
                         <div class="fem-filters-row">
                             <div class="fem-filter-group">
                                 <span class="fem-filter-label">Type</span>
-                                <select id="entity-type-filter" class="fem-filter-select">
+                                <select id="fem-type-filter" class="fem-filter-select">
                                     <option value="restaurant">Restaurant</option>
                                     <option value="cafe">Café</option>
                                     <option value="bar">Bar</option>
@@ -567,7 +567,7 @@ window.FindEntityModal = class FindEntityModal {
                             </div>
                             <div class="fem-filter-group">
                                 <span class="fem-filter-label">Price</span>
-                                <select id="entity-price-filter" class="fem-filter-select">
+                                <select id="fem-price-filter" class="fem-filter-select">
                                     <option value="all">All Prices</option>
                                     <option value="1">$ Budget</option>
                                     <option value="2">$$ Moderate</option>
@@ -577,7 +577,7 @@ window.FindEntityModal = class FindEntityModal {
                             </div>
                             <div class="fem-filter-group">
                                 <span class="fem-filter-label">Rating</span>
-                                <select id="entity-rating-filter" class="fem-filter-select">
+                                <select id="fem-rating-filter" class="fem-filter-select">
                                     <option value="0">Any Rating</option>
                                     <option value="3">3+ ★</option>
                                     <option value="3.5">3.5+ ★</option>
@@ -587,7 +587,7 @@ window.FindEntityModal = class FindEntityModal {
                             </div>
                             <div class="fem-filter-group">
                                 <span class="fem-filter-label">Radius</span>
-                                <select id="entity-radius-filter" class="fem-filter-select">
+                                <select id="fem-radius-filter" class="fem-filter-select">
                                     <option value="500">500m</option>
                                     <option value="1000">1 km</option>
                                     <option value="2000" selected>2 km</option>
@@ -624,7 +624,7 @@ window.FindEntityModal = class FindEntityModal {
 
         // Cache DOM references
         this.modal = document.getElementById('find-entity-modal');
-        this.searchInput = document.getElementById('entity-search-input');
+        this.searchInput = document.getElementById('fem-search-input');
         this.resultsContainer = document.getElementById('entity-search-results');
         this.loadingIndicator = document.getElementById('entity-search-loading');
     }
@@ -660,7 +660,7 @@ window.FindEntityModal = class FindEntityModal {
         });
 
         // Search button
-        const searchBtn = document.getElementById('search-entity-btn');
+        const searchBtn = document.getElementById('fem-search-btn-action');
         if (searchBtn) {
             searchBtn.addEventListener('click', () => this.performSearch());
         }
@@ -675,7 +675,7 @@ window.FindEntityModal = class FindEntityModal {
         }
 
         // Filter changes trigger search
-        const filterIds = ['entity-type-filter', 'entity-price-filter', 'entity-rating-filter', 'entity-radius-filter'];
+        const filterIds = ['fem-type-filter', 'fem-price-filter', 'fem-rating-filter', 'fem-radius-filter'];
         filterIds.forEach(filterId => {
             const filterElement = document.getElementById(filterId);
             if (filterElement) {
@@ -695,10 +695,10 @@ window.FindEntityModal = class FindEntityModal {
      * Update internal filter state from UI
      */
     updateFiltersFromUI() {
-        this.filters.type = document.getElementById('entity-type-filter')?.value || 'restaurant';
-        this.filters.priceLevel = document.getElementById('entity-price-filter')?.value || 'all';
-        this.filters.minRating = parseFloat(document.getElementById('entity-rating-filter')?.value || '0');
-        const radiusValue = document.getElementById('entity-radius-filter')?.value || '2000';
+        this.filters.type = document.getElementById('fem-type-filter')?.value || 'restaurant';
+        this.filters.priceLevel = document.getElementById('fem-price-filter')?.value || 'all';
+        this.filters.minRating = parseFloat(document.getElementById('fem-rating-filter')?.value || '0');
+        const radiusValue = document.getElementById('fem-radius-filter')?.value || '2000';
         this.filters.radius = radiusValue === 'worldwide' ? 'worldwide' : parseInt(radiusValue);
     }
 
@@ -722,6 +722,24 @@ window.FindEntityModal = class FindEntityModal {
 
         // Focus search input
         setTimeout(() => this.searchInput?.focus(), 300);
+
+        // Reset filters to defaults on each open
+        const typeFilter = document.getElementById('fem-type-filter');
+        if (typeFilter) typeFilter.value = 'restaurant';
+        const priceFilter = document.getElementById('fem-price-filter');
+        if (priceFilter) priceFilter.value = 'all';
+        const ratingFilter = document.getElementById('fem-rating-filter');
+        if (ratingFilter) ratingFilter.value = '0';
+        const radiusFilter = document.getElementById('fem-radius-filter');
+        if (radiusFilter) radiusFilter.value = '2000';
+        if (this.searchInput) this.searchInput.value = '';
+
+        this.filters = {
+            type: 'restaurant',
+            priceLevel: 'all',
+            minRating: 0,
+            radius: 2000
+        };
 
         // Get user location and load nearby restaurants
         await this.loadNearbyRestaurants();
