@@ -1444,7 +1444,7 @@ if (typeof window.UIManager === 'undefined') {
 
                     window.uiUtils.showNotification('Curation deleted successfully', 'success');
                 } catch (error) {
-                    this.log.error('Failed to delete curation:', error);
+                    console.error('Failed to delete curation:', error);
                     window.uiUtils.showNotification('Failed to delete curation: ' + error.message, 'error');
                 } finally {
                     this.hideLoading();
