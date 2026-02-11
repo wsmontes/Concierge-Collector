@@ -458,11 +458,14 @@ class ConceptModule {
                 throw new Error('Curator not found');
             }
 
-            // Reuse existing curation ID if available
-            const curationId = this.uiManager.restaurantModule?.currentCuration?.curation_id ||
+            // Reuse existing curation data if available to avoid duplication
+            const existingCuration = this.uiManager.restaurantModule?.currentCuration;
+            const curationId = existingCuration?.curation_id ||
                 `curation_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
             const curation = {
+                // VERY IMPORTANT: Preserve the numerical IndexedDB ID if it exists to trigger an update, not an insert
+                ...(existingCuration?.id && { id: existingCuration.id }),
                 curation_id: curationId,
                 entity_id: entityId,  // null for orphaned curations, ID for matched entities
                 restaurant_name: name, // Name for orphaned curations (as requested)
@@ -480,9 +483,11 @@ class ConceptModule {
                     private: privateNotes || null
                 },
                 unstructured_text: transcription || null,
-                sources: ['manual_curation'],
-                created_at: new Date(),
-                createdAt: new Date(),
+                sources: existingCuration?.sources || ['manual_curation'],
+                created_at: existingCuration?.created_at || new Date().toISOString(),
+                createdAt: existingCuration?.createdAt || new Date(),
+                updated_at: new Date().toISOString(),
+                updatedAt: new Date(),
                 sync: {
                     status: 'pending',
                     lastAttempt: null,
@@ -496,8 +501,10 @@ class ConceptModule {
 
             // Queue curation for sync to server
             if (window.dataStore) {
-                await window.dataStore.addToSyncQueue('curation', 'create', null, curationId, curation);
-                this.log.debug('✅ Curation queued for sync to server');
+                // Use 'update' action if the curation already exists on the server
+                const syncAction = (existingCuration?.sync?.serverId || existingCuration?.sync?.status === 'synced') ? 'update' : 'create';
+                await window.dataStore.addToSyncQueue('curation', syncAction, null, curationId, curation);
+                this.log.debug(`✅ Curation queued for sync to server with action: ${syncAction}`);
             }
 
             SafetyUtils.hideLoading();
