@@ -455,7 +455,9 @@ class ConceptModule {
                 throw new Error('Curator not found');
             }
 
-            const curationId = `curation_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+            // Reuse existing curation ID if available
+            const curationId = this.uiManager.restaurantModule?.currentCuration?.curation_id ||
+                `curation_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
             // Combine transcription and description into public notes
             const publicNotesContent = [
@@ -466,6 +468,7 @@ class ConceptModule {
             const curation = {
                 curation_id: curationId,
                 entity_id: entityId,  // null for orphaned curations, ID for matched entities
+                name: name,           // Fallback name for orphaned curations
                 curator_id: curator.curator_id,  // Required by loadCurations() filter
                 curator: {
                     id: user.email,
@@ -479,6 +482,7 @@ class ConceptModule {
                     public: publicNotesContent || null,
                     private: privateNotes || null
                 },
+                unstructured_text: transcription || null,
                 sources: ['manual_curation'],
                 created_at: new Date(),
                 createdAt: new Date(),
@@ -489,9 +493,9 @@ class ConceptModule {
                 }
             };
 
-            // Save curation to IndexedDB
-            await window.DataStore.db.curations.add(curation);
-            this.log.debug('✅ Curation saved locally:', curationId);
+            // Save curation to IndexedDB (use put to support updates)
+            await window.DataStore.db.curations.put(curation);
+            this.log.debug('✅ Curation saved/updated locally:', curationId);
 
             // Queue curation for sync to server
             if (window.dataStore) {

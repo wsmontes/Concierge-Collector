@@ -51,15 +51,12 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
      * Setup event listeners
      */
     setupEvents() {
-        if (this.saveButton) {
-            this.saveButton.addEventListener('click', () => this.handleSave());
-        }
-
         if (this.discardButton) {
             this.discardButton.addEventListener('click', () => this.handleDiscard());
         }
 
-        // Additional event listeners for form interactions could go here
+        // Save listener removed: ConceptModule.saveRestaurant handles this consistently
+        // to support AI features and avoid duplicate saves.
     }
 
     /**
@@ -99,7 +96,8 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
         // If curation exists but entity is missing, try to load entity
         if (curation && curation.entity_id && !this.currentEntity) {
             try {
-                this.currentEntity = await window.DataStore.db.entities.get(curation.entity_id);
+                // Use standardized window.dataStore
+                this.currentEntity = await (window.dataStore?.db || window.DataStore?.db).entities.get(curation.entity_id);
             } catch (e) {
                 this.log.warn('Could not load entity for curation:', curation.entity_id);
             }
@@ -125,12 +123,20 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
      * Populate form with entity details
      */
     populateEntityDetails(entity) {
-        if (!entity) return;
+        // Clear/reset fields first
+        if (this.restaurantNameInput) this.restaurantNameInput.value = '';
+        if (this.locationDisplay) this.locationDisplay.textContent = 'Location not set';
+        if (this.descriptionInput) this.descriptionInput.value = '';
+
+        if (!entity) {
+            // If orphaned curation, maybe try to guess name from something else?
+            // For now, leave empty as it's truly orphaned.
+            return;
+        }
 
         // Name
         if (this.restaurantNameInput) {
             this.restaurantNameInput.value = entity.name || '';
-            // If it's a Google Place, maybe lock the name? For now, leave editable.
         }
 
         // Location
@@ -145,8 +151,6 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
         // Description - populate if exists in entity, otherwise leave for curation
         if (this.descriptionInput && entity.data?.description) {
             this.descriptionInput.value = entity.data.description;
-        } else if (this.descriptionInput) {
-            this.descriptionInput.value = '';
         }
     }
 
@@ -167,6 +171,8 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
             if (curation) {
                 this.log.info('Found existing curation:', curation);
                 this.currentCuration = curation;
+
+                // Map categories to match display labels (e.g. 'cuisine' -> 'Cuisine')
                 this.populateCurationData(curation);
             } else {
                 this.log.info('No existing curation found, starting fresh');
@@ -184,7 +190,14 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
      * Populate form with curation data
      */
     populateCurationData(curation) {
-        if (this.transcriptionInput) this.transcriptionInput.value = curation.unstructured_text || curation.transcription || '';
+        // If entity is missing, try to get name from curation record
+        if (!this.currentEntity && curation.name && this.restaurantNameInput) {
+            this.restaurantNameInput.value = curation.name;
+        }
+
+        if (this.transcriptionInput) {
+            this.transcriptionInput.value = curation.unstructured_text || curation.transcription || '';
+        }
 
         // Handle both V3 top-level notes and legacy structured_data notes
         const publicNotes = curation.notes?.public || curation.structured_data?.notes_public || '';
@@ -195,21 +208,32 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
         if (this.privateNotesInput) this.privateNotesInput.value = privateNotes;
         if (this.descriptionInput && description) this.descriptionInput.value = description;
 
-        // Concepts
-        // We need to tell ConceptModule to render these concepts
+        // Concepts mapping
+        const categoryDisplayMap = {
+            'cuisine': 'Cuisine',
+            'menu': 'Menu',
+            'price_range': 'Price Range',
+            'mood': 'Mood',
+            'setting': 'Setting',
+            'crowd': 'Crowd',
+            'suitable_for': 'Suitable For',
+            'food_style': 'Food Style',
+            'drinks': 'Drinks',
+            'special_features': 'Special Features'
+        };
+
         if (this.uiManager.conceptModule && curation.categories) {
-            // Transform curation categories back to concept list/map if needed
-            // ConceptModule might expect a specific format.
-            // Assuming ConceptModule can load from curation object or we manually populate `uiManager.currentConcepts`.
-
-            // NOTE: uiManager.js init says: this.currentConcepts = [];
-            // ConceptModule likely uses this.
-
-            // Let's try to flatten categories to concepts list
             const concepts = [];
             Object.entries(curation.categories).forEach(([category, values]) => {
                 if (Array.isArray(values)) {
-                    values.forEach(val => concepts.push({ category, value: val }));
+                    // Try to map back to display name, or use capitalized category
+                    const displayCategory = categoryDisplayMap[category] ||
+                        (category.charAt(0).toUpperCase() + category.slice(1).replace(/_/g, ' '));
+
+                    values.forEach(val => concepts.push({
+                        category: displayCategory,
+                        value: val
+                    }));
                 }
             });
 
