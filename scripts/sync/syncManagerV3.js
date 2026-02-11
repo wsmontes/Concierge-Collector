@@ -1162,9 +1162,9 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                     // Store synced state
                     await this.storeItemState('entity', id, updated);
 
-                    const currentEntity = await window.DataStore.db.entities.get(id);
+                    const currentEntity = await window.DataStore.db.entities.where('entity_id').equals(id).first();
                     if (currentEntity) {
-                        await window.DataStore.db.entities.update(id, {
+                        await window.DataStore.db.entities.where('entity_id').equals(id).modify({
                             sync: {
                                 ...currentEntity.sync,
                                 status: 'synced',
@@ -1184,9 +1184,9 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
 
                     await this.storeItemState('curation', id, updated);
 
-                    const currentCuration = await window.DataStore.db.curations.get(id);
+                    const currentCuration = await window.DataStore.db.curations.where('curation_id').equals(id).first();
                     if (currentCuration) {
-                        await window.DataStore.db.curations.update(id, {
+                        await window.DataStore.db.curations.where('curation_id').equals(id).modify({
                             sync: {
                                 ...currentCuration.sync,
                                 status: 'synced',
