@@ -462,12 +462,6 @@ class ConceptModule {
             const curationId = this.uiManager.restaurantModule?.currentCuration?.curation_id ||
                 `curation_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
 
-            // Combine transcription and description into public notes
-            const publicNotesContent = [
-                transcription || '',
-                publicNotes || ''
-            ].filter(Boolean).join('\n\n');
-
             const curation = {
                 curation_id: curationId,
                 entity_id: entityId,  // null for orphaned curations, ID for matched entities
@@ -480,9 +474,9 @@ class ConceptModule {
                 },
                 // Categories: organized concepts by type
                 categories: this.convertConceptsToCategories(this.uiManager.currentConcepts || []),
-                // Notes: public contains transcription + description, private for internal notes
+                // Notes: separate public and private notes
                 notes: {
-                    public: publicNotesContent || null,
+                    public: publicNotes || null,
                     private: privateNotes || null
                 },
                 unstructured_text: transcription || null,
