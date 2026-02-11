@@ -370,41 +370,6 @@ if (typeof window.UIManager === 'undefined') {
                 return;
             }
 
-            // Get ALL active curations using centralized query logic
-            const curations = await window.DataStore.getCurations({
-                reverse: true,
-                excludeDeleted: true
-            });
-
-            if (curations.length === 0) {
-                container.innerHTML = `
-                        <div class="col-span-full text-center py-12">
-                            <span class="material-icons text-6xl text-gray-300 mb-4">rate_review</span>
-                            <p class="text-gray-500 mb-2">No curations yet</p>
-                            <p class="text-sm text-gray-400">Start curating entities by clicking on them</p>
-                        </div>
-                    `;
-                return;
-            }
-
-            // Get unique entity IDs from curations
-            const entityIds = [...new Set(curations.map(c => c.entity_id).filter(Boolean))];
-
-            // Fetch entities for curations that have entity_id
-            const entitiesMap = new Map();
-            if (entityIds.length > 0) {
-                const entities = await window.DataStore.db.entities
-                    .where('entity_id')
-                    .anyOf(entityIds)
-                    .toArray();
-                entities.forEach(entity => entitiesMap.set(entity.entity_id, entity));
-            }
-
-            // Cache for filtering
-            this.curationsCache = curations;
-            this.curationsEntitiesMap = entitiesMap;
-
-            // Populate dynamic filters
             try {
                 // Get ALL active curations using centralized query logic
                 const curations = await window.DataStore.getCurations({
@@ -540,10 +505,11 @@ if (typeof window.UIManager === 'undefined') {
                 filtered = filtered.filter(curation => {
                     const entity = curation.entity_id ? this.curationsEntitiesMap.get(curation.entity_id) : null;
                     const entityName = (entity?.name || '').toLowerCase();
+                    const restaurantName = (curation.restaurant_name || curation.restaurantName || '').toLowerCase();
                     const notes = (curation.notes?.public || '').toLowerCase();
                     const curatorName = (curation.curator?.name || '').toLowerCase();
                     const transcription = (curation.unstructured_text || curation.transcription || '').toLowerCase();
-                    return entityName.includes(query) || notes.includes(query) || transcription.includes(query) || curatorName.includes(query);
+                    return entityName.includes(query) || restaurantName.includes(query) || notes.includes(query) || transcription.includes(query) || curatorName.includes(query);
                 });
             }
 
@@ -809,17 +775,12 @@ if (typeof window.UIManager === 'undefined') {
         }
 
         /**
-         * Load Reviews
-         * 
-         * Loads and displays curations WITHOUT entity associations.
-         * These are orphaned curations awaiting entity matching.
-         */
-        /**
          * Create a review card for orphaned curations
          */
         createReviewCard(curation) {
             const card = document.createElement('div');
-            card.className = 'bg-amber-50 border-2 border-amber-200 rounded-xl p-5 hover:shadow-lg transition-all';
+            // Match createEntityCard style: white bg, rounded, shadow, border
+            card.className = 'bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-lg hover:border-blue-300 transition-all duration-200 cursor-pointer group h-full flex flex-col justify-between relative';
             card.dataset.curationId = curation.curation_id;
 
             const date = curation.created_at ? new Date(curation.created_at).toLocaleDateString() : 'Unknown date';
@@ -842,45 +803,76 @@ if (typeof window.UIManager === 'undefined') {
 
             const curatorName = curation.curator?.name || curation.curatorName || 'Unknown';
 
+            // Transcription snippet
+            const transcription = curation.unstructured_text || curation.transcription || '';
+            const transcriptionSnippet = transcription.length > 100 ? transcription.substring(0, 100) + '...' : transcription;
+
             card.innerHTML = `
-                <div class="flex items-start gap-3 mb-3">
-                    <span class="material-icons text-2xl text-amber-600">rate_review</span>
-                    <div class="flex-1">
-                        <h3 class="font-bold text-lg text-gray-900 mb-1">${restaurantName}</h3>
-                        <div class="flex items-center gap-2 text-sm text-gray-600">
-                            <span class="material-icons text-[14px]">person</span>
-                            <span>${curatorName}</span>
-                            <span class="text-gray-300">•</span>
+                <!-- Header with type icon -->
+                <div class="absolute top-3 right-3 flex items-center gap-2 z-10">
+                    <div class="bg-amber-50 rounded-full p-2 shadow-sm border border-amber-100">
+                        <span class="material-icons text-lg text-amber-600">rate_review</span>
+                    </div>
+                </div>
+
+                <!-- Main content -->
+                <div class="p-5 flex-grow">
+                    <!-- Name -->
+                    <div class="mb-3">
+                        <h3 class="font-bold text-lg text-gray-900 mb-1 pr-12 line-clamp-2 group-hover:text-blue-600 transition-colors">
+                            ${restaurantName}
+                        </h3>
+                        <div class="flex items-center gap-2 text-xs text-gray-500 mb-2">
+                            <span class="bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-medium">Unlinked Draft</span>
+                            <span>•</span>
                             <span>${date}</span>
                         </div>
                     </div>
-                    <span class="px-3 py-1 bg-amber-100 text-amber-800 text-xs font-medium rounded-full">Needs Entity</span>
-                </div>
-                
-                ${conceptDisplay ? `
-                    <div class="mb-3">
-                        <p class="text-sm font-medium text-gray-700 mb-1">Concepts (${totalConcepts}):</p>
-                        <p class="text-sm text-gray-600">${conceptDisplay}${conceptNames.length > 3 ? '...' : ''}</p>
+
+                    <!-- Concepts/Tags -->
+                    ${conceptDisplay ? `
+                        <div class="flex flex-wrap gap-1 mb-3">
+                            ${conceptNames.slice(0, 3).map(c => `
+                                <span class="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-md border border-gray-200">${c}</span>
+                            `).join('')}
+                            ${totalConcepts > 3 ? `<span class="px-2 py-0.5 bg-gray-50 text-gray-400 text-xs rounded-md border border-gray-100">+${totalConcepts - 3}</span>` : ''}
+                        </div>
+                    ` : ''}
+                    
+                    <!-- Transcription Preview -->
+                    ${transcriptionSnippet ? `
+                        <div class="text-sm text-gray-600 italic border-l-2 border-gray-100 pl-3 py-1 mb-3 line-clamp-3">
+                            "${transcriptionSnippet}"
+                        </div>
+                    ` : ''}
+
+                    <!-- Curator Info -->
+                    <div class="flex items-center gap-1.5 text-xs text-gray-400 mt-auto pt-2">
+                        <span class="material-icons text-[14px]">person</span>
+                        <span>${curatorName}</span>
                     </div>
-                ` : ''}
-                
-                <div class="flex flex-wrap gap-2 pt-4 border-t border-amber-200 mt-auto">
-                    <button class="btn-edit-curation px-3 py-1.5 text-sm bg-amber-600 text-white rounded-lg hover:bg-amber-700 transition-colors flex items-center gap-1.5 shadow-sm">
-                        <span class="material-icons text-[18px]">edit</span>
-                        <span class="font-medium">Edit</span>
-                    </button>
-                    <button class="btn-link-entity px-3 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1.5 shadow-sm">
-                        <span class="material-icons text-[18px]">link</span>
-                        <span class="font-medium">Link</span>
-                    </button>
-                    <button class="btn-view-details px-3 py-1.5 text-sm bg-gray-100 text-gray-700 rounded-lg hover:bg-gray-200 transition-colors flex items-center gap-1.5">
-                        <span class="material-icons text-[18px]">visibility</span>
-                        <span class="font-medium">Details</span>
-                    </button>
-                    <button class="btn-delete-curation ml-auto p-2 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-lg transition-all border border-transparent hover:border-red-100" title="Delete Review">
-                        <span class="material-icons text-[22px]">delete_outline</span>
-                    </button>
                 </div>
+
+                <!-- Actions Footer (Matching Linked Card style) -->
+                <div class="mt-auto p-4 mx-1 border-t border-gray-100 flex items-center justify-between bg-white z-20 relative">
+                     <div class="flex flex-col gap-1">
+                        <button class="btn-link-entity px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1.5 shadow-sm">
+                            <span class="material-icons text-[14px]">link</span>
+                            <span class="font-bold uppercase tracking-wider">Link Entity</span>
+                        </button>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button class="btn-edit-curation p-2 bg-gray-50 text-gray-600 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-all border border-gray-100 hover:border-blue-100 shadow-sm" title="Edit Draft">
+                            <span class="material-icons text-[20px]">edit</span>
+                        </button>
+                        <button class="btn-delete-curation p-2 bg-gray-50 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-lg transition-all border border-gray-100 hover:border-red-100 shadow-sm" title="Delete Draft">
+                            <span class="material-icons text-[20px]">delete_outline</span>
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- Hover overlay effect -->
+                <div class="absolute inset-0 bg-gradient-to-t from-blue-50/0 to-blue-50/0 group-hover:from-blue-50/30 group-hover:to-transparent transition-all duration-200 pointer-events-none z-0"></div>
             `;
 
             // Add event listeners
@@ -899,8 +891,10 @@ if (typeof window.UIManager === 'undefined') {
                 this.confirmDeleteCuration(curation.curation_id);
             });
 
-            card.querySelector('.btn-view-details')?.addEventListener('click', (e) => {
-                e.stopPropagation();
+            // Make whole card clickable for details (except buttons)
+            card.addEventListener('click', (e) => {
+                // Don't trigger if clicked on buttons (handled by stopPropagation, but just in case)
+                if (e.target.closest('button')) return;
                 this.handleViewReviewDetails(curation);
             });
 
@@ -953,7 +947,8 @@ if (typeof window.UIManager === 'undefined') {
                     }
                 };
 
-                // 2. Save to local database
+                // 2. Save both to local database (ensure entity exists locally too)
+                await window.DataStore.db.entities.put(entity);
                 await window.DataStore.db.curations.put(updatedCuration);
 
                 // 3. Trigger background sync if available
@@ -983,7 +978,7 @@ if (typeof window.UIManager === 'undefined') {
 
             if (!window.modalManager) {
                 console.warn('ModalManager not available');
-                alert(`Review ID: ${curation.curation_id}`);
+                alert(`Review ID: ${curation.curation_id} `);
                 return;
             }
 
@@ -994,27 +989,28 @@ if (typeof window.UIManager === 'undefined') {
             const content = document.createElement('div');
             content.className = 'space-y-4';
             content.innerHTML = `
-                <div class="bg-gray-50 p-3 rounded-lg border border-gray-200">
+                < div class="bg-gray-50 p-3 rounded-lg border border-gray-200" >
                     <p class="text-sm text-gray-500 mb-1">Created</p>
                     <p class="font-medium text-gray-900">${date}</p>
-                </div>
+                </div >
 
-                ${curation.transcription ? `
+        ${curation.transcription ? `
                     <div>
                         <h3 class="font-semibold text-gray-700 mb-2">Transcription</h3>
                         <div class="bg-white p-3 rounded border border-gray-200 text-gray-600 text-sm max-h-40 overflow-y-auto">
                             ${curation.transcription}
                         </div>
                     </div>
-                ` : ''}
+                ` : ''
+                }
 
-                <div>
-                    <h3 class="font-semibold text-gray-700 mb-2 flex items-center justify-between">
-                        <span>Extracted Concepts</span>
-                        <span class="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">${totalConcepts}</span>
-                    </h3>
-                    
-                    ${Object.keys(categories).length === 0 ?
+    <div>
+        <h3 class="font-semibold text-gray-700 mb-2 flex items-center justify-between">
+            <span>Extracted Concepts</span>
+            <span class="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">${totalConcepts}</span>
+        </h3>
+
+        ${Object.keys(categories).length === 0 ?
                     '<p class="text-gray-500 italic text-sm">No concepts extracted</p>' :
                     '<div class="space-y-3">' +
                     Object.entries(categories).map(([category, items]) => `
@@ -1031,17 +1027,17 @@ if (typeof window.UIManager === 'undefined') {
                         `).join('') +
                     '</div>'
                 }
-                </div>
-            `;
+    </div>
+    `;
 
             window.modalManager.open({
                 title: 'Review Details',
                 content: content,
                 footer: `
-                    <button class="btn-close-modal px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300" onclick="window.modalManager.closeAll()">
-                        Close
-                    </button>
-                `,
+        < button class="btn-close-modal px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300" onclick = "window.modalManager.closeAll()" >
+            Close
+                    </button >
+        `,
                 size: 'md'
             });
         }
@@ -1103,13 +1099,13 @@ if (typeof window.UIManager === 'undefined') {
         switchView(viewName) {
             const config = this.VIEW_CONFIG[viewName];
             if (!config) {
-                console.warn(`View configuration not found for: ${viewName}`);
+                console.warn(`View configuration not found for: ${viewName} `);
                 return;
             }
 
             // Track current view state
             this.currentView = viewName;
-            console.log(`[UIManager] switchView → ${viewName}`);
+            console.log(`[UIManager] switchView → ${viewName} `);
 
             // Hide elements
             config.hide.forEach(elementName => {
@@ -1405,7 +1401,7 @@ if (typeof window.UIManager === 'undefined') {
          * @param {string} message - Optional custom message to display
          */
         updateProcessingStatus(step, status, message = null) {
-            const stepElement = document.getElementById(`${step}-status`);
+            const stepElement = document.getElementById(`${step} -status`);
             if (!stepElement) return;
 
             // Remove existing status classes
@@ -1437,7 +1433,7 @@ if (typeof window.UIManager === 'undefined') {
                     case 'error':
                         icon = 'error';
                         statusClass = 'error';
-                        defaultMessage = `Error during ${step}`;
+                        defaultMessage = `Error during ${step} `;
                         break;
                     default: // pending
                         icon = 'pending';
@@ -1491,7 +1487,7 @@ if (typeof window.UIManager === 'undefined') {
                 if (lastSyncTime) {
                     const formattedTime = new Date(lastSyncTime).toLocaleString();
                     syncStatusElements.forEach(el => {
-                        el.textContent = `Last sync: ${formattedTime}`;
+                        el.textContent = `Last sync: ${formattedTime} `;
                     });
                 }
             }
@@ -1542,37 +1538,7 @@ if (typeof window.UIManager === 'undefined') {
          * @param {string} id - Item ID
          */
         async resolveConflict(type, id) {
-            console.log(`Resolving conflict for ${type} ${id}`);
-
-            if (window.SyncManager && typeof window.SyncManager.resolveConflict === 'function') {
-                await window.SyncManager.resolveConflict(type, id);
-
-                // Refresh views after resolution
-                if (type === 'curation') {
-                    await this.loadCurations();
-                } else if (type === 'entity') {
-                    // Logic to refresh entity view
-                    if (this.currentTab === 'entities') {
-                        // Refresh entity list 
-                        // Note: Entity list refresh logic might be inside restaurantListModule or similar
-                        if (this.restaurantListModule && typeof this.restaurantListModule.refresh === 'function') {
-                            this.restaurantListModule.refresh();
-                        }
-                    }
-                }
-            } else {
-                console.error('SyncManager not available for conflict resolution');
-                window.uiUtils.showNotification('Sync service not available', 'error');
-            }
-        }
-
-        /**
-         * Resolve sync conflict (delegates to SyncManager)
-         * @param {string} type - 'entity' or 'curation'
-         * @param {string} id - Item ID
-         */
-        async resolveConflict(type, id) {
-            console.log(`Resolving conflict for ${type} ${id}`);
+            console.log(`Resolving conflict for ${type} ${id} `);
 
             if (window.SyncManager && typeof window.SyncManager.resolveConflict === 'function') {
                 await window.SyncManager.resolveConflict(type, id);

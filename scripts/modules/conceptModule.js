@@ -542,7 +542,7 @@ class ConceptModule {
                 curator_id: curator.curator_id,  // Required by loadCurations() filter
                 curator: {
                     id: user.email,
-                    name: user.email.split('@')[0],
+                    name: this.capitalizeFullName(user.name || curator.name || user.email.split('@')[0]),
                     email: user.email
                 },
                 // Categories: organized concepts by type
@@ -689,6 +689,18 @@ class ConceptModule {
             this.log.error('Error saving restaurant:', error);
             SafetyUtils.showNotification(`Error ${this.uiManager.isEditingRestaurant ? 'updating' : 'saving'} restaurant: ${error.message}`, 'error');
         }
+    }
+
+    /**
+     * Capitalize the first letter of each word in a full name
+     * @param {string} name - The full name to capitalize
+     * @returns {string} - Properly capitalized full name
+     */
+    capitalizeFullName(name) {
+        if (!name) return '';
+        return name.trim().split(/\s+/).map(part =>
+            part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()
+        ).join(' ');
     }
 
     /**
