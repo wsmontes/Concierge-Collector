@@ -278,6 +278,15 @@ if (typeof window.UIManager === 'undefined') {
                 }
             });
 
+            // Toggle Find Entity Button visibility
+            if (this.findEntityBtn) {
+                if (tabName === 'entities') {
+                    this.findEntityBtn.classList.remove('hidden');
+                } else {
+                    this.findEntityBtn.classList.add('hidden');
+                }
+            }
+
             // Trigger data load for the selected tab
             this.loadTabData(tabName);
         }

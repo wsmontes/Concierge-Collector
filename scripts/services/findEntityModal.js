@@ -1142,7 +1142,10 @@ window.FindEntityModal = class FindEntityModal {
                 this.showNotification(`Successfully imported "${placeName}" as entity`, 'success');
 
                 // Refresh entities list if available
-                if (window.dataStorage && typeof window.dataStorage.refreshEntities === 'function') {
+                if (window.uiManager && typeof window.uiManager.loadEntities === 'function') {
+                    await window.uiManager.loadEntities();
+                } else if (window.dataStorage && typeof window.dataStorage.refreshEntities === 'function') {
+                    // Fallback to legacy method
                     await window.dataStorage.refreshEntities();
                 }
 
