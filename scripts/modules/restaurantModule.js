@@ -93,6 +93,12 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
         this.currentEntity = entity;
         this.isEditMode = true;
 
+        // Sync with UIManager state
+        if (this.uiManager) {
+            this.uiManager.isEditingRestaurant = true;
+            this.uiManager.editingRestaurantId = entity?.entity_id || null;
+        }
+
         // If curation exists but entity is missing, try to load entity
         if (curation && curation.entity_id && !this.currentEntity) {
             try {
@@ -190,9 +196,17 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
      * Populate form with curation data
      */
     populateCurationData(curation) {
-        // If entity is missing, try to get name from curation record
-        if (!this.currentEntity && curation.name && this.restaurantNameInput) {
-            this.restaurantNameInput.value = curation.name;
+        // If entity is missing, try to get name from curation record with multiple fallbacks
+        if (!this.currentEntity && this.restaurantNameInput) {
+            const name = curation.name ||
+                curation.restaurant_name ||
+                (curation.categories?.restaurant_name && curation.categories.restaurant_name[0]) ||
+                (curation.structured_data?.name) ||
+                (curation.structured_data?.restaurant_name);
+
+            if (name) {
+                this.restaurantNameInput.value = name;
+            }
         }
 
         if (this.transcriptionInput) {

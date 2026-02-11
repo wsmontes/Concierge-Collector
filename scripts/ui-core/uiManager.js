@@ -750,12 +750,16 @@ if (typeof window.UIManager === 'undefined') {
             });
             const conceptDisplay = conceptNames.slice(0, 3).join(', ');
             const totalConcepts = Object.values(categories).flat().length;
-            const curatorName = curation.curator?.name || 'Unknown';
+            const restaurantName = curation.name ||
+                curation.restaurant_name ||
+                (curation.categories?.restaurant_name && curation.categories.restaurant_name[0]) ||
+                'Unmatched Review';
+
             card.innerHTML = `
                 <div class="flex items-start gap-3 mb-3">
                     <span class="material-icons text-2xl text-amber-600">rate_review</span>
                     <div class="flex-1">
-                        <h3 class="font-bold text-lg text-gray-900 mb-1">Unmatched Review</h3>
+                        <h3 class="font-bold text-lg text-gray-900 mb-1">${restaurantName}</h3>
                         <div class="flex items-center gap-2 text-sm text-gray-600">
                             <span class="material-icons text-[14px]">person</span>
                             <span>${curatorName}</span>
