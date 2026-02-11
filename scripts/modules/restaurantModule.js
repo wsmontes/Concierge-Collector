@@ -506,6 +506,9 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
             // Navigate back to list
             this.uiManager.showRestaurantListSection();
             this.uiManager.loadCurations(); // Refresh list
+            if (this.uiManager.loadEntities) {
+                this.uiManager.loadEntities(); // Refresh entity list too
+            }
 
         } catch (error) {
             this.log.error('Save failed:', error);
