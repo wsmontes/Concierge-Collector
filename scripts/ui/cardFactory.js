@@ -37,8 +37,8 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
             onClick = null
         } = options;
 
-        const card = document.createElement('div');
-        card.className = 'bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-lg hover:border-blue-300 transition-all duration-200 cursor-pointer group';
+        // Added h-full, flex, flex-col for equal height cards
+        card.className = 'bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-lg hover:border-blue-300 transition-all duration-200 cursor-pointer group h-full flex flex-col justify-between relative';
         card.dataset.entityId = entity.entity_id;
 
         const name = entity.name || 'Unknown';
@@ -70,68 +70,66 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
         const priceIndicator = priceLevel > 0 ? '€'.repeat(priceLevel) : '';
 
         card.innerHTML = `
-            <div class="relative">
-                <!-- Header with type icon -->
-                <div class="absolute top-3 right-3 flex items-center gap-2 z-10">
-                    <div class="bg-white/90 backdrop-blur-sm rounded-full p-2 shadow-sm">
-                        <span class="material-icons text-lg text-gray-600">${this.getTypeIcon(type)}</span>
-                    </div>
+            <!-- Header with type icon -->
+            <div class="absolute top-3 right-3 flex items-center gap-2 z-10">
+                <div class="bg-white/90 backdrop-blur-sm rounded-full p-2 shadow-sm">
+                    <span class="material-icons text-lg text-gray-600">${this.getTypeIcon(type)}</span>
+                </div>
+            </div>
+            
+            <!-- Main content - flex-grow to push footer down -->
+            <div class="p-5 flex-grow">
+                <!-- Name and cuisine -->
+                <div class="mb-3">
+                    <h3 class="font-bold text-lg text-gray-900 mb-1 pr-12 line-clamp-2 group-hover:text-blue-600 transition-colors">
+                        ${name}
+                    </h3>
+                    ${cuisineType ? `
+                        <p class="text-sm text-gray-500 font-medium">${cuisineType}</p>
+                    ` : ''}
                 </div>
                 
-                <!-- Main content -->
-                <div class="p-5">
-                    <!-- Name and cuisine -->
-                    <div class="mb-3">
-                        <h3 class="font-bold text-lg text-gray-900 mb-1 pr-12 line-clamp-2 group-hover:text-blue-600 transition-colors">
-                            ${name}
-                        </h3>
-                        ${cuisineType ? `
-                            <p class="text-sm text-gray-500 font-medium">${cuisineType}</p>
-                        ` : ''}
-                    </div>
-                    
-                    <!-- Location -->
-                    <div class="flex items-start gap-2 mb-3 text-sm text-gray-600">
-                        <span class="material-icons text-base mt-0.5 flex-shrink-0">place</span>
-                        <span class="line-clamp-2">${locationStr}</span>
-                    </div>
-                    
-                    <!-- Rating and Price -->
-                    <div class="flex items-center gap-4 mb-4">
-                        ${rating > 0 ? `
-                            <div class="flex items-center gap-1.5">
-                                <span class="material-icons text-base text-yellow-500">star</span>
-                                <span class="font-semibold text-gray-900">${rating.toFixed(1)}</span>
-                            </div>
-                        ` : ''}
-                        ${priceIndicator ? `
-                            <div class="flex items-center">
-                                <span class="font-semibold text-gray-700">${priceIndicator}</span>
-                            </div>
-                        ` : ''}
-                    </div>
-                    
-                    <!-- Contact info -->
-                    ${phone || website ? `
-                        <div class="flex items-center gap-3 pt-3 border-t border-gray-100">
-                            ${phone ? `
-                                <div class="flex items-center gap-1.5 text-xs text-gray-500" title="${phone}">
-                                    <span class="material-icons text-sm">phone</span>
-                                    <span class="truncate max-w-[150px]">${phone}</span>
-                                </div>
-                            ` : ''}
-                            ${website ? `
-                                <div class="flex items-center gap-1.5 text-xs text-blue-600" title="Has website">
-                                    <span class="material-icons text-sm">language</span>
-                                </div>
-                            ` : ''}
+                <!-- Location -->
+                <div class="flex items-start gap-2 mb-3 text-sm text-gray-600">
+                    <span class="material-icons text-base mt-0.5 flex-shrink-0">place</span>
+                    <span class="line-clamp-2">${locationStr}</span>
+                </div>
+                
+                <!-- Rating and Price -->
+                <div class="flex items-center gap-4 mb-4">
+                    ${rating > 0 ? `
+                        <div class="flex items-center gap-1.5">
+                            <span class="material-icons text-base text-yellow-500">star</span>
+                            <span class="font-semibold text-gray-900">${rating.toFixed(1)}</span>
+                        </div>
+                    ` : ''}
+                    ${priceIndicator ? `
+                        <div class="flex items-center">
+                            <span class="font-semibold text-gray-700">${priceIndicator}</span>
                         </div>
                     ` : ''}
                 </div>
                 
-                <!-- Hover overlay effect -->
-                <div class="absolute inset-0 bg-gradient-to-t from-blue-50/0 to-blue-50/0 group-hover:from-blue-50/30 group-hover:to-transparent transition-all duration-200 pointer-events-none"></div>
+                <!-- Contact info -->
+                ${phone || website ? `
+                    <div class="flex items-center gap-3 pt-3 border-t border-gray-100">
+                        ${phone ? `
+                            <div class="flex items-center gap-1.5 text-xs text-gray-500" title="${phone}">
+                                <span class="material-icons text-sm">phone</span>
+                                <span class="truncate max-w-[150px]">${phone}</span>
+                            </div>
+                        ` : ''}
+                        ${website ? `
+                            <div class="flex items-center gap-1.5 text-xs text-blue-600" title="Has website">
+                                <span class="material-icons text-sm">language</span>
+                            </div>
+                        ` : ''}
+                    </div>
+                ` : ''}
             </div>
+            
+            <!-- Hover overlay effect -->
+            <div class="absolute inset-0 bg-gradient-to-t from-blue-50/0 to-blue-50/0 group-hover:from-blue-50/30 group-hover:to-transparent transition-all duration-200 pointer-events-none"></div>
         `;
 
         // Click handler
@@ -359,11 +357,10 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                 };
             }
 
-            // Append actions row to the card's main content area (p-5 div)
-            const contentArea = card.querySelector('.p-5');
-            if (contentArea) {
-                contentArea.appendChild(actionsRow);
-            }
+            // NEW: Append actions row to the CARD itself (footer), not the content area
+            // This ensures it stays at the bottom due to flex-col and flex-grow on content
+            actionsRow.className = 'mt-auto p-4 mx-1 border-t border-gray-100 flex items-center justify-between bg-white z-20 relative';
+            card.appendChild(actionsRow);
         }
 
         return card;
