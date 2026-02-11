@@ -1163,14 +1163,18 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                     await this.storeItemState('entity', id, updated);
 
                     const currentEntity = await window.DataStore.db.entities.get(id);
-                    await window.DataStore.db.entities.update(id, {
-                        sync: {
-                            ...currentEntity.sync,
-                            status: 'synced',
-                            lastSyncedAt: new Date().toISOString()
-                        },
-                        version: updated.version
-                    });
+                    if (currentEntity) {
+                        await window.DataStore.db.entities.update(id, {
+                            sync: {
+                                ...currentEntity.sync,
+                                status: 'synced',
+                                lastSyncedAt: new Date().toISOString()
+                            },
+                            version: updated.version
+                        });
+                    } else {
+                        this.log.warn(`Entity ${id} not found locally after resolution`);
+                    }
                 } else if (type === 'curation') {
                     const updated = await window.ApiService.updateCuration(
                         id,
@@ -1181,14 +1185,18 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                     await this.storeItemState('curation', id, updated);
 
                     const currentCuration = await window.DataStore.db.curations.get(id);
-                    await window.DataStore.db.curations.update(id, {
-                        sync: {
-                            ...currentCuration.sync,
-                            status: 'synced',
-                            lastSyncedAt: new Date().toISOString()
-                        },
-                        version: updated.version
-                    });
+                    if (currentCuration) {
+                        await window.DataStore.db.curations.update(id, {
+                            sync: {
+                                ...currentCuration.sync,
+                                status: 'synced',
+                                lastSyncedAt: new Date().toISOString()
+                            },
+                            version: updated.version
+                        });
+                    } else {
+                        this.log.warn(`Curation ${id} not found locally after resolution`);
+                    }
                 }
 
             } else if (resolution === 'server') {
