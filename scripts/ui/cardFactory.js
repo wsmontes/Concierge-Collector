@@ -276,7 +276,7 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
             // Determine Source and Sync Status using intelligent detection
             const detectCurationSource = (curation, entity) => {
                 const sources = curation.sources || [];
-                
+
                 // Priority order for source detection
                 if (sources.includes('audio')) {
                     return { name: 'Voice Note', icon: 'mic', color: 'purple' };
@@ -318,9 +318,9 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
             const metaInfo = `
                 <div class="flex items-center gap-2 mt-2">
                     <!-- Source Badge -->
-                    <div class="flex items-center gap-1.5 px-2 py-1 bg-white border border-${sourceInfo.color}-300 rounded-md shadow-sm">
-                        <span class="material-icons text-[14px] text-${sourceInfo.color}-600">${sourceInfo.icon}</span>
-                        <span class="text-[11px] font-medium text-${sourceInfo.color}-700">${sourceInfo.name}</span>
+                    <div class="flex items-center gap-1.5 px-2.5 py-0.5 bg-${sourceInfo.color}-100 rounded-full">
+                        <span class="material-icons text-[13px] text-${sourceInfo.color}-600">${sourceInfo.icon}</span>
+                        <span class="text-[10px] font-bold uppercase tracking-wide text-${sourceInfo.color}-700">${sourceInfo.name}</span>
                     </div>
                     
                     <!-- Divider -->
