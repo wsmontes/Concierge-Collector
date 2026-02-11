@@ -1065,35 +1065,76 @@ if (typeof window.UIManager === 'undefined') {
             }
         }
 
+        // View Configuration
+        get VIEW_CONFIG() {
+            return {
+                list: {
+                    show: ['restaurantListSection', 'curatorSection', 'exportImportSection', 'findEntityBtn', 'syncSidebarSection', 'recordingSection'],
+                    hide: ['transcriptionSection', 'conceptsSection', 'restaurantEditToolbar', 'curatorEditToolbar']
+                },
+                recording: {
+                    show: ['curatorSection', 'recordingSection'],
+                    hide: ['restaurantListSection', 'exportImportSection', 'findEntityBtn', 'syncSidebarSection', 'transcriptionSection', 'conceptsSection', 'restaurantEditToolbar', 'curatorEditToolbar']
+                },
+                transcription: {
+                    show: ['curatorSection', 'transcriptionSection'],
+                    hide: ['restaurantListSection', 'exportImportSection', 'findEntityBtn', 'syncSidebarSection', 'recordingSection', 'conceptsSection', 'restaurantEditToolbar', 'curatorEditToolbar']
+                },
+                concepts: {
+                    show: ['curatorSection', 'conceptsSection', 'restaurantEditToolbar'],
+                    hide: ['restaurantListSection', 'exportImportSection', 'findEntityBtn', 'syncSidebarSection', 'recordingSection', 'transcriptionSection', 'curatorEditToolbar']
+                },
+                editCurator: {
+                    show: ['curatorSection', 'curatorEditToolbar'],
+                    hide: ['restaurantListSection', 'exportImportSection', 'findEntityBtn', 'syncSidebarSection', 'recordingSection', 'transcriptionSection', 'conceptsSection', 'restaurantEditToolbar']
+                }
+            };
+        }
+
+        /**
+         * Switch View
+         * 
+         * specific view state based on configuration.
+         * eliminating ad-hoc visibility logic.
+         * 
+         * @param {string} viewName - Name of view to switch to (keys in VIEW_CONFIG)
+         */
+        switchView(viewName) {
+            const config = this.VIEW_CONFIG[viewName];
+            if (!config) {
+                console.warn(`View configuration not found for: ${viewName}`);
+                return;
+            }
+
+            // Hide elements
+            config.hide.forEach(elementName => {
+                const element = this[elementName];
+                if (element) {
+                    element.classList.add('hidden');
+                }
+            });
+
+            // Show elements
+            config.show.forEach(elementName => {
+                const element = this[elementName];
+                if (element) {
+                    element.classList.remove('hidden');
+                }
+            });
+        }
+
         hideAllSections() {
-            // Hide all main content sections
-            if (this.recordingSection) this.recordingSection.classList.add('hidden');
-            if (this.transcriptionSection) this.transcriptionSection.classList.add('hidden');
-            if (this.conceptsSection) this.conceptsSection.classList.add('hidden');
-            if (this.restaurantListSection) this.restaurantListSection.classList.add('hidden');
-            if (this.exportImportSection) this.exportImportSection.classList.add('hidden');
-
-            // Hide list-only UI elements
-            if (this.findEntityBtn) this.findEntityBtn.classList.add('hidden');
-            if (this.syncSidebarSection) this.syncSidebarSection.classList.add('hidden');
-
-            // Hide all toolbars
-            if (this.restaurantEditToolbar) this.restaurantEditToolbar.classList.add('hidden');
-            if (this.curatorEditToolbar) this.curatorEditToolbar.classList.add('hidden');
+            // Deprecated: logic moved to switchView
+            // Keeping for potential legacy calls but it should not be used
+            console.warn('hideAllSections is deprecated. Use switchView instead.');
         }
 
         // Core UI visibility functions
         showRestaurantFormSection() {
-            this.hideAllSections();
-            // Add null checks before accessing classList
-            if (this.curatorSection) this.curatorSection.classList.remove('hidden');
-            if (this.conceptsSection) this.conceptsSection.classList.remove('hidden');
+            this.switchView('concepts');
 
-            // Show restaurant edit toolbar (same as edit mode)
+            // Update toolbar title based on mode
             if (this.restaurantEditToolbar) {
-                this.restaurantEditToolbar.classList.remove('hidden');
-
-                // Update toolbar title based on mode
                 const toolbarTitle = this.restaurantEditToolbar.querySelector('.toolbar-info-title');
                 if (toolbarTitle) {
                     toolbarTitle.textContent = this.isEditingRestaurant ? 'Edit Restaurant' : 'New Restaurant';
@@ -1109,19 +1150,11 @@ if (typeof window.UIManager === 'undefined') {
         }
 
         showRecordingSection() {
-            this.hideAllSections();
-            // Add null checks before accessing classList
-            if (this.curatorSection) this.curatorSection.classList.remove('hidden');
-            if (this.recordingSection) this.recordingSection.classList.remove('hidden');
-            // Keep restaurant list hidden during recording to focus on the task
+            this.switchView('recording');
         }
 
         showTranscriptionSection(transcription) {
-            this.hideAllSections();
-            // Add null checks before accessing classList
-            if (this.curatorSection) this.curatorSection.classList.remove('hidden');
-            if (this.transcriptionSection) this.transcriptionSection.classList.remove('hidden');
-            // Keep restaurant list hidden during transcription review to focus on the task
+            this.switchView('transcription');
 
             // Display the transcription
             if (this.transcriptionText) {
@@ -1132,16 +1165,10 @@ if (typeof window.UIManager === 'undefined') {
         }
 
         showConceptsSection() {
-            this.hideAllSections();
-            // Add null checks before accessing classList
-            if (this.curatorSection) this.curatorSection.classList.remove('hidden');
-            if (this.conceptsSection) this.conceptsSection.classList.remove('hidden');
+            this.switchView('concepts');
 
-            // Show restaurant edit toolbar
+            // Update toolbar title based on mode
             if (this.restaurantEditToolbar) {
-                this.restaurantEditToolbar.classList.remove('hidden');
-
-                // Update toolbar title based on mode
                 const toolbarTitle = this.restaurantEditToolbar.querySelector('.toolbar-info-title');
                 if (toolbarTitle) {
                     toolbarTitle.textContent = this.isEditingRestaurant ? 'Edit Restaurant' : 'New Restaurant';
@@ -1170,16 +1197,7 @@ if (typeof window.UIManager === 'undefined') {
         }
 
         showRestaurantListSection() {
-            this.hideAllSections();
-            // Show main list view elements
-            if (this.recordingSection) this.recordingSection.classList.remove('hidden');
-            if (this.curatorSection) this.curatorSection.classList.remove('hidden');
-            if (this.restaurantListSection) this.restaurantListSection.classList.remove('hidden');
-            if (this.exportImportSection) this.exportImportSection.classList.remove('hidden');
-
-            // Show list-only UI elements
-            if (this.findEntityBtn) this.findEntityBtn.classList.remove('hidden');
-            if (this.syncSidebarSection) this.syncSidebarSection.classList.remove('hidden');
+            this.switchView('list');
         }
 
         // Delegate to appropriate modules via uiUtilsModule
