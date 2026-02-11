@@ -2275,26 +2275,24 @@ class ConceptModule {
                 'Add another review to the existing transcription without replacing the current content.' :
                 'Record a vocal review to add to your restaurant description.'}
             </p>
-            <div class="recording-controls flex flex-wrap items-center gap-2 mb-4">
-                <button id="additional-record-start" class="bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 rounded flex items-center">
-                    <span class="material-icons mr-1">mic</span>
-                    Start Recording
+            <div class="recording-controls flex flex-wrap items-center gap-4 mb-4 justify-center">
+                <button id="additional-record-start" class="bg-purple-600 hover:bg-purple-700 text-white w-16 h-16 rounded-full shadow-lg flex items-center justify-center transform transition-transform hover:scale-105 active:scale-95">
+                    <span class="material-icons text-3xl">mic</span>
                 </button>
-                <button id="additional-record-stop" class="bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded flex items-center hidden">
-                    <span class="material-icons mr-1">stop</span>
-                    Stop Recording
+                <button id="additional-record-stop" class="bg-red-500 hover:bg-red-600 text-white w-16 h-16 rounded-full shadow-lg flex items-center justify-center transform transition-transform hover:scale-105 active:scale-95 hidden">
+                    <span class="material-icons text-3xl">stop</span>
                 </button>
-                <div id="additional-recording-time" class="px-3 py-2 bg-white border rounded text-sm hidden">
+                <div id="additional-recording-time" class="text-2xl font-mono font-bold text-gray-700 min-w-[80px] text-center hidden">
                     00:00
                 </div>
-                <div id="additional-recording-status" class="text-sm text-gray-600 ml-2"></div>
+                <div id="additional-recording-status" class="text-sm text-gray-600 ml-2 w-full text-center mt-2"></div>
             </div>
-            <div id="additional-audio-visualizer" class="h-16 mb-4 bg-black rounded overflow-hidden hidden">
+            <div id="additional-audio-visualizer" class="h-16 mb-4 bg-gray-900 rounded-lg overflow-hidden hidden shadow-inner">
                 <canvas id="additional-visualizer-canvas" class="w-full h-full"></canvas>
             </div>
-            <div id="additional-transcription-status" class="text-sm text-gray-600 hidden">
-                <div class="flex items-center">
-                    <div class="mr-2 h-4 w-4 rounded-full bg-yellow-400 animate-pulse"></div>
+            <div id="additional-transcription-status" class="text-sm text-gray-600 hidden mt-2 text-center">
+                <div class="flex items-center justify-center">
+                    <div class="mr-2 h-3 w-3 rounded-full bg-yellow-400 animate-pulse"></div>
                     <span>Transcribing audio...</span>
                 </div>
             </div>
@@ -2503,17 +2501,22 @@ class ConceptModule {
             // Create formatted timestamp
             const timestamp = new Date().toLocaleString();
 
-            // Get curator name with fallback
-            let curatorName = "Unknown Curator";
-            if (this.uiManager && this.uiManager.currentCurator && this.uiManager.currentCurator.name) {
-                curatorName = this.uiManager.currentCurator.name;
+            // Get curator identity with preference for email
+            let curatorIdentity = "Unknown Curator";
+            if (this.uiManager && this.uiManager.currentCurator) {
+                // Prefer email as requested
+                if (this.uiManager.currentCurator.email) {
+                    curatorIdentity = this.uiManager.currentCurator.email;
+                } else if (this.uiManager.currentCurator.name) {
+                    curatorIdentity = this.uiManager.currentCurator.name;
+                }
             }
 
             // Format the new combined text with a clear separator, curator name, and timestamp
             let combinedText;
             if (currentText && currentText.trim() !== '') {
                 // Add two line breaks, a separator with curator name and timestamp, and then the new text
-                combinedText = `${currentText}\n\n--- Additional Review by ${curatorName} (${timestamp}) ---\n${newTranscription}`;
+                combinedText = `${currentText}\n\n--- Additional Review by ${curatorIdentity} (${timestamp}) ---\n${newTranscription}`;
             } else {
                 // If no existing text, just use the new transcription
                 combinedText = newTranscription;
