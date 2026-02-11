@@ -106,7 +106,8 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
             headers['Content-Type'] = 'application/json';
         }
 
-        const fetchOptions = { method, headers, ...options };
+        const { headers: _customHeaders, ...restOptions } = options;
+        const fetchOptions = { method, headers, ...restOptions };
 
         this.log.debug(`${method} ${url}`);
 
@@ -132,7 +133,7 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
                         retryHeaders['Content-Type'] = 'application/json';
                     }
 
-                    const retryFetchOptions = { method, headers: retryHeaders, ...options };
+                    const retryFetchOptions = { method, headers: retryHeaders, ...restOptions };
                     const retryResponse = await fetch(url, retryFetchOptions);
                     if (!retryResponse.ok) {
                         await this.handleErrorResponse(retryResponse);
