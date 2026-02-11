@@ -418,6 +418,9 @@ class RecordingModule {
             // Setup a mutation observer to catch dynamically added buttons
             this.setupDynamicButtonObserver();
 
+            // Show pending audio badge if there are queued recordings
+            this.showPendingAudioBadge();
+
             this.log.debug('Recording events setup completed');
         }, 100);
     }
