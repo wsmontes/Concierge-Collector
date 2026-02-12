@@ -2294,11 +2294,12 @@ class ConceptModule {
             </p>
 
             <!-- Main Recorder Template Structure -->
-            <div class="flex flex-col items-center justify-center py-4 bg-white rounded-xl">
+            <div class="flex flex-col items-center w-full">
                 <!-- Circular Timer Section -->
-                <div class="timer-circle mb-6 relative">
+                <div class="timer-circle">
                      <!-- ID 'additional-recording-time' is required by RecordingModule.js to find and update the text -->
-                     <div id="additional-recording-time" class="timer-display text-4xl font-mono font-bold text-gray-800">00:00</div>
+                     <!-- Removed extra classes (text-4xl, font-mono, etc) to let .timer-display CSS handle exact alignment -->
+                     <div id="additional-recording-time" class="timer-display">00:00</div>
                      <svg class="timer-ring" viewBox="0 0 100 100">
                          <circle class="timer-ring-bg" cx="50" cy="50" r="46" />
                          <circle class="timer-ring-progress" cx="50" cy="50" r="46" />
