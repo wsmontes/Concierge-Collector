@@ -121,46 +121,85 @@ if (typeof window.UIManager === 'undefined') {
             this.initializeUIUtilsModule();
 
             // Initialize modules conditionally (only if not already initialized)
-            if (!this.curatorModule && typeof CuratorModule !== 'undefined') {
-                this.curatorModule = new CuratorModule(this);
+            try {
+                if (!this.curatorModule && typeof CuratorModule !== 'undefined') {
+                    this.curatorModule = new CuratorModule(this);
+                    console.log('✅ CuratorModule initialized');
+                }
+            } catch (e) {
+                console.error('❌ Failed to initialize CuratorModule:', e);
             }
 
-            if (!this.recordingModule && typeof RecordingModule !== 'undefined') {
-                this.recordingModule = new RecordingModule(this);
-                console.log('✅ RecordingModule initialized in UIManager.init()');
-            } else {
-                console.warn('⚠️ RecordingModule not initialized:', {
-                    alreadyExists: !!this.recordingModule,
-                    classAvailable: typeof RecordingModule !== 'undefined'
-                });
+            try {
+                if (!this.recordingModule && typeof RecordingModule !== 'undefined') {
+                    this.recordingModule = new RecordingModule(this);
+                    console.log('✅ RecordingModule initialized');
+                }
+            } catch (e) {
+                console.error('❌ Failed to initialize RecordingModule:', e);
             }
 
-            if (!this.transcriptionModule && typeof TranscriptionModule !== 'undefined') {
-                this.transcriptionModule = new TranscriptionModule(this);
+            try {
+                if (!this.transcriptionModule && typeof TranscriptionModule !== 'undefined') {
+                    this.transcriptionModule = new TranscriptionModule(this);
+                    console.log('✅ TranscriptionModule initialized');
+                }
+            } catch (e) {
+                console.error('❌ Failed to initialize TranscriptionModule:', e);
             }
 
-            if (!this.conceptModule && typeof ConceptModule !== 'undefined')
-                this.conceptModule = new ConceptModule(this);
-
-            if (!this.restaurantModule && typeof RestaurantModule !== 'undefined')
-                this.restaurantModule = new RestaurantModule(this);
-
-            if (!this.restaurantListModule && typeof RestaurantListModule !== 'undefined') {
-                this.restaurantListModule = new RestaurantListModule();
-                this.restaurantListModule.init({
-                    dataStorage: window.dataStorage,
-                    uiUtils: window.uiUtils
-                });
-                // Expose to window for debugging
-                window.restaurantListModule = this.restaurantListModule;
+            try {
+                if (!this.conceptModule && typeof ConceptModule !== 'undefined') {
+                    this.conceptModule = new ConceptModule(this);
+                    console.log('✅ ConceptModule initialized');
+                } else if (typeof ConceptModule === 'undefined') {
+                    console.warn('⚠️ ConceptModule class is undefined - script might have failed to load');
+                }
+            } catch (e) {
+                console.error('❌ Failed to initialize ConceptModule:', e);
             }
 
-            if (!this.exportImportModule && typeof ExportImportModule !== 'undefined')
-                this.exportImportModule = new ExportImportModule(this);
+            try {
+                if (!this.restaurantModule && typeof RestaurantModule !== 'undefined') {
+                    this.restaurantModule = new RestaurantModule(this);
+                    console.log('✅ RestaurantModule initialized');
+                }
+            } catch (e) {
+                console.error('❌ Failed to initialize RestaurantModule:', e);
+            }
+
+            try {
+                if (!this.restaurantListModule && typeof RestaurantListModule !== 'undefined') {
+                    this.restaurantListModule = new RestaurantListModule();
+                    this.restaurantListModule.init({
+                        dataStorage: window.dataStorage,
+                        uiUtils: window.uiUtils
+                    });
+                    // Expose to window for debugging
+                    window.restaurantListModule = this.restaurantListModule;
+                    console.log('✅ RestaurantListModule initialized');
+                }
+            } catch (e) {
+                console.error('❌ Failed to initialize RestaurantListModule:', e);
+            }
+
+            try {
+                if (!this.exportImportModule && typeof ExportImportModule !== 'undefined') {
+                    this.exportImportModule = new ExportImportModule(this);
+                    console.log('✅ ExportImportModule initialized');
+                }
+            } catch (e) {
+                console.error('❌ Failed to initialize ExportImportModule:', e);
+            }
 
             // Initialize the quick action module safely
-            if (!this.quickActionModule && typeof QuickActionModule !== 'undefined') {
-                this.quickActionModule = new QuickActionModule(this);
+            try {
+                if (!this.quickActionModule && typeof QuickActionModule !== 'undefined') {
+                    this.quickActionModule = new QuickActionModule(this);
+                    console.log('✅ QuickActionModule initialized');
+                }
+            } catch (e) {
+                console.error('❌ Failed to initialize QuickActionModule:', e);
             }
 
             // Setup events for each module if they exist
@@ -1284,7 +1323,11 @@ if (typeof window.UIManager === 'undefined') {
 
         // Concept module delegations
         renderConcepts() {
-            this.conceptModule.renderConcepts();
+            if (this.conceptModule) {
+                this.conceptModule.renderConcepts();
+            } else {
+                console.warn('⚠️ Cannot render concepts: conceptModule not initialized');
+            }
         }
 
         removeConcept(category, value) {

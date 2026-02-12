@@ -2001,17 +2001,18 @@ class ConceptModule {
      * @param {string} photoData - Base64 image data
      */
     async processImageWithAI(photoData) {
-        // Resizing image is handled within extractConceptsFromImage if needed, but keeping here for explicit step
-        const resizedImageData = await this.resizeImageForAPI(photoData);
+        try {
+            // Resizing image is handled within extractConceptsFromImage if needed, but keeping here for explicit step
+            const resizedImageData = await this.resizeImageForAPI(photoData);
 
-        // Extract concepts AND restaurant name from the image in a single call
-        // The extractConceptsFromImage method now handles name population if found
-        await this.extractConceptsFromImage(resizedImageData);
-    } catch(error) {
-        this.log.error('Error processing image with AI:', error);
-        SafetyUtils.showNotification('Error analyzing image', 'error');
+            // Extract concepts AND restaurant name from the image in a single call
+            // The extractConceptsFromImage method now handles name population if found
+            await this.extractConceptsFromImage(resizedImageData);
+        } catch (error) {
+            this.log.error('Error processing image with AI:', error);
+            SafetyUtils.showNotification('Error analyzing image', 'error');
+        }
     }
-}
 
     /**
      * Resizes an image for more efficient API processing and to stay under size limits
@@ -2019,45 +2020,45 @@ class ConceptModule {
      * @returns {Promise<string>} Resized image data
      */
     async resizeImageForAPI(imageData) {
-    return new Promise((resolve, reject) => {
-        const img = new Image();
-        img.onload = () => {
-            // Target dimensions - max 800px in either dimension
-            const MAX_SIZE = 800;
-            let width = img.width;
-            let height = img.height;
+        return new Promise((resolve, reject) => {
+            const img = new Image();
+            img.onload = () => {
+                // Target dimensions - max 800px in either dimension
+                const MAX_SIZE = 800;
+                let width = img.width;
+                let height = img.height;
 
-            // Calculate new dimensions while maintaining aspect ratio
-            if (width > height && width > MAX_SIZE) {
-                height = Math.round((height * MAX_SIZE) / width);
-                width = MAX_SIZE;
-            } else if (height > MAX_SIZE) {
-                width = Math.round((width * MAX_SIZE) / height);
-                height = MAX_SIZE;
-            }
+                // Calculate new dimensions while maintaining aspect ratio
+                if (width > height && width > MAX_SIZE) {
+                    height = Math.round((height * MAX_SIZE) / width);
+                    width = MAX_SIZE;
+                } else if (height > MAX_SIZE) {
+                    width = Math.round((width * MAX_SIZE) / height);
+                    height = MAX_SIZE;
+                }
 
-            // Create canvas for resizing
-            const canvas = document.createElement('canvas');
-            canvas.width = width;
-            canvas.height = height;
+                // Create canvas for resizing
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
 
-            // Draw resized image on canvas
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0, width, height);
+                // Draw resized image on canvas
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
 
-            // Get resized image data with compression to reduce size
-            // Lowering quality to 0.7 (70%) to help keep image under API size limits
-            const resizedImageData = canvas.toDataURL('image/jpeg', 0.7);
-            resolve(resizedImageData);
-        };
+                // Get resized image data with compression to reduce size
+                // Lowering quality to 0.7 (70%) to help keep image under API size limits
+                const resizedImageData = canvas.toDataURL('image/jpeg', 0.7);
+                resolve(resizedImageData);
+            };
 
-        img.onerror = () => {
-            reject(new Error('Failed to load image for resizing'));
-        };
+            img.onerror = () => {
+                reject(new Error('Failed to load image for resizing'));
+            };
 
-        img.src = imageData;
-    });
-}
+            img.src = imageData;
+        });
+    }
 
     /**
      * Extracts restaurant name from image using AI
@@ -2065,257 +2066,257 @@ class ConceptModule {
      * @returns {Promise<string|null>} - The extracted restaurant name or null
      */
     async extractRestaurantNameFromImage(imageData) {
-    // Check if ApiService is available and authenticated
-    if (!window.ApiService) {
-        this.log.warn('ApiService not initialized');
-        return null;
-    }
-    if (!window.AuthService || !window.AuthService.isAuthenticated()) {
-        this.log.warn('Authentication required');
-        return null;
-    }
-
-    try {
-        // Validate the image data format
-        if (!imageData || typeof imageData !== 'string') {
-            this.log.warn('Invalid image data provided');
+        // Check if ApiService is available and authenticated
+        if (!window.ApiService) {
+            this.log.warn('ApiService not initialized');
+            return null;
+        }
+        if (!window.AuthService || !window.AuthService.isAuthenticated()) {
+            this.log.warn('Authentication required');
             return null;
         }
 
-        // Extract base64 content correctly, handling different possible formats
-        let baseImage;
-        if (imageData.includes(',')) {
-            baseImage = imageData.split(',')[1]; // Remove data URL prefix
-        } else if (imageData.match(/^[A-Za-z0-9+/=]+$/)) {
-            baseImage = imageData; // Already a base64 string without prefix
-        } else {
-            this.log.warn('Image data is not in a valid base64 format');
-            return null;
-        }
-
-        // Convert base64 to blob for API V3
-        const byteCharacters = atob(baseImage);
-        const byteNumbers = new Array(byteCharacters.length);
-        for (let i = 0; i < byteCharacters.length; i++) {
-            byteNumbers[i] = byteCharacters.charCodeAt(i);
-        }
-        const byteArray = new Uint8Array(byteNumbers);
-        const imageBlob = new Blob([byteArray], { type: 'image/jpeg' });
-
-        const template = promptTemplates.imageRestaurantNameExtraction;
-        const prompt = `${template.system}\n\n${template.user}`;
-
-        this.log.debug('Extracting restaurant name from image via API V3...');
-
-        // Use ApiService V3 to analyze image
-        const result = await window.ApiService.analyzeImage(imageBlob, prompt);
-
-        if (!result || !result.text) {
-            this.log.debug('API V3 could not extract restaurant name');
-            return null;
-        }
-
-        const responseText = result.text.trim();
-
-        // Check if the response indicates the AI couldn't determine the name
-        if (responseText === 'UNKNOWN' ||
-            responseText.toLowerCase().includes("can't tell") ||
-            responseText.toLowerCase().includes("cannot determine") ||
-            responseText.toLowerCase().includes("sorry") ||
-            responseText.toLowerCase().includes("unable to")) {
-            this.log.debug('AI could not determine restaurant name from image');
-            return null;
-        }
-
-        const restaurantName = responseText;
-
-        // Update the restaurant name field
-        const nameInput = document.getElementById('restaurant-name');
-        if (nameInput && !nameInput.value.trim()) {
-            nameInput.value = restaurantName;
-
-            // Add AI badge to show it was auto-detected
-            const nameInputContainer = nameInput.parentElement;
-            const existingBadge = nameInputContainer.querySelector('.ai-generated-badge');
-
-            if (!existingBadge) {
-                const badge = document.createElement('div');
-                badge.className = 'ai-generated-badge';
-                badge.innerHTML = '<span class="material-icons">smart_toy</span> AI detected';
-                nameInputContainer.insertBefore(badge, nameInput.nextSibling);
+        try {
+            // Validate the image data format
+            if (!imageData || typeof imageData !== 'string') {
+                this.log.warn('Invalid image data provided');
+                return null;
             }
 
-            SafetyUtils.showNotification('Restaurant name detected from image', 'success');
+            // Extract base64 content correctly, handling different possible formats
+            let baseImage;
+            if (imageData.includes(',')) {
+                baseImage = imageData.split(',')[1]; // Remove data URL prefix
+            } else if (imageData.match(/^[A-Za-z0-9+/=]+$/)) {
+                baseImage = imageData; // Already a base64 string without prefix
+            } else {
+                this.log.warn('Image data is not in a valid base64 format');
+                return null;
+            }
+
+            // Convert base64 to blob for API V3
+            const byteCharacters = atob(baseImage);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const imageBlob = new Blob([byteArray], { type: 'image/jpeg' });
+
+            const template = promptTemplates.imageRestaurantNameExtraction;
+            const prompt = `${template.system}\n\n${template.user}`;
+
+            this.log.debug('Extracting restaurant name from image via API V3...');
+
+            // Use ApiService V3 to analyze image
+            const result = await window.ApiService.analyzeImage(imageBlob, prompt);
+
+            if (!result || !result.text) {
+                this.log.debug('API V3 could not extract restaurant name');
+                return null;
+            }
+
+            const responseText = result.text.trim();
+
+            // Check if the response indicates the AI couldn't determine the name
+            if (responseText === 'UNKNOWN' ||
+                responseText.toLowerCase().includes("can't tell") ||
+                responseText.toLowerCase().includes("cannot determine") ||
+                responseText.toLowerCase().includes("sorry") ||
+                responseText.toLowerCase().includes("unable to")) {
+                this.log.debug('AI could not determine restaurant name from image');
+                return null;
+            }
+
+            const restaurantName = responseText;
+
+            // Update the restaurant name field
+            const nameInput = document.getElementById('restaurant-name');
+            if (nameInput && !nameInput.value.trim()) {
+                nameInput.value = restaurantName;
+
+                // Add AI badge to show it was auto-detected
+                const nameInputContainer = nameInput.parentElement;
+                const existingBadge = nameInputContainer.querySelector('.ai-generated-badge');
+
+                if (!existingBadge) {
+                    const badge = document.createElement('div');
+                    badge.className = 'ai-generated-badge';
+                    badge.innerHTML = '<span class="material-icons">smart_toy</span> AI detected';
+                    nameInputContainer.insertBefore(badge, nameInput.nextSibling);
+                }
+
+                SafetyUtils.showNotification('Restaurant name detected from image', 'success');
+            }
+            return restaurantName;
+        } catch (error) {
+            this.log.error('Error extracting restaurant name from image:', error);
+            SafetyUtils.showNotification('Failed to extract restaurant name from image', 'error');
+            return null;
         }
-        return restaurantName;
-    } catch (error) {
-        this.log.error('Error extracting restaurant name from image:', error);
-        SafetyUtils.showNotification('Failed to extract restaurant name from image', 'error');
-        return null;
     }
-}
 
     /**
      * Extracts concepts from image using AI
      * @param {string} imageData - Base64 image data
      */
     async extractConceptsFromImage(imageData) {
-    // Check if ApiService is available and authenticated
-    if (!window.ApiService) {
-        this.log.warn('ApiService not initialized');
-        return;
-    }
-    if (!window.AuthService || !window.AuthService.isAuthenticated()) {
-        this.log.warn('Authentication required');
-        return;
-    }
-
-    try {
-        // Validate and prepare the image data properly
-        let baseImage;
-        if (imageData.includes(',')) {
-            baseImage = imageData.split(',')[1]; // Remove data URL prefix
-        } else if (imageData.match(/^[A-Za-z0-9+/=]+$/)) {
-            baseImage = imageData; // Already a base64 string without prefix
-        } else {
-            this.log.warn('Image data is not in a valid base64 format');
+        // Check if ApiService is available and authenticated
+        if (!window.ApiService) {
+            this.log.warn('ApiService not initialized');
+            return;
+        }
+        if (!window.AuthService || !window.AuthService.isAuthenticated()) {
+            this.log.warn('Authentication required');
             return;
         }
 
-        // Convert base64 to blob
-        const byteCharacters = atob(baseImage);
-        const byteNumbers = new Array(byteCharacters.length);
-        for (let i = 0; i < byteCharacters.length; i++) {
-            byteNumbers[i] = byteCharacters.charCodeAt(i);
-        }
-        const byteArray = new Uint8Array(byteNumbers);
-        const imageBlob = new Blob([byteArray], { type: 'image/jpeg' });
-
-        // Use ApiService V3 to analyze image (no prompt, use server config)
-        this.log.debug('Extracting concepts from image via API V3...');
-        const result = await window.ApiService.analyzeImage(imageBlob);
-
-        if (!result || !result.results || !result.results.image_analysis) {
-            this.log.warn('API V3 could not extract concepts from image');
-            return;
-        }
-
-        const analysis = result.results.image_analysis;
-
-        // 1. Handle Restaurant Name
-        if (analysis.restaurant_name) {
-            const nameInput = document.getElementById('restaurant-name');
-            if (nameInput && (!nameInput.value || nameInput.value.trim() === '')) {
-                nameInput.value = analysis.restaurant_name;
-                nameInput.dispatchEvent(new Event('input', { bubbles: true }));
-                this.log.info('Auto-populated restaurant name from image:', analysis.restaurant_name);
-                SafetyUtils.showNotification(`Found name: ${analysis.restaurant_name}`, 'success');
+        try {
+            // Validate and prepare the image data properly
+            let baseImage;
+            if (imageData.includes(',')) {
+                baseImage = imageData.split(',')[1]; // Remove data URL prefix
+            } else if (imageData.match(/^[A-Za-z0-9+/=]+$/)) {
+                baseImage = imageData; // Already a base64 string without prefix
+            } else {
+                this.log.warn('Image data is not in a valid base64 format');
+                return;
             }
-        }
 
-        // 2. Handle Concepts
-        let newConceptsCount = 0;
-        if (analysis.concepts && Array.isArray(analysis.concepts)) {
-            // The API now returns a flat list of strings ["concept1", "concept2"]
-            // matching the text extraction style.
-            const conceptsToAdd = analysis.concepts;
+            // Convert base64 to blob
+            const byteCharacters = atob(baseImage);
+            const byteNumbers = new Array(byteCharacters.length);
+            for (let i = 0; i < byteCharacters.length; i++) {
+                byteNumbers[i] = byteCharacters.charCodeAt(i);
+            }
+            const byteArray = new Uint8Array(byteNumbers);
+            const imageBlob = new Blob([byteArray], { type: 'image/jpeg' });
 
-            if (conceptsToAdd.length > 0) {
-                const uniqueNewConcepts = this.uiManager.filterExistingConcepts(conceptsToAdd);
+            // Use ApiService V3 to analyze image (no prompt, use server config)
+            this.log.debug('Extracting concepts from image via API V3...');
+            const result = await window.ApiService.analyzeImage(imageBlob);
 
-                if (uniqueNewConcepts.length > 0) {
-                    uniqueNewConcepts.forEach(concept => {
-                        this.uiManager.currentConcepts.push(concept);
-                    });
-                    newConceptsCount = uniqueNewConcepts.length;
+            if (!result || !result.results || !result.results.image_analysis) {
+                this.log.warn('API V3 could not extract concepts from image');
+                return;
+            }
+
+            const analysis = result.results.image_analysis;
+
+            // 1. Handle Restaurant Name
+            if (analysis.restaurant_name) {
+                const nameInput = document.getElementById('restaurant-name');
+                if (nameInput && (!nameInput.value || nameInput.value.trim() === '')) {
+                    nameInput.value = analysis.restaurant_name;
+                    nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    this.log.info('Auto-populated restaurant name from image:', analysis.restaurant_name);
+                    SafetyUtils.showNotification(`Found name: ${analysis.restaurant_name}`, 'success');
                 }
             }
-        }
 
-        if (newConceptsCount > 0) {
-            this.renderConcepts();
-            SafetyUtils.showNotification(`Added ${newConceptsCount} concepts from image`, 'success');
-        } else if (!analysis.restaurant_name) {
-            SafetyUtils.showNotification('No new concepts found in image', 'info');
+            // 2. Handle Concepts
+            let newConceptsCount = 0;
+            if (analysis.concepts && Array.isArray(analysis.concepts)) {
+                // The API now returns a flat list of strings ["concept1", "concept2"]
+                // matching the text extraction style.
+                const conceptsToAdd = analysis.concepts;
+
+                if (conceptsToAdd.length > 0) {
+                    const uniqueNewConcepts = this.uiManager.filterExistingConcepts(conceptsToAdd);
+
+                    if (uniqueNewConcepts.length > 0) {
+                        uniqueNewConcepts.forEach(concept => {
+                            this.uiManager.currentConcepts.push(concept);
+                        });
+                        newConceptsCount = uniqueNewConcepts.length;
+                    }
+                }
+            }
+
+            if (newConceptsCount > 0) {
+                this.renderConcepts();
+                SafetyUtils.showNotification(`Added ${newConceptsCount} concepts from image`, 'success');
+            } else if (!analysis.restaurant_name) {
+                SafetyUtils.showNotification('No new concepts found in image', 'info');
+            }
+        } catch (error) {
+            this.log.error('Error extracting concepts from image:', error);
+            SafetyUtils.showNotification('Failed to extract concepts from image: ' + (error.message || 'Unknown error'), 'error');
         }
-    } catch (error) {
-        this.log.error('Error extracting concepts from image:', error);
-        SafetyUtils.showNotification('Failed to extract concepts from image: ' + (error.message || 'Unknown error'), 'error');
     }
-}
 
-/**
- * Splits any comma-separated concept values into individual concepts
- * @param {Array} concepts - Array of concept objects
- * @returns {Array} - Array with split concepts
- */
-splitCommaSeparatedConcepts(concepts) {
-    const result = [];
+    /**
+     * Splits any comma-separated concept values into individual concepts
+     * @param {Array} concepts - Array of concept objects
+     * @returns {Array} - Array with split concepts
+     */
+    splitCommaSeparatedConcepts(concepts) {
+        const result = [];
 
-    concepts.forEach(concept => {
-        // For Menu and Drinks categories, split items by comma
-        if ((concept.category === 'Menu' || concept.category === 'Drinks') &&
-            concept.value.includes(',')) {
+        concepts.forEach(concept => {
+            // For Menu and Drinks categories, split items by comma
+            if ((concept.category === 'Menu' || concept.category === 'Drinks') &&
+                concept.value.includes(',')) {
 
-            // Split by comma and clean up each item
-            const items = concept.value.split(',').map(item => item.trim()).filter(item => item);
+                // Split by comma and clean up each item
+                const items = concept.value.split(',').map(item => item.trim()).filter(item => item);
 
-            // Create a separate concept for each item
-            items.forEach(item => {
-                result.push({
-                    category: concept.category,
-                    value: item
+                // Create a separate concept for each item
+                items.forEach(item => {
+                    result.push({
+                        category: concept.category,
+                        value: item
+                    });
                 });
-            });
-        } else {
-            // For other categories or non-comma values, keep as is
-            result.push(concept);
+            } else {
+                // For other categories or non-comma values, keep as is
+                result.push(concept);
+            }
+        });
+
+        return result;
+    }
+
+    /**
+     * Creates and sets up the additional recording section in both new and edit modes
+     */
+    setupAdditionalReviewButton() {
+        // Get the transcription textarea element
+        const transcriptionTextarea = document.getElementById('restaurant-transcription');
+
+        if (!transcriptionTextarea) {
+            // If textarea not found yet, set up an observer to wait for it
+            this.setupTranscriptionObserver();
+            return;
         }
-    });
 
-    return result;
-}
+        // Check if section already exists
+        let additionalRecordingSection = document.getElementById('additional-recording-section');
+        const transcriptionContainer = transcriptionTextarea.parentElement;
 
-/**
- * Creates and sets up the additional recording section in both new and edit modes
- */
-setupAdditionalReviewButton() {
-    // Get the transcription textarea element
-    const transcriptionTextarea = document.getElementById('restaurant-transcription');
+        // Remove existing section if any (to avoid duplicates on re-initialization)
+        if (additionalRecordingSection) {
+            additionalRecordingSection.remove();
+        }
 
-    if (!transcriptionTextarea) {
-        // If textarea not found yet, set up an observer to wait for it
-        this.setupTranscriptionObserver();
-        return;
-    }
+        // Create the additional recording section
+        additionalRecordingSection = document.createElement('div');
+        additionalRecordingSection.id = 'additional-recording-section';
+        // Clean container style - let inner elements handle layout
+        additionalRecordingSection.className = 'mt-6 mb-2';
 
-    // Check if section already exists
-    let additionalRecordingSection = document.getElementById('additional-recording-section');
-    const transcriptionContainer = transcriptionTextarea.parentElement;
+        // Show for both new and existing restaurants
+        additionalRecordingSection.style.display = 'block';
 
-    // Remove existing section if any (to avoid duplicates on re-initialization)
-    if (additionalRecordingSection) {
-        additionalRecordingSection.remove();
-    }
-
-    // Create the additional recording section
-    additionalRecordingSection = document.createElement('div');
-    additionalRecordingSection.id = 'additional-recording-section';
-    // Clean container style - let inner elements handle layout
-    additionalRecordingSection.className = 'mt-6 mb-2';
-
-    // Show for both new and existing restaurants
-    additionalRecordingSection.style.display = 'block';
-
-    additionalRecordingSection.innerHTML = `
+        additionalRecordingSection.innerHTML = `
             <h3 class="text-lg font-semibold mb-2 text-purple-700 flex items-center">
                 <span class="material-icons mr-2">add_comment</span>
                 Record Additional Review
             </h3>
             <p class="text-sm text-gray-600 mb-4">
                 ${this.uiManager && this.uiManager.isEditingRestaurant ?
-            'Add another review to the existing transcription without replacing the current content.' :
-            'Record a vocal review to add to your restaurant description.'}
+                'Add another review to the existing transcription without replacing the current content.' :
+                'Record a vocal review to add to your restaurant description.'}
             </p>
 
             <!-- Main Recorder Template Structure -->
@@ -2359,358 +2360,358 @@ setupAdditionalReviewButton() {
             </div>
         `;
 
-    // Add section after the textarea
-    if (transcriptionContainer) {
-        transcriptionContainer.appendChild(additionalRecordingSection);
+        // Add section after the textarea
+        if (transcriptionContainer) {
+            transcriptionContainer.appendChild(additionalRecordingSection);
 
-        // Add a data attribute to the container to mark it as processed
-        transcriptionContainer.dataset.additionalReviewButtonSetup = 'true';
+            // Add a data attribute to the container to mark it as processed
+            transcriptionContainer.dataset.additionalReviewButtonSetup = 'true';
+        }
+
+        // Set up event listeners for recording controls
+        const startRecordBtn = document.getElementById('additional-record-start');
+        const stopRecordBtn = document.getElementById('additional-record-stop');
+
+        if (startRecordBtn) {
+            startRecordBtn.addEventListener('click', () => {
+                this.startAdditionalRecording();
+            });
+        }
+
+        if (stopRecordBtn) {
+            stopRecordBtn.addEventListener('click', () => {
+                if (this.uiManager && this.uiManager.recordingModule) {
+                    this.uiManager.recordingModule.stopRecording();
+                }
+            });
+        }
+
+        this.log.debug('Additional recording section added (Circular UI)');
     }
 
-    // Set up event listeners for recording controls
-    const startRecordBtn = document.getElementById('additional-record-start');
-    const stopRecordBtn = document.getElementById('additional-record-stop');
+    /**
+     * Sets up an observer to watch for the transcription textarea to appear in the DOM
+     */
+    setupTranscriptionObserver() {
+        this.log.debug('Setting up mutation observer for transcription textarea');
 
-    if (startRecordBtn) {
-        startRecordBtn.addEventListener('click', () => {
-            this.startAdditionalRecording();
-        });
-    }
+        // Check if observer already exists
+        if (this.transcriptionObserver) {
+            this.transcriptionObserver.disconnect();
+        }
 
-    if (stopRecordBtn) {
-        stopRecordBtn.addEventListener('click', () => {
-            if (this.uiManager && this.uiManager.recordingModule) {
-                this.uiManager.recordingModule.stopRecording();
-            }
-        });
-    }
+        // Create new observer
+        this.transcriptionObserver = new MutationObserver((mutations) => {
+            for (const mutation of mutations) {
+                if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
+                    // Check if the transcription textarea was added
+                    const transcriptionTextarea = document.getElementById('restaurant-transcription');
+                    if (transcriptionTextarea) {
+                        const container = transcriptionTextarea.parentElement;
 
-    this.log.debug('Additional recording section added (Circular UI)');
-}
+                        // Check if container exists and hasn't been processed yet
+                        if (container && !container.dataset.additionalReviewButtonSetup) {
+                            this.log.debug('Transcription textarea found via observer, setting up button');
+                            this.setupAdditionalReviewButton();
 
-/**
- * Sets up an observer to watch for the transcription textarea to appear in the DOM
- */
-setupTranscriptionObserver() {
-    this.log.debug('Setting up mutation observer for transcription textarea');
-
-    // Check if observer already exists
-    if (this.transcriptionObserver) {
-        this.transcriptionObserver.disconnect();
-    }
-
-    // Create new observer
-    this.transcriptionObserver = new MutationObserver((mutations) => {
-        for (const mutation of mutations) {
-            if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
-                // Check if the transcription textarea was added
-                const transcriptionTextarea = document.getElementById('restaurant-transcription');
-                if (transcriptionTextarea) {
-                    const container = transcriptionTextarea.parentElement;
-
-                    // Check if container exists and hasn't been processed yet
-                    if (container && !container.dataset.additionalReviewButtonSetup) {
-                        this.log.debug('Transcription textarea found via observer, setting up button');
-                        this.setupAdditionalReviewButton();
-
-                        // Stop observing once we've found and processed it
-                        this.transcriptionObserver.disconnect();
-                        this.transcriptionObserver = null;
-                        break;
+                            // Stop observing once we've found and processed it
+                            this.transcriptionObserver.disconnect();
+                            this.transcriptionObserver = null;
+                            break;
+                        }
                     }
                 }
             }
-        }
-    });
+        });
 
-    // Start observing the document body for changes
-    this.transcriptionObserver.observe(document.body, {
-        childList: true,
-        subtree: true
-    });
+        // Start observing the document body for changes
+        this.transcriptionObserver.observe(document.body, {
+            childList: true,
+            subtree: true
+        });
 
-    // Set a timeout to stop the observer after 10 seconds to prevent memory leaks
-    setTimeout(() => {
-        if (this.transcriptionObserver) {
-            this.log.debug('Stopping transcription observer (timeout)');
-            this.transcriptionObserver.disconnect();
-            this.transcriptionObserver = null;
-        }
-    }, 10000);
-}
+        // Set a timeout to stop the observer after 10 seconds to prevent memory leaks
+        setTimeout(() => {
+            if (this.transcriptionObserver) {
+                this.log.debug('Stopping transcription observer (timeout)');
+                this.transcriptionObserver.disconnect();
+                this.transcriptionObserver = null;
+            }
+        }, 10000);
+    }
 
     /**
      * Enhanced method to start an additional recording session
      */
     async startAdditionalRecording() {
-    try {
-        this.log.debug('Starting additional review recording...');
+        try {
+            this.log.debug('Starting additional review recording...');
 
-        // Enhanced check for recording module
-        let recordingModule = null;
+            // Enhanced check for recording module
+            let recordingModule = null;
 
-        // Check if recording module is available in uiManager
-        if (this.uiManager && this.uiManager.recordingModule) {
-            recordingModule = this.uiManager.recordingModule;
+            // Check if recording module is available in uiManager
+            if (this.uiManager && this.uiManager.recordingModule) {
+                recordingModule = this.uiManager.recordingModule;
+            }
+            // Check if recording module is available as a global object
+            else if (window.recordingModule) {
+                recordingModule = window.recordingModule;
+                this.log.debug('Using global recordingModule instead of uiManager.recordingModule');
+            }
+            // As a last resort, check if RecordingModule class exists to create a new instance
+            else if (typeof RecordingModule !== 'undefined') {
+                this.log.debug('Creating new RecordingModule instance as fallback');
+                recordingModule = new RecordingModule(this.uiManager);
+            }
+
+            // If we still don't have a recording module, show error
+            if (!recordingModule) {
+                throw new Error('Recording functionality not available - could not find or create recording module');
+            }
+
+
+
+
+            // Update UI
+            const startBtn = document.getElementById('additional-record-start');
+            const stopBtn = document.getElementById('additional-record-stop');
+            const recordingTime = document.getElementById('additional-recording-time');
+            const audioVisualizer = document.getElementById('additional-audio-visualizer');
+            const recordingStatus = document.getElementById('additional-recording-status');
+
+            if (startBtn) startBtn.classList.add('hidden');
+            if (stopBtn) stopBtn.classList.remove('hidden');
+            if (recordingTime) recordingTime.classList.remove('hidden');
+            if (audioVisualizer) audioVisualizer.classList.remove('hidden');
+            if (recordingStatus) recordingStatus.textContent = 'Recording in progress...';
+
+            // Show notification that we're starting recording
+            SafetyUtils.showNotification('Starting recording for additional review...', 'info');
+
+            // Track that this is an additional recording
+            this.uiManager.isRecordingAdditional = true;
+
+            // Start recording using our found recording module
+            await recordingModule.startRecording();
+
+        } catch (error) {
+            this.log.error('Error starting additional recording:', error);
+            SafetyUtils.showNotification('Error starting recording: ' + error.message, 'error');
+
+            // Reset UI on error
+            const startBtn = document.getElementById('additional-record-start');
+            const stopBtn = document.getElementById('additional-record-stop');
+            const recordingTime = document.getElementById('additional-recording-time');
+            const audioVisualizer = document.getElementById('additional-audio-visualizer');
+            const recordingStatus = document.getElementById('additional-recording-status');
+
+            if (startBtn) startBtn.classList.remove('hidden');
+            if (stopBtn) stopBtn.classList.add('hidden');
+            if (recordingTime) recordingTime.classList.add('hidden');
+            if (audioVisualizer) audioVisualizer.classList.add('hidden');
+            if (recordingStatus) recordingStatus.textContent = '';
+
+            // Reset the flag
+            this.uiManager.isRecordingAdditional = false;
         }
-        // Check if recording module is available as a global object
-        else if (window.recordingModule) {
-            recordingModule = window.recordingModule;
-            this.log.debug('Using global recordingModule instead of uiManager.recordingModule');
-        }
-        // As a last resort, check if RecordingModule class exists to create a new instance
-        else if (typeof RecordingModule !== 'undefined') {
-            this.log.debug('Creating new RecordingModule instance as fallback');
-            recordingModule = new RecordingModule(this.uiManager);
-        }
-
-        // If we still don't have a recording module, show error
-        if (!recordingModule) {
-            throw new Error('Recording functionality not available - could not find or create recording module');
-        }
-
-
-
-
-        // Update UI
-        const startBtn = document.getElementById('additional-record-start');
-        const stopBtn = document.getElementById('additional-record-stop');
-        const recordingTime = document.getElementById('additional-recording-time');
-        const audioVisualizer = document.getElementById('additional-audio-visualizer');
-        const recordingStatus = document.getElementById('additional-recording-status');
-
-        if (startBtn) startBtn.classList.add('hidden');
-        if (stopBtn) stopBtn.classList.remove('hidden');
-        if (recordingTime) recordingTime.classList.remove('hidden');
-        if (audioVisualizer) audioVisualizer.classList.remove('hidden');
-        if (recordingStatus) recordingStatus.textContent = 'Recording in progress...';
-
-        // Show notification that we're starting recording
-        SafetyUtils.showNotification('Starting recording for additional review...', 'info');
-
-        // Track that this is an additional recording
-        this.uiManager.isRecordingAdditional = true;
-
-        // Start recording using our found recording module
-        await recordingModule.startRecording();
-
-    } catch (error) {
-        this.log.error('Error starting additional recording:', error);
-        SafetyUtils.showNotification('Error starting recording: ' + error.message, 'error');
-
-        // Reset UI on error
-        const startBtn = document.getElementById('additional-record-start');
-        const stopBtn = document.getElementById('additional-record-stop');
-        const recordingTime = document.getElementById('additional-recording-time');
-        const audioVisualizer = document.getElementById('additional-audio-visualizer');
-        const recordingStatus = document.getElementById('additional-recording-status');
-
-        if (startBtn) startBtn.classList.remove('hidden');
-        if (stopBtn) stopBtn.classList.add('hidden');
-        if (recordingTime) recordingTime.classList.add('hidden');
-        if (audioVisualizer) audioVisualizer.classList.add('hidden');
-        if (recordingStatus) recordingStatus.textContent = '';
-
-        // Reset the flag
-        this.uiManager.isRecordingAdditional = false;
     }
-}
 
-/**
- * Handles completion of additional recording by appending to existing transcription
- * @param {string} newTranscription - The newly recorded transcription
- */
-handleAdditionalRecordingComplete(newTranscription) {
-    try {
-        this.log.debug(`Handling additional recording completion, text length: ${newTranscription?.length || 0}`);
+    /**
+     * Handles completion of additional recording by appending to existing transcription
+     * @param {string} newTranscription - The newly recorded transcription
+     */
+    handleAdditionalRecordingComplete(newTranscription) {
+        try {
+            this.log.debug(`Handling additional recording completion, text length: ${newTranscription?.length || 0}`);
 
-        // Reset UI for recording controls
-        const startBtn = document.getElementById('additional-record-start');
-        const stopBtn = document.getElementById('additional-record-stop');
-        const recordingTime = document.getElementById('additional-recording-time');
-        const audioVisualizer = document.getElementById('additional-audio-visualizer');
-        const recordingStatus = document.getElementById('additional-recording-status');
+            // Reset UI for recording controls
+            const startBtn = document.getElementById('additional-record-start');
+            const stopBtn = document.getElementById('additional-record-stop');
+            const recordingTime = document.getElementById('additional-recording-time');
+            const audioVisualizer = document.getElementById('additional-audio-visualizer');
+            const recordingStatus = document.getElementById('additional-recording-status');
 
-        if (startBtn) startBtn.classList.remove('hidden');
-        if (stopBtn) stopBtn.classList.add('hidden');
-        if (recordingTime) recordingTime.classList.add('hidden');
-        if (audioVisualizer) audioVisualizer.classList.add('hidden');
-        if (recordingStatus) recordingStatus.textContent = '';
+            if (startBtn) startBtn.classList.remove('hidden');
+            if (stopBtn) stopBtn.classList.add('hidden');
+            if (recordingTime) recordingTime.classList.add('hidden');
+            if (audioVisualizer) audioVisualizer.classList.add('hidden');
+            if (recordingStatus) recordingStatus.textContent = '';
 
-        // Check if we got any meaningful text
-        if (!newTranscription || newTranscription.trim() === '') {
-            SafetyUtils.showNotification('No text was transcribed from the recording', 'warning');
+            // Check if we got any meaningful text
+            if (!newTranscription || newTranscription.trim() === '') {
+                SafetyUtils.showNotification('No text was transcribed from the recording', 'warning');
 
-            // Reset flag
+                // Reset flag
+                if (this.uiManager) {
+                    this.uiManager.isRecordingAdditional = false;
+                }
+                return;
+            }
+
+            // Attempt to extract restaurant name from the additional review
+            this.extractAndUpdateRestaurantName(newTranscription);
+
+            const transcriptionTextarea = document.getElementById('restaurant-transcription');
+            if (!transcriptionTextarea) {
+                throw new Error('Transcription field not found');
+            }
+
+            // Get current transcription
+            const currentText = transcriptionTextarea.value;
+
+            // Create formatted timestamp
+            const timestamp = new Date().toLocaleString();
+
+            // Get curator identity with preference for email
+            let curatorIdentity = "Unknown Curator";
+            if (this.uiManager && this.uiManager.currentCurator) {
+                // Prefer email as requested
+                if (this.uiManager.currentCurator.email) {
+                    curatorIdentity = this.uiManager.currentCurator.email;
+                } else if (this.uiManager.currentCurator.name) {
+                    curatorIdentity = this.uiManager.currentCurator.name;
+                }
+            }
+
+            // Format the new combined text with a clear separator, curator name, and timestamp
+            let combinedText;
+            if (currentText && currentText.trim() !== '') {
+                // Add two line breaks, a separator with curator name and timestamp, and then the new text
+                combinedText = `${currentText}\n\n--- Additional Review by ${curatorIdentity} (${timestamp}) ---\n${newTranscription}`;
+            } else {
+                // If no existing text, just use the new transcription
+                combinedText = newTranscription;
+            }
+
+            // Update the transcription field
+            transcriptionTextarea.value = combinedText;
+
+            // Scroll to the bottom of the textarea to show the new content
+            transcriptionTextarea.scrollTop = transcriptionTextarea.scrollHeight;
+
+            // Briefly highlight the textarea to indicate it was updated
+            transcriptionTextarea.classList.add('highlight-update');
+            setTimeout(() => {
+                transcriptionTextarea.classList.remove('highlight-update');
+            }, 1000);
+
+            // Reset the additional recording flag
             if (this.uiManager) {
                 this.uiManager.isRecordingAdditional = false;
             }
-            return;
-        }
 
-        // Attempt to extract restaurant name from the additional review
-        this.extractAndUpdateRestaurantName(newTranscription);
+            // Process concepts from the additional review
+            if (typeof this.processConcepts === 'function') {
+                this.log.debug('Processing concepts from additional review');
+                this.processConcepts(newTranscription);
+            }
 
-        const transcriptionTextarea = document.getElementById('restaurant-transcription');
-        if (!transcriptionTextarea) {
-            throw new Error('Transcription field not found');
-        }
+            // Show success notification
+            SafetyUtils.showNotification('Additional review added to transcription', 'success');
 
-        // Get current transcription
-        const currentText = transcriptionTextarea.value;
+        } catch (error) {
+            this.log.error('Error handling additional recording completion:', error);
+            SafetyUtils.showNotification('Error adding additional review: ' + error.message, 'error');
 
-        // Create formatted timestamp
-        const timestamp = new Date().toLocaleString();
-
-        // Get curator identity with preference for email
-        let curatorIdentity = "Unknown Curator";
-        if (this.uiManager && this.uiManager.currentCurator) {
-            // Prefer email as requested
-            if (this.uiManager.currentCurator.email) {
-                curatorIdentity = this.uiManager.currentCurator.email;
-            } else if (this.uiManager.currentCurator.name) {
-                curatorIdentity = this.uiManager.currentCurator.name;
+            // Reset the flag even if there's an error
+            if (this.uiManager) {
+                this.uiManager.isRecordingAdditional = false;
             }
         }
-
-        // Format the new combined text with a clear separator, curator name, and timestamp
-        let combinedText;
-        if (currentText && currentText.trim() !== '') {
-            // Add two line breaks, a separator with curator name and timestamp, and then the new text
-            combinedText = `${currentText}\n\n--- Additional Review by ${curatorIdentity} (${timestamp}) ---\n${newTranscription}`;
-        } else {
-            // If no existing text, just use the new transcription
-            combinedText = newTranscription;
-        }
-
-        // Update the transcription field
-        transcriptionTextarea.value = combinedText;
-
-        // Scroll to the bottom of the textarea to show the new content
-        transcriptionTextarea.scrollTop = transcriptionTextarea.scrollHeight;
-
-        // Briefly highlight the textarea to indicate it was updated
-        transcriptionTextarea.classList.add('highlight-update');
-        setTimeout(() => {
-            transcriptionTextarea.classList.remove('highlight-update');
-        }, 1000);
-
-        // Reset the additional recording flag
-        if (this.uiManager) {
-            this.uiManager.isRecordingAdditional = false;
-        }
-
-        // Process concepts from the additional review
-        if (typeof this.processConcepts === 'function') {
-            this.log.debug('Processing concepts from additional review');
-            this.processConcepts(newTranscription);
-        }
-
-        // Show success notification
-        SafetyUtils.showNotification('Additional review added to transcription', 'success');
-
-    } catch (error) {
-        this.log.error('Error handling additional recording completion:', error);
-        SafetyUtils.showNotification('Error adding additional review: ' + error.message, 'error');
-
-        // Reset the flag even if there's an error
-        if (this.uiManager) {
-            this.uiManager.isRecordingAdditional = false;
-        }
     }
-}
 
     /**
      * Extracts restaurant name from additional review and updates the name field if found
      * @param {string} transcription - The transcription text
      */
     async extractAndUpdateRestaurantName(transcription) {
-    try {
-        // Get the current restaurant name
-        const nameInput = document.getElementById('restaurant-name');
-        const currentName = nameInput ? nameInput.value.trim() : '';
+        try {
+            // Get the current restaurant name
+            const nameInput = document.getElementById('restaurant-name');
+            const currentName = nameInput ? nameInput.value.trim() : '';
 
-        // Only proceed if transcription has enough content
-        if (!transcription || transcription.length < 10) return;
+            // Only proceed if transcription has enough content
+            if (!transcription || transcription.length < 10) return;
 
-        this.log.debug('Attempting to extract restaurant name from additional review...');
+            this.log.debug('Attempting to extract restaurant name from additional review...');
 
-        // Use ApiService V3 to extract restaurant name directly
-        if (!window.ApiService || !window.AuthService || !window.AuthService.isAuthenticated()) {
-            this.log.warn('ApiService not available or not authenticated');
-            return;
-        }
-
-        // Use specialized endpoint for better accuracy
-        const result = await window.ApiService.extractRestaurantName(transcription, 'restaurant');
-        let extractedName = null;
-
-        // Handle different response formats from API V3
-        if (result) {
-            // Check if restaurant_name is directly available (preferred in V3)
-            if (result.results && result.results.name_extraction && result.results.name_extraction.restaurant_name) {
-                extractedName = result.results.name_extraction.restaurant_name;
-            } else if (result.restaurant_name) {
-                extractedName = result.restaurant_name;
-            } else if (result.name) {
-                extractedName = result.name;
+            // Use ApiService V3 to extract restaurant name directly
+            if (!window.ApiService || !window.AuthService || !window.AuthService.isAuthenticated()) {
+                this.log.warn('ApiService not available or not authenticated');
+                return;
             }
 
-            // Fallback: check concepts array
-            if (!extractedName) {
-                let concepts = null;
-                if (result.results && result.results.concepts && Array.isArray(result.results.concepts.concepts)) {
-                    concepts = result.results.concepts.concepts;
-                } else if (result.concepts && Array.isArray(result.concepts)) {
-                    concepts = result.concepts;
+            // Use specialized endpoint for better accuracy
+            const result = await window.ApiService.extractRestaurantName(transcription, 'restaurant');
+            let extractedName = null;
+
+            // Handle different response formats from API V3
+            if (result) {
+                // Check if restaurant_name is directly available (preferred in V3)
+                if (result.results && result.results.name_extraction && result.results.name_extraction.restaurant_name) {
+                    extractedName = result.results.name_extraction.restaurant_name;
+                } else if (result.restaurant_name) {
+                    extractedName = result.restaurant_name;
+                } else if (result.name) {
+                    extractedName = result.name;
                 }
 
-                if (concepts) {
-                    const nameConcept = concepts.find(c => c.category === 'name' || c.category === 'restaurant_name');
-                    if (nameConcept && nameConcept.value) {
-                        extractedName = nameConcept.value;
+                // Fallback: check concepts array
+                if (!extractedName) {
+                    let concepts = null;
+                    if (result.results && result.results.concepts && Array.isArray(result.results.concepts.concepts)) {
+                        concepts = result.results.concepts.concepts;
+                    } else if (result.concepts && Array.isArray(result.concepts)) {
+                        concepts = result.concepts;
+                    }
+
+                    if (concepts) {
+                        const nameConcept = concepts.find(c => c.category === 'name' || c.category === 'restaurant_name');
+                        if (nameConcept && nameConcept.value) {
+                            extractedName = nameConcept.value;
+                        }
                     }
                 }
             }
-        }
 
-        if (extractedName) {
-            extractedName = extractedName.trim();
-        }
-
-        // If a name was extracted and it's different from the current name, update it
-        if (extractedName && extractedName !== currentName && nameInput) {
-            this.log.debug(`Restaurant name found in additional review: "${extractedName}" (was: "${currentName}")`);
-
-            // Update the name field
-            nameInput.value = extractedName;
-
-            // Add or update AI badge to show it was auto-detected
-            const nameInputContainer = nameInput.parentElement;
-            let badge = nameInputContainer.querySelector('.ai-generated-badge');
-
-            if (!badge) {
-                // Create new badge
-                badge = document.createElement('div');
-                badge.className = 'ai-generated-badge';
-                nameInputContainer.insertBefore(badge, nameInput.nextSibling);
+            if (extractedName) {
+                extractedName = extractedName.trim();
             }
 
-            // Update badge text to indicate it came from additional review
-            badge.innerHTML = '<span class="material-icons">smart_toy</span> Updated from review';
+            // If a name was extracted and it's different from the current name, update it
+            if (extractedName && extractedName !== currentName && nameInput) {
+                this.log.debug(`Restaurant name found in additional review: "${extractedName}" (was: "${currentName}")`);
 
-            // Add highlight animation to name input
-            nameInput.classList.add('highlight-update');
-            setTimeout(() => {
-                nameInput.classList.remove('highlight-update');
-            }, 1500);
+                // Update the name field
+                nameInput.value = extractedName;
 
-            // Show notification about the name update
-            SafetyUtils.showNotification(`Restaurant name updated to "${extractedName}"`, 'info');
+                // Add or update AI badge to show it was auto-detected
+                const nameInputContainer = nameInput.parentElement;
+                let badge = nameInputContainer.querySelector('.ai-generated-badge');
+
+                if (!badge) {
+                    // Create new badge
+                    badge = document.createElement('div');
+                    badge.className = 'ai-generated-badge';
+                    nameInputContainer.insertBefore(badge, nameInput.nextSibling);
+                }
+
+                // Update badge text to indicate it came from additional review
+                badge.innerHTML = '<span class="material-icons">smart_toy</span> Updated from review';
+
+                // Add highlight animation to name input
+                nameInput.classList.add('highlight-update');
+                setTimeout(() => {
+                    nameInput.classList.remove('highlight-update');
+                }, 1500);
+
+                // Show notification about the name update
+                SafetyUtils.showNotification(`Restaurant name updated to "${extractedName}"`, 'info');
+            }
+        } catch (error) {
+            this.log.error('Error extracting restaurant name from additional review:', error);
+            // Don't show notification to user - silently fail since this is an enhancement
         }
-    } catch (error) {
-        this.log.error('Error extracting restaurant name from additional review:', error);
-        // Don't show notification to user - silently fail since this is an enhancement
     }
-}
 }
