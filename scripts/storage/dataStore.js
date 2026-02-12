@@ -298,6 +298,12 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
             const settingsCount = await this.db.settings.count();
             this.log.debug(`✅ Settings table ready (${settingsCount} entries)`);
 
+            // Migration: Ensure all curations have updatedAt for sorting
+            await this.migrateLegacyCurations();
+
+            // Default roles and system curators
+            await this.ensureSystemCurator();
+
             // Create default curator if none exists
             if (curatorsCount === 0) {
                 const defaultCurator = {
@@ -590,7 +596,7 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
             } else if (options.curatorId) {
                 query = query.where('curator_id').equals(options.curatorId);
             } else {
-                query = query.orderBy('createdAt');
+                query = query.orderBy('updatedAt');
             }
 
             let results = await query.toArray();
@@ -1003,7 +1009,61 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
             this.log.debug('✅ Database reset completed');
         } catch (error) {
             this.log.error('❌ Failed to reset database:', error);
-            throw error;
+        }
+    }
+
+    /**
+     * Migration: Ensure all curations have updatedAt field for correct sorting
+     */
+    async migrateLegacyCurations() {
+        try {
+            this.log.debug('🧹 Checking for curations missing updatedAt...');
+
+            const legacyCurations = await this.db.curations
+                .filter(c => !c.updatedAt)
+                .toArray();
+
+            if (legacyCurations.length > 0) {
+                this.log.info(`🛠️ Migrating ${legacyCurations.length} legacy curations to add updatedAt...`);
+
+                await this.db.transaction('rw', this.db.curations, async () => {
+                    for (const curation of legacyCurations) {
+                        const fallbackDate = curation.createdAt || new Date();
+                        await this.db.curations.update(curation.id, {
+                            updatedAt: fallbackDate,
+                            // Also ensure snake_case version exists
+                            updated_at: fallbackDate instanceof Date ? fallbackDate.toISOString() : fallbackDate
+                        });
+                    }
+                });
+
+                this.log.info('✅ Legacy curation migration complete');
+            }
+        } catch (error) {
+            this.log.error('❌ Legacy curation migration failed:', error);
+            // Non-critical: allow app to continue
+        }
+    }
+
+    /**
+     * Ensure system curator exists
+     */
+    async ensureSystemCurator() {
+        try {
+            const curatorsCount = await this.db.curators.count();
+            if (curatorsCount === 0) {
+                this.log.debug('👤 Creating system curator...');
+                await this.db.curators.add({
+                    curator_id: 'system',
+                    name: 'System',
+                    email: 'system@concierge.ai',
+                    status: 'active',
+                    createdAt: new Date(),
+                    lastActive: new Date()
+                });
+            }
+        } catch (error) {
+            this.log.error('❌ Failed to ensure system curator:', error);
         }
     }
 });
