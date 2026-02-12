@@ -283,20 +283,38 @@ class OpenAIService:
                 }
             ],
             temperature=config["config"].get("temperature", 0.3),
-            max_tokens=config["config"].get("max_tokens", 300)
+            max_tokens=config["config"].get("max_tokens", 1000),
+            response_format={"type": "json_object"}
         )
         
         # Parse JSON response
-        result = json.loads(response.choices[0].message.content)
+        try:
+            content = response.choices[0].message.content
+            # Handle potential markdown code blocks (even with json_object mode it can happen)
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0].strip()
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0].strip()
+                
+            result = json.loads(content)
+        except Exception as e:
+            print(f"[ERROR] Failed to parse image analysis response: {e}")
+            # Return a fallback structure rather than crashing
+            result = {
+                "concepts": [], 
+                "visual_notes": "Failed to parse API response",
+                "error": str(e)
+            }
+
         result["entity_type"] = entity_type
         result["model"] = config["model"]
         
         # Cache image analysis in DB only if requested
-        if save_to_cache:
+        if save_to_cache and not result.get("error"):
             analysis_id = f"img_analysis_{uuid.uuid4().hex[:12]}"
             await self.db.ai_image_analysis.insert_one({
                 "analysis_id": analysis_id,
-                "image_url": image_url,
+                "image_url": image_url if len(str(image_url)) < 1000 else "base64_data",
                 "concepts": result.get("concepts", []),
                 "confidence_score": result.get("confidence_score", 0.0),
                 "visual_notes": result.get("visual_notes", ""),
