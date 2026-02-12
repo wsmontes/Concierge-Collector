@@ -1509,67 +1509,15 @@ class ConceptModule {
         }
     }
 
-    // Continue with more concept-related methods like loadConceptSuggestions, showConceptDisambiguationDialog, etc.
-    // ... (code for loadConceptSuggestions and showConceptDisambiguationDialog would go here)
-
-    /**
-     * Extract restaurant name from transcription text
-     * @param {string} transcriptionText - The transcription text
-     * @returns {Promise<string>} - The extracted restaurant name
-     */
-    async extractRestaurantNameFromTranscription(transcriptionText) {
-        try {
-            this.log.debug('Extracting restaurant name from transcription...');
-
-            if (!transcriptionText || transcriptionText.trim().length < 10) {
-                return null;
-            }
-
-            // Use ApiService V3 instead of legacy apiHandler
-            if (!window.ApiService || !window.AuthService || !window.AuthService.isAuthenticated()) {
-                this.log.warn('ApiService not available or not authenticated');
-                return null;
-            }
-
-            const result = await window.ApiService.extractConcepts(transcriptionText, 'restaurant');
-            this.log.debug('Restaurant name extracted:', result);
-
-            // Handle different response formats from API V3
-            if (result) {
-                if (result.name || result.restaurant_name) {
-                    return (result.name || result.restaurant_name).trim();
-                }
-                // Check if concepts include a name category
-                if (result.concepts && Array.isArray(result.concepts)) {
-                    const nameConcept = result.concepts.find(c => c.category === 'name' || c.category === 'restaurant_name');
-                    if (nameConcept && nameConcept.value) {
-                        return nameConcept.value.trim();
-                    }
-                }
-            }
-
-            return null;
-        } catch (error) {
-            this.log.error('Error extracting restaurant name from transcription:', error);
-            return null;
-        }
-    }
-
     /**
      * Process concepts extraction including restaurant name
+     * @param {string} transcriptionText - The transcription text
      */
     async processConcepts(transcriptionText) {
         try {
             SafetyUtils.showLoading('Analyzing restaurant concepts...');
 
-            // Extract restaurant name first - WRAP WITH TRY/CATCH TO HANDLE FAILURES GRACEFULLY
             let restaurantName = null;
-            try {
-                restaurantName = await this.extractRestaurantNameFromTranscription(transcriptionText);
-            } catch (nameError) {
-                this.log.warn('Restaurant name extraction failed, continuing with concept extraction:', nameError);
-                // Continue execution - don't let name extraction failure stop concept extraction
-            }
 
             // Extract concepts in the original JSON format expected by the app
             // Use ApiService V3 instead of legacy apiHandler
@@ -1591,10 +1539,20 @@ class ConceptModule {
                 // Transform API v3 response format to expected frontend format
                 let conceptsData = extractedConcepts;
 
-                // API v3 returns: {workflow, results: {concepts: {concepts: [{category, value}], confidence_score}}}
+                // API v3 returns: {workflow, results: {concepts: {concepts: [{category, value}], restaurant_name, confidence_score}}}
                 // Extract the actual concepts array
                 if (extractedConcepts.results && extractedConcepts.results.concepts) {
+                    // Extract restaurant name from the structured response
+                    if (extractedConcepts.results.concepts.restaurant_name) {
+                        restaurantName = extractedConcepts.results.concepts.restaurant_name;
+                        this.log.debug('Extracted restaurant name from API:', restaurantName);
+                    }
+
                     conceptsData = extractedConcepts.results.concepts.concepts || [];
+                } else if (extractedConcepts.restaurant_name) {
+                    // Fallback for direct response format
+                    restaurantName = extractedConcepts.restaurant_name;
+                    this.log.debug('Extracted restaurant name from direct response:', restaurantName);
                 } else {
                     conceptsData = [];
                 }
@@ -1621,6 +1579,15 @@ class ConceptModule {
                 const nameInput = document.getElementById('restaurant-name');
                 if (nameInput) {
                     nameInput.value = restaurantName;
+                    // Trigger input event to ensure UI/state updates
+                    nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    this.log.info('Auto-populated restaurant name:', restaurantName);
+
+                    // Also update the header title if possible
+                    const headerTitle = document.querySelector('header h1');
+                    if (headerTitle && headerTitle.textContent === 'New Curation') {
+                        // Optional: update header logic if exists
+                    }
                 }
             }
 
