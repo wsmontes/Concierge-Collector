@@ -818,7 +818,8 @@ class ConceptModule {
         // Add section for each category, regardless if there are concepts or not
         const categories = [
             'Cuisine', 'Menu', 'Price Range', 'Mood', 'Setting',
-            'Crowd', 'Suitable For', 'Food Style', 'Drinks', 'Special Features'
+            'Crowd', 'Suitable For', 'Food Style', 'Drinks', 'Special Features',
+            'General'
         ];
 
         // Check if we have any concepts at all
@@ -1288,12 +1289,50 @@ class ConceptModule {
             'food style': 'Food Style',
             'food_style': 'Food Style',
             'drinks': 'Drinks',
-            'special features': 'Special Features',
-            'special_features': 'Special Features'
+            'special_features': 'Special Features',
+            'general': 'General'
         };
 
         const lowerCategory = category.toLowerCase();
         return categoryMap[lowerCategory] || category;
+    }
+
+    /**
+     * Helper to process and categorize raw concepts from AI
+     * @param {Array|Object} conceptsData - Raw concepts from API V3
+     * @returns {Object} - Categorized concepts { category: [values] }
+     * @private
+     */
+    _processAndCategorizeConcepts(conceptsData) {
+        if (!conceptsData) return {};
+
+        const transformed = {};
+
+        // Case 1: Array of objects [{category, value}] or strings ["c1", "c2"]
+        if (Array.isArray(conceptsData)) {
+            conceptsData.forEach(concept => {
+                if (typeof concept === 'string') {
+                    if (!transformed['General']) transformed['General'] = [];
+                    transformed['General'].push(concept);
+                } else if (concept.category && concept.value) {
+                    const cat = this.normalizeCategoryName(concept.category);
+                    if (!transformed[cat]) transformed[cat] = [];
+                    transformed[cat].push(concept.value);
+                }
+            });
+        }
+        // Case 2: Object with categories as keys { Cuisine: ["Italian"] }
+        else if (typeof conceptsData === 'object') {
+            for (const category in conceptsData) {
+                const cat = this.normalizeCategoryName(category);
+                if (conceptsData[category] && Array.isArray(conceptsData[category])) {
+                    if (!transformed[cat]) transformed[cat] = [];
+                    transformed[cat] = [...transformed[cat], ...conceptsData[category]];
+                }
+            }
+        }
+
+        return transformed;
     }
 
     /**
@@ -1576,77 +1615,20 @@ class ConceptModule {
 
             // --- Handle Concepts ---
             if (extractedConcepts) {
-                // Transform API v3 response format to expected frontend format
-                let conceptsData = extractedConcepts;
-
-                // API v3 returns: {workflow, results: {concepts: {concepts: [{category, value}], restaurant_name, confidence_score}}}
-                // Extract the actual concepts array
+                // Extract concepts array from V3 response
+                let rawConcepts = [];
                 if (extractedConcepts.results && extractedConcepts.results.concepts) {
-                    conceptsData = extractedConcepts.results.concepts.concepts || [];
+                    rawConcepts = extractedConcepts.results.concepts.concepts || [];
                 } else if (extractedConcepts.concepts) {
-                    // Direct concepts array
-                    conceptsData = extractedConcepts.concepts || [];
-                } else {
-                    conceptsData = [];
+                    rawConcepts = extractedConcepts.concepts || [];
                 }
 
-                // Transform/Validate concepts data
-                if (Array.isArray(conceptsData)) {
-                    // Check if items are objects {category, value} or strings
-                    if (conceptsData.length > 0 && typeof conceptsData[0] === 'string') {
-                        // It's already a flat list of strings, pass directly to handler
-                        // The handler (handleExtractedConceptsWithValidation) expects an object {category: [values]} 
-                        // OR we need to update handleExtractedConceptsWithValidation to accept a flat list?
-                        // Let's check handleExtractedConceptsWithValidation.
-                        // Actually, looking at lines 1609, it calls handleExtractedConceptsWithValidation.
-                        // If I look at the previous code, it transformed [{category, value}] -> {category: [values]}.
+                // Standardized processing
+                const categorizedConcepts = this._processAndCategorizeConcepts(rawConcepts);
 
-                        // If we receive a flat list ["concept1", "concept2"], we don't know the categories.
-                        // But the UI might expect just a list of concepts to classify? 
-                        // Or we can treat them all as 'general' or try to match them.
-
-                        // PROPOSED FIX:
-                        // 1. If objects: transform to {category: [values]}
-                        // 2. If strings: map to { "detected": ["concept1", "concept2"] } or similar
-
-                        // However, the previous logic implies the UI handles {category: [values]}. 
-                        // If the text prompt returns strings, where do they go?
-
-                        // Let's look at how text extraction worked before.
-                        // The prompt for text extraction returns {"concepts": ["c1", "c2"]}.
-                        // So it WAS returning strings.
-                        // This means the previous code (lines 1596-1603) checking `concept.category && concept.value` 
-                        // would have FAILED for text extraction if it returned strings!
-
-                        // So I must fix this to handle strings.
-                        const transform = {};
-                        conceptsData.forEach(concept => {
-                            if (typeof concept === 'string') {
-                                if (!transform['general']) transform['general'] = [];
-                                transform['general'].push(concept);
-                            } else if (concept.category && concept.value) {
-                                if (!transform[concept.category]) transform[concept.category] = [];
-                                transform[concept.category].push(concept.value);
-                            }
-                        });
-                        conceptsData = transform;
-                    } else if (conceptsData.length > 0 && typeof conceptsData[0] === 'object') {
-                        const transformed = {};
-                        for (const concept of conceptsData) {
-                            if (concept.category && concept.value) {
-                                if (!transformed[concept.category]) {
-                                    transformed[concept.category] = [];
-                                }
-                                transformed[concept.category].push(concept.value);
-                            }
-                        }
-                        conceptsData = transformed;
-                    }
-                }
-
-                // Show concepts section
+                // Show concepts section and update UI
                 this.uiManager.showConceptsSection();
-                this.handleExtractedConceptsWithValidation(conceptsData);
+                this.handleExtractedConceptsWithValidation(categorizedConcepts);
             }
 
             // Generate description based on transcription
@@ -2218,18 +2200,11 @@ class ConceptModule {
             if (analysis.concepts && Array.isArray(analysis.concepts) && analysis.concepts.length > 0) {
                 this.log.debug(`Found ${analysis.concepts.length} concepts in image analysis`);
 
-                // Categorize strings for handleExtractedConceptsWithValidation
-                // Since image extraction is currently flat, we put them under 'General'
-                // Note: the validator/matcher will eventually help refine this.
-                const categorizedConcepts = {
-                    'General': analysis.concepts
-                };
+                // Standardized processing (handles strings vs objects)
+                const categorizedConcepts = this._processAndCategorizeConcepts(analysis.concepts);
 
-                // Show concepts section first to ensure container is visible
+                // Show concepts section and update UI
                 this.uiManager.showConceptsSection();
-
-                // Use the standardized validation and addition logic
-                // This will handle filtering, adding, rendering and notifications
                 this.handleExtractedConceptsWithValidation(categorizedConcepts);
             } else if (!analysis.restaurant_name) {
                 SafetyUtils.showNotification('No new concepts found in image', 'info');
