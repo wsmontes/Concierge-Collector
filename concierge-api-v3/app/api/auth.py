@@ -12,6 +12,7 @@ from fastapi.responses import RedirectResponse, HTMLResponse
 from pymongo.database import Database
 from datetime import datetime, timedelta, timezone
 import httpx
+from jose import jwt
 import secrets
 import hashlib
 import base64
