@@ -17,7 +17,8 @@ window.uiUtils = {
 
         const loadingOverlay = document.createElement('div');
         loadingOverlay.id = 'global-loading-overlay';
-        loadingOverlay.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-[9999]';
+        loadingOverlay.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center';
+        loadingOverlay.style.zIndex = '9999';
 
         loadingOverlay.innerHTML = `
             <div class="bg-white p-4 rounded-lg shadow-lg flex flex-col items-center">
@@ -129,7 +130,8 @@ window.uiUtils = {
     confirmDialog: function (title, message, confirmLabel = 'Confirm', cancelLabel = 'Cancel') {
         return new Promise((resolve) => {
             const modal = document.createElement('div');
-            modal.className = 'fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[10000] p-4';
+            modal.className = 'fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4';
+            modal.style.zIndex = '10000';
             modal.id = 'ui-confirm-dialog';
 
             modal.innerHTML = `
