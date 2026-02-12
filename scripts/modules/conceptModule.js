@@ -2293,25 +2293,25 @@ class ConceptModule {
                 'Record a vocal review to add to your restaurant description.'}
             </p>
 
-            <div class="flex flex-col items-center justify-center py-6 bg-purple-50 rounded-xl border border-purple-100">
+            <!-- Main Recorder Template Structure -->
+            <div class="flex flex-col items-center justify-center py-4 bg-white rounded-xl">
                 <!-- Circular Timer Section -->
                 <div class="timer-circle mb-6 relative">
                      <!-- ID 'additional-recording-time' is required by RecordingModule.js to find and update the text -->
-                     <div id="additional-recording-time" class="timer-display text-4xl font-mono font-bold text-purple-600">00:00</div>
+                     <div id="additional-recording-time" class="timer-display text-4xl font-mono font-bold text-gray-800">00:00</div>
                      <svg class="timer-ring" viewBox="0 0 100 100">
-                         <circle class="timer-ring-bg" cx="50" cy="50" r="46" stroke="#e9d5ff" />
-                         <circle class="timer-ring-progress" cx="50" cy="50" r="46" stroke="#9333ea" />
+                         <circle class="timer-ring-bg" cx="50" cy="50" r="46" />
+                         <circle class="timer-ring-progress" cx="50" cy="50" r="46" />
                      </svg>
                 </div>
 
                 <!-- Controls -->
-                <!-- Renamed class to avoid conflicts with main recorder styles -->
                 <div class="additional-recording-controls flex items-center justify-center gap-4 relative z-10" style="display: flex !important;">
-                    <button id="additional-record-start" class="bg-purple-600 hover:bg-purple-700 text-white w-16 h-16 rounded-full shadow-lg flex items-center justify-center transform transition-transform hover:scale-105 active:scale-95 transition-colors">
-                        <span class="material-icons text-3xl">mic</span>
+                    <button id="additional-record-start" class="bg-purple-600 hover:bg-purple-700 text-white w-20 h-20 rounded-full shadow-lg flex items-center justify-center transform transition-transform hover:scale-105 active:scale-95 transition-colors">
+                        <span class="material-icons text-4xl">mic</span>
                     </button>
-                    <button id="additional-record-stop" class="bg-gray-800 hover:bg-gray-900 text-white w-16 h-16 rounded-full shadow-lg flex items-center justify-center transform transition-transform hover:scale-105 active:scale-95 transition-colors hidden">
-                         <span class="material-icons text-3xl">stop</span>
+                    <button id="additional-record-stop" class="bg-gray-800 hover:bg-gray-900 text-white w-20 h-20 rounded-full shadow-lg flex items-center justify-center transform transition-transform hover:scale-105 active:scale-95 transition-colors hidden">
+                         <span class="material-icons text-4xl">stop</span>
                     </button>
                 </div>
                 
