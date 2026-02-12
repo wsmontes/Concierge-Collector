@@ -29,10 +29,34 @@ class OutputHandler:
         Returns:
             Dictionary with only category keys and their concept lists
         """
-        metadata_keys = {"confidence_score", "entity_type", "model", "restaurant_name", 
-                        "category_context", "visual_notes", "transcription_id", "duration",
-                        "language", "analysis_id", "concept_id"}
-        return {k: v for k, v in ai_result.items() if k not in metadata_keys and isinstance(v, list)}
+        # Preferred: OpenAIService returns a normalized payload containing a `categories` dict.
+        if isinstance(ai_result.get("categories"), dict):
+            return ai_result.get("categories")
+
+        # Fallback: older payloads might contain category keys directly.
+        metadata_keys = {
+            "confidence_score",
+            "entity_type",
+            "model",
+            "restaurant_name",
+            "category_context",
+            "visual_notes",
+            "transcription_id",
+            "duration",
+            "language",
+            "analysis_id",
+            "concept_id",
+            "concepts",
+            "categories",
+        }
+
+        extracted: Dict[str, Any] = {}
+        for key, value in ai_result.items():
+            if key in metadata_keys:
+                continue
+            if isinstance(value, list) and all(isinstance(v, str) for v in value):
+                extracted[key] = value
+        return extracted
     
     @staticmethod
     def apply_defaults(request_data: Dict[str, Any]) -> Dict[str, Any]:
