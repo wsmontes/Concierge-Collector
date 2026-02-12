@@ -434,10 +434,15 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
 
     async analyzeImage(imageBlob, prompt) {
         // Convert image to base64 - API V3 expects JSON with base64 image_file
-        const base64Image = await this.blobToBase64(imageBlob);
+        // Note: blobToBase64 strips the prefix, but OpenAI needs a valid URL or Data URI.
+        // We will reconstruct the Data URI here.
+        const base64Data = await this.blobToBase64(imageBlob);
+        // Determine mime type from blob if possible, default to jpeg
+        const mimeType = imageBlob.type || 'image/jpeg';
+        const dataUri = `data:${mimeType};base64,${base64Data}`;
 
         const requestBody = {
-            image_file: base64Image,
+            image_file: dataUri,
             prompt: prompt,
             entity_type: 'restaurant'
         };
