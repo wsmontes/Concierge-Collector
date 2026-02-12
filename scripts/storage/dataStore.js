@@ -631,24 +631,30 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
      */
     async deleteCuration(curationId) {
         try {
+            // Check if it exists
             const curation = await this.getCuration(curationId);
-            if (!curation) throw new Error('Curation not found');
+            if (!curation) {
+                this.log.warn(`⚠️ Curation not found for deletion: ${curationId}`);
+                return false;
+            }
 
-            // Soft delete locally
-            await this.db.curations.update(curation.id, {
-                status: 'deleted',
-                sync: {
-                    ...(curation.sync || {}),
-                    status: 'pending'
-                }
-            });
+            // Soft delete locally (handle duplicates by using modify on the collection)
+            // This ensures that if there are multiple records with same curation_id, all are marked
+            await this.db.curations
+                .where('curation_id').equals(curationId)
+                .modify(c => {
+                    c.status = 'deleted';
+                    c.sync = {
+                        ...(c.sync || {}),
+                        status: 'pending'
+                    };
+                });
 
             // If it was already on server, add to sync queue as 'update' (to status=deleted)
-            // Or if we have a dedicated 'deleteCuration' sync action, we could use that.
-            // Following 'update_one' approach in backend, we treat it as an update.
+            // We use curation.id (primary key) for the local_id reference
             await this.addToSyncQueue('curation', 'update', curation.id, curation.curation_id, { status: 'deleted' });
 
-            this.log.debug(`✅ Soft-deleted curation: ${curationId}`);
+            this.log.debug(`✅ Soft-deleted all records for curation: ${curationId}`);
             return true;
         } catch (error) {
             this.log.error('❌ Failed to delete curation:', error);
