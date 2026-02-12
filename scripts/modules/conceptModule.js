@@ -2215,27 +2215,22 @@ class ConceptModule {
             }
 
             // 2. Handle Concepts
-            let newConceptsCount = 0;
-            if (analysis.concepts && Array.isArray(analysis.concepts)) {
-                // The API now returns a flat list of strings ["concept1", "concept2"]
-                // matching the text extraction style.
-                const conceptsToAdd = analysis.concepts;
+            if (analysis.concepts && Array.isArray(analysis.concepts) && analysis.concepts.length > 0) {
+                this.log.debug(`Found ${analysis.concepts.length} concepts in image analysis`);
 
-                if (conceptsToAdd.length > 0) {
-                    const uniqueNewConcepts = this.uiManager.filterExistingConcepts(conceptsToAdd);
+                // Categorize strings for handleExtractedConceptsWithValidation
+                // Since image extraction is currently flat, we put them under 'General'
+                // Note: the validator/matcher will eventually help refine this.
+                const categorizedConcepts = {
+                    'General': analysis.concepts
+                };
 
-                    if (uniqueNewConcepts.length > 0) {
-                        uniqueNewConcepts.forEach(concept => {
-                            this.uiManager.currentConcepts.push(concept);
-                        });
-                        newConceptsCount = uniqueNewConcepts.length;
-                    }
-                }
-            }
+                // Show concepts section first to ensure container is visible
+                this.uiManager.showConceptsSection();
 
-            if (newConceptsCount > 0) {
-                this.renderConcepts();
-                SafetyUtils.showNotification(`Added ${newConceptsCount} concepts from image`, 'success');
+                // Use the standardized validation and addition logic
+                // This will handle filtering, adding, rendering and notifications
+                this.handleExtractedConceptsWithValidation(categorizedConcepts);
             } else if (!analysis.restaurant_name) {
                 SafetyUtils.showNotification('No new concepts found in image', 'info');
             }
