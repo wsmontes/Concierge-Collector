@@ -2295,7 +2295,7 @@ class ConceptModule {
 
             <div class="flex flex-col items-center justify-center py-6 bg-purple-50 rounded-xl border border-purple-100">
                 <!-- Circular Timer Section -->
-                <div class="timer-circle mb-6">
+                <div class="timer-circle mb-6 relative">
                      <!-- ID 'additional-recording-time' is required by RecordingModule.js to find and update the text -->
                      <div id="additional-recording-time" class="timer-display text-4xl font-mono font-bold text-purple-600">00:00</div>
                      <svg class="timer-ring" viewBox="0 0 100 100">
@@ -2305,7 +2305,8 @@ class ConceptModule {
                 </div>
 
                 <!-- Controls -->
-                <div class="recording-controls flex items-center justify-center gap-4">
+                <!-- Renamed class to avoid conflicts with main recorder styles -->
+                <div class="additional-recording-controls flex items-center justify-center gap-4 relative z-10" style="display: flex !important;">
                     <button id="additional-record-start" class="bg-purple-600 hover:bg-purple-700 text-white w-16 h-16 rounded-full shadow-lg flex items-center justify-center transform transition-transform hover:scale-105 active:scale-95 transition-colors">
                         <span class="material-icons text-3xl">mic</span>
                     </button>
