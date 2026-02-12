@@ -2309,10 +2309,11 @@ class ConceptModule {
                 <!-- Controls -->
                 <div class="additional-recording-controls flex items-center justify-center gap-4 relative z-10" style="display: flex !important;">
                     <button id="additional-record-start" class="bg-purple-600 hover:bg-purple-700 text-white w-20 h-20 rounded-full shadow-lg flex items-center justify-center transform transition-transform hover:scale-105 active:scale-95 transition-colors">
-                        <span class="material-icons text-4xl">mic</span>
+                        <!-- Added mr-0 to override global button icon styles that add margin-right -->
+                        <span class="material-icons text-4xl mr-0" style="margin-right: 0 !important;">mic</span>
                     </button>
                     <button id="additional-record-stop" class="bg-gray-800 hover:bg-gray-900 text-white w-20 h-20 rounded-full shadow-lg flex items-center justify-center transform transition-transform hover:scale-105 active:scale-95 transition-colors hidden">
-                         <span class="material-icons text-4xl">stop</span>
+                         <span class="material-icons text-4xl mr-0" style="margin-right: 0 !important;">stop</span>
                     </button>
                 </div>
                 
