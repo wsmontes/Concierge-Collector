@@ -172,15 +172,16 @@ class OpenAIService:
         
         # Cache concepts in DB only if requested
         if save_to_cache:
-            concept_id = f"concept_{uuid.uuid4().hex[:12]}"
-            # Extract categories (all keys except metadata)
-            categories = {k: v for k, v in result.items() 
-                         if k not in ["confidence_score", "entity_type", "model"]}
+            # Extract categories (all keys except metadata fields)
+            metadata_keys = {"confidence_score", "entity_type", "model", "restaurant_name"}
+            categories = {k: v for k, v in result.items() if k not in metadata_keys}
             
+            concept_id = f"concept_{uuid.uuid4().hex[:12]}"
             await self.db.ai_concepts.insert_one({
                 "concept_id": concept_id,
                 "text": text,
-                "categories": categories,  # Structured by category
+                "categories": categories,  # Store categorized concepts
+                "restaurant_name": result.get("restaurant_name"),
                 "confidence_score": result.get("confidence_score", 0.0),
                 "entity_type": entity_type,
                 "model": config["model"],
@@ -247,15 +248,15 @@ class OpenAIService:
         
         # Cache image analysis in DB only if requested
         if save_to_cache:
-            analysis_id = f"img_analysis_{uuid.uuid4().hex[:12]}"
-            # Extract categories (all keys except metadata)
-            categories = {k: v for k, v in result.items() 
-                         if k not in ["confidence_score", "visual_notes", "entity_type", "model"]}
+            # Extract categories (all keys except metadata fields)
+            metadata_keys = {"confidence_score", "entity_type", "model", "visual_notes", "restaurant_name"}
+            categories = {k: v for k, v in result.items() if k not in metadata_keys}
             
+            analysis_id = f"img_analysis_{uuid.uuid4().hex[:12]}"
             await self.db.ai_image_analysis.insert_one({
                 "analysis_id": analysis_id,
                 "image_url": image_url,
-                "categories": categories,  # Structured by category
+                "categories": categories,  # Store categorized concepts
                 "confidence_score": result.get("confidence_score", 0.0),
                 "visual_notes": result.get("visual_notes", ""),
                 "entity_type": entity_type,

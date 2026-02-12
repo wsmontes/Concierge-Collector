@@ -19,6 +19,22 @@ class OutputHandler:
     """Handles flexible output formatting and storage"""
     
     @staticmethod
+    def extract_categories(ai_result: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Extract category fields from AI result, excluding metadata.
+        
+        Args:
+            ai_result: Full AI result with categories and metadata
+            
+        Returns:
+            Dictionary with only category keys and their concept lists
+        """
+        metadata_keys = {"confidence_score", "entity_type", "model", "restaurant_name", 
+                        "category_context", "visual_notes", "transcription_id", "duration",
+                        "language", "analysis_id", "concept_id"}
+        return {k: v for k, v in ai_result.items() if k not in metadata_keys and isinstance(v, list)}
+    
+    @staticmethod
     def apply_defaults(request_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Apply smart defaults based on presence/absence of output object.
@@ -68,15 +84,12 @@ class OutputHandler:
         if format_type == "full":
             return results
         elif format_type == "minimal":
-            # Extract categorized concepts (remove metadata fields)
-            concepts_data = results.get("concepts", {})
-            categories = {k: v for k, v in concepts_data.items() 
-                         if k not in ["confidence_score", "entity_type", "model", "category_context"]}
+            categories = OutputHandler.extract_categories(results.get("concepts", {}))
             return {
                 "entity_id": results.get("entity", {}).get("entity_id"),
                 "curation_id": results.get("curation", {}).get("curation_id"),
                 "categories": categories,
-                "confidence_score": concepts_data.get("confidence_score")
+                "restaurant_name": results.get("concepts", {}).get("restaurant_name")
             }
         elif format_type == "ids_only":
             return {
@@ -294,10 +307,7 @@ class AIOrchestrator:
             results["concepts"] = concepts
             
             # 4. Create curation
-            # Extract categorized concepts (remove metadata fields)
-            categories = {k: v for k, v in concepts.items() 
-                         if k not in ["confidence_score", "entity_type", "model", "category_context"]}
-            
+            categories = OutputHandler.extract_categories(concepts)
             results["curation"] = {
                 "curation_id": f"cur_{uuid.uuid4().hex[:12]}",
                 "entity_id": results["entity"]["entity_id"],
@@ -328,10 +338,7 @@ class AIOrchestrator:
             results["image_analysis"] = image_analysis
             
             # 3. Create curation
-            # Extract categorized concepts (remove metadata fields)
-            categories = {k: v for k, v in image_analysis.items() 
-                         if k not in ["confidence_score", "visual_notes", "entity_type", "model", "category_context"]}
-            
+            categories = OutputHandler.extract_categories(image_analysis)
             results["curation"] = {
                 "curation_id": f"cur_{uuid.uuid4().hex[:12]}",
                 "entity_id": results["entity"]["entity_id"],
@@ -377,31 +384,18 @@ class AIOrchestrator:
             )
             results["image_analysis"] = image_analysis
             
-            # Combine concepts from both sources (merge categories)
-            def merge_categories(cat1, cat2):
-                """Merge two categorized concept dictionaries"""
-                merged = {}
-                # Get all unique category keys
-                all_keys = set(cat1.keys()) | set(cat2.keys())
-                # Exclude metadata fields
-                exclude = {"confidence_score", "entity_type", "model", "visual_notes", "category_context"}
-                for key in all_keys:
-                    if key not in exclude:
-                        # Combine lists and deduplicate while preserving order
-                        list1 = cat1.get(key, [])
-                        list2 = cat2.get(key, [])
-                        seen = set()
-                        merged[key] = [x for x in list1 + list2 if not (x in seen or seen.add(x))]
-                return merged
+            # Combine categories from both sources (merge and deduplicate per category)
+            text_categories = OutputHandler.extract_categories(text_concepts)
+            image_categories = OutputHandler.extract_categories(image_analysis)
             
-            text_categories = {k: v for k, v in text_concepts.items() 
-                              if k not in ["confidence_score", "entity_type", "model", "category_context"]}
-            image_categories = {k: v for k, v in image_analysis.items() 
-                               if k not in ["confidence_score", "visual_notes", "entity_type", "model", "category_context"]}
+            combined_categories = {}
+            all_category_keys = set(text_categories.keys()) | set(image_categories.keys())
+            for key in all_category_keys:
+                text_vals = text_categories.get(key, [])
+                image_vals = image_categories.get(key, [])
+                combined_categories[key] = list(set(text_vals + image_vals))  # Deduplicate per category
             
-            combined_categories = merge_categories(text_categories, image_categories)
-            
-            # Create curation with combined concepts
+            # Create curation with combined categories
             results["curation"] = {
                 "curation_id": f"cur_{uuid.uuid4().hex[:12]}",
                 "entity_id": results["entity"]["entity_id"],
