@@ -135,6 +135,13 @@ def create_or_update_user(db: Database, user_data: dict) -> UserInDB:
             "picture": user_data.get("picture"),
             "last_login": datetime.now(timezone.utc)
         }
+        
+        # Auto-authorize if from lotier.com domain and not already authorized
+        if not existing_user.authorized and user_data["email"].lower().endswith("@lotier.com"):
+            update_data["authorized"] = True
+            existing_user.authorized = True
+            logger.info(f"[OAuth] Auto-authorized existing user from domain: {user_data['email']}")
+
         if user_data.get("refresh_token"):
             update_data["refresh_token"] = user_data["refresh_token"]
         
@@ -152,13 +159,16 @@ def create_or_update_user(db: Database, user_data: dict) -> UserInDB:
         logger.info(f"[OAuth] Updated existing user: {existing_user.email} (name, picture, last_login)")
         return existing_user
     else:
-        # Create new user (unauthorized by default)
+        # Check if email is from lotier.com domain
+        is_lotier = user_data["email"].lower().endswith("@lotier.com")
+        
+        # Create new user (authorized automatically if from lotier.com)
         new_user = User(
             email=user_data["email"],
             google_id=user_data["google_id"],
             name=user_data["name"],
             picture=user_data.get("picture"),
-            authorized=False,  # Admin must authorize
+            authorized=is_lotier,  # Auto-authorize Lotier domain
             created_at=datetime.now(timezone.utc),
             last_login=datetime.now(timezone.utc),
             refresh_token=user_data.get("refresh_token")
@@ -166,7 +176,9 @@ def create_or_update_user(db: Database, user_data: dict) -> UserInDB:
         result = db.users.insert_one(new_user.dict())
         user_dict = new_user.dict()
         user_dict["_id"] = str(result.inserted_id)
-        logger.info(f"[OAuth] Created new user: {new_user.email} (authorized=False)")
+        
+        auth_status = "True (Auto-authorized)" if is_lotier else "False"
+        logger.info(f"[OAuth] Created new user: {new_user.email} (authorized={auth_status})")
         return UserInDB(**user_dict)
 
 
