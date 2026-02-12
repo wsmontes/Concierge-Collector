@@ -68,11 +68,15 @@ class OutputHandler:
         if format_type == "full":
             return results
         elif format_type == "minimal":
+            # Extract categorized concepts (remove metadata fields)
+            concepts_data = results.get("concepts", {})
+            categories = {k: v for k, v in concepts_data.items() 
+                         if k not in ["confidence_score", "entity_type", "model", "category_context"]}
             return {
                 "entity_id": results.get("entity", {}).get("entity_id"),
                 "curation_id": results.get("curation", {}).get("curation_id"),
-                "concepts": results.get("concepts", {}).get("concepts", []),
-                "restaurant_name": results.get("concepts", {}).get("restaurant_name")
+                "categories": categories,
+                "confidence_score": concepts_data.get("confidence_score")
             }
         elif format_type == "ids_only":
             return {
@@ -290,12 +294,16 @@ class AIOrchestrator:
             results["concepts"] = concepts
             
             # 4. Create curation
+            # Extract categorized concepts (remove metadata fields)
+            categories = {k: v for k, v in concepts.items() 
+                         if k not in ["confidence_score", "entity_type", "model", "category_context"]}
+            
             results["curation"] = {
                 "curation_id": f"cur_{uuid.uuid4().hex[:12]}",
                 "entity_id": results["entity"]["entity_id"],
                 "curator_id": request.get("curator_id"),
                 "transcription_id": transcription.get("transcription_id"),
-                "concepts": concepts["concepts"],
+                "categories": categories,
                 "source": "text_analysis",
                 "entity_type": entity_type,
                 "created_at": datetime.now(timezone.utc).isoformat()
@@ -320,11 +328,15 @@ class AIOrchestrator:
             results["image_analysis"] = image_analysis
             
             # 3. Create curation
+            # Extract categorized concepts (remove metadata fields)
+            categories = {k: v for k, v in image_analysis.items() 
+                         if k not in ["confidence_score", "visual_notes", "entity_type", "model", "category_context"]}
+            
             results["curation"] = {
                 "curation_id": f"cur_{uuid.uuid4().hex[:12]}",
                 "entity_id": results["entity"]["entity_id"],
                 "curator_id": request.get("curator_id"),
-                "concepts": image_analysis["concepts"],
+                "categories": categories,
                 "source": "image_analysis",
                 "visual_notes": image_analysis.get("visual_notes"),
                 "entity_type": entity_type,
@@ -365,10 +377,29 @@ class AIOrchestrator:
             )
             results["image_analysis"] = image_analysis
             
-            # Combine concepts from both sources (deduplicate)
-            combined_concepts = list(set(
-                text_concepts["concepts"] + image_analysis["concepts"]
-            ))
+            # Combine concepts from both sources (merge categories)
+            def merge_categories(cat1, cat2):
+                """Merge two categorized concept dictionaries"""
+                merged = {}
+                # Get all unique category keys
+                all_keys = set(cat1.keys()) | set(cat2.keys())
+                # Exclude metadata fields
+                exclude = {"confidence_score", "entity_type", "model", "visual_notes", "category_context"}
+                for key in all_keys:
+                    if key not in exclude:
+                        # Combine lists and deduplicate while preserving order
+                        list1 = cat1.get(key, [])
+                        list2 = cat2.get(key, [])
+                        seen = set()
+                        merged[key] = [x for x in list1 + list2 if not (x in seen or seen.add(x))]
+                return merged
+            
+            text_categories = {k: v for k, v in text_concepts.items() 
+                              if k not in ["confidence_score", "entity_type", "model", "category_context"]}
+            image_categories = {k: v for k, v in image_analysis.items() 
+                               if k not in ["confidence_score", "visual_notes", "entity_type", "model", "category_context"]}
+            
+            combined_categories = merge_categories(text_categories, image_categories)
             
             # Create curation with combined concepts
             results["curation"] = {
@@ -376,7 +407,7 @@ class AIOrchestrator:
                 "entity_id": results["entity"]["entity_id"],
                 "curator_id": request.get("curator_id"),
                 "transcription_id": transcription.get("transcription_id"),
-                "concepts": combined_concepts,
+                "categories": combined_categories,
                 "sources": ["text_analysis", "image_analysis"],
                 "visual_notes": image_analysis.get("visual_notes"),
                 "entity_type": entity_type,
