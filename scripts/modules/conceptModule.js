@@ -2298,8 +2298,8 @@ class ConceptModule {
                 <!-- Circular Timer Section -->
                 <div class="timer-circle">
                      <!-- ID 'additional-recording-time' is required by RecordingModule.js to find and update the text -->
-                     <!-- Removed extra classes (text-4xl, font-mono, etc) to let .timer-display CSS handle exact alignment -->
-                     <div id="additional-recording-time" class="timer-display">00:00</div>
+                     <!-- Added inline style to force centering and prevent any padding interference -->
+                     <div id="additional-recording-time" class="timer-display" style="width: 100%; text-align: center; display: flex; justify-content: center;">00:00</div>
                      <svg class="timer-ring" viewBox="0 0 100 100">
                          <circle class="timer-ring-bg" cx="50" cy="50" r="46" />
                          <circle class="timer-ring-progress" cx="50" cy="50" r="46" />
