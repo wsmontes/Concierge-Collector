@@ -2276,9 +2276,10 @@ class ConceptModule {
         // Create the additional recording section
         additionalRecordingSection = document.createElement('div');
         additionalRecordingSection.id = 'additional-recording-section';
-        additionalRecordingSection.className = 'mt-4 p-4 bg-purple-50 border border-purple-200 rounded-lg';
+        // Clean container style - let inner elements handle layout
+        additionalRecordingSection.className = 'mt-6 mb-2';
 
-        // Show for both new and existing restaurants (removing the conditional display)
+        // Show for both new and existing restaurants
         additionalRecordingSection.style.display = 'block';
 
         additionalRecordingSection.innerHTML = `
@@ -2286,31 +2287,47 @@ class ConceptModule {
                 <span class="material-icons mr-2">add_comment</span>
                 Record Additional Review
             </h3>
-            <p class="text-sm text-gray-600 mb-3">
+            <p class="text-sm text-gray-600 mb-4">
                 ${this.uiManager && this.uiManager.isEditingRestaurant ?
                 'Add another review to the existing transcription without replacing the current content.' :
                 'Record a vocal review to add to your restaurant description.'}
             </p>
-            <div class="recording-controls flex flex-wrap items-center gap-4 mb-4 justify-center">
-                <button id="additional-record-start" class="bg-purple-600 hover:bg-purple-700 text-white w-16 h-16 rounded-full shadow-lg flex items-center justify-center transform transition-transform hover:scale-105 active:scale-95">
-                    <span class="material-icons text-3xl">mic</span>
-                </button>
-                <button id="additional-record-stop" class="bg-red-500 hover:bg-red-600 text-white w-16 h-16 rounded-full shadow-lg flex items-center justify-center transform transition-transform hover:scale-105 active:scale-95 hidden">
-                    <span class="material-icons text-3xl">stop</span>
-                </button>
-                <div id="additional-recording-time" class="text-2xl font-mono font-bold text-gray-700 min-w-[80px] text-center hidden">
-                    00:00
+
+            <div class="flex flex-col items-center justify-center py-6 bg-purple-50 rounded-xl border border-purple-100">
+                <!-- Circular Timer Section -->
+                <div class="timer-circle mb-6">
+                     <!-- ID 'additional-recording-time' is required by RecordingModule.js to find and update the text -->
+                     <div id="additional-recording-time" class="timer-display text-4xl font-mono font-bold text-purple-600">00:00</div>
+                     <svg class="timer-ring" viewBox="0 0 100 100">
+                         <circle class="timer-ring-bg" cx="50" cy="50" r="46" stroke="#e9d5ff" />
+                         <circle class="timer-ring-progress" cx="50" cy="50" r="46" stroke="#9333ea" />
+                     </svg>
                 </div>
-                <div id="additional-recording-status" class="text-sm text-gray-600 ml-2 w-full text-center mt-2"></div>
+
+                <!-- Controls -->
+                <div class="recording-controls flex items-center justify-center gap-4">
+                    <button id="additional-record-start" class="bg-purple-600 hover:bg-purple-700 text-white w-16 h-16 rounded-full shadow-lg flex items-center justify-center transform transition-transform hover:scale-105 active:scale-95 transition-colors">
+                        <span class="material-icons text-3xl">mic</span>
+                    </button>
+                    <button id="additional-record-stop" class="bg-gray-800 hover:bg-gray-900 text-white w-16 h-16 rounded-full shadow-lg flex items-center justify-center transform transition-transform hover:scale-105 active:scale-95 transition-colors hidden">
+                         <span class="material-icons text-3xl">stop</span>
+                    </button>
+                </div>
+                
+                <div id="additional-recording-status" class="mt-4 text-purple-700 font-medium h-6 text-center text-sm"></div>
+                
+                <!-- Transcription Status (Processing) -->
+                <div id="additional-transcription-status" class="text-sm text-gray-600 hidden mt-2 text-center">
+                    <div class="flex items-center justify-center">
+                        <div class="mr-2 h-3 w-3 rounded-full bg-yellow-400 animate-pulse"></div>
+                        <span>Transcribing audio...</span>
+                    </div>
+                </div>
             </div>
-            <div id="additional-audio-visualizer" class="h-16 mb-4 bg-gray-900 rounded-lg overflow-hidden hidden shadow-inner">
+
+            <!-- Audio Visualizer -->
+            <div id="additional-audio-visualizer" class="h-16 mt-4 bg-gray-900 rounded-lg overflow-hidden hidden shadow-inner">
                 <canvas id="additional-visualizer-canvas" class="w-full h-full"></canvas>
-            </div>
-            <div id="additional-transcription-status" class="text-sm text-gray-600 hidden mt-2 text-center">
-                <div class="flex items-center justify-center">
-                    <div class="mr-2 h-3 w-3 rounded-full bg-yellow-400 animate-pulse"></div>
-                    <span>Transcribing audio...</span>
-                </div>
             </div>
         `;
 
@@ -2340,7 +2357,7 @@ class ConceptModule {
             });
         }
 
-        this.log.debug('Additional recording section added and set to visible for all restaurant creation modes');
+        this.log.debug('Additional recording section added (Circular UI)');
     }
 
     /**

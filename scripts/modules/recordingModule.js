@@ -745,7 +745,19 @@ class RecordingModule {
 
                 if (additionalStartBtn) additionalStartBtn.classList.remove('hidden');
                 if (additionalStopBtn) additionalStopBtn.classList.add('hidden');
-                if (additionalRecordingTime) additionalRecordingTime.classList.add('hidden');
+
+                // Only hide additional timer if it's NOT a circular timer (check parent)
+                if (additionalRecordingTime) {
+                    const isCircular = additionalRecordingTime.closest('.timer-circle');
+                    if (!isCircular) {
+                        additionalRecordingTime.classList.add('hidden');
+                    } else {
+                        // Make sure it's visible for circular timer
+                        additionalRecordingTime.classList.remove('hidden');
+                        additionalRecordingTime.textContent = '00:00';
+                    }
+                }
+
                 if (additionalAudioVisualizer) additionalAudioVisualizer.classList.add('hidden');
 
                 // Reset status displays
@@ -1071,7 +1083,13 @@ class RecordingModule {
         ];
         timerElements.forEach(element => {
             if (element) {
-                element.classList.add('hidden');
+                // Only hide if NOT circular
+                const isCircular = element.closest('.timer-circle');
+                if (!isCircular) {
+                    element.classList.add('hidden');
+                } else {
+                    element.classList.remove('hidden');
+                }
                 element.textContent = '00:00';
             }
         });

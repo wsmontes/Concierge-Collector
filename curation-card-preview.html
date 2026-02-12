@@ -1,0 +1,302 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Curation Card - Preview das Melhorias</title>
+    <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+        }
+    </style>
+</head>
+<body class="bg-gray-50 p-8">
+    <div class="max-w-6xl mx-auto">
+        <h1 class="text-3xl font-bold mb-2 text-gray-900">✨ Curation Cards - Melhorias Implementadas</h1>
+        <p class="text-gray-600 mb-8">Comparação visual: ANTES vs DEPOIS</p>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <!-- ANTES (OLD) -->
+            <div>
+                <h2 class="text-xl font-bold mb-4 text-red-600">❌ ANTES (Problema)</h2>
+                
+                <!-- Card 1: Google Places marcado como Manual -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-4">
+                    <div class="p-5">
+                        <div class="flex justify-between mb-3">
+                            <h3 class="text-lg font-bold text-gray-900">Hotel Grand Pacific</h3>
+                            <span class="material-icons text-purple-500">hotel</span>
+                        </div>
+                        <p class="text-sm text-gray-500 mb-2">Victoria, BC</p>
+                        <div class="flex items-center mb-3">
+                            <span class="text-yellow-400">★★★★★</span>
+                        </div>
+                        
+                        <!-- Curation Actions Row - OLD STYLE -->
+                        <div class="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
+                            <div class="flex flex-col gap-1">
+                                <div class="flex items-center gap-2">
+                                    <span class="bg-blue-100 text-blue-800 rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider shadow-sm">
+                                        LINKED
+                                    </span>
+                                    <div class="flex items-center gap-1 text-xs text-gray-500">
+                                        <span class="material-icons text-[14px]">person</span>
+                                        <span class="font-medium">wagner</span>
+                                    </div>
+                                </div>
+                                <!-- OLD META INFO -->
+                                <div class="flex items-center gap-3 mt-1.5 pl-1">
+                                    <div class="flex items-center gap-1 text-[10px] text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100">
+                                        <span class="material-icons text-[12px] text-gray-400">edit</span>
+                                        <span>Manual</span>
+                                    </div>
+                                    <div class="flex items-center gap-1 text-[10px] text-green-500 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100">
+                                        <span class="material-icons text-[12px]">cloud_done</span>
+                                        <span class="capitalize">Synced</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Card 2: Voice Note marcado como Manual -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                    <div class="p-5">
+                        <div class="flex justify-between mb-3">
+                            <h3 class="text-lg font-bold text-gray-900">TESTE_NASA</h3>
+                            <span class="material-icons text-purple-500">restaurant</span>
+                        </div>
+                        <p class="text-sm text-gray-500 mb-2">Unknown</p>
+                        
+                        <div class="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
+                            <div class="flex flex-col gap-1">
+                                <div class="flex items-center gap-2">
+                                    <span class="bg-blue-100 text-blue-800 rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider shadow-sm">
+                                        LINKED
+                                    </span>
+                                    <div class="flex items-center gap-1 text-xs text-gray-500">
+                                        <span class="material-icons text-[14px]">person</span>
+                                        <span class="font-medium">wagner</span>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-3 mt-1.5 pl-1">
+                                    <div class="flex items-center gap-1 text-[10px] text-gray-400 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100">
+                                        <span class="material-icons text-[12px] text-gray-400">edit</span>
+                                        <span>Manual</span>
+                                    </div>
+                                    <div class="flex items-center gap-1 text-[10px] text-green-500 bg-gray-50 px-1.5 py-0.5 rounded border border-gray-100">
+                                        <span class="material-icons text-[12px]">cloud_done</span>
+                                        <span class="capitalize">Synced</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- DEPOIS (NEW) -->
+            <div>
+                <h2 class="text-xl font-bold mb-4 text-green-600">✅ DEPOIS (Corrigido)</h2>
+                
+                <!-- Card 1: Google Places corretamente identificado -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden mb-4">
+                    <div class="p-5">
+                        <div class="flex justify-between mb-3">
+                            <h3 class="text-lg font-bold text-gray-900">Hotel Grand Pacific</h3>
+                            <span class="material-icons text-purple-500">hotel</span>
+                        </div>
+                        <p class="text-sm text-gray-500 mb-2">Victoria, BC</p>
+                        <div class="flex items-center mb-3">
+                            <span class="text-yellow-400">★★★★★</span>
+                        </div>
+                        
+                        <!-- Curation Actions Row - NEW STYLE -->
+                        <div class="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
+                            <div class="flex flex-col gap-1">
+                                <div class="flex items-center gap-2">
+                                    <span class="bg-blue-100 text-blue-800 rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider shadow-sm">
+                                        LINKED
+                                    </span>
+                                    <div class="flex items-center gap-1 text-xs text-gray-500">
+                                        <span class="material-icons text-[14px]">person</span>
+                                        <span class="font-medium">wagner</span>
+                                    </div>
+                                </div>
+                                <!-- NEW META INFO -->
+                                <div class="flex items-center gap-2 mt-2">
+                                    <!-- Source Badge -->
+                                    <div class="flex items-center gap-1.5 px-2 py-1 bg-white border border-green-300 rounded-md shadow-sm">
+                                        <span class="material-icons text-[14px] text-green-600">place</span>
+                                        <span class="text-[11px] font-medium text-green-700">Google Places</span>
+                                    </div>
+                                    
+                                    <!-- Divider -->
+                                    <span class="text-gray-300 text-xs">|</span>
+                                    
+                                    <!-- Sync Status -->
+                                    <div class="flex items-center gap-1 text-green-600">
+                                        <span class="material-icons text-[14px]">cloud_done</span>
+                                        <span class="text-[11px] font-medium capitalize">Synced</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Card 2: Voice Note corretamente identificado -->
+                <div class="bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden">
+                    <div class="p-5">
+                        <div class="flex justify-between mb-3">
+                            <h3 class="text-lg font-bold text-gray-900">TESTE_NASA</h3>
+                            <span class="material-icons text-purple-500">restaurant</span>
+                        </div>
+                        <p class="text-sm text-gray-500 mb-2">Unknown</p>
+                        
+                        <div class="mt-4 pt-4 border-t border-gray-100 flex items-center justify-between">
+                            <div class="flex flex-col gap-1">
+                                <div class="flex items-center gap-2">
+                                    <span class="bg-blue-100 text-blue-800 rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider shadow-sm">
+                                        LINKED
+                                    </span>
+                                    <div class="flex items-center gap-1 text-xs text-gray-500">
+                                        <span class="material-icons text-[14px]">person</span>
+                                        <span class="font-medium">wagner</span>
+                                    </div>
+                                </div>
+                                <div class="flex items-center gap-2 mt-2">
+                                    <!-- Source Badge - Voice Note -->
+                                    <div class="flex items-center gap-1.5 px-2 py-1 bg-white border border-purple-300 rounded-md shadow-sm">
+                                        <span class="material-icons text-[14px] text-purple-600">mic</span>
+                                        <span class="text-[11px] font-medium text-purple-700">Voice Note</span>
+                                    </div>
+                                    
+                                    <span class="text-gray-300 text-xs">|</span>
+                                    
+                                    <div class="flex items-center gap-1 text-green-600">
+                                        <span class="material-icons text-[14px]">cloud_done</span>
+                                        <span class="text-[11px] font-medium capitalize">Synced</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Examples Section -->
+        <div class="mt-12">
+            <h2 class="text-2xl font-bold mb-6 text-gray-900">🎨 Todos os Tipos de Source</h2>
+            
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <!-- Voice Note -->
+                <div class="bg-white p-4 rounded-lg border border-gray-200">
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="material-icons text-purple-600">mic</span>
+                        <h3 class="font-bold">Voice Note</h3>
+                    </div>
+                    <div class="flex items-center gap-1.5 px-2 py-1 bg-white border border-purple-300 rounded-md shadow-sm w-fit">
+                        <span class="material-icons text-[14px] text-purple-600">mic</span>
+                        <span class="text-[11px] font-medium text-purple-700">Voice Note</span>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2">Para transcrições de áudio</p>
+                </div>
+
+                <!-- Photo -->
+                <div class="bg-white p-4 rounded-lg border border-gray-200">
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="material-icons text-pink-600">photo_camera</span>
+                        <h3 class="font-bold">Photo</h3>
+                    </div>
+                    <div class="flex items-center gap-1.5 px-2 py-1 bg-white border border-pink-300 rounded-md shadow-sm w-fit">
+                        <span class="material-icons text-[14px] text-pink-600">photo_camera</span>
+                        <span class="text-[11px] font-medium text-pink-700">Photo</span>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2">Para análise de imagens</p>
+                </div>
+
+                <!-- Text Input -->
+                <div class="bg-white p-4 rounded-lg border border-gray-200">
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="material-icons text-blue-600">text_fields</span>
+                        <h3 class="font-bold">Text Input</h3>
+                    </div>
+                    <div class="flex items-center gap-1.5 px-2 py-1 bg-white border border-blue-300 rounded-md shadow-sm w-fit">
+                        <span class="material-icons text-[14px] text-blue-600">text_fields</span>
+                        <span class="text-[11px] font-medium text-blue-700">Text Input</span>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2">Para entrada de texto</p>
+                </div>
+
+                <!-- Google Places -->
+                <div class="bg-white p-4 rounded-lg border border-gray-200">
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="material-icons text-green-600">place</span>
+                        <h3 class="font-bold">Google Places</h3>
+                    </div>
+                    <div class="flex items-center gap-1.5 px-2 py-1 bg-white border border-green-300 rounded-md shadow-sm w-fit">
+                        <span class="material-icons text-[14px] text-green-600">place</span>
+                        <span class="text-[11px] font-medium text-green-700">Google Places</span>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2">Para dados do Google</p>
+                </div>
+
+                <!-- Imported -->
+                <div class="bg-white p-4 rounded-lg border border-gray-200">
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="material-icons text-amber-600">file_upload</span>
+                        <h3 class="font-bold">Imported</h3>
+                    </div>
+                    <div class="flex items-center gap-1.5 px-2 py-1 bg-white border border-amber-300 rounded-md shadow-sm w-fit">
+                        <span class="material-icons text-[14px] text-amber-600">file_upload</span>
+                        <span class="text-[11px] font-medium text-amber-700">Imported</span>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2">Para importação de arquivos</p>
+                </div>
+
+                <!-- Manual Entry -->
+                <div class="bg-white p-4 rounded-lg border border-gray-200">
+                    <div class="flex items-center gap-2 mb-2">
+                        <span class="material-icons text-gray-600">edit</span>
+                        <h3 class="font-bold">Manual Entry</h3>
+                    </div>
+                    <div class="flex items-center gap-1.5 px-2 py-1 bg-white border border-gray-300 rounded-md shadow-sm w-fit">
+                        <span class="material-icons text-[14px] text-gray-600">edit</span>
+                        <span class="text-[11px] font-medium text-gray-700">Manual Entry</span>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-2">Para entrada manual</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Summary -->
+        <div class="mt-12 bg-gradient-to-r from-purple-50 to-blue-50 p-6 rounded-lg border border-purple-200">
+            <h2 class="text-xl font-bold mb-4 text-gray-900">📝 Resumo das Melhorias</h2>
+            <ul class="space-y-2 text-sm text-gray-700">
+                <li class="flex items-start gap-2">
+                    <span class="text-green-500">✓</span>
+                    <span><strong>Detecção Inteligente:</strong> Sources são automaticamente identificados do contexto (áudio, foto, Google Places, etc.)</span>
+                </li>
+                <li class="flex items-start gap-2">
+                    <span class="text-green-500">✓</span>
+                    <span><strong>Visual Melhorado:</strong> Badges coloridos e ícones específicos para cada tipo de source</span>
+                </li>
+                <li class="flex items-start gap-2">
+                    <span class="text-green-500">✓</span>
+                    <span><strong>UX Consistente:</strong> Segue padrões de design do ui_specification.md</span>
+                </li>
+                <li class="flex items-start gap-2">
+                    <span class="text-green-500">✓</span>
+                    <span><strong>Alinhamento:</strong> Layout limpo com spacing e hierarquia visual adequados</span>
+                </li>
+            </ul>
+        </div>
+    </div>
+</body>
+</html>
