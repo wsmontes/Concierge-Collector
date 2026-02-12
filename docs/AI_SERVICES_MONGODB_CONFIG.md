@@ -165,15 +165,16 @@ Armazena configurações específicas para cada serviço OpenAI (models, prompts
 }
 ```
 
-#### Service: `image_analysis` (GPT-4o Vision)
+#### Service: `image_analysis` (GPT-4 Vision)
 
 ```json
 {
   "_id": "ObjectId(...)",
   "service": "image_analysis",
-  "model": "gpt-4o",
+  "model": "gpt-4-vision-preview",
   "config": {
-    "max_tokens": 1000,
+    "temperature": 0.3,
+    "max_tokens": 300,
     "detail": "high"
   },
   "prompt_template": "Você é um especialista em análise visual de restaurantes e ambientes gastronômicos.\n\nAnalise esta imagem e identifique conceitos visuais relevantes que descrevem o estabelecimento.\n\n**Categorias disponíveis:**\n{categories}\n\n**Foque nos seguintes aspectos:**\n- Ambiance e atmosfera (modern, elegant, cozy, etc.)\n- Design e arquitetura (contemporary_design, historic_building, etc.)\n- Setting e espaço (open_kitchen, terrace, intimate, etc.)\n- Crowd e público visível (business, family_friendly, etc.)\n- Food presentation (se visível)\n\n**Instruções:**\n- Extraia conceitos que você pode IDENTIFICAR VISUALMENTE na imagem\n- Use APENAS conceitos da lista de categorias disponíveis\n- Ignore conceitos que requerem contexto não-visual (ex: service, price)\n- Retorne 2-6 conceitos visuais aplicáveis\n- Avalie sua confiança na análise visual (0.0 a 1.0)\n\n**Responda APENAS em JSON válido:**\n{\"concepts\": [\"concept1\", \"concept2\"], \"confidence_score\": 0.80, \"visual_notes\": \"brief description of what you see\"}",

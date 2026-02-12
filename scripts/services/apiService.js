@@ -417,32 +417,12 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         return await response.json();
     }
 
-    async extractRestaurantName(text, entityType = 'restaurant') {
-        const response = await this.request('POST', 'aiOrchestrate', {
-            body: JSON.stringify({
-                text,
-                entity_type: entityType,
-                workflow_type: 'extract_name',
-                output: {
-                    save_to_db: false,
-                    return_results: true
-                }
-            })
-        });
-        return await response.json();
-    }
-
     async analyzeImage(imageBlob, prompt) {
         // Convert image to base64 - API V3 expects JSON with base64 image_file
-        // Note: blobToBase64 strips the prefix, but OpenAI needs a valid URL or Data URI.
-        // We will reconstruct the Data URI here.
-        const base64Data = await this.blobToBase64(imageBlob);
-        // Determine mime type from blob if possible, default to jpeg
-        const mimeType = imageBlob.type || 'image/jpeg';
-        const dataUri = `data:${mimeType};base64,${base64Data}`;
+        const base64Image = await this.blobToBase64(imageBlob);
 
         const requestBody = {
-            image_file: dataUri,
+            image_file: base64Image,
             prompt: prompt,
             entity_type: 'restaurant'
         };

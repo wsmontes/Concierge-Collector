@@ -186,55 +186,6 @@ class OpenAIService:
         
         return result
     
-    async def extract_entity_name(
-        self, 
-        text: str, 
-        entity_type: str = "restaurant"
-    ) -> Dict[str, Any]:
-        """
-        Extract entity name from text using specialized prompt.
-        
-        Args:
-            text: Text to analyze
-            entity_type: Type of entity
-            
-        Returns:
-            Dictionary with restaurant_name
-        """
-        # Get service configuration
-        config = self.config_service.get_config("restaurant_name_extraction")
-        
-        # Render prompt with variables
-        prompt = self.config_service.render_prompt(
-            "restaurant_name_extraction",
-            {
-                "text": text
-            }
-        )
-        
-        # Call OpenAI
-        response = self.client.chat.completions.create(
-            model=config["model"],
-            messages=[{"role": "user", "content": prompt}],
-            **config["config"]
-        )
-        
-        # Parse JSON response
-        try:
-            content = response.choices[0].message.content
-            # Handle potential markdown code blocks
-            if "```json" in content:
-                content = content.split("```json")[1].split("```")[0].strip()
-            elif "```" in content:
-                content = content.split("```")[1].split("```")[0].strip()
-                
-            result = json.loads(content)
-        except Exception as e:
-            print(f"[ERROR] Failed to parse name extraction response: {e}")
-            result = {"restaurant_name": None}
-            
-        return result
-    
     async def analyze_image(
         self, 
         image_url: str, 
@@ -283,38 +234,20 @@ class OpenAIService:
                 }
             ],
             temperature=config["config"].get("temperature", 0.3),
-            max_tokens=config["config"].get("max_tokens", 1000),
-            response_format={"type": "json_object"}
+            max_tokens=config["config"].get("max_tokens", 300)
         )
         
         # Parse JSON response
-        try:
-            content = response.choices[0].message.content
-            # Handle potential markdown code blocks (even with json_object mode it can happen)
-            if "```json" in content:
-                content = content.split("```json")[1].split("```")[0].strip()
-            elif "```" in content:
-                content = content.split("```")[1].split("```")[0].strip()
-                
-            result = json.loads(content)
-        except Exception as e:
-            print(f"[ERROR] Failed to parse image analysis response: {e}")
-            # Return a fallback structure rather than crashing
-            result = {
-                "concepts": [], 
-                "visual_notes": "Failed to parse API response",
-                "error": str(e)
-            }
-
+        result = json.loads(response.choices[0].message.content)
         result["entity_type"] = entity_type
         result["model"] = config["model"]
         
         # Cache image analysis in DB only if requested
-        if save_to_cache and not result.get("error"):
+        if save_to_cache:
             analysis_id = f"img_analysis_{uuid.uuid4().hex[:12]}"
             await self.db.ai_image_analysis.insert_one({
                 "analysis_id": analysis_id,
-                "image_url": image_url if len(str(image_url)) < 1000 else "base64_data",
+                "image_url": image_url,
                 "concepts": result.get("concepts", []),
                 "confidence_score": result.get("confidence_score", 0.0),
                 "visual_notes": result.get("visual_notes", ""),

@@ -61,64 +61,35 @@ Analise o seguinte texto de uma curadoria e extraia conceitos relevantes que des
 **Categorias disponíveis:**
 {categories}
 
-**Instructions:**
-- Extract concepts that appear explicitly or implicitly in the text
-- Use ONLY concepts from the available category list
-- Ignore concepts unrelated to the establishment
-- Return multiple concepts if applicable (minimum 2, maximum 8)
-- Evaluate your confidence in the analysis (0.0 a 1.0)
+**Instruções:**
+- Extraia o nome do estabelecimento se mencionado explicitamente
+- Extraia APENAS conceitos que aparecem explicitamente ou implicitamente no texto
+- Use APENAS conceitos da lista de categorias disponíveis
+- Ignore conceitos não relacionados ao estabelecimento
+- Retorne múltiplos conceitos se aplicável (mínimo 2, máximo 8)
+- Avalie sua confiança na análise (0.0 a 1.0)
 
-**Reply ONLY in valid JSON:**
-{{"concepts": ["concept1", "concept2", "concept3"], "confidence_score": 0.85}}""",
-        "cache_ttl_hours": 24,
+**Responda APENAS em JSON válido:**
+{{"restaurant_name": "Nome do Restaurante", "concepts": ["concept1", "concept2", "concept3"], "confidence_score": 0.85}}""",
+        "cache_ttl_hours": 168,
         "cache_by": "text_hash",
-        "cost_per_token": 0.00003,
+        "cost_per_token_input": 0.00003,
+        "cost_per_token_output": 0.00006,
         "enabled": True,
         "version": 1,
         "updated_at": datetime.utcnow().isoformat(),
         "updated_by": "system_seed",
-        "notes": "GPT-4 concept extraction optimized for restaurant tags"
-    },
-    {
-        "service": "restaurant_name_extraction",
-        "model": "gpt-4",
-        "config": {
-            "temperature": 0.1,
-            "max_tokens": 100,
-            "top_p": 1.0,
-            "frequency_penalty": 0.0,
-            "presence_penalty": 0.0
-        },
-        "prompt_template": """You are a specialized AI for extracting restaurant names from text.
-
-Input text: "{text}"
-
-**Instructions:**
-- Extract ONLY the name of the restaurant/establishment
-- If the name is mentioned (e.g., "I'm at Ziggy restaurant"), extract "Ziggy"
-- If NO restaurant name is found, return null
-- Do NOT extract food names, locations, or other entities as the name
-
-**Reply ONLY in valid JSON:**
-{{"restaurant_name": "Name found or null"}}""",
-        "cache_ttl_hours": 24,
-        "cache_by": "text_hash",
-        "cost_per_token": 0.00003,
-        "enabled": True,
-        "version": 1,
-        "updated_at": datetime.utcnow().isoformat(),
-        "updated_by": "system_seed",
-        "notes": "Specialized prompt for accurate restaurant name extraction"
+        "notes": "GPT-4 concept extraction from text with 2-8 concepts limit"
     },
     {
         "service": "image_analysis",
-        "model": "gpt-4o",
+        "model": "gpt-4-vision-preview",
         "config": {
-            "max_tokens": 1000,
+            "temperature": 0.3,
+            "max_tokens": 300,
             "detail": "high"
         },
-        "prompt_template": """Analyze this image and identify culinary concepts.
-Você é um especialista em análise visual de restaurantes e ambientes gastronômicos.
+        "prompt_template": """Você é um especialista em análise visual de restaurantes e ambientes gastronômicos.
 
 Analise esta imagem e identifique conceitos visuais relevantes que descrevem o estabelecimento.
 
@@ -179,14 +150,10 @@ async def seed_openai_configs():
         
         if existing:
             # Update existing
-            update_data = config_data.copy()
-            if "version" in update_data:
-                del update_data["version"]
-
             result = await db.openai_configs.update_one(
                 {"service": service},
                 {
-                    "$set": update_data,
+                    "$set": config_data,
                     "$inc": {"version": 1}
                 }
             )

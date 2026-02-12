@@ -1509,14 +1509,67 @@ class ConceptModule {
         }
     }
 
+    // Continue with more concept-related methods like loadConceptSuggestions, showConceptDisambiguationDialog, etc.
+    // ... (code for loadConceptSuggestions and showConceptDisambiguationDialog would go here)
+
+    /**
+     * Extract restaurant name from transcription text
+     * @param {string} transcriptionText - The transcription text
+     * @returns {Promise<string>} - The extracted restaurant name
+     */
+    async extractRestaurantNameFromTranscription(transcriptionText) {
+        try {
+            this.log.debug('Extracting restaurant name from transcription...');
+
+            if (!transcriptionText || transcriptionText.trim().length < 10) {
+                return null;
+            }
+
+            // Use ApiService V3 instead of legacy apiHandler
+            if (!window.ApiService || !window.AuthService || !window.AuthService.isAuthenticated()) {
+                this.log.warn('ApiService not available or not authenticated');
+                return null;
+            }
+
+            const result = await window.ApiService.extractConcepts(transcriptionText, 'restaurant');
+            this.log.debug('Restaurant name extracted:', result);
+
+            // Handle different response formats from API V3
+            if (result) {
+                if (result.name || result.restaurant_name) {
+                    return (result.name || result.restaurant_name).trim();
+                }
+                // Check if concepts include a name category
+                if (result.concepts && Array.isArray(result.concepts)) {
+                    const nameConcept = result.concepts.find(c => c.category === 'name' || c.category === 'restaurant_name');
+                    if (nameConcept && nameConcept.value) {
+                        return nameConcept.value.trim();
+                    }
+                }
+            }
+
+            return null;
+        } catch (error) {
+            this.log.error('Error extracting restaurant name from transcription:', error);
+            return null;
+        }
+    }
+
     /**
      * Process concepts extraction including restaurant name
-     * @param {string} transcriptionText - The transcription text
      */
     async processConcepts(transcriptionText) {
         try {
-            // Start with initial loading message
-            SafetyUtils.showLoading('Processing audio...');
+            SafetyUtils.showLoading('Analyzing restaurant concepts...');
+
+            // Extract restaurant name first - WRAP WITH TRY/CATCH TO HANDLE FAILURES GRACEFULLY
+            let restaurantName = null;
+            try {
+                restaurantName = await this.extractRestaurantNameFromTranscription(transcriptionText);
+            } catch (nameError) {
+                this.log.warn('Restaurant name extraction failed, continuing with concept extraction:', nameError);
+                // Continue execution - don't let name extraction failure stop concept extraction
+            }
 
             // Extract concepts in the original JSON format expected by the app
             // Use ApiService V3 instead of legacy apiHandler
@@ -1524,68 +1577,24 @@ class ConceptModule {
                 throw new Error('ApiService not available or not authenticated');
             }
 
-            // Create promises for parallel execution
-            // 1. Concept extraction
-            const conceptsPromise = (async () => {
-                SafetyUtils.showLoading('Identifying culinary concepts...');
-                try {
-                    return await window.ApiService.extractConcepts(transcriptionText, 'restaurant');
-                } catch (e) {
-                    this.log.error('Concept extraction failed:', e);
-                    return null;
-                }
-            })();
+            const extractedConcepts = await window.ApiService.extractConcepts(
+                transcriptionText,
+                'restaurant'
+            );
 
-            // 2. Name extraction
-            const namePromise = (async () => {
-                SafetyUtils.showLoading('Identifying place name...');
-                try {
-                    return await window.ApiService.extractRestaurantName(transcriptionText, 'restaurant');
-                } catch (e) {
-                    this.log.error('Name extraction failed:', e);
-                    return null;
-                }
-            })();
+            // Show concepts section
+            this.uiManager.showConceptsSection();
 
-            // Wait for both to complete
-            const [extractedConcepts, extractedNameResult] = await Promise.all([conceptsPromise, namePromise]);
-
-            SafetyUtils.showLoading('Finalizing analysis...');
-
-            // --- Handle Restaurant Name ---
-            let restaurantName = null;
-            if (extractedNameResult && extractedNameResult.restaurant_name) {
-                restaurantName = extractedNameResult.restaurant_name;
-                this.log.debug('Extracted restaurant name from specialized API:', restaurantName);
-            }
-            // Fallback: check general concepts result just in case
-            else if (extractedConcepts && extractedConcepts.restaurant_name) {
-                restaurantName = extractedConcepts.restaurant_name;
-            }
-
-            // Populate restaurant name field if available
-            if (restaurantName) {
-                const nameInput = document.getElementById('restaurant-name');
-                if (nameInput) {
-                    nameInput.value = restaurantName;
-                    // Trigger input event to ensure UI/state updates
-                    nameInput.dispatchEvent(new Event('input', { bubbles: true }));
-                    this.log.info('Auto-populated restaurant name:', restaurantName);
-                }
-            }
-
-            // --- Handle Concepts ---
+            // Use the existing method to handle concepts that does proper validation
+            // and renders the UI correctly
             if (extractedConcepts) {
                 // Transform API v3 response format to expected frontend format
                 let conceptsData = extractedConcepts;
 
-                // API v3 returns: {workflow, results: {concepts: {concepts: [{category, value}], restaurant_name, confidence_score}}}
+                // API v3 returns: {workflow, results: {concepts: {concepts: [{category, value}], confidence_score}}}
                 // Extract the actual concepts array
                 if (extractedConcepts.results && extractedConcepts.results.concepts) {
                     conceptsData = extractedConcepts.results.concepts.concepts || [];
-                } else if (extractedConcepts.concepts) {
-                    // Direct concepts array
-                    conceptsData = extractedConcepts.concepts || [];
                 } else {
                     conceptsData = [];
                 }
@@ -1604,9 +1613,15 @@ class ConceptModule {
                     conceptsData = transformed;
                 }
 
-                // Show concepts section
-                this.uiManager.showConceptsSection();
                 this.handleExtractedConceptsWithValidation(conceptsData);
+            }
+
+            // Populate restaurant name field if available
+            if (restaurantName) {
+                const nameInput = document.getElementById('restaurant-name');
+                if (nameInput) {
+                    nameInput.value = restaurantName;
+                }
             }
 
             // Generate description based on transcription
@@ -2595,48 +2610,8 @@ class ConceptModule {
 
             this.log.debug('Attempting to extract restaurant name from additional review...');
 
-            // Use ApiService V3 to extract restaurant name directly
-            if (!window.ApiService || !window.AuthService || !window.AuthService.isAuthenticated()) {
-                this.log.warn('ApiService not available or not authenticated');
-                return;
-            }
-
-            // Use specialized endpoint for better accuracy
-            const result = await window.ApiService.extractRestaurantName(transcription, 'restaurant');
-            let extractedName = null;
-
-            // Handle different response formats from API V3
-            if (result) {
-                // Check if restaurant_name is directly available (preferred in V3)
-                if (result.results && result.results.name_extraction && result.results.name_extraction.restaurant_name) {
-                    extractedName = result.results.name_extraction.restaurant_name;
-                } else if (result.restaurant_name) {
-                    extractedName = result.restaurant_name;
-                } else if (result.name) {
-                    extractedName = result.name;
-                }
-
-                // Fallback: check concepts array
-                if (!extractedName) {
-                    let concepts = null;
-                    if (result.results && result.results.concepts && Array.isArray(result.results.concepts.concepts)) {
-                        concepts = result.results.concepts.concepts;
-                    } else if (result.concepts && Array.isArray(result.concepts)) {
-                        concepts = result.concepts;
-                    }
-
-                    if (concepts) {
-                        const nameConcept = concepts.find(c => c.category === 'name' || c.category === 'restaurant_name');
-                        if (nameConcept && nameConcept.value) {
-                            extractedName = nameConcept.value;
-                        }
-                    }
-                }
-            }
-
-            if (extractedName) {
-                extractedName = extractedName.trim();
-            }
+            // Use the existing method to extract restaurant name
+            const extractedName = await this.extractRestaurantNameFromTranscription(transcription);
 
             // If a name was extracted and it's different from the current name, update it
             if (extractedName && extractedName !== currentName && nameInput) {

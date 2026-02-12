@@ -383,22 +383,6 @@ class AIOrchestrator:
                 "created_at": datetime.now(timezone.utc).isoformat()
             }
         
-        
-        elif workflow == "extract_name":
-            # Specialized workflow for restaurant name extraction
-            text = request.get("text")
-            if not text:
-                raise ValueError("Text is required for extract_name workflow")
-                
-            result = await self.openai.extract_entity_name(
-                text,
-                entity_type
-            )
-            results["name_extraction"] = result
-            # Copy result to top level for easy access
-            if result.get("restaurant_name"):
-                results["restaurant_name"] = result["restaurant_name"]
-        
         else:
             raise ValueError(f"Workflow '{workflow}' not implemented")
         
