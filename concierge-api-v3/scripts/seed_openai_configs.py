@@ -112,13 +112,13 @@ Input text: "{text}"
     },
     {
         "service": "image_analysis",
-        "model": "gpt-4-vision-preview",
+        "model": "gpt-4o",
         "config": {
-            "temperature": 0.3,
-            "max_tokens": 300,
+            "max_tokens": 1000,
             "detail": "high"
         },
-        "prompt_template": """Você é um especialista em análise visual de restaurantes e ambientes gastronômicos.
+        "prompt_template": """Analyze this image and identify culinary concepts.
+Você é um especialista em análise visual de restaurantes e ambientes gastronômicos.
 
 Analise esta imagem e identifique conceitos visuais relevantes que descrevem o estabelecimento.
 

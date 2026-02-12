@@ -165,13 +165,13 @@ Armazena configurações específicas para cada serviço OpenAI (models, prompts
 }
 ```
 
-#### Service: `image_analysis` (GPT-4 Vision)
+#### Service: `image_analysis` (GPT-4o Vision)
 
 ```json
 {
   "_id": "ObjectId(...)",
   "service": "image_analysis",
-  "model": "gpt-4-vision-preview",
+  "model": "gpt-4o",
   "config": {
     "temperature": 0.3,
     "max_tokens": 300,
