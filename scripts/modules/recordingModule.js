@@ -249,6 +249,14 @@ class RecordingModule {
 
         // Remove duplicate round buttons
         roundRecordButtons.forEach(btn => {
+            // Skip if this button belongs to the additional recording section
+            // or if it's the main start/stop button
+            if (btn.closest('#additional-recording-section') ||
+                btn.id === 'start-record' ||
+                btn.id === 'stop-record') {
+                return;
+            }
+
             this.log.debug('Removing round button:', btn.outerHTML);
             if (btn.parentNode) {
                 btn.parentNode.removeChild(btn);
