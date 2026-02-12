@@ -1515,9 +1515,8 @@ class ConceptModule {
      */
     async processConcepts(transcriptionText) {
         try {
-            SafetyUtils.showLoading('Analyzing restaurant concepts...');
-
-            let restaurantName = null;
+            // Start with initial loading message
+            SafetyUtils.showLoading('Processing audio...');
 
             // Extract concepts in the original JSON format expected by the app
             // Use ApiService V3 instead of legacy apiHandler
@@ -1525,16 +1524,57 @@ class ConceptModule {
                 throw new Error('ApiService not available or not authenticated');
             }
 
-            const extractedConcepts = await window.ApiService.extractConcepts(
-                transcriptionText,
-                'restaurant'
-            );
+            // Create promises for parallel execution
+            // 1. Concept extraction
+            const conceptsPromise = (async () => {
+                SafetyUtils.showLoading('Identifying culinary concepts...');
+                try {
+                    return await window.ApiService.extractConcepts(transcriptionText, 'restaurant');
+                } catch (e) {
+                    this.log.error('Concept extraction failed:', e);
+                    return null;
+                }
+            })();
 
-            // Show concepts section
-            this.uiManager.showConceptsSection();
+            // 2. Name extraction
+            const namePromise = (async () => {
+                SafetyUtils.showLoading('Identifying place name...');
+                try {
+                    return await window.ApiService.extractRestaurantName(transcriptionText, 'restaurant');
+                } catch (e) {
+                    this.log.error('Name extraction failed:', e);
+                    return null;
+                }
+            })();
 
-            // Use the existing method to handle concepts that does proper validation
-            // and renders the UI correctly
+            // Wait for both to complete
+            const [extractedConcepts, extractedNameResult] = await Promise.all([conceptsPromise, namePromise]);
+
+            SafetyUtils.showLoading('Finalizing analysis...');
+
+            // --- Handle Restaurant Name ---
+            let restaurantName = null;
+            if (extractedNameResult && extractedNameResult.restaurant_name) {
+                restaurantName = extractedNameResult.restaurant_name;
+                this.log.debug('Extracted restaurant name from specialized API:', restaurantName);
+            }
+            // Fallback: check general concepts result just in case
+            else if (extractedConcepts && extractedConcepts.restaurant_name) {
+                restaurantName = extractedConcepts.restaurant_name;
+            }
+
+            // Populate restaurant name field if available
+            if (restaurantName) {
+                const nameInput = document.getElementById('restaurant-name');
+                if (nameInput) {
+                    nameInput.value = restaurantName;
+                    // Trigger input event to ensure UI/state updates
+                    nameInput.dispatchEvent(new Event('input', { bubbles: true }));
+                    this.log.info('Auto-populated restaurant name:', restaurantName);
+                }
+            }
+
+            // --- Handle Concepts ---
             if (extractedConcepts) {
                 // Transform API v3 response format to expected frontend format
                 let conceptsData = extractedConcepts;
@@ -1542,17 +1582,10 @@ class ConceptModule {
                 // API v3 returns: {workflow, results: {concepts: {concepts: [{category, value}], restaurant_name, confidence_score}}}
                 // Extract the actual concepts array
                 if (extractedConcepts.results && extractedConcepts.results.concepts) {
-                    // Extract restaurant name from the structured response
-                    if (extractedConcepts.results.concepts.restaurant_name) {
-                        restaurantName = extractedConcepts.results.concepts.restaurant_name;
-                        this.log.debug('Extracted restaurant name from API:', restaurantName);
-                    }
-
                     conceptsData = extractedConcepts.results.concepts.concepts || [];
-                } else if (extractedConcepts.restaurant_name) {
-                    // Fallback for direct response format
-                    restaurantName = extractedConcepts.restaurant_name;
-                    this.log.debug('Extracted restaurant name from direct response:', restaurantName);
+                } else if (extractedConcepts.concepts) {
+                    // Direct concepts array
+                    conceptsData = extractedConcepts.concepts || [];
                 } else {
                     conceptsData = [];
                 }
@@ -1571,24 +1604,9 @@ class ConceptModule {
                     conceptsData = transformed;
                 }
 
+                // Show concepts section
+                this.uiManager.showConceptsSection();
                 this.handleExtractedConceptsWithValidation(conceptsData);
-            }
-
-            // Populate restaurant name field if available
-            if (restaurantName) {
-                const nameInput = document.getElementById('restaurant-name');
-                if (nameInput) {
-                    nameInput.value = restaurantName;
-                    // Trigger input event to ensure UI/state updates
-                    nameInput.dispatchEvent(new Event('input', { bubbles: true }));
-                    this.log.info('Auto-populated restaurant name:', restaurantName);
-
-                    // Also update the header title if possible
-                    const headerTitle = document.querySelector('header h1');
-                    if (headerTitle && headerTitle.textContent === 'New Curation') {
-                        // Optional: update header logic if exists
-                    }
-                }
             }
 
             // Generate description based on transcription
@@ -2583,14 +2601,15 @@ class ConceptModule {
                 return;
             }
 
-            const result = await window.ApiService.extractConcepts(transcription, 'restaurant');
+            // Use specialized endpoint for better accuracy
+            const result = await window.ApiService.extractRestaurantName(transcription, 'restaurant');
             let extractedName = null;
 
             // Handle different response formats from API V3
             if (result) {
                 // Check if restaurant_name is directly available (preferred in V3)
-                if (result.results && result.results.concepts && result.results.concepts.restaurant_name) {
-                    extractedName = result.results.concepts.restaurant_name;
+                if (result.results && result.results.name_extraction && result.results.name_extraction.restaurant_name) {
+                    extractedName = result.results.name_extraction.restaurant_name;
                 } else if (result.restaurant_name) {
                     extractedName = result.restaurant_name;
                 } else if (result.name) {

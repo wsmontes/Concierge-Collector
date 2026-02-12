@@ -186,6 +186,55 @@ class OpenAIService:
         
         return result
     
+    async def extract_entity_name(
+        self, 
+        text: str, 
+        entity_type: str = "restaurant"
+    ) -> Dict[str, Any]:
+        """
+        Extract entity name from text using specialized prompt.
+        
+        Args:
+            text: Text to analyze
+            entity_type: Type of entity
+            
+        Returns:
+            Dictionary with restaurant_name
+        """
+        # Get service configuration
+        config = self.config_service.get_config("restaurant_name_extraction")
+        
+        # Render prompt with variables
+        prompt = self.config_service.render_prompt(
+            "restaurant_name_extraction",
+            {
+                "text": text
+            }
+        )
+        
+        # Call OpenAI
+        response = self.client.chat.completions.create(
+            model=config["model"],
+            messages=[{"role": "user", "content": prompt}],
+            **config["config"]
+        )
+        
+        # Parse JSON response
+        try:
+            content = response.choices[0].message.content
+            # Handle potential markdown code blocks
+            if "```json" in content:
+                content = content.split("```json")[1].split("```")[0].strip()
+            elif "```" in content:
+                content = content.split("```")[1].split("```")[0].strip()
+                
+            result = json.loads(content)
+        except Exception as e:
+            print(f"[ERROR] Failed to parse name extraction response: {e}")
+            result = {"restaurant_name": None}
+            
+        return result
+    
     async def analyze_image(
         self, 
         image_url: str, 

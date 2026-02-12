@@ -417,6 +417,21 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         return await response.json();
     }
 
+    async extractRestaurantName(text, entityType = 'restaurant') {
+        const response = await this.request('POST', 'aiOrchestrate', {
+            body: JSON.stringify({
+                text,
+                entity_type: entityType,
+                workflow_type: 'extract_name',
+                output: {
+                    save_to_db: false,
+                    return_results: true
+                }
+            })
+        });
+        return await response.json();
+    }
+
     async analyzeImage(imageBlob, prompt) {
         // Convert image to base64 - API V3 expects JSON with base64 image_file
         const base64Image = await this.blobToBase64(imageBlob);
