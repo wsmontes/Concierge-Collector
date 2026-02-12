@@ -818,8 +818,7 @@ class ConceptModule {
         // Add section for each category, regardless if there are concepts or not
         const categories = [
             'Cuisine', 'Menu', 'Price Range', 'Mood', 'Setting',
-            'Crowd', 'Suitable For', 'Food Style', 'Drinks', 'Special Features',
-            'General'
+            'Crowd', 'Suitable For', 'Food Style', 'Drinks', 'Special Features'
         ];
 
         // Check if we have any concepts at all
@@ -1289,8 +1288,7 @@ class ConceptModule {
             'food style': 'Food Style',
             'food_style': 'Food Style',
             'drinks': 'Drinks',
-            'special_features': 'Special Features',
-            'general': 'General'
+            'special_features': 'Special Features'
         };
 
         const lowerCategory = category.toLowerCase();
@@ -1303,18 +1301,21 @@ class ConceptModule {
      * @returns {Object} - Categorized concepts { category: [values] }
      * @private
      */
+    /**
+     * Helper to process and categorize raw concepts from AI
+     * @param {Array|Object} conceptsData - Raw concepts from API V3
+     * @returns {Object} - Categorized concepts { category: [values] }
+     * @private
+     */
     _processAndCategorizeConcepts(conceptsData) {
         if (!conceptsData) return {};
 
         const transformed = {};
 
-        // Case 1: Array of objects [{category, value}] or strings ["c1", "c2"]
+        // Case 1: Array of objects [{category, value}]
         if (Array.isArray(conceptsData)) {
             conceptsData.forEach(concept => {
-                if (typeof concept === 'string') {
-                    if (!transformed['General']) transformed['General'] = [];
-                    transformed['General'].push(concept);
-                } else if (concept.category && concept.value) {
+                if (concept && typeof concept === 'object' && concept.category && concept.value) {
                     const cat = this.normalizeCategoryName(concept.category);
                     if (!transformed[cat]) transformed[cat] = [];
                     transformed[cat].push(concept.value);
