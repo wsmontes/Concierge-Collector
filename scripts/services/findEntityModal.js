@@ -470,6 +470,16 @@ window.FindEntityModal = class FindEntityModal {
                 border-color: #fca5a5;
             }
 
+            #find-entity-modal .fem-import-btn.fem-btn-select {
+                background: var(--color-primary-600, #2563eb);
+                color: white;
+                border-color: var(--color-primary-700, #1d4ed8);
+            }
+
+            #find-entity-modal .fem-import-btn.fem-btn-select:hover {
+                background: var(--color-primary-700, #1d4ed8);
+            }
+
             /* Empty / Loading / Error states */
             #find-entity-modal .fem-state {
                 display: flex;
@@ -1006,13 +1016,13 @@ window.FindEntityModal = class FindEntityModal {
                     </div>
                 </div>
                 <button 
-                    class="fem-import-btn"
+                    class="fem-import-btn ${this.onEntitySelected ? 'fem-btn-select' : ''}"
                     data-place-id="${place.place_id || ''}"
                     data-place-name="${this.escapeHtml(place.name || 'Unknown')}"
                     ${!place.place_id ? 'disabled title="Place ID not available"' : ''}
                 >
-                    <span class="material-icons">${place.place_id ? 'add_circle_outline' : 'error_outline'}</span>
-                    ${place.place_id ? 'Import as Entity' : 'Place ID Missing'}
+                    <span class="material-icons">${this.onEntitySelected ? 'check_circle' : (place.place_id ? 'add_circle_outline' : 'error_outline')}</span>
+                    ${this.onEntitySelected ? 'Select' : (place.place_id ? 'Import as Entity' : 'Place ID Missing')}
                 </button>
             </div>
         `;

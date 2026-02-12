@@ -57,6 +57,7 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
      */
     init() {
         this.initElements();
+        this.setupEvents();
         this.log.debug('RestaurantModule initialized');
     }
 
@@ -64,6 +65,10 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
         // Discard listener removed: Centralized in ConceptModule
         // Save listener removed: ConceptModule.saveRestaurant handles this consistently
         // to support AI features and avoid duplicate saves.
+
+        if (this.placesLookupBtn) {
+            this.placesLookupBtn.addEventListener('click', () => this.handlePlacesLookup());
+        }
     }
 
     /**
@@ -539,5 +544,35 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
     loadRestaurantList() {
         // Redundant if EntityModule handles list, but stubbing to prevent errors
         this.log.debug('loadRestaurantList called (stub)');
+    }
+
+    /**
+     * Handle Places Lookup button click
+     */
+    handlePlacesLookup() {
+        if (!window.findEntityModal) {
+            this.log.error('FindEntityModal not found!');
+            return;
+        }
+
+        window.findEntityModal.open({
+            onEntitySelected: (entity) => {
+                this.log.info('Entity selected from modal:', entity);
+
+                // Update state
+                this.currentEntity = entity;
+
+                // Re-populate form details
+                this.populateEntityDetails(entity);
+                this.log.debug('Form re-populated with entity name:', entity.name);
+
+                // Mark form as dirty
+                if (this.uiManager) {
+                    this.uiManager.formIsDirty = true;
+                }
+
+                this.uiManager.showNotification(`Linked to ${entity.name}`, 'success');
+            }
+        });
     }
 });
