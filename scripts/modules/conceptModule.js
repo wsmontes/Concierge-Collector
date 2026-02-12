@@ -2577,8 +2577,47 @@ class ConceptModule {
 
             this.log.debug('Attempting to extract restaurant name from additional review...');
 
-            // Use the existing method to extract restaurant name
-            const extractedName = await this.extractRestaurantNameFromTranscription(transcription);
+            // Use ApiService V3 to extract restaurant name directly
+            if (!window.ApiService || !window.AuthService || !window.AuthService.isAuthenticated()) {
+                this.log.warn('ApiService not available or not authenticated');
+                return;
+            }
+
+            const result = await window.ApiService.extractConcepts(transcription, 'restaurant');
+            let extractedName = null;
+
+            // Handle different response formats from API V3
+            if (result) {
+                // Check if restaurant_name is directly available (preferred in V3)
+                if (result.results && result.results.concepts && result.results.concepts.restaurant_name) {
+                    extractedName = result.results.concepts.restaurant_name;
+                } else if (result.restaurant_name) {
+                    extractedName = result.restaurant_name;
+                } else if (result.name) {
+                    extractedName = result.name;
+                }
+
+                // Fallback: check concepts array
+                if (!extractedName) {
+                    let concepts = null;
+                    if (result.results && result.results.concepts && Array.isArray(result.results.concepts.concepts)) {
+                        concepts = result.results.concepts.concepts;
+                    } else if (result.concepts && Array.isArray(result.concepts)) {
+                        concepts = result.concepts;
+                    }
+
+                    if (concepts) {
+                        const nameConcept = concepts.find(c => c.category === 'name' || c.category === 'restaurant_name');
+                        if (nameConcept && nameConcept.value) {
+                            extractedName = nameConcept.value;
+                        }
+                    }
+                }
+            }
+
+            if (extractedName) {
+                extractedName = extractedName.trim();
+            }
 
             // If a name was extracted and it's different from the current name, update it
             if (extractedName && extractedName !== currentName && nameInput) {
