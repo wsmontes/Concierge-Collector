@@ -1288,52 +1288,12 @@ class ConceptModule {
             'food style': 'Food Style',
             'food_style': 'Food Style',
             'drinks': 'Drinks',
+            'special features': 'Special Features',
             'special_features': 'Special Features'
         };
 
         const lowerCategory = category.toLowerCase();
         return categoryMap[lowerCategory] || category;
-    }
-
-    /**
-     * Helper to process and categorize raw concepts from AI
-     * @param {Array|Object} conceptsData - Raw concepts from API V3
-     * @returns {Object} - Categorized concepts { category: [values] }
-     * @private
-     */
-    /**
-     * Helper to process and categorize raw concepts from AI
-     * @param {Array|Object} conceptsData - Raw concepts from API V3
-     * @returns {Object} - Categorized concepts { category: [values] }
-     * @private
-     */
-    _processAndCategorizeConcepts(conceptsData) {
-        if (!conceptsData) return {};
-
-        const transformed = {};
-
-        // Case 1: Array of objects [{category, value}]
-        if (Array.isArray(conceptsData)) {
-            conceptsData.forEach(concept => {
-                if (concept && typeof concept === 'object' && concept.category && concept.value) {
-                    const cat = this.normalizeCategoryName(concept.category);
-                    if (!transformed[cat]) transformed[cat] = [];
-                    transformed[cat].push(concept.value);
-                }
-            });
-        }
-        // Case 2: Object with categories as keys { Cuisine: ["Italian"] }
-        else if (typeof conceptsData === 'object') {
-            for (const category in conceptsData) {
-                const cat = this.normalizeCategoryName(category);
-                if (conceptsData[category] && Array.isArray(conceptsData[category])) {
-                    if (!transformed[cat]) transformed[cat] = [];
-                    transformed[cat] = [...transformed[cat], ...conceptsData[category]];
-                }
-            }
-        }
-
-        return transformed;
     }
 
     /**
@@ -1616,20 +1576,37 @@ class ConceptModule {
 
             // --- Handle Concepts ---
             if (extractedConcepts) {
-                // Extract concepts array from V3 response
-                let rawConcepts = [];
+                // Transform API v3 response format to expected frontend format
+                let conceptsData = extractedConcepts;
+
+                // API v3 returns: {workflow, results: {concepts: {concepts: [{category, value}], restaurant_name, confidence_score}}}
+                // Extract the actual concepts array
                 if (extractedConcepts.results && extractedConcepts.results.concepts) {
-                    rawConcepts = extractedConcepts.results.concepts.concepts || [];
+                    conceptsData = extractedConcepts.results.concepts.concepts || [];
                 } else if (extractedConcepts.concepts) {
-                    rawConcepts = extractedConcepts.concepts || [];
+                    // Direct concepts array
+                    conceptsData = extractedConcepts.concepts || [];
+                } else {
+                    conceptsData = [];
                 }
 
-                // Standardized processing
-                const categorizedConcepts = this._processAndCategorizeConcepts(rawConcepts);
+                // Transform from array format [{category, value}] to object format {category: [values]}
+                if (Array.isArray(conceptsData)) {
+                    const transformed = {};
+                    for (const concept of conceptsData) {
+                        if (concept.category && concept.value) {
+                            if (!transformed[concept.category]) {
+                                transformed[concept.category] = [];
+                            }
+                            transformed[concept.category].push(concept.value);
+                        }
+                    }
+                    conceptsData = transformed;
+                }
 
-                // Show concepts section and update UI
+                // Show concepts section
                 this.uiManager.showConceptsSection();
-                this.handleExtractedConceptsWithValidation(categorizedConcepts);
+                this.handleExtractedConceptsWithValidation(conceptsData);
             }
 
             // Generate description based on transcription
@@ -1985,11 +1962,16 @@ class ConceptModule {
      */
     async processImageWithAI(photoData) {
         try {
-            // Resizing image is handled within extractConceptsFromImage if needed, but keeping here for explicit step
+            // Resize image for faster API processing and to stay under size limits
             const resizedImageData = await this.resizeImageForAPI(photoData);
 
-            // Extract concepts AND restaurant name from the image in a single call
-            // The extractConceptsFromImage method now handles name population if found
+            // Get restaurant name from AI if the field is blank
+            const nameInput = document.getElementById('restaurant-name');
+            if (nameInput && !nameInput.value.trim()) {
+                await this.extractRestaurantNameFromImage(resizedImageData);
+            }
+
+            // Extract concepts from the image
             await this.extractConceptsFromImage(resizedImageData);
         } catch (error) {
             this.log.error('Error processing image with AI:', error);
@@ -2175,40 +2157,46 @@ class ConceptModule {
             const byteArray = new Uint8Array(byteNumbers);
             const imageBlob = new Blob([byteArray], { type: 'image/jpeg' });
 
-            // Use ApiService V3 to analyze image (no prompt, use server config)
-            this.log.debug('Extracting concepts from image via API V3...');
-            const result = await window.ApiService.analyzeImage(imageBlob);
+            const template = promptTemplates.imageConceptExtraction;
+            const prompt = `${template.system}\n\n${template.user}`;
 
-            if (!result || !result.results || !result.results.image_analysis) {
+            this.log.debug('Extracting concepts from image via API V3...');
+
+            // Use ApiService V3 to analyze image
+            const result = await window.ApiService.analyzeImage(imageBlob, prompt);
+
+            if (!result || !result.text) {
                 this.log.warn('API V3 could not extract concepts from image');
                 return;
             }
 
-            const analysis = result.results.image_analysis;
+            const conceptsText = result.text.trim();
 
-            // 1. Handle Restaurant Name
-            if (analysis.restaurant_name) {
-                const nameInput = document.getElementById('restaurant-name');
-                if (nameInput && (!nameInput.value || nameInput.value.trim() === '')) {
-                    nameInput.value = analysis.restaurant_name;
-                    nameInput.dispatchEvent(new Event('input', { bubbles: true }));
-                    this.log.info('Auto-populated restaurant name from image:', analysis.restaurant_name);
-                    SafetyUtils.showNotification(`Found name: ${analysis.restaurant_name}`, 'success');
+            // Extract JSON from the response
+            const jsonMatch = conceptsText.match(/\[.*\]/s);
+            if (jsonMatch) {
+                const conceptsJson = jsonMatch[0];
+                let extractedConcepts = JSON.parse(conceptsJson);
+
+                // Process any remaining comma-separated values (as a fallback)
+                extractedConcepts = this.splitCommaSeparatedConcepts(extractedConcepts);
+
+                // Add extracted concepts to the restaurant (don't replace existing)
+                if (extractedConcepts && extractedConcepts.length > 0) {
+                    // Filter out duplicates and add new concepts
+                    const newConcepts = this.uiManager.filterExistingConcepts(extractedConcepts);
+                    if (newConcepts.length > 0) {
+                        newConcepts.forEach(concept => {
+                            this.uiManager.currentConcepts.push(concept);
+                        });
+
+                        // Re-render concepts UI
+                        this.renderConcepts();
+
+                        // Show notification about added concepts
+                        SafetyUtils.showNotification(`Added ${newConcepts.length} concepts from image`, 'success');
+                    }
                 }
-            }
-
-            // 2. Handle Concepts
-            if (analysis.concepts && Array.isArray(analysis.concepts) && analysis.concepts.length > 0) {
-                this.log.debug(`Found ${analysis.concepts.length} concepts in image analysis`);
-
-                // Standardized processing (handles strings vs objects)
-                const categorizedConcepts = this._processAndCategorizeConcepts(analysis.concepts);
-
-                // Show concepts section and update UI
-                this.uiManager.showConceptsSection();
-                this.handleExtractedConceptsWithValidation(categorizedConcepts);
-            } else if (!analysis.restaurant_name) {
-                SafetyUtils.showNotification('No new concepts found in image', 'info');
             }
         } catch (error) {
             this.log.error('Error extracting concepts from image:', error);

@@ -120,21 +120,28 @@ Input text: "{text}"
         "prompt_template": """Analyze this image and identify culinary concepts.
 Você é um especialista em análise visual de restaurantes e ambientes gastronômicos.
 
+Analise esta imagem e identifique conceitos visuais relevantes que descrevem o estabelecimento.
+
+**Categorias disponíveis:**
+{categories}
+
+**Foque nos seguintes aspectos:**
+- Ambiance e atmosfera (modern, elegant, cozy, etc.)
+- Design e arquitetura (contemporary_design, historic_building, etc.)
+- Setting e espaço (open_kitchen, terrace, intimate, etc.)
+- Crowd e público visível (business, family_friendly, etc.)
+- Food presentation (se visível)
+
 **Instruções:**
-- Identifique o NOME do restaurante se estiver visível.
-- Analise a imagem e identifique quais dos conceitos da lista de categorias se aplicam.
-- Use APENAS conceitos da lista de categorias disponíveis.
-- Ignore conceitos que não são visíveis ou aplicáveis.
-- Retorne uma lista plana de conceitos (flattened list).
-- Avalie sua confiança na análise visual (0.0 a 1.0).
+- Extraia conceitos que você pode IDENTIFICAR VISUALMENTE na imagem
+- Use APENAS conceitos da lista de categorias disponíveis
+- Ignore conceitos que requerem contexto não-visual (ex: service, price)
+- Retorne 2-6 conceitos visuais aplicáveis
+- Avalie sua confiança na análise visual (0.0 a 1.0)
+- Adicione notas visuais breves sobre o que você vê
 
 **Responda APENAS em JSON válido:**
-{
-  "restaurant_name": "Name found or null",
-  "concepts": ["concept1", "concept2", "concept3"],
-  "confidence_score": 0.85,
-  "visual_notes": "brief description"
-}""",
+{{"concepts": ["concept1", "concept2"], "confidence_score": 0.80, "visual_notes": "brief description of what you see"}}""",
         "cache_ttl_hours": 168,
         "cache_by": "image_hash",
         "cost_per_image": 0.00765,

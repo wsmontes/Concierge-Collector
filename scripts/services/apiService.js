@@ -443,12 +443,9 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
 
         const requestBody = {
             image_file: dataUri,
+            prompt: prompt,
             entity_type: 'restaurant'
         };
-
-        if (prompt) {
-            requestBody.prompt = prompt;
-        }
 
         const response = await this.request('POST', 'aiOrchestrate', {
             body: JSON.stringify(requestBody)
