@@ -122,13 +122,15 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             // Remove internal fields before sending
             const cleaned = { ...item };
             delete cleaned._lastSyncedState;
+            delete cleaned.sync;
+            delete cleaned.id;
 
             // Clean curation-specific fields
             if (cleaned.curation_id) {
                 return this.cleanCurationForSync(cleaned);
             }
 
-            return cleaned;
+            return this.cleanEntityForSync(cleaned);
         }
 
         const changes = {};
@@ -158,7 +160,27 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
         }
 
         this.log.debug(`Extracted changes: ${Object.keys(changes).length} fields modified`);
+
+        if (changes.entity_id) {
+            return this.cleanEntityForSync(changes);
+        }
+
         return changes;
+    }
+
+    /**
+     * Clean entity object for backend sync
+     * Removes local-only fields that backend schemas do not accept
+     */
+    cleanEntityForSync(entity) {
+        const cleaned = { ...entity };
+
+        delete cleaned.sync;
+        delete cleaned.id;
+        delete cleaned.etag;
+        delete cleaned._lastSyncedState;
+
+        return cleaned;
     }
 
     /**
