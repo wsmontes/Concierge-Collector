@@ -203,6 +203,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             curation_id: curation.curation_id,
             curator_id: curation.curator_id,  // Required by MongoDB schema
             curator: curation.curator,
+            restaurant_name: curation.restaurant_name || curation.name || null,
             status: curation.status || (curation.entity_id ? 'linked' : 'draft'),
             categories: curation.categories || {},
             notes: curation.notes || {},

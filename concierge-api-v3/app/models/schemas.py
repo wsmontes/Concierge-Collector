@@ -107,6 +107,7 @@ CurationStatus = Literal["draft", "linked", "active", "deleted", "archived"]
 
 class CurationBase(BaseModel):
     """Base Curation model"""
+    restaurant_name: Optional[str] = Field(default=None, description="Display name of the curation before/after linking")
     status: CurationStatus = Field(default="draft", description="Curation lifecycle status")
     notes: Optional[CurationNotes] = None
     categories: CurationCategories = Field(default_factory=CurationCategories)
@@ -158,6 +159,7 @@ class CurationCreate(CurationBase):
 
 class CurationUpdate(BaseModel):
     """Curation update request (all optional for PATCH)"""
+    restaurant_name: Optional[str] = None
     entity_id: Optional[str] = None
     status: Optional[CurationStatus] = None
     notes: Optional[CurationNotes] = None

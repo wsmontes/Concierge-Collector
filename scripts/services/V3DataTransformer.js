@@ -154,6 +154,7 @@ const V3DataTransformer = (function () {
                 curation_id: mongoCuration.curation_id || mongoCuration._id,
                 entity_id: mongoCuration.entity_id,
                 curator_id: mongoCuration.curator?.id || mongoCuration.curator_id,
+                restaurant_name: mongoCuration.restaurant_name || mongoCuration.name || null,
 
                 // Curation data
                 category: mongoCuration.category || null,
@@ -208,6 +209,7 @@ const V3DataTransformer = (function () {
             const mongo = {
                 curation_id: localCuration.curation_id,
                 entity_id: localCuration.entity_id,
+                restaurant_name: localCuration.restaurant_name || localCuration.name || null,
 
                 // Curator info (structured for MongoDB)
                 curator: {

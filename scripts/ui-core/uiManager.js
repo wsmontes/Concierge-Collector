@@ -789,7 +789,8 @@ if (typeof window.UIManager === 'undefined') {
             card.className = 'bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-lg hover:border-blue-300 transition-all duration-200 cursor-pointer group h-full flex flex-col justify-between relative';
             card.dataset.curationId = curation.curation_id;
 
-            const date = curation.created_at ? new Date(curation.created_at).toLocaleDateString() : 'Unknown date';
+            const cardCreatedAt = curation.createdAt || curation.created_at;
+            const date = cardCreatedAt ? new Date(cardCreatedAt).toLocaleDateString() : 'Unknown date';
 
             // Extract concept names from categories object
             const categories = curation.categories || {};
@@ -995,21 +996,28 @@ if (typeof window.UIManager === 'undefined') {
 
             const categories = curation.categories || {};
             const totalConcepts = Object.values(categories).flat().length;
-            const date = curation.created_at ? new Date(curation.created_at).toLocaleString() : 'Unknown';
+            const createdAtValue = curation.createdAt || curation.created_at;
+            const date = createdAtValue ? new Date(createdAtValue).toLocaleString() : 'Unknown';
+            const transcription =
+                curation.transcript ||
+                curation.sources?.audio?.[0]?.transcript ||
+                curation.unstructured_text ||
+                curation.transcription ||
+                '';
 
             const content = document.createElement('div');
             content.className = 'space-y-4';
             content.innerHTML = `
-                < div class="bg-gray-50 p-3 rounded-lg border border-gray-200" >
+                <div class="bg-gray-50 p-3 rounded-lg border border-gray-200">
                     <p class="text-sm text-gray-500 mb-1">Created</p>
                     <p class="font-medium text-gray-900">${date}</p>
-                </div >
+                </div>
 
-        ${curation.transcription ? `
+        ${transcription ? `
                     <div>
                         <h3 class="font-semibold text-gray-700 mb-2">Transcription</h3>
                         <div class="bg-white p-3 rounded border border-gray-200 text-gray-600 text-sm max-h-40 overflow-y-auto">
-                            ${curation.transcription}
+                            ${transcription}
                         </div>
                     </div>
                 ` : ''
@@ -1045,9 +1053,9 @@ if (typeof window.UIManager === 'undefined') {
                 title: 'Review Details',
                 content: content,
                 footer: `
-        < button class="btn-close-modal px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300" onclick = "window.modalManager.closeAll()" >
+            <button class="btn-close-modal px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300" onclick="window.modalManager.closeAll()">
             Close
-                    </button >
+                    </button>
         `,
                 size: 'md'
             });
