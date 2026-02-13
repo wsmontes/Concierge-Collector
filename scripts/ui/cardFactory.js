@@ -34,7 +34,9 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
         const {
             variant = 'default', // default, compact, detailed
             showActions = true,
-            onClick = null
+            onClick = null,
+            subtitleHtml = null,
+            detailsHtml = ''
         } = options;
 
         const card = document.createElement('div');
@@ -79,25 +81,27 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
             </div>
             
             <!-- Main content - flex-grow to push footer down -->
-            <div class="p-5 flex-grow">
+            <div class="entity-card-main p-5 flex-grow">
                 <!-- Name and cuisine -->
-                <div class="mb-3">
-                    <h3 class="font-bold text-lg text-gray-900 mb-1 pr-12 line-clamp-2 group-hover:text-blue-600 transition-colors">
+                <div class="entity-card-header mb-3">
+                    <h3 class="entity-card-name font-bold text-lg text-gray-900 mb-1 pr-12 line-clamp-2 group-hover:text-blue-600 transition-colors">
                         ${name}
                     </h3>
-                    ${cuisineType ? `
-                        <p class="text-sm text-gray-500 font-medium">${cuisineType}</p>
+                    ${(subtitleHtml || cuisineType) ? `
+                        <div class="entity-card-subtitle text-sm text-gray-500 font-medium">${subtitleHtml || cuisineType}</div>
                     ` : ''}
                 </div>
+
+                ${detailsHtml || ''}
                 
                 <!-- Location -->
-                <div class="flex items-start gap-2 mb-3 text-sm text-gray-600">
+                <div class="entity-card-location flex items-start gap-2 mb-3 text-sm text-gray-600">
                     <span class="material-icons text-base mt-0.5 flex-shrink-0">place</span>
                     <span class="line-clamp-2">${locationStr}</span>
                 </div>
                 
                 <!-- Rating and Price -->
-                <div class="flex items-center gap-4 mb-4">
+                <div class="entity-card-rating flex items-center gap-4 mb-4">
                     ${rating > 0 ? `
                         <div class="flex items-center gap-1.5">
                             <span class="material-icons text-base text-yellow-500">star</span>
@@ -113,7 +117,7 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                 
                 <!-- Contact info -->
                 ${phone || website ? `
-                    <div class="flex items-center gap-3 pt-3 border-t border-gray-100">
+                    <div class="entity-card-contact flex items-center gap-3 pt-3 border-t border-gray-100">
                         ${phone ? `
                             <div class="flex items-center gap-1.5 text-xs text-gray-500" title="${phone}">
                                 <span class="material-icons text-sm">phone</span>
@@ -278,6 +282,66 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
             const websiteRaw = this.extractEntityWebsite(entity);
             const websiteHref = this.normalizeWebsiteUrl(websiteRaw);
             const websiteLabel = websiteRaw ? websiteRaw.replace(/^https?:\/\//i, '').replace(/^www\./i, '') : '';
+            const safeCuratorName = this.escapeHtml(curatorName);
+
+            const bodyDetails = isLinkedCuration && (fullAddress || phone || websiteHref) ? `
+                <div class="entity-curation-details pt-1 space-y-2">
+                    ${fullAddress ? `
+                        <div class="flex items-start gap-1.5 text-xs text-gray-600" title="${fullAddress}">
+                            <span class="material-icons text-[14px] mt-[1px] flex-shrink-0">place</span>
+                            <span class="line-clamp-2">${fullAddress}</span>
+                        </div>
+                    ` : ''}
+                    ${phone ? `
+                        <div class="flex items-center gap-1.5 text-xs text-gray-600" title="${phone}">
+                            <span class="material-icons text-[14px]">phone</span>
+                            <a href="tel:${phone}" class="linked-contact-link hover:underline">${phone}</a>
+                        </div>
+                    ` : ''}
+                    ${websiteHref ? `
+                        <div class="flex items-center gap-1.5 text-xs text-blue-700" title="${websiteRaw}">
+                            <span class="material-icons text-[14px]">language</span>
+                            <a href="${websiteHref}" target="_blank" rel="noopener noreferrer" class="linked-contact-link hover:underline line-clamp-1">${websiteLabel}</a>
+                        </div>
+                    ` : ''}
+                </div>
+            ` : '';
+
+            const subtitleEl = card.querySelector('.entity-card-subtitle');
+            if (subtitleEl) {
+                subtitleEl.innerHTML = `
+                    <span class="inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-50 border border-gray-100 rounded-full px-2 py-1">
+                        <span class="material-icons text-[14px]">person</span>
+                        <span class="font-medium">${safeCuratorName}</span>
+                    </span>
+                `;
+            } else {
+                const headerEl = card.querySelector('.entity-card-header');
+                if (headerEl) {
+                    const curatorChip = document.createElement('div');
+                    curatorChip.className = 'entity-card-subtitle text-sm text-gray-500 font-medium';
+                    curatorChip.innerHTML = `
+                        <span class="inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-50 border border-gray-100 rounded-full px-2 py-1">
+                            <span class="material-icons text-[14px]">person</span>
+                            <span class="font-medium">${safeCuratorName}</span>
+                        </span>
+                    `;
+                    headerEl.appendChild(curatorChip);
+                }
+            }
+
+            card.querySelector('.entity-card-location')?.remove();
+            card.querySelector('.entity-card-rating')?.remove();
+            card.querySelector('.entity-card-contact')?.remove();
+
+            if (bodyDetails) {
+                const mainEl = card.querySelector('.entity-card-main');
+                if (mainEl) {
+                    const detailsEl = document.createElement('div');
+                    detailsEl.innerHTML = bodyDetails;
+                    mainEl.appendChild(detailsEl);
+                }
+            }
 
 
             // Use centralized SourceUtils for consistent logic and styling
@@ -303,39 +367,12 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
 
             const syncLabel = syncStatus === 'pending' ? 'Syncing...' : syncStatus;
 
-            const linkedDetails = isLinkedCuration && (fullAddress || phone || websiteHref) ? `
-                <div class="pt-1 space-y-2">
-                    ${fullAddress ? `
-                        <div class="flex items-start gap-1.5 text-xs text-gray-600" title="${fullAddress}">
-                            <span class="material-icons text-[14px] mt-[1px] flex-shrink-0">place</span>
-                            <span class="line-clamp-2">${fullAddress}</span>
-                        </div>
-                    ` : ''}
-                    ${phone ? `
-                        <div class="flex items-center gap-1.5 text-xs text-gray-600" title="${phone}">
-                            <span class="material-icons text-[14px]">phone</span>
-                            <a href="tel:${phone}" class="linked-contact-link hover:underline">${phone}</a>
-                        </div>
-                    ` : ''}
-                    ${websiteHref ? `
-                        <div class="flex items-center gap-1.5 text-xs text-blue-700" title="${websiteRaw}">
-                            <span class="material-icons text-[14px]">language</span>
-                            <a href="${websiteHref}" target="_blank" rel="noopener noreferrer" class="linked-contact-link hover:underline line-clamp-1">${websiteLabel}</a>
-                        </div>
-                    ` : ''}
-                </div>
-            ` : '';
-
             actionsRow.innerHTML = `
                 <div class="space-y-2">
-                    <div class="flex flex-wrap items-center gap-2">
+                    <div class="flex items-center gap-1.5 overflow-x-auto whitespace-nowrap">
                         <span class="${badgeClass} rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider shadow-sm">
                             ${status}
                         </span>
-                        <div class="inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-50 border border-gray-100 rounded-full px-2 py-1">
-                            <span class="material-icons text-[14px]">person</span>
-                            <span class="font-medium">${curatorName}</span>
-                        </div>
                         <div class="data-badge ${sourceInfo.className}">
                             <span class="material-icons">${sourceInfo.icon}</span>
                             ${sourceInfo.label}
@@ -347,20 +384,16 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                             <span class="capitalize">${syncLabel}</span>
                         </div>
                     </div>
-                    ${linkedDetails}
                 </div>
-                <div class="flex items-center gap-2 pt-1">
-                    <button class="btn-edit-curation flex-1 h-10 px-3 bg-blue-600 text-white hover:bg-blue-700 rounded-lg transition-all border border-blue-600 shadow-sm" title="Edit Curation">
-                        <span class="material-icons text-[18px] align-middle">edit</span>
-                        <span class="ml-1 text-sm font-semibold align-middle">Edit</span>
-                    </button>
-                    ${isLinkedCuration ? `
-                        <button class="btn-unlink-curation h-10 w-10 flex items-center justify-center bg-gray-50 text-amber-600 hover:bg-amber-50 hover:text-amber-700 rounded-lg transition-all border border-gray-100 hover:border-amber-100 shadow-sm" title="Unlink Curation">
-                            <span class="material-icons text-[18px]">link_off</span>
-                        </button>
-                    ` : ''}
-                    <button class="btn-delete-curation h-10 w-10 flex items-center justify-center bg-gray-50 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-lg transition-all border border-gray-100 hover:border-red-100 shadow-sm" title="Delete Curation">
+                <div class="grid grid-cols-3 gap-2 pt-1">
+                    <button class="btn-delete-curation h-10 w-full flex items-center justify-center bg-gray-50 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-lg transition-all border border-gray-100 hover:border-red-100 shadow-sm" title="Delete Curation">
                         <span class="material-icons text-[18px]">delete_outline</span>
+                    </button>
+                    <button class="btn-unlink-curation h-10 w-full flex items-center justify-center bg-gray-50 ${isLinkedCuration ? 'text-amber-600 hover:bg-amber-50 hover:text-amber-700 hover:border-amber-100' : 'text-gray-300 cursor-not-allowed'} rounded-lg transition-all border border-gray-100 shadow-sm" title="Unlink Curation" ${isLinkedCuration ? '' : 'disabled'}>
+                        <span class="material-icons text-[18px]">link_off</span>
+                    </button>
+                    <button class="btn-edit-curation h-10 w-full flex items-center justify-center bg-blue-600 text-white hover:bg-blue-700 rounded-lg transition-all border border-blue-600 shadow-sm" title="Edit Curation">
+                        <span class="material-icons text-[18px]">edit</span>
                     </button>
                 </div>
             `;
