@@ -106,21 +106,39 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
             this.updateStorageStats();
         }
 
-        // Safe Reset button
-        const resetBtn = document.getElementById('safe-reset-btn');
+        // Full Local Reset button
+        const resetBtn = document.getElementById('full-reset-btn');
         if (resetBtn) {
             resetBtn.addEventListener('click', async () => {
-                if (confirm('⚠️ Clear local cache? This will clear all pending syncs and locally cached data, but will NOT delete your saved restaurants. The app will reload and perform a fresh sync.')) {
-                    SafetyUtils.showLoading('Clearing cache...');
+                if (confirm('⚠️ Full Local Reset? This will DELETE your entire local IndexedDB (all local restaurants, curations, drafts, pending syncs, and cache). The app will reload and perform a fresh sync from server.')) {
+                    SafetyUtils.showLoading('Running full local reset...');
 
-                    // Set flag for initial sync after reload
-                    localStorage.setItem('needsInitialSync', 'true');
+                    try {
+                        if (window.DataStore?.db) {
+                            window.DataStore.db.close();
+                        }
 
-                    // Clear specific cache but keep database
-                    localStorage.removeItem('last_sync_time');
-                    sessionStorage.clear();
+                        if (typeof Dexie !== 'undefined' && typeof Dexie.delete === 'function') {
+                            await Dexie.delete('ConciergeCollector');
+                        } else if (window.indexedDB?.deleteDatabase) {
+                            await new Promise((resolve, reject) => {
+                                const req = window.indexedDB.deleteDatabase('ConciergeCollector');
+                                req.onsuccess = () => resolve();
+                                req.onerror = () => reject(req.error || new Error('Failed to delete IndexedDB'));
+                                req.onblocked = () => reject(new Error('IndexedDB deletion blocked by another tab'));
+                            });
+                        }
 
-                    setTimeout(() => window.location.reload(), 1000);
+                        localStorage.clear();
+                        sessionStorage.clear();
+                        localStorage.setItem('needsInitialSync', 'true');
+
+                        setTimeout(() => window.location.reload(), 300);
+                    } catch (error) {
+                        SafetyUtils.hideLoading();
+                        this.log.error('Full local reset failed:', error);
+                        SafetyUtils.showNotification(`Full local reset failed: ${error.message}`, 'error');
+                    }
                 }
             });
         }
