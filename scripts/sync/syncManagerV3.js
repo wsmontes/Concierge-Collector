@@ -225,6 +225,8 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             curation_id: curation.curation_id,
             curator_id: curation.curator_id,  // Required by MongoDB schema
             curator: curation.curator,
+            createdBy: curation.createdBy,
+            updatedBy: curation.updatedBy,
             restaurant_name: curation.restaurant_name || curation.name || null,
             status: curation.status || (curation.entity_id ? 'linked' : 'draft'),
             categories: curation.categories || {},
@@ -245,6 +247,105 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
         }
 
         return cleaned;
+    }
+
+    /**
+     * Normalize patch payload for curation updates
+     * Removes client-only/internal fields and unsupported keys
+     * @param {Object} payload - Candidate payload
+     * @returns {Object}
+     */
+    sanitizeCurationPatchPayload(payload) {
+        const sanitized = { ...(payload || {}) };
+
+        delete sanitized.id;
+        delete sanitized.sync;
+        delete sanitized._lastSyncedState;
+        delete sanitized.etag;
+        delete sanitized.version;
+
+        if (!sanitized.curator_id && sanitized.curator?.id) {
+            sanitized.curator_id = sanitized.curator.id;
+        }
+
+        return sanitized;
+    }
+
+    /**
+     * Detects if an error represents an optimistic-lock/version conflict
+     * @param {Error|string} error - Caught error
+     * @returns {boolean}
+     */
+    isVersionConflictError(error) {
+        const message = String(error?.message || error || '').toLowerCase();
+        return message.includes('409') || message.includes('conflict') || message.includes('if-match');
+    }
+
+    /**
+     * Rebase local curation changes on latest server version and retry once.
+     * @param {Object} curation - Local curation record
+     * @returns {Promise<boolean>} true when conflict was resolved automatically
+     */
+    async tryResolveCurationVersionConflict(curation) {
+        try {
+            const serverCuration = await window.ApiService.getCuration(curation.curation_id);
+            const localChanges = this.extractChangedFields(curation);
+            const payload = this.sanitizeCurationPatchPayload(localChanges);
+
+            const hasChanges = Object.keys(payload).some(
+                key => !['curation_id'].includes(key)
+            );
+
+            if (!hasChanges) {
+                await this.storeItemState('curation', curation.id, serverCuration);
+                await window.DataStore.db.curations.update(curation.id, {
+                    version: serverCuration.version || curation.version,
+                    sync: {
+                        ...(curation.sync || {}),
+                        serverId: serverCuration._id || curation.sync?.serverId || curation.curation_id,
+                        status: 'synced',
+                        error: null,
+                        lastAttempt: null,
+                        lastSyncedAt: new Date().toISOString()
+                    }
+                });
+                return true;
+            }
+
+            if (!payload.updatedBy) {
+                payload.updatedBy = curation.updatedBy || payload.curator_id || payload.curator?.id ||
+                    serverCuration.updatedBy || serverCuration.curator_id || serverCuration.curator?.id || null;
+            }
+
+            if (!serverCuration.createdBy && !payload.createdBy) {
+                payload.createdBy = curation.createdBy || serverCuration.curator_id || serverCuration.curator?.id || null;
+            }
+
+            const updated = await window.ApiService.updateCuration(
+                curation.curation_id,
+                payload,
+                serverCuration.version || 1
+            );
+
+            await this.storeItemState('curation', curation.id, updated);
+            await window.DataStore.db.curations.update(curation.id, {
+                version: updated.version,
+                sync: {
+                    ...(curation.sync || {}),
+                    serverId: updated._id || serverCuration._id || curation.sync?.serverId || curation.curation_id,
+                    status: 'synced',
+                    error: null,
+                    lastAttempt: null,
+                    lastSyncedAt: new Date().toISOString()
+                }
+            });
+
+            this.log.info(`✅ Auto-resolved curation conflict with rebase: ${curation.curation_id}`);
+            return true;
+        } catch (error) {
+            this.log.warn(`Auto-resolve failed for curation ${curation.curation_id}: ${error.message}`);
+            return false;
+        }
     }
 
     /**
@@ -1091,7 +1192,13 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         continue;
                     }
 
-                    if (error.message.includes('409') || error.message.includes('conflict')) {
+                    if (this.isVersionConflictError(error)) {
+                        const resolved = await this.tryResolveCurationVersionConflict(curation);
+                        if (resolved) {
+                            pushed++;
+                            continue;
+                        }
+
                         await window.DataStore.db.curations.update(curation.id, {
                             sync: {
                                 ...(curation.sync || {}),

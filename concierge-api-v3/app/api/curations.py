@@ -78,6 +78,8 @@ def create_curation(
     doc["createdAt"] = datetime.now(timezone.utc)
     doc["updatedAt"] = datetime.now(timezone.utc)
     doc["version"] = 1
+    doc["createdBy"] = curation.createdBy or curation.curator_id
+    doc["updatedBy"] = curation.curator_id
     
     # Insert
     try:
@@ -225,6 +227,35 @@ def update_curation(
     
     # Prepare update
     update_data = {k: v for k, v in updates.model_dump(exclude_unset=True).items() if v is not None}
+
+    # Keep curator fields consistent regardless of which one is provided
+    if "curator" in update_data and "curator_id" not in update_data:
+        curator_obj = update_data.get("curator") or {}
+        if isinstance(curator_obj, dict) and curator_obj.get("id"):
+            update_data["curator_id"] = curator_obj.get("id")
+
+    if "curator_id" in update_data and "curator" not in update_data:
+        current_curator = current.get("curator") or {}
+        update_data["curator"] = {
+            "id": update_data.get("curator_id"),
+            "name": current_curator.get("name") or "Unknown",
+            "email": current_curator.get("email")
+        }
+
+    # Preserve original creator forever (backfill once for legacy records)
+    if current.get("createdBy"):
+        update_data["createdBy"] = current.get("createdBy")
+    else:
+        update_data["createdBy"] = current.get("curator_id") or (current.get("curator") or {}).get("id")
+
+    # Last writer becomes the last updater
+    update_data["updatedBy"] = (
+        update_data.get("curator_id")
+        or (update_data.get("curator") or {}).get("id")
+        or auth.get("user")
+        or current.get("updatedBy")
+    )
+
     update_data["updatedAt"] = datetime.now(timezone.utc)
     update_data["version"] = current_version + 1
     

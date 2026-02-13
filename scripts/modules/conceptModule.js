@@ -488,7 +488,7 @@ class ConceptModule {
             SafetyUtils.showLoading(this.uiManager.isEditingRestaurant ? 'Updating restaurant...' : 'Saving curation...');
 
             let entityId = null; // ✅ NEW: Start with null - entity matching comes later
-            let syncStatus = 'local-only';
+            let curationQueuedForSync = false;
 
             // Check if we're curating an existing/imported entity
             if (this.uiManager.importedEntityId && this.uiManager.importedEntityData) {
@@ -502,63 +502,8 @@ class ConceptModule {
                 this.log.debug('📝 Creating curation draft (no entity match yet)');
             }
 
-            // ✅ UPDATE existing entity only if editing
-            if (this.uiManager.isEditingRestaurant && entityId) {
-                const entity = await window.dataStore.db.entities
-                    .where('entity_id')
-                    .equals(entityId)
-                    .first();
-                if (entity) {
-                    // Update entity fields
-                    entity.name = name;
-                    entity.curator_id = this.uiManager.currentCurator.id;
-
-                    // Build updated data object following V3 structure
-                    const updatedData = entity.data || {};
-
-                    // Update location (only if has data)
-                    const currentLocation = this.uiManager.currentLocation;
-                    if (currentLocation && Object.keys(currentLocation).length > 0) {
-                        updatedData.location = {
-                            ...(currentLocation.address && { address: currentLocation.address }),
-                            ...(currentLocation.city && { city: currentLocation.city }),
-                            ...(currentLocation.country && { country: currentLocation.country }),
-                            ...(currentLocation.coordinates && { coordinates: currentLocation.coordinates })
-                        };
-                    }
-
-                    // Update media/photos (V3 structure)
-                    const currentPhotos = this.uiManager.currentPhotos;
-                    if (currentPhotos && currentPhotos.length > 0) {
-                        updatedData.media = updatedData.media || {};
-                        updatedData.media.photos = currentPhotos;
-                    } else if (updatedData.media && updatedData.media.photos) {
-                        // Clear photos if none selected
-                        delete updatedData.media.photos;
-                        if (Object.keys(updatedData.media).length === 0) {
-                            delete updatedData.media;
-                        }
-                    }
-
-                    entity.data = updatedData;
-                    entity.updated_at = new Date();
-                    entity.updatedAt = new Date();
-                    entity.version = (entity.version || 1) + 1;  // Increment version for optimistic locking
-
-                    // Save to IndexedDB
-                    await window.dataStore.db.entities.put(entity);
-                    this.log.debug(`✅ Entity updated: ${entityId}`);
-
-                    // Queue for sync
-                    if (window.dataStore) {
-                        await window.dataStore.addToSyncQueue('entity', 'update', entity.entity_id, entity.entity_id, entity);
-                        syncStatus = 'pending';
-                    }
-                } else {
-                    this.log.warn('Entity not found for update, creating orphaned curation');
-                    entityId = null; // Reset to null if entity not found
-                }
-            }
+            // IMPORTANT: Curation save must not mutate entity metadata.
+            // Entity updates are handled only in explicit entity edit mode.
 
             // ✅ NEW: DO NOT create entity automatically
             // Entity creation will be done separately through matching or explicit creation
@@ -594,6 +539,8 @@ class ConceptModule {
                 restaurant_name: name, // Name for orphaned curations (as requested)
                 status: entityId ? 'linked' : 'draft',
                 curator_id: curator.curator_id,  // Required by loadCurations() filter
+                createdBy: existingCuration?.createdBy || existingCuration?.curator_id || curator.curator_id,
+                updatedBy: curator.curator_id,
                 curator: {
                     id: user.email,
                     name: this.capitalizeFullName(user.name || curator.name || user.email.split('@')[0]),
@@ -636,6 +583,7 @@ class ConceptModule {
                 // Use 'update' action if the curation already exists on the server
                 const syncAction = (existingCuration?.sync?.serverId || existingCuration?.sync?.status === 'synced') ? 'update' : 'create';
                 await window.dataStore.addToSyncQueue('curation', syncAction, null, curationId, curation);
+                curationQueuedForSync = true;
                 this.log.debug(`✅ Curation queued for sync to server with action: ${syncAction}`);
             }
 
@@ -653,22 +601,19 @@ class ConceptModule {
 
             // Note: Background sync is asynchronous (fire-and-forget)
             // The actual sync status will be reflected in the restaurant list badge
-            if (!this.uiManager.isEditingRestaurant && syncStatus === 'pending') {
-                // Sync is happening in the background
+            if (!this.uiManager.isEditingRestaurant && curationQueuedForSync) {
                 message += ' - syncing to server...';
-            } else if (!this.uiManager.isEditingRestaurant && syncStatus === 'local-only') {
-                message += ' (local only - will sync when online)';
             }
 
             SafetyUtils.showNotification(message);
 
-            // ✅ Trigger immediate sync if entity is pending
-            if (syncStatus === 'pending' && window.SyncManager && typeof window.SyncManager.quickSync === 'function') {
+            // ✅ Trigger immediate sync when curation is queued
+            if (curationQueuedForSync && window.SyncManager && typeof window.SyncManager.quickSync === 'function') {
                 this.log.debug('🚀 Triggering immediate background sync');
                 window.SyncManager.quickSync().catch(err => {
                     this.log.warn('Background sync failed, will retry automatically:', err);
                 });
-            } else if (syncStatus === 'pending' && !window.SyncManager) {
+            } else if (curationQueuedForSync && !window.SyncManager) {
                 this.log.warn('⚠️ Cannot trigger sync - SyncManager not available');
             }
 

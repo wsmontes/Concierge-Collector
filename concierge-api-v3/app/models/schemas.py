@@ -155,12 +155,15 @@ class CurationCreate(CurationBase):
     entity_id: Optional[str] = Field(None, description="Entity this curation is about (null for orphaned curations)")
     curator_id: str = Field(..., description="Curator ID for filtering")
     curator: CuratorInfo
+    createdBy: Optional[str] = Field(None, description="Curator ID who originally created this curation")
 
 
 class CurationUpdate(BaseModel):
     """Curation update request (all optional for PATCH)"""
     restaurant_name: Optional[str] = None
     entity_id: Optional[str] = None
+    curator_id: Optional[str] = None
+    curator: Optional[CuratorInfo] = None
     status: Optional[CurationStatus] = None
     notes: Optional[CurationNotes] = None
     categories: Optional[CurationCategories] = None
@@ -169,6 +172,7 @@ class CurationUpdate(BaseModel):
     embeddings: Optional[List[Dict]] = None
     embeddings_metadata: Optional[Dict] = None
     items: Optional[List[Dict[str, Any]]] = None
+    updatedBy: Optional[str] = None
 
 
 class Curation(CurationBase):
@@ -178,6 +182,8 @@ class Curation(CurationBase):
     entity_id: Optional[str] = None
     curator_id: Optional[str] = None
     curator: CuratorInfo
+    createdBy: Optional[str] = None
+    updatedBy: Optional[str] = None
     embeddings: Optional[List[Dict]] = None
     embeddings_metadata: Optional[Dict] = None
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
