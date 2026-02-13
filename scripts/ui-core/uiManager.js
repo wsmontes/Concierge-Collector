@@ -774,7 +774,30 @@ if (typeof window.UIManager === 'undefined') {
 
             // Display entities for this page
             pageEntities.forEach(entity => {
-                const card = window.CardFactory.createEntityCard(entity);
+                const card = window.CardFactory.createEntityCard(entity, {
+                    showEntityActions: true,
+                    onClick: (selectedEntity) => {
+                        if (window.entityModule?.showEntityDetails) {
+                            window.entityModule.showEntityDetails(selectedEntity);
+                        }
+                    },
+                    onDetails: (selectedEntity) => {
+                        if (window.entityModule?.showEntityDetails) {
+                            window.entityModule.showEntityDetails(selectedEntity);
+                        }
+                    },
+                    onEdit: (selectedEntity) => {
+                        if (window.entityModule?.startEntityEdit) {
+                            window.entityModule.startEntityEdit(selectedEntity);
+                        }
+                    },
+                    onSync: async () => {
+                        if (window.SyncManager?.pushEntities) {
+                            await window.SyncManager.pushEntities();
+                            await this.loadEntities();
+                        }
+                    }
+                });
                 container.appendChild(card);
             });
         }
