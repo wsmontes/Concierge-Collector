@@ -337,6 +337,15 @@ class AIOrchestrator:
                 "entity_id": results["entity"]["entity_id"],
                 "curator_id": request.get("curator_id"),
                 "transcription_id": transcription.get("transcription_id"),
+                "sources": {
+                    "audio": [{
+                        "source_id": transcription.get("transcription_id"),
+                        "transcript": transcription.get("text"),
+                        "language": transcription.get("language"),
+                        "model": transcription.get("model"),
+                        "duration_seconds": transcription.get("duration")
+                    }]
+                },
                 "categories": categories,
                 "source": "text_analysis",
                 "entity_type": entity_type,
@@ -426,7 +435,19 @@ class AIOrchestrator:
                 "curator_id": request.get("curator_id"),
                 "transcription_id": transcription.get("transcription_id"),
                 "categories": combined_categories,
-                "sources": ["text_analysis", "image_analysis"],
+                "sources": {
+                    "audio": [{
+                        "source_id": transcription.get("transcription_id"),
+                        "transcript": transcription.get("text"),
+                        "language": transcription.get("language"),
+                        "model": transcription.get("model"),
+                        "duration_seconds": transcription.get("duration")
+                    }],
+                    "image": [{
+                        "source": "image_analysis",
+                        "visual_notes": image_analysis.get("visual_notes")
+                    }]
+                },
                 "visual_notes": image_analysis.get("visual_notes"),
                 "entity_type": entity_type,
                 "created_at": datetime.now(timezone.utc).isoformat()

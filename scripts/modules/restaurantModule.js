@@ -340,7 +340,8 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
         }
 
         if (this.transcriptionInput) {
-            let transcription = curation.unstructured_text || curation.transcription || '';
+            const sourceAudioTranscript = curation.sources?.audio?.[0]?.transcript || '';
+            let transcription = curation.transcript || sourceAudioTranscript || curation.unstructured_text || curation.transcription || '';
 
             // Fallback: If transcription is empty but public notes has content, 
             // check if it looks like a mixed transcription (legacy data)
@@ -452,11 +453,20 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
                     (this.currentEntity?.name || this.currentEntity?.restaurant_name) ||
                     'Unmatched Review',
                 curator_id: currentCurator.curator_id,
-                unstructured_text: this.transcriptionInput?.value || '',
+                transcript: this.transcriptionInput?.value || '',
                 notes: {
                     public: this.publicNotesInput?.value || '',
                     private: this.privateNotesInput?.value || ''
                 },
+                sources: window.SourceUtils.buildSourcesPayloadFromContext({
+                    existingSources: this.currentCuration?.sources,
+                    hasAudio: !!(this.transcriptionInput?.value || '').trim(),
+                    transcript: this.transcriptionInput?.value || '',
+                    transcriptionId: this.currentCuration?.transcription_id || null,
+                    hasPhotos: Array.isArray(this.uiManager?.currentPhotos) && this.uiManager.currentPhotos.length > 0,
+                    hasPlaceId: !!(this.currentEntity?.data?.place_id || this.currentEntity?.place_id),
+                    isImport: false
+                }),
                 categories: this.getConceptsGrouped(),
                 items: this.currentCuration?.items || [],
                 created_at: this.currentCuration?.created_at || new Date().toISOString(),

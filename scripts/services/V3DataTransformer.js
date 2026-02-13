@@ -159,12 +159,17 @@ const V3DataTransformer = (function () {
                 category: mongoCuration.category || null,
                 concept: mongoCuration.concept || null,
                 categories: mongoCuration.categories || {},
+                sources: mongoCuration.sources || {},
 
                 // Notes
                 notes: mongoCuration.notes || { public: null, private: null },
 
                 // Transcription
-                unstructured_text: mongoCuration.unstructured_text || mongoCuration.transcription || null,
+                transcript: mongoCuration.transcript ||
+                    mongoCuration.sources?.audio?.[0]?.transcript ||
+                    mongoCuration.unstructured_text ||
+                    mongoCuration.transcription ||
+                    null,
 
                 // Media
                 images: Array.isArray(mongoCuration.images) ? mongoCuration.images : [],
@@ -214,12 +219,13 @@ const V3DataTransformer = (function () {
                 category: localCuration.category || null,
                 concept: localCuration.concept || null,
                 categories: localCuration.categories || {},
+                sources: localCuration.sources || {},
 
                 // Notes
                 notes: localCuration.notes || { public: null, private: null },
 
                 // Transcription
-                unstructured_text: localCuration.unstructured_text || null,
+                transcript: localCuration.transcript || localCuration.unstructured_text || null,
 
                 // Media
                 images: Array.isArray(localCuration.images) ? localCuration.images : [],

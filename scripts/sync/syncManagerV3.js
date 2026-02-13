@@ -166,6 +166,39 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
      * Removes fields that are not in CurationCreate schema
      */
     cleanCurationForSync(curation) {
+        const normalizedSources = (() => {
+            const currentSources = curation.sources;
+
+            if (currentSources && typeof currentSources === 'object' && !Array.isArray(currentSources)) {
+                return currentSources;
+            }
+
+            if (Array.isArray(currentSources)) {
+                const mapped = {};
+                if (currentSources.includes('audio')) {
+                    mapped.audio = [{
+                        source_id: curation.transcription_id || null,
+                        transcript: curation.transcript || curation.unstructured_text || curation.transcription || null,
+                        created_at: new Date().toISOString()
+                    }];
+                }
+                if (currentSources.includes('image')) mapped.image = [{ created_at: new Date().toISOString() }];
+                if (currentSources.includes('google_places')) mapped.google_places = [{ created_at: new Date().toISOString() }];
+                if (currentSources.includes('import')) mapped.import = [{ created_at: new Date().toISOString() }];
+                if (currentSources.includes('manual') || Object.keys(mapped).length === 0) mapped.manual = [{ created_at: new Date().toISOString() }];
+                return mapped;
+            }
+
+            return window.SourceUtils.buildSourcesPayloadFromContext({
+                hasAudio: !!(curation.transcript || curation.unstructured_text || curation.transcription),
+                transcript: curation.transcript || curation.unstructured_text || curation.transcription || null,
+                transcriptionId: curation.transcription_id || null,
+                hasPhotos: Array.isArray(curation.images) && curation.images.length > 0,
+                hasPlaceId: !!curation.entity_id,
+                isImport: false
+            });
+        })();
+
         const cleaned = {
             curation_id: curation.curation_id,
             curator_id: curation.curator_id,  // Required by MongoDB schema
@@ -173,7 +206,8 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             status: curation.status || (curation.entity_id ? 'linked' : 'draft'),
             categories: curation.categories || {},
             notes: curation.notes || {},
-            sources: curation.sources || [],
+            transcript: curation.transcript || curation.unstructured_text || curation.transcription || null,
+            sources: normalizedSources,
             items: curation.items || []
         };
 

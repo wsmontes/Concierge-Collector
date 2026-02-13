@@ -61,22 +61,28 @@ const SourceUtils = (() => {
     function detectSource(curation, entity) {
         const sources = curation.sources || [];
 
-        // Check for explicit sources first (preserves backend truth)
-        if (sources.length > 0) {
-            // Return priority source if multiple exist
+        // Check explicit sources first (supports both legacy array and structured object)
+        if (Array.isArray(sources) && sources.length > 0) {
             if (sources.includes(SCOPES.AUDIO)) return UI_CONFIG[SCOPES.AUDIO];
             if (sources.includes(SCOPES.IMAGE)) return UI_CONFIG[SCOPES.IMAGE];
             if (sources.includes(SCOPES.TEXT)) return UI_CONFIG[SCOPES.TEXT];
             if (sources.includes(SCOPES.GOOGLE)) return UI_CONFIG[SCOPES.GOOGLE];
             if (sources.includes(SCOPES.IMPORT)) return UI_CONFIG[SCOPES.IMPORT];
             if (sources.includes(SCOPES.MANUAL)) return UI_CONFIG[SCOPES.MANUAL];
-
-            // Fallback for unknown explicit source
             return UI_CONFIG[SCOPES.MANUAL];
         }
 
+        if (sources && typeof sources === 'object' && !Array.isArray(sources)) {
+            if (Array.isArray(sources.audio) && sources.audio.length > 0) return UI_CONFIG[SCOPES.AUDIO];
+            if (Array.isArray(sources.image) && sources.image.length > 0) return UI_CONFIG[SCOPES.IMAGE];
+            if (Array.isArray(sources.text) && sources.text.length > 0) return UI_CONFIG[SCOPES.TEXT];
+            if (Array.isArray(sources.google_places) && sources.google_places.length > 0) return UI_CONFIG[SCOPES.GOOGLE];
+            if (Array.isArray(sources.import) && sources.import.length > 0) return UI_CONFIG[SCOPES.IMPORT];
+            if (Array.isArray(sources.manual) && sources.manual.length > 0) return UI_CONFIG[SCOPES.MANUAL];
+        }
+
         // Heuristic fallback for legacy data (smart detection)
-        if (curation.transcription && curation.transcription.trim().length > 0) {
+        if ((curation.transcript || curation.unstructured_text || curation.transcription || '').trim().length > 0) {
             return UI_CONFIG[SCOPES.AUDIO];
         }
 
@@ -108,10 +114,65 @@ const SourceUtils = (() => {
         return sources;
     }
 
+    /**
+     * Build structured source payload for curation persistence.
+     *
+     * Output shape example:
+     * {
+     *   audio: [{ source_id, transcript, language, model, duration_seconds, created_at }],
+     *   image: [{ created_at }],
+     *   google_places: [{ created_at }]
+     * }
+     */
+    function buildSourcesPayloadFromContext(context) {
+        const now = new Date().toISOString();
+        const existing = (context.existingSources && typeof context.existingSources === 'object' && !Array.isArray(context.existingSources))
+            ? { ...context.existingSources }
+            : {};
+
+        const sources = { ...existing };
+
+        if (context.hasAudio) {
+            sources.audio = [{
+                source_id: context.transcriptionId || null,
+                transcript: context.transcript || null,
+                language: context.language || null,
+                model: context.model || null,
+                duration_seconds: context.durationSeconds || null,
+                created_at: now
+            }];
+        }
+
+        if (context.hasPhotos) {
+            sources.image = sources.image && Array.isArray(sources.image) && sources.image.length > 0
+                ? sources.image
+                : [{ created_at: now }];
+        }
+
+        if (context.hasPlaceId) {
+            sources.google_places = sources.google_places && Array.isArray(sources.google_places) && sources.google_places.length > 0
+                ? sources.google_places
+                : [{ created_at: now }];
+        }
+
+        if (context.isImport) {
+            sources.import = sources.import && Array.isArray(sources.import) && sources.import.length > 0
+                ? sources.import
+                : [{ created_at: now }];
+        }
+
+        if (Object.keys(sources).length === 0) {
+            sources.manual = [{ created_at: now }];
+        }
+
+        return sources;
+    }
+
     return {
         SCOPES,
         detectSource,
-        determineSourcesFromContext
+        determineSourcesFromContext,
+        buildSourcesPayloadFromContext
     };
 })();
 

@@ -5,7 +5,7 @@ Professional data validation and serialization
 
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any, Literal
-from pydantic import BaseModel, Field, EmailStr, ConfigDict
+from pydantic import BaseModel, Field, EmailStr, ConfigDict, AliasChoices
 
 
 # ============================================================================
@@ -110,7 +110,12 @@ class CurationBase(BaseModel):
     status: CurationStatus = Field(default="draft", description="Curation lifecycle status")
     notes: Optional[CurationNotes] = None
     categories: CurationCategories = Field(default_factory=CurationCategories)
-    sources: List[str] = Field(default_factory=list)
+    transcript: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("transcript", "unstructured_text"),
+        description="Transcription text associated with the curation"
+    )
+    sources: Dict[str, Any] = Field(default_factory=dict, description="Structured sources grouped by source type (audio, image, google_places, etc.)")
     items: Optional[List[Dict[str, Any]]] = Field(default=None, description="Detailed items/concepts list")
 
 
@@ -128,7 +133,8 @@ class CurationUpdate(BaseModel):
     status: Optional[CurationStatus] = None
     notes: Optional[CurationNotes] = None
     categories: Optional[CurationCategories] = None
-    sources: Optional[List[str]] = None
+    transcript: Optional[str] = Field(default=None, validation_alias=AliasChoices("transcript", "unstructured_text"))
+    sources: Optional[Dict[str, Any]] = None
     embeddings: Optional[List[Dict]] = None
     embeddings_metadata: Optional[Dict] = None
     items: Optional[List[Dict[str, Any]]] = None

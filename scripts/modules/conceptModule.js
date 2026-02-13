@@ -552,9 +552,12 @@ class ConceptModule {
                     public: publicNotes || null,
                     private: privateNotes || null
                 },
-                unstructured_text: transcription || null,
-                sources: existingCuration?.sources || window.SourceUtils.determineSourcesFromContext({
+                transcript: transcription || null,
+                sources: window.SourceUtils.buildSourcesPayloadFromContext({
+                    existingSources: existingCuration?.sources,
                     hasAudio: !!(transcription && transcription.trim()),
+                    transcript: transcription || null,
+                    transcriptionId: existingCuration?.transcription_id || null,
                     hasPhotos: this.uiManager?.currentPhotos?.length > 0,
                     hasPlaceId: !!(this.uiManager.importedEntityData?.data?.place_id || this.uiManager.importedEntityData?.place_id),
                     isImport: false // Logic can be expanded if needed

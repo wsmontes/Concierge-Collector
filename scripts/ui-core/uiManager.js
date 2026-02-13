@@ -508,7 +508,13 @@ if (typeof window.UIManager === 'undefined') {
                     const restaurantName = (curation.restaurant_name || curation.restaurantName || '').toLowerCase();
                     const notes = (curation.notes?.public || '').toLowerCase();
                     const curatorName = (curation.curator?.name || '').toLowerCase();
-                    const transcription = (curation.unstructured_text || curation.transcription || '').toLowerCase();
+                    const transcription = (
+                        curation.transcript ||
+                        curation.sources?.audio?.[0]?.transcript ||
+                        curation.unstructured_text ||
+                        curation.transcription ||
+                        ''
+                    ).toLowerCase();
                     return entityName.includes(query) || restaurantName.includes(query) || notes.includes(query) || transcription.includes(query) || curatorName.includes(query);
                 });
             }
@@ -804,7 +810,12 @@ if (typeof window.UIManager === 'undefined') {
             const curatorName = curation.curator?.name || curation.curatorName || 'Unknown';
 
             // Transcription snippet
-            const transcription = curation.unstructured_text || curation.transcription || '';
+            const transcription =
+                curation.transcript ||
+                curation.sources?.audio?.[0]?.transcript ||
+                curation.unstructured_text ||
+                curation.transcription ||
+                '';
             const transcriptionSnippet = transcription.length > 100 ? transcription.substring(0, 100) + '...' : transcription;
 
             card.innerHTML = `
