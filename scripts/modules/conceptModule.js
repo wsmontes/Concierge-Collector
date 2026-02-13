@@ -174,6 +174,27 @@ class ConceptModule {
             });
         }
 
+        // Clone curation button (secondary action inside edit flow)
+        const cloneBtn = document.getElementById('clone-curation');
+        if (cloneBtn) {
+            cloneBtn.addEventListener('click', () => {
+                const canClone = this.uiManager?.restaurantModule?.currentCuration?.curation_id;
+                if (!canClone) {
+                    return;
+                }
+
+                const confirmed = confirm('Create a clone of this curation? The original will not be changed.');
+                if (!confirmed) {
+                    return;
+                }
+
+                const cloneActivated = this.uiManager.restaurantModule.activateCloneMode();
+                if (cloneActivated) {
+                    SafetyUtils.showNotification('Clone mode enabled. Saving will create a new curation.', 'success');
+                }
+            });
+        }
+
         // Reprocess concepts button
         const reprocessBtn = document.getElementById('reprocess-concepts');
         if (reprocessBtn) {
@@ -363,7 +384,15 @@ class ConceptModule {
         // Save the ID before clearing it to decide where to navigate
         const wasEditingId = this.uiManager.editingRestaurantId;
         this.uiManager.editingRestaurantId = null;
+        this.uiManager.importedEntityId = null;
+        this.uiManager.importedEntityData = null;
         this.uiManager.formIsDirty = false;
+
+        if (this.uiManager.restaurantModule) {
+            this.uiManager.restaurantModule.currentCuration = null;
+            this.uiManager.restaurantModule.currentEntity = null;
+            this.uiManager.restaurantModule.updateCloneButtonVisibility(false);
+        }
 
         // Reset save button text
         const saveBtn = document.getElementById('save-restaurant');
@@ -656,6 +685,12 @@ class ConceptModule {
             this.uiManager.currentConcepts = [];
             this.uiManager.currentLocation = null;
             this.uiManager.currentPhotos = [];
+
+            if (this.uiManager.restaurantModule) {
+                this.uiManager.restaurantModule.currentCuration = null;
+                this.uiManager.restaurantModule.currentEntity = null;
+                this.uiManager.restaurantModule.updateCloneButtonVisibility(false);
+            }
 
             // Reset UI
             const saveBtn = document.getElementById('save-restaurant');

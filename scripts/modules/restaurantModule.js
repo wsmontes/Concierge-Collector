@@ -44,6 +44,7 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
 
         this.saveButton = document.getElementById('save-restaurant');
         this.discardButton = document.getElementById('discard-restaurant');
+        this.cloneButton = document.getElementById('clone-curation');
 
         this.placesLookupBtn = document.getElementById('places-lookup-btn');
         this.getLocationBtn = document.getElementById('get-location');
@@ -108,7 +109,7 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
         // Sync with UIManager state
         if (this.uiManager) {
             this.uiManager.isEditingRestaurant = true;
-            this.uiManager.editingRestaurantId = entity?.entity_id || null;
+            this.uiManager.editingRestaurantId = entity?.entity_id || curation?.entity_id || null;
         }
 
         // If curation exists but entity is missing, try to load entity
@@ -125,6 +126,11 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
             } catch (e) {
                 this.log.warn('Could not load entity for curation:', curation.entity_id);
             }
+        }
+
+        // Ensure editing context always keeps the linked entity id when available
+        if (this.uiManager) {
+            this.uiManager.editingRestaurantId = this.currentEntity?.entity_id || curation?.entity_id || this.uiManager.editingRestaurantId || null;
         }
 
         // 1. Show the form UI
@@ -146,6 +152,68 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
         if (this.uiManager) {
             this.uiManager.formIsDirty = false;
         }
+
+        this.updateCloneButtonVisibility();
+    }
+
+    /**
+     * Show clone action only when editing an existing curation
+     * @param {boolean|null} forceVisible - Optional explicit visibility override
+     */
+    updateCloneButtonVisibility(forceVisible = null) {
+        if (!this.cloneButton) {
+            this.cloneButton = document.getElementById('clone-curation');
+        }
+
+        if (!this.cloneButton) {
+            return;
+        }
+
+        const shouldShow = typeof forceVisible === 'boolean'
+            ? forceVisible
+            : !!this.currentCuration?.curation_id;
+
+        this.cloneButton.classList.toggle('hidden', !shouldShow);
+    }
+
+    /**
+     * Switch current editing state to a cloned draft of the current curation
+     * The next save creates a new curation record instead of updating the original.
+     * @returns {boolean} true when clone mode was activated
+     */
+    activateCloneMode() {
+        if (!this.currentCuration) {
+            return false;
+        }
+
+        const cloneBase = {
+            ...this.currentCuration,
+            sync: {
+                ...(this.currentCuration.sync || {}),
+                status: 'pending',
+                lastAttempt: null,
+                error: null
+            }
+        };
+
+        delete cloneBase.id;
+        delete cloneBase.curation_id;
+        delete cloneBase.created_at;
+        delete cloneBase.createdAt;
+        delete cloneBase.updated_at;
+        delete cloneBase.updatedAt;
+
+        this.currentCuration = cloneBase;
+
+        if (this.uiManager) {
+            this.uiManager.isEditingRestaurant = false;
+            this.uiManager.importedEntityId = this.currentEntity?.entity_id || null;
+            this.uiManager.importedEntityData = this.currentEntity || null;
+            this.uiManager.formIsDirty = true;
+        }
+
+        this.updateCloneButtonVisibility(false);
+        return true;
     }
 
     /**
