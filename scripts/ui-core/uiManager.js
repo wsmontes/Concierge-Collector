@@ -522,7 +522,11 @@ if (typeof window.UIManager === 'undefined') {
 
             // 2. Status filter
             if (this.curationFilters.status !== 'all') {
-                filtered = filtered.filter(curation => (curation.status || 'draft') === this.curationFilters.status);
+                filtered = filtered.filter(curation => {
+                    const rawStatus = (curation.status || 'draft').toLowerCase();
+                    const normalizedStatus = rawStatus === 'done' ? 'linked' : rawStatus;
+                    return normalizedStatus === this.curationFilters.status;
+                });
             }
 
             // 3. Curator filter
