@@ -184,6 +184,24 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
     }
 
     /**
+     * Normalize patch payload for entity updates
+     * Removes client-only/internal fields and unsupported keys
+     * @param {Object} payload - Candidate payload
+     * @returns {Object}
+     */
+    sanitizeEntityPatchPayload(payload) {
+        const sanitized = { ...(payload || {}) };
+
+        delete sanitized.id;
+        delete sanitized.sync;
+        delete sanitized._lastSyncedState;
+        delete sanitized.etag;
+        delete sanitized.version;
+
+        return this.cleanEntityForSync(sanitized);
+    }
+
+    /**
      * Clean curation object for backend sync
      * Removes fields that are not in CurationCreate schema
      */
@@ -279,6 +297,72 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
     isVersionConflictError(error) {
         const message = String(error?.message || error || '').toLowerCase();
         return message.includes('409') || message.includes('conflict') || message.includes('if-match');
+    }
+
+    /**
+     * Rebase local entity changes on latest server version and retry once.
+     * @param {Object} entity - Local entity record
+     * @returns {Promise<boolean>} true when conflict was resolved automatically
+     */
+    async tryResolveEntityVersionConflict(entity) {
+        try {
+            const serverEntity = await window.ApiService.getEntity(entity.entity_id);
+            const localChanges = this.extractChangedFields(entity);
+            const payload = this.sanitizeEntityPatchPayload(localChanges);
+
+            const hasChanges = Object.keys(payload).some(
+                key => !['entity_id', 'curation_id'].includes(key)
+            );
+
+            if (!hasChanges) {
+                await this.storeItemState('entity', entity.id, serverEntity);
+                await window.DataStore.db.entities.update(entity.id, {
+                    version: serverEntity.version || entity.version,
+                    sync: {
+                        ...(entity.sync || {}),
+                        serverId: serverEntity._id || entity.sync?.serverId || entity.entity_id,
+                        status: 'synced',
+                        error: null,
+                        lastAttempt: null,
+                        lastSyncedAt: new Date().toISOString()
+                    }
+                });
+                return true;
+            }
+
+            if (!payload.updatedBy) {
+                payload.updatedBy = entity.updatedBy || serverEntity.updatedBy || null;
+            }
+
+            if (!serverEntity.createdBy && !payload.createdBy) {
+                payload.createdBy = entity.createdBy || null;
+            }
+
+            const updated = await window.ApiService.updateEntity(
+                entity.entity_id,
+                payload,
+                serverEntity.version || 1
+            );
+
+            await this.storeItemState('entity', entity.id, updated);
+            await window.DataStore.db.entities.update(entity.id, {
+                version: updated.version,
+                sync: {
+                    ...(entity.sync || {}),
+                    serverId: updated._id || serverEntity._id || entity.sync?.serverId || entity.entity_id,
+                    status: 'synced',
+                    error: null,
+                    lastAttempt: null,
+                    lastSyncedAt: new Date().toISOString()
+                }
+            });
+
+            this.log.info(`✅ Auto-resolved entity conflict with rebase: ${entity.entity_id}`);
+            return true;
+        } catch (error) {
+            this.log.warn(`Auto-resolve failed for entity ${entity.entity_id}: ${error.message}`);
+            return false;
+        }
     }
 
     /**
@@ -943,7 +1027,13 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         continue;
                     }
 
-                    if (error.message.includes('409') || error.message.includes('conflict')) {
+                    if (this.isVersionConflictError(error)) {
+                        const resolved = await this.tryResolveEntityVersionConflict(entity);
+                        if (resolved) {
+                            pushed++;
+                            continue;
+                        }
+
                         // Version conflict - mark for manual resolution
                         await window.DataStore.db.entities.update(entity.id, {
                             sync: {
