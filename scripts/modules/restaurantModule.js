@@ -45,6 +45,8 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
         this.saveButton = document.getElementById('save-restaurant');
         this.discardButton = document.getElementById('discard-restaurant');
         this.cloneButton = document.getElementById('clone-curation');
+        this.exportJsonButton = document.getElementById('export-curation-json');
+        this.curationEditFooter = document.getElementById('curation-edit-footer');
 
         this.placesLookupBtn = document.getElementById('places-lookup-btn');
         this.getLocationBtn = document.getElementById('get-location');
@@ -154,6 +156,8 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
         }
 
         this.updateCloneButtonVisibility();
+        this.updateExportButtonVisibility();
+        this.updateCurationEditFooterVisibility();
     }
 
     /**
@@ -174,6 +178,44 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
             : !!this.currentCuration?.curation_id;
 
         this.cloneButton.classList.toggle('hidden', !shouldShow);
+    }
+
+    /**
+     * Show export action only when editing an existing curation
+     * @param {boolean|null} forceVisible - Optional explicit visibility override
+     */
+    updateExportButtonVisibility(forceVisible = null) {
+        if (!this.exportJsonButton) {
+            this.exportJsonButton = document.getElementById('export-curation-json');
+        }
+
+        if (!this.exportJsonButton) {
+            return;
+        }
+
+        const shouldShow = typeof forceVisible === 'boolean'
+            ? forceVisible
+            : !!this.currentCuration?.curation_id;
+
+        this.exportJsonButton.classList.toggle('hidden', !shouldShow);
+    }
+
+    /**
+     * Control curation edit footer visibility
+     * @param {boolean|null} forceVisible - Optional explicit visibility override
+     */
+    updateCurationEditFooterVisibility(forceVisible = null) {
+        if (!this.curationEditFooter) {
+            this.curationEditFooter = document.getElementById('curation-edit-footer');
+        }
+
+        if (!this.curationEditFooter) {
+            return;
+        }
+
+        const hasActions = !!(this.currentCuration?.curation_id);
+        const shouldShow = typeof forceVisible === 'boolean' ? forceVisible : hasActions;
+        this.curationEditFooter.classList.toggle('hidden', !shouldShow);
     }
 
     /**
@@ -213,7 +255,85 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
         }
 
         this.updateCloneButtonVisibility(false);
+        this.updateExportButtonVisibility(false);
+        this.updateCurationEditFooterVisibility(false);
         return true;
+    }
+
+    /**
+     * Export current curation JSON and linked entity JSON (when linked)
+     */
+    async exportCurrentCurationJson() {
+        const curationId = this.currentCuration?.curation_id;
+        if (!curationId) {
+            window.uiUtils?.showNotification?.('No saved curation selected for export', 'error');
+            return;
+        }
+
+        try {
+            let curationRaw = null;
+            if (window.ApiService?.getCuration) {
+                curationRaw = await window.ApiService.getCuration(curationId);
+            }
+
+            if (!curationRaw && window.DataStore?.getCuration) {
+                curationRaw = await window.DataStore.getCuration(curationId);
+            }
+
+            if (!curationRaw) {
+                throw new Error('Curation not found for export');
+            }
+
+            const exportPayload = {
+                curation: curationRaw
+            };
+
+            const entityId = curationRaw.entity_id || this.currentEntity?.entity_id || null;
+            if (entityId) {
+                let entityRaw = null;
+
+                if (window.ApiService?.getEntity) {
+                    entityRaw = await window.ApiService.getEntity(entityId);
+                }
+
+                if (!entityRaw) {
+                    const db = window.dataStore?.db || window.DataStore?.db;
+                    if (db) {
+                        entityRaw = await db.entities.where('entity_id').equals(entityId).first();
+                    }
+                }
+
+                if (entityRaw) {
+                    exportPayload.entity = entityRaw;
+                }
+            }
+
+            const fileName = `curation-${curationId}.json`;
+            this.downloadJson(fileName, exportPayload);
+            window.uiUtils?.showNotification?.('Curation JSON exported', 'success');
+        } catch (error) {
+            this.log.error('Failed to export curation JSON:', error);
+            window.uiUtils?.showNotification?.('Failed to export JSON: ' + error.message, 'error');
+        }
+    }
+
+    /**
+     * Trigger JSON file download
+     * @param {string} fileName - Download file name
+     * @param {Object} payload - JSON payload
+     */
+    downloadJson(fileName, payload) {
+        const json = JSON.stringify(payload, null, 2);
+        const blob = new Blob([json], { type: 'application/json;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = fileName;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        URL.revokeObjectURL(url);
     }
 
     /**

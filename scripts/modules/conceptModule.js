@@ -195,6 +195,17 @@ class ConceptModule {
             });
         }
 
+        const exportBtn = document.getElementById('export-curation-json');
+        if (exportBtn) {
+            exportBtn.addEventListener('click', async () => {
+                if (!this.uiManager?.restaurantModule?.currentCuration?.curation_id) {
+                    return;
+                }
+
+                await this.uiManager.restaurantModule.exportCurrentCurationJson();
+            });
+        }
+
         // Reprocess concepts button
         const reprocessBtn = document.getElementById('reprocess-concepts');
         if (reprocessBtn) {
@@ -392,6 +403,8 @@ class ConceptModule {
             this.uiManager.restaurantModule.currentCuration = null;
             this.uiManager.restaurantModule.currentEntity = null;
             this.uiManager.restaurantModule.updateCloneButtonVisibility(false);
+            this.uiManager.restaurantModule.updateExportButtonVisibility(false);
+            this.uiManager.restaurantModule.updateCurationEditFooterVisibility(false);
         }
 
         // Reset save button text
@@ -690,6 +703,8 @@ class ConceptModule {
                 this.uiManager.restaurantModule.currentCuration = null;
                 this.uiManager.restaurantModule.currentEntity = null;
                 this.uiManager.restaurantModule.updateCloneButtonVisibility(false);
+                this.uiManager.restaurantModule.updateExportButtonVisibility(false);
+                this.uiManager.restaurantModule.updateCurationEditFooterVisibility(false);
             }
 
             // Reset UI
