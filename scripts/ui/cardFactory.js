@@ -36,7 +36,11 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
             showActions = true,
             onClick = null,
             subtitleHtml = null,
-            detailsHtml = ''
+            detailsHtml = '',
+            showEntityActions = false,
+            onEdit = null,
+            onDetails = null,
+            onSync = null
         } = options;
 
         const card = document.createElement('div');
@@ -144,6 +148,89 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
             card.addEventListener('click', () => {
                 console.log('Entity clicked:', entity.entity_id);
             });
+        }
+
+        if (showEntityActions) {
+            const actionsRow = document.createElement('div');
+            actionsRow.className = 'mt-auto p-4 mx-1 border-t border-gray-100 bg-white z-20 relative space-y-3';
+
+            const status = entity.status || 'active';
+            const statusColors = {
+                active: 'bg-green-100 text-green-800',
+                pending: 'bg-yellow-100 text-yellow-800',
+                archived: 'bg-gray-100 text-gray-800',
+                deleted: 'bg-red-100 text-red-800'
+            };
+
+            const syncStatus = entity.sync?.status || 'local';
+            const syncIcon = syncStatus === 'synced'
+                ? 'cloud_done'
+                : (syncStatus === 'pending' ? 'cloud_upload' : (syncStatus === 'conflict' ? 'warning' : 'cloud_off'));
+            const syncColor = syncStatus === 'synced'
+                ? 'text-green-500'
+                : (syncStatus === 'pending' ? 'text-amber-500' : (syncStatus === 'conflict' ? 'text-orange-600' : 'text-gray-400'));
+
+            const sourceLabel = entity.data?.source || entity.source || (entity.data?.google_place_id ? 'google_places' : 'manual');
+            const sourceText = this.escapeHtml(String(sourceLabel).replace(/_/g, ' '));
+
+            actionsRow.innerHTML = `
+                <div class="space-y-2">
+                    <div class="flex items-center gap-1.5 overflow-x-auto whitespace-nowrap">
+                        <span class="${statusColors[status] || statusColors.active} rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider shadow-sm">
+                            ${this.escapeHtml(status)}
+                        </span>
+                        <div class="inline-flex items-center gap-1 text-[11px] font-medium text-gray-700 bg-gray-50 border border-gray-100 rounded-full px-2 py-1">
+                            <span class="material-icons text-[14px]">inventory_2</span>
+                            <span>${sourceText}</span>
+                        </div>
+                        <div class="inline-flex items-center gap-1 text-[11px] font-medium ${syncColor} bg-white border border-gray-100 rounded-full px-2 py-1" title="Sync Status: ${syncStatus}">
+                            <span class="material-icons text-[14px]">${syncIcon}</span>
+                            <span class="capitalize">${syncStatus}</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="grid grid-cols-3 gap-2 pt-1">
+                    <button class="btn-entity-details h-10 w-full flex items-center justify-center bg-gray-50 text-gray-700 hover:bg-gray-100 rounded-lg transition-all border border-gray-100 shadow-sm" title="Entity Details">
+                        <span class="material-icons text-[18px]">info</span>
+                    </button>
+                    <button class="btn-entity-sync h-10 w-full flex items-center justify-center bg-gray-50 text-amber-700 hover:bg-amber-50 rounded-lg transition-all border border-gray-100 shadow-sm" title="Sync Entity">
+                        <span class="material-icons text-[18px]">sync</span>
+                    </button>
+                    <button class="btn-entity-edit h-10 w-full flex items-center justify-center bg-blue-600 text-white hover:bg-blue-700 rounded-lg transition-all border border-blue-600 shadow-sm" title="Edit Entity">
+                        <span class="material-icons text-[18px]">edit</span>
+                    </button>
+                </div>
+            `;
+
+            const detailsBtn = actionsRow.querySelector('.btn-entity-details');
+            const syncBtn = actionsRow.querySelector('.btn-entity-sync');
+            const editBtn = actionsRow.querySelector('.btn-entity-edit');
+
+            if (detailsBtn && onDetails) {
+                detailsBtn.onclick = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onDetails(entity);
+                };
+            }
+
+            if (syncBtn && onSync) {
+                syncBtn.onclick = async (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    await onSync(entity);
+                };
+            }
+
+            if (editBtn && onEdit) {
+                editBtn.onclick = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    onEdit(entity);
+                };
+            }
+
+            card.appendChild(actionsRow);
         }
 
         return card;

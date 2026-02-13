@@ -111,6 +111,7 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
         // Sync with UIManager state
         if (this.uiManager) {
             this.uiManager.isEditingRestaurant = true;
+            this.uiManager.isEditingEntity = false;
             this.uiManager.editingRestaurantId = entity?.entity_id || curation?.entity_id || null;
         }
 
@@ -153,6 +154,10 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
         // Reset dirty flag after initial population
         if (this.uiManager) {
             this.uiManager.formIsDirty = false;
+        }
+
+        if (window.entityModule && typeof window.entityModule.setEntityEditMode === 'function') {
+            window.entityModule.setEntityEditMode(false);
         }
 
         this.updateCloneButtonVisibility();

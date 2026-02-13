@@ -19,6 +19,7 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
         this.log = Logger.module('EntityModule');
         this.dataStore = null;
         this.container = null;
+        this.editingEntity = null;
         this.searchQuery = '';
         this.filters = {
             type: 'all',
@@ -314,10 +315,258 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
 
         entities.forEach(entity => {
             const card = window.CardFactory.createEntityCard(entity, {
-                onClick: (e) => this.showEntityDetails(e)
+                showEntityActions: true,
+                onClick: (e) => this.showEntityDetails(e),
+                onDetails: (e) => this.showEntityDetails(e),
+                onEdit: (e) => this.startEntityEdit(e),
+                onSync: async () => {
+                    if (window.SyncManager) {
+                        await window.SyncManager.pushEntities();
+                        await this.refresh();
+                    }
+                }
             });
             this.container.appendChild(card);
         });
+    }
+
+    /**
+     * Enable or disable entity edit mode UI blocks in shared form page
+     * @param {boolean} isEntityEdit - Whether entity edit mode is active
+     */
+    setEntityEditMode(isEntityEdit) {
+        const entityEditor = document.getElementById('entity-metadata-editor');
+        const transcriptionBlock = document.getElementById('curation-transcription-block');
+        const notesBlock = document.getElementById('curation-notes-block');
+        const conceptsContainer = document.getElementById('concepts-container');
+        const curationFooter = document.getElementById('curation-edit-footer');
+
+        if (entityEditor) {
+            entityEditor.classList.toggle('hidden', !isEntityEdit);
+        }
+
+        if (transcriptionBlock) {
+            transcriptionBlock.classList.toggle('hidden', isEntityEdit);
+        }
+
+        if (notesBlock) {
+            notesBlock.classList.toggle('hidden', isEntityEdit);
+        }
+
+        if (conceptsContainer) {
+            conceptsContainer.classList.toggle('hidden', isEntityEdit);
+        }
+
+        if (curationFooter) {
+            curationFooter.classList.toggle('hidden', true);
+        }
+    }
+
+    /**
+     * Open shared edit interface in entity metadata mode
+     * @param {Object} entity - Entity record
+     */
+    async startEntityEdit(entity) {
+        if (!entity?.entity_id) {
+            window.uiUtils?.showNotification?.('Invalid entity selected', 'error');
+            return;
+        }
+
+        try {
+            const freshEntity = await this.dataStore.getEntity(entity.entity_id) || entity;
+            this.editingEntity = freshEntity;
+
+            if (!window.uiManager) {
+                throw new Error('UI manager not available');
+            }
+
+            window.uiManager.isEditingEntity = true;
+            window.uiManager.isEditingRestaurant = false;
+            window.uiManager.editingRestaurantId = freshEntity.entity_id;
+            window.uiManager.formIsDirty = false;
+            window.uiManager.currentConcepts = [];
+            if (typeof window.uiManager.renderConcepts === 'function') {
+                window.uiManager.renderConcepts();
+            }
+
+            if (window.uiManager.restaurantModule) {
+                window.uiManager.restaurantModule.currentEntity = freshEntity;
+                window.uiManager.restaurantModule.currentCuration = null;
+                window.uiManager.restaurantModule.updateCloneButtonVisibility(false);
+                window.uiManager.restaurantModule.updateExportButtonVisibility(false);
+                window.uiManager.restaurantModule.updateCurationEditFooterVisibility(false);
+            }
+
+            window.uiManager.showRestaurantFormSection();
+            this.setEntityEditMode(true);
+            this.populateEntityEditForm(freshEntity);
+        } catch (error) {
+            this.log.error('Failed to start entity edit mode:', error);
+            window.uiUtils?.showNotification?.('Failed to open entity editor', 'error');
+        }
+    }
+
+    /**
+     * Populate shared form fields for entity editing
+     * @param {Object} entity - Entity record
+     */
+    populateEntityEditForm(entity) {
+        const get = (id) => document.getElementById(id);
+
+        const address = entity.data?.location?.address || entity.data?.formattedAddress || entity.data?.address?.formattedAddress || entity.data?.address?.street || '';
+        const city = entity.data?.location?.city || entity.data?.address?.city || '';
+        const country = entity.data?.location?.country || entity.data?.address?.country || '';
+        const phone = entity.data?.contact?.phone || entity.data?.contacts?.phone || entity.data?.formattedPhone || '';
+        const website = entity.data?.contact?.website || entity.data?.contacts?.website || entity.data?.website || '';
+        const rating = entity.data?.attributes?.rating ?? entity.data?.rating ?? '';
+        const priceLevel = entity.data?.attributes?.price_level ?? entity.data?.price_level ?? 0;
+
+        const nameInput = get('restaurant-name');
+        const locationDisplay = get('location-display');
+        const descriptionInput = get('restaurant-description');
+        const transcriptionInput = get('restaurant-transcription');
+        const publicNotes = get('curation-notes-public');
+        const privateNotes = get('curation-notes-private');
+
+        if (nameInput) nameInput.value = entity.name || '';
+        if (locationDisplay) locationDisplay.textContent = address || 'Location not set';
+        if (descriptionInput) descriptionInput.value = entity.data?.description || '';
+        if (transcriptionInput) transcriptionInput.value = '';
+        if (publicNotes) publicNotes.value = '';
+        if (privateNotes) privateNotes.value = '';
+
+        const typeSelect = get('entity-edit-type');
+        const addressInput = get('entity-edit-address');
+        const cityInput = get('entity-edit-city');
+        const countryInput = get('entity-edit-country');
+        const phoneInput = get('entity-edit-phone');
+        const websiteInput = get('entity-edit-website');
+        const ratingInput = get('entity-edit-rating');
+        const priceLevelSelect = get('entity-edit-price-level');
+
+        if (typeSelect) typeSelect.value = entity.type || 'restaurant';
+        if (addressInput) addressInput.value = address;
+        if (cityInput) cityInput.value = city;
+        if (countryInput) countryInput.value = country;
+        if (phoneInput) phoneInput.value = phone;
+        if (websiteInput) websiteInput.value = website;
+        if (ratingInput) ratingInput.value = rating;
+        if (priceLevelSelect) priceLevelSelect.value = String(priceLevel || 0);
+    }
+
+    /**
+     * Persist entity changes from shared edit interface
+     */
+    async saveEntityFromForm() {
+        if (!this.editingEntity?.entity_id) {
+            window.uiUtils?.showNotification?.('No entity selected for editing', 'error');
+            return;
+        }
+
+        const get = (id) => document.getElementById(id);
+        const name = get('restaurant-name')?.value?.trim() || '';
+        if (!name) {
+            window.uiUtils?.showNotification?.('Entity name is required', 'error');
+            return;
+        }
+
+        try {
+            window.uiManager?.showLoading?.('Saving entity metadata...');
+
+            const type = get('entity-edit-type')?.value || this.editingEntity.type || 'restaurant';
+            const address = get('entity-edit-address')?.value?.trim() || '';
+            const city = get('entity-edit-city')?.value?.trim() || '';
+            const country = get('entity-edit-country')?.value?.trim() || '';
+            const phone = get('entity-edit-phone')?.value?.trim() || '';
+            const website = get('entity-edit-website')?.value?.trim() || '';
+            const ratingRaw = get('entity-edit-rating')?.value;
+            const priceLevelRaw = get('entity-edit-price-level')?.value;
+            const description = get('restaurant-description')?.value?.trim() || '';
+
+            const rating = ratingRaw === '' || ratingRaw === null || ratingRaw === undefined
+                ? null
+                : Number(ratingRaw);
+            const priceLevel = priceLevelRaw === '' || priceLevelRaw === null || priceLevelRaw === undefined
+                ? 0
+                : Number(priceLevelRaw);
+
+            const baseData = this.editingEntity.data && typeof this.editingEntity.data === 'object'
+                ? JSON.parse(JSON.stringify(this.editingEntity.data))
+                : {};
+
+            baseData.location = {
+                ...(baseData.location || {}),
+                ...(address ? { address } : {}),
+                ...(city ? { city } : {}),
+                ...(country ? { country } : {})
+            };
+
+            baseData.contact = {
+                ...(baseData.contact || {}),
+                ...(phone ? { phone } : {}),
+                ...(website ? { website } : {})
+            };
+
+            baseData.attributes = {
+                ...(baseData.attributes || {}),
+                ...(Number.isFinite(rating) ? { rating } : {}),
+                ...(Number.isFinite(priceLevel) ? { price_level: priceLevel } : {})
+            };
+
+            if (description) {
+                baseData.description = description;
+            }
+
+            const updates = {
+                name,
+                type,
+                data: baseData,
+                updated_at: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                version: (this.editingEntity.version || 1) + 1,
+                sync: {
+                    ...(this.editingEntity.sync || {}),
+                    status: 'pending',
+                    lastModified: Date.now()
+                }
+            };
+
+            await this.dataStore.updateEntity(this.editingEntity.entity_id, updates, null);
+
+            if (window.SyncManager && typeof window.SyncManager.syncAll === 'function') {
+                window.SyncManager.syncAll().catch(err => this.log.warn('Background sync failed after entity update:', err));
+            }
+
+            window.uiUtils?.showNotification?.('Entity metadata updated', 'success');
+            await this.cancelEntityEdit(true);
+            await this.refresh();
+        } catch (error) {
+            this.log.error('Failed to save entity metadata:', error);
+            window.uiUtils?.showNotification?.('Failed to save entity: ' + error.message, 'error');
+        } finally {
+            window.uiManager?.hideLoading?.();
+        }
+    }
+
+    /**
+     * Exit entity edit mode and return to list
+     * @param {boolean} skipReload - Skip list reload when caller will refresh
+     */
+    async cancelEntityEdit(skipReload = false) {
+        this.editingEntity = null;
+        this.setEntityEditMode(false);
+
+        if (window.uiManager) {
+            window.uiManager.isEditingEntity = false;
+            window.uiManager.isEditingRestaurant = false;
+            window.uiManager.editingRestaurantId = null;
+            window.uiManager.formIsDirty = false;
+            window.uiManager.showRestaurantListSection();
+        }
+
+        if (!skipReload) {
+            await this.refresh();
+        }
     }
 
     /**
@@ -436,6 +685,10 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
         const footer = document.createElement('div');
         footer.className = 'w-full flex gap-2';
         footer.innerHTML = `
+            <button class="btn-edit-entity flex-1 py-2 px-4 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center justify-center gap-2">
+                <span class="material-icons text-sm">edit</span>
+                Edit Entity
+            </button>
             <button class="btn-delete-entity flex-1 py-2 px-4 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 flex items-center justify-center gap-2">
                 <span class="material-icons text-sm">delete</span>
                 Delete Entity
@@ -495,6 +748,34 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
                         await this.refresh();
                     } catch (error) {
                         alert('Sync failed: ' + error.message);
+                    }
+                });
+            }
+
+            const editBtn = modalEl.querySelector('.btn-edit-entity');
+            if (editBtn) {
+                editBtn.addEventListener('click', async () => {
+                    window.modalManager.close(modalId);
+                    await this.startEntityEdit(entity);
+                });
+            }
+
+            const deleteBtn = modalEl.querySelector('.btn-delete-entity');
+            if (deleteBtn) {
+                deleteBtn.addEventListener('click', async () => {
+                    const confirmed = confirm('Delete this entity and linked curations?');
+                    if (!confirmed) {
+                        return;
+                    }
+
+                    try {
+                        await this.dataStore.deleteEntity(entity.entity_id);
+                        window.modalManager.close(modalId);
+                        window.uiUtils?.showNotification?.('Entity deleted', 'success');
+                        await this.refresh();
+                    } catch (error) {
+                        this.log.error('Failed to delete entity:', error);
+                        window.uiUtils?.showNotification?.('Failed to delete entity: ' + error.message, 'error');
                     }
                 });
             }

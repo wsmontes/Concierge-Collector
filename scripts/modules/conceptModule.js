@@ -358,6 +358,12 @@ class ConceptModule {
     }
 
     async discardRestaurant() {
+        const entityModule = this.uiManager?.entityModule || window.entityModule;
+        if (this.uiManager?.isEditingEntity && entityModule?.cancelEntityEdit) {
+            await entityModule.cancelEntityEdit();
+            return;
+        }
+
         this.log.debug('Discarding restaurant and cleaning up...');
 
         const draftId = window.DraftRestaurantManager?.currentDraftId;
@@ -449,6 +455,12 @@ class ConceptModule {
     }
 
     async saveRestaurant() {
+        const entityModule = this.uiManager?.entityModule || window.entityModule;
+        if (this.uiManager?.isEditingEntity && entityModule?.saveEntityFromForm) {
+            await entityModule.saveEntityFromForm();
+            return;
+        }
+
         this.log.debug('Save/update restaurant button clicked');
 
         const nameInput = document.getElementById('restaurant-name');

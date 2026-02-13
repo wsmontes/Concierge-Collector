@@ -102,6 +102,7 @@ if (typeof window.UIManager === 'undefined') {
             this.currentCurator = null;
             this.isEditingCurator = false;
             this.isEditingRestaurant = false;
+            this.isEditingEntity = false;
             this.editingRestaurantId = null;
             this.currentConcepts = [];
             this.currentLocation = null;
@@ -1181,7 +1182,9 @@ if (typeof window.UIManager === 'undefined') {
             if (this.restaurantEditToolbar) {
                 const toolbarTitle = this.restaurantEditToolbar.querySelector('.toolbar-info-title');
                 if (toolbarTitle) {
-                    toolbarTitle.textContent = this.isEditingRestaurant ? 'Edit Restaurant' : 'New Restaurant';
+                    toolbarTitle.textContent = this.isEditingEntity
+                        ? 'Edit Entity'
+                        : (this.isEditingRestaurant ? 'Edit Restaurant' : 'New Restaurant');
                 }
             }
 
@@ -1221,7 +1224,9 @@ if (typeof window.UIManager === 'undefined') {
             if (this.restaurantEditToolbar) {
                 const toolbarTitle = this.restaurantEditToolbar.querySelector('.toolbar-info-title');
                 if (toolbarTitle) {
-                    toolbarTitle.textContent = this.isEditingRestaurant ? 'Edit Restaurant' : 'New Restaurant';
+                    toolbarTitle.textContent = this.isEditingEntity
+                        ? 'Edit Entity'
+                        : (this.isEditingRestaurant ? 'Edit Restaurant' : 'New Restaurant');
                 }
             }
 
