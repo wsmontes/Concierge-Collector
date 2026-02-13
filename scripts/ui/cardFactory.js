@@ -487,6 +487,12 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
         return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
     }
 
+    escapeHtml(value) {
+        const div = document.createElement('div');
+        div.textContent = value || '';
+        return div.innerHTML;
+    }
+
     /**
      * Create empty state card
      * @param {Object} options - Empty state options
