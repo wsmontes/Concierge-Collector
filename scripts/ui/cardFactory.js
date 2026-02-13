@@ -151,6 +151,51 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
         }
 
         if (showEntityActions) {
+            const fullAddress = this.extractEntityAddress(entity);
+            const mapsUrl = this.buildGoogleMapsUrl(fullAddress);
+            const entityPhone = this.extractEntityPhone(entity);
+            const entityWebsiteRaw = this.extractEntityWebsite(entity);
+            const entityWebsiteHref = this.normalizeWebsiteUrl(entityWebsiteRaw);
+            const entityWebsiteLabel = entityWebsiteRaw ? entityWebsiteRaw.replace(/^https?:\/\//i, '').replace(/^www\./i, '') : '';
+
+            card.querySelector('.entity-card-location')?.remove();
+            card.querySelector('.entity-card-rating')?.remove();
+            card.querySelector('.entity-card-contact')?.remove();
+
+            const entityMainEl = card.querySelector('.entity-card-main');
+            if (entityMainEl && (fullAddress || entityPhone || entityWebsiteHref || rating > 0 || priceIndicator)) {
+                const detailsEl = document.createElement('div');
+                detailsEl.className = 'entity-curation-details pt-1 space-y-2';
+                detailsEl.innerHTML = `
+                    ${fullAddress ? `
+                        <div class="flex items-start gap-1.5 text-xs text-gray-600" title="${this.escapeHtml(fullAddress)}">
+                            <span class="material-icons text-[14px] mt-[1px] flex-shrink-0">place</span>
+                            ${mapsUrl ? `<a href="${mapsUrl}" target="_blank" rel="noopener noreferrer" class="linked-contact-link hover:underline line-clamp-2">${this.escapeHtml(fullAddress)}</a>` : `<span class="line-clamp-2">${this.escapeHtml(fullAddress)}</span>`}
+                        </div>
+                    ` : ''}
+                    ${entityPhone ? `
+                        <div class="flex items-center gap-1.5 text-xs text-gray-600" title="${this.escapeHtml(entityPhone)}">
+                            <span class="material-icons text-[14px]">phone</span>
+                            <a href="tel:${this.escapeHtml(entityPhone)}" class="linked-contact-link hover:underline">${this.escapeHtml(entityPhone)}</a>
+                        </div>
+                    ` : ''}
+                    ${entityWebsiteHref ? `
+                        <div class="flex items-center gap-1.5 text-xs text-blue-700" title="${this.escapeHtml(entityWebsiteRaw)}">
+                            <span class="material-icons text-[14px]">language</span>
+                            <a href="${entityWebsiteHref}" target="_blank" rel="noopener noreferrer" class="linked-contact-link hover:underline line-clamp-1">${this.escapeHtml(entityWebsiteLabel)}</a>
+                        </div>
+                    ` : ''}
+                    ${rating > 0 ? `
+                        <div class="flex items-center gap-1.5 text-xs text-amber-700">
+                            <span class="material-icons text-[14px]">star</span>
+                            <span class="font-semibold">${rating.toFixed(1)}</span>
+                            ${priceIndicator ? `<span class="text-gray-600">• ${this.escapeHtml(priceIndicator)}</span>` : ''}
+                        </div>
+                    ` : ''}
+                `;
+                entityMainEl.appendChild(detailsEl);
+            }
+
             const actionsRow = document.createElement('div');
             actionsRow.className = 'mt-auto p-4 mx-1 border-t border-gray-100 bg-white z-20 relative space-y-3';
 
@@ -229,6 +274,16 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                     onEdit(entity);
                 };
             }
+
+            const linkedContactLinks = actionsRow.querySelectorAll('.linked-contact-link');
+            linkedContactLinks.forEach(link => {
+                link.addEventListener('click', (e) => e.stopPropagation());
+            });
+
+            const entityMainLinks = card.querySelectorAll('.entity-curation-details .linked-contact-link');
+            entityMainLinks.forEach(link => {
+                link.addEventListener('click', (e) => e.stopPropagation());
+            });
 
             card.appendChild(actionsRow);
         }
@@ -365,6 +420,7 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
             const isLinkedCuration = status === 'linked' || !!curation.entity_id;
 
             const fullAddress = this.extractEntityAddress(entity);
+            const mapsUrl = this.buildGoogleMapsUrl(fullAddress);
             const phone = this.extractEntityPhone(entity);
             const websiteRaw = this.extractEntityWebsite(entity);
             const websiteHref = this.normalizeWebsiteUrl(websiteRaw);
@@ -374,9 +430,11 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
             const bodyDetails = isLinkedCuration && (fullAddress || phone || websiteHref) ? `
                 <div class="entity-curation-details pt-1 space-y-2">
                     ${fullAddress ? `
-                        <div class="flex items-start gap-1.5 text-xs text-gray-600" title="${fullAddress}">
+                        <div class="flex items-start gap-1.5 text-xs text-gray-600" title="${this.escapeHtml(fullAddress)}">
                             <span class="material-icons text-[14px] mt-[1px] flex-shrink-0">place</span>
-                            <span class="line-clamp-2">${fullAddress}</span>
+                            ${mapsUrl
+                    ? `<a href="${mapsUrl}" target="_blank" rel="noopener noreferrer" class="linked-contact-link hover:underline line-clamp-2">${this.escapeHtml(fullAddress)}</a>`
+                    : `<span class="line-clamp-2">${this.escapeHtml(fullAddress)}</span>`}
                         </div>
                     ` : ''}
                     ${phone ? `
@@ -572,6 +630,14 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
         }
 
         return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+    }
+
+    buildGoogleMapsUrl(address) {
+        if (!address || typeof address !== 'string' || !address.trim()) {
+            return '';
+        }
+
+        return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(address.trim())}`;
     }
 
     escapeHtml(value) {
