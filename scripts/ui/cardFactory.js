@@ -301,30 +301,10 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                 syncColor = 'text-orange-600 bg-orange-50 px-2 py-0.5 rounded cursor-pointer hover:bg-orange-100 border border-orange-200';
             }
 
-            // Create Meta Info Row with standardized badge component
-            const metaInfo = `
-                <div class="flex items-center gap-2 mt-2">
-                    <!-- Source Badge (Standardized) -->
-                    <div class="data-badge ${sourceInfo.className}">
-                        <span class="material-icons">${sourceInfo.icon}</span>
-                        ${sourceInfo.label}
-                    </div>
-                    
-                    <!-- Divider -->
-                    <span class="text-gray-300 text-xs">|</span>
-                    
-                    <!-- Sync Status -->
-                    <div class="flex items-center gap-1 ${syncColor} ${syncStatus === 'conflict' ? 'conflict-badge' : ''}" 
-                         title="${syncStatus === 'conflict' ? 'Click to resolve conflict' : `Sync Status: ${syncStatus}`}"
-                         ${syncStatus === 'conflict' ? `onclick="event.stopPropagation(); window.uiManager.resolveConflict('${curation.entity_id ? 'curation' : 'entity'}', '${curation.curation_id}')"` : ''}>
-                        <span class="material-icons text-[14px]">${syncIcon}</span>
-                        <span class="text-[11px] font-medium capitalize">${syncStatus === 'pending' ? 'Syncing...' : syncStatus}</span>
-                    </div>
-                </div>
-            `;
+            const syncLabel = syncStatus === 'pending' ? 'Syncing...' : syncStatus;
 
             const linkedDetails = isLinkedCuration && (fullAddress || phone || websiteHref) ? `
-                <div class="mt-2 pt-2 border-t border-gray-100 space-y-1.5">
+                <div class="pt-1 space-y-2">
                     ${fullAddress ? `
                         <div class="flex items-start gap-1.5 text-xs text-gray-600" title="${fullAddress}">
                             <span class="material-icons text-[14px] mt-[1px] flex-shrink-0">place</span>
@@ -347,30 +327,40 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
             ` : '';
 
             actionsRow.innerHTML = `
-                <div class="flex flex-col gap-1">
-                    <div class="flex items-center gap-2">
+                <div class="space-y-2">
+                    <div class="flex flex-wrap items-center gap-2">
                         <span class="${badgeClass} rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider shadow-sm">
                             ${status}
                         </span>
-                        <div class="flex items-center gap-1 text-xs text-gray-500">
+                        <div class="inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-50 border border-gray-100 rounded-full px-2 py-1">
                             <span class="material-icons text-[14px]">person</span>
                             <span class="font-medium">${curatorName}</span>
                         </div>
+                        <div class="data-badge ${sourceInfo.className}">
+                            <span class="material-icons">${sourceInfo.icon}</span>
+                            ${sourceInfo.label}
+                        </div>
+                        <div class="inline-flex items-center gap-1 text-[11px] font-medium ${syncColor} ${syncStatus === 'conflict' ? 'conflict-badge' : ''} bg-white border border-gray-100 rounded-full px-2 py-1"
+                             title="${syncStatus === 'conflict' ? 'Click to resolve conflict' : `Sync Status: ${syncLabel}` }"
+                             ${syncStatus === 'conflict' ? `onclick="event.stopPropagation(); window.uiManager.resolveConflict('${curation.entity_id ? 'curation' : 'entity'}', '${curation.curation_id}')"` : ''}>
+                            <span class="material-icons text-[14px]">${syncIcon}</span>
+                            <span class="capitalize">${syncLabel}</span>
+                        </div>
                     </div>
-                    ${metaInfo}
                     ${linkedDetails}
                 </div>
-                <div class="flex items-center gap-2">
+                <div class="flex items-center gap-2 pt-1">
+                    <button class="btn-edit-curation flex-1 h-10 px-3 bg-blue-600 text-white hover:bg-blue-700 rounded-lg transition-all border border-blue-600 shadow-sm" title="Edit Curation">
+                        <span class="material-icons text-[18px] align-middle">edit</span>
+                        <span class="ml-1 text-sm font-semibold align-middle">Edit</span>
+                    </button>
                     ${isLinkedCuration ? `
-                        <button class="btn-unlink-curation p-2 bg-gray-50 text-amber-600 hover:bg-amber-50 hover:text-amber-700 rounded-lg transition-all border border-gray-100 hover:border-amber-100 shadow-sm" title="Unlink Curation">
-                            <span class="material-icons text-[20px]">link_off</span>
+                        <button class="btn-unlink-curation h-10 w-10 flex items-center justify-center bg-gray-50 text-amber-600 hover:bg-amber-50 hover:text-amber-700 rounded-lg transition-all border border-gray-100 hover:border-amber-100 shadow-sm" title="Unlink Curation">
+                            <span class="material-icons text-[18px]">link_off</span>
                         </button>
                     ` : ''}
-                    <button class="btn-edit-curation p-2 bg-gray-50 text-gray-600 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-all border border-gray-100 hover:border-blue-100 shadow-sm" title="Edit Curation">
-                        <span class="material-icons text-[20px]">edit</span>
-                    </button>
-                    <button class="btn-delete-curation p-2 bg-gray-50 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-lg transition-all border border-gray-100 hover:border-red-100 shadow-sm" title="Delete Curation">
-                        <span class="material-icons text-[20px]">delete_outline</span>
+                    <button class="btn-delete-curation h-10 w-10 flex items-center justify-center bg-gray-50 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-lg transition-all border border-gray-100 hover:border-red-100 shadow-sm" title="Delete Curation">
+                        <span class="material-icons text-[18px]">delete_outline</span>
                     </button>
                 </div>
             `;
@@ -417,7 +407,7 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
 
             // NEW: Append actions row to the CARD itself (footer), not the content area
             // This ensures it stays at the bottom due to flex-col and flex-grow on content
-            actionsRow.className = 'mt-auto p-4 mx-1 border-t border-gray-100 flex items-center justify-between bg-white z-20 relative';
+            actionsRow.className = 'mt-auto p-4 mx-1 border-t border-gray-100 bg-white z-20 relative space-y-3';
             card.appendChild(actionsRow);
         }
 
