@@ -703,7 +703,18 @@ window.FindEntityModal = class FindEntityModal {
         // Open modal button
         const openBtn = document.getElementById('find-entity-btn');
         if (openBtn) {
-            openBtn.addEventListener('click', () => this.open());
+            openBtn.addEventListener('click', () => {
+                this.open({
+                    onEntitySelected: async (entity) => {
+                        if (window.uiManager?.restaurantModule?.editCuration) {
+                            await window.uiManager.restaurantModule.editCuration(null, entity);
+                            return;
+                        }
+
+                        throw new Error('Restaurant module not available for linked curation flow');
+                    }
+                });
+            });
         }
 
         // Close modal button
@@ -1060,6 +1071,10 @@ window.FindEntityModal = class FindEntityModal {
      * Import entity from Google Places
      */
     async importEntity(placeId, placeName, buttonElement) {
+        if (!this.onEntitySelected || typeof this.onEntitySelected !== 'function') {
+            throw new Error('Entity import is only available while linking to a curation');
+        }
+
         // Disable button and show loading
         buttonElement.disabled = true;
         buttonElement.innerHTML = '<span class="material-icons" style="animation:spin 0.7s linear infinite">refresh</span> Importing...';
@@ -1156,22 +1171,10 @@ window.FindEntityModal = class FindEntityModal {
                 // Close the find entity modal
                 this.close();
 
-                // If we have a selection callback, use it and skip default navigation
-                if (this.onEntitySelected && typeof this.onEntitySelected === 'function') {
-                    this.onEntitySelected(entity);
-                    this.onEntitySelected = null;
-                    return;
-                }
-
-                // Default behavior: Open curation page
-                if (window.uiManager) {
-                    this.populateEntityFormForCuration(entity, place);
-                    window.uiManager.showRestaurantFormSection();
-                    window.uiManager.isEditingRestaurant = false;
-                    window.uiManager.editingRestaurantId = null;
-                    window.uiManager.importedEntityId = entity.entity_id;
-                    window.uiManager.importedEntityData = entity;
-                }
+                // Selection callback is required for linked-only flow
+                await this.onEntitySelected(entity);
+                this.onEntitySelected = null;
+                return;
             }
         } catch (error) {
             console.error('Import error:', error);

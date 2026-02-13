@@ -679,15 +679,28 @@ if (typeof window.UIManager === 'undefined') {
                     };
                 }
 
-                // Get all entities
-                const entities = await window.DataStore.getEntities({ status: 'active' });
+                // Get only entities linked by at least one non-deleted curation
+                const [allEntities, allCurations] = await Promise.all([
+                    window.DataStore.getEntities({ status: 'active' }),
+                    window.DataStore.getCurations({ excludeDeleted: true })
+                ]);
+
+                const linkedEntityIds = new Set(
+                    allCurations
+                        .map(curation => curation?.entity_id)
+                        .filter(entityId => typeof entityId === 'string' && entityId.trim())
+                );
+
+                const entities = allEntities.filter(entity =>
+                    entity?.entity_id && linkedEntityIds.has(entity.entity_id)
+                );
 
                 if (entities.length === 0) {
                     container.innerHTML = `
                             <div class="col-span-full text-center py-12">
                                 <span class="material-icons text-6xl text-gray-300 mb-4">store</span>
-                                <p class="text-gray-500 mb-2">No entities yet</p>
-                                <p class="text-sm text-gray-400">Use the Find Entity button to add places</p>
+                                <p class="text-gray-500 mb-2">No linked entities yet</p>
+                                <p class="text-sm text-gray-400">Entities appear here after being linked to a curation</p>
                             </div>
                         `;
                     return;
@@ -1559,6 +1572,73 @@ if (typeof window.UIManager === 'undefined') {
                 } finally {
                     this.hideLoading();
                 }
+            }
+        }
+
+        /**
+         * Confirm unlinking a curation from its current entity
+         * @param {Object} curation - Curation record to unlink
+         */
+        async confirmUnlinkCuration(curation) {
+            if (!curation?.curation_id || !curation?.entity_id) {
+                window.uiUtils.showNotification('This curation is already unlinked', 'info');
+                return;
+            }
+
+            const confirmed = await window.uiUtils.confirmDialog(
+                'Unlink Curation?',
+                'This will detach the curation from the current entity and move it back to draft/unlinked state.',
+                'Unlink',
+                'cancel'
+            );
+
+            if (!confirmed) {
+                return;
+            }
+
+            await this.unlinkCurationFromEntity(curation);
+        }
+
+        /**
+         * Unlink curation from entity and mark for sync
+         * @param {Object} curation - Curation record
+         */
+        async unlinkCurationFromEntity(curation) {
+            try {
+                this.showLoading('Unlinking curation...');
+
+                const displayName = this.getCurationDisplayName(curation) || null;
+                const updatedCuration = {
+                    ...curation,
+                    entity_id: null,
+                    restaurant_name: curation.restaurant_name || displayName,
+                    status: 'draft',
+                    updated_at: new Date().toISOString(),
+                    sync: {
+                        ...(curation.sync || {}),
+                        status: 'pending',
+                        lastModified: new Date().toISOString()
+                    }
+                };
+
+                await window.DataStore.db.curations.put(updatedCuration);
+
+                if (window.SyncManager && typeof window.SyncManager.syncAll === 'function') {
+                    window.SyncManager.syncAll().catch(err => console.warn('Background sync failed after unlink:', err));
+                }
+
+                this.showNotification('Curation unlinked successfully', 'success');
+
+                if (this.currentTab === 'entities') {
+                    await this.loadEntities();
+                } else {
+                    await this.loadCurations();
+                }
+            } catch (error) {
+                console.error('Failed to unlink curation:', error);
+                this.showNotification('Failed to unlink curation: ' + error.message, 'error');
+            } finally {
+                this.hideLoading();
             }
         }
 

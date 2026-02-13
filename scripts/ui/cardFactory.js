@@ -361,6 +361,11 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                     ${linkedDetails}
                 </div>
                 <div class="flex items-center gap-2">
+                    ${isLinkedCuration ? `
+                        <button class="btn-unlink-curation p-2 bg-gray-50 text-amber-600 hover:bg-amber-50 hover:text-amber-700 rounded-lg transition-all border border-gray-100 hover:border-amber-100 shadow-sm" title="Unlink Curation">
+                            <span class="material-icons text-[20px]">link_off</span>
+                        </button>
+                    ` : ''}
                     <button class="btn-edit-curation p-2 bg-gray-50 text-gray-600 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-all border border-gray-100 hover:border-blue-100 shadow-sm" title="Edit Curation">
                         <span class="material-icons text-[20px]">edit</span>
                     </button>
@@ -373,6 +378,7 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
             // Add event listeners to buttons
             const editBtn = actionsRow.querySelector('.btn-edit-curation');
             const deleteBtn = actionsRow.querySelector('.btn-delete-curation');
+            const unlinkBtn = actionsRow.querySelector('.btn-unlink-curation');
 
             if (editBtn) {
                 editBtn.onclick = (e) => {
@@ -388,6 +394,16 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
             linkedContactLinks.forEach(link => {
                 link.addEventListener('click', (e) => e.stopPropagation());
             });
+
+            if (unlinkBtn) {
+                unlinkBtn.onclick = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (window.uiManager && typeof window.uiManager.confirmUnlinkCuration === 'function') {
+                        window.uiManager.confirmUnlinkCuration(curation);
+                    }
+                };
+            }
 
             if (deleteBtn) {
                 deleteBtn.onclick = (e) => {

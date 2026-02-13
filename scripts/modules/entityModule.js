@@ -100,15 +100,26 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
         try {
             this.log.debug('Loading entities...');
 
-            // Get all entities
-            const allEntities = await this.dataStore.getEntities({
-                status: 'active'
-            });
+            // Get only entities linked by at least one non-deleted curation
+            const [allEntities, allCurations] = await Promise.all([
+                this.dataStore.getEntities({ status: 'active' }),
+                this.dataStore.getCurations({ excludeDeleted: true })
+            ]);
 
-            this.log.debug(`Loaded ${allEntities.length} entities from IndexedDB`);
+            const linkedEntityIds = new Set(
+                allCurations
+                    .map(curation => curation?.entity_id)
+                    .filter(entityId => typeof entityId === 'string' && entityId.trim())
+            );
+
+            const linkedEntities = allEntities.filter(entity =>
+                entity?.entity_id && linkedEntityIds.has(entity.entity_id)
+            );
+
+            this.log.debug(`Loaded ${linkedEntities.length} linked entities from IndexedDB`);
 
             // Deduplicate by entity_id (keep latest by internal id)
-            this.entities = this.deduplicateEntities(allEntities);
+            this.entities = this.deduplicateEntities(linkedEntities);
 
             this.log.debug(`After deduplication: ${this.entities.length} unique entities`);
 
