@@ -12,6 +12,7 @@ Main Responsibilities:
 """
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -93,6 +94,38 @@ def clean_categories(raw_categories: Any) -> Dict[str, List[str]]:
     return cleaned
 
 
+def extract_categories_from_legacy(raw: Dict[str, Any]) -> Dict[str, List[str]]:
+    """Extract categories from legacy format where categories are top-level keys."""
+    reserved_keys = {
+        'metadata',
+        'curation_id',
+        '_id',
+        'curator_id',
+        'curator',
+        'status',
+        'notes',
+        'sources',
+        'items',
+        'entity_id',
+        'restaurant_name',
+        'name',
+        'transcript',
+        'unstructured_text',
+        'transcription',
+        'createdAt',
+        'updatedAt',
+        'version',
+    }
+
+    candidate_categories: Dict[str, Any] = {}
+    for key, value in raw.items():
+        if key in reserved_keys:
+            continue
+        candidate_categories[key] = value
+
+    return clean_categories(candidate_categories)
+
+
 def normalize_sources(raw_sources: Any) -> Dict[str, Any]:
     """Normalize legacy/list sources into structured source dictionary."""
     if isinstance(raw_sources, dict):
@@ -115,6 +148,18 @@ def resolve_transcript(raw: Dict[str, Any], sources: Dict[str, Any]) -> Any:
     if transcript:
         return transcript
 
+    metadata = raw.get('metadata')
+    if isinstance(metadata, list):
+        for entry in metadata:
+            if not isinstance(entry, dict):
+                continue
+            data = entry.get('data')
+            if not isinstance(data, dict):
+                continue
+            metadata_transcript = data.get('transcription') or data.get('transcript')
+            if isinstance(metadata_transcript, str) and metadata_transcript.strip():
+                return metadata_transcript.strip()
+
     audio_sources = sources.get('audio') if isinstance(sources, dict) else None
     if isinstance(audio_sources, list) and audio_sources:
         first_audio = audio_sources[0]
@@ -128,6 +173,18 @@ def resolve_restaurant_name(raw: Dict[str, Any]) -> Any:
     candidate = raw.get('restaurant_name') or raw.get('name')
     if isinstance(candidate, str) and candidate.strip():
         return candidate.strip()
+
+    metadata = raw.get('metadata')
+    if isinstance(metadata, list):
+        for entry in metadata:
+            if not isinstance(entry, dict):
+                continue
+            data = entry.get('data')
+            if not isinstance(data, dict):
+                continue
+            metadata_name = data.get('name')
+            if isinstance(metadata_name, str) and metadata_name.strip():
+                return metadata_name.strip()
 
     categories = raw.get('categories')
     if isinstance(categories, dict):
@@ -149,24 +206,103 @@ def resolve_restaurant_name(raw: Dict[str, Any]) -> Any:
     return None
 
 
+def resolve_notes(raw: Dict[str, Any], restaurant_name: Any) -> Dict[str, Any]:
+    """Resolve notes with fallback from legacy metadata description."""
+    notes = raw.get('notes') if isinstance(raw.get('notes'), dict) else {}
+    public_note = notes.get('public')
+    private_note = notes.get('private')
+
+    if not public_note:
+        metadata = raw.get('metadata')
+        if isinstance(metadata, list):
+            for entry in metadata:
+                if not isinstance(entry, dict):
+                    continue
+                data = entry.get('data')
+                if not isinstance(data, dict):
+                    continue
+                description = data.get('description')
+                if isinstance(description, str) and description.strip():
+                    public_note = description.strip()
+                    break
+
+    if not public_note and isinstance(restaurant_name, str) and restaurant_name.strip():
+        public_note = f'Curated concepts for {restaurant_name.strip()}'
+
+    return {
+        'public': public_note,
+        'private': private_note,
+    }
+
+
+def resolve_sources(raw: Dict[str, Any]) -> Dict[str, Any]:
+    """Resolve structured sources, including legacy metadata entries."""
+    explicit_sources = normalize_sources(raw.get('sources'))
+
+    metadata = raw.get('metadata')
+    if not isinstance(metadata, list):
+        return explicit_sources
+
+    import_sources: List[Dict[str, Any]] = []
+    for entry in metadata:
+        if not isinstance(entry, dict):
+            continue
+        record: Dict[str, Any] = {}
+        source_type = entry.get('type')
+        source_name = entry.get('source')
+        if isinstance(source_type, str) and source_type.strip():
+            record['type'] = source_type.strip()
+        if isinstance(source_name, str) and source_name.strip():
+            record['source'] = source_name.strip()
+
+        data = entry.get('data')
+        if isinstance(data, dict):
+            metadata_name = data.get('name')
+            if isinstance(metadata_name, str) and metadata_name.strip():
+                record['name'] = metadata_name.strip()
+
+        if record:
+            import_sources.append(record)
+
+    if import_sources:
+        explicit_sources.setdefault('import', [])
+        if isinstance(explicit_sources['import'], list):
+            explicit_sources['import'].extend(import_sources)
+
+    return explicit_sources
+
+
+def resolve_curation_id(raw: Dict[str, Any], restaurant_name: Any) -> str:
+    """Resolve curation ID, generating stable ID for legacy inputs without one."""
+    existing = raw.get('curation_id') or raw.get('_id')
+    if isinstance(existing, str) and existing.strip():
+        return existing.strip()
+
+    if isinstance(restaurant_name, str) and restaurant_name.strip():
+        digest = hashlib.md5(restaurant_name.strip().lower().encode('utf-8')).hexdigest()[:12]
+        return f'curation-json-{digest}'
+
+    raise ValueError('Missing curation_id/_id and restaurant name for ID generation')
+
+
 def normalize_curation(raw: Dict[str, Any], default_curator_id: str, keep_entity_id: bool = False) -> Dict[str, Any]:
     """Normalize raw curation document into API v3 create contract."""
-    curation_id = raw.get('curation_id') or raw.get('_id')
-    if not curation_id:
-        raise ValueError('Missing curation_id/_id')
-
     curator = raw.get('curator') if isinstance(raw.get('curator'), dict) else {}
     curator_id = raw.get('curator_id') or curator.get('id') or default_curator_id
     curator_name = curator.get('name') or 'Import Script'
 
+    restaurant_name = resolve_restaurant_name(raw)
+    curation_id = resolve_curation_id(raw, restaurant_name)
+
     categories = clean_categories(raw.get('categories'))
+    if not categories:
+        categories = extract_categories_from_legacy(raw)
     if not categories:
         raise ValueError('Missing/invalid categories')
 
-    notes = raw.get('notes') if isinstance(raw.get('notes'), dict) else {}
-    sources = normalize_sources(raw.get('sources'))
+    sources = resolve_sources(raw)
     transcript = resolve_transcript(raw, sources)
-    restaurant_name = resolve_restaurant_name(raw)
+    notes = resolve_notes(raw, restaurant_name)
 
     normalized: Dict[str, Any] = {
         'curation_id': curation_id,
@@ -177,10 +313,7 @@ def normalize_curation(raw: Dict[str, Any], default_curator_id: str, keep_entity
             'email': curator.get('email'),
         },
         'status': 'draft',
-        'notes': {
-            'public': notes.get('public'),
-            'private': notes.get('private'),
-        },
+        'notes': notes,
         'categories': categories,
         'sources': sources,
         'items': raw.get('items') if isinstance(raw.get('items'), list) else [],

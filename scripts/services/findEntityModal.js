@@ -161,20 +161,9 @@ window.FindEntityModal = class FindEntityModal {
                 position: relative;
             }
 
-            #find-entity-modal .fem-search-input-wrapper .material-icons {
-                position: absolute;
-                left: var(--spacing-3, 0.75rem);
-                top: 50%;
-                transform: translateY(-50%);
-                color: var(--color-neutral-400, #9ca3af);
-                font-size: 1.25rem;
-                pointer-events: none;
-            }
-
             #find-entity-modal .fem-search-input {
                 width: 100%;
                 padding: var(--spacing-2-5, 0.625rem) var(--spacing-4, 1rem);
-                padding-left: 2.75rem;
                 font-family: inherit;
                 font-size: var(--text-sm, 0.875rem);
                 color: var(--color-neutral-800, #1f2937);
@@ -550,7 +539,6 @@ window.FindEntityModal = class FindEntityModal {
                     <div class="fem-search-area">
                         <div class="fem-search-row">
                             <div class="fem-search-input-wrapper">
-                                <span class="material-icons">search</span>
                                 <input 
                                     type="text" 
                                     id="fem-search-input" 
