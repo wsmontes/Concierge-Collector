@@ -352,13 +352,15 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
      * Show entity details modal
      * @param {Object} entity - Entity to display
      */
-    showEntityDetails(entity) {
+    async showEntityDetails(entity) {
         this.log.debug('Showing entity details:', entity.entity_id);
 
         if (!window.modalManager) {
             this.log.error('ModalManager not available');
             return;
         }
+
+        const relatedCurations = await this.getRelatedCurations(entity.entity_id);
 
         const content = document.createElement('div');
         content.className = 'space-y-4';
@@ -397,6 +399,8 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
                 </div>
             ` : ''}
 
+            ${this.renderRelatedCurationsSection(relatedCurations)}
+
             <!-- Metadata -->
             <div class="border-t pt-4">
                 <h3 class="font-semibold text-gray-700 mb-2">Metadata</h3>
@@ -432,10 +436,6 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
         const footer = document.createElement('div');
         footer.className = 'w-full flex gap-2';
         footer.innerHTML = `
-            <button class="btn-curate-entity flex-1 py-2 px-4 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center justify-center gap-2">
-                <span class="material-icons text-sm">edit</span>
-                Curate This Entity
-            </button>
             <button class="btn-delete-entity flex-1 py-2 px-4 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 flex items-center justify-center gap-2">
                 <span class="material-icons text-sm">delete</span>
                 Delete Entity
@@ -455,16 +455,30 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
             const modalEl = document.getElementById(modalId);
             if (!modalEl) return;
 
-            // Curate
-            const curateBtn = modalEl.querySelector('.btn-curate-entity');
-            if (curateBtn) {
-                curateBtn.addEventListener('click', () => {
-                    window.modalManager.close(modalId);
-                    if (window.uiManager && typeof window.uiManager.editRestaurant === 'function') {
-                        window.uiManager.editRestaurant(entity);
+            // Open specific related curation
+            const openCurationButtons = modalEl.querySelectorAll('.btn-open-curation');
+            openCurationButtons.forEach(button => {
+                button.addEventListener('click', async () => {
+                    const curationId = button.getAttribute('data-curation-id');
+                    if (!curationId) return;
+
+                    try {
+                        const curation = await this.dataStore.getCuration(curationId);
+                        if (!curation) {
+                            window.uiUtils?.showNotification?.('Curation not found', 'error');
+                            return;
+                        }
+
+                        window.modalManager.close(modalId);
+                        if (window.uiManager && typeof window.uiManager.editCuration === 'function') {
+                            window.uiManager.editCuration(curation);
+                        }
+                    } catch (error) {
+                        this.log.error('Failed to open curation from entity details:', error);
+                        window.uiUtils?.showNotification?.('Failed to open curation', 'error');
                     }
                 });
-            }
+            });
 
             // Sync
             const syncBtn = modalEl.querySelector('.btn-sync-entity');
@@ -485,6 +499,87 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
                 });
             }
         }, 0);
+    }
+
+    /**
+     * Load curations currently linked to an entity
+     * @param {string} entityId - Entity identifier
+     * @returns {Promise<Array>} - Linked curations
+     */
+    async getRelatedCurations(entityId) {
+        if (!entityId || !this.dataStore) {
+            return [];
+        }
+
+        try {
+            const curations = await this.dataStore.getEntityCurations(entityId);
+            return Array.isArray(curations)
+                ? [...curations].sort((a, b) => new Date(b.updated_at || b.updatedAt || 0) - new Date(a.updated_at || a.updatedAt || 0))
+                : [];
+        } catch (error) {
+            this.log.error('Failed to load related curations for entity:', entityId, error);
+            return [];
+        }
+    }
+
+    /**
+     * Render related curations section for entity details view
+     * @param {Array} curations - Linked curations
+     * @returns {string} HTML string
+     */
+    renderRelatedCurationsSection(curations = []) {
+        if (!Array.isArray(curations) || curations.length === 0) {
+            return `
+                <div class="border-t pt-4">
+                    <h3 class="font-semibold text-gray-700 mb-2">Related Curations</h3>
+                    <p class="text-sm text-gray-500">No curations linked to this entity yet.</p>
+                </div>
+            `;
+        }
+
+        const rowsHtml = curations.map((curation) => {
+            const curationId = this.escapeHtml(curation.curation_id || '');
+            const curationName = this.escapeHtml(curation.restaurant_name || curation.name || 'Untitled curation');
+            const curatorName = this.escapeHtml(curation.curator?.name || curation.curator || 'Unknown curator');
+            const status = this.escapeHtml(curation.status || 'draft');
+
+            return `
+                <div class="border border-gray-100 rounded-lg p-3 flex items-center justify-between gap-3">
+                    <div class="min-w-0">
+                        <p class="font-medium text-sm text-gray-900 truncate">${curationName}</p>
+                        <p class="text-xs text-gray-500 mt-1 truncate">Curator: ${curatorName}</p>
+                        <p class="text-xs text-gray-400 mt-1">${curationId}</p>
+                    </div>
+                    <div class="flex items-center gap-2 flex-shrink-0">
+                        <span class="px-2 py-1 text-[10px] uppercase tracking-wider rounded-full bg-gray-100 text-gray-700">${status}</span>
+                        <button
+                            type="button"
+                            class="btn-open-curation px-2.5 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                            data-curation-id="${curationId}">
+                            Open
+                        </button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        return `
+            <div class="border-t pt-4">
+                <h3 class="font-semibold text-gray-700 mb-2">Related Curations</h3>
+                <div class="space-y-2">${rowsHtml}</div>
+            </div>
+        `;
+    }
+
+    /**
+     * Escape HTML entities to prevent XSS in modal rendering
+     * @param {string} value - Input text
+     * @returns {string} Escaped text
+     */
+    escapeHtml(value) {
+        const div = document.createElement('div');
+        div.textContent = value || '';
+        return div.innerHTML;
     }
 
     /**

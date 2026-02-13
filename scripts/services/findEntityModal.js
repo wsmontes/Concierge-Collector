@@ -706,12 +706,12 @@ window.FindEntityModal = class FindEntityModal {
             openBtn.addEventListener('click', () => {
                 this.open({
                     onEntitySelected: async (entity) => {
-                        if (window.uiManager?.restaurantModule?.editCuration) {
-                            await window.uiManager.restaurantModule.editCuration(null, entity);
+                        if (window.entityModule?.showEntityDetails) {
+                            await window.entityModule.showEntityDetails(entity);
                             return;
                         }
 
-                        throw new Error('Restaurant module not available for linked curation flow');
+                        throw new Error('Entity module not available for entity details flow');
                     }
                 });
             });
