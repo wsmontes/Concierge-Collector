@@ -913,6 +913,14 @@ if (typeof window.UIManager === 'undefined') {
             return card;
         }
 
+        getCurationDisplayName(curation) {
+            return curation?.restaurant_name ||
+                curation?.name ||
+                (curation?.categories?.restaurant_name && curation.categories.restaurant_name[0]) ||
+                curation?.restaurantName ||
+                '';
+        }
+
         /**
          * Handle linking a review to an entity
          */
@@ -929,8 +937,11 @@ if (typeof window.UIManager === 'undefined') {
                 }
             }
 
+            const initialQuery = this.getCurationDisplayName(curation);
+
             // Open modal in selection mode
             window.findEntityModal.open({
+                initialQuery,
                 onEntitySelected: async (entity) => {
                     await this.linkReviewToEntity(curation, entity);
                 }

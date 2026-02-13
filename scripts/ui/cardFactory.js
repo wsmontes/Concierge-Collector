@@ -271,6 +271,13 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
 
             const curatorName = curation.curator?.name || 'Unknown';
             const badgeClass = statusColors[status] || statusColors.draft;
+            const isLinkedCuration = status === 'linked' || !!curation.entity_id;
+
+            const fullAddress = this.extractEntityAddress(entity);
+            const phone = this.extractEntityPhone(entity);
+            const websiteRaw = this.extractEntityWebsite(entity);
+            const websiteHref = this.normalizeWebsiteUrl(websiteRaw);
+            const websiteLabel = websiteRaw ? websiteRaw.replace(/^https?:\/\//i, '').replace(/^www\./i, '') : '';
 
 
             // Use centralized SourceUtils for consistent logic and styling
@@ -316,6 +323,29 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                 </div>
             `;
 
+            const linkedDetails = isLinkedCuration && (fullAddress || phone || websiteHref) ? `
+                <div class="mt-2 pt-2 border-t border-gray-100 space-y-1.5">
+                    ${fullAddress ? `
+                        <div class="flex items-start gap-1.5 text-xs text-gray-600" title="${fullAddress}">
+                            <span class="material-icons text-[14px] mt-[1px] flex-shrink-0">place</span>
+                            <span class="line-clamp-2">${fullAddress}</span>
+                        </div>
+                    ` : ''}
+                    ${phone ? `
+                        <div class="flex items-center gap-1.5 text-xs text-gray-600" title="${phone}">
+                            <span class="material-icons text-[14px]">phone</span>
+                            <a href="tel:${phone}" class="linked-contact-link hover:underline">${phone}</a>
+                        </div>
+                    ` : ''}
+                    ${websiteHref ? `
+                        <div class="flex items-center gap-1.5 text-xs text-blue-700" title="${websiteRaw}">
+                            <span class="material-icons text-[14px]">language</span>
+                            <a href="${websiteHref}" target="_blank" rel="noopener noreferrer" class="linked-contact-link hover:underline line-clamp-1">${websiteLabel}</a>
+                        </div>
+                    ` : ''}
+                </div>
+            ` : '';
+
             actionsRow.innerHTML = `
                 <div class="flex flex-col gap-1">
                     <div class="flex items-center gap-2">
@@ -328,6 +358,7 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                         </div>
                     </div>
                     ${metaInfo}
+                    ${linkedDetails}
                 </div>
                 <div class="flex items-center gap-2">
                     <button class="btn-edit-curation p-2 bg-gray-50 text-gray-600 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-all border border-gray-100 hover:border-blue-100 shadow-sm" title="Edit Curation">
@@ -353,6 +384,11 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                 };
             }
 
+            const linkedContactLinks = actionsRow.querySelectorAll('.linked-contact-link');
+            linkedContactLinks.forEach(link => {
+                link.addEventListener('click', (e) => e.stopPropagation());
+            });
+
             if (deleteBtn) {
                 deleteBtn.onclick = (e) => {
                     e.preventDefault();
@@ -370,6 +406,46 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
         }
 
         return card;
+    }
+
+    extractEntityAddress(entity) {
+        return entity?.data?.formattedAddress ||
+            entity?.data?.address?.formattedAddress ||
+            entity?.data?.address?.street ||
+            entity?.data?.location?.address ||
+            entity?.address ||
+            '';
+    }
+
+    extractEntityPhone(entity) {
+        return entity?.data?.contact?.phone ||
+            entity?.data?.contacts?.phone ||
+            entity?.data?.formattedPhone ||
+            entity?.data?.internationalPhone ||
+            entity?.data?.phone ||
+            entity?.phone ||
+            '';
+    }
+
+    extractEntityWebsite(entity) {
+        return entity?.data?.contact?.website ||
+            entity?.data?.contacts?.website ||
+            entity?.data?.website ||
+            entity?.website ||
+            '';
+    }
+
+    normalizeWebsiteUrl(url) {
+        if (!url || typeof url !== 'string') {
+            return '';
+        }
+
+        const trimmed = url.trim();
+        if (!trimmed) {
+            return '';
+        }
+
+        return /^https?:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
     }
 
     /**

@@ -349,11 +349,10 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             this.emitSyncEvent('sync-start');
             this.log.info('�� Starting full sync...');
 
-            // 1. Pull from server (server → client) - RUN IN PARALLEL for speed
-            await Promise.all([
-                this.pullEntities().catch(e => this.log.error('Pull entities failed:', e)),
-                this.pullCurations().catch(e => this.log.error('Pull curations failed:', e))
-            ]);
+            // 1. Pull from server (server → client)
+            // IMPORTANT: Curations first, then only entities linked by curation.entity_id
+            await this.pullCurations().catch(e => this.log.error('Pull curations failed:', e));
+            await this.pullLinkedEntities().catch(e => this.log.error('Pull linked entities failed:', e));
 
             // 2. Push to server (client → server)
             await this.pushEntities();
@@ -405,62 +404,84 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
     }
 
     /**
-     * Pull entities from server
+     * Collect linked entity IDs from local curations
      */
-    async pullEntities() {
+    async collectLinkedEntityIdsFromCurations() {
+        const linkedIds = new Set();
+
+        const allCurations = await window.DataStore.db.curations.toArray();
+        for (const curation of allCurations) {
+            if (curation && typeof curation.entity_id === 'string' && curation.entity_id.trim()) {
+                linkedIds.add(curation.entity_id.trim());
+            }
+        }
+
+        return linkedIds;
+    }
+
+    /**
+     * Remove synced entities that are no longer linked to any curation
+     */
+    async pruneUnlinkedSyncedEntities(linkedEntityIds) {
+        const allEntities = await window.DataStore.db.entities.toArray();
+        let removed = 0;
+
+        for (const entity of allEntities) {
+            if (!entity || !entity.entity_id) {
+                continue;
+            }
+
+            // Keep entities currently referenced by curations
+            if (linkedEntityIds.has(entity.entity_id)) {
+                continue;
+            }
+
+            // Keep local working states to avoid data loss
+            const syncStatus = entity.sync?.status;
+            if (syncStatus === 'pending' || syncStatus === 'conflict') {
+                continue;
+            }
+
+            await window.DataStore.db.entities.delete(entity.id);
+            removed++;
+        }
+
+        if (removed > 0) {
+            this.log.info(`🧹 Pruned ${removed} unlinked synced entities from IndexedDB`);
+        }
+
+        return removed;
+    }
+
+    /**
+     * Pull only entities linked to curations from server
+     */
+    async pullLinkedEntities() {
         try {
-            // ✅ INCREMENTAL SYNC: Only fetch entities updated after last pull
-            const since = this.stats.lastEntityPullAt;
-            if (since) {
-                this.log.debug(`⏱️ Incremental sync: fetching entities updated after ${since}`);
-            } else {
-                this.log.debug('⬇️ Full sync: fetching all entities');
-            }
+            const linkedEntityIds = await this.collectLinkedEntityIdsFromCurations();
+            this.log.debug(`⬇️ Pulling ${linkedEntityIds.size} linked entities only`);
 
-            let offset = 0;
             let totalPulled = 0;
-            let hasMore = true;
-            const syncStartTime = new Date().toISOString();  // ✅ NEW: Capture sync start time
-
-            while (hasMore) {
-                // Fetch batch from server with optional ?since parameter
-                const params = {
-                    limit: this.config.batchSize,
-                    offset: offset
-                };
-
-                // ✅ Add since parameter for incremental sync
-                if (since) {
-                    params.since = since;
-                }
-
-                const response = await window.ApiService.listEntities(params);
-
-                if (!response.items || response.items.length === 0) {
-                    hasMore = false;
-                    break;
-                }
-
-                // Process each entity
-                for (const serverEntity of response.items) {
-                    await this.processServerEntity(serverEntity);
-                    totalPulled++;
-                }
-
-                offset += response.items.length;
-
-                // Check if we got all items
-                if (response.items.length < this.config.batchSize) {
-                    hasMore = false;
+            for (const entityId of linkedEntityIds) {
+                try {
+                    const serverEntity = await window.ApiService.getEntity(entityId);
+                    if (serverEntity) {
+                        await this.processServerEntity(serverEntity);
+                        totalPulled++;
+                    }
+                } catch (error) {
+                    this.log.warn(`Failed to pull linked entity ${entityId}: ${error.message}`);
                 }
             }
+
+            await this.pruneUnlinkedSyncedEntities(linkedEntityIds);
 
             this.stats.entitiesPulled = totalPulled;
             this.stats.lastPullAt = new Date().toISOString();
-            this.stats.lastEntityPullAt = syncStartTime;
+            this.stats.lastEntityPullAt = new Date().toISOString();
             await this.saveSyncMetadata();
         } catch (error) {
-            this.log.error('Failed to pull entities:', error);
+            this.log.error('Failed to pull linked entities:', error);
             throw error;
         }
     }

@@ -773,6 +773,7 @@ window.FindEntityModal = class FindEntityModal {
      * Open modal and load nearby restaurants
      * @param {object} [options] - Options for opening the modal.
      * @param {function(object): void} [options.onEntitySelected] - Callback function to execute when an entity is selected.
+    * @param {string} [options.initialQuery] - Initial search text to prefill in search input.
      */
     async open(options = {}) {
         this.modal.classList.remove('hidden');
@@ -800,6 +801,11 @@ window.FindEntityModal = class FindEntityModal {
         const radiusFilter = document.getElementById('fem-radius-filter');
         if (radiusFilter) radiusFilter.value = '2000';
         if (this.searchInput) this.searchInput.value = '';
+
+        const initialQuery = typeof options.initialQuery === 'string' ? options.initialQuery.trim() : '';
+        if (this.searchInput && initialQuery) {
+            this.searchInput.value = initialQuery;
+        }
 
         this.filters = {
             type: 'restaurant',

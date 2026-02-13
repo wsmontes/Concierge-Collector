@@ -565,7 +565,13 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
             return;
         }
 
+        const initialQuery = this.restaurantNameInput?.value?.trim() ||
+            this.currentCuration?.restaurant_name ||
+            this.currentCuration?.name ||
+            '';
+
         window.findEntityModal.open({
+            initialQuery,
             onEntitySelected: (entity) => {
                 this.log.info('Entity selected from modal:', entity);
 
