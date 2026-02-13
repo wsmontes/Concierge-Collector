@@ -913,22 +913,58 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         this.log.debug(`✅ Pushed curation ${curation.curation_id} (${Object.keys(changedFields).length} fields)`);
 
                     } else {
-                        const cleanCuration = this.extractChangedFields(curation);
-                        const created = await window.ApiService.createCuration(cleanCuration);
+                        const changedFields = this.extractChangedFields(curation);
+                        const hasChanges = Object.keys(changedFields).some(
+                            key => !['curation_id', 'version'].includes(key)
+                        );
+
+                        if (!hasChanges) {
+                            await window.DataStore.db.curations.update(curation.id, {
+                                sync: {
+                                    ...(curation.sync || {}),
+                                    status: 'synced',
+                                    lastSyncedAt: new Date().toISOString()
+                                }
+                            });
+                            continue;
+                        }
+
+                        let upsertedCuration = null;
+                        try {
+                            // Try PATCH first for records that already exist on server but lack local serverId
+                            upsertedCuration = await window.ApiService.updateCuration(
+                                curation.curation_id,
+                                changedFields,
+                                curation.version || 1
+                            );
+
+                            this.log.debug(`✅ Patched existing curation ${curation.curation_id} without local serverId`);
+                        } catch (patchError) {
+                            const patchMessage = String(patchError?.message || patchError || '').toLowerCase();
+                            const isNotFound = patchMessage.includes('404') || patchMessage.includes('not found');
+
+                            if (!isNotFound) {
+                                throw patchError;
+                            }
+
+                            // If not found on server, then create
+                            upsertedCuration = await window.ApiService.createCuration(changedFields);
+                            this.log.debug(`✅ Created curation ${curation.curation_id} on server after 404 fallback`);
+                        }
 
                         // Store state for future change detection
-                        await this.storeItemState('curation', curation.id, created);
+                        await this.storeItemState('curation', curation.id, upsertedCuration);
 
                         await window.DataStore.db.curations.update(curation.id, {
+                            version: upsertedCuration.version || curation.version,
                             sync: {
                                 ...(curation.sync || {}),
-                                serverId: created._id,
+                                serverId: upsertedCuration._id || curation.curation_id,
                                 status: 'synced',
                                 lastSyncedAt: new Date().toISOString()
                             }
                         });
                         pushed++;
-                        this.log.debug(`✅ Created curation ${curation.curation_id} on server`);
                     }
                 } catch (error) {
                     // Check if error is "already exists" (curation was created in previous sync but client didn't update status)
