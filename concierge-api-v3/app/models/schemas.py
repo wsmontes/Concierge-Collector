@@ -5,7 +5,7 @@ Professional data validation and serialization
 
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any, Literal
-from pydantic import BaseModel, Field, EmailStr, ConfigDict, AliasChoices
+from pydantic import BaseModel, Field, EmailStr, ConfigDict, AliasChoices, field_validator
 
 
 # ============================================================================
@@ -117,6 +117,35 @@ class CurationBase(BaseModel):
     )
     sources: Dict[str, Any] = Field(default_factory=dict, description="Structured sources grouped by source type (audio, image, google_places, etc.)")
     items: Optional[List[Dict[str, Any]]] = Field(default=None, description="Detailed items/concepts list")
+
+    @field_validator("sources", mode="before")
+    @classmethod
+    def normalize_legacy_sources(cls, value: Any) -> Dict[str, Any]:
+        """Normalize legacy list-based sources into structured source dictionary."""
+        if value is None:
+            return {}
+
+        if isinstance(value, dict):
+            return value
+
+        if isinstance(value, list):
+            normalized: Dict[str, Any] = {}
+            for source in value:
+                if not isinstance(source, str):
+                    continue
+                source_key = source.strip()
+                if not source_key:
+                    continue
+                normalized[source_key] = normalized.get(source_key, [])
+                if not normalized[source_key]:
+                    normalized[source_key].append({"legacy": True})
+
+            if not normalized:
+                return {"manual": [{"legacy": True}]}
+
+            return normalized
+
+        return {}
 
 
 class CurationCreate(CurationBase):
