@@ -19,6 +19,46 @@ class OutputHandler:
     """Handles flexible output formatting and storage"""
     
     @staticmethod
+    def extract_categories(ai_result: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Extract category fields from AI result, excluding metadata.
+        
+        Args:
+            ai_result: Full AI result with categories and metadata
+            
+        Returns:
+            Dictionary with only category keys and their concept lists
+        """
+        # Preferred: OpenAIService returns a normalized payload containing a `categories` dict.
+        if isinstance(ai_result.get("categories"), dict):
+            return ai_result.get("categories")
+
+        # Fallback: older payloads might contain category keys directly.
+        metadata_keys = {
+            "confidence_score",
+            "entity_type",
+            "model",
+            "restaurant_name",
+            "category_context",
+            "visual_notes",
+            "transcription_id",
+            "duration",
+            "language",
+            "analysis_id",
+            "concept_id",
+            "concepts",
+            "categories",
+        }
+
+        extracted: Dict[str, Any] = {}
+        for key, value in ai_result.items():
+            if key in metadata_keys:
+                continue
+            if isinstance(value, list) and all(isinstance(v, str) for v in value):
+                extracted[key] = value
+        return extracted
+    
+    @staticmethod
     def apply_defaults(request_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Apply smart defaults based on presence/absence of output object.
@@ -68,10 +108,12 @@ class OutputHandler:
         if format_type == "full":
             return results
         elif format_type == "minimal":
+            categories = OutputHandler.extract_categories(results.get("concepts", {}))
             return {
                 "entity_id": results.get("entity", {}).get("entity_id"),
                 "curation_id": results.get("curation", {}).get("curation_id"),
-                "concepts": results.get("concepts", {}).get("concepts", [])
+                "categories": categories,
+                "restaurant_name": results.get("concepts", {}).get("restaurant_name")
             }
         elif format_type == "ids_only":
             return {
@@ -289,12 +331,22 @@ class AIOrchestrator:
             results["concepts"] = concepts
             
             # 4. Create curation
+            categories = OutputHandler.extract_categories(concepts)
             results["curation"] = {
                 "curation_id": f"cur_{uuid.uuid4().hex[:12]}",
                 "entity_id": results["entity"]["entity_id"],
                 "curator_id": request.get("curator_id"),
                 "transcription_id": transcription.get("transcription_id"),
-                "concepts": concepts["concepts"],
+                "sources": {
+                    "audio": [{
+                        "source_id": transcription.get("transcription_id"),
+                        "transcript": transcription.get("text"),
+                        "language": transcription.get("language"),
+                        "model": transcription.get("model"),
+                        "duration_seconds": transcription.get("duration")
+                    }]
+                },
+                "categories": categories,
                 "source": "text_analysis",
                 "entity_type": entity_type,
                 "created_at": datetime.now(timezone.utc).isoformat()
@@ -319,11 +371,12 @@ class AIOrchestrator:
             results["image_analysis"] = image_analysis
             
             # 3. Create curation
+            categories = OutputHandler.extract_categories(image_analysis)
             results["curation"] = {
                 "curation_id": f"cur_{uuid.uuid4().hex[:12]}",
                 "entity_id": results["entity"]["entity_id"],
                 "curator_id": request.get("curator_id"),
-                "concepts": image_analysis["concepts"],
+                "categories": categories,
                 "source": "image_analysis",
                 "visual_notes": image_analysis.get("visual_notes"),
                 "entity_type": entity_type,
@@ -364,19 +417,37 @@ class AIOrchestrator:
             )
             results["image_analysis"] = image_analysis
             
-            # Combine concepts from both sources (deduplicate)
-            combined_concepts = list(set(
-                text_concepts["concepts"] + image_analysis["concepts"]
-            ))
+            # Combine categories from both sources (merge and deduplicate per category)
+            text_categories = OutputHandler.extract_categories(text_concepts)
+            image_categories = OutputHandler.extract_categories(image_analysis)
             
-            # Create curation with combined concepts
+            combined_categories = {}
+            all_category_keys = set(text_categories.keys()) | set(image_categories.keys())
+            for key in all_category_keys:
+                text_vals = text_categories.get(key, [])
+                image_vals = image_categories.get(key, [])
+                combined_categories[key] = list(set(text_vals + image_vals))  # Deduplicate per category
+            
+            # Create curation with combined categories
             results["curation"] = {
                 "curation_id": f"cur_{uuid.uuid4().hex[:12]}",
                 "entity_id": results["entity"]["entity_id"],
                 "curator_id": request.get("curator_id"),
                 "transcription_id": transcription.get("transcription_id"),
-                "concepts": combined_concepts,
-                "sources": ["text_analysis", "image_analysis"],
+                "categories": combined_categories,
+                "sources": {
+                    "audio": [{
+                        "source_id": transcription.get("transcription_id"),
+                        "transcript": transcription.get("text"),
+                        "language": transcription.get("language"),
+                        "model": transcription.get("model"),
+                        "duration_seconds": transcription.get("duration")
+                    }],
+                    "image": [{
+                        "source": "image_analysis",
+                        "visual_notes": image_analysis.get("visual_notes")
+                    }]
+                },
                 "visual_notes": image_analysis.get("visual_notes"),
                 "entity_type": entity_type,
                 "created_at": datetime.now(timezone.utc).isoformat()

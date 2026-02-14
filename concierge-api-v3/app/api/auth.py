@@ -12,6 +12,7 @@ from fastapi.responses import RedirectResponse, HTMLResponse
 from pymongo.database import Database
 from datetime import datetime, timedelta, timezone
 import httpx
+from jose import jwt
 import secrets
 import hashlib
 import base64
@@ -30,9 +31,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
-# OAuth state storage (in production, use Redis)
-# Structure: {state: {"created": datetime, "code_verifier": str}}
-_oauth_states = {}
+# OAuth state storage removed in favor of stateless JWT-based state
 
 
 def generate_pkce_pair() -> tuple[str, str]:
@@ -52,55 +51,63 @@ def generate_pkce_pair() -> tuple[str, str]:
     return code_verifier, code_challenge
 
 
-def generate_state(code_verifier: str) -> str:
+def generate_state(state_data: str) -> str:
     """
-    Generate CSRF protection state parameter and store with code_verifier
+    Generate signed state parameter for CSRF protection (Stateless)
     
     Args:
-        code_verifier: PKCE code verifier to store with state
+        state_data: Data to sign (code_verifier|frontend_url)
         
     Returns:
-        str: Random state token
+        str: JWT signed state
     """
-    state = secrets.token_urlsafe(32)
-    _oauth_states[state] = {
-        "created": datetime.now(timezone.utc),
-        "code_verifier": code_verifier
+    from app.core.security import ALGORITHM
+    
+    expires = datetime.now(timezone.utc) + timedelta(minutes=10)
+    payload = {
+        "sd": state_data,
+        "exp": expires,
+        "iat": datetime.now(timezone.utc),
+        "type": "oauth_state"
     }
-    logger.info(f"[OAuth] Generated state: {state[:10]}...")
+    
+    # Use API secret key as JWT secret
+    from app.core.security import get_api_secret_key
+    secret_key = get_api_secret_key()
+    state = jwt.encode(payload, secret_key, algorithm=ALGORITHM)
+    
+    logger.info(f"[OAuth] Generated stateless state (expires: {expires})")
     return state
 
 
 def verify_state(state: str) -> Optional[str]:
     """
-    Verify CSRF state parameter and return code_verifier
+    Verify signed state parameter
     
     Args:
-        state: State parameter from callback
+        state: JWT signed state from callback
         
     Returns:
-        str: code_verifier if valid, None if invalid/expired
+        str: code_verifier data if valid, None if invalid/expired
     """
-    if state not in _oauth_states:
-        logger.warning(f"[OAuth] State not found: {state[:10]}...")
+    from app.core.security import ALGORITHM, get_api_secret_key, JWTError
+    
+    try:
+        secret_key = get_api_secret_key()
+        payload = jwt.decode(state, secret_key, algorithms=[ALGORITHM])
+        
+        # Verify it's an OAuth state token
+        if payload.get("type") != "oauth_state":
+            logger.warning("[OAuth] Invalid state token type")
+            return None
+            
+        state_data = payload.get("sd")
+        logger.info("[OAuth] Stateless state verified")
+        return state_data
+        
+    except JWTError as e:
+        logger.error(f"[OAuth] State validation failed: {str(e)}")
         return None
-    
-    state_data = _oauth_states[state]
-    created = state_data["created"]
-    age = (datetime.now(timezone.utc) - created).total_seconds()
-    
-    # State expires after 5 minutes
-    if age > 300:
-        logger.warning(f"[OAuth] State expired (age: {age}s)")
-        del _oauth_states[state]
-        return None
-    
-    # Valid state, return code_verifier and clean up
-    code_verifier = state_data["code_verifier"]
-    del _oauth_states[state]
-    logger.info(f"[OAuth] State verified: {state[:10]}...")
-    
-    return code_verifier
 
 
 def get_user_by_google_id(db: Database, google_id: str) -> Optional[UserInDB]:
@@ -135,6 +142,13 @@ def create_or_update_user(db: Database, user_data: dict) -> UserInDB:
             "picture": user_data.get("picture"),
             "last_login": datetime.now(timezone.utc)
         }
+        
+        # Auto-authorize if from lotier.com domain and not already authorized
+        if not existing_user.authorized and user_data["email"].lower().endswith("@lotier.com"):
+            update_data["authorized"] = True
+            existing_user.authorized = True
+            logger.info(f"[OAuth] Auto-authorized existing user from domain: {user_data['email']}")
+
         if user_data.get("refresh_token"):
             update_data["refresh_token"] = user_data["refresh_token"]
         
@@ -152,13 +166,16 @@ def create_or_update_user(db: Database, user_data: dict) -> UserInDB:
         logger.info(f"[OAuth] Updated existing user: {existing_user.email} (name, picture, last_login)")
         return existing_user
     else:
-        # Create new user (unauthorized by default)
+        # Check if email is from lotier.com domain
+        is_lotier = user_data["email"].lower().endswith("@lotier.com")
+        
+        # Create new user (authorized automatically if from lotier.com)
         new_user = User(
             email=user_data["email"],
             google_id=user_data["google_id"],
             name=user_data["name"],
             picture=user_data.get("picture"),
-            authorized=False,  # Admin must authorize
+            authorized=is_lotier,  # Auto-authorize Lotier domain
             created_at=datetime.now(timezone.utc),
             last_login=datetime.now(timezone.utc),
             refresh_token=user_data.get("refresh_token")
@@ -166,7 +183,9 @@ def create_or_update_user(db: Database, user_data: dict) -> UserInDB:
         result = db.users.insert_one(new_user.dict())
         user_dict = new_user.dict()
         user_dict["_id"] = str(result.inserted_id)
-        logger.info(f"[OAuth] Created new user: {new_user.email} (authorized=False)")
+        
+        auth_status = "True (Auto-authorized)" if is_lotier else "False"
+        logger.info(f"[OAuth] Created new user: {new_user.email} (authorized={auth_status})")
         return UserInDB(**user_dict)
 
 

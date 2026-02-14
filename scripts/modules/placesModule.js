@@ -365,10 +365,9 @@ if (typeof window.PlacesModule === 'undefined') {
                                         <label class="block text-sm font-medium mb-2">Search for restaurants</label>
                                         <div class="relative">
                                             <input id="modal-places-autocomplete-input" 
-                                                   class="border rounded-lg px-4 py-3 w-full pr-10 focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
+                                                   class="border rounded-lg px-4 py-3 w-full focus:ring-2 focus:ring-blue-500 focus:border-blue-500" 
                                                    placeholder="Search by name, location, or cuisine type..." 
                                                    type="text">
-                                            <span class="absolute right-3 top-3 material-icons text-gray-400">search</span>
                                         </div>
                                     </div>
 

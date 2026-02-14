@@ -32,7 +32,7 @@ const ConflictResolutionModal = ModuleWrapper.defineClass('ConflictResolutionMod
         return new Promise((resolve) => {
             this.currentConflict = conflict;
             this.resolveCallback = resolve;
-            
+
             this.createModal();
             this.attachEventListeners();
             this.displayData();
@@ -52,78 +52,75 @@ const ConflictResolutionModal = ModuleWrapper.defineClass('ConflictResolutionMod
         const modal = document.createElement('div');
         modal.id = 'conflict-resolution-modal';
         modal.className = 'fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-50';
-        
+
         modal.innerHTML = `
-            <div class="bg-white rounded-lg shadow-xl max-w-6xl w-full mx-4 max-h-[90vh] overflow-hidden flex flex-col">
+            <!-- Responsive Container: w-full, max-w-5xl, max-h-[85vh] -->
+            <div class="bg-white rounded-xl shadow-2xl w-full max-w-5xl mx-4 my-8 h-auto max-h-[85vh] flex flex-col transform transition-all relative" onclick="event.stopPropagation()">
                 <!-- Header -->
-                <div class="px-6 py-4 border-b border-gray-200 bg-yellow-50">
-                    <div class="flex items-center justify-between">
-                        <div class="flex items-center">
-                            <span class="material-icons text-yellow-600 mr-2">warning</span>
-                            <h2 class="text-xl font-semibold text-gray-800">
-                                Sync Conflict Detected
-                            </h2>
+                <div class="px-6 py-4 border-b border-gray-100 bg-gray-50/50 flex flex-shrink-0 items-center justify-between">
+                    <div class="flex items-center gap-3">
+                        <div class="bg-amber-100 p-2 rounded-full">
+                            <span class="material-icons text-amber-600">warning</span>
                         </div>
-                        <button id="conflict-modal-close" class="text-gray-400 hover:text-gray-600">
-                            <span class="material-icons">close</span>
-                        </button>
+                        <div>
+                            <h2 class="text-lg font-bold text-gray-900">Sync Conflict Detected</h2>
+                            <p class="text-xs text-gray-500 mt-0.5">
+                                This ${this.currentConflict.type} was modified both locally and on the server.
+                            </p>
+                        </div>
                     </div>
-                    <p class="mt-2 text-sm text-gray-600">
-                        This ${this.currentConflict.type} was modified both locally and on the server. 
-                        Choose which version to keep.
-                    </p>
+                    <button id="conflict-modal-close" class="p-2 hover:bg-gray-100 rounded-full text-gray-400 hover:text-gray-600 transition-colors">
+                        <span class="material-icons">close</span>
+                    </button>
                 </div>
 
-                <!-- Content: Side-by-side comparison -->
-                <div class="flex-1 overflow-y-auto p-6">
-                    <div class="grid grid-cols-2 gap-6">
+                <!-- Content: Side-by-side comparison (Responsive Grid) -->
+                <!-- flex-1 and overflow-y-auto ensure valid scrolling within the modal -->
+                <div class="flex-1 overflow-y-auto p-4 md:p-6 bg-gray-50/30">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
                         <!-- Local Version -->
-                        <div class="border border-blue-200 rounded-lg overflow-hidden">
-                            <div class="bg-blue-50 px-4 py-3 border-b border-blue-200">
-                                <div class="flex items-center justify-between">
-                                    <h3 class="font-semibold text-blue-800">
-                                        <span class="material-icons text-sm align-middle mr-1">computer</span>
-                                        Your Local Version
-                                    </h3>
-                                    <span class="text-xs text-blue-600 bg-blue-100 px-2 py-1 rounded">
+                        <div class="flex flex-col h-full bg-white border border-blue-200 rounded-xl overflow-hidden shadow-sm">
+                            <div class="bg-blue-50/50 px-4 py-3 border-b border-blue-100 flex justify-between items-center">
+                                <h3 class="font-bold text-blue-900 flex items-center gap-2">
+                                    <span class="material-icons text-lg">computer</span>
+                                    Your Version
+                                </h3>
+                                <div class="text-right">
+                                    <span class="text-[10px] font-mono text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full">
                                         v${this.currentConflict.local.version || 0}
                                     </span>
+                                    <div class="text-[10px] text-blue-400 mt-0.5">${this.formatDate(this.currentConflict.local.updatedAt)}</div>
                                 </div>
-                                <p class="text-xs text-blue-600 mt-1">
-                                    Last modified: ${this.formatDate(this.currentConflict.local.updatedAt)}
-                                </p>
                             </div>
-                            <div id="conflict-local-content" class="p-4 text-sm">
+                            <div id="conflict-local-content" class="p-4 text-sm flex-grow">
                                 <!-- Will be populated by displayData() -->
                             </div>
                         </div>
 
                         <!-- Server Version -->
-                        <div class="border border-green-200 rounded-lg overflow-hidden">
-                            <div class="bg-green-50 px-4 py-3 border-b border-green-200">
-                                <div class="flex items-center justify-between">
-                                    <h3 class="font-semibold text-green-800">
-                                        <span class="material-icons text-sm align-middle mr-1">cloud</span>
-                                        Server Version
-                                    </h3>
-                                    <span class="text-xs text-green-600 bg-green-100 px-2 py-1 rounded">
+                        <div class="flex flex-col h-full bg-white border border-green-200 rounded-xl overflow-hidden shadow-sm">
+                            <div class="bg-green-50/50 px-4 py-3 border-b border-green-100 flex justify-between items-center">
+                                <h3 class="font-bold text-green-900 flex items-center gap-2">
+                                    <span class="material-icons text-lg">cloud</span>
+                                    Server Version
+                                </h3>
+                                <div class="text-right">
+                                    <span class="text-[10px] font-mono text-green-600 bg-green-100 px-2 py-0.5 rounded-full">
                                         v${this.currentConflict.server.version || 0}
                                     </span>
+                                    <div class="text-[10px] text-green-400 mt-0.5">${this.formatDate(this.currentConflict.server.updatedAt)}</div>
                                 </div>
-                                <p class="text-xs text-green-600 mt-1">
-                                    Last modified: ${this.formatDate(this.currentConflict.server.updatedAt)}
-                                </p>
                             </div>
-                            <div id="conflict-server-content" class="p-4 text-sm">
+                            <div id="conflict-server-content" class="p-4 text-sm flex-grow">
                                 <!-- Will be populated by displayData() -->
                             </div>
                         </div>
                     </div>
 
                     <!-- Differences Summary -->
-                    <div id="conflict-diff-summary" class="mt-6 p-4 bg-gray-50 rounded-lg border border-gray-200">
-                        <h4 class="font-semibold text-gray-700 mb-2 flex items-center">
-                            <span class="material-icons text-sm mr-1">compare_arrows</span>
+                    <div id="conflict-diff-summary" class="mt-6 p-4 bg-white rounded-xl border border-gray-200 shadow-sm">
+                        <h4 class="font-bold text-gray-800 mb-3 flex items-center gap-2 text-sm border-b border-gray-100 pb-2">
+                            <span class="material-icons text-base text-gray-500">compare_arrows</span>
                             Detected Differences
                         </h4>
                         <div id="conflict-diff-list" class="text-sm text-gray-600">
@@ -133,30 +130,28 @@ const ConflictResolutionModal = ModuleWrapper.defineClass('ConflictResolutionMod
                 </div>
 
                 <!-- Footer: Action Buttons -->
-                <div class="px-6 py-4 border-t border-gray-200 bg-gray-50">
-                    <div class="flex items-center justify-between">
-                        <p class="text-sm text-gray-500">
-                            <span class="material-icons text-xs align-middle">info</span>
-                            This decision cannot be undone
-                        </p>
-                        <div class="flex gap-3">
-                            <button id="conflict-keep-local" 
-                                class="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center">
-                                <span class="material-icons text-sm mr-1">computer</span>
-                                Keep My Version
-                            </button>
-                            <button id="conflict-keep-server" 
-                                class="px-4 py-2 bg-green-600 text-white rounded hover:bg-green-700 flex items-center">
-                                <span class="material-icons text-sm mr-1">cloud</span>
-                                Use Server Version
-                            </button>
-                            <button id="conflict-merge" 
-                                class="px-4 py-2 bg-purple-600 text-white rounded hover:bg-purple-700 flex items-center"
-                                title="Manually merge changes">
-                                <span class="material-icons text-sm mr-1">merge_type</span>
-                                Merge Both
-                            </button>
-                        </div>
+                <div class="px-6 py-4 border-t border-gray-100 bg-white flex flex-col md:flex-row md:items-center justify-between gap-4 flex-shrink-0">
+                    <p class="text-xs text-gray-400 flex items-center gap-1">
+                        <span class="material-icons text-[14px]">info</span>
+                        This action cannot be undone
+                    </p>
+                    <div class="grid grid-cols-1 md:flex gap-3 w-full md:w-auto">
+                        <button id="conflict-keep-local" 
+                            class="px-4 py-2.5 bg-white border border-blue-200 text-blue-700 font-medium rounded-lg hover:bg-blue-50 active:bg-blue-100 transition-colors flex items-center justify-center gap-2 shadow-sm">
+                            <span class="material-icons text-lg">computer</span>
+                            Keep Mine
+                        </button>
+                        <button id="conflict-keep-server" 
+                            class="px-4 py-2.5 bg-white border border-green-200 text-green-700 font-medium rounded-lg hover:bg-green-50 active:bg-green-100 transition-colors flex items-center justify-center gap-2 shadow-sm">
+                            <span class="material-icons text-lg">cloud</span>
+                            Keep Server
+                        </button>
+                        <!-- Primary Action / Merge -->
+                         <button id="conflict-merge" 
+                            class="px-5 py-2.5 bg-gray-900 text-white font-medium rounded-lg hover:bg-gray-800 active:bg-black transition-all shadow-md hover:shadow-lg flex items-center justify-center gap-2">
+                            <span class="material-icons text-lg">merge_type</span>
+                            Merge Both
+                        </button>
                     </div>
                 </div>
             </div>
@@ -173,16 +168,16 @@ const ConflictResolutionModal = ModuleWrapper.defineClass('ConflictResolutionMod
         const { local, server, type } = this.currentConflict;
 
         // Render local version
-        document.getElementById('conflict-local-content').innerHTML = 
+        document.getElementById('conflict-local-content').innerHTML =
             this.renderItemData(local, type);
 
         // Render server version
-        document.getElementById('conflict-server-content').innerHTML = 
+        document.getElementById('conflict-server-content').innerHTML =
             this.renderItemData(server, type);
 
         // Render differences
         const differences = this.findDifferences(local, server);
-        document.getElementById('conflict-diff-list').innerHTML = 
+        document.getElementById('conflict-diff-list').innerHTML =
             this.renderDifferences(differences);
     }
 
@@ -405,6 +400,15 @@ const ConflictResolutionModal = ModuleWrapper.defineClass('ConflictResolutionMod
         document.getElementById('conflict-merge').addEventListener('click', () => {
             this.resolve('merge');
         });
+
+        // Close on backdrop click
+        if (this.modal) {
+            this.modal.addEventListener('click', (e) => {
+                if (e.target === this.modal) {
+                    this.close('cancel');
+                }
+            });
+        }
     }
 
     /**
@@ -413,11 +417,11 @@ const ConflictResolutionModal = ModuleWrapper.defineClass('ConflictResolutionMod
      */
     async resolve(resolution) {
         this.log.debug(`Conflict resolved: ${resolution}`);
-        
+
         if (this.resolveCallback) {
             this.resolveCallback(resolution);
         }
-        
+
         this.close();
     }
 
@@ -430,13 +434,13 @@ const ConflictResolutionModal = ModuleWrapper.defineClass('ConflictResolutionMod
             this.modal.remove();
             this.modal = null;
         }
-        
+
         this.currentConflict = null;
-        
+
         if (reason === 'cancel' && this.resolveCallback) {
             this.resolveCallback(null);  // User cancelled
         }
-        
+
         this.resolveCallback = null;
     }
 });

@@ -18,45 +18,81 @@ class ConceptModule {
     constructor(uiManager) {
         // Create module logger instance
         this.log = Logger.module("ConceptModule");
-        
+
         this.uiManager = uiManager;
         // New property to handle the queue of images for AI processing
         this.imageProcessingQueue = [];
         this.isProcessingQueue = false;
     }
 
+    /**
+     * Display concepts in the UI (Compatibility method)
+     * @param {Array} concepts - List of concepts to display
+     */
+    displayConcepts(concepts) {
+        if (!concepts || !Array.isArray(concepts)) return;
+
+        this.log.debug(`Displaying ${concepts.length} concepts via displayConcepts()`);
+
+        // Filter and add concepts
+        const newConcepts = this.uiManager.filterExistingConcepts(concepts);
+        if (newConcepts.length > 0) {
+            newConcepts.forEach(concept => {
+                this.uiManager.currentConcepts.push(concept);
+            });
+
+            // Re-render
+            this.renderConcepts();
+
+            // Notification
+            SafetyUtils.showNotification(`Added ${newConcepts.length} concepts`, 'success');
+        }
+    }
+
     setupEvents() {
         this.log.debug('Setting up concepts events...');
-        
-        // Restaurant name input with auto-save
+
+        // Restaurant name input with auto-save and dirty flag
         const nameInput = document.getElementById('restaurant-name');
         if (nameInput) {
-            nameInput.addEventListener('focus', () => {
-                this.log.debug('Restaurant name input focused');
-            });
-            
-            // Auto-save draft on name change
             nameInput.addEventListener('input', () => {
+                this.uiManager.formIsDirty = true;
                 this.autoSaveDraft();
             });
         }
-        
-        // Auto-save on transcription changes
+
+        // Auto-save and dirty flag on transcription changes
         const transcriptionTextarea = document.getElementById('restaurant-transcription');
         if (transcriptionTextarea) {
             transcriptionTextarea.addEventListener('input', () => {
+                this.uiManager.formIsDirty = true;
                 this.autoSaveDraft();
             });
         }
-        
-        // Auto-save on description changes
+
+        // Auto-save and dirty flag on description changes
         const descriptionInput = document.getElementById('restaurant-description');
         if (descriptionInput) {
             descriptionInput.addEventListener('input', () => {
+                this.uiManager.formIsDirty = true;
                 this.autoSaveDraft();
             });
         }
-        
+
+        // Dirty flag for public/private notes
+        const publicNotes = document.getElementById('curation-notes-public');
+        if (publicNotes) {
+            publicNotes.addEventListener('input', () => {
+                this.uiManager.formIsDirty = true;
+            });
+        }
+        const privateNotes = document.getElementById('curation-notes-private');
+        if (privateNotes) {
+            privateNotes.addEventListener('input', () => {
+                this.uiManager.formIsDirty = true;
+            });
+        }
+
         // Get location button
         const getLocationBtn = document.getElementById('get-location');
         if (getLocationBtn) {
@@ -65,7 +101,10 @@ class ConceptModule {
                 try {
                     // Use our safe wrapper method instead of direct call
                     SafetyUtils.showLoading('Getting your location...');
-                    
+
+                    // Mark as dirty when location changes
+                    this.uiManager.formIsDirty = true;
+
                     // Use safe method to get position
                     let position;
                     if (this.uiManager && typeof this.uiManager.getCurrentPosition === 'function') {
@@ -75,18 +114,18 @@ class ConceptModule {
                     } else {
                         position = await this.getCurrentPositionFallback();
                     }
-                    
+
                     if (this.uiManager) {
                         this.uiManager.currentLocation = {
                             latitude: position.coords.latitude,
                             longitude: position.coords.longitude
                         };
                     }
-                    
+
                     // Use our safe wrapper method instead of direct call
                     SafetyUtils.hideLoading();
                     SafetyUtils.showNotification('Location saved successfully');
-                    
+
                     // Update location display
                     const locationDisplay = document.getElementById('location-display');
                     if (locationDisplay && this.uiManager && this.uiManager.currentLocation) {
@@ -96,7 +135,7 @@ class ConceptModule {
                             <p>Longitude: ${this.uiManager.currentLocation.longitude.toFixed(6)}</p>
                         `;
                     }
-                    
+
                     // Auto-save draft with new location
                     this.autoSaveDraft();
                 } catch (error) {
@@ -106,26 +145,67 @@ class ConceptModule {
                 }
             });
         }
-        
+
         // Photo-related events setup
         this.setupPhotoEvents();
-        
+
         // Discard restaurant button
         const discardBtn = document.getElementById('discard-restaurant');
         if (discardBtn) {
-            discardBtn.addEventListener('click', () => {
-                this.discardRestaurant();
+            discardBtn.addEventListener('click', async () => {
+                // Only ask for confirmation if the form is dirty
+                if (this.uiManager.formIsDirty) {
+                    if (confirm('Are you sure you want to discard this restaurant? All unsaved changes and recordings will be deleted.')) {
+                        await this.discardRestaurant();
+                    }
+                } else {
+                    // Just discard/cancel without asking if nothing was changed
+                    await this.discardRestaurant();
+                }
             });
         }
-        
+
         // Save restaurant button
         const saveBtn = document.getElementById('save-restaurant');
         if (saveBtn) {
             saveBtn.addEventListener('click', async () => {
                 await this.saveRestaurant();
+                this.uiManager.formIsDirty = false; // Reset after save
             });
         }
-        
+
+        // Clone curation button (secondary action inside edit flow)
+        const cloneBtn = document.getElementById('clone-curation');
+        if (cloneBtn) {
+            cloneBtn.addEventListener('click', () => {
+                const canClone = this.uiManager?.restaurantModule?.currentCuration?.curation_id;
+                if (!canClone) {
+                    return;
+                }
+
+                const confirmed = confirm('Create a clone of this curation? The original will not be changed.');
+                if (!confirmed) {
+                    return;
+                }
+
+                const cloneActivated = this.uiManager.restaurantModule.activateCloneMode();
+                if (cloneActivated) {
+                    SafetyUtils.showNotification('Clone mode enabled. Saving will create a new curation.', 'success');
+                }
+            });
+        }
+
+        const exportBtn = document.getElementById('export-curation-json');
+        if (exportBtn) {
+            exportBtn.addEventListener('click', async () => {
+                if (!this.uiManager?.restaurantModule?.currentCuration?.curation_id) {
+                    return;
+                }
+
+                await this.uiManager.restaurantModule.exportCurrentCurationJson();
+            });
+        }
+
         // Reprocess concepts button
         const reprocessBtn = document.getElementById('reprocess-concepts');
         if (reprocessBtn) {
@@ -133,47 +213,47 @@ class ConceptModule {
                 await this.reprocessConcepts();
             });
         }
-        
+
         // Generate description button
         const generateDescriptionBtn = document.getElementById('generate-description');
         if (generateDescriptionBtn) {
             generateDescriptionBtn.addEventListener('click', async () => {
                 const transcriptionTextarea = document.getElementById('restaurant-transcription');
                 const transcription = transcriptionTextarea ? transcriptionTextarea.value.trim() : '';
-                
+
                 if (!transcription) {
                     SafetyUtils.showNotification('Please provide a transcription first', 'error');
                     return;
                 }
-                
+
                 SafetyUtils.showLoading('Generating description...');
                 await this.generateDescription(transcription);
                 SafetyUtils.hideLoading();
                 SafetyUtils.showNotification('Description generated successfully');
             });
         }
-        
+
         // Record Additional Review button - Only create when in edit mode
         this.setupAdditionalReviewButton();
-        
+
         this.log.debug('Concepts events set up');
     }
-    
+
     setupPhotoEvents() {
         const photosPreview = document.getElementById('photos-preview');
         const takePhotoBtn = document.getElementById('take-photo');
         const galleryPhotoBtn = document.getElementById('gallery-photo');
         const cameraInput = document.getElementById('camera-input');
         const galleryInput = document.getElementById('gallery-input');
-        
+
         // Handler function for processing photos
         const processPhotoFiles = (files) => {
             if (files.length === 0) return;
-            
+
             // Create an array of photo data from files
             const photoDataPromises = Array.from(files).map(file => {
                 if (!file.type.startsWith('image/')) return null;
-                
+
                 return new Promise((resolve) => {
                     const reader = new FileReader();
                     reader.onload = e => {
@@ -185,7 +265,7 @@ class ConceptModule {
                     reader.readAsDataURL(file);
                 });
             });
-            
+
             // When all files are read, show the multi-image preview modal
             Promise.all(photoDataPromises)
                 .then(photoDataArray => {
@@ -195,22 +275,22 @@ class ConceptModule {
                     }
                 });
         };
-        
+
         // Setup event handlers
         if (takePhotoBtn) {
             takePhotoBtn.addEventListener('click', () => cameraInput.click());
         }
-        
+
         if (galleryPhotoBtn) {
             galleryPhotoBtn.addEventListener('click', () => galleryInput.click());
         }
-        
+
         if (cameraInput) {
             cameraInput.addEventListener('change', event => {
                 processPhotoFiles(event.target.files);
             });
         }
-        
+
         if (galleryInput) {
             galleryInput.addEventListener('change', event => {
                 processPhotoFiles(event.target.files);
@@ -226,16 +306,16 @@ class ConceptModule {
             if (!this.uiManager || !this.uiManager.currentCurator) {
                 return; // No curator selected, can't save draft
             }
-            
+
             // Don't auto-save if we're editing an existing saved restaurant
             if (this.uiManager.isEditingRestaurant && this.uiManager.editingRestaurantId) {
                 return;
             }
-            
+
             const nameInput = document.getElementById('restaurant-name');
             const transcriptionTextarea = document.getElementById('restaurant-transcription');
             const descriptionInput = document.getElementById('restaurant-description');
-            
+
             const draftData = {
                 name: nameInput?.value?.trim() || '',
                 transcription: transcriptionTextarea?.value?.trim() || '',
@@ -244,7 +324,7 @@ class ConceptModule {
                 location: this.uiManager.currentLocation || null,
                 photos: this.uiManager.currentPhotos || []
             };
-            
+
             // Check if there's any data worth saving
             const hasData = !!(
                 draftData.name ||
@@ -254,11 +334,11 @@ class ConceptModule {
                 draftData.location ||
                 (draftData.photos && draftData.photos.length > 0)
             );
-            
+
             if (!hasData) {
                 return; // Nothing to save
             }
-            
+
             // DISABLED: DraftRestaurantManager uses old database schema
             // Will be re-enabled after schema migration
             /*
@@ -276,15 +356,63 @@ class ConceptModule {
             // Don't show error to user - auto-save should be silent
         }
     }
-    
-    discardRestaurant() {
-        this.log.debug('Discard restaurant button clicked');
+
+    async discardRestaurant() {
+        const entityModule = this.uiManager?.entityModule || window.entityModule;
+        if (this.uiManager?.isEditingEntity && entityModule?.cancelEntityEdit) {
+            await entityModule.cancelEntityEdit();
+            return;
+        }
+
+        this.log.debug('Discarding restaurant and cleaning up...');
+
+        const draftId = window.DraftRestaurantManager?.currentDraftId;
+        const entityId = this.uiManager.editingRestaurantId;
+
+        // 1. Cleanup data
+        try {
+            if (window.PendingAudioManager) {
+                if (entityId) {
+                    await window.PendingAudioManager.deleteAudios({ restaurantId: entityId });
+                }
+                if (draftId) {
+                    await window.PendingAudioManager.deleteAudios({ draftId });
+                }
+            }
+
+            if (draftId && window.DraftRestaurantManager) {
+                await window.DraftRestaurantManager.deleteDraft(draftId);
+            }
+
+            // Update pending audio badge
+            if (this.uiManager.recordingModule && typeof this.uiManager.recordingModule.showPendingAudioBadge === 'function') {
+                await this.uiManager.recordingModule.showPendingAudioBadge();
+            }
+        } catch (error) {
+            this.log.error('Error during discard cleanup:', error);
+        }
+
+        // 2. Reset UI state
         this.uiManager.currentConcepts = [];
         this.uiManager.currentLocation = null;
         this.uiManager.currentPhotos = [];
         this.uiManager.isEditingRestaurant = false;
+
+        // Save the ID before clearing it to decide where to navigate
+        const wasEditingId = this.uiManager.editingRestaurantId;
         this.uiManager.editingRestaurantId = null;
-        
+        this.uiManager.importedEntityId = null;
+        this.uiManager.importedEntityData = null;
+        this.uiManager.formIsDirty = false;
+
+        if (this.uiManager.restaurantModule) {
+            this.uiManager.restaurantModule.currentCuration = null;
+            this.uiManager.restaurantModule.currentEntity = null;
+            this.uiManager.restaurantModule.updateCloneButtonVisibility(false);
+            this.uiManager.restaurantModule.updateExportButtonVisibility(false);
+            this.uiManager.restaurantModule.updateCurationEditFooterVisibility(false);
+        }
+
         // Reset save button text
         const saveBtn = document.getElementById('save-restaurant');
         if (saveBtn) {
@@ -293,56 +421,75 @@ class ConceptModule {
                 Save Restaurant
             `;
         }
-        
+
         // Clear all form fields
         const nameInput = document.getElementById('restaurant-name');
         if (nameInput) nameInput.value = '';
-        
+
         const descriptionInput = document.getElementById('restaurant-description');
         if (descriptionInput) descriptionInput.value = '';
-        
+
         const transcriptionTextarea = document.getElementById('restaurant-transcription');
         if (transcriptionTextarea) transcriptionTextarea.value = '';
-        
+
         const locationDisplay = document.getElementById('location-display');
         if (locationDisplay) locationDisplay.innerHTML = '';
-        
+
         const photosPreview = document.getElementById('photos-preview');
         if (photosPreview) photosPreview.innerHTML = '';
-        
-        this.uiManager.showRecordingSection();
+
+        const publicNotes = document.getElementById('curation-notes-public');
+        if (publicNotes) publicNotes.value = '';
+
+        const privateNotes = document.getElementById('curation-notes-private');
+        if (privateNotes) privateNotes.value = '';
+
+        // Navigate back to the main view (Home)
+        // This shows both the recording section and the restaurant list
+        this.uiManager.showRestaurantListSection();
+
+        // If we were editing, refresh the list to make sure it's clean
+        if (wasEditingId) {
+            this.uiManager.loadCurations();
+        }
     }
 
     async saveRestaurant() {
+        const entityModule = this.uiManager?.entityModule || window.entityModule;
+        if (this.uiManager?.isEditingEntity && entityModule?.saveEntityFromForm) {
+            await entityModule.saveEntityFromForm();
+            return;
+        }
+
         this.log.debug('Save/update restaurant button clicked');
-        
+
         const nameInput = document.getElementById('restaurant-name');
         const name = nameInput ? nameInput.value.trim() : '';
-        
+
         if (!name) {
             SafetyUtils.showNotification('Please enter a restaurant name', 'error');
             return;
         }
-        
+
         if (!this.uiManager.currentConcepts || this.uiManager.currentConcepts.length === 0) {
             SafetyUtils.showNotification('Please add at least one concept', 'error');
             return;
         }
-        
+
         // Get transcription text
         const transcriptionTextarea = document.getElementById('restaurant-transcription');
         const transcription = transcriptionTextarea ? transcriptionTextarea.value.trim() : '';
-        
+
         // Get description text
         const descriptionInput = document.getElementById('restaurant-description');
         const description = descriptionInput ? descriptionInput.value.trim() : '';
-        
+
         try {
             SafetyUtils.showLoading(this.uiManager.isEditingRestaurant ? 'Updating restaurant...' : 'Saving curation...');
-            
+
             let entityId = null; // ✅ NEW: Start with null - entity matching comes later
-            let syncStatus = 'local-only';
-            
+            let curationQueuedForSync = false;
+
             // Check if we're curating an existing/imported entity
             if (this.uiManager.importedEntityId && this.uiManager.importedEntityData) {
                 entityId = this.uiManager.importedEntityId;
@@ -354,129 +501,94 @@ class ConceptModule {
                 // ✅ NEW: No entity yet - save as orphaned curation (draft)
                 this.log.debug('📝 Creating curation draft (no entity match yet)');
             }
-            
-            // ✅ UPDATE existing entity only if editing
-            if (this.uiManager.isEditingRestaurant && entityId) {
-                const entity = await window.dataStore.db.entities.get(entityId);
-                if (entity) {
-                    // Update entity fields
-                    entity.name = name;
-                    entity.curator_id = this.uiManager.currentCurator.id;
-                    
-                    // Build updated data object following V3 structure
-                    const updatedData = entity.data || {};
-                    
-                    // Update location (only if has data)
-                    const currentLocation = this.uiManager.currentLocation;
-                    if (currentLocation && Object.keys(currentLocation).length > 0) {
-                        updatedData.location = {
-                            ...(currentLocation.address && { address: currentLocation.address }),
-                            ...(currentLocation.city && { city: currentLocation.city }),
-                            ...(currentLocation.country && { country: currentLocation.country }),
-                            ...(currentLocation.coordinates && { coordinates: currentLocation.coordinates })
-                        };
-                    }
-                    
-                    // Update media/photos (V3 structure)
-                    const currentPhotos = this.uiManager.currentPhotos;
-                    if (currentPhotos && currentPhotos.length > 0) {
-                        updatedData.media = updatedData.media || {};
-                        updatedData.media.photos = currentPhotos;
-                    } else if (updatedData.media && updatedData.media.photos) {
-                        // Clear photos if none selected
-                        delete updatedData.media.photos;
-                        if (Object.keys(updatedData.media).length === 0) {
-                            delete updatedData.media;
-                        }
-                    }
-                    
-                    entity.data = updatedData;
-                    entity.updated_at = new Date();
-                    entity.updatedAt = new Date();
-                    entity.version = (entity.version || 1) + 1;  // Increment version for optimistic locking
-                    
-                    // Save to IndexedDB
-                    await window.dataStore.db.entities.put(entity);
-                    this.log.debug(`✅ Entity updated: ${entityId}`);
-                    
-                    // Queue for sync
-                    if (window.dataStore) {
-                        await window.dataStore.addToSyncQueue('entity', 'update', entity.entity_id, entity.entity_id, entity);
-                        syncStatus = 'pending';
-                    }
-                } else {
-                    this.log.warn('Entity not found for update, creating orphaned curation');
-                    entityId = null; // Reset to null if entity not found
-                }
-            }
-            
+
+            // IMPORTANT: Curation save must not mutate entity metadata.
+            // Entity updates are handled only in explicit entity edit mode.
+
             // ✅ NEW: DO NOT create entity automatically
             // Entity creation will be done separately through matching or explicit creation
-            
+
             // Create curation for ALL saved restaurants (not just imported)
             this.log.debug('🎨 Creating curation with entity_id:', entityId);
-            
+
             // Get curation notes if available
             const publicNotes = document.getElementById('curation-notes-public')?.value.trim() || '';
             const privateNotes = document.getElementById('curation-notes-private')?.value.trim() || '';
-            
+
             const user = window.AuthService?.getCurrentUser();
             if (!user) {
                 throw new Error('User not authenticated');
             }
-            
+
             // Get current curator for curator_id
             const curator = window.CuratorProfile?.getCurrentCurator();
             if (!curator) {
                 throw new Error('Curator not found');
             }
-            
-            const curationId = `curation_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-            
-            // Combine transcription and description into public notes
-            const publicNotesContent = [
-                transcription || '',
-                publicNotes || ''
-            ].filter(Boolean).join('\n\n');
-            
+
+            // Reuse existing curation data if available to avoid duplication
+            const existingCuration = this.uiManager.restaurantModule?.currentCuration;
+            const curationId = existingCuration?.curation_id ||
+                `curation_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
             const curation = {
+                // VERY IMPORTANT: Preserve the numerical IndexedDB ID if it exists to trigger an update, not an insert
+                ...(existingCuration?.id && { id: existingCuration.id }),
                 curation_id: curationId,
                 entity_id: entityId,  // null for orphaned curations, ID for matched entities
+                restaurant_name: name, // Name for orphaned curations (as requested)
+                status: entityId ? 'linked' : 'draft',
                 curator_id: curator.curator_id,  // Required by loadCurations() filter
+                createdBy: existingCuration?.createdBy || existingCuration?.curator_id || curator.curator_id,
+                updatedBy: curator.curator_id,
                 curator: {
                     id: user.email,
-                    name: user.email.split('@')[0],
+                    name: this.capitalizeFullName(user.name || curator.name || user.email.split('@')[0]),
                     email: user.email
                 },
                 // Categories: organized concepts by type
                 categories: this.convertConceptsToCategories(this.uiManager.currentConcepts || []),
-                // Notes: public contains transcription + description, private for internal notes
+                // Notes: separate public and private notes
                 notes: {
-                    public: publicNotesContent || null,
+                    public: publicNotes || null,
                     private: privateNotes || null
                 },
-                sources: ['manual_curation'],
-                created_at: new Date(),
-                createdAt: new Date(),
+                transcript: transcription || null,
+                sources: window.SourceUtils.buildSourcesPayloadFromContext({
+                    existingSources: existingCuration?.sources,
+                    hasAudio: !!(transcription && transcription.trim()),
+                    transcript: transcription || null,
+                    transcriptionId: existingCuration?.transcription_id || null,
+                    hasPhotos: this.uiManager?.currentPhotos?.length > 0,
+                    hasPlaceId: !!(this.uiManager.importedEntityData?.data?.place_id || this.uiManager.importedEntityData?.place_id),
+                    isImport: false // Logic can be expanded if needed
+                }),
+                created_at: existingCuration?.created_at || new Date().toISOString(),
+                createdAt: existingCuration?.createdAt || new Date(),
+                updated_at: new Date().toISOString(),
+                updatedAt: new Date(),
                 sync: {
                     status: 'pending',
                     lastAttempt: null,
                     error: null
                 }
             };
-            
-            // Save curation to IndexedDB
-            await window.DataStore.db.curations.add(curation);
-            this.log.debug('✅ Curation saved locally:', curationId);
-            
+
+            // Save curation to IndexedDB (use put to support updates)
+            await window.DataStore.db.curations.put(curation);
+            this.log.debug('✅ Curation saved/updated locally:', curationId);
+
             // Queue curation for sync to server
             if (window.dataStore) {
-                await window.dataStore.addToSyncQueue('curation', 'create', null, curationId, curation);
-                this.log.debug('✅ Curation queued for sync to server');
+                // Use 'update' action if the curation already exists on the server
+                const syncAction = (existingCuration?.sync?.serverId || existingCuration?.sync?.status === 'synced') ? 'update' : 'create';
+                await window.dataStore.addToSyncQueue('curation', syncAction, null, curationId, curation);
+                curationQueuedForSync = true;
+                this.log.debug(`✅ Curation queued for sync to server with action: ${syncAction}`);
             }
-            
+
             SafetyUtils.hideLoading();
-            
+
             // Show appropriate notification based on entity match status
             let message;
             if (!entityId) {
@@ -486,51 +598,46 @@ class ConceptModule {
             } else {
                 message = 'Curation saved for entity';
             }
-            
+
             // Note: Background sync is asynchronous (fire-and-forget)
             // The actual sync status will be reflected in the restaurant list badge
-            if (!this.uiManager.isEditingRestaurant && syncStatus === 'pending') {
-                // Sync is happening in the background
+            if (!this.uiManager.isEditingRestaurant && curationQueuedForSync) {
                 message += ' - syncing to server...';
-            } else if (!this.uiManager.isEditingRestaurant && syncStatus === 'local-only') {
-                message += ' (local only - will sync when online)';
             }
-            
+
             SafetyUtils.showNotification(message);
-            
-            // ✅ Trigger immediate sync if entity is pending
-            if (syncStatus === 'pending' && window.SyncManager && typeof window.SyncManager.quickSync === 'function') {
+
+            // ✅ Trigger immediate sync when curation is queued
+            if (curationQueuedForSync && window.SyncManager && typeof window.SyncManager.quickSync === 'function') {
                 this.log.debug('🚀 Triggering immediate background sync');
                 window.SyncManager.quickSync().catch(err => {
                     this.log.warn('Background sync failed, will retry automatically:', err);
                 });
-            } else if (syncStatus === 'pending' && !window.SyncManager) {
+            } else if (curationQueuedForSync && !window.SyncManager) {
                 this.log.warn('⚠️ Cannot trigger sync - SyncManager not available');
             }
-            
+
             // Clean up pending audio and draft data for this restaurant
-            // DISABLED: Draft and PendingAudio managers use old database schema
-            /*
             try {
                 const draftId = window.DraftRestaurantManager?.currentDraftId;
-                
+
                 // Delete pending audio associated with this restaurant or draft
                 if (window.PendingAudioManager) {
-                    if (restaurantId) {
-                        await window.PendingAudioManager.deleteAudios({ restaurantId });
+                    if (entityId) {
+                        await window.PendingAudioManager.deleteAudios({ restaurantId: entityId });
                     }
                     if (draftId) {
                         await window.PendingAudioManager.deleteAudios({ draftId });
                     }
                     this.log.debug('Pending audio cleaned up after restaurant save');
                 }
-                
+
                 // Delete draft restaurant
                 if (draftId && window.DraftRestaurantManager) {
                     await window.DraftRestaurantManager.deleteDraft(draftId);
                     this.log.debug('Draft restaurant cleaned up after save');
                 }
-                
+
                 // Update pending audio badge
                 if (this.uiManager.recordingModule && typeof this.uiManager.recordingModule.showPendingAudioBadge === 'function') {
                     await this.uiManager.recordingModule.showPendingAudioBadge();
@@ -539,8 +646,7 @@ class ConceptModule {
                 this.log.error('Error cleaning up after restaurant save:', cleanupError);
                 // Don't throw - the restaurant was saved successfully
             }
-            */
-            
+
             // Reset state
             this.uiManager.isEditingRestaurant = false;
             this.uiManager.editingRestaurantId = null;
@@ -549,7 +655,15 @@ class ConceptModule {
             this.uiManager.currentConcepts = [];
             this.uiManager.currentLocation = null;
             this.uiManager.currentPhotos = [];
-            
+
+            if (this.uiManager.restaurantModule) {
+                this.uiManager.restaurantModule.currentCuration = null;
+                this.uiManager.restaurantModule.currentEntity = null;
+                this.uiManager.restaurantModule.updateCloneButtonVisibility(false);
+                this.uiManager.restaurantModule.updateExportButtonVisibility(false);
+                this.uiManager.restaurantModule.updateCurationEditFooterVisibility(false);
+            }
+
             // Reset UI
             const saveBtn = document.getElementById('save-restaurant');
             if (saveBtn) {
@@ -558,29 +672,45 @@ class ConceptModule {
                     Save Restaurant
                 `;
             }
-            
+
             nameInput.value = '';
-            
+
             const locationDisplay = document.getElementById('location-display');
             if (locationDisplay) locationDisplay.innerHTML = '';
-            
+
             const photosPreview = document.getElementById('photos-preview');
             if (photosPreview) photosPreview.innerHTML = '';
-            
+
             // Refresh entity list to show the newly saved restaurant
             if (window.entityModule) {
                 await window.entityModule.loadEntities();
             }
-            
+
             // Navigate to main screen (restaurant list) after successful save
             if (this.uiManager && typeof this.uiManager.showRestaurantListSection === 'function') {
                 this.uiManager.showRestaurantListSection();
+                // Reload curations data so the newly saved card appears
+                if (typeof this.uiManager.loadTabData === 'function') {
+                    this.uiManager.loadTabData(this.uiManager.currentTab || 'curations');
+                }
             }
         } catch (error) {
             SafetyUtils.hideLoading();
             this.log.error('Error saving restaurant:', error);
             SafetyUtils.showNotification(`Error ${this.uiManager.isEditingRestaurant ? 'updating' : 'saving'} restaurant: ${error.message}`, 'error');
         }
+    }
+
+    /**
+     * Capitalize the first letter of each word in a full name
+     * @param {string} name - The full name to capitalize
+     * @returns {string} - Properly capitalized full name
+     */
+    capitalizeFullName(name) {
+        if (!name) return '';
+        return name.trim().split(/\s+/).map(part =>
+            part.charAt(0).toUpperCase() + part.slice(1).toLowerCase()
+        ).join(' ');
     }
 
     /**
@@ -595,33 +725,66 @@ class ConceptModule {
          * Output: {cuisine: ["Italian"], mood: ["romantic"]}
          */
         const categories = {};
-        
+
         if (!concepts || concepts.length === 0) {
             return categories;
         }
-        
+
         // Group concepts by category name
         concepts.forEach(concept => {
             // Get category name and normalize: lowercase + replace spaces with underscores
             const rawCategory = concept.category || concept.concept_name || 'general';
             const categoryName = rawCategory.toLowerCase().replace(/\s+/g, '_');
-            
+
             // Get concept value
             const value = concept.value || concept.name || concept.item || '';
-            
+
             if (!value) return;  // Skip empty values
-            
+
             if (!categories[categoryName]) {
                 categories[categoryName] = [];
             }
-            
+
             // Only add if not already in array (avoid duplicates)
             if (!categories[categoryName].includes(value)) {
                 categories[categoryName].push(value);
             }
         });
-        
+
         return categories;
+    }
+
+    /**
+     * Detect sources from context (transcription, entity, photos, etc.)
+     * @param {string} transcription - Transcription text if available
+     * @param {Object} entity - Entity object if available
+     * @returns {Array} Array of source types
+     */
+    detectSourcesFromContext(transcription, entity) {
+        const sources = [];
+
+        // If has transcription, came from audio
+        if (transcription && transcription.trim()) {
+            sources.push('audio');
+        }
+
+        // If has photos in current session
+        if (this.uiManager?.currentPhotos?.length > 0) {
+            sources.push('image');
+        }
+
+        // If entity has place_id, came from Google Places
+        if (entity?.data?.place_id || entity?.place_id) {
+            sources.push('google_places');
+        }
+
+        // If no specific source detected, mark as manual entry
+        if (sources.length === 0) {
+            sources.push('manual');
+        }
+
+        this.log.debug('Detected sources from context:', sources);
+        return sources;
     }
 
     removePhoto(photoData, photoContainer) {
@@ -630,27 +793,27 @@ class ConceptModule {
         if (index > -1) {
             this.uiManager.currentPhotos.splice(index, 1);
         }
-        
+
         // Remove from the UI
         if (photoContainer && photoContainer.parentNode) {
             photoContainer.parentNode.removeChild(photoContainer);
         }
-        
+
         this.log.debug('Photo removed, remaining:', this.uiManager.currentPhotos.length);
     }
-    
+
     async renderConcepts() {
         this.log.debug('renderConcepts called');
         this.log.debug('conceptsContainer:', this.uiManager.conceptsContainer);
         this.log.debug('currentConcepts:', this.uiManager.currentConcepts);
-        
-        
+
+
         // Clear the container
         this.uiManager.conceptsContainer.innerHTML = '';
-        
+
         // Group concepts by category if they exist
         const conceptsByCategory = {};
-        
+
         if (this.uiManager.currentConcepts && this.uiManager.currentConcepts.length > 0) {
             for (const concept of this.uiManager.currentConcepts) {
                 if (!conceptsByCategory[concept.category]) {
@@ -659,72 +822,72 @@ class ConceptModule {
                 conceptsByCategory[concept.category].push(concept);
             }
         }
-        
+
         this.log.debug('conceptsByCategory:', conceptsByCategory);
-        
+
         // Add section for each category, regardless if there are concepts or not
         const categories = [
-            'Cuisine', 'Menu', 'Price Range', 'Mood', 'Setting', 
+            'Cuisine', 'Menu', 'Price Range', 'Mood', 'Setting',
             'Crowd', 'Suitable For', 'Food Style', 'Drinks', 'Special Features'
         ];
-        
+
         // Check if we have any concepts at all
         let hasAnyConcepts = this.uiManager.currentConcepts && this.uiManager.currentConcepts.length > 0;
-        
+
         // If no concepts and not in manual entry mode, show the message
         if (!hasAnyConcepts && this.uiManager.conceptsSection.classList.contains('hidden')) {
             this.uiManager.conceptsContainer.innerHTML = '<p class="text-gray-500">No concepts extracted.</p>';
             return;
         }
-        
-        
+
+
         for (const category of categories) {
             const categorySection = document.createElement('div');
             categorySection.className = 'mb-4';
-            
+
             // Create category header
             const categoryHeader = document.createElement('h3');
             categoryHeader.className = 'text-lg font-semibold mb-2';
             categoryHeader.textContent = category;
             categorySection.appendChild(categoryHeader);
-            
+
             if (conceptsByCategory[category] && conceptsByCategory[category].length > 0) {
                 // Create concepts grid for existing concepts
                 const conceptsGrid = document.createElement('div');
                 conceptsGrid.className = 'grid grid-cols-1 md:grid-cols-2 gap-2';
-                
+
                 // Add each concept
                 for (const concept of conceptsByCategory[category]) {
                     const cssClass = category.toLowerCase().replace(' ', '-');
-                    
+
                     const conceptCard = document.createElement('div');
                     conceptCard.className = `concept-card ${cssClass} p-3 bg-white border rounded flex justify-between items-center`;
-                    
+
                     conceptCard.innerHTML = `
                         <span>${concept.value}</span>
                         <button class="remove-concept text-red-500" data-category="${concept.category}" data-value="${concept.value}">&times;</button>
                     `;
-                    
+
                     // Add event listener to remove button
                     conceptCard.querySelector('.remove-concept').addEventListener('click', event => {
                         const { category, value } = event.target.dataset;
                         this.removeConcept(category, value);
                     });
-                    
+
                     conceptsGrid.appendChild(conceptCard);
                 }
-                
+
                 // Add "Add concept" button to grid
                 const addConceptButton = document.createElement('button');
                 addConceptButton.className = 'p-3 border border-dashed rounded text-center text-gray-500 hover:bg-gray-50';
                 addConceptButton.textContent = '+ Add ' + category;
                 addConceptButton.dataset.category = category;
-                
+
                 addConceptButton.addEventListener('click', event => {
                     const category = event.target.dataset.category;
                     this.showAddConceptDialog(category);
                 });
-                
+
                 conceptsGrid.appendChild(addConceptButton);
                 categorySection.appendChild(conceptsGrid);
             } else {
@@ -733,15 +896,15 @@ class ConceptModule {
                 addButton.className = 'p-3 border border-dashed rounded text-center text-gray-500 hover:bg-gray-50 w-full';
                 addButton.textContent = '+ Add ' + category;
                 addButton.dataset.category = category;
-                
+
                 addButton.addEventListener('click', event => {
                     const category = event.target.dataset.category;
                     this.showAddConceptDialog(category);
                 });
-                
+
                 categorySection.appendChild(addButton);
             }
-            
+
             this.uiManager.conceptsContainer.appendChild(categorySection);
         }
     }
@@ -751,7 +914,7 @@ class ConceptModule {
         this.uiManager.currentConcepts = this.uiManager.currentConcepts.filter(
             concept => !(concept.category === category && concept.value === value)
         );
-        
+
         // Re-render the concepts
         this.renderConcepts();
     }
@@ -760,7 +923,7 @@ class ConceptModule {
         // Create a simple modal for adding a concept
         const modalContainer = document.createElement('div');
         modalContainer.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
-        
+
         modalContainer.innerHTML = `
             <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
                 <h2 class="text-xl font-bold mb-4">Add ${category} Concept</h2>
@@ -777,36 +940,36 @@ class ConceptModule {
                 </div>
             </div>
         `;
-        
+
         document.body.appendChild(modalContainer);
         document.body.style.overflow = 'hidden';
-        
+
         const inputField = modalContainer.querySelector('#new-concept-value');
         const suggestionsContainer = modalContainer.querySelector('#concept-suggestions');
-        
+
         // Load the suggestions from the initial concepts for the current category
         this.loadConceptSuggestions(category, inputField, suggestionsContainer);
-        
+
         // Focus the input after a short delay to ensure the input is rendered
         setTimeout(() => {
             inputField.focus();
         }, 100);
-        
+
         // Cancel button
         modalContainer.querySelector('.cancel-add-concept').addEventListener('click', () => {
             document.body.removeChild(modalContainer);
             document.body.style.overflow = '';
         });
-        
+
         // Add button
         modalContainer.querySelector('.confirm-add-concept').addEventListener('click', async () => {
             const value = inputField.value.trim();
-            
+
             if (!value) {
                 SafetyUtils.showNotification('Please enter a concept value', 'error');
                 return;
             }
-            
+
             try {
                 // SIMPLIFIED: Direct add without similarity check
                 // (concept matching requires full entity data model migration)
@@ -816,14 +979,14 @@ class ConceptModule {
                 document.body.removeChild(modalContainer);
                 document.body.style.overflow = '';
                 SafetyUtils.showNotification(`Concept added: ${category} - ${value}`, 'success');
-                
+
                 /* DISABLED: Requires old dataStorage API
                 ... similarity check code ...
                 */
             } catch (error) {
                 this.log.error('Error adding concept:', error);
                 SafetyUtils.showNotification('Error adding concept', 'error');
-                
+
                 // Fallback: add directly
                 this.uiManager.currentConcepts.push({ category, value });
                 this.renderConcepts();
@@ -832,7 +995,7 @@ class ConceptModule {
                 document.body.style.overflow = '';
             }
         });
-        
+
         // Close when clicking outside
         modalContainer.addEventListener('click', event => {
             if (event.target === modalContainer) {
@@ -841,7 +1004,7 @@ class ConceptModule {
             }
         });
     }
-    
+
     /**
      * Loads concept suggestions based on category
      * @param {string} category - The concept category
@@ -852,63 +1015,63 @@ class ConceptModule {
         try {
             // Try to fetch concepts for this category from the database
             let concepts = [];
-            
+
             if (dataStorage && typeof dataStorage.getConceptsByCategory === 'function') {
                 concepts = await dataStorage.getConceptsByCategory(category);
             } else {
                 this.log.warn('DataStorage not available or missing getConceptsByCategory method');
             }
-            
+
             // Set up input event to show/filter suggestions
             inputField.addEventListener('input', () => {
                 const value = inputField.value.trim().toLowerCase();
-                
+
                 // If empty input, hide suggestions
                 if (!value) {
                     suggestionsContainer.classList.add('hidden');
                     return;
                 }
-                
+
                 // Filter concepts by input value
-                const matches = concepts.filter(concept => 
+                const matches = concepts.filter(concept =>
                     concept.value.toLowerCase().includes(value)
                 );
-                
+
                 // Show suggestions if we have matches
                 if (matches.length > 0) {
                     suggestionsContainer.innerHTML = '';
-                    
+
                     matches.slice(0, 10).forEach(concept => {
                         const item = document.createElement('div');
                         item.className = 'p-2 hover:bg-gray-100 cursor-pointer';
                         item.textContent = concept.value;
-                        
+
                         item.addEventListener('click', () => {
                             inputField.value = concept.value;
                             suggestionsContainer.classList.add('hidden');
                         });
-                        
+
                         suggestionsContainer.appendChild(item);
                     });
-                    
+
                     suggestionsContainer.classList.remove('hidden');
                 } else {
                     suggestionsContainer.classList.add('hidden');
                 }
             });
-            
+
             // Hide suggestions when clicking outside
             document.addEventListener('click', event => {
                 if (!inputField.contains(event.target) && !suggestionsContainer.contains(event.target)) {
                     suggestionsContainer.classList.add('hidden');
                 }
             });
-            
+
         } catch (error) {
             this.log.error('Error loading concept suggestions:', error);
         }
     }
-    
+
     /**
      * Shows the concept disambiguation dialog
      * @param {Object} newConcept - The new concept being added
@@ -918,7 +1081,7 @@ class ConceptModule {
         // Create disambiguation modal
         const modalContainer = document.createElement('div');
         modalContainer.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
-        
+
         // HTML for the modal content
         let modalHTML = `
             <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
@@ -931,7 +1094,7 @@ class ConceptModule {
                 
                 <div class="mb-6 max-h-60 overflow-y-auto border rounded p-2">
         `;
-        
+
         // Add similar concepts
         similarConcepts.forEach(concept => {
             const similarity = (concept.similarity * 100).toFixed(0);
@@ -945,7 +1108,7 @@ class ConceptModule {
                 </div>
             `;
         });
-        
+
         modalHTML += `
                 </div>
                 
@@ -965,26 +1128,27 @@ class ConceptModule {
                 </div>
             </div>
         `;
-        
+
         modalContainer.innerHTML = modalHTML;
         document.body.appendChild(modalContainer);
         document.body.style.overflow = 'hidden';
-        
+
         // Set up event handlers
         modalContainer.querySelector('#use-existing').addEventListener('click', () => {
             // Use the most similar concept (first one in the array)
             const mostSimilar = similarConcepts[0];
-            
+
             // Check if it's already in the current concepts
             const isDuplicate = this.isDuplicateConcept(mostSimilar.category, mostSimilar.value);
-            
+
             if (!isDuplicate) {
                 // Add to current concepts only if it's not already there
                 this.uiManager.currentConcepts.push({
                     category: mostSimilar.category,
                     value: mostSimilar.value
                 });
-                
+                this.uiManager.formIsDirty = true;
+
                 // Show notification about using existing concept
                 const notification = `Using existing concept: ${mostSimilar.value}`;
                 if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
@@ -1005,29 +1169,30 @@ class ConceptModule {
                     this.log.debug(notification);
                 }
             }
-            
+
             // Always remove the modal
             document.body.removeChild(modalContainer);
             document.body.style.overflow = '';
-            
+
             // Update concepts display
             this.updateConceptsDisplay();
         });
-        
+
         modalContainer.querySelector('#use-new').addEventListener('click', () => {
             // Add the new concept anyway
             this.uiManager.currentConcepts.push(newConcept);
+            this.uiManager.formIsDirty = true;
             this.renderConcepts();
-            
+
             document.body.removeChild(modalContainer);
             document.body.style.overflow = '';
         });
-        
+
         modalContainer.querySelector('#cancel-concept').addEventListener('click', () => {
             document.body.removeChild(modalContainer);
             document.body.style.overflow = '';
         });
-        
+
         // Close when clicking outside
         modalContainer.addEventListener('click', event => {
             if (event.target === modalContainer) {
@@ -1045,16 +1210,16 @@ class ConceptModule {
      */
     isDuplicateConcept(category, value) {
         if (!this.uiManager.currentConcepts) return false;
-        
+
         // Normalize category for consistent comparison
         const normalizedCategory = this.normalizeCategoryName(category);
-        
-        return this.uiManager.currentConcepts.some(concept => 
-            concept.category === normalizedCategory && 
+
+        return this.uiManager.currentConcepts.some(concept =>
+            concept.category === normalizedCategory &&
             concept.value.toLowerCase() === value.toLowerCase()
         );
     }
-    
+
     /**
      * Shows a warning about duplicate concepts
      * @param {string} category - The concept category
@@ -1063,7 +1228,7 @@ class ConceptModule {
     showDuplicateConceptWarning(category, value) {
         const warningElement = document.getElementById('duplicate-concept-warning');
         const messageElement = document.getElementById('duplicate-concept-message');
-        
+
         // ✅ Defensive check: If elements don't exist, use fallback notification
         if (!warningElement || !messageElement) {
             console.warn(`Duplicate concept: "${value}" already exists in "${category}"`);
@@ -1075,16 +1240,16 @@ class ConceptModule {
             }
             return;
         }
-        
+
         messageElement.textContent = `"${value}" already exists in the "${category}" category.`;
         warningElement.classList.remove('hidden');
-        
+
         // Auto-hide after 5 seconds
         setTimeout(() => {
             warningElement.classList.add('hidden');
         }, 5000);
     }
-    
+
     /**
      * Add a concept with duplicate validation
      * @param {string} category - The concept category
@@ -1094,25 +1259,25 @@ class ConceptModule {
     addConceptWithValidation(category, value) {
         // Validate concept is not empty
         if (!value || value.trim() === '') return false;
-        
+
         // Normalize category to Title Case to match UI categories
         const normalizedCategory = this.normalizeCategoryName(category);
-        
+
         // Check for duplicates
         if (this.isDuplicateConcept(normalizedCategory, value)) {
             this.showDuplicateConceptWarning(normalizedCategory, value);
             return false;
         }
-        
+
         // Add the concept with normalized category
         this.uiManager.currentConcepts.push({
             category: normalizedCategory,
             value: value.trim()
         });
-        
+
         return true;
     }
-    
+
     /**
      * Normalize category name to Title Case
      * @param {string} category - Category name in any case
@@ -1136,11 +1301,11 @@ class ConceptModule {
             'special features': 'Special Features',
             'special_features': 'Special Features'
         };
-        
+
         const lowerCategory = category.toLowerCase();
         return categoryMap[lowerCategory] || category;
     }
-    
+
     /**
      * Handle extracted concepts with duplicate validation
      * @param {object} extractedConcepts - The concepts extracted from AI
@@ -1148,17 +1313,17 @@ class ConceptModule {
     handleExtractedConceptsWithValidation(extractedConcepts) {
         this.log.debug('handleExtractedConceptsWithValidation called');
         this.log.debug('Current concepts before processing:', this.uiManager.currentConcepts);
-        
+
         // Filter out concepts that the restaurant already has
         const filteredConcepts = {};
         let addedCount = 0;
         let duplicateCount = 0;
-        
+
         for (const category in extractedConcepts) {
             if (extractedConcepts[category] && extractedConcepts[category].length > 0) {
                 // Check each value in this category
                 filteredConcepts[category] = [];
-                
+
                 for (const value of extractedConcepts[category]) {
                     if (!this.conceptAlreadyExists(category, value)) {
                         filteredConcepts[category].push(value);
@@ -1169,21 +1334,21 @@ class ConceptModule {
                 }
             }
         }
-        
+
         this.log.debug('Filtered concepts to add:', filteredConcepts);
-        
+
         // Update the UI with the filtered concepts
         for (const category in filteredConcepts) {
             for (const value of filteredConcepts[category]) {
                 this.addConceptWithValidation(category, value);
             }
         }
-        
+
         this.log.debug('Current concepts after adding:', this.uiManager.currentConcepts);
-        
+
         // Render the concepts UI
         this.renderConcepts();
-        
+
         // Notify user about the results
         if (duplicateCount > 0) {
             SafetyUtils.showNotification(
@@ -1207,15 +1372,15 @@ class ConceptModule {
         if (!this.uiManager.currentConcepts || this.uiManager.currentConcepts.length === 0) {
             return conceptsToFilter;
         }
-        
-        return conceptsToFilter.filter(newConcept => 
-            !this.uiManager.currentConcepts.some(existing => 
-                existing.category === newConcept.category && 
+
+        return conceptsToFilter.filter(newConcept =>
+            !this.uiManager.currentConcepts.some(existing =>
+                existing.category === newConcept.category &&
                 existing.value.toLowerCase() === newConcept.value.toLowerCase()
             )
         );
     }
-    
+
     /**
      * Check if a concept already exists in current restaurant concepts
      * @param {string} category - The concept category
@@ -1226,12 +1391,12 @@ class ConceptModule {
         if (!this.uiManager.currentConcepts || this.uiManager.currentConcepts.length === 0) {
             return false;
         }
-        
+
         // Normalize category for comparison
         const normalizedCategory = this.normalizeCategoryName(category);
-        
-        return this.uiManager.currentConcepts.some(concept => 
-            concept.category === normalizedCategory && 
+
+        return this.uiManager.currentConcepts.some(concept =>
+            concept.category === normalizedCategory &&
             concept.value.toLowerCase() === value.toLowerCase()
         );
     }
@@ -1241,24 +1406,25 @@ class ConceptModule {
         this.log.debug('Reprocessing concepts...');
         const transcriptionTextarea = document.getElementById('restaurant-transcription');
         const transcription = transcriptionTextarea ? transcriptionTextarea.value.trim() : '';
-        
+
         if (!transcription) {
             SafetyUtils.showNotification('Please provide a transcription first', 'error');
             return;
         }
-        
+
         try {
             SafetyUtils.showLoading('Analyzing restaurant details...');
-            
+
             // First extract concepts
             const concepts = await this.extractConcepts(transcription);
             this.uiManager.currentConcepts = concepts;
+            this.uiManager.formIsDirty = true;
             this.renderConcepts();
-            
+
             // Explicitly generate description after extracting concepts
             // This step was missing or not working properly
             await this.generateDescription(transcription);
-            
+
             SafetyUtils.hideLoading();
             SafetyUtils.showNotification('Concepts and description updated successfully');
         } catch (error) {
@@ -1267,13 +1433,13 @@ class ConceptModule {
             SafetyUtils.showNotification('Error processing restaurant details', 'error');
         }
     }
-    
+
     async generateDescription(transcription) {
         if (!transcription) return null;
-        
+
         try {
             this.log.debug('Generating description from transcription via API V3...');
-            
+
             // Check if ApiService is available and authenticated
             if (!window.ApiService) {
                 throw new Error('ApiService not initialized');
@@ -1281,20 +1447,20 @@ class ConceptModule {
             if (!window.AuthService || !window.AuthService.isAuthenticated()) {
                 throw new Error('Authentication required');
             }
-            
+
             // Use ApiService to extract concepts which includes description generation
             const result = await window.ApiService.extractConcepts(transcription, 'restaurant');
-            
+
             // Extract description from concepts if available
             const description = result.description || result.summary || transcription.substring(0, 100);
-            
+
             // Update the description field
             const descriptionInput = document.getElementById('restaurant-description');
             if (descriptionInput) {
                 descriptionInput.value = description;
                 this.log.debug("Description field auto-populated:", description);
             }
-            
+
             return description;
         } catch (error) {
             this.log.error('Error generating description:', error);
@@ -1305,7 +1471,7 @@ class ConceptModule {
 
     async extractConcepts(transcription) {
         this.log.debug('Extracting concepts from transcription...');
-        
+
         try {
             // Check if ApiService is available and authenticated
             if (!window.ApiService) {
@@ -1314,17 +1480,17 @@ class ConceptModule {
             if (!window.AuthService || !window.AuthService.isAuthenticated()) {
                 throw new Error('Authentication required');
             }
-            
+
             // Use ApiService V3 to extract concepts
             const result = await window.ApiService.extractConcepts(transcription, 'restaurant');
-            
+
             // API V3 returns: {workflow, results: {concepts: {concepts: [{category, value}]}}}
             // Extract the actual concepts array from the nested structure
             let conceptsData = [];
-            
+
             if (result.results && result.results.concepts && result.results.concepts.concepts) {
                 const rawConcepts = result.results.concepts.concepts;
-                
+
                 // Handle both array and object formats
                 if (Array.isArray(rawConcepts)) {
                     conceptsData = rawConcepts;
@@ -1341,18 +1507,18 @@ class ConceptModule {
                     }
                 }
             }
-            
+
             // Here we also run generateDescription explicitly to ensure it happens
             this.log.debug("Concepts extracted successfully, generating description...");
             await this.generateDescription(transcription);
-            
+
             return conceptsData;
         } catch (error) {
             this.log.error('Error extracting concepts:', error);
             throw error;
         }
     }
-    
+
     // Continue with more concept-related methods like loadConceptSuggestions, showConceptDisambiguationDialog, etc.
     // ... (code for loadConceptSuggestions and showConceptDisambiguationDialog would go here)
 
@@ -1364,20 +1530,20 @@ class ConceptModule {
     async extractRestaurantNameFromTranscription(transcriptionText) {
         try {
             this.log.debug('Extracting restaurant name from transcription...');
-            
+
             if (!transcriptionText || transcriptionText.trim().length < 10) {
                 return null;
             }
-            
+
             // Use ApiService V3 instead of legacy apiHandler
             if (!window.ApiService || !window.AuthService || !window.AuthService.isAuthenticated()) {
                 this.log.warn('ApiService not available or not authenticated');
                 return null;
             }
-            
+
             const result = await window.ApiService.extractConcepts(transcriptionText, 'restaurant');
             this.log.debug('Restaurant name extracted:', result);
-            
+
             // Handle different response formats from API V3
             if (result) {
                 if (result.name || result.restaurant_name) {
@@ -1391,7 +1557,7 @@ class ConceptModule {
                     }
                 }
             }
-            
+
             return null;
         } catch (error) {
             this.log.error('Error extracting restaurant name from transcription:', error);
@@ -1405,7 +1571,7 @@ class ConceptModule {
     async processConcepts(transcriptionText) {
         try {
             SafetyUtils.showLoading('Analyzing restaurant concepts...');
-            
+
             // Extract restaurant name first - WRAP WITH TRY/CATCH TO HANDLE FAILURES GRACEFULLY
             let restaurantName = null;
             try {
@@ -1414,27 +1580,27 @@ class ConceptModule {
                 this.log.warn('Restaurant name extraction failed, continuing with concept extraction:', nameError);
                 // Continue execution - don't let name extraction failure stop concept extraction
             }
-            
+
             // Extract concepts in the original JSON format expected by the app
             // Use ApiService V3 instead of legacy apiHandler
             if (!window.ApiService || !window.AuthService || !window.AuthService.isAuthenticated()) {
                 throw new Error('ApiService not available or not authenticated');
             }
-            
+
             const extractedConcepts = await window.ApiService.extractConcepts(
-                transcriptionText, 
+                transcriptionText,
                 'restaurant'
             );
-            
+
             // Show concepts section
             this.uiManager.showConceptsSection();
-            
+
             // Use the existing method to handle concepts that does proper validation
             // and renders the UI correctly
             if (extractedConcepts) {
                 // Transform API v3 response format to expected frontend format
                 let conceptsData = extractedConcepts;
-                
+
                 // API v3 returns: {workflow, results: {concepts: {concepts: [{category, value}], confidence_score}}}
                 // Extract the actual concepts array
                 if (extractedConcepts.results && extractedConcepts.results.concepts) {
@@ -1442,7 +1608,7 @@ class ConceptModule {
                 } else {
                     conceptsData = [];
                 }
-                
+
                 // Transform from array format [{category, value}] to object format {category: [values]}
                 if (Array.isArray(conceptsData)) {
                     const transformed = {};
@@ -1456,10 +1622,10 @@ class ConceptModule {
                     }
                     conceptsData = transformed;
                 }
-                
+
                 this.handleExtractedConceptsWithValidation(conceptsData);
             }
-            
+
             // Populate restaurant name field if available
             if (restaurantName) {
                 const nameInput = document.getElementById('restaurant-name');
@@ -1467,12 +1633,12 @@ class ConceptModule {
                     nameInput.value = restaurantName;
                 }
             }
-            
+
             // Generate description based on transcription
             await this.generateDescription(transcriptionText);
-            
+
             SafetyUtils.hideLoading();
-            
+
         } catch (error) {
             SafetyUtils.hideLoading();
             this.log.error('Error processing concepts:', error);
@@ -1492,18 +1658,18 @@ class ConceptModule {
         const modalContainer = document.createElement('div');
         modalContainer.id = 'image-preview-modal';
         modalContainer.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
-        
+
         // Track the current image index
         const state = {
             currentIndex: 0,
             totalImages: photoDataArray.length
         };
-        
+
         // Generate the modal content
         const updateModalContent = () => {
             const current = photoDataArray[state.currentIndex];
             const isLastImage = state.currentIndex === state.totalImages - 1;
-            
+
             modalContainer.innerHTML = `
                 <div class="bg-white rounded-lg p-6 max-w-md w-full">
                     <div class="flex justify-between items-center mb-4">
@@ -1518,9 +1684,9 @@ class ConceptModule {
                         <img src="${current.photoData}" alt="Preview" class="w-full h-64 object-contain rounded border border-gray-300">
                         
                         <div class="absolute bottom-2 left-0 right-0 flex justify-center space-x-1">
-                            ${photoDataArray.map((_, idx) => 
-                                `<div class="h-2 w-2 rounded-full ${idx === state.currentIndex ? 'bg-blue-500' : 'bg-gray-300'}"></div>`
-                            ).join('')}
+                            ${photoDataArray.map((_, idx) =>
+                `<div class="h-2 w-2 rounded-full ${idx === state.currentIndex ? 'bg-blue-500' : 'bg-gray-300'}"></div>`
+            ).join('')}
                         </div>
                         
                         ${state.totalImages > 1 ? `
@@ -1556,11 +1722,11 @@ class ConceptModule {
                     </div>
                 </div>
             `;
-            
+
             // Setup event handlers after updating the content
             setupEventHandlers();
         };
-        
+
         // Setup the event handlers for the modal
         const setupEventHandlers = () => {
             const closeBtn = document.getElementById('close-preview-modal');
@@ -1568,23 +1734,23 @@ class ConceptModule {
             const acceptBtn = document.getElementById('accept-photos');
             const prevBtn = document.getElementById('prev-image');
             const nextBtn = document.getElementById('next-image');
-            
+
             if (closeBtn) {
                 closeBtn.addEventListener('click', () => {
                     document.body.removeChild(modalContainer);
                     document.body.style.overflow = '';
                 });
             }
-            
+
             if (retakeBtn) {
                 retakeBtn.addEventListener('click', () => {
                     document.body.removeChild(modalContainer);
                     document.body.style.overflow = '';
-                    
+
                     // Determine which input to trigger based on the file name
-                    const isCamera = photoDataArray.some(item => 
+                    const isCamera = photoDataArray.some(item =>
                         item.fileName && item.fileName.includes('camera'));
-                    
+
                     if (isCamera) {
                         document.getElementById('camera-input').click();
                     } else {
@@ -1592,20 +1758,20 @@ class ConceptModule {
                     }
                 });
             }
-            
+
             if (acceptBtn) {
                 acceptBtn.addEventListener('click', async () => {
                     const useAI = document.getElementById('use-ai-analysis').checked;
-                    
+
                     // Add all photos to the collection
                     photoDataArray.forEach(item => {
                         this.addPhotoToCollection(item.photoData);
                     });
-                    
+
                     // Close the modal
                     document.body.removeChild(modalContainer);
                     document.body.style.overflow = '';
-                    
+
                     // If AI analysis is enabled, process all images
                     if (useAI) {
                         try {
@@ -1613,7 +1779,7 @@ class ConceptModule {
                             photoDataArray.forEach(item => {
                                 this.imageProcessingQueue.push(item.photoData);
                             });
-                            
+
                             // Start processing queue if not already running
                             if (!this.isProcessingQueue) {
                                 await this.processImageQueue();
@@ -1625,7 +1791,7 @@ class ConceptModule {
                     }
                 });
             }
-            
+
             if (prevBtn) {
                 prevBtn.addEventListener('click', () => {
                     if (state.currentIndex > 0) {
@@ -1634,7 +1800,7 @@ class ConceptModule {
                     }
                 });
             }
-            
+
             if (nextBtn) {
                 nextBtn.addEventListener('click', () => {
                     if (state.currentIndex < state.totalImages - 1) {
@@ -1644,12 +1810,12 @@ class ConceptModule {
                 });
             }
         };
-        
+
         // Initial render of the modal content
         document.body.appendChild(modalContainer);
         document.body.style.overflow = 'hidden';
         updateModalContent();
-        
+
         // Close when clicking outside
         modalContainer.addEventListener('click', event => {
             if (event.target === modalContainer) {
@@ -1658,7 +1824,7 @@ class ConceptModule {
             }
         });
     }
-    
+
     /**
      * Process the queue of images for AI analysis one by one
      */
@@ -1667,30 +1833,30 @@ class ConceptModule {
             this.isProcessingQueue = false;
             return;
         }
-        
+
         this.isProcessingQueue = true;
-        
+
         try {
             const totalImages = this.imageProcessingQueue.length;
-            
+
             // Create custom loading overlay with image preview
             this.createImageAnalysisOverlay();
-            
+
             // Process each image in the queue sequentially
             while (this.imageProcessingQueue.length > 0) {
                 const photoData = this.imageProcessingQueue.shift();
-                
+
                 // Update the preview image with animation
                 this.updatePreviewImage(photoData);
-                
+
                 // Process the current image
                 await this.processImageWithAI(photoData);
             }
-            
+
             // Remove our custom overlay when done
             this.removeImageAnalysisOverlay();
             SafetyUtils.showNotification(`AI analysis complete for ${totalImages} image${totalImages > 1 ? 's' : ''}`, 'success');
-            
+
         } catch (error) {
             this.removeImageAnalysisOverlay();
             this.log.error('Error processing image queue:', error);
@@ -1699,19 +1865,19 @@ class ConceptModule {
             this.isProcessingQueue = false;
         }
     }
-    
+
     /**
      * Creates a custom loading overlay with image preview for AI analysis
      */
     createImageAnalysisOverlay() {
         // Remove any existing overlay first
         this.removeImageAnalysisOverlay();
-        
+
         // Create new overlay
         const overlay = document.createElement('div');
         overlay.id = 'image-analysis-overlay';
         overlay.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
-        
+
         overlay.innerHTML = `
             <div class="bg-white p-4 sm:p-6 rounded-lg flex flex-col items-center max-w-xs sm:max-w-md w-[90%]">
                 <div class="flex items-center justify-center mb-4">
@@ -1724,11 +1890,11 @@ class ConceptModule {
                 <p class="text-xs sm:text-sm text-gray-500">Extracting restaurant information from images</p>
             </div>
         `;
-        
+
         document.body.appendChild(overlay);
         document.body.style.overflow = 'hidden';
     }
-    
+
     /**
      * Removes the custom image analysis overlay
      */
@@ -1739,7 +1905,7 @@ class ConceptModule {
             document.body.style.overflow = '';
         }
     }
-    
+
     /**
      * Updates the preview image with a fade animation
      * @param {string} photoData - Base64 image data
@@ -1747,15 +1913,15 @@ class ConceptModule {
     updatePreviewImage(photoData) {
         const previewImage = document.getElementById('analysis-preview-image');
         if (!previewImage) return;
-        
+
         // Fade out
         previewImage.classList.remove('opacity-100');
         previewImage.classList.add('opacity-0');
-        
+
         // After fade out completes, update image and fade in
         setTimeout(() => {
             previewImage.src = photoData;
-            
+
             // Force browser to recognize the new image before fading in
             setTimeout(() => {
                 previewImage.classList.remove('opacity-0');
@@ -1783,7 +1949,7 @@ class ConceptModule {
 
     // Keep the existing showImagePreviewModal for compatibility
     showImagePreviewModal(photoData, file) {
-        this.showMultiImagePreviewModal([{photoData, fileName: file.name}]);
+        this.showMultiImagePreviewModal([{ photoData, fileName: file.name }]);
     }
 
     /**
@@ -1793,28 +1959,28 @@ class ConceptModule {
     addPhotoToCollection(photoData) {
         // Add to currentPhotos array
         this.uiManager.currentPhotos.push(photoData);
-        
+
         // Create UI element
         const photosPreview = document.getElementById('photos-preview');
         if (!photosPreview) return;
-        
+
         const photoContainer = document.createElement('div');
         photoContainer.className = 'photo-container';
-        
+
         const img = document.createElement('img');
         img.src = photoData;
         img.className = 'w-full h-32 object-cover rounded';
-        
+
         const deleteBtn = document.createElement('button');
         deleteBtn.className = 'photo-delete-btn';
         deleteBtn.innerHTML = '<span class="material-icons">close</span>';
         deleteBtn.addEventListener('click', () => this.removePhoto(photoData, photoContainer));
-        
+
         photoContainer.appendChild(img);
         photoContainer.appendChild(deleteBtn);
         photosPreview.appendChild(photoContainer);
     }
-    
+
     /**
      * Processes an image with AI to extract restaurant data
      * @param {string} photoData - Base64 image data
@@ -1823,13 +1989,13 @@ class ConceptModule {
         try {
             // Resize image for faster API processing and to stay under size limits
             const resizedImageData = await this.resizeImageForAPI(photoData);
-            
+
             // Get restaurant name from AI if the field is blank
             const nameInput = document.getElementById('restaurant-name');
             if (nameInput && !nameInput.value.trim()) {
                 await this.extractRestaurantNameFromImage(resizedImageData);
             }
-            
+
             // Extract concepts from the image
             await this.extractConceptsFromImage(resizedImageData);
         } catch (error) {
@@ -1837,7 +2003,7 @@ class ConceptModule {
             SafetyUtils.showNotification('Error analyzing image', 'error');
         }
     }
-    
+
     /**
      * Resizes an image for more efficient API processing and to stay under size limits
      * @param {string} imageData - Base64 image data
@@ -1851,7 +2017,7 @@ class ConceptModule {
                 const MAX_SIZE = 800;
                 let width = img.width;
                 let height = img.height;
-                
+
                 // Calculate new dimensions while maintaining aspect ratio
                 if (width > height && width > MAX_SIZE) {
                     height = Math.round((height * MAX_SIZE) / width);
@@ -1860,26 +2026,26 @@ class ConceptModule {
                     width = Math.round((width * MAX_SIZE) / height);
                     height = MAX_SIZE;
                 }
-                
+
                 // Create canvas for resizing
                 const canvas = document.createElement('canvas');
                 canvas.width = width;
                 canvas.height = height;
-                
+
                 // Draw resized image on canvas
                 const ctx = canvas.getContext('2d');
                 ctx.drawImage(img, 0, 0, width, height);
-                
+
                 // Get resized image data with compression to reduce size
                 // Lowering quality to 0.7 (70%) to help keep image under API size limits
                 const resizedImageData = canvas.toDataURL('image/jpeg', 0.7);
                 resolve(resizedImageData);
             };
-            
+
             img.onerror = () => {
                 reject(new Error('Failed to load image for resizing'));
             };
-            
+
             img.src = imageData;
         });
     }
@@ -1899,14 +2065,14 @@ class ConceptModule {
             this.log.warn('Authentication required');
             return null;
         }
-        
+
         try {
             // Validate the image data format
             if (!imageData || typeof imageData !== 'string') {
                 this.log.warn('Invalid image data provided');
                 return null;
             }
-            
+
             // Extract base64 content correctly, handling different possible formats
             let baseImage;
             if (imageData.includes(',')) {
@@ -1917,7 +2083,7 @@ class ConceptModule {
                 this.log.warn('Image data is not in a valid base64 format');
                 return null;
             }
-            
+
             // Convert base64 to blob for API V3
             const byteCharacters = atob(baseImage);
             const byteNumbers = new Array(byteCharacters.length);
@@ -1925,25 +2091,25 @@ class ConceptModule {
                 byteNumbers[i] = byteCharacters.charCodeAt(i);
             }
             const byteArray = new Uint8Array(byteNumbers);
-            const imageBlob = new Blob([byteArray], {type: 'image/jpeg'});
-            
+            const imageBlob = new Blob([byteArray], { type: 'image/jpeg' });
+
             const template = promptTemplates.imageRestaurantNameExtraction;
             const prompt = `${template.system}\n\n${template.user}`;
-            
+
             this.log.debug('Extracting restaurant name from image via API V3...');
-            
+
             // Use ApiService V3 to analyze image
             const result = await window.ApiService.analyzeImage(imageBlob, prompt);
-            
+
             if (!result || !result.text) {
                 this.log.debug('API V3 could not extract restaurant name');
                 return null;
             }
-            
+
             const responseText = result.text.trim();
-            
+
             // Check if the response indicates the AI couldn't determine the name
-            if (responseText === 'UNKNOWN' || 
+            if (responseText === 'UNKNOWN' ||
                 responseText.toLowerCase().includes("can't tell") ||
                 responseText.toLowerCase().includes("cannot determine") ||
                 responseText.toLowerCase().includes("sorry") ||
@@ -1951,25 +2117,25 @@ class ConceptModule {
                 this.log.debug('AI could not determine restaurant name from image');
                 return null;
             }
-            
+
             const restaurantName = responseText;
-            
+
             // Update the restaurant name field
             const nameInput = document.getElementById('restaurant-name');
             if (nameInput && !nameInput.value.trim()) {
                 nameInput.value = restaurantName;
-                
+
                 // Add AI badge to show it was auto-detected
                 const nameInputContainer = nameInput.parentElement;
                 const existingBadge = nameInputContainer.querySelector('.ai-generated-badge');
-                
+
                 if (!existingBadge) {
                     const badge = document.createElement('div');
                     badge.className = 'ai-generated-badge';
                     badge.innerHTML = '<span class="material-icons">smart_toy</span> AI detected';
                     nameInputContainer.insertBefore(badge, nameInput.nextSibling);
                 }
-                
+
                 SafetyUtils.showNotification('Restaurant name detected from image', 'success');
             }
             return restaurantName;
@@ -1994,7 +2160,7 @@ class ConceptModule {
             this.log.warn('Authentication required');
             return;
         }
-        
+
         try {
             // Validate and prepare the image data properly
             let baseImage;
@@ -2006,7 +2172,7 @@ class ConceptModule {
                 this.log.warn('Image data is not in a valid base64 format');
                 return;
             }
-            
+
             // Convert base64 to blob
             const byteCharacters = atob(baseImage);
             const byteNumbers = new Array(byteCharacters.length);
@@ -2014,32 +2180,32 @@ class ConceptModule {
                 byteNumbers[i] = byteCharacters.charCodeAt(i);
             }
             const byteArray = new Uint8Array(byteNumbers);
-            const imageBlob = new Blob([byteArray], {type: 'image/jpeg'});
-            
+            const imageBlob = new Blob([byteArray], { type: 'image/jpeg' });
+
             const template = promptTemplates.imageConceptExtraction;
             const prompt = `${template.system}\n\n${template.user}`;
-            
+
             this.log.debug('Extracting concepts from image via API V3...');
-            
+
             // Use ApiService V3 to analyze image
             const result = await window.ApiService.analyzeImage(imageBlob, prompt);
-            
+
             if (!result || !result.text) {
                 this.log.warn('API V3 could not extract concepts from image');
                 return;
             }
-            
+
             const conceptsText = result.text.trim();
-            
+
             // Extract JSON from the response
             const jsonMatch = conceptsText.match(/\[.*\]/s);
             if (jsonMatch) {
                 const conceptsJson = jsonMatch[0];
                 let extractedConcepts = JSON.parse(conceptsJson);
-                
+
                 // Process any remaining comma-separated values (as a fallback)
                 extractedConcepts = this.splitCommaSeparatedConcepts(extractedConcepts);
-                
+
                 // Add extracted concepts to the restaurant (don't replace existing)
                 if (extractedConcepts && extractedConcepts.length > 0) {
                     // Filter out duplicates and add new concepts
@@ -2048,10 +2214,10 @@ class ConceptModule {
                         newConcepts.forEach(concept => {
                             this.uiManager.currentConcepts.push(concept);
                         });
-                        
+
                         // Re-render concepts UI
                         this.renderConcepts();
-                        
+
                         // Show notification about added concepts
                         SafetyUtils.showNotification(`Added ${newConcepts.length} concepts from image`, 'success');
                     }
@@ -2062,7 +2228,7 @@ class ConceptModule {
             SafetyUtils.showNotification('Failed to extract concepts from image: ' + (error.message || 'Unknown error'), 'error');
         }
     }
-    
+
     /**
      * Splits any comma-separated concept values into individual concepts
      * @param {Array} concepts - Array of concept objects
@@ -2070,15 +2236,15 @@ class ConceptModule {
      */
     splitCommaSeparatedConcepts(concepts) {
         const result = [];
-        
+
         concepts.forEach(concept => {
             // For Menu and Drinks categories, split items by comma
-            if ((concept.category === 'Menu' || concept.category === 'Drinks') && 
+            if ((concept.category === 'Menu' || concept.category === 'Drinks') &&
                 concept.value.includes(',')) {
-                
+
                 // Split by comma and clean up each item
                 const items = concept.value.split(',').map(item => item.trim()).filter(item => item);
-                
+
                 // Create a separate concept for each item
                 items.forEach(item => {
                     result.push({
@@ -2091,93 +2257,111 @@ class ConceptModule {
                 result.push(concept);
             }
         });
-        
+
         return result;
     }
-    
+
     /**
      * Creates and sets up the additional recording section in both new and edit modes
      */
     setupAdditionalReviewButton() {
         // Get the transcription textarea element
         const transcriptionTextarea = document.getElementById('restaurant-transcription');
-        
+
         if (!transcriptionTextarea) {
             // If textarea not found yet, set up an observer to wait for it
             this.setupTranscriptionObserver();
             return;
         }
-        
+
         // Check if section already exists
         let additionalRecordingSection = document.getElementById('additional-recording-section');
         const transcriptionContainer = transcriptionTextarea.parentElement;
-        
+
         // Remove existing section if any (to avoid duplicates on re-initialization)
         if (additionalRecordingSection) {
             additionalRecordingSection.remove();
         }
-        
+
         // Create the additional recording section
         additionalRecordingSection = document.createElement('div');
         additionalRecordingSection.id = 'additional-recording-section';
-        additionalRecordingSection.className = 'mt-4 p-4 bg-purple-50 border border-purple-200 rounded-lg';
-        
-        // Show for both new and existing restaurants (removing the conditional display)
+        // Clean container style - let inner elements handle layout
+        additionalRecordingSection.className = 'mt-6 mb-2';
+
+        // Show for both new and existing restaurants
         additionalRecordingSection.style.display = 'block';
-        
+
         additionalRecordingSection.innerHTML = `
             <h3 class="text-lg font-semibold mb-2 text-purple-700 flex items-center">
                 <span class="material-icons mr-2">add_comment</span>
                 Record Additional Review
             </h3>
-            <p class="text-sm text-gray-600 mb-3">
-                ${this.uiManager && this.uiManager.isEditingRestaurant ? 
+            <p class="text-sm text-gray-600 mb-4">
+                ${this.uiManager && this.uiManager.isEditingRestaurant ?
                 'Add another review to the existing transcription without replacing the current content.' :
                 'Record a vocal review to add to your restaurant description.'}
             </p>
-            <div class="recording-controls flex flex-wrap items-center gap-2 mb-4">
-                <button id="additional-record-start" class="bg-purple-600 hover:bg-purple-700 text-white px-3 py-2 rounded flex items-center">
-                    <span class="material-icons mr-1">mic</span>
-                    Start Recording
-                </button>
-                <button id="additional-record-stop" class="bg-red-500 hover:bg-red-600 text-white px-3 py-2 rounded flex items-center hidden">
-                    <span class="material-icons mr-1">stop</span>
-                    Stop Recording
-                </button>
-                <div id="additional-recording-time" class="px-3 py-2 bg-white border rounded text-sm hidden">
-                    00:00
+
+            <!-- Main Recorder Template Structure -->
+            <div class="flex flex-col items-center w-full">
+                <!-- Circular Timer Section -->
+                <div class="timer-circle">
+                     <!-- ID 'additional-recording-time' is required by RecordingModule.js to find and update the text -->
+                     <!-- Added inline style to force centering and prevent any padding interference -->
+                     <div id="additional-recording-time" class="timer-display" style="width: 100%; text-align: center; display: flex; justify-content: center;">00:00</div>
+                     <svg class="timer-ring" viewBox="0 0 100 100">
+                         <circle class="timer-ring-bg" cx="50" cy="50" r="46" />
+                         <circle class="timer-ring-progress" cx="50" cy="50" r="46" />
+                     </svg>
                 </div>
-                <div id="additional-recording-status" class="text-sm text-gray-600 ml-2"></div>
+
+                <!-- Controls -->
+                <div class="additional-recording-controls flex items-center justify-center gap-4 relative z-10" style="display: flex !important;">
+                    <button id="additional-record-start" class="bg-purple-600 hover:bg-purple-700 text-white w-20 h-20 rounded-full shadow-lg flex items-center justify-center transform transition-transform hover:scale-105 active:scale-95 transition-colors">
+                        <!-- Added mr-0 to override global button icon styles that add margin-right -->
+                        <span class="material-icons text-4xl mr-0" style="margin-right: 0 !important;">mic</span>
+                    </button>
+                    <button id="additional-record-stop" class="bg-gray-800 hover:bg-gray-900 text-white w-20 h-20 rounded-full shadow-lg flex items-center justify-center transform transition-transform hover:scale-105 active:scale-95 transition-colors hidden">
+                         <span class="material-icons text-4xl mr-0" style="margin-right: 0 !important;">stop</span>
+                    </button>
+                </div>
+                
+                <div id="additional-recording-status" class="mt-4 text-purple-700 font-medium h-6 text-center text-sm"></div>
+                
+                <!-- Transcription Status (Processing) -->
+                <div id="additional-transcription-status" class="text-sm text-gray-600 hidden mt-2 text-center">
+                    <div class="flex items-center justify-center">
+                        <div class="mr-2 h-3 w-3 rounded-full bg-yellow-400 animate-pulse"></div>
+                        <span>Transcribing audio...</span>
+                    </div>
+                </div>
             </div>
-            <div id="additional-audio-visualizer" class="h-16 mb-4 bg-black rounded overflow-hidden hidden">
+
+            <!-- Audio Visualizer -->
+            <div id="additional-audio-visualizer" class="h-16 mt-4 bg-gray-900 rounded-lg overflow-hidden hidden shadow-inner">
                 <canvas id="additional-visualizer-canvas" class="w-full h-full"></canvas>
             </div>
-            <div id="additional-transcription-status" class="text-sm text-gray-600 hidden">
-                <div class="flex items-center">
-                    <div class="mr-2 h-4 w-4 rounded-full bg-yellow-400 animate-pulse"></div>
-                    <span>Transcribing audio...</span>
-                </div>
-            </div>
         `;
-        
+
         // Add section after the textarea
         if (transcriptionContainer) {
             transcriptionContainer.appendChild(additionalRecordingSection);
-            
+
             // Add a data attribute to the container to mark it as processed
             transcriptionContainer.dataset.additionalReviewButtonSetup = 'true';
         }
-        
+
         // Set up event listeners for recording controls
         const startRecordBtn = document.getElementById('additional-record-start');
         const stopRecordBtn = document.getElementById('additional-record-stop');
-        
+
         if (startRecordBtn) {
             startRecordBtn.addEventListener('click', () => {
                 this.startAdditionalRecording();
             });
         }
-        
+
         if (stopRecordBtn) {
             stopRecordBtn.addEventListener('click', () => {
                 if (this.uiManager && this.uiManager.recordingModule) {
@@ -2185,8 +2369,8 @@ class ConceptModule {
                 }
             });
         }
-        
-        this.log.debug('Additional recording section added and set to visible for all restaurant creation modes');
+
+        this.log.debug('Additional recording section added (Circular UI)');
     }
 
     /**
@@ -2194,12 +2378,12 @@ class ConceptModule {
      */
     setupTranscriptionObserver() {
         this.log.debug('Setting up mutation observer for transcription textarea');
-        
+
         // Check if observer already exists
         if (this.transcriptionObserver) {
             this.transcriptionObserver.disconnect();
         }
-        
+
         // Create new observer
         this.transcriptionObserver = new MutationObserver((mutations) => {
             for (const mutation of mutations) {
@@ -2208,12 +2392,12 @@ class ConceptModule {
                     const transcriptionTextarea = document.getElementById('restaurant-transcription');
                     if (transcriptionTextarea) {
                         const container = transcriptionTextarea.parentElement;
-                        
+
                         // Check if container exists and hasn't been processed yet
                         if (container && !container.dataset.additionalReviewButtonSetup) {
                             this.log.debug('Transcription textarea found via observer, setting up button');
                             this.setupAdditionalReviewButton();
-                            
+
                             // Stop observing once we've found and processed it
                             this.transcriptionObserver.disconnect();
                             this.transcriptionObserver = null;
@@ -2223,13 +2407,13 @@ class ConceptModule {
                 }
             }
         });
-        
+
         // Start observing the document body for changes
         this.transcriptionObserver.observe(document.body, {
             childList: true,
             subtree: true
         });
-        
+
         // Set a timeout to stop the observer after 10 seconds to prevent memory leaks
         setTimeout(() => {
             if (this.transcriptionObserver) {
@@ -2246,14 +2430,14 @@ class ConceptModule {
     async startAdditionalRecording() {
         try {
             this.log.debug('Starting additional review recording...');
-            
+
             // Enhanced check for recording module
             let recordingModule = null;
-            
+
             // Check if recording module is available in uiManager
             if (this.uiManager && this.uiManager.recordingModule) {
                 recordingModule = this.uiManager.recordingModule;
-            } 
+            }
             // Check if recording module is available as a global object
             else if (window.recordingModule) {
                 recordingModule = window.recordingModule;
@@ -2264,54 +2448,54 @@ class ConceptModule {
                 this.log.debug('Creating new RecordingModule instance as fallback');
                 recordingModule = new RecordingModule(this.uiManager);
             }
-            
+
             // If we still don't have a recording module, show error
             if (!recordingModule) {
                 throw new Error('Recording functionality not available - could not find or create recording module');
             }
-            
-            
-            
- 
+
+
+
+
             // Update UI
             const startBtn = document.getElementById('additional-record-start');
             const stopBtn = document.getElementById('additional-record-stop');
             const recordingTime = document.getElementById('additional-recording-time');
             const audioVisualizer = document.getElementById('additional-audio-visualizer');
             const recordingStatus = document.getElementById('additional-recording-status');
-            
+
             if (startBtn) startBtn.classList.add('hidden');
             if (stopBtn) stopBtn.classList.remove('hidden');
             if (recordingTime) recordingTime.classList.remove('hidden');
             if (audioVisualizer) audioVisualizer.classList.remove('hidden');
             if (recordingStatus) recordingStatus.textContent = 'Recording in progress...';
-            
+
             // Show notification that we're starting recording
             SafetyUtils.showNotification('Starting recording for additional review...', 'info');
-            
+
             // Track that this is an additional recording
             this.uiManager.isRecordingAdditional = true;
-            
+
             // Start recording using our found recording module
             await recordingModule.startRecording();
-            
+
         } catch (error) {
             this.log.error('Error starting additional recording:', error);
             SafetyUtils.showNotification('Error starting recording: ' + error.message, 'error');
-            
+
             // Reset UI on error
             const startBtn = document.getElementById('additional-record-start');
             const stopBtn = document.getElementById('additional-record-stop');
             const recordingTime = document.getElementById('additional-recording-time');
             const audioVisualizer = document.getElementById('additional-audio-visualizer');
             const recordingStatus = document.getElementById('additional-recording-status');
-            
+
             if (startBtn) startBtn.classList.remove('hidden');
             if (stopBtn) stopBtn.classList.add('hidden');
             if (recordingTime) recordingTime.classList.add('hidden');
             if (audioVisualizer) audioVisualizer.classList.add('hidden');
             if (recordingStatus) recordingStatus.textContent = '';
-            
+
             // Reset the flag
             this.uiManager.isRecordingAdditional = false;
         }
@@ -2324,91 +2508,96 @@ class ConceptModule {
     handleAdditionalRecordingComplete(newTranscription) {
         try {
             this.log.debug(`Handling additional recording completion, text length: ${newTranscription?.length || 0}`);
-            
+
             // Reset UI for recording controls
             const startBtn = document.getElementById('additional-record-start');
             const stopBtn = document.getElementById('additional-record-stop');
             const recordingTime = document.getElementById('additional-recording-time');
             const audioVisualizer = document.getElementById('additional-audio-visualizer');
             const recordingStatus = document.getElementById('additional-recording-status');
-            
+
             if (startBtn) startBtn.classList.remove('hidden');
             if (stopBtn) stopBtn.classList.add('hidden');
             if (recordingTime) recordingTime.classList.add('hidden');
             if (audioVisualizer) audioVisualizer.classList.add('hidden');
             if (recordingStatus) recordingStatus.textContent = '';
-            
+
             // Check if we got any meaningful text
             if (!newTranscription || newTranscription.trim() === '') {
                 SafetyUtils.showNotification('No text was transcribed from the recording', 'warning');
-                
+
                 // Reset flag
                 if (this.uiManager) {
                     this.uiManager.isRecordingAdditional = false;
                 }
                 return;
             }
-            
+
             // Attempt to extract restaurant name from the additional review
             this.extractAndUpdateRestaurantName(newTranscription);
-            
+
             const transcriptionTextarea = document.getElementById('restaurant-transcription');
             if (!transcriptionTextarea) {
                 throw new Error('Transcription field not found');
             }
-            
+
             // Get current transcription
             const currentText = transcriptionTextarea.value;
-            
+
             // Create formatted timestamp
             const timestamp = new Date().toLocaleString();
-            
-            // Get curator name with fallback
-            let curatorName = "Unknown Curator";
-            if (this.uiManager && this.uiManager.currentCurator && this.uiManager.currentCurator.name) {
-                curatorName = this.uiManager.currentCurator.name;
+
+            // Get curator identity with preference for email
+            let curatorIdentity = "Unknown Curator";
+            if (this.uiManager && this.uiManager.currentCurator) {
+                // Prefer email as requested
+                if (this.uiManager.currentCurator.email) {
+                    curatorIdentity = this.uiManager.currentCurator.email;
+                } else if (this.uiManager.currentCurator.name) {
+                    curatorIdentity = this.uiManager.currentCurator.name;
+                }
             }
-            
+
             // Format the new combined text with a clear separator, curator name, and timestamp
             let combinedText;
             if (currentText && currentText.trim() !== '') {
                 // Add two line breaks, a separator with curator name and timestamp, and then the new text
-                combinedText = `${currentText}\n\n--- Additional Review by ${curatorName} (${timestamp}) ---\n${newTranscription}`;
+                combinedText = `${currentText}\n\n--- Additional Review by ${curatorIdentity} (${timestamp}) ---\n${newTranscription}`;
             } else {
                 // If no existing text, just use the new transcription
                 combinedText = newTranscription;
             }
-            
+
             // Update the transcription field
             transcriptionTextarea.value = combinedText;
-            
+
             // Scroll to the bottom of the textarea to show the new content
             transcriptionTextarea.scrollTop = transcriptionTextarea.scrollHeight;
-            
+
             // Briefly highlight the textarea to indicate it was updated
             transcriptionTextarea.classList.add('highlight-update');
             setTimeout(() => {
                 transcriptionTextarea.classList.remove('highlight-update');
             }, 1000);
-            
+
             // Reset the additional recording flag
             if (this.uiManager) {
                 this.uiManager.isRecordingAdditional = false;
             }
-            
+
             // Process concepts from the additional review
             if (typeof this.processConcepts === 'function') {
                 this.log.debug('Processing concepts from additional review');
                 this.processConcepts(newTranscription);
             }
-            
+
             // Show success notification
             SafetyUtils.showNotification('Additional review added to transcription', 'success');
-            
+
         } catch (error) {
             this.log.error('Error handling additional recording completion:', error);
             SafetyUtils.showNotification('Error adding additional review: ' + error.message, 'error');
-            
+
             // Reset the flag even if there's an error
             if (this.uiManager) {
                 this.uiManager.isRecordingAdditional = false;
@@ -2425,42 +2614,42 @@ class ConceptModule {
             // Get the current restaurant name
             const nameInput = document.getElementById('restaurant-name');
             const currentName = nameInput ? nameInput.value.trim() : '';
-            
+
             // Only proceed if transcription has enough content
             if (!transcription || transcription.length < 10) return;
-            
+
             this.log.debug('Attempting to extract restaurant name from additional review...');
-            
+
             // Use the existing method to extract restaurant name
             const extractedName = await this.extractRestaurantNameFromTranscription(transcription);
-            
+
             // If a name was extracted and it's different from the current name, update it
             if (extractedName && extractedName !== currentName && nameInput) {
                 this.log.debug(`Restaurant name found in additional review: "${extractedName}" (was: "${currentName}")`);
-                
+
                 // Update the name field
                 nameInput.value = extractedName;
-                
+
                 // Add or update AI badge to show it was auto-detected
                 const nameInputContainer = nameInput.parentElement;
                 let badge = nameInputContainer.querySelector('.ai-generated-badge');
-                
+
                 if (!badge) {
                     // Create new badge
                     badge = document.createElement('div');
                     badge.className = 'ai-generated-badge';
                     nameInputContainer.insertBefore(badge, nameInput.nextSibling);
                 }
-                
+
                 // Update badge text to indicate it came from additional review
                 badge.innerHTML = '<span class="material-icons">smart_toy</span> Updated from review';
-                
+
                 // Add highlight animation to name input
                 nameInput.classList.add('highlight-update');
                 setTimeout(() => {
                     nameInput.classList.remove('highlight-update');
                 }, 1500);
-                
+
                 // Show notification about the name update
                 SafetyUtils.showNotification(`Restaurant name updated to "${extractedName}"`, 'info');
             }

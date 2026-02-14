@@ -5,7 +5,7 @@ Professional data validation and serialization
 
 from datetime import datetime, timezone
 from typing import Optional, List, Dict, Any, Literal
-from pydantic import BaseModel, Field, EmailStr, ConfigDict
+from pydantic import BaseModel, Field, EmailStr, ConfigDict, AliasChoices, field_validator
 
 
 # ============================================================================
@@ -102,11 +102,51 @@ class CurationCategories(BaseModel):
     model_config = ConfigDict(extra='allow')  # Allow any additional fields from MongoDB
 
 
+CurationStatus = Literal["draft", "linked", "active", "deleted", "archived"]
+
+
 class CurationBase(BaseModel):
     """Base Curation model"""
+    restaurant_name: Optional[str] = Field(default=None, description="Display name of the curation before/after linking")
+    status: CurationStatus = Field(default="draft", description="Curation lifecycle status")
     notes: Optional[CurationNotes] = None
     categories: CurationCategories = Field(default_factory=CurationCategories)
-    sources: List[str] = Field(default_factory=list)
+    transcript: Optional[str] = Field(
+        default=None,
+        validation_alias=AliasChoices("transcript", "unstructured_text"),
+        description="Transcription text associated with the curation"
+    )
+    sources: Dict[str, Any] = Field(default_factory=dict, description="Structured sources grouped by source type (audio, image, google_places, etc.)")
+    items: Optional[List[Dict[str, Any]]] = Field(default=None, description="Detailed items/concepts list")
+
+    @field_validator("sources", mode="before")
+    @classmethod
+    def normalize_legacy_sources(cls, value: Any) -> Dict[str, Any]:
+        """Normalize legacy list-based sources into structured source dictionary."""
+        if value is None:
+            return {}
+
+        if isinstance(value, dict):
+            return value
+
+        if isinstance(value, list):
+            normalized: Dict[str, Any] = {}
+            for source in value:
+                if not isinstance(source, str):
+                    continue
+                source_key = source.strip()
+                if not source_key:
+                    continue
+                normalized[source_key] = normalized.get(source_key, [])
+                if not normalized[source_key]:
+                    normalized[source_key].append({"legacy": True})
+
+            if not normalized:
+                return {"manual": [{"legacy": True}]}
+
+            return normalized
+
+        return {}
 
 
 class CurationCreate(CurationBase):
@@ -115,15 +155,24 @@ class CurationCreate(CurationBase):
     entity_id: Optional[str] = Field(None, description="Entity this curation is about (null for orphaned curations)")
     curator_id: str = Field(..., description="Curator ID for filtering")
     curator: CuratorInfo
+    createdBy: Optional[str] = Field(None, description="Curator ID who originally created this curation")
 
 
 class CurationUpdate(BaseModel):
     """Curation update request (all optional for PATCH)"""
+    restaurant_name: Optional[str] = None
+    entity_id: Optional[str] = None
+    curator_id: Optional[str] = None
+    curator: Optional[CuratorInfo] = None
+    status: Optional[CurationStatus] = None
     notes: Optional[CurationNotes] = None
     categories: Optional[CurationCategories] = None
-    sources: Optional[List[str]] = None
+    transcript: Optional[str] = Field(default=None, validation_alias=AliasChoices("transcript", "unstructured_text"))
+    sources: Optional[Dict[str, Any]] = None
     embeddings: Optional[List[Dict]] = None
     embeddings_metadata: Optional[Dict] = None
+    items: Optional[List[Dict[str, Any]]] = None
+    updatedBy: Optional[str] = None
 
 
 class Curation(CurationBase):
@@ -131,8 +180,10 @@ class Curation(CurationBase):
     id: str = Field(..., alias="_id")
     curation_id: str
     entity_id: Optional[str] = None
-    curatorid: Optional[str] = None
+    curator_id: Optional[str] = None
     curator: CuratorInfo
+    createdBy: Optional[str] = None
+    updatedBy: Optional[str] = None
     embeddings: Optional[List[Dict]] = None
     embeddings_metadata: Optional[Dict] = None
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))

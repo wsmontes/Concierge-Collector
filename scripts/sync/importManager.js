@@ -22,18 +22,18 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
     async initialize() {
         try {
             this.log.debug('🚀 Initializing V3 Import/Export Manager...');
-            
+
             // Setup UI events if DOM is ready
             if (document.readyState === 'loading') {
                 document.addEventListener('DOMContentLoaded', () => this.setupEvents());
             } else {
                 this.setupEvents();
             }
-            
+
             this.isInitialized = true;
             this.log.debug('✅ V3 Import/Export Manager initialized successfully');
             return this;
-            
+
         } catch (error) {
             this.log.error('❌ Failed to initialize V3 Import/Export Manager:', error);
             throw error;
@@ -45,30 +45,9 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
      */
     setupEvents() {
         this.log.debug('Setting up V3 import/export events...');
-        
-        // Import Concierge data button
-        const importBtn = document.getElementById('import-concierge-data');
-        const importFile = document.getElementById('import-concierge-file');
-        
-        if (importBtn && importFile) {
-            importBtn.addEventListener('click', async () => {
-                const file = importFile.files[0];
-                if (!file) {
-                    SafetyUtils.showNotification('Please select a file to import', 'error');
-                    return;
-                }
-                
-                try {
-                    await this.importConciergeFile(file);
-                } catch (error) {
-                    this.log.error('Import failed:', error);
-                    SafetyUtils.showNotification(`Import failed: ${error.message}`, 'error');
-                }
-            });
-        }
-        
+
         // Export data button
-        const exportBtn = document.getElementById('export-v3-data');
+        const exportBtn = document.getElementById('export-data');
         if (exportBtn) {
             exportBtn.addEventListener('click', async () => {
                 try {
@@ -79,21 +58,120 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
                 }
             });
         }
-        
-        // Sync with server button
-        const syncBtn = document.getElementById('sync-with-server-v3');
-        if (syncBtn) {
-            syncBtn.addEventListener('click', async () => {
+
+        // Import file button
+        const importBtn = document.getElementById('import-data');
+        const importFile = document.getElementById('import-file');
+        if (importBtn && importFile) {
+            importBtn.addEventListener('click', async () => {
+                const file = importFile.files[0];
+                if (!file) {
+                    SafetyUtils.showNotification('Please select a file to import', 'error');
+                    return;
+                }
+
                 try {
-                    await window.SyncManager.forceSyncNow();
+                    await this.importFile(file);
                 } catch (error) {
-                    this.log.error('Sync failed:', error);
-                    SafetyUtils.showNotification(`Sync failed: ${error.message}`, 'error');
+                    this.log.error('Import failed:', error);
+                    SafetyUtils.showNotification(`Import failed: ${error.message}`, 'error');
                 }
             });
         }
-        
+
+        // Purge Processed Audio button
+        const purgeBtn = document.getElementById('purge-audio-btn');
+        if (purgeBtn) {
+            purgeBtn.addEventListener('click', async () => {
+                if (!window.PendingAudioManager) return;
+
+                const stats = await window.PendingAudioManager.getAudioCounts();
+                const total = stats.transcribed + stats.completed;
+
+                if (total === 0) {
+                    SafetyUtils.showNotification('No processed audio to purge.', 'info');
+                    return;
+                }
+
+                if (confirm(`Are you sure you want to purge ${total} processed audio recordings? This will free up significant disk space.`)) {
+                    SafetyUtils.showLoading('Cleaning up storage...');
+                    const deleted = await window.PendingAudioManager.purgeProcessedAudio();
+                    SafetyUtils.hideLoading();
+                    SafetyUtils.showNotification(`Successfully purged ${deleted} audio recordings.`, 'success');
+                    this.updateStorageStats();
+                }
+            });
+
+            // Initial stats update
+            this.updateStorageStats();
+        }
+
+        // Full Local Reset button
+        const resetBtn = document.getElementById('full-reset-btn');
+        if (resetBtn) {
+            resetBtn.addEventListener('click', async () => {
+                if (confirm('⚠️ Full Local Reset? This will DELETE your entire local IndexedDB (all local restaurants, curations, drafts, pending syncs, and cache). The app will reload and perform a fresh sync from server.')) {
+                    SafetyUtils.showLoading('Running full local reset...');
+
+                    try {
+                        if (window.DataStore?.db) {
+                            window.DataStore.db.close();
+                        }
+
+                        if (typeof Dexie !== 'undefined' && typeof Dexie.delete === 'function') {
+                            await Dexie.delete('ConciergeCollector');
+                        } else if (window.indexedDB?.deleteDatabase) {
+                            await new Promise((resolve, reject) => {
+                                const req = window.indexedDB.deleteDatabase('ConciergeCollector');
+                                req.onsuccess = () => resolve();
+                                req.onerror = () => reject(req.error || new Error('Failed to delete IndexedDB'));
+                                req.onblocked = () => reject(new Error('IndexedDB deletion blocked by another tab'));
+                            });
+                        }
+
+                        localStorage.clear();
+                        sessionStorage.clear();
+                        localStorage.setItem('needsInitialSync', 'true');
+
+                        setTimeout(() => window.location.reload(), 300);
+                    } catch (error) {
+                        SafetyUtils.hideLoading();
+                        this.log.error('Full local reset failed:', error);
+                        SafetyUtils.showNotification(`Full local reset failed: ${error.message}`, 'error');
+                    }
+                }
+            });
+        }
+
         this.log.debug('✅ V3 import/export events set up');
+    }
+
+    /**
+     * Update storage info in the UI
+     */
+    async updateStorageStats() {
+        const storageInfo = document.getElementById('storage-info');
+        if (!storageInfo || !window.PendingAudioManager) return;
+
+        try {
+            const stats = await window.PendingAudioManager.getAudioCounts();
+            const processed = stats.transcribed + stats.completed;
+            const pending = stats.pending + stats.processing + stats.retrying;
+
+            storageInfo.innerHTML = `
+                <div class="flex justify-between mb-1">
+                    <span>Processed recordings:</span>
+                    <span class="font-semibold">${processed}</span>
+                </div>
+                <div class="flex justify-between">
+                    <span>Pending recordings:</span>
+                    <span class="font-semibold">${pending}</span>
+                </div>
+            `;
+        } catch (error) {
+            this.log.warn('Failed to update storage stats:', error);
+            storageInfo.textContent = 'Status unavailable';
+        }
     }
 
     // ========================================
@@ -108,13 +186,13 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
     async importConciergeFile(file) {
         try {
             this.log.debug(`🔄 Starting import of file: ${file.name}`);
-            
+
             // Show loading
             SafetyUtils.showLoading('📥 Reading file...');
-            
+
             // Read file content
             const fileContent = await this.readFile(file);
-            
+
             // Parse JSON
             SafetyUtils.showLoading('🔄 Parsing data...');
             let data;
@@ -123,16 +201,16 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
             } catch (parseError) {
                 throw new Error(`Invalid JSON format: ${parseError.message}`);
             }
-            
+
             // Validate Concierge format
             if (!this.isValidConciergeFormat(data)) {
                 throw new Error('Invalid Concierge data format. Expected object with restaurant names as keys.');
             }
-            
+
             // Import into V3 entities and curations
             SafetyUtils.showLoading('💾 Importing restaurants...');
             const results = await window.dataStore.importConciergeData(data);
-            
+
             // Trigger sync if online
             if (navigator.onLine && window.SyncManager && typeof window.SyncManager.quickSync === 'function') {
                 SafetyUtils.showLoading('🔄 Syncing with server...');
@@ -145,24 +223,24 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
             } else if (navigator.onLine && !window.SyncManager) {
                 this.log.warn('⚠️ Cannot sync after import - SyncManager not available');
             }
-            
+
             SafetyUtils.hideLoading();
-            
+
             // Show success message
             const message = `✅ Import completed successfully!\n` +
-                          `• ${results.entities.created} restaurants imported\n` +
-                          `• ${results.curations.created} concept collections created\n` +
-                          `• ${results.entities.skipped + results.curations.skipped} items were already present`;
-            
+                `• ${results.entities.created} restaurants imported\n` +
+                `• ${results.curations.created} concept collections created\n` +
+                `• ${results.entities.skipped + results.curations.skipped} items were already present`;
+
             SafetyUtils.showNotification(message, 'success');
-            
+
             // Refresh UI if needed
             if (window.uiManager?.refreshCurrentView) {
                 window.uiManager.refreshCurrentView();
             }
-            
+
             return results;
-            
+
         } catch (error) {
             SafetyUtils.hideLoading();
             this.log.error('❌ Import failed:', error);
@@ -193,7 +271,7 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
         if (!data || typeof data !== 'object' || Array.isArray(data)) {
             return false;
         }
-        
+
         // Check if it has restaurant names as keys with concept arrays as values
         const sampleKeys = Object.keys(data).slice(0, 3);
         for (const key of sampleKeys) {
@@ -201,17 +279,17 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
             if (!restaurantData || typeof restaurantData !== 'object') {
                 return false;
             }
-            
+
             // Check for typical Concierge format properties
-            const hasConceptArrays = ['cuisine', 'menu', 'mood', 'setting'].some(prop => 
+            const hasConceptArrays = ['cuisine', 'menu', 'mood', 'setting'].some(prop =>
                 Array.isArray(restaurantData[prop])
             );
-            
+
             if (!hasConceptArrays) {
                 return false;
             }
         }
-        
+
         return true;
     }
 
@@ -222,7 +300,7 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
      */
     async importFile(file) {
         const extension = file.name.split('.').pop().toLowerCase();
-        
+
         switch (extension) {
             case 'json':
                 return this.importConciergeFile(file);
@@ -244,47 +322,47 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
         try {
             const content = await this.readFile(file);
             const lines = content.split('\\n').filter(line => line.trim());
-            
+
             if (lines.length === 0) {
                 throw new Error('CSV file is empty');
             }
-            
+
             const headers = lines[0].split(',').map(h => h.trim());
-            const nameColumn = headers.findIndex(h => 
+            const nameColumn = headers.findIndex(h =>
                 h.toLowerCase().includes('name') || h.toLowerCase().includes('restaurant')
             );
-            
+
             if (nameColumn === -1) {
                 throw new Error('No restaurant name column found in CSV');
             }
-            
+
             const curator = await window.dataStore.getCurrentCurator();
             if (!curator) {
                 throw new Error('No current curator available for import');
             }
-            
+
             let created = 0;
             let skipped = 0;
             const errors = [];
-            
+
             for (let i = 1; i < lines.length; i++) {
                 const values = lines[i].split(',').map(v => v.trim().replace(/"/g, ''));
                 const restaurantName = values[nameColumn];
-                
+
                 if (!restaurantName) continue;
-                
+
                 try {
                     // Check if entity already exists
                     const existing = await window.dataStore.db.entities
                         .where('name').equals(restaurantName)
                         .and(entity => entity.type === 'restaurant')
                         .first();
-                    
+
                     if (existing) {
                         skipped++;
                         continue;
                     }
-                    
+
                     // Create entity
                     await window.dataStore.createEntity({
                         type: 'restaurant',
@@ -298,7 +376,7 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
                             )
                         }
                     });
-                    
+
                     created++;
                 } catch (error) {
                     errors.push({
@@ -307,13 +385,13 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
                     });
                 }
             }
-            
+
             return {
                 entities: { created, skipped },
                 curations: { created: 0, skipped: 0 },
                 errors
             };
-            
+
         } catch (error) {
             this.log.error('❌ CSV import failed:', error);
             throw error;
@@ -332,63 +410,63 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
     async exportV3Data(options = {}) {
         try {
             this.log.debug('🔄 Starting V3 data export...');
-            
+
             SafetyUtils.showLoading('📤 Preparing export...');
-            
+
             const format = options.format || await this.promptExportFormat();
             if (!format) {
                 SafetyUtils.hideLoading();
                 return; // User cancelled
             }
-            
+
             // Get current curator filter
             const curator = await window.dataStore.getCurrentCurator();
             const curatorFilter = options.allCurators ? {} : { createdBy: curator?.curator_id };
-            
+
             // Get entities
             SafetyUtils.showLoading('📊 Collecting entities...');
             const entities = await window.dataStore.getEntities(curatorFilter);
-            
+
             // Get curations
             SafetyUtils.showLoading('📋 Collecting curations...');
             const curations = await window.dataStore.db.curations.toArray();
-            
+
             // Generate export data based on format
             let exportData;
             let filename;
             let mimeType;
-            
+
             switch (format) {
                 case 'v3_json':
                     exportData = this.generateV3JSON(entities, curations);
                     filename = `concierge_v3_${new Date().toISOString().split('T')[0]}.json`;
                     mimeType = 'application/json';
                     break;
-                    
+
                 case 'concierge':
                     exportData = this.generateConciergeFormat(entities, curations);
                     filename = `concierge_export_${new Date().toISOString().split('T')[0]}.json`;
                     mimeType = 'application/json';
                     break;
-                    
+
                 case 'csv':
                     exportData = this.generateCSV(entities, curations);
                     filename = `restaurants_${new Date().toISOString().split('T')[0]}.csv`;
                     mimeType = 'text/csv';
                     break;
-                    
+
                 default:
                     throw new Error(`Unsupported export format: ${format}`);
             }
-            
+
             SafetyUtils.showLoading('💾 Generating file...');
-            
+
             // Create and download file
             this.downloadFile(exportData, filename, mimeType);
-            
+
             SafetyUtils.hideLoading();
             SafetyUtils.showNotification(`✅ Export completed: ${filename}`, 'success');
-            
+
         } catch (error) {
             SafetyUtils.hideLoading();
             this.log.error('❌ Export failed:', error);
@@ -445,15 +523,15 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
                     </div>
                 </div>
             `;
-            
+
             document.body.appendChild(modal);
-            
+
             document.getElementById('export-confirm').onclick = () => {
                 const selectedFormat = modal.querySelector('input[name="format"]:checked')?.value;
                 document.body.removeChild(modal);
                 resolve(selectedFormat);
             };
-            
+
             document.getElementById('export-cancel').onclick = () => {
                 document.body.removeChild(modal);
                 resolve(null);
@@ -479,7 +557,7 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
                 curationCount: curations.length
             }
         };
-        
+
         return JSON.stringify(exportData, null, 2);
     }
 
@@ -491,7 +569,7 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
      */
     generateConciergeFormat(entities, curations) {
         const conciergeData = {};
-        
+
         // Group curations by entity
         const curationsByEntity = {};
         curations.forEach(curation => {
@@ -500,11 +578,11 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
             }
             curationsByEntity[curation.entity_id].push(curation);
         });
-        
+
         // Convert entities to Concierge format
         entities.forEach(entity => {
             if (entity.type !== 'restaurant') return;
-            
+
             const restaurantData = {
                 cuisine: [],
                 menu: [],
@@ -519,7 +597,7 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
                 price_and_payment: [],
                 price_range: []
             };
-            
+
             // Extract concepts from curations
             const entityCurations = curationsByEntity[entity.entity_id] || [];
             entityCurations.forEach(curation => {
@@ -532,10 +610,10 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
                     });
                 }
             });
-            
+
             conciergeData[entity.name] = restaurantData;
         });
-        
+
         return JSON.stringify(conciergeData, null, 2);
     }
 
@@ -548,7 +626,7 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
     generateCSV(entities, curations) {
         const headers = ['Name', 'Type', 'Status', 'Created By', 'Created At', 'Concepts Count'];
         const rows = [headers.join(',')];
-        
+
         // Group curations by entity
         const curationsByEntity = {};
         curations.forEach(curation => {
@@ -557,13 +635,13 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
             }
             curationsByEntity[curation.entity_id].push(curation);
         });
-        
+
         entities.forEach(entity => {
             const entityCurations = curationsByEntity[entity.entity_id] || [];
-            const conceptsCount = entityCurations.reduce((sum, curation) => 
+            const conceptsCount = entityCurations.reduce((sum, curation) =>
                 sum + (curation.items ? curation.items.length : 0), 0
             );
-            
+
             const row = [
                 `"${entity.name}"`,
                 entity.type,
@@ -572,10 +650,10 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
                 entity.createdAt ? new Date(entity.createdAt).toISOString() : '',
                 conceptsCount
             ];
-            
+
             rows.push(row.join(','));
         });
-        
+
         return rows.join('\\n');
     }
 
@@ -588,16 +666,16 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
     downloadFile(content, filename, mimeType) {
         const blob = new Blob([content], { type: mimeType });
         const url = window.URL.createObjectURL(blob);
-        
+
         const link = document.createElement('a');
         link.href = url;
         link.download = filename;
         link.style.display = 'none';
-        
+
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-        
+
         window.URL.revokeObjectURL(url);
     }
 
@@ -613,7 +691,7 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
         try {
             const stats = await window.dataStore.getStats();
             const syncStatus = await window.SyncManager.getSyncStatus();
-            
+
             return {
                 ...stats,
                 sync: syncStatus
@@ -631,13 +709,13 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
         if (!confirm('⚠️ This will delete ALL local data. Are you sure?')) {
             return;
         }
-        
+
         try {
             SafetyUtils.showLoading('🗑️ Clearing all data...');
             await window.dataStore.resetDatabase();
             SafetyUtils.hideLoading();
             SafetyUtils.showNotification('✅ All data cleared', 'success');
-            
+
             // Refresh UI
             if (window.uiManager?.refreshCurrentView) {
                 window.uiManager.refreshCurrentView();

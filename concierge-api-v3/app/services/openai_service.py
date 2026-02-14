@@ -166,9 +166,54 @@ class OpenAIService:
         )
         
         # Parse JSON response
-        result = json.loads(response.choices[0].message.content)
-        result["entity_type"] = entity_type
-        result["model"] = config["model"]
+        raw_result = json.loads(response.choices[0].message.content)
+
+        # Normalize to the frontend-compatible shape expected by ConceptModule:
+        # {
+        #   "concepts": [{"category": "cuisine", "value": "Italian"}, ...],
+        #   "categories": {"cuisine": ["Italian"], ...},
+        #   "confidence_score": 0.95,
+        #   ...metadata
+        # }
+        allowed_category_keys = set(categories or [])
+        normalized_categories: Dict[str, list] = {}
+
+        # Preferred format: keys per category (current MongoDB categories list contains keys)
+        for category_key in allowed_category_keys:
+            values = raw_result.get(category_key)
+            if not isinstance(values, list):
+                continue
+            cleaned_values = [str(v).strip() for v in values if str(v).strip()]
+            if cleaned_values:
+                normalized_categories[category_key] = cleaned_values
+
+        # Backward-compat: if model returned a flat concepts list of objects
+        if not normalized_categories and isinstance(raw_result.get("concepts"), list):
+            concepts_payload = raw_result.get("concepts")
+            if concepts_payload and all(isinstance(c, dict) for c in concepts_payload):
+                for concept in concepts_payload:
+                    category_key = concept.get("category")
+                    value = concept.get("value")
+                    if not category_key or not value:
+                        continue
+                    if allowed_category_keys and category_key not in allowed_category_keys:
+                        continue
+                    normalized_categories.setdefault(category_key, []).append(str(value).strip())
+
+        normalized_concepts = [
+            {"category": category_key, "value": value}
+            for category_key, values in normalized_categories.items()
+            for value in values
+        ]
+
+        result = {
+            "concepts": normalized_concepts,
+            "categories": normalized_categories,
+            "restaurant_name": raw_result.get("restaurant_name"),
+            "confidence_score": raw_result.get("confidence_score", 0.0),
+            "entity_type": entity_type,
+            "model": config["model"],
+        }
         
         # Cache concepts in DB only if requested
         if save_to_cache:
@@ -176,7 +221,9 @@ class OpenAIService:
             await self.db.ai_concepts.insert_one({
                 "concept_id": concept_id,
                 "text": text,
-                "concepts": result.get("concepts", []),
+                "concepts": normalized_concepts,
+                "categories": normalized_categories,
+                "restaurant_name": result.get("restaurant_name"),
                 "confidence_score": result.get("confidence_score", 0.0),
                 "entity_type": entity_type,
                 "model": config["model"],
@@ -243,11 +290,15 @@ class OpenAIService:
         
         # Cache image analysis in DB only if requested
         if save_to_cache:
+            # Extract categories (all keys except metadata fields)
+            metadata_keys = {"confidence_score", "entity_type", "model", "visual_notes", "restaurant_name"}
+            categories = {k: v for k, v in result.items() if k not in metadata_keys}
+            
             analysis_id = f"img_analysis_{uuid.uuid4().hex[:12]}"
             await self.db.ai_image_analysis.insert_one({
                 "analysis_id": analysis_id,
                 "image_url": image_url,
-                "concepts": result.get("concepts", []),
+                "categories": categories,  # Store categorized concepts
                 "confidence_score": result.get("confidence_score", 0.0),
                 "visual_notes": result.get("visual_notes", ""),
                 "entity_type": entity_type,

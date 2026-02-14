@@ -18,7 +18,7 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
     constructor() {
         // Create module logger instance
         this.log = Logger.module('PendingAudioManager');
-        
+
         this.dataStorage = null;
         this.maxAutoRetries = 2;
         this.retryDelays = [5000, 15000]; // 5s, 15s
@@ -35,29 +35,38 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
 
     /**
      * Save audio recording to pending storage
-     * @param {Object} data - Audio data
-     * @param {Blob} data.audioBlob - The audio blob
-     * @param {number} data.restaurantId - Restaurant ID (optional)
-     * @param {number} data.draftId - Draft restaurant ID (optional)
-     * @param {boolean} data.isAdditional - Is this an additional recording?
+     * @param {Blob} audioBlob - The audio blob
+     * @param {Object} options - Additional options
+     * @param {number} options.restaurantId - Restaurant ID (optional)
+     * @param {number} options.draftId - Draft restaurant ID (optional)
+     * @param {boolean} options.isAdditional - Is this an additional recording?
      * @returns {Promise<number>} - Pending audio ID
      */
-    async saveAudio(data) {
+    async saveAudio(audioBlob, options = {}) {
         try {
+            // Support both: saveAudio(blob, opts) and legacy saveAudio({audioBlob, ...})
+            let blob = audioBlob;
+            let opts = options;
+            if (audioBlob && !(audioBlob instanceof Blob) && audioBlob.audioBlob) {
+                // Legacy call: saveAudio({ audioBlob, restaurantId, ... })
+                blob = audioBlob.audioBlob;
+                opts = audioBlob;
+            }
+
             const audioData = {
-                audioBlob: data.audioBlob,
-                restaurantId: data.restaurantId || null,
-                draftId: data.draftId || null,
+                audioBlob: blob,
+                restaurantId: opts.restaurantId || null,
+                draftId: opts.draftId || null,
                 timestamp: new Date(),
                 retryCount: 0,
                 lastError: null,
                 status: 'pending',
-                isAdditional: data.isAdditional || false
+                isAdditional: opts.isAdditional || false
             };
 
             const id = await this.dataStorage.db.pendingAudio.add(audioData);
             this.log.debug(`Pending audio saved with ID: ${id}`);
-            
+
             return id;
         } catch (error) {
             this.log.error('Error saving pending audio:', error);
@@ -167,7 +176,7 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
             }
 
             const retryCount = audio.retryCount || 0;
-            
+
             if (retryCount >= this.maxAutoRetries) {
                 this.log.debug(`Max retries reached for pending audio ${id}, marking as failed`);
                 await this.updateAudio(id, { status: 'failed' });
@@ -175,9 +184,9 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
             }
 
             const delay = this.retryDelays[retryCount] || this.retryDelays[this.retryDelays.length - 1];
-            
+
             this.log.debug(`Scheduling retry ${retryCount + 1} for pending audio ${id} in ${delay}ms`);
-            
+
             setTimeout(async () => {
                 try {
                     this.log.debug(`Executing retry ${retryCount + 1} for pending audio ${id}`);
@@ -185,7 +194,7 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
                 } catch (error) {
                     this.log.error(`Retry ${retryCount + 1} failed for pending audio ${id}:`, error);
                     await this.incrementRetryCount(id, error.message);
-                    
+
                     // Schedule next retry if not maxed out
                     const updatedAudio = await this.getAudio(id);
                     if (updatedAudio && updatedAudio.retryCount < this.maxAutoRetries) {
@@ -207,7 +216,7 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
         try {
             const audio = await this.getAudio(id);
             if (!audio) return false;
-            
+
             // Can retry if status is failed and retry count is below max
             return audio.status === 'failed' && audio.retryCount < this.maxAutoRetries;
         } catch (error) {
@@ -241,7 +250,7 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
             const audios = await this.getAudios(filter);
             const deletePromises = audios.map(audio => this.deleteAudio(audio.id));
             await Promise.all(deletePromises);
-            
+
             this.log.debug(`Deleted ${audios.length} pending audio records`);
             return audios.length;
         } catch (error) {
@@ -292,12 +301,13 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
      */
     async getAudioCounts() {
         try {
-            const [pending, processing, failed, retrying, transcribed] = await Promise.all([
+            const [pending, processing, failed, retrying, transcribed, completed] = await Promise.all([
                 this.dataStorage.db.pendingAudio.where('status').equals('pending').count(),
                 this.dataStorage.db.pendingAudio.where('status').equals('processing').count(),
                 this.dataStorage.db.pendingAudio.where('status').equals('failed').count(),
                 this.dataStorage.db.pendingAudio.where('status').equals('retrying').count(),
-                this.dataStorage.db.pendingAudio.where('status').equals('transcribed').count()
+                this.dataStorage.db.pendingAudio.where('status').equals('transcribed').count(),
+                this.dataStorage.db.pendingAudio.where('status').equals('completed').count()
             ]);
 
             return {
@@ -306,7 +316,8 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
                 failed,
                 retrying,
                 transcribed,
-                total: pending + processing + failed + retrying + transcribed
+                completed,
+                total: pending + processing + failed + retrying + transcribed + completed
             };
         } catch (error) {
             this.log.error('Error getting pending audio counts:', error);
@@ -331,18 +342,40 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
             const cutoffDate = new Date();
             cutoffDate.setDate(cutoffDate.getDate() - daysOld);
 
-            const oldTranscribed = await this.dataStorage.db.pendingAudio
-                .where('status').equals('transcribed')
+            // Clean up both 'transcribed' and 'completed' audios
+            const oldAudios = await this.dataStorage.db.pendingAudio
+                .where('status').anyOf(['transcribed', 'completed'])
                 .and(audio => new Date(audio.timestamp) < cutoffDate)
                 .toArray();
 
-            const deletePromises = oldTranscribed.map(audio => this.deleteAudio(audio.id));
+            const deletePromises = oldAudios.map(audio => this.deleteAudio(audio.id));
             await Promise.all(deletePromises);
 
-            this.log.debug(`Cleaned up ${oldTranscribed.length} old transcribed audios`);
-            return oldTranscribed.length;
+            this.log.debug(`Cleaned up ${oldAudios.length} old processed audios`);
+            return oldAudios.length;
         } catch (error) {
-            this.log.error('Error cleaning up old transcribed audios:', error);
+            this.log.error('Error cleaning up old processed audios:', error);
+            return 0;
+        }
+    }
+
+    /**
+     * Purges all processed audio to free up space
+     * @returns {Promise<number>} - Number of deleted records
+     */
+    async purgeProcessedAudio() {
+        try {
+            const processedAudios = await this.dataStorage.db.pendingAudio
+                .where('status').anyOf(['transcribed', 'completed'])
+                .toArray();
+
+            const deletePromises = processedAudios.map(audio => this.deleteAudio(audio.id));
+            await Promise.all(deletePromises);
+
+            this.log.info(`Purged ${processedAudios.length} processed audio records to free up space`);
+            return processedAudios.length;
+        } catch (error) {
+            this.log.error('Error purging processed audio:', error);
             return 0;
         }
     }

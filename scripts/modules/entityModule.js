@@ -19,6 +19,7 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
         this.log = Logger.module('EntityModule');
         this.dataStore = null;
         this.container = null;
+        this.editingEntity = null;
         this.searchQuery = '';
         this.filters = {
             type: 'all',
@@ -34,25 +35,25 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
     async init(dependencies = {}) {
         try {
             this.log.debug('Initializing EntityModule...');
-            
+
             this.dataStore = dependencies.dataStore || window.dataStore;
-            
+
             if (!this.dataStore) {
                 throw new Error('dataStore dependency is required');
             }
-            
+
             // Get container reference
             this.container = document.getElementById('entities-container');
             if (!this.container) {
                 throw new Error('entities-container element not found');
             }
-            
+
             // Setup event listeners
             this.setupEvents();
-            
+
             // Load entities
             await this.loadEntities();
-            
+
             this.log.debug('EntityModule initialized successfully');
             return true;
         } catch (error) {
@@ -99,25 +100,36 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
     async loadEntities() {
         try {
             this.log.debug('Loading entities...');
-            
-            // Get all entities
-            const allEntities = await this.dataStore.getEntities({
-                status: 'active'
-            });
-            
-            this.log.debug(`Loaded ${allEntities.length} entities from IndexedDB`);
-            
+
+            // Get only entities linked by at least one non-deleted curation
+            const [allEntities, allCurations] = await Promise.all([
+                this.dataStore.getEntities({ status: 'active' }),
+                this.dataStore.getCurations({ excludeDeleted: true })
+            ]);
+
+            const linkedEntityIds = new Set(
+                allCurations
+                    .map(curation => curation?.entity_id)
+                    .filter(entityId => typeof entityId === 'string' && entityId.trim())
+            );
+
+            const linkedEntities = allEntities.filter(entity =>
+                entity?.entity_id && linkedEntityIds.has(entity.entity_id)
+            );
+
+            this.log.debug(`Loaded ${linkedEntities.length} linked entities from IndexedDB`);
+
             // Deduplicate by entity_id (keep latest by internal id)
-            this.entities = this.deduplicateEntities(allEntities);
-            
+            this.entities = this.deduplicateEntities(linkedEntities);
+
             this.log.debug(`After deduplication: ${this.entities.length} unique entities`);
-            
+
             // Populate filters
             this.populateFilters();
-            
+
             // Display entities
             this.filterAndDisplayEntities();
-            
+
         } catch (error) {
             this.log.error('Failed to load entities:', error);
             this.container.innerHTML = '<p class="text-red-500">Failed to load entities</p>';
@@ -132,27 +144,27 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
      */
     deduplicateEntities(entities) {
         const uniqueMap = new Map();
-        
+
         for (const entity of entities) {
             // Extract Google Place ID from multiple possible locations
-            const placeId = entity.data?.externalId || 
-                           entity.data?.metadata?.[0]?.place_id ||
-                           entity.google_place_id ||
-                           entity.entity_id;
-            
+            const placeId = entity.data?.externalId ||
+                entity.data?.metadata?.[0]?.place_id ||
+                entity.google_place_id ||
+                entity.entity_id;
+
             // Use place_id as deduplication key (entity_id is the V3 UUID)
             const key = placeId || `local_${entity.entity_id}`;
-            
+
             // Keep entity with most recent updatedAt timestamp
             const existingEntity = uniqueMap.get(key);
             if (!existingEntity || new Date(entity.updatedAt) > new Date(existingEntity.updatedAt)) {
                 uniqueMap.set(key, entity);
             }
         }
-        
+
         const deduplicated = Array.from(uniqueMap.values());
         this.log.debug(`Deduplication: ${entities.length} → ${deduplicated.length} unique (by Google Place ID)`);
-        
+
         return deduplicated;
     }
 
@@ -165,11 +177,11 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
         this.entities.forEach(entity => {
             const city = this.extractCity(entity);
             // Only add valid string cities (not objects, not Unknown)
-            if (city && 
-                typeof city === 'string' && 
-                city !== 'Unknown' && 
+            if (city &&
+                typeof city === 'string' &&
+                city !== 'Unknown' &&
                 city.trim() !== '' &&
-                !city.includes('{') && 
+                !city.includes('{') &&
                 !city.includes('[')) {
                 cities.add(city);
             }
@@ -197,14 +209,14 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
         if (entity.data?.location?.city && typeof entity.data.location.city === 'string') {
             return entity.data.location.city;
         }
-        
+
         // Priority 2: addressComponents (Google Places)
         const addressComponents = entity.data?.addressComponents || [];
         if (Array.isArray(addressComponents)) {
             // Look for locality (city) in address components
-            const cityComponent = addressComponents.find(comp => 
+            const cityComponent = addressComponents.find(comp =>
                 comp.types && (
-                    comp.types.includes('locality') || 
+                    comp.types.includes('locality') ||
                     comp.types.includes('administrative_area_level_2')
                 )
             );
@@ -212,12 +224,12 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
                 return cityComponent.longText || cityComponent.shortText;
             }
         }
-        
+
         // Priority 3: Parse from formattedAddress
-        const address = entity.data?.formattedAddress || 
-                       entity.data?.address?.formattedAddress ||
-                       entity.data?.shortFormattedAddress;
-        
+        const address = entity.data?.formattedAddress ||
+            entity.data?.address?.formattedAddress ||
+            entity.data?.shortFormattedAddress;
+
         if (address && typeof address === 'string') {
             const parts = address.split(',').map(p => p.trim());
             if (parts.length >= 2) {
@@ -231,13 +243,13 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
                 city = city.replace(/\d{5}(-\d{4})?/g, '').trim();
                 city = city.replace(/\b\d+\b/g, '').trim();
                 city = city.replace(/\s+/g, ' ').trim();
-                
+
                 if (city && city.length > 1 && !city.includes('{') && !city.includes('[')) {
                     return city;
                 }
             }
         }
-        
+
         return 'Unknown';
     }
 
@@ -253,10 +265,10 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
                 const name = (entity.name || '').toLowerCase();
                 const city = this.extractCity(entity).toLowerCase();
                 const address = (entity.data?.formattedAddress || entity.data?.address?.formattedAddress || '').toLowerCase();
-                
-                return name.includes(this.searchQuery) || 
-                       city.includes(this.searchQuery) ||
-                       address.includes(this.searchQuery);
+
+                return name.includes(this.searchQuery) ||
+                    city.includes(this.searchQuery) ||
+                    address.includes(this.searchQuery);
             });
         }
 
@@ -272,7 +284,7 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
             );
         }        // Apply rating filter
         if (this.filters.rating > 0) {
-            filtered = filtered.filter(entity => 
+            filtered = filtered.filter(entity =>
                 (entity.data?.attributes?.rating || 0) >= this.filters.rating
             );
         }
@@ -302,9 +314,259 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
         this.container.innerHTML = '';
 
         entities.forEach(entity => {
-            const card = window.CardFactory.createEntityCard(entity);
+            const card = window.CardFactory.createEntityCard(entity, {
+                showEntityActions: true,
+                onClick: (e) => this.showEntityDetails(e),
+                onDetails: (e) => this.showEntityDetails(e),
+                onEdit: (e) => this.startEntityEdit(e),
+                onSync: async () => {
+                    if (window.SyncManager) {
+                        await window.SyncManager.pushEntities();
+                        await this.refresh();
+                    }
+                }
+            });
             this.container.appendChild(card);
         });
+    }
+
+    /**
+     * Enable or disable entity edit mode UI blocks in shared form page
+     * @param {boolean} isEntityEdit - Whether entity edit mode is active
+     */
+    setEntityEditMode(isEntityEdit) {
+        const entityEditor = document.getElementById('entity-metadata-editor');
+        const transcriptionBlock = document.getElementById('curation-transcription-block');
+        const notesBlock = document.getElementById('curation-notes-block');
+        const conceptsContainer = document.getElementById('concepts-container');
+        const curationFooter = document.getElementById('curation-edit-footer');
+
+        if (entityEditor) {
+            entityEditor.classList.toggle('hidden', !isEntityEdit);
+        }
+
+        if (transcriptionBlock) {
+            transcriptionBlock.classList.toggle('hidden', isEntityEdit);
+        }
+
+        if (notesBlock) {
+            notesBlock.classList.toggle('hidden', isEntityEdit);
+        }
+
+        if (conceptsContainer) {
+            conceptsContainer.classList.toggle('hidden', isEntityEdit);
+        }
+
+        if (curationFooter) {
+            curationFooter.classList.toggle('hidden', true);
+        }
+    }
+
+    /**
+     * Open shared edit interface in entity metadata mode
+     * @param {Object} entity - Entity record
+     */
+    async startEntityEdit(entity) {
+        if (!entity?.entity_id) {
+            window.uiUtils?.showNotification?.('Invalid entity selected', 'error');
+            return;
+        }
+
+        try {
+            const freshEntity = await this.dataStore.getEntity(entity.entity_id) || entity;
+            this.editingEntity = freshEntity;
+
+            if (!window.uiManager) {
+                throw new Error('UI manager not available');
+            }
+
+            window.uiManager.isEditingEntity = true;
+            window.uiManager.isEditingRestaurant = false;
+            window.uiManager.editingRestaurantId = freshEntity.entity_id;
+            window.uiManager.formIsDirty = false;
+            window.uiManager.currentConcepts = [];
+            if (typeof window.uiManager.renderConcepts === 'function') {
+                window.uiManager.renderConcepts();
+            }
+
+            if (window.uiManager.restaurantModule) {
+                window.uiManager.restaurantModule.currentEntity = freshEntity;
+                window.uiManager.restaurantModule.currentCuration = null;
+                window.uiManager.restaurantModule.updateCloneButtonVisibility(false);
+                window.uiManager.restaurantModule.updateExportButtonVisibility(false);
+                window.uiManager.restaurantModule.updateCurationEditFooterVisibility(false);
+            }
+
+            window.uiManager.showRestaurantFormSection();
+            this.setEntityEditMode(true);
+            this.populateEntityEditForm(freshEntity);
+        } catch (error) {
+            this.log.error('Failed to start entity edit mode:', error);
+            window.uiUtils?.showNotification?.('Failed to open entity editor', 'error');
+        }
+    }
+
+    /**
+     * Populate shared form fields for entity editing
+     * @param {Object} entity - Entity record
+     */
+    populateEntityEditForm(entity) {
+        const get = (id) => document.getElementById(id);
+
+        const address = entity.data?.location?.address || entity.data?.formattedAddress || entity.data?.address?.formattedAddress || entity.data?.address?.street || '';
+        const city = entity.data?.location?.city || entity.data?.address?.city || '';
+        const country = entity.data?.location?.country || entity.data?.address?.country || '';
+        const phone = entity.data?.contact?.phone || entity.data?.contacts?.phone || entity.data?.formattedPhone || '';
+        const website = entity.data?.contact?.website || entity.data?.contacts?.website || entity.data?.website || '';
+        const rating = entity.data?.attributes?.rating ?? entity.data?.rating ?? '';
+        const priceLevel = entity.data?.attributes?.price_level ?? entity.data?.price_level ?? 0;
+
+        const nameInput = get('restaurant-name');
+        const locationDisplay = get('location-display');
+        const descriptionInput = get('restaurant-description');
+        const transcriptionInput = get('restaurant-transcription');
+        const publicNotes = get('curation-notes-public');
+        const privateNotes = get('curation-notes-private');
+
+        if (nameInput) nameInput.value = entity.name || '';
+        if (locationDisplay) locationDisplay.textContent = address || 'Location not set';
+        if (descriptionInput) descriptionInput.value = entity.data?.description || '';
+        if (transcriptionInput) transcriptionInput.value = '';
+        if (publicNotes) publicNotes.value = '';
+        if (privateNotes) privateNotes.value = '';
+
+        const typeSelect = get('entity-edit-type');
+        const addressInput = get('entity-edit-address');
+        const cityInput = get('entity-edit-city');
+        const countryInput = get('entity-edit-country');
+        const phoneInput = get('entity-edit-phone');
+        const websiteInput = get('entity-edit-website');
+        const ratingInput = get('entity-edit-rating');
+        const priceLevelSelect = get('entity-edit-price-level');
+
+        if (typeSelect) typeSelect.value = entity.type || 'restaurant';
+        if (addressInput) addressInput.value = address;
+        if (cityInput) cityInput.value = city;
+        if (countryInput) countryInput.value = country;
+        if (phoneInput) phoneInput.value = phone;
+        if (websiteInput) websiteInput.value = website;
+        if (ratingInput) ratingInput.value = rating;
+        if (priceLevelSelect) priceLevelSelect.value = String(priceLevel || 0);
+    }
+
+    /**
+     * Persist entity changes from shared edit interface
+     */
+    async saveEntityFromForm() {
+        if (!this.editingEntity?.entity_id) {
+            window.uiUtils?.showNotification?.('No entity selected for editing', 'error');
+            return;
+        }
+
+        const get = (id) => document.getElementById(id);
+        const name = get('restaurant-name')?.value?.trim() || '';
+        if (!name) {
+            window.uiUtils?.showNotification?.('Entity name is required', 'error');
+            return;
+        }
+
+        try {
+            window.uiManager?.showLoading?.('Saving entity metadata...');
+
+            const type = get('entity-edit-type')?.value || this.editingEntity.type || 'restaurant';
+            const address = get('entity-edit-address')?.value?.trim() || '';
+            const city = get('entity-edit-city')?.value?.trim() || '';
+            const country = get('entity-edit-country')?.value?.trim() || '';
+            const phone = get('entity-edit-phone')?.value?.trim() || '';
+            const website = get('entity-edit-website')?.value?.trim() || '';
+            const ratingRaw = get('entity-edit-rating')?.value;
+            const priceLevelRaw = get('entity-edit-price-level')?.value;
+            const description = get('restaurant-description')?.value?.trim() || '';
+
+            const rating = ratingRaw === '' || ratingRaw === null || ratingRaw === undefined
+                ? null
+                : Number(ratingRaw);
+            const priceLevel = priceLevelRaw === '' || priceLevelRaw === null || priceLevelRaw === undefined
+                ? 0
+                : Number(priceLevelRaw);
+
+            const baseData = this.editingEntity.data && typeof this.editingEntity.data === 'object'
+                ? JSON.parse(JSON.stringify(this.editingEntity.data))
+                : {};
+
+            baseData.location = {
+                ...(baseData.location || {}),
+                ...(address ? { address } : {}),
+                ...(city ? { city } : {}),
+                ...(country ? { country } : {})
+            };
+
+            baseData.contact = {
+                ...(baseData.contact || {}),
+                ...(phone ? { phone } : {}),
+                ...(website ? { website } : {})
+            };
+
+            baseData.attributes = {
+                ...(baseData.attributes || {}),
+                ...(Number.isFinite(rating) ? { rating } : {}),
+                ...(Number.isFinite(priceLevel) ? { price_level: priceLevel } : {})
+            };
+
+            if (description) {
+                baseData.description = description;
+            }
+
+            const updates = {
+                name,
+                type,
+                data: baseData,
+                updated_at: new Date().toISOString(),
+                updatedAt: new Date().toISOString(),
+                version: (this.editingEntity.version || 1) + 1,
+                sync: {
+                    ...(this.editingEntity.sync || {}),
+                    status: 'pending',
+                    lastModified: Date.now()
+                }
+            };
+
+            await this.dataStore.updateEntity(this.editingEntity.entity_id, updates, null);
+
+            if (window.SyncManager && typeof window.SyncManager.syncAll === 'function') {
+                window.SyncManager.syncAll().catch(err => this.log.warn('Background sync failed after entity update:', err));
+            }
+
+            window.uiUtils?.showNotification?.('Entity metadata updated', 'success');
+            await this.cancelEntityEdit(true);
+            await this.refresh();
+        } catch (error) {
+            this.log.error('Failed to save entity metadata:', error);
+            window.uiUtils?.showNotification?.('Failed to save entity: ' + error.message, 'error');
+        } finally {
+            window.uiManager?.hideLoading?.();
+        }
+    }
+
+    /**
+     * Exit entity edit mode and return to list
+     * @param {boolean} skipReload - Skip list reload when caller will refresh
+     */
+    async cancelEntityEdit(skipReload = false) {
+        this.editingEntity = null;
+        this.setEntityEditMode(false);
+
+        if (window.uiManager) {
+            window.uiManager.isEditingEntity = false;
+            window.uiManager.isEditingRestaurant = false;
+            window.uiManager.editingRestaurantId = null;
+            window.uiManager.formIsDirty = false;
+            window.uiManager.showRestaurantListSection();
+        }
+
+        if (!skipReload) {
+            await this.refresh();
+        }
     }
 
     /**
@@ -325,13 +587,13 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
      */
     getSyncStatusBadge(entity) {
         const syncStatus = entity.sync?.status || 'pending';
-        
+
         const badges = {
             'synced': '<span class="px-2 py-0.5 bg-green-100 text-green-700 text-xs rounded-full flex items-center gap-1"><span class="material-icons text-xs">cloud_done</span>synced</span>',
             'pending': '<span class="px-2 py-0.5 bg-yellow-100 text-yellow-700 text-xs rounded-full flex items-center gap-1"><span class="material-icons text-xs">cloud_upload</span>pending</span>',
             'conflict': '<span class="px-2 py-0.5 bg-red-100 text-red-700 text-xs rounded-full flex items-center gap-1"><span class="material-icons text-xs">sync_problem</span>conflict</span>'
         };
-        
+
         return badges[syncStatus] || '';
     }
 
@@ -339,157 +601,266 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
      * Show entity details modal
      * @param {Object} entity - Entity to display
      */
-    showEntityDetails(entity) {
+    async showEntityDetails(entity) {
         this.log.debug('Showing entity details:', entity.entity_id);
-        
-        // Create modal
-        const modal = document.createElement('div');
-        modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4 overflow-y-auto';
-        modal.innerHTML = `
-            <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full my-4 md:my-8">
-                <div class="p-4 md:p-6 max-h-[calc(100vh-4rem)] overflow-y-auto">
-                    <!-- Header -->
-                    <div class="flex justify-between items-start mb-4">
-                        <h2 class="text-2xl font-bold text-gray-900">${entity.name || 'Unknown'}</h2>
-                        <button class="btn-close-modal text-gray-500 hover:text-gray-700">
-                            <span class="material-icons">close</span>
-                        </button>
-                    </div>
 
-                    <!-- Details -->
-                    <div class="space-y-4">
-                        ${entity.data?.location ? `
-                            <div>
-                                <h3 class="font-semibold text-gray-700 mb-2">Location</h3>
-                                <p class="text-gray-600">${entity.data.location.address || 'N/A'}</p>
-                                <p class="text-sm text-gray-500">${entity.data.location.city || ''}, ${entity.data.location.country || ''}</p>
-                                ${entity.data.location.lat && entity.data.location.lng ? `
-                                    <p class="text-xs text-gray-400 mt-1">
-                                        ${entity.data.location.lat.toFixed(6)}, ${entity.data.location.lng.toFixed(6)}
-                                    </p>
-                                ` : ''}
-                            </div>
-                        ` : ''}
-
-                        ${entity.data?.contacts ? `
-                            <div>
-                                <h3 class="font-semibold text-gray-700 mb-2">Contact</h3>
-                                ${entity.data.contacts.phone ? `<p class="text-gray-600">📞 ${entity.data.contacts.phone}</p>` : ''}
-                                ${entity.data.contacts.website ? `<p class="text-gray-600">🌐 <a href="${entity.data.contacts.website}" target="_blank" class="text-blue-600 hover:underline">${entity.data.contacts.website}</a></p>` : ''}
-                                ${entity.data.contacts.email ? `<p class="text-gray-600">📧 ${entity.data.contacts.email}</p>` : ''}
-                            </div>
-                        ` : ''}
-
-                        ${entity.data?.attributes ? `
-                            <div>
-                                <h3 class="font-semibold text-gray-700 mb-2">Attributes</h3>
-                                <div class="grid grid-cols-2 gap-2 text-sm">
-                                    ${entity.data.attributes.rating ? `<p><span class="font-medium">Rating:</span> ${entity.data.attributes.rating} ⭐</p>` : ''}
-                                    ${entity.data.attributes.user_ratings_total ? `<p><span class="font-medium">Reviews:</span> ${entity.data.attributes.user_ratings_total}</p>` : ''}
-                                    ${entity.data.attributes.price_level ? `<p><span class="font-medium">Price:</span> ${'$'.repeat(entity.data.attributes.price_level)}</p>` : ''}
-                                    ${entity.data.attributes.cuisine ? `<p><span class="font-medium">Cuisine:</span> ${entity.data.attributes.cuisine}</p>` : ''}
-                                </div>
-                            </div>
-                        ` : ''}
-
-                        <!-- Metadata -->
-                        <div class="border-t pt-4">
-                            <h3 class="font-semibold text-gray-700 mb-2">Metadata</h3>
-                            <div class="text-sm text-gray-600 space-y-1">
-                                <p><span class="font-medium">Entity ID:</span> ${entity.entity_id}</p>
-                                <p><span class="font-medium">Type:</span> ${entity.type || 'restaurant'}</p>
-                                <p><span class="font-medium">Status:</span> ${entity.status || 'active'}</p>
-                                <p><span class="font-medium">Version:</span> ${entity.version || 1}</p>
-                                <p><span class="font-medium">Created by:</span> ${entity.createdBy?.name || entity.createdBy || 'Unknown'}</p>
-                                <p><span class="font-medium">Created at:</span> ${entity.createdAt ? new Date(entity.createdAt).toLocaleString() : 'Unknown'}</p>
-                                ${entity.updatedAt ? `<p><span class="font-medium">Updated at:</span> ${new Date(entity.updatedAt).toLocaleString()}</p>` : ''}
-                            </div>
-                        </div>
-
-                        <!-- Sync Status -->
-                        ${entity.sync ? `
-                            <div class="border-t pt-4">
-                                <h3 class="font-semibold text-gray-700 mb-2">Sync Status</h3>
-                                <div class="text-sm text-gray-600 space-y-1">
-                                    <p class="flex items-center gap-2">
-                                        <span class="font-medium">Status:</span> 
-                                        ${this.getSyncStatusBadge(entity)}
-                                    </p>
-                                    ${entity.sync.serverId ? `<p><span class="font-medium">Server ID:</span> ${entity.sync.serverId}</p>` : ''}
-                                    ${entity.sync.lastSyncedAt ? `<p><span class="font-medium">Last synced:</span> ${new Date(entity.sync.lastSyncedAt).toLocaleString()}</p>` : ''}
-                                </div>
-                                ${entity.sync.status === 'pending' || entity.sync.status === 'conflict' ? `
-                                    <button class="btn-sync-entity mt-2 w-full text-sm py-2 px-4 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center justify-center gap-2">
-                                        <span class="material-icons text-sm">sync</span>
-                                        ${entity.sync.status === 'conflict' ? 'Resolve Conflict' : 'Sync Now'}
-                                    </button>
-                                ` : ''}
-                            </div>
-                        ` : ''}
-
-                        <!-- Actions -->
-                        <div class="border-t pt-4 flex gap-2">
-                            <button class="btn btn-primary flex-1">
-                                <span class="material-icons text-sm mr-1">edit</span>
-                                Curate This Entity
-                            </button>
-                            <button class="btn btn-secondary flex-1">
-                                <span class="material-icons text-sm mr-1">delete</span>
-                                Delete Entity
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        `;
-
-        // Add to body
-        document.body.appendChild(modal);
-
-        // Close button
-        modal.querySelector('.btn-close-modal').addEventListener('click', () => {
-            modal.remove();
-        });
-
-        // Sync button (if exists)
-        const syncButton = modal.querySelector('.btn-sync-entity');
-        if (syncButton) {
-            syncButton.addEventListener('click', async () => {
-                try {
-                    syncButton.disabled = true;
-                    syncButton.innerHTML = '<span class="material-icons text-sm animate-spin">sync</span> Syncing...';
-                    
-                    if (entity.sync?.status === 'conflict') {
-                        // Show conflict resolution UI
-                        await this.handleConflictResolution(entity);
-                    } else {
-                        // Trigger manual sync for this entity
-                        if (window.SyncManager && typeof window.SyncManager.pushEntities === 'function') {
-                            await window.SyncManager.pushEntities();
-                            this.log.info('Entity synced successfully');
-                        } else {
-                            this.log.warn('⚠️ Cannot sync - SyncManager not available');
-                        }
-                    }
-                    
-                    // Close modal and refresh
-                    modal.remove();
-                    await this.refresh();
-                } catch (error) {
-                    this.log.error('Failed to sync entity:', error);
-                    alert('Failed to sync entity: ' + error.message);
-                    syncButton.disabled = false;
-                    syncButton.innerHTML = '<span class="material-icons text-sm">sync</span> Sync Now';
-                }
-            });
+        if (!window.modalManager) {
+            this.log.error('ModalManager not available');
+            return;
         }
 
-        // Click outside to close
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                modal.remove();
-            }
+        const relatedCurations = await this.getRelatedCurations(entity.entity_id);
+
+        const content = document.createElement('div');
+        content.className = 'space-y-4';
+        content.innerHTML = `
+            ${entity.data?.location ? `
+                <div>
+                    <h3 class="font-semibold text-gray-700 mb-2">Location</h3>
+                    <p class="text-gray-600">${entity.data.location.address || 'N/A'}</p>
+                    <p class="text-sm text-gray-500">${entity.data.location.city || ''}, ${entity.data.location.country || ''}</p>
+                    ${entity.data.location.lat && entity.data.location.lng ? `
+                        <p class="text-xs text-gray-400 mt-1">
+                            ${entity.data.location.lat.toFixed(6)}, ${entity.data.location.lng.toFixed(6)}
+                        </p>
+                    ` : ''}
+                </div>
+            ` : ''}
+
+            ${entity.data?.contacts ? `
+                <div>
+                    <h3 class="font-semibold text-gray-700 mb-2">Contact</h3>
+                    ${entity.data.contacts.phone ? `<p class="text-gray-600">📞 ${entity.data.contacts.phone}</p>` : ''}
+                    ${entity.data.contacts.website ? `<p class="text-gray-600">🌐 <a href="${entity.data.contacts.website}" target="_blank" class="text-blue-600 hover:underline">${entity.data.contacts.website}</a></p>` : ''}
+                    ${entity.data.contacts.email ? `<p class="text-gray-600">📧 ${entity.data.contacts.email}</p>` : ''}
+                </div>
+            ` : ''}
+
+            ${entity.data?.attributes ? `
+                <div>
+                    <h3 class="font-semibold text-gray-700 mb-2">Attributes</h3>
+                    <div class="grid grid-cols-2 gap-2 text-sm">
+                        ${entity.data.attributes.rating ? `<p><span class="font-medium">Rating:</span> ${entity.data.attributes.rating} ⭐</p>` : ''}
+                        ${entity.data.attributes.user_ratings_total ? `<p><span class="font-medium">Reviews:</span> ${entity.data.attributes.user_ratings_total}</p>` : ''}
+                        ${entity.data.attributes.price_level ? `<p><span class="font-medium">Price:</span> ${'$'.repeat(entity.data.attributes.price_level)}</p>` : ''}
+                        ${entity.data.attributes.cuisine ? `<p><span class="font-medium">Cuisine:</span> ${entity.data.attributes.cuisine}</p>` : ''}
+                    </div>
+                </div>
+            ` : ''}
+
+            ${this.renderRelatedCurationsSection(relatedCurations)}
+
+            <!-- Metadata -->
+            <div class="border-t pt-4">
+                <h3 class="font-semibold text-gray-700 mb-2">Metadata</h3>
+                <div class="text-sm text-gray-600 space-y-1">
+                    <p><span class="font-medium">Entity ID:</span> ${entity.entity_id}</p>
+                    <p><span class="font-medium">Type:</span> ${entity.type || 'restaurant'}</p>
+                    <p><span class="font-medium">Status:</span> ${entity.status || 'active'}</p>
+                    <p><span class="font-medium">Version:</span> ${entity.version || 1}</p>
+                </div>
+            </div>
+
+            <!-- Sync Status -->
+            ${entity.sync ? `
+                <div class="border-t pt-4">
+                    <h3 class="font-semibold text-gray-700 mb-2">Sync Status</h3>
+                    <div class="text-sm text-gray-600 space-y-1">
+                        <p class="flex items-center gap-2">
+                            <span class="font-medium">Status:</span> 
+                            ${this.getSyncStatusBadge(entity)}
+                        </p>
+                    </div>
+                    ${entity.sync.status === 'pending' || entity.sync.status === 'conflict' ? `
+                        <button class="btn-sync-entity mt-2 w-full text-sm py-2 px-4 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center justify-center gap-2">
+                            <span class="material-icons text-sm">sync</span>
+                            ${entity.sync.status === 'conflict' ? 'Resolve Conflict' : 'Sync Now'}
+                        </button>
+                    ` : ''}
+                </div>
+            ` : ''}
+        `;
+
+        // Footer Actions
+        const footer = document.createElement('div');
+        footer.className = 'w-full flex gap-2';
+        footer.innerHTML = `
+            <button class="btn-edit-entity flex-1 py-2 px-4 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center justify-center gap-2">
+                <span class="material-icons text-sm">edit</span>
+                Edit Entity
+            </button>
+            <button class="btn-delete-entity flex-1 py-2 px-4 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 flex items-center justify-center gap-2">
+                <span class="material-icons text-sm">delete</span>
+                Delete Entity
+            </button>
+        `;
+
+        // Bind events
+        const modalId = window.modalManager.open({
+            title: entity.name || 'Unknown',
+            content: content,
+            footer: footer,
+            size: 'md'
         });
+
+        // Event Listeners
+        setTimeout(() => {
+            const modalEl = document.getElementById(modalId);
+            if (!modalEl) return;
+
+            // Open specific related curation
+            const openCurationButtons = modalEl.querySelectorAll('.btn-open-curation');
+            openCurationButtons.forEach(button => {
+                button.addEventListener('click', async () => {
+                    const curationId = button.getAttribute('data-curation-id');
+                    if (!curationId) return;
+
+                    try {
+                        const curation = await this.dataStore.getCuration(curationId);
+                        if (!curation) {
+                            window.uiUtils?.showNotification?.('Curation not found', 'error');
+                            return;
+                        }
+
+                        window.modalManager.close(modalId);
+                        if (window.uiManager && typeof window.uiManager.editCuration === 'function') {
+                            window.uiManager.editCuration(curation);
+                        }
+                    } catch (error) {
+                        this.log.error('Failed to open curation from entity details:', error);
+                        window.uiUtils?.showNotification?.('Failed to open curation', 'error');
+                    }
+                });
+            });
+
+            // Sync
+            const syncBtn = modalEl.querySelector('.btn-sync-entity');
+            if (syncBtn) {
+                syncBtn.addEventListener('click', async () => {
+                    // Similar logic to before, simplified for modalManager
+                    try {
+                        syncBtn.innerHTML = '<span class="material-icons text-sm animate-spin">sync</span> Syncing...';
+                        if (window.SyncManager) {
+                            await window.SyncManager.pushEntities();
+                            this.log.info('Entity synced successfully');
+                        }
+                        window.modalManager.close(modalId);
+                        await this.refresh();
+                    } catch (error) {
+                        alert('Sync failed: ' + error.message);
+                    }
+                });
+            }
+
+            const editBtn = modalEl.querySelector('.btn-edit-entity');
+            if (editBtn) {
+                editBtn.addEventListener('click', async () => {
+                    window.modalManager.close(modalId);
+                    await this.startEntityEdit(entity);
+                });
+            }
+
+            const deleteBtn = modalEl.querySelector('.btn-delete-entity');
+            if (deleteBtn) {
+                deleteBtn.addEventListener('click', async () => {
+                    const confirmed = confirm('Delete this entity and linked curations?');
+                    if (!confirmed) {
+                        return;
+                    }
+
+                    try {
+                        await this.dataStore.deleteEntity(entity.entity_id);
+                        window.modalManager.close(modalId);
+                        window.uiUtils?.showNotification?.('Entity deleted', 'success');
+                        await this.refresh();
+                    } catch (error) {
+                        this.log.error('Failed to delete entity:', error);
+                        window.uiUtils?.showNotification?.('Failed to delete entity: ' + error.message, 'error');
+                    }
+                });
+            }
+        }, 0);
+    }
+
+    /**
+     * Load curations currently linked to an entity
+     * @param {string} entityId - Entity identifier
+     * @returns {Promise<Array>} - Linked curations
+     */
+    async getRelatedCurations(entityId) {
+        if (!entityId || !this.dataStore) {
+            return [];
+        }
+
+        try {
+            const curations = await this.dataStore.getEntityCurations(entityId);
+            return Array.isArray(curations)
+                ? [...curations].sort((a, b) => new Date(b.updated_at || b.updatedAt || 0) - new Date(a.updated_at || a.updatedAt || 0))
+                : [];
+        } catch (error) {
+            this.log.error('Failed to load related curations for entity:', entityId, error);
+            return [];
+        }
+    }
+
+    /**
+     * Render related curations section for entity details view
+     * @param {Array} curations - Linked curations
+     * @returns {string} HTML string
+     */
+    renderRelatedCurationsSection(curations = []) {
+        if (!Array.isArray(curations) || curations.length === 0) {
+            return `
+                <div class="border-t pt-4">
+                    <h3 class="font-semibold text-gray-700 mb-2">Related Curations</h3>
+                    <p class="text-sm text-gray-500">No curations linked to this entity yet.</p>
+                </div>
+            `;
+        }
+
+        const rowsHtml = curations.map((curation) => {
+            const curationId = this.escapeHtml(curation.curation_id || '');
+            const curationName = this.escapeHtml(curation.restaurant_name || curation.name || 'Untitled curation');
+            const curatorName = this.escapeHtml(curation.curator?.name || curation.curator || 'Unknown curator');
+            const status = this.escapeHtml(curation.status || 'draft');
+
+            return `
+                <div class="border border-gray-100 rounded-lg p-3 flex items-center justify-between gap-3">
+                    <div class="min-w-0">
+                        <p class="font-medium text-sm text-gray-900 truncate">${curationName}</p>
+                        <p class="text-xs text-gray-500 mt-1 truncate">Curator: ${curatorName}</p>
+                        <p class="text-xs text-gray-400 mt-1">${curationId}</p>
+                    </div>
+                    <div class="flex items-center gap-2 flex-shrink-0">
+                        <span class="px-2 py-1 text-[10px] uppercase tracking-wider rounded-full bg-gray-100 text-gray-700">${status}</span>
+                        <button
+                            type="button"
+                            class="btn-open-curation px-2.5 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                            data-curation-id="${curationId}">
+                            Open
+                        </button>
+                    </div>
+                </div>
+            `;
+        }).join('');
+
+        return `
+            <div class="border-t pt-4">
+                <h3 class="font-semibold text-gray-700 mb-2">Related Curations</h3>
+                <div class="space-y-2">${rowsHtml}</div>
+            </div>
+        `;
+    }
+
+    /**
+     * Escape HTML entities to prevent XSS in modal rendering
+     * @param {string} value - Input text
+     * @returns {string} Escaped text
+     */
+    escapeHtml(value) {
+        const div = document.createElement('div');
+        div.textContent = value || '';
+        return div.innerHTML;
     }
 
     /**
@@ -527,9 +898,9 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
                     </div>
                 </div>
             `;
-            
+
             document.body.appendChild(modal);
-            
+
             modal.querySelector('.btn-resolve-local').addEventListener('click', async () => {
                 try {
                     if (window.SyncManager && typeof window.SyncManager.resolveConflict === 'function') {
@@ -544,7 +915,7 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
                     reject(error);
                 }
             });
-            
+
             modal.querySelector('.btn-resolve-server').addEventListener('click', async () => {
                 try {
                     if (window.SyncManager && typeof window.SyncManager.resolveConflict === 'function') {
@@ -559,7 +930,7 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
                     reject(error);
                 }
             });
-            
+
             modal.querySelector('.btn-resolve-cancel').addEventListener('click', () => {
                 modal.remove();
                 reject(new Error('Conflict resolution cancelled'));

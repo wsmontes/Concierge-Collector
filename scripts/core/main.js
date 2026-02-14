@@ -7,13 +7,13 @@
 let applicationStarted = false;
 
 // Detect if running under Live Server (VS Code extension)
-const isLiveServer = window.location.port === '5500' || 
-                     window.location.port === '5501' ||
-                     document.querySelector('script[src*="live-server"]') !== null;
+const isLiveServer = window.location.port === '5500' ||
+    window.location.port === '5501' ||
+    document.querySelector('script[src*="live-server"]') !== null;
 
 if (isLiveServer) {
     console.log('🔴 Live Server detected - Adding hot-reload protection');
-    
+
     // Clear any previous state on hot-reload
     window.addEventListener('beforeunload', () => {
         console.log('🔄 Live Server: Page unloading, clearing state...');
@@ -22,43 +22,43 @@ if (isLiveServer) {
 }
 
 // Expose startApplication function for AccessControl to call after unlock
-window.startApplication = function() {
+window.startApplication = function () {
     console.log('🔵 startApplication called, applicationStarted:', applicationStarted);
-    
+
     if (isLiveServer) {
         console.log('🔴 Live Server mode - Extra checks');
     }
-    
+
     if (applicationStarted) {
         console.warn('⚠️ Application already started, ignoring duplicate call');
         console.trace('Duplicate call stack:');
         return;
     }
-    
+
     applicationStarted = true;
     console.log('🚀 Starting Concierge Collector application...');
-    
+
     // Check if required libraries exist
     if (typeof Dexie === 'undefined') {
         console.error('❌ Dexie.js library not loaded!');
         showFatalError('Required library Dexie.js not loaded. Please check your internet connection and reload the page.');
         return;
     }
-    
+
     if (typeof ModuleWrapper === 'undefined') {
         console.error('❌ ModuleWrapper not loaded!');
         showFatalError('Required module wrapper not loaded. Please check if all script files are properly included.');
         return;
     }
-    
+
     // Cleanup browser data before initialization
     cleanupBrowserData();
-    
+
     // Initialize the application with clean entity-curation backend
     initializeApp()
         .then(() => {
             console.log('✅ Application initialization completed');
-            
+
             // Trigger initial sync
             triggerInitialSync();
         })
@@ -93,12 +93,12 @@ function showFatalError(message) {
             duration: -1, // Stay until clicked
             gravity: "top",
             position: "center",
-            style: { 
+            style: {
                 background: "#ef4444", // Red from variables
                 color: "white",
                 minWidth: "300px"
             },
-            onClick: function(){} // Required to keep toast on screen
+            onClick: function () { } // Required to keep toast on screen
         }).showToast();
     } else {
         // Fallback to alert
@@ -111,38 +111,32 @@ function showFatalError(message) {
  */
 async function initializeApp() {
     console.log('🔄 Initializing entity-curation backend...');
-    
+
     try {
         // Create base DOM structure
         ensureBaseStructureExists();
-        
-        // Check for V3 API key first
-        console.log('🔑 Checking V3 API key...');
-        if (window.checkAndPromptForV3ApiKey) {
-            window.checkAndPromptForV3ApiKey();
-        }
-        
+
         // STEP 1: Initialize DataStore (core database layer)
         // Clean break strategy: No migration, force reset handled by dataStorage.js
         if (!window.DataStore) {
             throw new Error('DataStore not available - check script loading order');
         }
-        
+
         console.log('🔄 Initializing DataStore...');
         await window.DataStore.initialize();
-        
+
         if (!window.DataStore.isInitialized) {
             throw new Error('DataStore failed to initialize properly');
         }
-        
+
         // CRITICAL: Validate DataStore.db is ready before proceeding
         // This prevents race conditions where modules try to access db before it's open
         if (!window.DataStore.db || !window.DataStore.db.isOpen()) {
             throw new Error('DataStore.db is not ready - async initialization incomplete');
         }
-        
+
         console.log('✅ DataStore initialized successfully - db is ready and open');
-        
+
         // Initialize utility managers that depend on DataStore
         console.log('🔄 Initializing utility managers...');
         if (window.DraftRestaurantManager && typeof window.DraftRestaurantManager.init === 'function') {
@@ -153,13 +147,13 @@ async function initializeApp() {
             window.PendingAudioManager.init(window.dataStore);
             console.log('✅ PendingAudioManager initialized');
         }
-        
+
         // Check if initial sync is needed after clean break reset
         const needsInitialSync = localStorage.getItem('needsInitialSync');
         if (needsInitialSync === 'true') {
             console.log('🔄 Clean break detected - initial sync will be triggered after setup');
         }
-        
+
         // Initialize API Service
         if (window.ApiService) {
             console.log('🔄 Initializing API Service...');
@@ -168,7 +162,7 @@ async function initializeApp() {
         } else {
             console.warn('⚠️ API Service not available');
         }
-        
+
         // Initialize Sync Manager V3 (depends on DataStore and ApiService)
         console.log('🔍 Checking for SyncManagerV3... Type:', typeof window.SyncManagerV3);
         if (window.SyncManagerV3) {
@@ -177,12 +171,12 @@ async function initializeApp() {
                 window.SyncManager = new window.SyncManagerV3();
                 await window.SyncManager.initialize();
                 console.log('✅ Sync Manager V3 initialized');
-                
+
                 // Trigger initial sync if needed after clean break
                 if (needsInitialSync === 'true') {
                     console.log('🔄 Triggering initial sync from server...');
                     localStorage.removeItem('needsInitialSync');
-                    
+
                     // Trigger sync in background (non-blocking)
                     setTimeout(async () => {
                         try {
@@ -194,7 +188,7 @@ async function initializeApp() {
                         }
                     }, 1000); // 1 second delay to let UI initialize
                 }
-                
+
                 // Initialize Sync Status Module
                 if (window.SyncStatusModule) {
                     console.log('🔄 Initializing Sync Status Module...');
@@ -215,7 +209,7 @@ async function initializeApp() {
             console.warn('   • SyncManager will not be available - app will continue without sync');
             window.SyncManager = null; // Explicitly set to null for safety
         }
-        
+
         // Initialize Import Manager
         if (window.ImportManager) {
             console.log('🔄 Initializing Import Manager...');
@@ -224,18 +218,18 @@ async function initializeApp() {
         } else {
             console.warn('⚠️ Import Manager not available');
         }
-        
+
         // Initialize UI Manager with clean DataStore integration
         window.uiManager = new UIManager();
         window.uiManager.init();
-        
+
         // Verify recording module is properly initialized
         console.log('🔍 Verifying RecordingModule initialization:', {
             RecordingModuleClassExists: typeof RecordingModule !== 'undefined',
             uiManagerRecordingModuleExists: !!window.uiManager.recordingModule,
             uiManagerExists: !!window.uiManager
         });
-        
+
         if (!window.uiManager.recordingModule && typeof RecordingModule !== 'undefined') {
             console.warn('⚠️ RecordingModule not initialized by UIManager - initializing manually');
             try {
@@ -252,12 +246,12 @@ async function initializeApp() {
         } else {
             console.log('✅ RecordingModule already initialized by UIManager');
         }
-        
+
         // Load curator info using DataStore
         if (window.uiManager.curatorModule) {
             await window.uiManager.curatorModule.loadCuratorInfo();
         }
-        
+
         // Initialize Entity Module (NEW - V3 Architecture)
         if (window.EntityModule) {
             console.log('🔄 Initializing Entity Module...');
@@ -266,15 +260,11 @@ async function initializeApp() {
                 const initialized = await window.entityModule.init({
                     dataStore: window.DataStore
                 });
-                
+
                 if (initialized) {
                     console.log('✅ Entity Module initialized');
-                    
-                    // Show entities section
-                    const entitiesSection = document.getElementById('entities-section');
-                    if (entitiesSection) {
-                        entitiesSection.classList.remove('hidden');
-                    }
+                    // NOTE: entities-section visibility is managed by UIManager.switchView('list')
+                    // Do NOT manipulate it directly here
                 } else {
                     console.warn('⚠️ Entity Module initialization failed');
                 }
@@ -284,9 +274,9 @@ async function initializeApp() {
         } else {
             console.warn('⚠️ Entity Module not available');
         }
-        
+
         console.log('✅ Entity-curation backend initialization complete');
-        
+
     } catch (error) {
         console.error('❌ Error during backend initialization:', error);
         console.error('Stack trace:', error.stack);
@@ -306,13 +296,13 @@ function ensureBaseStructureExists() {
         container.className = 'container mx-auto px-4 py-8';
         document.body.appendChild(container);
     }
-    
+
     // Ensure minimum required sections exist
     const sections = [
         { id: 'recording-section', title: 'Record Your Restaurant Review', icon: 'mic' },
         { id: 'concepts-section', title: 'Restaurant Concepts', icon: 'category' }
     ];
-    
+
     sections.forEach(section => {
         if (!document.getElementById(section.id)) {
             const sectionEl = document.createElement('div');
@@ -328,7 +318,7 @@ function ensureBaseStructureExists() {
             container.appendChild(sectionEl);
         }
     });
-    
+
     console.log('Base DOM structure verified');
 }
 
@@ -352,7 +342,7 @@ function setupManualSyncButton() {
     // Add click handler using V3 SyncManager
     newButton.addEventListener('click', async () => {
         console.log('🔄 V3: Manual sync triggered');
-        
+
         const syncManager = window.V3SyncManager || window.syncManager;
         if (!syncManager) {
             console.error('❌ V3: SyncManager not available');
@@ -365,13 +355,13 @@ function setupManualSyncButton() {
         // Disable button and add syncing state
         newButton.disabled = true;
         newButton.classList.add('syncing');
-        
+
         // Animate icon (rotate) if it's the header button
         const icon = newButton.querySelector('.material-icons');
         if (icon) {
             icon.style.animation = 'spin 1s linear infinite';
         }
-        
+
         // Get button text element (for sidebar button)
         const buttonText = newButton.querySelector('.btn-text') || newButton.childNodes[newButton.childNodes.length - 1];
         const originalText = buttonText?.textContent;
@@ -391,10 +381,10 @@ function setupManualSyncButton() {
             } else {
                 throw new Error('No compatible sync method available');
             }
-            
+
             console.log('✅ V3: Manual sync completed from sidebar');
             console.log('V3: Sync results:', syncResults);
-            
+
             // Show success notification with results
             if (window.uiUtils?.showNotification) {
                 if (syncResults && typeof syncResults === 'object') {
@@ -406,22 +396,22 @@ function setupManualSyncButton() {
                     window.uiUtils.showNotification('V3 Sync completed successfully', 'success');
                 }
             }
-            
+
             // Refresh entity list if available
             if (window.entityModule) {
                 await window.entityModule.refresh();
             }
-            
+
             // Refresh UI components
             if (window.uiManager) {
                 // Refresh curator selector if available
-                if (window.uiManager.curatorModule && 
+                if (window.uiManager.curatorModule &&
                     typeof window.uiManager.curatorModule.initializeCuratorSelector === 'function') {
                     window.uiManager.curatorModule.curatorSelectorInitialized = false;
                     await window.uiManager.curatorModule.initializeCuratorSelector();
                 }
             }
-            
+
         } catch (error) {
             console.error('❌ V3: Manual sync error:', error);
             if (window.uiUtils?.showNotification) {
@@ -431,13 +421,13 @@ function setupManualSyncButton() {
             // Re-enable button and restore state
             newButton.disabled = false;
             newButton.classList.remove('syncing');
-            
+
             // Stop icon animation
             const icon = newButton.querySelector('.material-icons');
             if (icon) {
                 icon.style.animation = '';
             }
-            
+
             // Restore text for sidebar button
             if (buttonText && originalText) {
                 buttonText.textContent = originalText;
@@ -460,7 +450,7 @@ function initializeBackgroundServices() {
             });
         }
     }, 2000);
-    
+
     // PHASE 1.3: AutoSync DISABLED - using SyncManager only
     // Previously: AutoSync periodic sync every 30min
     // Now: SyncManager handles all sync (60s retry + manual comprehensive sync)
@@ -468,23 +458,23 @@ function initializeBackgroundServices() {
     setTimeout(() => {
         console.log('⚠️ AutoSync periodic sync disabled (Phase 1.3)');
         console.log('✅ Using SyncManager for all sync operations');
-        
+
         // Setup manual sync button to use SyncManager's comprehensive sync
         setupManualSyncButton();
     }, 3000);
-    
+
     // PHASE 1.3: SyncSettingsManager DISABLED (no longer needed)
     // Previously: Managed AutoSync interval settings
     // Now: SyncManager has fixed 60s retry + unified performComprehensiveSync()
     // All sync buttons use the same comprehensive sync method
-    
+
     console.log('Background services scheduled for initialization');
 }
 
 // Browser data cleanup function - runs at application startup
 function cleanupBrowserData() {
     console.log('Performing browser data cleanup...');
-    
+
     try {
         // Define keys to preserve in localStorage
         const preserveKeys = [
@@ -499,7 +489,7 @@ function cleanupBrowserData() {
             'oauth_refresh_token',  // CRITICAL: Preserve OAuth refresh token
             'oauth_token_expiry'  // CRITICAL: Preserve OAuth token expiry
         ];
-        
+
         // Clean localStorage (preserve only essential keys)
         const keysToRemove = [];
         for (let i = 0; i < localStorage.length; i++) {
@@ -508,21 +498,21 @@ function cleanupBrowserData() {
                 keysToRemove.push(key);
             }
         }
-        
+
         // Remove the identified keys
         keysToRemove.forEach(key => {
             localStorage.removeItem(key);
             console.log(`Removed localStorage item: ${key}`);
         });
-        
+
         // Clear sessionStorage completely
         sessionStorage.clear();
         console.log('SessionStorage cleared');
-        
+
         // Clear non-essential cookies
         const cookies = document.cookie.split(';');
         const preserveCookies = ['session_id']; // Add any essential cookies here
-        
+
         cookies.forEach(cookie => {
             const cookieName = cookie.split('=')[0].trim();
             if (!preserveCookies.includes(cookieName)) {
@@ -530,9 +520,9 @@ function cleanupBrowserData() {
                 console.log(`Removed cookie: ${cookieName}`);
             }
         });
-        
+
         console.log('Browser data cleanup complete');
-        
+
         // Show notification if uiUtils is available
         if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
             // Slight delay to ensure notification system is ready
@@ -540,7 +530,7 @@ function cleanupBrowserData() {
                 window.uiUtils.showNotification('Browser data cleaned up successfully', 'info');
             }, 1000);
         }
-        
+
     } catch (error) {
         console.error('Error during browser data cleanup:', error);
     }
@@ -557,7 +547,7 @@ function cleanupBrowserData() {
  */
 function triggerInitialSync() {
     console.log('🔄 Checking if sync is needed...');
-    
+
     // Give time for modules to initialize and UI to render
     setTimeout(async () => {
         try {
@@ -566,13 +556,13 @@ function triggerInitialSync() {
                 console.warn('⚠️ SyncManager not available, skipping initial sync');
                 return;
             }
-            
+
             // Check if DataStore is available
             if (!window.DataStore) {
                 console.warn('⚠️ DataStore not available, skipping sync timing check');
                 return;
             }
-            
+
             // Check last sync time
             let lastSyncTime;
             try {
@@ -582,19 +572,23 @@ function triggerInitialSync() {
             } catch (syncTimeError) {
                 console.log('Could not retrieve last sync time, proceeding with sync');
             }
-            
+
             const now = new Date();
             const fiveMinutesAgo = new Date(now.getTime() - 5 * 60 * 1000);
-            
+
             if (lastSyncTime && new Date(lastSyncTime) > fiveMinutesAgo) {
                 console.log('Recent sync detected, skipping initial sync');
                 console.log(`Last sync was at: ${new Date(lastSyncTime).toLocaleTimeString()}`);
                 return;
             }
-            
+
             // Show notification that sync is starting
             console.log('🔄 Starting background sync...');
-            
+            if (window.SyncStatusModule && window.syncStatusModule) {
+                // Force UI update to show "preparing" or just ensure it's ready
+                window.syncStatusModule.updateStatus();
+            }
+
             // Perform full sync with entity-curation model
             try {
                 // Verify SyncManager is properly initialized
@@ -602,15 +596,15 @@ function triggerInitialSync() {
                     console.warn('⚠️ SyncManager not available, skipping sync');
                     return;
                 }
-                
+
                 if (typeof window.SyncManager.fullSync !== 'function') {
                     console.warn('⚠️ SyncManager.fullSync not available (initialization may have failed)');
                     return;
                 }
-                
+
                 console.log('🔄 Using SyncManager for full sync...');
                 const syncResults = await window.SyncManager.fullSync();
-                
+
                 // Log detailed sync results
                 console.log('✅ Sync results:', syncResults);
                 if (syncResults && typeof syncResults === 'object') {
@@ -619,7 +613,7 @@ function triggerInitialSync() {
                     const curationCount = syncResults.curationsAdded || 0;
                     console.log(`V3: Synced ${added} entities, updated ${updated}, ${curationCount} curations`);
                 }
-                
+
                 // Update UI to reflect new data if UI manager exists (only if there are changes)
                 const hasChanges = syncResults && (
                     (syncResults.entitiesAdded && syncResults.entitiesAdded > 0) ||
@@ -627,29 +621,29 @@ function triggerInitialSync() {
                     (syncResults.added && syncResults.added > 0) ||
                     (syncResults.updated && syncResults.updated > 0)
                 );
-                
+
                 if (window.uiManager && hasChanges) {
                     // Refresh curator selector if available
-                    if (window.uiManager.curatorModule && 
+                    if (window.uiManager.curatorModule &&
                         typeof window.uiManager.curatorModule.initializeCuratorSelector === 'function') {
                         window.uiManager.curatorModule.curatorSelectorInitialized = false;
                         await window.uiManager.curatorModule.initializeCuratorSelector();
                     }
-                    
+
                     // Refresh restaurant list if available
-                    if (window.uiManager.restaurantModule && 
+                    if (window.uiManager.restaurantModule &&
                         typeof window.uiManager.restaurantModule.loadRestaurantList === 'function') {
                         console.log('V3: Refreshing restaurant list to display newly synced data...');
-                        const currentCurator = window.dataStore.getCurrentCurator ? 
-                            await window.dataStore.getCurrentCurator() : 
+                        const currentCurator = window.dataStore.getCurrentCurator ?
+                            await window.dataStore.getCurrentCurator() :
                             (window.dataStorage ? await window.dataStorage.getCurrentCurator() : null);
-                        
+
                         if (currentCurator) {
                             const filterEnabled = window.uiManager.restaurantModule.getCurrentFilterState();
                             await window.uiManager.restaurantModule.loadRestaurantList(currentCurator.id, filterEnabled);
                         }
                     }
-                    
+
                     // Show notification only if there were changes
                     if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
                         const added = syncResults.entitiesAdded || syncResults.added || 0;
@@ -660,13 +654,13 @@ function triggerInitialSync() {
                 } else {
                     console.log('V3: No changes from sync, UI update skipped');
                 }
-                
+
             } catch (syncError) {
                 console.error('V3: Background sync error:', syncError);
                 // Don't show error notification on background sync - it's non-critical
                 // The user can manually sync later if needed
             }
-            
+
             // Update last sync time using appropriate data store
             try {
                 if (window.EntityStore && typeof window.EntityStore.updateLastSyncTime === 'function') {
@@ -677,12 +671,12 @@ function triggerInitialSync() {
             } catch (updateTimeError) {
                 console.warn('V3: Could not update last sync time:', updateTimeError);
             }
-            
+
         } catch (error) {
             console.error('V3: Background sync error:', error);
             // Silent fail - user can manually sync if needed
         }
-    }, 3000); // Wait 3 seconds to ensure UI is fully loaded before background sync
+    }, 1000); // reduced from 3000ms: 1s is enough for UI to settle
 }
 
 /**
@@ -690,7 +684,7 @@ function triggerInitialSync() {
  */
 function initializeModules() {
     console.log('Initializing all modules...');
-    
+
     // Load the PlacesModule (not PlacesSearchModule which doesn't exist)
     // Remove references to placesSearchModule and placesInlineSearchModule
     try {
@@ -715,15 +709,15 @@ function loadPlacesModule() {
     // Load the single consolidated Places module instead of the separate modules
     const script = document.createElement('script');
     script.src = 'scripts/modules/placesModule.js';
-    
-    script.onload = function() {
+
+    script.onload = function () {
         console.log('Places module loaded successfully');
     };
-    
-    script.onerror = function() {
+
+    script.onerror = function () {
         console.error('Failed to load Places module script');
     };
-    
+
     document.head.appendChild(script);
 }
 
@@ -742,30 +736,30 @@ document.addEventListener('DOMContentLoaded', () => {
 async function handleQuickImportNearby() {
     const logger = Logger.module('QuickImport');
     logger.info('🚀 Quick Import Nearby initiated');
-    
+
     const button = document.getElementById('import-nearby-btn');
     const originalText = button.innerHTML;
-    
+
     try {
         // Disable button during operation
         button.disabled = true;
         button.innerHTML = '<span class="material-icons text-sm mr-1 animate-spin">refresh</span> Importing...';
-        
+
         // Initialize PlacesAutomation if not already done
         if (!window.placesAutomation) {
             window.placesAutomation = new PlacesAutomation();
         }
-        
+
         // 1. Get user location
         logger.debug('📍 Getting user location...');
         const location = await window.placesAutomation.getUserLocation();
         logger.debug(`✅ Location: ${location.lat}, ${location.lng}`);
-        
+
         // 2. Search Google Places via Backend API
         logger.debug('🔍 Searching Google Places via backend...');
         const radius = 5000; // 5km
         const maxResults = 20;
-        
+
         // Call backend /api/v3/places/nearby endpoint
         const backendUrl = `${AppConfig.api.backend.baseUrl}/places/nearby`;
         const params = new URLSearchParams({
@@ -775,32 +769,32 @@ async function handleQuickImportNearby() {
             type: 'restaurant',
             max_results: maxResults.toString()
         });
-        
+
         const response = await fetch(`${backendUrl}?${params.toString()}`);
-        
+
         if (!response.ok) {
             throw new Error(`Backend API error: ${response.status} ${response.statusText}`);
         }
-        
+
         const data = await response.json();
-        
+
         if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
             throw new Error(`Google Places API error: ${data.error_message || data.status}`);
         }
-        
+
         const places = data.results || [];
-        
+
         logger.debug(`✅ Found ${places.length} places`);
-        
+
         // Limit to 20 results
         const limitedPlaces = places.slice(0, maxResults);
-        
+
         // 3. Import as entities (automated)
         logger.debug('💾 Importing entities...');
         const imported = await window.placesAutomation.autoImportEntities(limitedPlaces);
-        
+
         logger.info(`✅ Import complete: ${imported.count} imported, ${imported.duplicates} duplicates`);
-        
+
         // 4. Show success notification
         if (typeof Toastify !== 'undefined') {
             Toastify({
@@ -811,15 +805,15 @@ async function handleQuickImportNearby() {
                 style: { background: "linear-gradient(to right, #00b09b, #96c93d)" }
             }).showToast();
         }
-        
+
         // 5. Refresh UI (if entity list exists)
         if (window.uiManager && window.uiManager.refreshEntityList) {
             await window.uiManager.refreshEntityList();
         }
-        
+
     } catch (error) {
         logger.error('❌ Import failed:', error);
-        
+
         // Show error notification
         if (typeof Toastify !== 'undefined') {
             Toastify({
@@ -830,7 +824,7 @@ async function handleQuickImportNearby() {
                 style: { background: "linear-gradient(to right, #ff5f6d, #ffc371)" }
             }).showToast();
         }
-        
+
     } finally {
         // Re-enable button
         button.disabled = false;

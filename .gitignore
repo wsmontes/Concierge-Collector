@@ -163,6 +163,8 @@ backup/
 # Exports de teste
 exports/
 test_data/
+data/
+data/**
 
 # Screenshots de debug
 screenshots/

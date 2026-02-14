@@ -14,7 +14,7 @@ import os
 import numpy as np
 
 from app.models.schemas import (
-    Curation, CurationCreate, CurationUpdate, PaginatedResponse,
+    Curation, CurationCreate, CurationUpdate, PaginatedResponse, CurationStatus,
     SemanticSearchRequest, SemanticSearchResponse, SemanticSearchResult, ConceptMatch,
     HybridSearchRequest, HybridSearchResponse, HybridSearchResult
 )
@@ -78,6 +78,8 @@ def create_curation(
     doc["createdAt"] = datetime.now(timezone.utc)
     doc["updatedAt"] = datetime.now(timezone.utc)
     doc["version"] = 1
+    doc["createdBy"] = curation.createdBy or curation.curator_id
+    doc["updatedBy"] = curation.curator_id
     
     # Insert
     try:
@@ -97,6 +99,8 @@ def create_curation(
 def search_curations(
     entity_id: Optional[str] = Query(None),
     curator_id: Optional[str] = Query(None),
+    status: Optional[CurationStatus] = Query(None),
+    include_deleted: bool = Query(False),
     since: Optional[str] = Query(None, description="ISO timestamp - only return curations updated after this time"),
     limit: int = Query(50, ge=1, le=1000),
     offset: int = Query(0, ge=0),
@@ -122,6 +126,13 @@ def search_curations(
             query["updatedAt"] = {"$gte": since_dt}
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid since timestamp format. Use ISO 8601.")
+    
+    # ✅ STATUS FILTERING
+    if status:
+        query["status"] = status
+    elif not include_deleted:
+        # Default: exclude deleted items
+        query["status"] = {"$ne": "deleted"}
     
     # Get total count
     total = db.curations.count_documents(query)
@@ -154,8 +165,11 @@ def get_entity_curations(
             detail=f"Entity {entity_id} not found"
         )
     
-    # Get curations
-    cursor = db.curations.find({"entity_id": entity_id})
+    # Get curations (exclude deleted by default)
+    cursor = db.curations.find({
+        "entity_id": entity_id,
+        "status": {"$ne": "deleted"}
+    })
     curations = []
     for doc in cursor:
         curations.append(Curation(**doc))
@@ -213,6 +227,35 @@ def update_curation(
     
     # Prepare update
     update_data = {k: v for k, v in updates.model_dump(exclude_unset=True).items() if v is not None}
+
+    # Keep curator fields consistent regardless of which one is provided
+    if "curator" in update_data and "curator_id" not in update_data:
+        curator_obj = update_data.get("curator") or {}
+        if isinstance(curator_obj, dict) and curator_obj.get("id"):
+            update_data["curator_id"] = curator_obj.get("id")
+
+    if "curator_id" in update_data and "curator" not in update_data:
+        current_curator = current.get("curator") or {}
+        update_data["curator"] = {
+            "id": update_data.get("curator_id"),
+            "name": current_curator.get("name") or "Unknown",
+            "email": current_curator.get("email")
+        }
+
+    # Preserve original creator forever (backfill once for legacy records)
+    if current.get("createdBy"):
+        update_data["createdBy"] = current.get("createdBy")
+    else:
+        update_data["createdBy"] = current.get("curator_id") or (current.get("curator") or {}).get("id")
+
+    # Last writer becomes the last updater
+    update_data["updatedBy"] = (
+        update_data.get("curator_id")
+        or (update_data.get("curator") or {}).get("id")
+        or auth.get("user")
+        or current.get("updatedBy")
+    )
+
     update_data["updatedAt"] = datetime.now(timezone.utc)
     update_data["version"] = current_version + 1
     
@@ -238,13 +281,24 @@ def delete_curation(
     db: Database = Depends(get_database),
     auth: dict = Depends(verify_auth)  # Support both API key and JWT
 ):
-    """Delete curation
+    """Delete curation (Soft Delete)
     
+    Marks the curation as 'deleted' instead of removing from DB.
     **Authentication Required:** Include `Authorization: Bearer <token>` OR `X-API-Key: <key>` header
     """
-    result = db.curations.delete_one({"_id": curation_id})
+    result = db.curations.update_one(
+        {"_id": curation_id},
+        {
+            "$set": {
+                "status": "deleted",
+                "updatedAt": datetime.now(timezone.utc),
+                "updatedBy": auth.get("user")
+            },
+            "$inc": {"version": 1}
+        }
+    )
     
-    if result.deleted_count == 0:
+    if result.matched_count == 0:
         raise HTTPException(
             status_code=404,
             detail=f"Curation {curation_id} not found"

@@ -19,16 +19,19 @@ if (typeof ModuleWrapper === 'undefined') {
     console.log('[SyncManagerV3] ✅ ModuleWrapper available, defining class...');
 }
 
+const CURRENT_SYNC_VERSION = 4; // Increment this to force all clients to full re-sync
+
 const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
     constructor() {
         this.log = Logger.module('SyncManagerV3');
-        
+        this.syncVersion = 0; // Loaded from metadata
+
         // State
         this.isOnline = navigator.onLine;
         this.isSyncing = false;
         this.syncInterval = null;
         this.retryTimeout = null;
-        
+
         // Configuration
         this.config = {
             maxRetries: 3,
@@ -37,7 +40,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             batchSize: 10,              // Pull 10 items at a time (Render free tier limitation)
             conflictRetryDelay: 5000    // 5 seconds before retrying conflict
         };
-        
+
         // Sync statistics
         this.stats = {
             lastPullAt: null,
@@ -51,31 +54,41 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
     }
 
     /**
+     * Helper: Emit sync event for UI updates
+     */
+    emitSyncEvent(name, detail = {}) {
+        const event = new CustomEvent(`concierge:${name}`, {
+            detail: { ...detail, timestamp: new Date() }
+        });
+        window.dispatchEvent(event);
+    }
+
+    /**
      * Initialize SyncManager
      */
     async initialize() {
         this.log.debug('Initializing SyncManagerV3...');
-        
+
         // Check dependencies
         if (!window.DataStore) {
             throw new Error('DataStore not available');
         }
-        
+
         if (!window.ApiService) {
             throw new Error('ApiService not available');
         }
-        
+
         // Setup event listeners
         this.setupEventListeners();
-        
+
         // Load sync metadata
         await this.loadSyncMetadata();
-        
+
         // Start background sync if online
         if (this.isOnline) {
             this.startBackgroundSync();
         }
-        
+
         this.log.debug('✅ SyncManagerV3 initialized');
         return this;
     }
@@ -89,7 +102,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             this.log.debug('🌐 Network online - resuming sync');
             this.startBackgroundSync();
         });
-        
+
         window.addEventListener('offline', () => {
             this.isOnline = false;
             this.log.debug('📴 Network offline - pausing sync');
@@ -109,13 +122,15 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             // Remove internal fields before sending
             const cleaned = { ...item };
             delete cleaned._lastSyncedState;
-            
+            delete cleaned.sync;
+            delete cleaned.id;
+
             // Clean curation-specific fields
             if (cleaned.curation_id) {
                 return this.cleanCurationForSync(cleaned);
             }
-            
-            return cleaned;
+
+            return this.cleanEntityForSync(cleaned);
         }
 
         const changes = {};
@@ -145,34 +160,276 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
         }
 
         this.log.debug(`Extracted changes: ${Object.keys(changes).length} fields modified`);
+
+        if (changes.entity_id) {
+            return this.cleanEntityForSync(changes);
+        }
+
         return changes;
     }
-    
+
+    /**
+     * Clean entity object for backend sync
+     * Removes local-only fields that backend schemas do not accept
+     */
+    cleanEntityForSync(entity) {
+        const cleaned = { ...entity };
+
+        delete cleaned.sync;
+        delete cleaned.id;
+        delete cleaned.etag;
+        delete cleaned._lastSyncedState;
+
+        return cleaned;
+    }
+
+    /**
+     * Normalize patch payload for entity updates
+     * Removes client-only/internal fields and unsupported keys
+     * @param {Object} payload - Candidate payload
+     * @returns {Object}
+     */
+    sanitizeEntityPatchPayload(payload) {
+        const sanitized = { ...(payload || {}) };
+
+        delete sanitized.id;
+        delete sanitized.sync;
+        delete sanitized._lastSyncedState;
+        delete sanitized.etag;
+        delete sanitized.version;
+
+        return this.cleanEntityForSync(sanitized);
+    }
+
     /**
      * Clean curation object for backend sync
      * Removes fields that are not in CurationCreate schema
      */
     cleanCurationForSync(curation) {
+        const normalizedSources = (() => {
+            const currentSources = curation.sources;
+
+            if (currentSources && typeof currentSources === 'object' && !Array.isArray(currentSources)) {
+                return currentSources;
+            }
+
+            if (Array.isArray(currentSources)) {
+                const mapped = {};
+                if (currentSources.includes('audio')) {
+                    mapped.audio = [{
+                        source_id: curation.transcription_id || null,
+                        transcript: curation.transcript || curation.unstructured_text || curation.transcription || null,
+                        created_at: new Date().toISOString()
+                    }];
+                }
+                if (currentSources.includes('image')) mapped.image = [{ created_at: new Date().toISOString() }];
+                if (currentSources.includes('google_places')) mapped.google_places = [{ created_at: new Date().toISOString() }];
+                if (currentSources.includes('import')) mapped.import = [{ created_at: new Date().toISOString() }];
+                if (currentSources.includes('manual') || Object.keys(mapped).length === 0) mapped.manual = [{ created_at: new Date().toISOString() }];
+                return mapped;
+            }
+
+            return window.SourceUtils.buildSourcesPayloadFromContext({
+                hasAudio: !!(curation.transcript || curation.unstructured_text || curation.transcription),
+                transcript: curation.transcript || curation.unstructured_text || curation.transcription || null,
+                transcriptionId: curation.transcription_id || null,
+                hasPhotos: Array.isArray(curation.images) && curation.images.length > 0,
+                hasPlaceId: !!curation.entity_id,
+                isImport: false
+            });
+        })();
+
         const cleaned = {
             curation_id: curation.curation_id,
             curator_id: curation.curator_id,  // Required by MongoDB schema
             curator: curation.curator,
+            createdBy: curation.createdBy,
+            updatedBy: curation.updatedBy,
+            restaurant_name: curation.restaurant_name || curation.name || null,
+            status: curation.status || (curation.entity_id ? 'linked' : 'draft'),
             categories: curation.categories || {},
             notes: curation.notes || {},
-            sources: curation.sources || []
+            transcript: curation.transcript || curation.unstructured_text || curation.transcription || null,
+            sources: normalizedSources,
+            items: curation.items || []
         };
-        
+
         // Only include entity_id if it has a value (not null)
         if (curation.entity_id) {
             cleaned.entity_id = curation.entity_id;
         }
-        
+
         // Include version if present (for updates)
         if (curation.version !== undefined) {
             cleaned.version = curation.version;
         }
-        
+
         return cleaned;
+    }
+
+    /**
+     * Normalize patch payload for curation updates
+     * Removes client-only/internal fields and unsupported keys
+     * @param {Object} payload - Candidate payload
+     * @returns {Object}
+     */
+    sanitizeCurationPatchPayload(payload) {
+        const sanitized = { ...(payload || {}) };
+
+        delete sanitized.id;
+        delete sanitized.sync;
+        delete sanitized._lastSyncedState;
+        delete sanitized.etag;
+        delete sanitized.version;
+
+        if (!sanitized.curator_id && sanitized.curator?.id) {
+            sanitized.curator_id = sanitized.curator.id;
+        }
+
+        return sanitized;
+    }
+
+    /**
+     * Detects if an error represents an optimistic-lock/version conflict
+     * @param {Error|string} error - Caught error
+     * @returns {boolean}
+     */
+    isVersionConflictError(error) {
+        const message = String(error?.message || error || '').toLowerCase();
+        return message.includes('409') || message.includes('conflict') || message.includes('if-match');
+    }
+
+    /**
+     * Rebase local entity changes on latest server version and retry once.
+     * @param {Object} entity - Local entity record
+     * @returns {Promise<boolean>} true when conflict was resolved automatically
+     */
+    async tryResolveEntityVersionConflict(entity) {
+        try {
+            const serverEntity = await window.ApiService.getEntity(entity.entity_id);
+            const localChanges = this.extractChangedFields(entity);
+            const payload = this.sanitizeEntityPatchPayload(localChanges);
+
+            const hasChanges = Object.keys(payload).some(
+                key => !['entity_id', 'curation_id'].includes(key)
+            );
+
+            if (!hasChanges) {
+                await this.storeItemState('entity', entity.id, serverEntity);
+                await window.DataStore.db.entities.update(entity.id, {
+                    version: serverEntity.version || entity.version,
+                    sync: {
+                        ...(entity.sync || {}),
+                        serverId: serverEntity._id || entity.sync?.serverId || entity.entity_id,
+                        status: 'synced',
+                        error: null,
+                        lastAttempt: null,
+                        lastSyncedAt: new Date().toISOString()
+                    }
+                });
+                return true;
+            }
+
+            if (!payload.updatedBy) {
+                payload.updatedBy = entity.updatedBy || serverEntity.updatedBy || null;
+            }
+
+            if (!serverEntity.createdBy && !payload.createdBy) {
+                payload.createdBy = entity.createdBy || null;
+            }
+
+            const updated = await window.ApiService.updateEntity(
+                entity.entity_id,
+                payload,
+                serverEntity.version || 1
+            );
+
+            await this.storeItemState('entity', entity.id, updated);
+            await window.DataStore.db.entities.update(entity.id, {
+                version: updated.version,
+                sync: {
+                    ...(entity.sync || {}),
+                    serverId: updated._id || serverEntity._id || entity.sync?.serverId || entity.entity_id,
+                    status: 'synced',
+                    error: null,
+                    lastAttempt: null,
+                    lastSyncedAt: new Date().toISOString()
+                }
+            });
+
+            this.log.info(`✅ Auto-resolved entity conflict with rebase: ${entity.entity_id}`);
+            return true;
+        } catch (error) {
+            this.log.warn(`Auto-resolve failed for entity ${entity.entity_id}: ${error.message}`);
+            return false;
+        }
+    }
+
+    /**
+     * Rebase local curation changes on latest server version and retry once.
+     * @param {Object} curation - Local curation record
+     * @returns {Promise<boolean>} true when conflict was resolved automatically
+     */
+    async tryResolveCurationVersionConflict(curation) {
+        try {
+            const serverCuration = await window.ApiService.getCuration(curation.curation_id);
+            const localChanges = this.extractChangedFields(curation);
+            const payload = this.sanitizeCurationPatchPayload(localChanges);
+
+            const hasChanges = Object.keys(payload).some(
+                key => !['curation_id'].includes(key)
+            );
+
+            if (!hasChanges) {
+                await this.storeItemState('curation', curation.id, serverCuration);
+                await window.DataStore.db.curations.update(curation.id, {
+                    version: serverCuration.version || curation.version,
+                    sync: {
+                        ...(curation.sync || {}),
+                        serverId: serverCuration._id || curation.sync?.serverId || curation.curation_id,
+                        status: 'synced',
+                        error: null,
+                        lastAttempt: null,
+                        lastSyncedAt: new Date().toISOString()
+                    }
+                });
+                return true;
+            }
+
+            if (!payload.updatedBy) {
+                payload.updatedBy = curation.updatedBy || payload.curator_id || payload.curator?.id ||
+                    serverCuration.updatedBy || serverCuration.curator_id || serverCuration.curator?.id || null;
+            }
+
+            if (!serverCuration.createdBy && !payload.createdBy) {
+                payload.createdBy = curation.createdBy || serverCuration.curator_id || serverCuration.curator?.id || null;
+            }
+
+            const updated = await window.ApiService.updateCuration(
+                curation.curation_id,
+                payload,
+                serverCuration.version || 1
+            );
+
+            await this.storeItemState('curation', curation.id, updated);
+            await window.DataStore.db.curations.update(curation.id, {
+                version: updated.version,
+                sync: {
+                    ...(curation.sync || {}),
+                    serverId: updated._id || serverCuration._id || curation.sync?.serverId || curation.curation_id,
+                    status: 'synced',
+                    error: null,
+                    lastAttempt: null,
+                    lastSyncedAt: new Date().toISOString()
+                }
+            });
+
+            this.log.info(`✅ Auto-resolved curation conflict with rebase: ${curation.curation_id}`);
+            return true;
+        } catch (error) {
+            this.log.warn(`Auto-resolve failed for curation ${curation.curation_id}: ${error.message}`);
+            return false;
+        }
     }
 
     /**
@@ -209,9 +466,19 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             const metadata = await window.DataStore.getSetting('sync_metadata', {});
             this.stats.lastPullAt = metadata.lastPullAt || null;
             this.stats.lastPushAt = metadata.lastPushAt || null;
-            this.stats.lastEntityPullAt = metadata.lastEntityPullAt || null;  // ✅ NEW: Track per-type
-            this.stats.lastCurationPullAt = metadata.lastCurationPullAt || null;  // ✅ NEW: Track per-type
-            this.log.debug('Sync metadata loaded:', this.stats);
+            this.stats.lastEntityPullAt = metadata.lastEntityPullAt || null;
+            this.stats.lastCurationPullAt = metadata.lastCurationPullAt || null;
+            this.syncVersion = metadata.syncVersion || 1; // Default to 1 if not present
+
+            this.log.debug('Sync metadata loaded:', { ...this.stats, syncVersion: this.syncVersion });
+
+            // Detect version mismatch and trigger automatic reset
+            if (this.syncVersion < CURRENT_SYNC_VERSION) {
+                this.log.info(`🔄 Sync version mismatch (${this.syncVersion} < ${CURRENT_SYNC_VERSION}). Resetting metadata...`);
+                await this.resetSyncMetadata();
+                this.syncVersion = CURRENT_SYNC_VERSION;
+                await this.saveSyncMetadata();
+            }
         } catch (error) {
             this.log.error('Failed to load sync metadata:', error);
         }
@@ -225,8 +492,9 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             await window.DataStore.setSetting('sync_metadata', {
                 lastPullAt: this.stats.lastPullAt,
                 lastPushAt: this.stats.lastPushAt,
-                lastEntityPullAt: this.stats.lastEntityPullAt,  // ✅ NEW
-                lastCurationPullAt: this.stats.lastCurationPullAt  // ✅ NEW
+                lastEntityPullAt: this.stats.lastEntityPullAt,
+                lastCurationPullAt: this.stats.lastCurationPullAt,
+                syncVersion: this.syncVersion || CURRENT_SYNC_VERSION
             });
         } catch (error) {
             this.log.error('Failed to save sync metadata:', error);
@@ -240,7 +508,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
         if (this.syncInterval) {
             clearInterval(this.syncInterval);
         }
-        
+
         this.syncInterval = setInterval(() => {
             if (this.isOnline && !this.isSyncing) {
                 this.quickSync().catch(error => {
@@ -248,7 +516,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                 });
             }
         }, this.config.backgroundSyncInterval);
-        
+
         this.log.debug('🔄 Background sync started');
     }
 
@@ -260,12 +528,12 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             clearInterval(this.syncInterval);
             this.syncInterval = null;
         }
-        
+
         if (this.retryTimeout) {
             clearTimeout(this.retryTimeout);
             this.retryTimeout = null;
         }
-        
+
         this.log.debug('⏸️ Background sync stopped');
     }
 
@@ -285,24 +553,28 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
 
         try {
             this.isSyncing = true;
+            this.emitSyncEvent('sync-start');
             this.log.info('�� Starting full sync...');
 
             // 1. Pull from server (server → client)
-            await this.pullEntities();
-            await this.pullCurations();
+            // IMPORTANT: Curations first, then only entities linked by curation.entity_id
+            await this.pullCurations().catch(e => this.log.error('Pull curations failed:', e));
+            await this.pullLinkedEntities().catch(e => this.log.error('Pull linked entities failed:', e));
 
             // 2. Push to server (client → server)
             await this.pushEntities();
             await this.pushCurations();
 
             this.log.info('✅ Full sync complete', this.stats);
-            
+            this.emitSyncEvent('sync-complete', { status: 'success', stats: this.stats });
+
             return {
                 status: 'success',
                 stats: { ...this.stats }
             };
         } catch (error) {
             this.log.error('❌ Full sync failed:', error);
+            this.emitSyncEvent('sync-error', { error: error.message });
             return {
                 status: 'error',
                 error: error.message
@@ -339,63 +611,84 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
     }
 
     /**
-     * Pull entities from server
+     * Collect linked entity IDs from local curations
      */
-    async pullEntities() {
+    async collectLinkedEntityIdsFromCurations() {
+        const linkedIds = new Set();
+
+        const allCurations = await window.DataStore.db.curations.toArray();
+        for (const curation of allCurations) {
+            if (curation && typeof curation.entity_id === 'string' && curation.entity_id.trim()) {
+                linkedIds.add(curation.entity_id.trim());
+            }
+        }
+
+        return linkedIds;
+    }
+
+    /**
+     * Remove synced entities that are no longer linked to any curation
+     */
+    async pruneUnlinkedSyncedEntities(linkedEntityIds) {
+        const allEntities = await window.DataStore.db.entities.toArray();
+        let removed = 0;
+
+        for (const entity of allEntities) {
+            if (!entity || !entity.entity_id) {
+                continue;
+            }
+
+            // Keep entities currently referenced by curations
+            if (linkedEntityIds.has(entity.entity_id)) {
+                continue;
+            }
+
+            // Keep local working states to avoid data loss
+            const syncStatus = entity.sync?.status;
+            if (syncStatus === 'pending' || syncStatus === 'conflict') {
+                continue;
+            }
+
+            await window.DataStore.db.entities.delete(entity.id);
+            removed++;
+        }
+
+        if (removed > 0) {
+            this.log.info(`🧹 Pruned ${removed} unlinked synced entities from IndexedDB`);
+        }
+
+        return removed;
+    }
+
+    /**
+     * Pull only entities linked to curations from server
+     */
+    async pullLinkedEntities() {
         try {
-            // ✅ INCREMENTAL SYNC: Only fetch entities updated after last pull
-            const since = this.stats.lastEntityPullAt;
-            if (since) {
-                this.log.debug(`⏱️ Incremental sync: fetching entities updated after ${since}`);
-            } else {
-                this.log.debug('⬇️ Full sync: fetching all entities');
-            }
-            
-            let offset = 0;
+            const linkedEntityIds = await this.collectLinkedEntityIdsFromCurations();
+            this.log.debug(`⬇️ Pulling ${linkedEntityIds.size} linked entities only`);
+
             let totalPulled = 0;
-            let hasMore = true;
-            const syncStartTime = new Date().toISOString();  // ✅ NEW: Capture sync start time
-
-            while (hasMore) {
-                // Fetch batch from server with optional ?since parameter
-                const params = {
-                    limit: this.config.batchSize,
-                    offset: offset
-                };
-                
-                // ✅ Add since parameter for incremental sync
-                if (since) {
-                    params.since = since;
-                }
-                
-                const response = await window.ApiService.listEntities(params);
-
-                if (!response.items || response.items.length === 0) {
-                    hasMore = false;
-                    break;
-                }
-
-                // Process each entity
-                for (const serverEntity of response.items) {
-                    await this.processServerEntity(serverEntity);
-                    totalPulled++;
-                }
-
-                offset += response.items.length;
-                
-                // Check if we got all items
-                if (response.items.length < this.config.batchSize) {
-                    hasMore = false;
+            for (const entityId of linkedEntityIds) {
+                try {
+                    const serverEntity = await window.ApiService.getEntity(entityId);
+                    if (serverEntity) {
+                        await this.processServerEntity(serverEntity);
+                        totalPulled++;
+                    }
+                } catch (error) {
+                    this.log.warn(`Failed to pull linked entity ${entityId}: ${error.message}`);
                 }
             }
+
+            await this.pruneUnlinkedSyncedEntities(linkedEntityIds);
 
             this.stats.entitiesPulled = totalPulled;
-            this.stats.lastPullAt = new Date().toISOString();            this.stats.lastCurationPullAt = syncStartTime;  // ✅ NEW: Update curation-specific timestamp            this.stats.lastEntityPullAt = syncStartTime;  // ✅ NEW: Update entity-specific timestamp
+            this.stats.lastPullAt = new Date().toISOString();
+            this.stats.lastEntityPullAt = new Date().toISOString();
             await this.saveSyncMetadata();
-
-            this.log.debug(`✅ Pulled ${totalPulled} entities`);
         } catch (error) {
-            this.log.error('Failed to pull entities:', error);
+            this.log.error('Failed to pull linked entities:', error);
             throw error;
         }
     }
@@ -428,6 +721,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                     // Server is newer - update local
                     await window.DataStore.db.entities.put({
                         ...serverEntity,
+                        id: localEntity.id, // ✅ Critical: Use local primary key to update existing record
                         sync: {
                             serverId: serverEntity._id || localEntity.sync?.serverId || null,
                             status: 'synced',
@@ -437,10 +731,9 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                     this.log.debug(`Updated local entity: ${serverEntity.name} (v${localVersion} → v${serverVersion})`);
                 } else if (localVersion > serverVersion) {
                     // Local is newer - mark for push
-                    const current = await window.DataStore.db.entities.get(serverEntity.entity_id);
-                    await window.DataStore.db.entities.update(serverEntity.entity_id, {
+                    await window.DataStore.db.entities.update(localEntity.id, {
                         sync: {
-                            ...(current?.sync || {}),
+                            ...(localEntity.sync || {}),
                             status: 'pending'
                         }
                     });
@@ -465,7 +758,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             } else {
                 this.log.info('⬇️ Full sync: fetching all curations');
             }
-            
+
             let offset = 0;
             let totalPulled = 0;
             let totalProcessed = 0;
@@ -474,20 +767,20 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
 
             while (hasMore) {
                 batchCount++;
-                
+
                 // Fetch batch from server with optional ?since parameter
                 const params = {
                     limit: this.config.batchSize,
                     offset: offset
                 };
-                
+
                 // ✅ Add since parameter for incremental sync
                 if (since) {
                     params.since = since;
                 }
-                
+
                 this.log.debug(`Fetching batch ${batchCount}: offset=${offset}, limit=${this.config.batchSize}`);
-                
+
                 const response = await window.ApiService.listCurations(params);
 
                 if (!response.items || response.items.length === 0) {
@@ -495,7 +788,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                     hasMore = false;
                     break;
                 }
-                
+
                 this.log.debug(`Received ${response.items.length} curations in batch ${batchCount}`);
 
                 // Process each curation
@@ -506,11 +799,11 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         totalPulled++;
                     }
                 }
-                
+
                 this.log.debug(`Processed ${response.items.length} curations, ${totalPulled} saved so far`);
 
                 offset += response.items.length;
-                
+
                 if (response.items.length < this.config.batchSize) {
                     this.log.debug(`Last batch (${response.items.length} < ${this.config.batchSize})`);
                     hasMore = false;
@@ -522,14 +815,14 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
 
             this.stats.curationsPulled = totalPulled;
             this.stats.lastPullAt = new Date().toISOString();
-            
+
             // Only update lastCurationPullAt if we successfully pulled curations
             // This prevents marking sync as complete when nothing was found
             // Use current time (not syncStartTime) to mark when sync actually completed
             if (totalPulled > 0) {
                 this.stats.lastCurationPullAt = new Date().toISOString();
             }
-            
+
             await this.saveSyncMetadata();
 
             this.log.info(`✅ Pulled ${totalPulled} curations (${totalProcessed} processed in ${batchCount} batches)`);
@@ -551,13 +844,26 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                 this.log.warn('Invalid curation received (missing curation_id):', serverCuration);
                 return false;
             }
-            
+
             const localCuration = await window.DataStore.getCuration(serverCuration.curation_id);
 
+            // NORMALIZE: Ensure top-level curator_id exists for Dexie filtering
+            // IMPORTANT: We do this before the version check to ensure older local records are corrected
+            const normalizedCuration = { ...serverCuration };
+            if (!normalizedCuration.curator_id && normalizedCuration.curator && normalizedCuration.curator.id) {
+                normalizedCuration.curator_id = normalizedCuration.curator.id;
+            }
+
             if (!localCuration) {
+                // If the server says it's deleted but we don't have it, just skip
+                if (serverCuration.status === 'deleted') {
+                    this.log.debug(`Skipping deleted curation from server: ${serverCuration.curation_id}`);
+                    return false;
+                }
+
                 // New curation from server
                 await window.DataStore.db.curations.put({
-                    ...serverCuration,
+                    ...normalizedCuration,
                     sync: {
                         serverId: serverCuration._id || null,
                         status: 'synced',
@@ -567,19 +873,27 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                 this.log.debug(`Created local curation: ${serverCuration.curation_id}`);
                 return true;
             } else {
+                // If server says it's deleted, remove it locally
+                if (serverCuration.status === 'deleted') {
+                    await window.DataStore.db.curations.delete(localCuration.id);
+                    this.log.debug(`Deleted local curation (server mark as deleted): ${serverCuration.curation_id}`);
+                    return true;
+                }
+
                 const serverVersion = serverCuration.version || 0;
                 const localVersion = localCuration.version || 0;
 
-                if (serverVersion > localVersion) {
+                if (serverVersion > localVersion || !localCuration.curator_id) {
                     await window.DataStore.db.curations.put({
-                        ...serverCuration,
+                        ...normalizedCuration,
+                        id: localCuration.id, // ✅ Critical: Use local primary key
                         sync: {
                             serverId: serverCuration._id || localCuration.sync?.serverId || null,
                             status: 'synced',
                             lastSyncedAt: new Date().toISOString()
                         }
                     });
-                    this.log.debug(`Updated local curation: ${serverCuration.curation_id} (v${localVersion} → v${serverVersion})`);
+                    this.log.debug(`Updated local curation: ${serverCuration.curation_id} (force update for normalization or version)`);
                     return true;
                 } else if (localVersion > serverVersion) {
                     // Mark as pending for push
@@ -587,7 +901,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         .where('curation_id')
                         .equals(serverCuration.curation_id)
                         .first();
-                    
+
                     if (current && current.id) {
                         await window.DataStore.db.curations.update(current.id, {
                             sync: {
@@ -618,7 +932,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
     async pushEntities() {
         try {
             this.log.debug('⬆️ Pushing pending entities to server...');
-            
+
             // Find all entities with pending sync
             const pendingEntities = await window.DataStore.db.entities
                 .where('sync.status').equals('pending')
@@ -639,7 +953,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                     if (serverId) {
                         // Extract only changed fields for PATCH
                         const changedFields = this.extractChangedFields(entity);
-                        
+
                         // Only update if there are actual changes
                         const hasChanges = Object.keys(changedFields).some(
                             key => !['entity_id', 'curation_id', 'version'].includes(key)
@@ -647,10 +961,9 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
 
                         if (!hasChanges) {
                             this.log.debug(`No changes for entity ${entity.name}, skipping`);
-                            const current = await window.DataStore.db.entities.get(entity.entity_id);
-                            await window.DataStore.db.entities.update(entity.entity_id, {
+                            await window.DataStore.db.entities.update(entity.id, {
                                 sync: {
-                                    ...(current?.sync || {}),
+                                    ...(entity.sync || {}),
                                     status: 'synced'
                                 }
                             });
@@ -665,34 +978,32 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         );
 
                         // Store current state for future change detection
-                        await this.storeItemState('entity', entity.entity_id, updated);
+                        await this.storeItemState('entity', entity.id, updated);
 
                         // Update local with new version
-                        const current = await window.DataStore.db.entities.get(entity.entity_id);
-                        await window.DataStore.db.entities.update(entity.entity_id, {
+                        await window.DataStore.db.entities.update(entity.id, {
                             version: updated.version,
                             sync: {
-                                ...(current?.sync || {}),
+                                ...(entity.sync || {}),
                                 status: 'synced',
                                 lastSyncedAt: new Date().toISOString()
                             }
                         });
                         pushed++;
                         this.log.debug(`✅ Pushed entity ${entity.name} (${Object.keys(changedFields).length} fields)`);
-                    
+
                     } else {
                         // Create new entity on server
                         const cleanEntity = this.extractChangedFields(entity);
                         const created = await window.ApiService.createEntity(cleanEntity);
 
                         // Store state for future change detection
-                        await this.storeItemState('entity', entity.entity_id, created);
+                        await this.storeItemState('entity', entity.id, created);
 
                         // Update local with server ID
-                        const current = await window.DataStore.db.entities.get(entity.entity_id);
-                        await window.DataStore.db.entities.update(entity.entity_id, {
+                        await window.DataStore.db.entities.update(entity.id, {
                             sync: {
-                                ...(current?.sync || {}),
+                                ...(entity.sync || {}),
                                 serverId: created._id,
                                 status: 'synced',
                                 lastSyncedAt: new Date().toISOString()
@@ -705,10 +1016,9 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                     // Check if error is "already exists" (entity was created in previous sync but client didn't update status)
                     if (error.message.includes('already exists')) {
                         this.log.warn(`Entity ${entity.name} already exists on server, marking as synced`);
-                        const current = await window.DataStore.db.entities.get(entity.entity_id);
-                        await window.DataStore.db.entities.update(entity.entity_id, {
+                        await window.DataStore.db.entities.update(entity.id, {
                             sync: {
-                                ...(current?.sync || {}),
+                                ...(entity.sync || {}),
                                 status: 'synced',
                                 lastSyncedAt: new Date().toISOString()
                             }
@@ -716,18 +1026,24 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         pushed++;
                         continue;
                     }
-                    
-                    if (error.message.includes('409') || error.message.includes('conflict')) {
+
+                    if (this.isVersionConflictError(error)) {
+                        const resolved = await this.tryResolveEntityVersionConflict(entity);
+                        if (resolved) {
+                            pushed++;
+                            continue;
+                        }
+
                         // Version conflict - mark for manual resolution
-                        const current = await window.DataStore.db.entities.get(entity.entity_id);
-                        await window.DataStore.db.entities.update(entity.entity_id, {
+                        await window.DataStore.db.entities.update(entity.id, {
                             sync: {
-                                ...(current?.sync || {}),
+                                ...(entity.sync || {}),
                                 status: 'conflict'
                             }
                         });
                         conflicts++;
                         this.log.warn(`Conflict detected for entity: ${entity.name}`);
+                        this.emitSyncEvent('sync-conflict', { type: 'entity', id: entity.entity_id, name: entity.name });
                     } else {
                         this.log.error(`Failed to push entity ${entity.name}:`, error);
                     }
@@ -752,7 +1068,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
     async pushCurations() {
         try {
             this.log.debug('⬆️ Pushing pending curations to server...');
-            
+
             const pendingCurations = await window.DataStore.db.curations
                 .where('sync.status').equals('pending')
                 .toArray();
@@ -772,18 +1088,17 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                     if (serverId) {
                         // Extract only changed fields for PATCH
                         const changedFields = this.extractChangedFields(curation);
-                        
+
                         // Only update if there are actual changes
                         const hasChanges = Object.keys(changedFields).some(
-                            key => !['entity_id', 'curation_id', 'version'].includes(key)
+                            key => !['curation_id', 'version'].includes(key)
                         );
 
                         if (!hasChanges) {
                             this.log.debug(`No changes for curation ${curation.curation_id}, skipping`);
-                            const current = await window.DataStore.db.curations.get(curation.curation_id);
-                            await window.DataStore.db.curations.update(curation.curation_id, {
+                            await window.DataStore.db.curations.update(curation.id, {
                                 sync: {
-                                    ...(current?.sync || {}),
+                                    ...(curation.sync || {}),
                                     status: 'synced'
                                 }
                             });
@@ -793,48 +1108,82 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         const updated = await window.ApiService.updateCuration(
                             curation.curation_id,
                             changedFields,  // ✅ Only changed fields
-                            curation.version
+                            curation.version || 1
                         );
 
                         // Store current state for future change detection
-                        await this.storeItemState('curation', curation.curation_id, updated);
+                        await this.storeItemState('curation', curation.id, updated);
 
-                        const current = await window.DataStore.db.curations.get(curation.curation_id);
-                        await window.DataStore.db.curations.update(curation.curation_id, {
+                        await window.DataStore.db.curations.update(curation.id, {
                             version: updated.version,
                             sync: {
-                                ...(current?.sync || {}),
+                                ...(curation.sync || {}),
                                 status: 'synced',
                                 lastSyncedAt: new Date().toISOString()
                             }
                         });
                         pushed++;
                         this.log.debug(`✅ Pushed curation ${curation.curation_id} (${Object.keys(changedFields).length} fields)`);
-                    
+
                     } else {
-                        const cleanCuration = this.extractChangedFields(curation);
-                        const created = await window.ApiService.createCuration(cleanCuration);
+                        const changedFields = this.extractChangedFields(curation);
+                        const hasChanges = Object.keys(changedFields).some(
+                            key => !['curation_id', 'version'].includes(key)
+                        );
+
+                        if (!hasChanges) {
+                            await window.DataStore.db.curations.update(curation.id, {
+                                sync: {
+                                    ...(curation.sync || {}),
+                                    status: 'synced',
+                                    lastSyncedAt: new Date().toISOString()
+                                }
+                            });
+                            continue;
+                        }
+
+                        let upsertedCuration = null;
+                        try {
+                            // Try PATCH first for records that already exist on server but lack local serverId
+                            upsertedCuration = await window.ApiService.updateCuration(
+                                curation.curation_id,
+                                changedFields,
+                                curation.version || 1
+                            );
+
+                            this.log.debug(`✅ Patched existing curation ${curation.curation_id} without local serverId`);
+                        } catch (patchError) {
+                            const patchMessage = String(patchError?.message || patchError || '').toLowerCase();
+                            const isNotFound = patchMessage.includes('404') || patchMessage.includes('not found');
+
+                            if (!isNotFound) {
+                                throw patchError;
+                            }
+
+                            // If not found on server, then create
+                            upsertedCuration = await window.ApiService.createCuration(changedFields);
+                            this.log.debug(`✅ Created curation ${curation.curation_id} on server after 404 fallback`);
+                        }
 
                         // Store state for future change detection
-                        await this.storeItemState('curation', curation.curation_id, created);
+                        await this.storeItemState('curation', curation.id, upsertedCuration);
 
-                        const current = await window.DataStore.db.curations.get(curation.curation_id);
-                        await window.DataStore.db.curations.update(curation.curation_id, {
+                        await window.DataStore.db.curations.update(curation.id, {
+                            version: upsertedCuration.version || curation.version,
                             sync: {
-                                ...(current?.sync || {}),
-                                serverId: created._id,
+                                ...(curation.sync || {}),
+                                serverId: upsertedCuration._id || curation.curation_id,
                                 status: 'synced',
                                 lastSyncedAt: new Date().toISOString()
                             }
                         });
                         pushed++;
-                        this.log.debug(`✅ Created curation ${curation.curation_id} on server`);
                     }
                 } catch (error) {
                     // Check if error is "already exists" (curation was created in previous sync but client didn't update status)
                     if (error.message.includes('already exists')) {
                         this.log.warn(`Curation ${curation.curation_id} already exists on server, fetching serverId...`);
-                        
+
                         try {
                             // Try to get the curation from server to obtain its serverId
                             let serverCuration;
@@ -848,10 +1197,10 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                                         curator_id: curation.curator_id,
                                         limit: 1000  // Get all curator's curations
                                     });
-                                    
+
                                     // Find the specific curation by ID
                                     serverCuration = searchResult.items?.find(c => c._id === curation.curation_id);
-                                    
+
                                     if (!serverCuration) {
                                         throw new Error('Curation not found in search results');
                                     }
@@ -859,25 +1208,67 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                                     throw getError;
                                 }
                             }
-                            
-                            // Update with serverId so future syncs will use PATCH instead of POST
-                            await window.DataStore.db.curations.update(curation.curation_id, {
+
+                            // Update local with serverId so future syncs use PATCH
+                            await window.DataStore.db.curations.update(curation.id, {
                                 sync: {
                                     ...(curation.sync || {}),
-                                    serverId: serverCuration._id,
-                                    status: 'synced',
-                                    lastSyncedAt: new Date().toISOString()
+                                    serverId: serverCuration._id
                                 }
                             });
-                            
-                            // Store state for future change detection
-                            await this.storeItemState('curation', curation.curation_id, serverCuration);
-                            
+
                             this.log.info(`✅ Resolved duplicate: ${curation.curation_id} mapped to serverId ${serverCuration._id}`);
+
+                            // Now push local changes via PATCH (e.g. entity_id link)
+                            try {
+                                const changedFields = this.extractChangedFields(curation);
+                                const hasChanges = Object.keys(changedFields).some(
+                                    key => !['curation_id', 'version'].includes(key)
+                                );
+                                if (hasChanges) {
+                                    const updated = await window.ApiService.updateCuration(
+                                        curation.curation_id,
+                                        changedFields,
+                                        serverCuration.version || curation.version || 1
+                                    );
+                                    await this.storeItemState('curation', curation.id, updated);
+                                    await window.DataStore.db.curations.update(curation.id, {
+                                        version: updated.version,
+                                        sync: {
+                                            ...(curation.sync || {}),
+                                            serverId: serverCuration._id,
+                                            status: 'synced',
+                                            lastSyncedAt: new Date().toISOString()
+                                        }
+                                    });
+                                    this.log.info(`✅ Pushed pending changes for ${curation.curation_id}`);
+                                } else {
+                                    await this.storeItemState('curation', curation.id, serverCuration);
+                                    await window.DataStore.db.curations.update(curation.id, {
+                                        sync: {
+                                            ...(curation.sync || {}),
+                                            serverId: serverCuration._id,
+                                            status: 'synced',
+                                            lastSyncedAt: new Date().toISOString()
+                                        }
+                                    });
+                                }
+                            } catch (patchError) {
+                                this.log.warn(`Could not push changes after resolving duplicate: ${patchError.message}`);
+                                // Still mark as synced with serverId so next sync can PATCH
+                                await this.storeItemState('curation', curation.id, serverCuration);
+                                await window.DataStore.db.curations.update(curation.id, {
+                                    sync: {
+                                        ...(curation.sync || {}),
+                                        serverId: serverCuration._id,
+                                        status: 'pending',
+                                        lastSyncedAt: new Date().toISOString()
+                                    }
+                                });
+                            }
                         } catch (fetchError) {
-                            // If we still can't find it, mark as error to avoid infinite retry loop
                             this.log.error(`Cannot resolve serverId for ${curation.curation_id}: ${fetchError.message}`);
-                            await window.DataStore.db.curations.update(curation.curation_id, {
+                            await window.DataStore.db.curations.update(curation.id, {
                                 sync: {
                                     ...(curation.sync || {}),
                                     status: 'error',
@@ -886,16 +1277,21 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                                 }
                             });
                         }
-                        
+
                         pushed++;
                         continue;
                     }
-                    
-                    if (error.message.includes('409') || error.message.includes('conflict')) {
-                        const current = await window.DataStore.db.curations.get(curation.curation_id);
-                        await window.DataStore.db.curations.update(curation.curation_id, {
+
+                    if (this.isVersionConflictError(error)) {
+                        const resolved = await this.tryResolveCurationVersionConflict(curation);
+                        if (resolved) {
+                            pushed++;
+                            continue;
+                        }
+
+                        await window.DataStore.db.curations.update(curation.id, {
                             sync: {
-                                ...(current?.sync || {}),
+                                ...(curation.sync || {}),
                                 status: 'conflict'
                             }
                         });
@@ -965,6 +1361,30 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
     }
 
     /**
+     * Reset all sync metadata (timestamps) to force a full re-pull on next sync
+     */
+    async resetSyncMetadata() {
+        try {
+            this.log.info('🔄 Resetting sync metadata...');
+
+            // Reset local stats
+            this.stats.lastPullAt = null;
+            this.stats.lastEntityPullAt = null;
+            this.stats.lastCurationPullAt = null;
+            this.stats.lastPushAt = null;
+
+            // Save to database
+            await this.saveSyncMetadata();
+
+            this.log.info('✅ Sync metadata reset successfully');
+            return true;
+        } catch (error) {
+            this.log.error('Failed to reset sync metadata:', error);
+            return false;
+        }
+    }
+
+    /**
      * Get all items with conflicts
      */
     async getConflicts() {
@@ -988,6 +1408,36 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
     }
 
     /**
+     * Helper to clean up any duplicate records causing sync issues
+     * @param {string} type - 'entity' or 'curation'
+     * @param {string} id - Business ID string
+     * @returns {Promise<Object>} - The surviving record to use as base mechanism
+     */
+    async cleanupDuplicates(type, id) {
+        const table = type === 'entity' ? window.DataStore.db.entities : window.DataStore.db.curations;
+        const keyField = type === 'entity' ? 'entity_id' : 'curation_id';
+
+        const records = await table.where(keyField).equals(id).toArray();
+
+        if (records.length <= 1) return records[0];
+
+        this.log.warn(`Found ${records.length} duplicates for ${type} ${id}. Cleaning up...`);
+
+        // Keep the one with the lowest ID (oldest) as it's likely the original
+        // Or keep the one that is NOT 'synced' if we want to resolve conflict? 
+        // Actually, simple FIFO by numeric ID is safest for Dexie.
+        records.sort((a, b) => a.id - b.id);
+
+        const survivor = records[0];
+        const toDelete = records.slice(1);
+
+        await table.bulkDelete(toDelete.map(r => r.id));
+        this.log.info(`Deleted ${toDelete.length} duplicates, keeping id=${survivor.id}`);
+
+        return survivor;
+    }
+
+    /**
      * Resolve conflict by choosing local or server version
      * @param {string} type - 'entity' or 'curation'
      * @param {string} id - entity_id or curation_id
@@ -999,7 +1449,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
 
             // Get local and server versions
             let local, server;
-            
+
             if (type === 'entity') {
                 local = await window.DataStore.getEntity(id);
                 try {
@@ -1021,7 +1471,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             // If no resolution provided, show UI modal for user to decide
             if (!resolution && window.ConflictResolutionModal) {
                 this.log.debug('Showing conflict resolution modal to user');
-                
+
                 resolution = await window.ConflictResolutionModal.show({
                     type,
                     id,
@@ -1035,11 +1485,14 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                 }
             }
 
+            // Ensure we are working with a clean state (no duplicates)
+            await this.cleanupDuplicates(type, id);
+
             // Apply resolution
             if (resolution === 'local') {
                 // Force push local version to server
                 this.log.debug(`Applying local version for ${type} ${id}`);
-                
+
                 if (type === 'entity') {
                     // Update with force flag (overwrite server version)
                     const updated = await window.ApiService.updateEntity(
@@ -1047,45 +1500,54 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         local,
                         null  // No version check - force update
                     );
-                    
+
                     // Store synced state
                     await this.storeItemState('entity', id, updated);
-                    
-                    const currentEntity = await window.DataStore.db.entities.get(id);
-                    await window.DataStore.db.entities.update(id, {
-                        sync: {
-                            ...currentEntity.sync,
-                            status: 'synced',
-                            lastSyncedAt: new Date().toISOString()
-                        },
-                        version: updated.version
-                    });
+
+                    const currentEntity = await window.DataStore.db.entities.where('entity_id').equals(id).first();
+                    if (currentEntity) {
+                        await window.DataStore.db.entities.where('entity_id').equals(id).modify({
+                            sync: {
+                                ...currentEntity.sync,
+                                status: 'synced',
+                                lastSyncedAt: new Date().toISOString()
+                            },
+                            version: updated.version
+                        });
+                    } else {
+                        this.log.warn(`Entity ${id} not found locally after resolution`);
+                    }
                 } else if (type === 'curation') {
                     const updated = await window.ApiService.updateCuration(
                         id,
                         local,
                         null
                     );
-                    
+
                     await this.storeItemState('curation', id, updated);
-                    
-                    const currentCuration = await window.DataStore.db.curations.get(id);
-                    await window.DataStore.db.curations.update(id, {
-                        sync: {
-                            ...currentCuration.sync,
-                            status: 'synced',
-                            lastSyncedAt: new Date().toISOString()
-                        },
-                        version: updated.version
-                    });
+
+                    const currentCuration = await window.DataStore.db.curations.where('curation_id').equals(id).first();
+                    if (currentCuration) {
+                        await window.DataStore.db.curations.where('curation_id').equals(id).modify({
+                            sync: {
+                                ...currentCuration.sync,
+                                status: 'synced',
+                                lastSyncedAt: new Date().toISOString()
+                            },
+                            version: updated.version
+                        });
+                    } else {
+                        this.log.warn(`Curation ${id} not found locally after resolution`);
+                    }
                 }
-                
+
             } else if (resolution === 'server') {
                 // Accept server version and overwrite local
                 this.log.debug(`Applying server version for ${type} ${id}`);
-                
+
                 if (type === 'entity') {
-                    await window.DataStore.db.entities.put({
+                    const currentEntity = await window.DataStore.db.entities.where('entity_id').equals(id).first();
+                    const entityToSave = {
                         ...server,
                         entity_id: id,  // Preserve local ID
                         sync: {
@@ -1093,12 +1555,18 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                             status: 'synced',
                             lastSyncedAt: new Date().toISOString()
                         }
-                    });
-                    
+                    };
+
+                    if (currentEntity) {
+                        entityToSave.id = currentEntity.id; // Preserve local PK
+                    }
+
+                    await window.DataStore.db.entities.put(entityToSave);
                     await this.storeItemState('entity', id, server);
-                    
+
                 } else if (type === 'curation') {
-                    await window.DataStore.db.curations.put({
+                    const currentCuration = await window.DataStore.db.curations.where('curation_id').equals(id).first();
+                    const curationToSave = {
                         ...server,
                         curation_id: id,  // Preserve local ID
                         sync: {
@@ -1106,34 +1574,62 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                             status: 'synced',
                             lastSyncedAt: new Date().toISOString()
                         }
-                    });
-                    
+                    };
+
+                    if (currentCuration) {
+                        curationToSave.id = currentCuration.id; // Preserve local PK
+                    }
+
+                    await window.DataStore.db.curations.put(curationToSave);
                     await this.storeItemState('curation', id, server);
                 }
-                
+
             } else if (resolution === 'merge') {
-                // Smart merge: take server version but keep local changes
+                // Smart merge: take server version but keep local changes using Deep Merge
                 this.log.debug(`Merging versions for ${type} ${id}`);
-                
-                const merged = {
-                    ...server,  // Base: server version
-                    ...local,   // Override: local changes
-                    version: server.version,  // Keep server version
-                    updatedAt: new Date().toISOString()
+
+                // Helper for deep merging objects
+                const deepMerge = (target, source) => {
+                    const output = Object.assign({}, target);
+                    if (isObject(target) && isObject(source)) {
+                        Object.keys(source).forEach(key => {
+                            if (isObject(source[key])) {
+                                if (!(key in target))
+                                    Object.assign(output, { [key]: source[key] });
+                                else
+                                    output[key] = deepMerge(target[key], source[key]);
+                            } else {
+                                Object.assign(output, { [key]: source[key] });
+                            }
+                        });
+                    }
+                    return output;
                 };
-                
+
+                const isObject = (item) => {
+                    return (item && typeof item === 'object' && !Array.isArray(item));
+                };
+
+                // Merge: Server is base, Local overrides (deeply)
+                const merged = deepMerge(server, local);
+
+                // Ensure critical fields are preserved from server
+                merged.version = server.version;
+                merged.updatedAt = new Date().toISOString();
+
                 // Remove internal fields
                 delete merged._id;
                 delete merged._lastSyncedState;
-                
+
                 if (type === 'entity') {
                     const updated = await window.ApiService.updateEntity(
                         id,
                         merged,
                         server.version  // Use server version for optimistic lock
                     );
-                    
-                    await window.DataStore.db.entities.put({
+
+                    const currentEntity = await window.DataStore.db.entities.where('entity_id').equals(id).first();
+                    const entityToSave = {
                         ...updated,
                         entity_id: id,
                         sync: {
@@ -1141,18 +1637,24 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                             status: 'synced',
                             lastSyncedAt: new Date().toISOString()
                         }
-                    });
-                    
+                    };
+
+                    if (currentEntity) {
+                        entityToSave.id = currentEntity.id; // Preserve local PK
+                    }
+
+                    await window.DataStore.db.entities.put(entityToSave);
                     await this.storeItemState('entity', id, updated);
-                    
+
                 } else if (type === 'curation') {
                     const updated = await window.ApiService.updateCuration(
                         id,
                         merged,
                         server.version
                     );
-                    
-                    await window.DataStore.db.curations.put({
+
+                    const currentCuration = await window.DataStore.db.curations.where('curation_id').equals(id).first();
+                    const curationToSave = {
                         ...updated,
                         curation_id: id,
                         sync: {
@@ -1160,18 +1662,23 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                             status: 'synced',
                             lastSyncedAt: new Date().toISOString()
                         }
-                    });
-                    
+                    };
+
+                    if (currentCuration) {
+                        curationToSave.id = currentCuration.id; // Preserve local PK
+                    }
+
+                    await window.DataStore.db.curations.put(curationToSave);
                     await this.storeItemState('curation', id, updated);
                 }
             }
 
             this.log.info(`✅ Conflict resolved: ${type} ${id} → ${resolution}`);
-            
+
             // Update stats
             this.stats.conflicts = Math.max(0, this.stats.conflicts - 1);
             await this.saveSyncMetadata();
-            
+
         } catch (error) {
             this.log.error('Failed to resolve conflict:', error);
             throw error;
