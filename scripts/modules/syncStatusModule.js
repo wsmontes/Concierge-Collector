@@ -15,7 +15,6 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
         this.log = Logger.module('SyncStatusModule');
         this.container = null;
         this.updateInterval = null;
-        this.lastSyncStartNoticeAt = 0;
     }
 
     /**
@@ -41,15 +40,7 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
             }, 30000);
 
             // Listen for sync events for real-time updates
-            window.addEventListener('concierge:sync-start', () => {
-                this.updateStatus();
-
-                const now = Date.now();
-                if (now - this.lastSyncStartNoticeAt > 10000 && window.SafetyUtils?.showNotification) {
-                    this.lastSyncStartNoticeAt = now;
-                    window.SafetyUtils.showNotification('Synchronization in progress. Wait for completion before editing.', 'info');
-                }
-            });
+            window.addEventListener('concierge:sync-start', () => this.updateStatus());
             window.addEventListener('concierge:sync-complete', () => this.updateStatus());
             window.addEventListener('concierge:sync-error', () => this.updateStatus());
             window.addEventListener('concierge:sync-progress', () => this.updateStatus());
@@ -85,7 +76,7 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
             // Show offline indicator if SyncManager not available
             this.container.innerHTML = `
                 <span class="flex items-center gap-1 text-xs sm:text-sm text-gray-400" title="Sync unavailable">
-                    <span class="material-icons text-sm">cloud_off</span>
+                    <span class="material-icons text-xl">cloud_off</span>
                     <span class="hidden sm:inline">Offline</span>
                 </span>
             `;
@@ -98,7 +89,7 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
             if (!status) {
                 this.container.innerHTML = `
                     <span class="flex items-center gap-1 text-xs sm:text-sm text-gray-400" title="Status unavailable">
-                        <span class="material-icons text-sm">cloud_off</span>
+                        <span class="material-icons text-xl">cloud_off</span>
                         <span class="hidden sm:inline">Unknown</span>
                     </span>
                 `;
@@ -117,7 +108,7 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
                         class="flex items-center gap-1 text-xs sm:text-sm text-blue-600 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded px-2 py-1"
                         title="Syncing now${pendingTotal ? ` • ${pendingTotal} pending` : ''}"
                     >
-                        <span class="material-icons text-sm animate-spin">sync</span>
+                        <span class="material-icons text-xl animate-spin">sync</span>
                         <span class="hidden sm:inline">Syncing${pendingTotal ? ` (${pendingTotal})` : ''}</span>
                     </button>
                 `;
@@ -130,7 +121,7 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
                         class="flex items-center gap-1 text-xs sm:text-sm text-red-600 hover:text-red-700 focus:outline-none focus:ring-2 focus:ring-red-500 rounded px-2 py-1"
                         title="${status.conflicts.total} conflicts"
                     >
-                        <span class="material-icons text-sm">sync_problem</span>
+                        <span class="material-icons text-xl">sync_problem</span>
                         <span class="hidden sm:inline">${status.conflicts.total}</span>
                     </button>
                 `;
@@ -139,7 +130,7 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
             else if (status.pending && status.pending.total > 0) {
                 statusHtml = `
                     <span class="flex items-center gap-1 text-xs sm:text-sm text-yellow-600" title="${status.pending.total} pending">
-                        <span class="material-icons text-sm">cloud_upload</span>
+                        <span class="material-icons text-xl">cloud_upload</span>
                         <span class="hidden sm:inline">${status.pending.total}</span>
                     </span>
                 `;
@@ -153,7 +144,7 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
                         class="flex items-center gap-1 text-xs sm:text-sm text-green-600 hover:text-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 rounded px-2 py-1"
                         title="Last synced: ${lastSyncTime}"
                     >
-                        <span class="material-icons text-sm">cloud_done</span>
+                        <span class="material-icons text-xl">cloud_done</span>
                         <span class="hidden sm:inline">Synced</span>
                     </button>
                 `;
@@ -162,7 +153,7 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
             else if (!status.isOnline) {
                 statusHtml = `
                     <span class="flex items-center gap-1 text-xs sm:text-sm text-gray-400" title="Offline">
-                        <span class="material-icons text-sm">cloud_off</span>
+                        <span class="material-icons text-xl">cloud_off</span>
                         <span class="hidden sm:inline">Offline</span>
                     </span>
                 `;
@@ -171,7 +162,7 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
             else {
                 statusHtml = `
                     <span class="flex items-center gap-1 text-xs sm:text-sm text-green-600" title="Ready">
-                        <span class="material-icons text-sm">cloud_done</span>
+                        <span class="material-icons text-xl">cloud_done</span>
                         <span class="hidden sm:inline">Ready</span>
                     </span>
                 `;
@@ -196,7 +187,7 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
             // Show error indicator
             this.container.innerHTML = `
                 <span class="flex items-center gap-1 text-xs sm:text-sm text-red-400" title="Error: ${error.message}">
-                    <span class="material-icons text-sm">error</span>
+                    <span class="material-icons text-xl">error</span>
                     <span class="hidden sm:inline">Error</span>
                 </span>
             `;
@@ -298,7 +289,7 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
                     <div class="border-t pt-4 flex gap-2">
                         ${status.isOnline && !status.isSyncing ? `
                             <button class="btn-manual-sync-modal flex-1 py-2 px-4 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center justify-center gap-2">
-                                <span class="material-icons text-sm">sync</span>
+                                <span class="material-icons text-xl">sync</span>
                                 Sync Now
                             </button>
                         ` : ''}
@@ -322,7 +313,7 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
         if (syncButton) {
             syncButton.addEventListener('click', async () => {
                 syncButton.disabled = true;
-                syncButton.innerHTML = '<span class="material-icons text-sm animate-spin">sync</span> Syncing...';
+                syncButton.innerHTML = '<span class="material-icons text-xl animate-spin">sync</span> Syncing...';
                 await this.handleManualSync();
                 modal.remove();
             });

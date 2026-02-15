@@ -9,6 +9,19 @@ class UIUtilsModule {
         
         this.uiManager = uiManager;
         this.isLoadingVisible = false;
+        this.lastNotification = {
+            message: null,
+            type: null,
+            timestamp: 0
+        };
+    }
+
+    clearNotifications() {
+        document.querySelectorAll('.toastify').forEach((toast) => {
+            if (toast && toast.parentNode) {
+                toast.parentNode.removeChild(toast);
+            }
+        });
     }
 
     /**
@@ -67,6 +80,18 @@ class UIUtilsModule {
      * @param {string} type - The notification type ('success', 'error', 'warning', 'info')
      */
     showNotification(message, type = 'success') {
+        const now = Date.now();
+        const isDuplicate =
+            this.lastNotification.message === message &&
+            this.lastNotification.type === type &&
+            (now - this.lastNotification.timestamp) < 1800;
+
+        if (isDuplicate) {
+            return;
+        }
+
+        this.lastNotification = { message, type, timestamp: now };
+
         let backgroundColor;
         
         switch (type) {
@@ -87,6 +112,8 @@ class UIUtilsModule {
         }
             
         if (typeof Toastify === 'function') {
+            this.clearNotifications();
+
             Toastify({
                 text: message,
                 duration: 3000,

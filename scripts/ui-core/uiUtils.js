@@ -5,6 +5,20 @@
 
 // Create global UI utilities as soon as this file loads
 window.uiUtils = {
+    _lastNotification: {
+        message: null,
+        type: null,
+        timestamp: 0
+    },
+
+    clearNotifications: function () {
+        document.querySelectorAll('.toastify').forEach((toast) => {
+            if (toast && toast.parentNode) {
+                toast.parentNode.removeChild(toast);
+            }
+        });
+    },
+
     /**
      * Show loading overlay
      * @param {string} message - Loading message
@@ -78,6 +92,21 @@ window.uiUtils = {
      */
     showNotification: function (message, type = 'success') {
         console.log(`uiUtils.showNotification: ${message} (${type})`);
+
+        const now = Date.now();
+        const isDuplicate =
+            this._lastNotification.message === message &&
+            this._lastNotification.type === type &&
+            (now - this._lastNotification.timestamp) < 1800;
+
+        if (isDuplicate) {
+            return;
+        }
+
+        this._lastNotification = { message, type, timestamp: now };
+
+        // Replace visible notifications to avoid stacking on startup
+        this.clearNotifications();
 
         // Try using Toastify if available
         if (typeof Toastify === 'function') {
