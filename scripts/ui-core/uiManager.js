@@ -121,6 +121,8 @@ if (typeof window.UIManager === 'undefined') {
             this.currentLocation = null;
             this.currentPhotos = [];
             this.formIsDirty = false;
+            this.listScrollRestoreY = 0;
+            this.shouldRestoreListScroll = false;
 
             // Curation filtering state
             this.curationFilters = {
@@ -1458,7 +1460,13 @@ if (typeof window.UIManager === 'undefined') {
 
         // Core UI visibility functions
         showRestaurantFormSection() {
+            if (this.currentView === 'list') {
+                this.listScrollRestoreY = window.scrollY || window.pageYOffset || 0;
+                this.shouldRestoreListScroll = true;
+            }
+
             this.switchView('concepts');
+            window.scrollTo({ top: 0, behavior: 'auto' });
 
             // Update toolbar title based on mode
             if (this.restaurantEditToolbar) {
@@ -1537,6 +1545,14 @@ if (typeof window.UIManager === 'undefined') {
             this.switchView('list');
             this.updateViewSummaryVisibility();
             this.scheduleDataRefresh('view:list', 0);
+
+            if (this.shouldRestoreListScroll) {
+                const restoreY = this.listScrollRestoreY || 0;
+                requestAnimationFrame(() => {
+                    window.scrollTo({ top: restoreY, behavior: 'auto' });
+                });
+                this.shouldRestoreListScroll = false;
+            }
         }
 
         // Delegate to appropriate modules via uiUtilsModule

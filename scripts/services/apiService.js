@@ -417,6 +417,13 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         return await response.json();
     }
 
+    async extractRestaurantName(text) {
+        const response = await this.request('POST', 'aiExtractRestaurantName', {
+            body: JSON.stringify({ text })
+        });
+        return await response.json();
+    }
+
     async analyzeImage(imageBlob, prompt) {
         // Convert image to base64 - API V3 expects JSON with base64 image_file
         const base64Image = await this.blobToBase64(imageBlob);

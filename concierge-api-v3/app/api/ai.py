@@ -93,6 +93,19 @@ class OrchestrateResponse(BaseModel):
     processing_time_ms: int
 
 
+class RestaurantNameExtractionRequest(BaseModel):
+    """Request model for restaurant name extraction from text"""
+    text: str = Field(..., description="Text to analyze")
+
+
+class RestaurantNameExtractionResponse(BaseModel):
+    """Response model for restaurant name extraction"""
+    restaurant_name: Optional[str]
+    confidence_score: Optional[float] = None
+    model: Optional[str] = None
+    service: str
+
+
 # Dependency to get OpenAI service
 def get_openai_service():
     """Get OpenAI service instance"""
@@ -226,6 +239,35 @@ async def get_usage_stats(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Failed to get usage stats: {str(e)}"
+        )
+
+
+@router.post("/extract-restaurant-name", response_model=RestaurantNameExtractionResponse)
+async def extract_restaurant_name(
+    request: RestaurantNameExtractionRequest,
+    openai_service: OpenAIService = Depends(get_openai_service),
+    auth: dict = Depends(verify_auth)
+):
+    """
+    Extract restaurant name from text using dedicated OpenAI MongoDB configuration.
+
+    **Authentication Required:** Include `Authorization: Bearer <token>` OR `X-API-Key: <key>` header
+    """
+    try:
+        result = await openai_service.extract_restaurant_name_from_text(
+            request.text,
+            save_to_cache=False
+        )
+        return result
+    except ValueError as e:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=str(e)
+        )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Restaurant name extraction failed: {str(e)}"
         )
 
 

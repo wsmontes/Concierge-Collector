@@ -1570,7 +1570,7 @@ class ConceptModule {
                 return null;
             }
 
-            const result = await window.ApiService.extractConcepts(transcriptionText, 'restaurant');
+            const result = await window.ApiService.extractRestaurantName(transcriptionText);
             this.log.debug('Restaurant name extracted:', result);
 
             // Handle different response formats from API V3
@@ -1578,7 +1578,9 @@ class ConceptModule {
                 if (result.name || result.restaurant_name) {
                     return (result.name || result.restaurant_name).trim();
                 }
-                // Check if concepts include a name category
+                if (result.results && (result.results.name || result.results.restaurant_name)) {
+                    return (result.results.name || result.results.restaurant_name).trim();
+                }
                 if (result.concepts && Array.isArray(result.concepts)) {
                     const nameConcept = result.concepts.find(c => c.category === 'name' || c.category === 'restaurant_name');
                     if (nameConcept && nameConcept.value) {
@@ -1597,13 +1599,25 @@ class ConceptModule {
     /**
      * Process concepts extraction including restaurant name
      */
-    async processConcepts(transcriptionText) {
+    async processConcepts(transcriptionText, options = {}) {
+        const useExistingLoading = options?.useExistingLoading === true;
+        const preExtractedConcepts = Array.isArray(options?.preExtractedConcepts)
+            ? options.preExtractedConcepts
+            : null;
+
         try {
-            SafetyUtils.showLoading('Analyzing restaurant concepts...');
+            if (useExistingLoading) {
+                this.updateLoadingMessage('Analyzing restaurant concepts...');
+            } else {
+                SafetyUtils.showLoading('Analyzing restaurant concepts...');
+            }
 
             // Extract restaurant name first - WRAP WITH TRY/CATCH TO HANDLE FAILURES GRACEFULLY
             let restaurantName = null;
             try {
+                if (useExistingLoading) {
+                    this.updateLoadingMessage('Extracting restaurant name...');
+                }
                 restaurantName = await this.extractRestaurantNameFromTranscription(transcriptionText);
             } catch (nameError) {
                 this.log.warn('Restaurant name extraction failed, continuing with concept extraction:', nameError);
@@ -1616,10 +1630,30 @@ class ConceptModule {
                 throw new Error('ApiService not available or not authenticated');
             }
 
-            const extractedConcepts = await window.ApiService.extractConcepts(
-                transcriptionText,
-                'restaurant'
-            );
+            let extractedConcepts = null;
+            if (preExtractedConcepts && preExtractedConcepts.length > 0) {
+                this.log.debug(`Using ${preExtractedConcepts.length} pre-extracted concepts from transcription pipeline`);
+                extractedConcepts = {
+                    results: {
+                        concepts: {
+                            concepts: preExtractedConcepts
+                        }
+                    }
+                };
+            } else {
+                if (useExistingLoading) {
+                    this.updateLoadingMessage('Extracting concepts from transcription...');
+                }
+
+                extractedConcepts = await window.ApiService.extractConcepts(
+                    transcriptionText,
+                    'restaurant'
+                );
+            }
+
+            if (useExistingLoading) {
+                this.updateLoadingMessage('Preparing concept editor...');
+            }
 
             // Show concepts section
             this.uiManager.showConceptsSection();
@@ -1664,12 +1698,20 @@ class ConceptModule {
             }
 
             // Generate description based on transcription
+            if (useExistingLoading) {
+                this.updateLoadingMessage('Generating description...');
+            }
+
             await this.generateDescription(transcriptionText);
 
-            SafetyUtils.hideLoading();
+            if (!useExistingLoading) {
+                SafetyUtils.hideLoading();
+            }
 
         } catch (error) {
-            SafetyUtils.hideLoading();
+            if (!useExistingLoading) {
+                SafetyUtils.hideLoading();
+            }
             this.log.error('Error processing concepts:', error);
             SafetyUtils.showNotification('Error processing concepts', 'error');
         }

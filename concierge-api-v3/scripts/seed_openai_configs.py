@@ -123,6 +123,27 @@ Analise esta imagem e identifique conceitos visuais relevantes que descrevem o e
         "updated_at": datetime.utcnow().isoformat(),
         "updated_by": "system_seed",
         "notes": "GPT-4 Vision for visual concept extraction with 2-6 concepts limit"
+    },
+    {
+        "service": "restaurant_name_extraction_text",
+        "model": "gpt-4",
+        "config": {
+            "temperature": 0.1,
+            "max_tokens": 120,
+            "top_p": 1.0,
+            "frequency_penalty": 0.0,
+            "presence_penalty": 0.0
+        },
+        "prompt_template": """Você é um extrator preciso de nome de restaurante a partir de texto de curadoria.\n\nTexto:\n{text}\n\nInstruções:\n- Retorne APENAS JSON válido\n- Use o formato: {\"restaurant_name\": \"<nome ou null>\", \"confidence_score\": 0.0}\n- Se não houver nome explícito/confiável, use restaurant_name como null\n- Não adicione campos extras\n- Preserve o nome exatamente como aparece no texto""",
+        "cache_ttl_hours": 168,
+        "cache_by": "text_hash",
+        "cost_per_token_input": 0.00003,
+        "cost_per_token_output": 0.00006,
+        "enabled": True,
+        "version": 1,
+        "updated_at": datetime.utcnow().isoformat(),
+        "updated_by": "system_seed",
+        "notes": "Dedicated GPT service for restaurant name extraction from text"
     }
 ]
 

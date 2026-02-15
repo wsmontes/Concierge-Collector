@@ -1593,12 +1593,24 @@ class RecordingModule {
      */
     async processRecording(audioBlob, pendingAudioId = null) {
         let audioId = pendingAudioId;
+        const updateLoadingMessage = (message) => {
+            if (this.uiManager && typeof this.uiManager.updateLoadingMessage === 'function') {
+                this.uiManager.updateLoadingMessage(message);
+                return;
+            }
+
+            if (window.uiUtils && typeof window.uiUtils.updateLoadingMessage === 'function') {
+                window.uiUtils.updateLoadingMessage(message);
+            }
+        };
 
         try {
             this.log.debug('Processing recording, original format:', audioBlob.type);
+            SafetyUtils.showLoading('Finalizing recording...');
 
             // Save audio to IndexedDB first if not already saved
             if (!audioId && window.PendingAudioManager) {
+                updateLoadingMessage('Saving recording locally...');
                 // Get current draft ID if exists
                 let draftId = null;
                 if (window.DraftRestaurantManager && window.DraftRestaurantManager.currentDraftId) {
@@ -1632,6 +1644,7 @@ class RecordingModule {
             }
 
             // Utilize AudioUtils module if available for better conversion
+            updateLoadingMessage('Optimizing audio...');
             let preparedBlob;
             if (window.AudioUtils && typeof window.AudioUtils.convertToMP3 === 'function') {
                 preparedBlob = await window.AudioUtils.convertToMP3(audioBlob);
@@ -1642,10 +1655,11 @@ class RecordingModule {
                 this.log.debug('Using built-in conversion');
             }
 
+            updateLoadingMessage('Transcribing audio...');
             const transcription = await this.transcribeAudio(preparedBlob);
 
             // ✅ transcription is now an object: { text, transcription, concepts }
-            this.processTranscription(transcription);
+            await this.processTranscription(transcription);
 
             // Signal main transcription done
             this.updateProcessingStatus('transcription', 'done');
@@ -1712,6 +1726,8 @@ class RecordingModule {
             // Still reset recording tool state on error
             this.resetRecordingToolState();
             throw error;
+        } finally {
+            SafetyUtils.hideLoading();
         }
     }
 
@@ -1720,7 +1736,7 @@ class RecordingModule {
      * Now also handles concepts if returned by orchestrate endpoint
      * Always appends to the textarea instead of replacing it.
      */
-    processTranscription(result) {
+    async processTranscription(result) {
         try {
             // ✅ HANDLE ORCHESTRATE RESPONSE: result may contain { text, transcription, concepts }
             let transcription;
@@ -1794,23 +1810,13 @@ class RecordingModule {
                 textarea.dispatchEvent(new Event('input'));
 
                 // ✅ Trigger concept processing (will use pre-extracted concepts if available)
-                this.triggerConceptProcessing(transcription, concepts?.concepts);
+                await this.triggerConceptProcessing(transcription, concepts?.concepts);
             }
 
             this.log.debug('Transcription processing completed successfully');
 
-            // Reset recording tool state after successful transcription
-            setTimeout(() => {
-                this.resetRecordingToolState();
-            }, 100); // Small delay to ensure other processes finish
-
         } catch (error) {
             this.log.error('Error processing transcription:', error);
-
-            // Still reset recording tool state on error
-            setTimeout(() => {
-                this.resetRecordingToolState();
-            }, 100);
         }
     }
 
@@ -2027,7 +2033,7 @@ class RecordingModule {
      * Trigger concept processing pipeline after a successful transcription
      * @param {string} transcription - The transcribed text
      */
-    triggerConceptProcessing(transcription) {
+    async triggerConceptProcessing(transcription, preExtractedConcepts = null) {
         try {
             this.log.debug('Triggering concept processing for new restaurant');
 
@@ -2035,14 +2041,20 @@ class RecordingModule {
             if (this.uiManager && this.uiManager.conceptModule &&
                 typeof this.uiManager.conceptModule.processConcepts === 'function') {
                 this.log.debug('Using uiManager.conceptModule.processConcepts');
-                this.uiManager.conceptModule.processConcepts(transcription);
+                await this.uiManager.conceptModule.processConcepts(transcription, {
+                    useExistingLoading: true,
+                    preExtractedConcepts
+                });
                 return;
             }
 
             // Method 2: Find globally available conceptModule
             if (window.conceptModule && typeof window.conceptModule.processConcepts === 'function') {
                 this.log.debug('Using global conceptModule.processConcepts');
-                window.conceptModule.processConcepts(transcription);
+                await window.conceptModule.processConcepts(transcription, {
+                    useExistingLoading: true,
+                    preExtractedConcepts
+                });
                 return;
             }
 

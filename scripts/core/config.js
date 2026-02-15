@@ -90,6 +90,7 @@ const AppConfig = {
                 aiOrchestrate: '/ai/orchestrate',      // POST - AI orchestration (audio+concepts)
                 aiTranscribe: '/ai/transcribe',        // POST - Transcribe audio (X-API-Key)
                 aiExtractConcepts: '/ai/orchestrate',  // POST - Extract concepts via orchestrate (JWT)
+                aiExtractRestaurantName: '/ai/extract-restaurant-name', // POST - Extract restaurant name via dedicated OpenAI config
                 aiAnalyzeImage: '/ai/analyze-image',   // POST - Analyze image with GPT-4 Vision (X-API-Key)
                 
                 // Places Service endpoints

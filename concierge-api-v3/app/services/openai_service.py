@@ -231,6 +231,87 @@ class OpenAIService:
             })
         
         return result
+
+    async def extract_restaurant_name_from_text(
+        self,
+        text: str,
+        save_to_cache: bool = False
+    ) -> Dict[str, Any]:
+        """
+        Extract restaurant name from text using a dedicated OpenAI config object from MongoDB.
+
+        Args:
+            text: Text to analyze
+            save_to_cache: Whether to save extraction metadata to ai_concepts collection
+
+        Returns:
+            Dictionary with restaurant_name, confidence_score, model, and service
+        """
+        config_service_name = "restaurant_name_extraction_text"
+        prompt_variables: Dict[str, Any] = {"text": text}
+
+        try:
+            config = self.config_service.get_config(config_service_name)
+        except ValueError:
+            config_service_name = "concept_extraction_text"
+            config = self.config_service.get_config(config_service_name)
+            categories = await self.category_service.get_categories("restaurant")
+            prompt_variables["categories"] = categories
+
+        prompt = self.config_service.render_prompt(
+            config_service_name,
+            prompt_variables
+        )
+
+        response = self.client.chat.completions.create(
+            model=config["model"],
+            messages=[{"role": "user", "content": prompt}],
+            **config["config"]
+        )
+
+        raw_content = (response.choices[0].message.content or "").strip()
+
+        restaurant_name = None
+        confidence_score = None
+
+        try:
+            parsed = json.loads(raw_content)
+            if isinstance(parsed, dict):
+                restaurant_name = (
+                    parsed.get("restaurant_name")
+                    or parsed.get("name")
+                    or parsed.get("result")
+                )
+                confidence_score = parsed.get("confidence_score")
+        except Exception:
+            restaurant_name = raw_content
+
+        if isinstance(restaurant_name, str):
+            restaurant_name = restaurant_name.strip()
+            if not restaurant_name or restaurant_name.lower() in {"unknown", "null", "none", "n/a"}:
+                restaurant_name = None
+
+        result = {
+            "restaurant_name": restaurant_name,
+            "confidence_score": confidence_score,
+            "model": config["model"],
+            "service": config_service_name
+        }
+
+        if save_to_cache:
+            concept_id = f"concept_{uuid.uuid4().hex[:12]}"
+            await self.db.ai_concepts.insert_one({
+                "concept_id": concept_id,
+                "text": text,
+                "restaurant_name": restaurant_name,
+                "confidence_score": confidence_score,
+                "entity_type": "restaurant",
+                "model": config["model"],
+                "service": config_service_name,
+                "created_at": datetime.now(timezone.utc).isoformat()
+            })
+
+        return result
     
     async def analyze_image(
         self, 

@@ -758,10 +758,21 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
             return;
         }
 
-        const initialQuery = this.restaurantNameInput?.value?.trim() ||
+        const draftDisplayName = this.restaurantNameInput?.value?.trim() || '';
+        const curationForQuery = {
+            ...(this.currentCuration || {}),
+            restaurant_name: draftDisplayName || this.currentCuration?.restaurant_name || this.currentCuration?.name || null,
+            name: draftDisplayName || this.currentCuration?.name || this.currentCuration?.restaurant_name || null
+        };
+
+        const initialQuery = (
+            this.uiManager?.getCurationDisplayName?.(curationForQuery) ||
+            draftDisplayName ||
+            this.currentEntity?.name ||
             this.currentCuration?.restaurant_name ||
             this.currentCuration?.name ||
-            '';
+            ''
+        ).trim();
 
         window.findEntityModal.open({
             initialQuery,
