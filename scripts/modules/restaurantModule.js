@@ -771,6 +771,21 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
                 // Update state
                 this.currentEntity = entity;
 
+                // Keep UIManager state in sync so ConceptModule.saveRestaurant
+                // persists the selected entity linkage on save.
+                if (this.uiManager) {
+                    this.uiManager.editingRestaurantId = entity?.entity_id || null;
+                    this.uiManager.importedEntityId = entity?.entity_id || null;
+                    this.uiManager.importedEntityData = entity || null;
+                }
+
+                // If editing an existing draft curation, update in-memory curation link
+                // so subsequent saves update the same record with entity_id set.
+                if (this.currentCuration) {
+                    this.currentCuration.entity_id = entity?.entity_id || null;
+                    this.currentCuration.status = entity?.entity_id ? 'linked' : (this.currentCuration.status || 'draft');
+                }
+
                 // Re-populate form details
                 this.populateEntityDetails(entity);
                 this.log.debug('Form re-populated with entity name:', entity.name);
