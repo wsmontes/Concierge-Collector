@@ -90,6 +90,19 @@ if (typeof window.UIManager === 'undefined') {
 
             this.currentTab = 'curations'; // Default tab
             this.currentView = null; // Track active view state
+
+            this.isSyncInProgress = false;
+            this.refreshDebounceTimer = null;
+            this.pendingRefreshReason = null;
+            this.curationsCache = [];
+            this.curationsFilteredCount = 0;
+            this.entitiesCache = [];
+            this.entitiesFiltered = [];
+
+            this.curationsCountSummary = document.getElementById('curations-count-summary');
+            this.entitiesCountSummary = document.getElementById('entities-count-summary');
+            this.syncActivityContainer = document.getElementById('view-sync-activity');
+            this.syncActivityText = document.getElementById('view-sync-activity-text');
         }
 
         /**
@@ -190,6 +203,7 @@ if (typeof window.UIManager === 'undefined') {
 
             // Setup global curation filters
             this.setupCurationEvents();
+            this.setupEntityEvents();
 
             // Setup global sync/data events
             this.setupGlobalEvents();
@@ -204,21 +218,133 @@ if (typeof window.UIManager === 'undefined') {
             // Refresh view when conflict is resolved
             window.addEventListener('concierge:conflict-resolved', (e) => {
                 console.log('UI: Conflict resolved, refreshing view...', e.detail);
-                // Small delay to ensure DB write is committed
-                setTimeout(() => this.loadTabData(this.currentTab), 100);
+                this.scheduleDataRefresh('conflict-resolved', 120);
             });
 
             // Refresh view when sync completes (e.g. manual sync or background sync)
             window.addEventListener('concierge:sync-complete', (e) => {
                 console.log('UI: Sync complete, refreshing view...', e.detail);
-                this.loadTabData(this.currentTab);
+                this.isSyncInProgress = false;
+                this.updateSyncActivityIndicator('Synced successfully', 'success');
+                this.scheduleDataRefresh('sync-complete', 80);
+            });
+
+            window.addEventListener('concierge:sync-start', (e) => {
+                console.log('UI: Sync started...', e.detail);
+                this.isSyncInProgress = true;
+                this.updateSyncActivityIndicator('Syncing data... Changes may be delayed until sync completes.', 'syncing');
+            });
+
+            window.addEventListener('concierge:sync-error', (e) => {
+                console.log('UI: Sync error...', e.detail);
+                this.isSyncInProgress = false;
+                this.updateSyncActivityIndicator('Sync failed. Working with local data.', 'error');
+                this.scheduleDataRefresh('sync-error', 100);
+            });
+
+            window.addEventListener('concierge:sync-progress', (e) => {
+                const message = e?.detail?.message || 'Syncing data...';
+                if (this.isSyncInProgress) {
+                    this.updateSyncActivityIndicator(message, 'syncing');
+                }
             });
 
             // Refresh when entity is linked
             window.addEventListener('concierge:entity-linked', (e) => {
                 console.log('UI: Entity linked, refreshing view...', e.detail);
-                this.loadTabData(this.currentTab);
+                this.scheduleDataRefresh('entity-linked', 80);
             });
+
+            // Centralized data change hook from DataStore hooks
+            window.addEventListener('concierge:data-changed', (e) => {
+                if (this.currentView !== 'list') {
+                    return;
+                }
+
+                // Keep list fresh without requiring tab switch
+                this.scheduleDataRefresh(`data-changed:${e?.detail?.table || 'unknown'}`, 150);
+            });
+        }
+
+        scheduleDataRefresh(reason = 'unknown', delayMs = 120) {
+            this.pendingRefreshReason = reason;
+
+            if (this.refreshDebounceTimer) {
+                clearTimeout(this.refreshDebounceTimer);
+            }
+
+            this.refreshDebounceTimer = setTimeout(() => {
+                this.refreshDebounceTimer = null;
+                this.refreshCurrentTabData();
+            }, delayMs);
+        }
+
+        refreshCurrentTabData() {
+            this.loadTabData(this.currentTab);
+            this.updateViewSummaryVisibility();
+        }
+
+        updateSyncActivityIndicator(message, mode = 'syncing') {
+            if (!this.syncActivityContainer || !this.syncActivityText) {
+                return;
+            }
+
+            const baseClasses = ['text-sm', 'px-3', 'py-1.5', 'rounded-lg', 'border', 'items-center', 'gap-2'];
+            const syncingClasses = ['bg-blue-50', 'text-blue-700', 'border-blue-100'];
+            const successClasses = ['bg-green-50', 'text-green-700', 'border-green-100'];
+            const errorClasses = ['bg-red-50', 'text-red-700', 'border-red-100'];
+
+            this.syncActivityContainer.className = '';
+            baseClasses.forEach(c => this.syncActivityContainer.classList.add(c));
+
+            if (mode === 'success') {
+                successClasses.forEach(c => this.syncActivityContainer.classList.add(c));
+            } else if (mode === 'error') {
+                errorClasses.forEach(c => this.syncActivityContainer.classList.add(c));
+            } else {
+                syncingClasses.forEach(c => this.syncActivityContainer.classList.add(c));
+            }
+
+            this.syncActivityContainer.classList.remove('hidden');
+            this.syncActivityContainer.classList.add('flex');
+            this.syncActivityText.textContent = message;
+
+            if (mode !== 'syncing') {
+                setTimeout(() => {
+                    if (this.isSyncInProgress) return;
+                    this.syncActivityContainer.classList.add('hidden');
+                    this.syncActivityContainer.classList.remove('flex');
+                }, 2500);
+            }
+        }
+
+        updateViewSummaryVisibility() {
+            if (this.curationsCountSummary) {
+                this.curationsCountSummary.classList.toggle('hidden', this.currentTab !== 'curations');
+            }
+
+            if (this.entitiesCountSummary) {
+                this.entitiesCountSummary.classList.toggle('hidden', this.currentTab !== 'entities');
+            }
+        }
+
+        updateCurationsCountSummary(total, filtered) {
+            if (!this.curationsCountSummary) return;
+            this.curationsCountSummary.textContent = `Showing ${filtered} of ${total} curations`;
+        }
+
+        updateEntitiesCountSummary(total, filtered) {
+            if (!this.entitiesCountSummary) return;
+            this.entitiesCountSummary.textContent = `Showing ${filtered} of ${total} entities`;
+        }
+
+        canMutateWhileSyncing() {
+            if (!window.SyncManager || !window.SyncManager.isSyncing) {
+                return true;
+            }
+
+            this.showNotification('Sync in progress. Please wait a few seconds before editing/deleting items.', 'info');
+            return false;
         }
 
         /**
@@ -285,6 +411,7 @@ if (typeof window.UIManager === 'undefined') {
             // It should validly appear on ALL tabs within the list section
 
             // Trigger data load for the selected tab
+            this.updateViewSummaryVisibility();
             this.loadTabData(tabName);
         }
 
@@ -305,6 +432,16 @@ if (typeof window.UIManager === 'undefined') {
                     this.loadEntities();
                     break;
             }
+        }
+
+        async refreshCurrentView() {
+            this.refreshCurrentTabData();
+        }
+
+        async refreshEntityList() {
+            this.currentTab = 'entities';
+            this.updateViewSummaryVisibility();
+            await this.loadEntities();
         }
 
         /**
@@ -358,6 +495,27 @@ if (typeof window.UIManager === 'undefined') {
         }
 
         /**
+         * Setup event listeners for entity search and filters
+         */
+        setupEntityEvents() {
+            const searchInput = document.getElementById('entity-search');
+            const typeFilter = document.getElementById('entity-type-filter');
+            const cityFilter = document.getElementById('entity-city-filter');
+
+            if (searchInput) {
+                searchInput.addEventListener('input', () => this.filterAndDisplayEntities());
+            }
+
+            if (typeFilter) {
+                typeFilter.addEventListener('change', () => this.filterAndDisplayEntities());
+            }
+
+            if (cityFilter) {
+                cityFilter.addEventListener('change', () => this.filterAndDisplayEntities());
+            }
+        }
+
+        /**
          * Load Curations
          * 
          * Displays all curations with global filtering.
@@ -379,6 +537,8 @@ if (typeof window.UIManager === 'undefined') {
                 });
 
                 if (curations.length === 0) {
+                    this.curationsCache = [];
+                    this.updateCurationsCountSummary(0, 0);
                     container.innerHTML = `
                         <div class="col-span-full text-center py-12">
                             <span class="material-icons text-6xl text-gray-300 mb-4">rate_review</span>
@@ -551,6 +711,9 @@ if (typeof window.UIManager === 'undefined') {
             }
 
             // Display
+            this.curationsFilteredCount = filtered.length;
+            this.updateCurationsCountSummary(this.curationsCache.length, filtered.length);
+
             container.innerHTML = '';
             if (filtered.length === 0) {
                 container.innerHTML = `
@@ -701,6 +864,9 @@ if (typeof window.UIManager === 'undefined') {
                 );
 
                 if (entities.length === 0) {
+                    this.entitiesCache = [];
+                    this.entitiesFiltered = [];
+                    this.updateEntitiesCountSummary(0, 0);
                     container.innerHTML = `
                             <div class="col-span-full text-center py-12">
                                 <span class="material-icons text-6xl text-gray-300 mb-4">store</span>
@@ -711,12 +877,9 @@ if (typeof window.UIManager === 'undefined') {
                     return;
                 }
 
-                // Reset pagination on fresh load
-                this.entityPagination.currentPage = 0;
-                this.entityPagination.totalItems = entities.length;
-
-                // Display first page
-                this.renderEntitiesPage(entities);
+                this.entitiesCache = entities;
+                this.populateEntityFilters(entities);
+                this.filterAndDisplayEntities();
 
             } catch (error) {
                 console.error('Failed to load entities:', error);
@@ -740,6 +903,8 @@ if (typeof window.UIManager === 'undefined') {
             const end = start + pageSize;
             const pageEntities = allEntities.slice(start, end);
             const totalPages = Math.ceil(allEntities.length / pageSize);
+
+            this.updateEntitiesCountSummary(this.entitiesCache.length || allEntities.length, allEntities.length);
 
             // Clear container
             container.innerHTML = '';
@@ -791,11 +956,19 @@ if (typeof window.UIManager === 'undefined') {
                         }
                     },
                     onEdit: (selectedEntity) => {
+                        if (!this.canMutateWhileSyncing()) {
+                            return;
+                        }
+
                         if (window.entityModule?.startEntityEdit) {
                             window.entityModule.startEntityEdit(selectedEntity);
                         }
                     },
                     onSync: async () => {
+                        if (!this.canMutateWhileSyncing()) {
+                            return;
+                        }
+
                         if (window.SyncManager?.pushEntities) {
                             await window.SyncManager.pushEntities();
                             await this.loadEntities();
@@ -804,6 +977,84 @@ if (typeof window.UIManager === 'undefined') {
                 });
                 container.appendChild(card);
             });
+        }
+
+        populateEntityFilters(entities) {
+            const cityFilter = document.getElementById('entity-city-filter');
+            if (!cityFilter) return;
+
+            const currentValue = cityFilter.value;
+            const cities = new Set();
+
+            entities.forEach(entity => {
+                const city = window.CardFactory.extractCity(entity);
+                if (city && city !== 'Unknown') {
+                    cities.add(city);
+                }
+            });
+
+            cityFilter.innerHTML = '<option value="all">All Cities</option>';
+            Array.from(cities).sort().forEach(city => {
+                const option = document.createElement('option');
+                option.value = city;
+                option.textContent = city;
+                cityFilter.appendChild(option);
+            });
+
+            cityFilter.value = currentValue || 'all';
+        }
+
+        filterAndDisplayEntities() {
+            if (!this.entitiesCache || this.entitiesCache.length === 0) {
+                this.updateEntitiesCountSummary(0, 0);
+                return;
+            }
+
+            const query = (document.getElementById('entity-search')?.value || '').toLowerCase().trim();
+            const typeFilter = document.getElementById('entity-type-filter')?.value || 'all';
+            const cityFilter = document.getElementById('entity-city-filter')?.value || 'all';
+
+            let filtered = [...this.entitiesCache];
+
+            if (query) {
+                filtered = filtered.filter(entity => {
+                    const name = (entity.name || '').toLowerCase();
+                    const city = (window.CardFactory.extractCity(entity) || '').toLowerCase();
+                    const type = (entity.type || '').toLowerCase();
+                    return name.includes(query) || city.includes(query) || type.includes(query);
+                });
+            }
+
+            if (typeFilter !== 'all') {
+                filtered = filtered.filter(entity => entity.type === typeFilter);
+            }
+
+            if (cityFilter !== 'all') {
+                filtered = filtered.filter(entity => window.CardFactory.extractCity(entity) === cityFilter);
+            }
+
+            this.entitiesFiltered = filtered;
+
+            if (this.entityPagination) {
+                this.entityPagination.currentPage = 0;
+                this.entityPagination.totalItems = filtered.length;
+            }
+
+            if (filtered.length === 0) {
+                const container = this.containers.entities;
+                if (container) {
+                    container.innerHTML = `
+                        <div class="col-span-full text-center py-12">
+                            <span class="material-icons text-6xl text-gray-300 mb-4">search_off</span>
+                            <p class="text-gray-500">No entities match your filters</p>
+                        </div>
+                    `;
+                }
+                this.updateEntitiesCountSummary(this.entitiesCache.length, 0);
+                return;
+            }
+
+            this.renderEntitiesPage(filtered);
         }
 
         /**
@@ -966,6 +1217,10 @@ if (typeof window.UIManager === 'undefined') {
          * Handle linking a review to an entity
          */
         async handleLinkReviewToEntity(curation) {
+            if (!this.canMutateWhileSyncing()) {
+                return;
+            }
+
             console.log('Link review to entity:', curation.curation_id);
 
             if (!window.findEntityModal) {
@@ -1396,6 +1651,10 @@ if (typeof window.UIManager === 'undefined') {
 
         // Restaurant module delegations
         editRestaurant(restaurant) {
+            if (!this.canMutateWhileSyncing()) {
+                return;
+            }
+
             // Clear transcription data when editing a different restaurant
             this.clearTranscriptionData();
 
@@ -1406,6 +1665,10 @@ if (typeof window.UIManager === 'undefined') {
          * Edit a specific curation
          */
         editCuration(curation) {
+            if (!this.canMutateWhileSyncing()) {
+                return;
+            }
+
             this.restaurantModule.editCuration(curation);
         }
 
@@ -1575,6 +1838,10 @@ if (typeof window.UIManager === 'undefined') {
          * @param {string} curationId - Curation ID to delete
          */
         async confirmDeleteCuration(curationId) {
+            if (!this.canMutateWhileSyncing()) {
+                return;
+            }
+
             const confirmed = await window.uiUtils.confirmDialog(
                 'Delete Curation?',
                 'Are you sure you want to delete this curation? It will be removed from your local database and the server.',
@@ -1612,6 +1879,10 @@ if (typeof window.UIManager === 'undefined') {
          * @param {Object} curation - Curation record to unlink
          */
         async confirmUnlinkCuration(curation) {
+            if (!this.canMutateWhileSyncing()) {
+                return;
+            }
+
             if (!curation?.curation_id || !curation?.entity_id) {
                 window.uiUtils.showNotification('This curation is already unlinked', 'info');
                 return;

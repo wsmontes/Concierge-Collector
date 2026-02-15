@@ -215,17 +215,42 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
      * Add database hooks for automatic timestamps and validation
      */
     addDatabaseHooks() {
+        const emitDataChanged = (table, action, recordId, payload = {}) => {
+            try {
+                window.dispatchEvent(new CustomEvent('concierge:data-changed', {
+                    detail: {
+                        table,
+                        action,
+                        recordId,
+                        source: payload.source || 'local',
+                        timestamp: new Date().toISOString(),
+                        ...payload
+                    }
+                }));
+            } catch (eventError) {
+                this.log.warn('⚠️ Failed to emit data change event:', eventError?.message || eventError);
+            }
+        };
+
         // Auto-timestamp entities
         this.db.entities.hook('creating', (primKey, obj, trans) => {
             const now = new Date();
             obj.createdAt = now;
             obj.updatedAt = now;
             obj.etag = this.generateETag();
+
+            emitDataChanged('entities', 'creating', obj.entity_id || primKey || null);
         });
 
         this.db.entities.hook('updating', (modifications, primKey, obj, trans) => {
             modifications.updatedAt = new Date();
             modifications.etag = this.generateETag();
+
+            emitDataChanged('entities', 'updating', obj?.entity_id || primKey || null);
+        });
+
+        this.db.entities.hook('deleting', (primKey, obj, trans) => {
+            emitDataChanged('entities', 'deleting', obj?.entity_id || primKey || null);
         });
 
         // Auto-timestamp curations
@@ -234,11 +259,19 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
             obj.createdAt = now;
             obj.updatedAt = now;
             obj.etag = this.generateETag();
+
+            emitDataChanged('curations', 'creating', obj.curation_id || primKey || null);
         });
 
         this.db.curations.hook('updating', (modifications, primKey, obj, trans) => {
             modifications.updatedAt = new Date();
             modifications.etag = this.generateETag();
+
+            emitDataChanged('curations', 'updating', obj?.curation_id || primKey || null);
+        });
+
+        this.db.curations.hook('deleting', (primKey, obj, trans) => {
+            emitDataChanged('curations', 'deleting', obj?.curation_id || primKey || null);
         });
     }
 

@@ -558,11 +558,17 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
 
             // 1. Pull from server (server → client)
             // IMPORTANT: Curations first, then only entities linked by curation.entity_id
+            this.emitSyncEvent('sync-progress', { stage: 'pull-curations', message: 'Syncing curations from server...' });
             await this.pullCurations().catch(e => this.log.error('Pull curations failed:', e));
+
+            this.emitSyncEvent('sync-progress', { stage: 'pull-entities', message: 'Syncing linked entities from server...' });
             await this.pullLinkedEntities().catch(e => this.log.error('Pull linked entities failed:', e));
 
             // 2. Push to server (client → server)
+            this.emitSyncEvent('sync-progress', { stage: 'push-entities', message: 'Uploading local entity updates...' });
             await this.pushEntities();
+
+            this.emitSyncEvent('sync-progress', { stage: 'push-curations', message: 'Uploading local curation updates...' });
             await this.pushCurations();
 
             this.log.info('✅ Full sync complete', this.stats);
@@ -601,10 +607,14 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
 
         try {
             this.isSyncing = true;
+            this.emitSyncEvent('sync-start');
+            this.emitSyncEvent('sync-progress', { stage: 'quick-sync', message: 'Syncing pending local updates...' });
             await this.pushEntities();
             await this.pushCurations();
+            this.emitSyncEvent('sync-complete', { status: 'success', stats: this.stats, mode: 'quick' });
         } catch (error) {
             this.log.warn('Quick sync failed:', error.message);
+            this.emitSyncEvent('sync-error', { error: error.message, mode: 'quick' });
         } finally {
             this.isSyncing = false;
         }

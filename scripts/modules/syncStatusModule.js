@@ -15,6 +15,7 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
         this.log = Logger.module('SyncStatusModule');
         this.container = null;
         this.updateInterval = null;
+        this.lastSyncStartNoticeAt = 0;
     }
 
     /**
@@ -40,9 +41,19 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
             }, 30000);
 
             // Listen for sync events for real-time updates
-            window.addEventListener('concierge:sync-start', () => this.updateStatus());
+            window.addEventListener('concierge:sync-start', () => {
+                this.updateStatus();
+
+                const now = Date.now();
+                if (now - this.lastSyncStartNoticeAt > 10000 && window.SafetyUtils?.showNotification) {
+                    this.lastSyncStartNoticeAt = now;
+                    window.SafetyUtils.showNotification('Synchronization in progress. Wait for completion before editing.', 'info');
+                }
+            });
             window.addEventListener('concierge:sync-complete', () => this.updateStatus());
             window.addEventListener('concierge:sync-error', () => this.updateStatus());
+            window.addEventListener('concierge:sync-progress', () => this.updateStatus());
+            window.addEventListener('concierge:data-changed', () => this.updateStatus());
 
             this.log.debug('SyncStatusModule initialized');
             return true;
@@ -99,11 +110,16 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
 
             // Show syncing indicator
             if (status.isSyncing) {
+                const pendingTotal = status.pending?.total || 0;
                 statusHtml = `
-                    <span class="flex items-center gap-1 text-xs sm:text-sm text-blue-600" title="Syncing...">
+                    <button 
+                        id="btn-sync-details"
+                        class="flex items-center gap-1 text-xs sm:text-sm text-blue-600 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded px-2 py-1"
+                        title="Syncing now${pendingTotal ? ` • ${pendingTotal} pending` : ''}"
+                    >
                         <span class="material-icons text-sm animate-spin">sync</span>
-                        <span class="hidden sm:inline">Syncing</span>
-                    </span>
+                        <span class="hidden sm:inline">Syncing${pendingTotal ? ` (${pendingTotal})` : ''}</span>
+                    </button>
                 `;
             }
             // Show conflicts if any

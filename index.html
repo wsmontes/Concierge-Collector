@@ -425,6 +425,10 @@
                 <span class="material-icons mr-2 text-green-500">restaurant</span>
                 My Collection
             </h2>
+            <div id="view-sync-activity" class="hidden text-sm px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 border border-blue-100 items-center gap-2">
+                <span class="material-icons text-sm animate-spin">sync</span>
+                <span id="view-sync-activity-text">Syncing data...</span>
+            </div>
         </div>
 
         <!-- Tab Navigation -->
@@ -443,6 +447,11 @@
                     Entities
                 </button>
             </nav>
+        </div>
+
+        <div class="mb-4 flex items-center justify-between text-sm text-gray-600">
+            <span id="curations-count-summary" class="hidden">Showing 0 of 0 curations</span>
+            <span id="entities-count-summary" class="hidden">Showing 0 of 0 entities</span>
         </div>
 
         <!-- Curations View -->
