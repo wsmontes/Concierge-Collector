@@ -206,6 +206,12 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
      * Removes fields that are not in CurationCreate schema
      */
     cleanCurationForSync(curation) {
+        const rawStatus = typeof curation.status === 'string' ? curation.status.toLowerCase() : '';
+        const hasEntityLink = typeof curation.entity_id === 'string' && curation.entity_id.trim().length > 0;
+        const normalizedStatus = hasEntityLink
+            ? (!rawStatus || rawStatus === 'draft' ? 'linked' : curation.status)
+            : (curation.status || 'draft');
+
         const normalizedSources = (() => {
             const currentSources = curation.sources;
 
@@ -246,7 +252,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             createdBy: curation.createdBy,
             updatedBy: curation.updatedBy,
             restaurant_name: curation.restaurant_name || curation.name || null,
-            status: curation.status || (curation.entity_id ? 'linked' : 'draft'),
+            status: normalizedStatus,
             categories: curation.categories || {},
             notes: curation.notes || {},
             transcript: curation.transcript || curation.unstructured_text || curation.transcription || null,
@@ -284,6 +290,14 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
 
         if (!sanitized.curator_id && sanitized.curator?.id) {
             sanitized.curator_id = sanitized.curator.id;
+        }
+
+        const hasEntityLink = typeof sanitized.entity_id === 'string' && sanitized.entity_id.trim().length > 0;
+        const hasStatusField = Object.prototype.hasOwnProperty.call(sanitized, 'status');
+        const rawStatus = typeof sanitized.status === 'string' ? sanitized.status.toLowerCase() : '';
+
+        if (hasEntityLink && (!hasStatusField || rawStatus === 'draft' || !rawStatus)) {
+            sanitized.status = 'linked';
         }
 
         return sanitized;
