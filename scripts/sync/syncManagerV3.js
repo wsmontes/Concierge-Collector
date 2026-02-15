@@ -1343,22 +1343,46 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
      * Get sync status for UI display
      */
     async getSyncStatus() {
+        const fallbackStatus = {
+            isOnline: this.isOnline,
+            isSyncing: this.isSyncing,
+            pending: { entities: 0, curations: 0, total: 0 },
+            conflicts: { entities: 0, curations: 0, total: 0 },
+            lastSync: {
+                pull: this.stats.lastPullAt,
+                push: this.stats.lastPushAt
+            }
+        };
+
+        const countBySyncStatus = async (table, statusValue) => {
+            if (!table) return 0;
+
+            try {
+                return await table.where('sync.status').equals(statusValue).count();
+            } catch (indexError) {
+                this.log.warn(`Sync status index unavailable for '${statusValue}', using collection scan fallback.`);
+                try {
+                    return await table
+                        .toCollection()
+                        .filter((item) => item?.sync?.status === statusValue)
+                        .count();
+                } catch (scanError) {
+                    this.log.warn(`Fallback sync status scan failed for '${statusValue}':`, scanError);
+                    return 0;
+                }
+            }
+        };
+
         try {
-            const pendingEntities = await window.DataStore.db.entities
-                .where('sync.status').equals('pending')
-                .count();
+            const db = window.DataStore?.db;
+            if (!db?.entities || !db?.curations) {
+                return fallbackStatus;
+            }
 
-            const conflictEntities = await window.DataStore.db.entities
-                .where('sync.status').equals('conflict')
-                .count();
-
-            const pendingCurations = await window.DataStore.db.curations
-                .where('sync.status').equals('pending')
-                .count();
-
-            const conflictCurations = await window.DataStore.db.curations
-                .where('sync.status').equals('conflict')
-                .count();
+            const pendingEntities = await countBySyncStatus(db.entities, 'pending');
+            const conflictEntities = await countBySyncStatus(db.entities, 'conflict');
+            const pendingCurations = await countBySyncStatus(db.curations, 'pending');
+            const conflictCurations = await countBySyncStatus(db.curations, 'conflict');
 
             return {
                 isOnline: this.isOnline,
@@ -1380,7 +1404,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             };
         } catch (error) {
             this.log.error('Failed to get sync status:', error);
-            return null;
+            return fallbackStatus;
         }
     }
 

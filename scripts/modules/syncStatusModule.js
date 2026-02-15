@@ -36,15 +36,23 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
 
             // Auto-update every 30 seconds
             this.updateInterval = setInterval(() => {
-                this.updateStatus();
+                this.updateStatus().catch((error) => {
+                    this.log.error('Periodic sync status update failed:', error);
+                });
             }, 30000);
 
             // Listen for sync events for real-time updates
-            window.addEventListener('concierge:sync-start', () => this.updateStatus());
-            window.addEventListener('concierge:sync-complete', () => this.updateStatus());
-            window.addEventListener('concierge:sync-error', () => this.updateStatus());
-            window.addEventListener('concierge:sync-progress', () => this.updateStatus());
-            window.addEventListener('concierge:data-changed', () => this.updateStatus());
+            const safeRefresh = () => {
+                this.updateStatus().catch((error) => {
+                    this.log.error('Event-driven sync status update failed:', error);
+                });
+            };
+
+            window.addEventListener('concierge:sync-start', safeRefresh);
+            window.addEventListener('concierge:sync-complete', safeRefresh);
+            window.addEventListener('concierge:sync-error', safeRefresh);
+            window.addEventListener('concierge:sync-progress', safeRefresh);
+            window.addEventListener('concierge:data-changed', safeRefresh);
 
             this.log.debug('SyncStatusModule initialized');
             return true;

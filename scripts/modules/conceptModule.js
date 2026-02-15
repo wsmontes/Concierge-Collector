@@ -1587,6 +1587,27 @@ class ConceptModule {
                         return nameConcept.value.trim();
                     }
                 }
+
+                if (result.results && result.results.concepts && Array.isArray(result.results.concepts.concepts)) {
+                    const nameConcept = result.results.concepts.concepts.find(c => c.category === 'name' || c.category === 'restaurant_name');
+                    if (nameConcept && nameConcept.value) {
+                        return String(nameConcept.value).trim();
+                    }
+                }
+            }
+
+            // Final fallback: run concept extraction flow directly and attempt to infer name
+            const fallback = await window.ApiService.extractConcepts(transcriptionText, 'restaurant');
+            if (fallback) {
+                if (fallback.name || fallback.restaurant_name) {
+                    return (fallback.name || fallback.restaurant_name).trim();
+                }
+                if (fallback.results && fallback.results.concepts && Array.isArray(fallback.results.concepts.concepts)) {
+                    const nameConcept = fallback.results.concepts.concepts.find(c => c.category === 'name' || c.category === 'restaurant_name');
+                    if (nameConcept && nameConcept.value) {
+                        return String(nameConcept.value).trim();
+                    }
+                }
             }
 
             return null;
