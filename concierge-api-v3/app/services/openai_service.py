@@ -248,19 +248,11 @@ class OpenAIService:
             Dictionary with restaurant_name, confidence_score, model, and service
         """
         config_service_name = "restaurant_name_extraction_text"
-        prompt_variables: Dict[str, Any] = {"text": text}
-
-        try:
-            config = self.config_service.get_config(config_service_name)
-        except ValueError:
-            config_service_name = "concept_extraction_text"
-            config = self.config_service.get_config(config_service_name)
-            categories = await self.category_service.get_categories("restaurant")
-            prompt_variables["categories"] = categories
+        config = self.config_service.get_config(config_service_name)
 
         prompt = self.config_service.render_prompt(
             config_service_name,
-            prompt_variables
+            {"text": text}
         )
 
         response = self.client.chat.completions.create(

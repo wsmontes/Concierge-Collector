@@ -1560,6 +1560,69 @@ class ConceptModule {
         try {
             this.log.debug('Extracting restaurant name from transcription...');
 
+            const normalizeName = (value) => {
+                if (typeof value !== 'string') return null;
+                const cleaned = value.trim();
+                if (!cleaned) return null;
+                const lower = cleaned.toLowerCase();
+                if (lower === 'unknown' || lower === 'null' || lower === 'none' || lower === 'n/a') {
+                    return null;
+                }
+                return cleaned;
+            };
+
+            const extractFromPayload = (payload) => {
+                if (!payload || typeof payload !== 'object') return null;
+
+                const direct = normalizeName(payload.name || payload.restaurant_name || payload.restaurantName);
+                if (direct) return direct;
+
+                if (Array.isArray(payload.concepts)) {
+                    const nameConcept = payload.concepts.find((concept) => {
+                        const category = String(concept?.category || '').toLowerCase();
+                        return category === 'name' || category === 'restaurant_name' || category === 'restaurant name';
+                    });
+                    const conceptName = normalizeName(nameConcept?.value);
+                    if (conceptName) return conceptName;
+                }
+
+                const nestedConcepts = payload?.results?.concepts || payload?.concepts;
+
+                const nestedDirect = normalizeName(
+                    nestedConcepts?.restaurant_name ||
+                    nestedConcepts?.restaurantName ||
+                    nestedConcepts?.name
+                );
+                if (nestedDirect) return nestedDirect;
+
+                if (nestedConcepts && Array.isArray(nestedConcepts.concepts)) {
+                    const nestedNameConcept = nestedConcepts.concepts.find((concept) => {
+                        const category = String(concept?.category || '').toLowerCase();
+                        return category === 'name' || category === 'restaurant_name' || category === 'restaurant name';
+                    });
+                    const nestedConceptName = normalizeName(nestedNameConcept?.value);
+                    if (nestedConceptName) return nestedConceptName;
+                }
+
+                const categoryMap = nestedConcepts?.categories;
+                if (categoryMap && typeof categoryMap === 'object') {
+                    const candidateLists = [
+                        categoryMap.restaurant_name,
+                        categoryMap['restaurant name'],
+                        categoryMap.name
+                    ];
+
+                    for (const list of candidateLists) {
+                        if (Array.isArray(list) && list.length > 0) {
+                            const listName = normalizeName(String(list[0]));
+                            if (listName) return listName;
+                        }
+                    }
+                }
+
+                return null;
+            };
+
             if (!transcriptionText || transcriptionText.trim().length < 10) {
                 return null;
             }
@@ -1575,39 +1638,8 @@ class ConceptModule {
 
             // Handle different response formats from API V3
             if (result) {
-                if (result.name || result.restaurant_name) {
-                    return (result.name || result.restaurant_name).trim();
-                }
-                if (result.results && (result.results.name || result.results.restaurant_name)) {
-                    return (result.results.name || result.results.restaurant_name).trim();
-                }
-                if (result.concepts && Array.isArray(result.concepts)) {
-                    const nameConcept = result.concepts.find(c => c.category === 'name' || c.category === 'restaurant_name');
-                    if (nameConcept && nameConcept.value) {
-                        return nameConcept.value.trim();
-                    }
-                }
-
-                if (result.results && result.results.concepts && Array.isArray(result.results.concepts.concepts)) {
-                    const nameConcept = result.results.concepts.concepts.find(c => c.category === 'name' || c.category === 'restaurant_name');
-                    if (nameConcept && nameConcept.value) {
-                        return String(nameConcept.value).trim();
-                    }
-                }
-            }
-
-            // Final fallback: run concept extraction flow directly and attempt to infer name
-            const fallback = await window.ApiService.extractConcepts(transcriptionText, 'restaurant');
-            if (fallback) {
-                if (fallback.name || fallback.restaurant_name) {
-                    return (fallback.name || fallback.restaurant_name).trim();
-                }
-                if (fallback.results && fallback.results.concepts && Array.isArray(fallback.results.concepts.concepts)) {
-                    const nameConcept = fallback.results.concepts.concepts.find(c => c.category === 'name' || c.category === 'restaurant_name');
-                    if (nameConcept && nameConcept.value) {
-                        return String(nameConcept.value).trim();
-                    }
-                }
+                const extracted = extractFromPayload(result);
+                if (extracted) return extracted;
             }
 
             return null;

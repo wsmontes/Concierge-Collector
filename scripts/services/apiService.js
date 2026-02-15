@@ -418,15 +418,10 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
     }
 
     async extractRestaurantName(text) {
-        try {
-            const response = await this.request('POST', 'aiExtractRestaurantName', {
-                body: JSON.stringify({ text })
-            });
-            return await response.json();
-        } catch (error) {
-            this.log.warn('Dedicated restaurant-name endpoint failed, falling back to concept extraction:', error?.message || error);
-            return await this.extractConcepts(text, 'restaurant');
-        }
+        const response = await this.request('POST', 'aiExtractRestaurantName', {
+            body: JSON.stringify({ text })
+        });
+        return await response.json();
     }
 
     async analyzeImage(imageBlob, prompt) {
