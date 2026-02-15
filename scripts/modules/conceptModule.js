@@ -578,6 +578,35 @@ class ConceptModule {
             await window.DataStore.db.curations.put(curation);
             this.log.debug('✅ Curation saved/updated locally:', curationId);
 
+            // Persist linked entity locally ONLY after save so list cards update immediately
+            // without waiting for a full server sync cycle.
+            if (entityId) {
+                const selectedEntity = this.uiManager.importedEntityData ||
+                    this.uiManager.restaurantModule?.currentEntity ||
+                    null;
+
+                if (selectedEntity && window.DataStore?.db?.entities) {
+                    const localEntity = {
+                        ...selectedEntity,
+                        entity_id: selectedEntity.entity_id || entityId,
+                        status: selectedEntity.status || 'active',
+                        type: selectedEntity.type || 'restaurant',
+                        name: selectedEntity.name || name,
+                        data: selectedEntity.data || {},
+                        sync: {
+                            ...(selectedEntity.sync || {}),
+                            status: selectedEntity.sync?.status || 'synced',
+                            lastAttempt: null,
+                            error: null,
+                            lastSyncedAt: new Date().toISOString()
+                        }
+                    };
+
+                    await window.DataStore.db.entities.put(localEntity);
+                    this.log.debug('✅ Linked entity upserted locally after save:', localEntity.entity_id);
+                }
+            }
+
             // Queue curation for sync to server
             if (window.dataStore) {
                 // Use 'update' action if the curation already exists on the server

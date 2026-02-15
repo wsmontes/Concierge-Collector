@@ -1535,6 +1535,8 @@ if (typeof window.UIManager === 'undefined') {
 
         showRestaurantListSection() {
             this.switchView('list');
+            this.updateViewSummaryVisibility();
+            this.scheduleDataRefresh('view:list', 0);
         }
 
         // Delegate to appropriate modules via uiUtilsModule

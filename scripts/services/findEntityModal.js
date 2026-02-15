@@ -1153,6 +1153,16 @@ window.FindEntityModal = class FindEntityModal {
             const createdEntity = await window.ApiService.createEntity(entity);
 
             if (createdEntity) {
+                const selectedEntity = {
+                    ...entity,
+                    ...(createdEntity || {}),
+                    entity_id: createdEntity.entity_id || entity.entity_id,
+                    type: createdEntity.type || entity.type || 'restaurant',
+                    name: createdEntity.name || entity.name,
+                    status: createdEntity.status || 'active',
+                    data: createdEntity.data || entity.data || {}
+                };
+
                 // Success feedback
                 buttonElement.innerHTML = '<span class="material-icons">check_circle</span> Imported!';
                 buttonElement.classList.add('fem-btn-success');
@@ -1172,7 +1182,7 @@ window.FindEntityModal = class FindEntityModal {
                 this.close();
 
                 // Selection callback is required for linked-only flow
-                await this.onEntitySelected(entity);
+                await this.onEntitySelected(selectedEntity);
                 this.onEntitySelected = null;
                 return;
             }
