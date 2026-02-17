@@ -54,7 +54,7 @@ async def verify_auth(
 
 
 def _resolve_embedding_runtime(db: Database) -> tuple[str, int]:
-    """Resolve embedding model and dimensions from env, falling back to stored embeddings metadata."""
+    """Resolve embedding model and dimensions from environment with stable defaults."""
     env_model = os.getenv("EMBEDDING_MODEL")
     env_dimensions = os.getenv("EMBEDDING_DIMENSIONS")
 
@@ -67,22 +67,42 @@ def _resolve_embedding_runtime(db: Database) -> tuple[str, int]:
         except ValueError:
             dimensions = None
 
-    sample = db.embeddings.find_one({}, {"model": 1, "dimensions": 1})
-    if sample:
-        if not model and sample.get("model"):
-            model = str(sample.get("model"))
-        if dimensions is None and sample.get("dimensions"):
-            try:
-                dimensions = int(sample.get("dimensions"))
-            except (TypeError, ValueError):
-                dimensions = None
-
     if not model:
         model = "text-embedding-3-small"
     if not dimensions or dimensions <= 0:
         dimensions = 1536
 
     return model, dimensions
+
+
+def _generate_query_embedding(
+    client: OpenAI,
+    query: str,
+    preferred_model: str,
+    preferred_dimensions: int,
+) -> tuple[np.ndarray, str, int]:
+    """Generate query embedding with safe fallback models to avoid hard failures."""
+    attempts: List[tuple[str, int]] = [(preferred_model, preferred_dimensions)]
+    if preferred_model != "text-embedding-3-small" or preferred_dimensions != 1536:
+        attempts.append(("text-embedding-3-small", 1536))
+
+    last_error: Optional[Exception] = None
+
+    for model, dimensions in attempts:
+        try:
+            response = client.embeddings.create(
+                input=query,
+                model=model,
+                dimensions=dimensions
+            )
+            vector = np.array(response.data[0].embedding)
+            actual_dimensions = int(len(response.data[0].embedding))
+            return vector, model, actual_dimensions
+        except Exception as error:
+            last_error = error
+            continue
+
+    raise HTTPException(status_code=500, detail=f"Failed to generate embedding: {str(last_error)}")
 
 
 def _build_openai_client() -> OpenAI:
@@ -521,15 +541,12 @@ def semantic_search_curations(
     client = _build_openai_client()
     
     query_embed_start = time.time()
-    try:
-        response = client.embeddings.create(
-            input=request.query,
-            model=model,
-            dimensions=dimensions
-        )
-        query_vector = np.array(response.data[0].embedding)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to generate embedding: {str(e)}")
+    query_vector, model, dimensions = _generate_query_embedding(
+        client=client,
+        query=request.query,
+        preferred_model=model,
+        preferred_dimensions=dimensions,
+    )
     
     query_embed_time = time.time() - query_embed_start
     
@@ -666,15 +683,12 @@ def hybrid_search(
     model, dimensions = _resolve_embedding_runtime(db)
     client = _build_openai_client()
     
-    try:
-        response = client.embeddings.create(
-            input=request.query,
-            model=model,
-            dimensions=dimensions
-        )
-        query_vector = np.array(response.data[0].embedding)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Failed to generate embedding: {str(e)}")
+    query_vector, model, dimensions = _generate_query_embedding(
+        client=client,
+        query=request.query,
+        preferred_model=model,
+        preferred_dimensions=dimensions,
+    )
 
     semantic_by_curation = _load_semantic_matches(
         db=db,
