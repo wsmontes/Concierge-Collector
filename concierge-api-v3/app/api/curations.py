@@ -54,7 +54,7 @@ async def verify_auth(
 
 
 def _resolve_embedding_runtime(db: Database) -> tuple[str, int]:
-    """Resolve embedding model and dimensions from environment with stable defaults."""
+    """Resolve embedding model and dimensions, prioritizing Mongo runtime schema."""
     env_model = os.getenv("EMBEDDING_MODEL")
     env_dimensions = os.getenv("EMBEDDING_DIMENSIONS")
 
@@ -66,6 +66,23 @@ def _resolve_embedding_runtime(db: Database) -> tuple[str, int]:
             dimensions = int(env_dimensions)
         except ValueError:
             dimensions = None
+
+    mongo_schema = db.embeddings.aggregate([
+        {"$group": {"_id": {"model": "$model", "dimensions": "$dimensions"}, "count": {"$sum": 1}}},
+        {"$sort": {"count": -1}},
+        {"$limit": 1}
+    ])
+    top_schema = next(mongo_schema, None)
+
+    if top_schema and top_schema.get("_id"):
+        schema_data = top_schema["_id"]
+        if not model and schema_data.get("model"):
+            model = str(schema_data.get("model"))
+        if dimensions is None and schema_data.get("dimensions") is not None:
+            try:
+                dimensions = int(schema_data.get("dimensions"))
+            except (TypeError, ValueError):
+                dimensions = None
 
     if not model:
         model = "text-embedding-3-small"
@@ -81,28 +98,24 @@ def _generate_query_embedding(
     preferred_model: str,
     preferred_dimensions: int,
 ) -> tuple[np.ndarray, str, int]:
-    """Generate query embedding with safe fallback models to avoid hard failures."""
-    attempts: List[tuple[str, int]] = [(preferred_model, preferred_dimensions)]
-    if preferred_model != "text-embedding-3-small" or preferred_dimensions != 1536:
-        attempts.append(("text-embedding-3-small", 1536))
-
-    last_error: Optional[Exception] = None
-
-    for model, dimensions in attempts:
-        try:
-            response = client.embeddings.create(
-                input=query,
-                model=model,
-                dimensions=dimensions
+    """Generate query embedding using the exact configured model and dimensions."""
+    try:
+        response = client.embeddings.create(
+            input=query,
+            model=preferred_model,
+            dimensions=preferred_dimensions
+        )
+        vector = np.array(response.data[0].embedding)
+        actual_dimensions = int(len(response.data[0].embedding))
+        return vector, preferred_model, actual_dimensions
+    except Exception as error:
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                f"Failed to generate embedding with model '{preferred_model}' "
+                f"(dimensions={preferred_dimensions}): {str(error)}"
             )
-            vector = np.array(response.data[0].embedding)
-            actual_dimensions = int(len(response.data[0].embedding))
-            return vector, model, actual_dimensions
-        except Exception as error:
-            last_error = error
-            continue
-
-    raise HTTPException(status_code=500, detail=f"Failed to generate embedding: {str(last_error)}")
+        )
 
 
 def _build_openai_client() -> OpenAI:
