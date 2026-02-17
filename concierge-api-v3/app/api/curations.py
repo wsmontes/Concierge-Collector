@@ -5,7 +5,7 @@ Professional FastAPI implementation with async MongoDB
 
 from fastapi import APIRouter, HTTPException, Header, Query, Depends
 from fastapi.security import HTTPAuthorizationCredentials
-from typing import Optional, List
+from typing import Optional, List, Dict
 from datetime import datetime, timezone
 from pymongo.errors import DuplicateKeyError
 import secrets
