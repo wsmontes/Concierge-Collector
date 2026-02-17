@@ -53,6 +53,200 @@ async def verify_auth(
     raise HTTPException(status_code=401, detail="Missing authorization token")
 
 
+def _resolve_embedding_runtime(db: Database) -> tuple[str, int]:
+    """Resolve embedding model and dimensions from env, falling back to stored embeddings metadata."""
+    env_model = os.getenv("EMBEDDING_MODEL")
+    env_dimensions = os.getenv("EMBEDDING_DIMENSIONS")
+
+    model = env_model.strip() if env_model else None
+    dimensions: Optional[int] = None
+
+    if env_dimensions:
+        try:
+            dimensions = int(env_dimensions)
+        except ValueError:
+            dimensions = None
+
+    sample = db.embeddings.find_one({}, {"model": 1, "dimensions": 1})
+    if sample:
+        if not model and sample.get("model"):
+            model = str(sample.get("model"))
+        if dimensions is None and sample.get("dimensions"):
+            try:
+                dimensions = int(sample.get("dimensions"))
+            except (TypeError, ValueError):
+                dimensions = None
+
+    if not model:
+        model = "text-embedding-3-small"
+    if not dimensions or dimensions <= 0:
+        dimensions = 1536
+
+    return model, dimensions
+
+
+def _build_openai_client() -> OpenAI:
+    """Build OpenAI client with optional custom base URL."""
+    openai_api_key = os.getenv("OPENAI_API_KEY")
+    if not openai_api_key:
+        raise HTTPException(status_code=500, detail="OpenAI API key not configured")
+
+    client_kwargs = {"api_key": openai_api_key}
+    openai_base_url = os.getenv("OPENAI_BASE_URL")
+    if openai_base_url:
+        client_kwargs["base_url"] = openai_base_url
+
+    return OpenAI(**client_kwargs)
+
+
+def _fetch_curations_by_ids(db: Database, curation_ids: List[str]) -> Dict[str, dict]:
+    """Fetch curations by internal _id or curation_id and map by both keys."""
+    if not curation_ids:
+        return {}
+
+    curations = list(
+        db.curations.find(
+            {
+                "$or": [
+                    {"_id": {"$in": curation_ids}},
+                    {"curation_id": {"$in": curation_ids}},
+                ]
+            }
+        )
+    )
+
+    mapping: Dict[str, dict] = {}
+    for curation in curations:
+        if curation.get("_id"):
+            mapping[str(curation["_id"])] = curation
+        if curation.get("curation_id"):
+            mapping[str(curation["curation_id"])] = curation
+    return mapping
+
+
+def _load_semantic_matches(
+    db: Database,
+    query_vector: np.ndarray,
+    model: str,
+    dimensions: int,
+    min_similarity: float,
+    categories: Optional[List[str]],
+    require_entity: bool,
+) -> Dict[str, dict]:
+    """Load semantic matches grouped by curation using deduplicated embedding collections."""
+    link_query: Dict[str, object] = {"model": model, "dimensions": dimensions}
+    if categories:
+        link_query["category"] = {"$in": categories}
+    if require_entity:
+        link_query["entity_id"] = {"$exists": True, "$ne": None}
+
+    links = list(
+        db.embedding_links.find(
+            link_query,
+            {
+                "_id": 0,
+                "curation_id": 1,
+                "entity_id": 1,
+                "concept_key": 1,
+                "category": 1,
+                "concept": 1,
+            },
+        )
+    )
+
+    if not links:
+        return {}
+
+    concept_keys = sorted({link.get("concept_key") for link in links if link.get("concept_key")})
+    if not concept_keys:
+        return {}
+
+    embeddings_docs = list(
+        db.embeddings.find(
+            {"concept_key": {"$in": concept_keys}, "model": model, "dimensions": dimensions},
+            {"_id": 0, "concept_key": 1, "vector": 1},
+        )
+    )
+
+    vectors_by_key: Dict[str, np.ndarray] = {}
+    for embedding_doc in embeddings_docs:
+        concept_key = embedding_doc.get("concept_key")
+        vector_values = embedding_doc.get("vector")
+        if not concept_key or not isinstance(vector_values, list) or not vector_values:
+            continue
+        vectors_by_key[str(concept_key)] = np.array(vector_values)
+
+    if not vectors_by_key:
+        return {}
+
+    query_norm = np.linalg.norm(query_vector)
+    if query_norm == 0:
+        return {}
+
+    grouped: Dict[str, dict] = {}
+    for link in links:
+        curation_id = link.get("curation_id")
+        concept_key = link.get("concept_key")
+        if not curation_id or not concept_key:
+            continue
+
+        concept_vector = vectors_by_key.get(str(concept_key))
+        if concept_vector is None:
+            continue
+
+        denominator = query_norm * np.linalg.norm(concept_vector)
+        if denominator == 0:
+            continue
+
+        similarity = float(np.dot(query_vector, concept_vector) / denominator)
+        if similarity < min_similarity:
+            continue
+
+        curation_id = str(curation_id)
+        aggregate = grouped.setdefault(
+            curation_id,
+            {
+                "entity_id": link.get("entity_id"),
+                "matches": [],
+                "similarities": [],
+            },
+        )
+
+        if not aggregate.get("entity_id") and link.get("entity_id"):
+            aggregate["entity_id"] = link.get("entity_id")
+
+        category = str(link.get("category") or "")
+        concept = str(link.get("concept") or "")
+
+        aggregate["similarities"].append(similarity)
+        aggregate["matches"].append(
+            ConceptMatch(
+                text=f"{category} {concept}".strip(),
+                category=category,
+                concept=concept,
+                similarity=round(similarity, 4),
+            )
+        )
+
+    results: Dict[str, dict] = {}
+    for curation_id, aggregate in grouped.items():
+        matches: List[ConceptMatch] = aggregate["matches"]
+        if not matches:
+            continue
+
+        matches.sort(key=lambda match: match.similarity, reverse=True)
+        similarities = aggregate["similarities"]
+        results[curation_id] = {
+            "entity_id": aggregate.get("entity_id"),
+            "matches": matches,
+            "avg_similarity": round(sum(similarities) / len(similarities), 4),
+            "max_similarity": round(max(similarities), 4),
+            "match_count": len(matches),
+        }
+
+    return results
+
+
 @router.post("", response_model=Curation, status_code=201)
 def create_curation(
     curation: CurationCreate,
@@ -323,19 +517,15 @@ def semantic_search_curations(
     """
     start_time = time.time()
     
-    # 1. Generate query embedding
-    openai_api_key = os.getenv('OPENAI_API_KEY')
-    if not openai_api_key:
-        raise HTTPException(status_code=500, detail="OpenAI API key not configured")
-    
-    client = OpenAI(api_key=openai_api_key)
+    model, dimensions = _resolve_embedding_runtime(db)
+    client = _build_openai_client()
     
     query_embed_start = time.time()
     try:
         response = client.embeddings.create(
             input=request.query,
-            model="text-embedding-3-small",
-            dimensions=1536
+            model=model,
+            dimensions=dimensions
         )
         query_vector = np.array(response.data[0].embedding)
     except Exception as e:
@@ -343,56 +533,37 @@ def semantic_search_curations(
     
     query_embed_time = time.time() - query_embed_start
     
-    # 2. Fetch all curations with embeddings (only restaurants for now)
-    query_filter = {"embeddings": {"$exists": True, "$ne": []}}
-    curations = list(db.curations.find(query_filter))
-    
-    # 3. Calculate similarities for each curation
+    semantic_by_curation = _load_semantic_matches(
+        db=db,
+        query_vector=query_vector,
+        model=model,
+        dimensions=dimensions,
+        min_similarity=request.min_similarity,
+        categories=request.categories,
+        require_entity=False,
+    )
+
+    curation_map = _fetch_curations_by_ids(db, list(semantic_by_curation.keys()))
+
     results = []
-    
-    for curation in curations:
-        embeddings = curation.get("embeddings", [])
-        if not embeddings:
+
+    for curation_id, semantic_data in semantic_by_curation.items():
+        curation = curation_map.get(curation_id)
+        if not curation:
             continue
-        
-        matches = []
-        
-        for emb in embeddings:
-            # Filter by category if specified
-            if request.categories and emb.get("category") not in request.categories:
-                continue
-            
-            # Calculate cosine similarity
-            try:
-                concept_vector = np.array(emb["vector"])
-                similarity = float(
-                    np.dot(query_vector, concept_vector) / 
-                    (np.linalg.norm(query_vector) * np.linalg.norm(concept_vector))
-                )
-            except Exception:
-                continue
-            
-            # Filter by threshold
-            if similarity >= request.min_similarity:
-                matches.append(ConceptMatch(
-                    text=emb.get("text", ""),
-                    category=emb.get("category", ""),
-                    concept=emb.get("concept", ""),
-                    similarity=round(similarity, 4)
-                ))
-        
+
+        matches = semantic_data["matches"]
         if not matches:
             continue
-        
-        # Sort matches by similarity (descending)
-        matches.sort(key=lambda x: x.similarity, reverse=True)
-        
-        # Calculate aggregate scores
-        similarities = [m.similarity for m in matches]
-        avg_similarity = sum(similarities) / len(similarities)
-        max_similarity = max(similarities)
-        
-        # Build result
+
+        entity = None
+        if curation.get("entity_id"):
+            entity = db.entities.find_one({"_id": curation["entity_id"]})
+
+        if request.entity_types:
+            if not entity or entity.get("entity_type") not in request.entity_types:
+                continue
+
         result_data = {
             "entity_id": curation["entity_id"],
             "curation": {
@@ -402,14 +573,12 @@ def semantic_search_curations(
                 "notes": curation.get("notes", {})
             },
             "matches": [m.model_dump() for m in matches[:10]],  # Top 10 matches
-            "avg_similarity": round(avg_similarity, 4),
-            "max_similarity": round(max_similarity, 4),
-            "match_count": len(matches)
+            "avg_similarity": semantic_data["avg_similarity"],
+            "max_similarity": semantic_data["max_similarity"],
+            "match_count": semantic_data["match_count"],
         }
-        
-        # Include entity data if requested
+
         if request.include_entity and curation.get("entity_id"):
-            entity = db.entities.find_one({"_id": curation["entity_id"]})
             if entity:
                 result_data["entity"] = {
                     "name": entity.get("name"),
@@ -417,7 +586,7 @@ def semantic_search_curations(
                     "location": entity.get("location"),
                     "contact": entity.get("contact")
                 }
-        
+
         results.append(result_data)
     
     # 5. Sort by max_similarity (best match first)
@@ -494,74 +663,46 @@ def hybrid_search(
     semantic_search_start = time.time()
     semantic_results = {}
     
-    # Generate query embedding
-    openai_api_key = os.getenv("OPENAI_API_KEY")
-    if not openai_api_key:
-        raise HTTPException(status_code=500, detail="OpenAI API key not configured")
-    
-    client = OpenAI(api_key=openai_api_key)
+    model, dimensions = _resolve_embedding_runtime(db)
+    client = _build_openai_client()
     
     try:
         response = client.embeddings.create(
             input=request.query,
-            model="text-embedding-3-small",
-            dimensions=1536
+            model=model,
+            dimensions=dimensions
         )
         query_vector = np.array(response.data[0].embedding)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate embedding: {str(e)}")
-    
-    # Fetch all curations with embeddings (skip orphaned curations without entity_id)
-    curations = list(db.curations.find({
-        "embeddings": {"$exists": True, "$ne": []},
-        "entity_id": {"$ne": None, "$exists": True}
-    }))
-    
-    for curation in curations:
-        entity_id = curation["entity_id"]
-        embeddings = curation.get("embeddings", [])
-        
-        if not embeddings:
+
+    semantic_by_curation = _load_semantic_matches(
+        db=db,
+        query_vector=query_vector,
+        model=model,
+        dimensions=dimensions,
+        min_similarity=request.min_similarity,
+        categories=request.categories,
+        require_entity=True,
+    )
+
+    curation_map = _fetch_curations_by_ids(db, list(semantic_by_curation.keys()))
+
+    for curation_id, semantic_data in semantic_by_curation.items():
+        curation = curation_map.get(curation_id)
+        if not curation:
             continue
-        
-        matches = []
-        similarities = []
-        
-        for emb in embeddings:
-            # Filter by category if specified
-            if request.categories and emb.get("category") not in request.categories:
-                continue
-            
-            # Calculate cosine similarity
-            try:
-                concept_vector = np.array(emb["vector"])
-                similarity = float(
-                    np.dot(query_vector, concept_vector) / 
-                    (np.linalg.norm(query_vector) * np.linalg.norm(concept_vector))
-                )
-            except Exception:
-                continue
-            
-            if similarity >= request.min_similarity:
-                similarities.append(similarity)
-                matches.append(ConceptMatch(
-                    text=emb.get("text", ""),
-                    category=emb.get("category", ""),
-                    concept=emb.get("concept", ""),
-                    similarity=similarity
-                ))
-        
-        if matches:
-            # Sort matches by similarity
-            matches.sort(key=lambda x: x.similarity, reverse=True)
-            
-            # Use max similarity as semantic score
-            semantic_score = max(similarities)
-            
+
+        entity_id = semantic_data.get("entity_id") or curation.get("entity_id")
+        if not entity_id:
+            continue
+
+        current = semantic_results.get(entity_id)
+        if not current or semantic_data["max_similarity"] > current["semantic_score"]:
             semantic_results[entity_id] = {
                 "curation": curation,
-                "semantic_score": semantic_score,
-                "matches": matches[:10]  # Top 10 matches
+                "semantic_score": semantic_data["max_similarity"],
+                "matches": semantic_data["matches"][:10],
             }
     
     semantic_search_time = time.time() - semantic_search_start
