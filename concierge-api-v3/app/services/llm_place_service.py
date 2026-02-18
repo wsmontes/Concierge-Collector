@@ -547,10 +547,10 @@ class LLMPlaceService:
             michelin_info = None
             
             if entity:
-                entity_id = entity.get("_id")
+                entity_id = str(entity.get("_id")) if entity.get("_id") is not None else None
                 
                 # Update entity with fresh Google data (incremental)
-                self.update_entity_with_google_data(entity_id, google_place)
+                self.update_entity_with_google_data(entity.get("_id"), google_place)
                 
                 # Check for Michelin data
                 michelin_data = entity.get("data", {}).get("michelin", {})
@@ -644,7 +644,7 @@ class LLMPlaceService:
                 
                 item = LLMSearchRestaurantItem(
                     place_id=place_id,
-                    entity_id=entity.get("_id"),
+                    entity_id=str(entity.get("_id")) if entity.get("_id") is not None else None,
                     name=entity.get("name", "Unknown"),
                     canonical_address=entity.get("address"),
                     geo=geo,
