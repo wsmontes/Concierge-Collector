@@ -392,9 +392,13 @@ def semantic_search_curations(
         avg_similarity = sum(similarities) / len(similarities)
         max_similarity = max(similarities)
         
+        entity_id = curation.get("entity_id")
+        if entity_id is None:
+            continue
+
         # Build result
         result_data = {
-            "entity_id": curation["entity_id"],
+            "entity_id": entity_id,
             "curation": {
                 "curation_id": curation.get("curation_id", curation["_id"]),
                 "categories": curation.get("categories", {}),
@@ -408,8 +412,8 @@ def semantic_search_curations(
         }
         
         # Include entity data if requested
-        if request.include_entity and curation.get("entity_id"):
-            entity = db.entities.find_one({"_id": curation["entity_id"]})
+        if request.include_entity:
+            entity = db.entities.find_one({"_id": entity_id})
             if entity:
                 result_data["entity"] = {
                     "name": entity.get("name"),
