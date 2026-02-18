@@ -542,12 +542,16 @@ def hybrid_search(
     if entity_filter:
         entities = list(db.entities.find(entity_filter).limit(50))
         for entity in entities:
-            entity_id = entity["_id"]
+            entity_id = entity.get("_id")
+            if entity_id is None:
+                continue
+            entity_key = str(entity_id)
             # Score baseado em text score (se disponível) ou 0.5 default
             entity_score = entity.get("score", 0.5)
-            entity_results[entity_id] = {
+            entity_results[entity_key] = {
                 "entity": entity,
-                "entity_score": entity_score
+                "entity_score": entity_score,
+                "entity_id_raw": entity_id,
             }
     
     entity_search_time = time.time() - entity_search_start
@@ -569,18 +573,59 @@ def hybrid_search(
             model="text-embedding-3-small",
             dimensions=1536
         )
-        query_vector = np.array(response.data[0].embedding)
+        query_vector = np.asarray(response.data[0].embedding, dtype=np.float32)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate embedding: {str(e)}")
+
+    query_norm = float(np.linalg.norm(query_vector))
+    if query_norm == 0.0:
+        raise HTTPException(status_code=500, detail="Failed to generate valid query embedding")
     
-    # Fetch all curations with embeddings (skip orphaned curations without entity_id)
-    curations = list(db.curations.find({
-        "embeddings": {"$exists": True, "$ne": []},
-        "entity_id": {"$ne": None, "$exists": True}
-    }))
+    # Fetch candidate curations with embeddings (prefer vector index, fallback to scan)
+    projection = {
+        "entity_id": 1,
+        "curation_id": 1,
+        "categories": 1,
+        "curator": 1,
+        "notes": 1,
+        "embeddings": 1,
+    }
+
+    vector_index_name = os.getenv("MONGODB_CURATIONS_VECTOR_INDEX", "").strip()
+    candidate_limit = min(max(request.limit * 20, 200), 2000)
+    curations = []
+
+    if vector_index_name:
+        try:
+            vector_pipeline = [
+                {
+                    "$vectorSearch": {
+                        "index": vector_index_name,
+                        "path": "embeddings.vector",
+                        "queryVector": query_vector.tolist(),
+                        "numCandidates": min(max(candidate_limit * 5, 400), 5000),
+                        "limit": candidate_limit,
+                    }
+                },
+                {"$project": projection},
+            ]
+            curations = list(db.curations.aggregate(vector_pipeline))
+        except Exception:
+            curations = []
+
+    if not curations:
+        curations = list(db.curations.find({
+            "embeddings": {"$exists": True, "$ne": []},
+            "entity_id": {"$ne": None, "$exists": True}
+        }, projection))
+
+    allowed_categories = set(request.categories) if request.categories else None
     
     for curation in curations:
-        entity_id = curation["entity_id"]
+        entity_id = curation.get("entity_id")
+        if entity_id is None:
+            continue
+        entity_key = str(entity_id)
         embeddings = curation.get("embeddings", [])
         
         if not embeddings:
@@ -591,15 +636,18 @@ def hybrid_search(
         
         for emb in embeddings:
             # Filter by category if specified
-            if request.categories and emb.get("category") not in request.categories:
+            if allowed_categories and emb.get("category") not in allowed_categories:
                 continue
             
             # Calculate cosine similarity
             try:
-                concept_vector = np.array(emb["vector"])
+                concept_vector = np.asarray(emb["vector"], dtype=np.float32)
+                concept_norm = float(np.linalg.norm(concept_vector))
+                if concept_norm == 0.0:
+                    continue
                 similarity = float(
                     np.dot(query_vector, concept_vector) / 
-                    (np.linalg.norm(query_vector) * np.linalg.norm(concept_vector))
+                    (query_norm * concept_norm)
                 )
             except Exception:
                 continue
@@ -619,11 +667,16 @@ def hybrid_search(
             
             # Use max similarity as semantic score
             semantic_score = max(similarities)
-            
-            semantic_results[entity_id] = {
+
+            existing = semantic_results.get(entity_key)
+            if existing and existing.get("semantic_score", 0.0) >= semantic_score:
+                continue
+
+            semantic_results[entity_key] = {
                 "curation": curation,
                 "semantic_score": semantic_score,
-                "matches": matches[:10]  # Top 10 matches
+                "matches": matches[:10],  # Top 10 matches
+                "entity_id_raw": entity_id,
             }
     
     semantic_search_time = time.time() - semantic_search_start
@@ -631,6 +684,27 @@ def hybrid_search(
     # ========== 3. COMBINAR RESULTADOS ==========
     combined = {}
     all_entity_ids = set(entity_results.keys()) | set(semantic_results.keys())
+
+    # Fetch missing entities in batch (avoid N+1 find_one)
+    missing_entity_ids = []
+    seen_missing = set()
+    for entity_id in all_entity_ids:
+        if entity_id in entity_results:
+            continue
+        semantic_data = semantic_results.get(entity_id, {})
+        raw_id = semantic_data.get("entity_id_raw")
+        if raw_id is None:
+            continue
+        raw_id_key = str(raw_id)
+        if raw_id_key in seen_missing:
+            continue
+        seen_missing.add(raw_id_key)
+        missing_entity_ids.append(raw_id)
+
+    entities_by_id = {}
+    if missing_entity_ids:
+        missing_entities = list(db.entities.find({"_id": {"$in": missing_entity_ids}}))
+        entities_by_id = {str(entity.get("_id")): entity for entity in missing_entities}
     
     for entity_id in all_entity_ids:
         entity_data = entity_results.get(entity_id, {})
@@ -656,14 +730,16 @@ def hybrid_search(
         
         # Get entity data (from entity search or from curation's entity_id)
         entity = entity_data.get("entity")
-        if not entity and entity_id:
-            entity = db.entities.find_one({"_id": entity_id})
+        if not entity:
+            entity = entities_by_id.get(entity_id)
         
         if not entity:
             continue
+
+        output_entity_id = str(entity.get("_id", entity_id))
         
         combined[entity_id] = {
-            "entity_id": entity_id,
+            "entity_id": output_entity_id,
             "entity": {
                 "name": entity.get("name"),
                 "entity_type": entity.get("entity_type"),
