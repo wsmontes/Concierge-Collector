@@ -137,8 +137,14 @@ def search_curations(
     # Get total count
     total = db.curations.count_documents(query)
     
+    # Exclude heavy embedding payloads for listing/sync endpoints
+    projection = {
+        "embeddings": 0,
+        "embeddings_metadata": 0,
+    }
+
     # Get paginated results
-    cursor = db.curations.find(query).skip(offset).limit(limit)
+    cursor = db.curations.find(query, projection).skip(offset).limit(limit)
     items = []
     for doc in cursor:
         items.append(Curation(**doc))
@@ -166,10 +172,15 @@ def get_entity_curations(
         )
     
     # Get curations (exclude deleted by default)
+    projection = {
+        "embeddings": 0,
+        "embeddings_metadata": 0,
+    }
+
     cursor = db.curations.find({
         "entity_id": entity_id,
         "status": {"$ne": "deleted"}
-    })
+    }, projection)
     curations = []
     for doc in cursor:
         curations.append(Curation(**doc))
