@@ -1,25 +1,17 @@
+---
 openapi: 3.1.0
 info:
   title: Concierge Collector API V3
-  description: |
-    Professional async API with MongoDB, AI services, and dual authentication.
-    
-    **Production:** `https://concierge-collector.onrender.com/api/v3`
-    
-    **Authentication:** OAuth JWT or API Key
+  description: Professional async API with MongoDB support for entity and curation
+    management
   version: 3.0.0
-servers:
-  - url: https://concierge-collector.onrender.com/api/v3
-    description: Production
-  - url: http://localhost:8000/api/v3
-    description: Local Development
 paths:
-  /api/v3/health:
+  "/api/v3/health":
     get:
       tags:
       - system
       summary: Health Check
-      description: Health check endpoint with database connectivity test
+      description: Health check with database connectivity test
       operationId: health_check_api_v3_health_get
       responses:
         '200':
@@ -27,8 +19,8 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HealthResponse'
-  /api/v3/info:
+                "$ref": "#/components/schemas/HealthResponse"
+  "/api/v3/info":
     get:
       tags:
       - system
@@ -41,44 +33,211 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/APIInfo'
-  /api/v3/entities:
+                "$ref": "#/components/schemas/APIInfo"
+  "/api/v3/auth/google":
+    get:
+      tags:
+      - authentication
+      summary: Google Oauth Init
+      description: |-
+        Initiate Google OAuth 2.0 flow with PKCE
+
+        Flow:
+        1. Determine frontend URL (from parameter, referer, or default)
+        2. Generate PKCE code_verifier and code_challenge
+        3. Generate state for CSRF protection (includes frontend URL)
+        4. Redirect to Google OAuth consent screen
+
+        Args:
+            callback_url: Optional frontend URL to redirect after OAuth
+            request: FastAPI request object to extract referer
+
+        Returns:
+            RedirectResponse: Redirect to Google OAuth URL
+      operationId: google_oauth_init_api_v3_auth_google_get
+      parameters:
+      - name: callback_url
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Callback Url
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v3/auth/callback":
+    get:
+      tags:
+      - authentication
+      summary: Google Oauth Callback
+      description: "Handle OAuth callback from Google\n\nFlow:\n1. Verify state (CSRF
+        protection)\n2. Exchange authorization code for tokens\n3. Get user info from
+        Google\n4. Create/update user in MongoDB\n5. Generate JWT for app session\n6.
+        Redirect to frontend with tokens\n\nArgs:\n    code: Authorization code from
+        Google\n    state: State parameter for CSRF validation\n    error: Error from
+        Google (if user cancelled)\n    \nReturns:\n    RedirectResponse: Redirect
+        to frontend with tokens or error"
+      operationId: google_oauth_callback_api_v3_auth_callback_get
+      parameters:
+      - name: code
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Code
+      - name: state
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: State
+      - name: error
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Error
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v3/auth/verify":
+    get:
+      tags:
+      - authentication
+      summary: Verify Token
+      description: |-
+        Verify JWT access token and return user data
+
+        Requires: Authorization: Bearer <token> header
+
+        Returns:
+            UserAuthResponse: User data if token is valid and user is authorized
+      operationId: verify_token_api_v3_auth_verify_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/UserAuthResponse"
+      security:
+      - HTTPBearer: []
+  "/api/v3/auth/refresh":
+    post:
+      tags:
+      - authentication
+      summary: Refresh Access Token
+      description: |-
+        Refresh access token using a valid refresh token
+
+        Request body:
+            refresh_token: JWT refresh token
+
+        Returns:
+            New access token and refresh token
+      operationId: refresh_access_token_api_v3_auth_refresh_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/TokenRefreshRequest"
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v3/auth/logout":
+    post:
+      tags:
+      - authentication
+      summary: Logout
+      description: |-
+        Logout user
+
+        In production, add token to blacklist (Redis)
+        For now, client-side token deletion is sufficient
+      operationId: logout_api_v3_auth_logout_post
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+      security:
+      - HTTPBearer: []
+  "/api/v3/entities":
     post:
       tags:
       - entities
       summary: Create Entity
-      description: 'Create a new entity or update if exists (upsert with merge)
-
-
-        **Authentication Required:** OAuth JWT or API Key'
+      description: Create new entity or update if exists
       operationId: create_entity_api_v3_entities_post
       security:
-      - BearerAuth: []
       - APIKeyHeader: []
+      - HTTPBearer: []
       requestBody:
         required: true
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/EntityCreate'
+              "$ref": "#/components/schemas/EntityCreate"
       responses:
         '201':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Entity'
+                "$ref": "#/components/schemas/Entity"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                "$ref": "#/components/schemas/HTTPValidationError"
     get:
       tags:
       - entities
       summary: List Entities
-      description: List entities with filters and pagination
+      description: |-
+        List entities with filters and pagination
+
+        Supports incremental sync via ?since parameter:
+        - If since is provided, only returns entities with updatedAt >= since
+        - Reduces bandwidth for large collections (1000 entities → ~10 per sync)
       operationId: list_entities_api_v3_entities_get
       parameters:
       - name: type
@@ -97,6 +256,16 @@ paths:
           - type: string
           - type: 'null'
           title: Name
+      - name: since
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: ISO timestamp - only return entities updated after this time
+          title: Since
+        description: ISO timestamp - only return entities updated after this time
       - name: limit
         in: query
         required: false
@@ -120,14 +289,14 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PaginatedResponse'
+                "$ref": "#/components/schemas/PaginatedResponse"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v3/entities/{entity_id}:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v3/entities/{entity_id}":
     get:
       tags:
       - entities
@@ -147,24 +316,22 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Entity'
+                "$ref": "#/components/schemas/Entity"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                "$ref": "#/components/schemas/HTTPValidationError"
     patch:
       tags:
       - entities
       summary: Update Entity
-      description: 'Update entity with optimistic locking
-
-
-        **Authentication Required:** Include `X-API-Key` header'
+      description: Update entity with optimistic locking
       operationId: update_entity_api_v3_entities__entity_id__patch
       security:
       - APIKeyHeader: []
+      - HTTPBearer: []
       parameters:
       - name: entity_id
         in: path
@@ -185,31 +352,29 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/EntityUpdate'
+              "$ref": "#/components/schemas/EntityUpdate"
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Entity'
+                "$ref": "#/components/schemas/Entity"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                "$ref": "#/components/schemas/HTTPValidationError"
     delete:
       tags:
       - entities
       summary: Delete Entity
-      description: 'Delete entity
-
-
-        **Authentication Required:** Include `X-API-Key` header'
+      description: Delete entity
       operationId: delete_entity_api_v3_entities__entity_id__delete
       security:
       - APIKeyHeader: []
+      - HTTPBearer: []
       parameters:
       - name: entity_id
         in: path
@@ -225,22 +390,22 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v3/curations:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v3/curations":
     post:
       tags:
       - curations
       summary: Create Curation
-      description: 'Create a new curation
+      description: |-
+        Create a new curation
 
-
-        **Authentication Required:** Include `X-API-Key` header'
+        **Authentication Required:** Include `Authorization: Bearer <token>` OR `X-API-Key: <key>` header
       operationId: create_curation_api_v3_curations_post
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CurationCreate'
+              "$ref": "#/components/schemas/CurationCreate"
         required: true
       responses:
         '201':
@@ -248,21 +413,27 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Curation'
+                "$ref": "#/components/schemas/Curation"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                "$ref": "#/components/schemas/HTTPValidationError"
       security:
       - APIKeyHeader: []
-  /api/v3/curations/search:
+      - HTTPBearer: []
+  "/api/v3/curations/search":
     get:
       tags:
       - curations
       summary: Search Curations
-      description: Search curations with filters
+      description: |-
+        Search curations with filters
+
+        Supports incremental sync via ?since parameter:
+        - If since is provided, only returns curations with updatedAt >= since
+        - Reduces bandwidth for large collections
       operationId: search_curations_api_v3_curations_search_get
       parameters:
       - name: entity_id
@@ -281,6 +452,37 @@ paths:
           - type: string
           - type: 'null'
           title: Curator Id
+      - name: status
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - enum:
+            - draft
+            - linked
+            - active
+            - deleted
+            - archived
+            type: string
+          - type: 'null'
+          title: Status
+      - name: include_deleted
+        in: query
+        required: false
+        schema:
+          type: boolean
+          default: false
+          title: Include Deleted
+      - name: since
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: ISO timestamp - only return curations updated after this time
+          title: Since
+        description: ISO timestamp - only return curations updated after this time
       - name: limit
         in: query
         required: false
@@ -304,14 +506,14 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PaginatedResponse'
+                "$ref": "#/components/schemas/PaginatedResponse"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v3/curations/entities/{entity_id}/curations:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v3/curations/entities/{entity_id}/curations":
     get:
       tags:
       - curations
@@ -333,7 +535,7 @@ paths:
               schema:
                 type: array
                 items:
-                  $ref: '#/components/schemas/Curation'
+                  "$ref": "#/components/schemas/Curation"
                 title: Response Get Entity Curations Api V3 Curations Entities  Entity
                   Id  Curations Get
         '422':
@@ -341,8 +543,8 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v3/curations/{curation_id}:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v3/curations/{curation_id}":
     get:
       tags:
       - curations
@@ -362,24 +564,25 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Curation'
+                "$ref": "#/components/schemas/Curation"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                "$ref": "#/components/schemas/HTTPValidationError"
     patch:
       tags:
       - curations
       summary: Update Curation
-      description: 'Update curation with optimistic locking
+      description: |-
+        Update curation with optimistic locking
 
-
-        **Authentication Required:** Include `X-API-Key` header'
+        **Authentication Required:** Include `Authorization: Bearer <token>` OR `X-API-Key: <key>` header
       operationId: update_curation_api_v3_curations__curation_id__patch
       security:
       - APIKeyHeader: []
+      - HTTPBearer: []
       parameters:
       - name: curation_id
         in: path
@@ -400,31 +603,33 @@ paths:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/CurationUpdate'
+              "$ref": "#/components/schemas/CurationUpdate"
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/Curation'
+                "$ref": "#/components/schemas/Curation"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                "$ref": "#/components/schemas/HTTPValidationError"
     delete:
       tags:
       - curations
       summary: Delete Curation
-      description: 'Delete curation
+      description: |-
+        Delete curation (Soft Delete)
 
-
-        **Authentication Required:** Include `X-API-Key` header'
+        Marks the curation as 'deleted' instead of removing from DB.
+        **Authentication Required:** Include `Authorization: Bearer <token>` OR `X-API-Key: <key>` header
       operationId: delete_curation_api_v3_curations__curation_id__delete
       security:
       - APIKeyHeader: []
+      - HTTPBearer: []
       parameters:
       - name: curation_id
         in: path
@@ -440,20 +645,88 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v3/places/nearby:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v3/curations/semantic-search":
+    post:
+      tags:
+      - curations
+      summary: Semantic Search Curations
+      description: |-
+        Semantic search for curations using concept embeddings
+
+        Generates embedding for the query and finds curations with similar concepts
+        using cosine similarity between vectors.
+
+        **Example queries:**
+        - "casual japanese food"
+        - "romantic dinner with wine"
+        - "outdoor seating italian restaurant"
+        - "business lunch downtown"
+      operationId: semantic_search_curations_api_v3_curations_semantic_search_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/SemanticSearchRequest"
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/SemanticSearchResponse"
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v3/curations/hybrid-search":
+    post:
+      tags:
+      - curations
+      summary: Hybrid Search
+      description: |-
+        Busca híbrida: combina busca tradicional de entities + busca semântica de curations
+
+        Executa ambas as buscas EM PARALELO e combina os resultados de forma inteligente:
+        - Entities que batem por nome/localização recebem entity_score
+        - Curations que batem semanticamente recebem semantic_score
+        - Score final = (1 - boost_semantic) * entity_score + boost_semantic * semantic_score
+
+        **Example queries:**
+        - "restaurante japonês em jardins"
+        - "jantar romântico com vinho"
+        - "casual lunch near paulista"
+      operationId: hybrid_search_api_v3_curations_hybrid_search_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/HybridSearchRequest"
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/HybridSearchResponse"
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v3/places/nearby":
     get:
       tags:
       - places
       summary: Search Nearby
-      description: "Search for nearby places using Google Places API (New)\n\nThis\
-        \ endpoint proxies requests to Google Places API (New),\nkeeping the API key\
-        \ secure on the backend.\n\nArgs:\n    latitude: Center latitude for search\n\
-        \    longitude: Center longitude for search\n    radius: Search radius in\
-        \ meters (1-50000)\n    type: Place type (restaurant, cafe, bar, etc.)\n \
-        \   keyword: Optional keyword filter\n    max_results: Maximum results (1-20,\
-        \ API limit)\n    \nReturns:\n    NearbySearchResponse with place results\n\
-        \    \nExample:\n    GET /api/v3/places/nearby?latitude=40.7128&longitude=-74.0060&radius=5000"
+      description: |-
+        Hybrid search endpoint: Nearby Search or Text Search
+        ...
       operationId: search_nearby_api_v3_places_nearby_get
       parameters:
       - name: latitude
@@ -476,24 +749,24 @@ paths:
         in: query
         required: false
         schema:
-          type: integer
-          maximum: 50000
-          minimum: 1
-          description: Search radius in meters
-          default: 5000
+          anyOf:
+          - type: integer
+            maximum: 50000
+            minimum: 1
+          - type: 'null'
+          description: Search radius in meters (omit for worldwide with keyword)
           title: Radius
-        description: Search radius in meters
-      - name: type
+        description: Search radius in meters (omit for worldwide with keyword)
+      - name: place_type
         in: query
         required: false
         schema:
           anyOf:
           - type: string
           - type: 'null'
-          description: Place type filter
-          default: restaurant
-          title: Type
-        description: Place type filter
+          description: Place type filter (restaurant, cafe, bar, bakery, food)
+          title: Place Type
+        description: Place type filter (restaurant, cafe, bar, bakery, food)
       - name: keyword
         in: query
         required: false
@@ -501,43 +774,98 @@ paths:
           anyOf:
           - type: string
           - type: 'null'
-          description: Keyword search
+          description: Keyword search (enables Text Search if no radius)
           title: Keyword
-        description: Keyword search
+        description: Keyword search (enables Text Search if no radius)
       - name: max_results
         in: query
         required: false
         schema:
           type: integer
-          maximum: 60
+          maximum: 20
           minimum: 1
           description: Maximum results to return
           default: 20
           title: Max Results
         description: Maximum results to return
+      - name: language
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Language code (e.g., pt-BR, en, es)
+          default: pt-BR
+          title: Language
+        description: Language code (e.g., pt-BR, en, es)
+      - name: region
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Region code (e.g., BR, US, ES)
+          default: BR
+          title: Region
+        description: Region code (e.g., BR, US, ES)
+      - name: min_rating
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: number
+            maximum: 5.0
+            minimum: 1.0
+          - type: 'null'
+          description: Minimum rating filter
+          title: Min Rating
+        description: Minimum rating filter
+      - name: open_now
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          description: Only return places that are open now
+          title: Open Now
+        description: Only return places that are open now
+      - name: price_levels
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: string
+          - type: 'null'
+          description: Comma-separated price levels (e.g., 'MODERATE,EXPENSIVE')
+          title: Price Levels
+        description: Comma-separated price levels (e.g., 'MODERATE,EXPENSIVE')
       responses:
         '200':
           description: Successful Response
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/NearbySearchResponse'
+                "$ref": "#/components/schemas/NearbySearchResponse"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v3/places/details/{place_id}:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v3/places/details/{place_id}":
     get:
       tags:
       - places
       summary: Get Place Details
-      description: "Get detailed information about a place\n\nThis endpoint proxies\
-        \ requests to Google Places Details API.\n\nArgs:\n    place_id: Google Place\
-        \ ID\n    fields: Optional comma-separated fields (name,rating,formatted_address,etc.)\n\
-        \    \nReturns:\n    PlaceDetailsResponse with place details\n    \nExample:\n\
-        \    GET /api/v3/places/details/ChIJN1t_tDeuEmsRUsoyG83frY4"
+      description: "Get detailed information about a place using Google Places API
+        (New)\n\nThis endpoint proxies requests to Google Places Details API.\nUses
+        the new Places API with Place ID format.\n\nArgs:\n    place_id: Google Place
+        ID (will be converted to places/{place_id} format)\n    fields: Optional comma-separated
+        fields (ignored - uses comprehensive field mask)\n    \nReturns:\n    PlaceDetailsResponse
+        with place details\n    \nExample:\n    GET /api/v3/places/details/ChIJN1t_tDeuEmsRUsoyG83frY4"
       operationId: get_place_details_api_v3_places_details__place_id__get
       parameters:
       - name: place_id
@@ -562,20 +890,19 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/PlaceDetailsResponse'
+                "$ref": "#/components/schemas/PlaceDetailsResponse"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v3/places/health:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v3/places/health":
     get:
       tags:
       - places
       summary: Health Check
-      description: "Check if Google Places API is configured and accessible\n\nReturns:\n\
-        \    Status of Google Places API configuration"
+      description: Health check endpoint
       operationId: health_check_api_v3_places_health_get
       responses:
         '200':
@@ -583,76 +910,143 @@ paths:
           content:
             application/json:
               schema: {}
-  /api/v3/ai/orchestrate:
+  "/api/v3/places/{place_id}/photos":
+    get:
+      tags:
+      - places
+      summary: Get Place Photos
+      description: |-
+        Get restaurant photos from Google Places.
+
+        Returns photo URLs and optional metadata (dimensions, attributions).
+        Photos are automatically resized if max_width or max_height specified.
+
+        **Example:**
+        ```
+        GET /api/v3/places/ChIJxxx/photos?max_photos=5&max_width=800
+        ```
+
+        **Response:**
+        ```json
+        {
+          "place_id": "ChIJxxx",
+          "entity_id": "ent_xxx",
+          "name": "Restaurant Name",
+          "photos": [
+            {
+              "index": 0,
+              "url": "https://places.googleapis.com/...",
+              "photo_reference": "places/xxx/photos/yyy",
+              "width_px": 4032,
+              "height_px": 3024,
+              "attributions": ["Photographer Name"]
+            }
+          ],
+          "total": 5,
+          "max_width": 800,
+          "max_height": null
+        }
+        ```
+      operationId: get_place_photos_api_v3_places__place_id__photos_get
+      parameters:
+      - name: place_id
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Place Id
+      - name: max_photos
+        in: query
+        required: false
+        schema:
+          type: integer
+          maximum: 10
+          minimum: 1
+          description: Maximum number of photos (1-10)
+          default: 10
+          title: Max Photos
+        description: Maximum number of photos (1-10)
+      - name: max_width
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            maximum: 4800
+            minimum: 400
+          - type: 'null'
+          description: Maximum width in pixels (400-4800)
+          title: Max Width
+        description: Maximum width in pixels (400-4800)
+      - name: max_height
+        in: query
+        required: false
+        schema:
+          anyOf:
+          - type: integer
+            maximum: 4800
+            minimum: 400
+          - type: 'null'
+          description: Maximum height in pixels (400-4800)
+          title: Max Height
+        description: Maximum height in pixels (400-4800)
+      - name: include_metadata
+        in: query
+        required: false
+        schema:
+          type: boolean
+          description: Include original dimensions and attributions
+          default: true
+          title: Include Metadata
+        description: Include original dimensions and attributions
+      - name: language
+        in: query
+        required: false
+        schema:
+          type: string
+          description: Language code for attributions
+          default: pt-BR
+          title: Language
+        description: Language code for attributions
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v3/places/orchestrate":
     post:
       tags:
-      - AI Services
-      summary: Orchestrate
-      description: 'Intelligent AI workflow orchestration.
+      - places
+      summary: Orchestrate Places Request
+      description: |-
+        Unified orchestration endpoint for Google Places API.
 
+        Automatically determines the best API to use based on your input:
+        - Place IDs list -> Bulk Details API
+        - Operations list -> Multi-operation bulk mode
+        - Place ID -> Details API
+        - Text query -> Text Search API
+        - Location + types -> Nearby Search API
 
-        **Authentication Required:** Include `X-API-Key` header
-
-        **⚠️  Costs Money:** Uses OpenAI API - monitor usage
-
-
-        Combines multiple AI services (transcription, concept extraction, image analysis)
-
-        in smart workflows with flexible output control.
-
-
-        **Smart Defaults:**
-
-        - No `output` object = return full results without saving
-
-        - With `output` but missing fields = defaults applied
-
-        - Default `entity_type` = "restaurant"
-
-        - Default `format` = "full"
-
-
-        **Workflows:**
-
-        - `audio_only`: Transcribe + extract concepts
-
-        - `image_only`: Analyze image visually
-
-        - `place_id_with_audio`: Create entity + transcribe + extract concepts
-
-        - `place_id_with_image`: Create entity + analyze image
-
-        - `place_id_with_audio_and_image`: Combine all sources
-
-
-        **Examples:**
-
-        ```python
-
-        # Simple: audio only, no config
-
-        {"audio_file": "base64..."}
-
-        # Returns transcription + concepts without saving
-
-
-        # Preview before saving
-
-        {"place_id": "ChIJ...", "audio_file": "...", "output": {"save_to_db": false}}
-
-
-        # Save without returning (batch efficient)
-
-        {"place_id": "...", "audio_file": "...", "output": {"save_to_db": true, "format":
-        "ids_only"}}
-
-        ```'
-      operationId: orchestrate_api_v3_ai_orchestrate_post
+        Examples:
+        - Search by name: `{"query": "pizza restaurants"}`
+        - Search nearby: `{"latitude": 37.7749, "longitude": -122.4194, "included_types": ["restaurant"]}`
+        - Get details: `{"place_id": "ChIJN1t_tDeuEmsRUsoyG83frY4"}`
+        - Bulk details: `{"place_ids": ["ChIJ...", "ChIJ..."]}`
+        - Multi-operation: `{"operations": [{"query": "pizza"}, {"latitude": 37.7, "longitude": -122.4}]}`
+      operationId: orchestrate_places_request_api_v3_places_orchestrate_post
       requestBody:
         content:
           application/json:
             schema:
-              $ref: '#/components/schemas/OrchestrateRequest'
+              "$ref": "#/components/schemas/PlacesOrchestrationRequest"
         required: true
       responses:
         '200':
@@ -660,26 +1054,85 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/OrchestrateResponse'
+                "$ref": "#/components/schemas/PlacesOrchestrationResponse"
         '422':
           description: Validation Error
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v3/ai/orchestrate":
+    post:
+      tags:
+      - AI Services
+      summary: Orchestrate
+      description: |-
+        Intelligent AI workflow orchestration.
+
+        **Authentication Required:** Include `Authorization: Bearer <token>` OR `X-API-Key: <key>` header
+        **⚠️  Costs Money:** Uses OpenAI API - monitor usage
+
+        Combines multiple AI services (transcription, concept extraction, image analysis)
+        in smart workflows with flexible output control.
+
+        **Smart Defaults:**
+        - No `output` object = return full results without saving
+        - With `output` but missing fields = defaults applied
+        - Default `entity_type` = "restaurant"
+        - Default `format` = "full"
+
+        **Workflows:**
+        - `audio_only`: Transcribe + extract concepts
+        - `image_only`: Analyze image visually
+        - `place_id_with_audio`: Create entity + transcribe + extract concepts
+        - `place_id_with_image`: Create entity + analyze image
+        - `place_id_with_audio_and_image`: Combine all sources
+
+        **Examples:**
+        ```python
+        # Simple: audio only, no config
+        {"audio_file": "base64..."}
+        # Returns transcription + concepts without saving
+
+        # Preview before saving
+        {"place_id": "ChIJ...", "audio_file": "...", "output": {"save_to_db": false}}
+
+        # Save without returning (batch efficient)
+        {"place_id": "...", "audio_file": "...", "output": {"save_to_db": true, "format": "ids_only"}}
+        ```
+      operationId: orchestrate_api_v3_ai_orchestrate_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/OrchestrateRequest"
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/OrchestrateResponse"
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/HTTPValidationError"
       security:
       - APIKeyHeader: []
-  /api/v3/ai/usage-stats:
+      - HTTPBearer: []
+  "/api/v3/ai/usage-stats":
     get:
       tags:
       - AI Services
       summary: Get Usage Stats
-      description: 'Get AI usage statistics.
-
+      description: |-
+        Get AI usage statistics.
 
         Returns counts of transcriptions, concept extractions, and image analyses
-
-        for the specified number of days.'
+        for the specified number of days.
       operationId: get_usage_stats_api_v3_ai_usage_stats_get
       parameters:
       - name: days
@@ -700,13 +1153,53 @@ paths:
           content:
             application/json:
               schema:
-                $ref: '#/components/schemas/HTTPValidationError'
-  /api/v3/ai/health:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v3/ai/extract-restaurant-name":
+    post:
+      tags:
+      - AI Services
+      summary: Extract Restaurant Name
+      description: |-
+        Extract restaurant name from text using dedicated OpenAI MongoDB configuration.
+
+        **Authentication Required:** Include `Authorization: Bearer <token>` OR `X-API-Key: <key>` header
+      operationId: extract_restaurant_name_api_v3_ai_extract_restaurant_name_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/RestaurantNameExtractionRequest"
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/RestaurantNameExtractionResponse"
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/HTTPValidationError"
+      security:
+      - APIKeyHeader: []
+      - HTTPBearer: []
+  "/api/v3/ai/health":
     get:
       tags:
       - AI Services
       summary: Health Check
-      description: Health check for AI services
+      description: |-
+        Health check for AI services.
+
+        Verifies:
+        - OpenAI API key is configured
+        - MongoDB connection is working
+        - Required collections exist
+
+        **No authentication required** - use this to diagnose issues
       operationId: health_check_api_v3_ai_health_get
       responses:
         '200':
@@ -714,6 +1207,362 @@ paths:
           content:
             application/json:
               schema: {}
+  "/api/v3/ai/health/original":
+    get:
+      tags:
+      - AI Services
+      summary: Health Check Original
+      description: Health check for AI services - original implementation
+      operationId: health_check_original_api_v3_ai_health_original_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  "/api/v3/concepts/{entity_type}":
+    get:
+      tags:
+      - concepts
+      summary: Get Concepts
+      description: "Get concept categories for entity type.\n\nArgs:\n    entity_type:
+        Type of entity (restaurant, hotel, bar, cafe, venue, etc.)\n    \nReturns:\n
+        \   {\n        \"entity_type\": \"restaurant\",\n        \"categories\": [\"cuisine\",
+        \"menu\", \"food_style\", ...],\n        \"description\": \"Concept categories
+        for restaurant entities\",\n        \"version\": 2,\n        \"active\": true\n
+        \   }\n    \nNotes:\n    - Categories are loaded from MongoDB 'concepts' collection\n
+        \   - Results are cached for 1 hour\n    - Falls back to 'restaurant' categories
+        if entity_type not found"
+      operationId: get_concepts_api_v3_concepts__entity_type__get
+      parameters:
+      - name: entity_type
+        in: path
+        required: true
+        schema:
+          type: string
+          title: Entity Type
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                title: Response Get Concepts Api V3 Concepts  Entity Type  Get
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v3/concepts/":
+    get:
+      tags:
+      - concepts
+      summary: List Concepts
+      description: |-
+        List all available concept configurations.
+
+        Returns:
+            {
+                "concepts": [
+                    {
+                        "entity_type": "restaurant",
+                        "categories": ["cuisine", "menu", ...],
+                        "version": 2,
+                        "active": true
+                    },
+                    ...
+                ],
+                "count": 1
+            }
+      operationId: list_concepts_api_v3_concepts__get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                type: object
+                title: Response List Concepts Api V3 Concepts  Get
+  "/api/v3/llm/search-restaurants":
+    post:
+      tags:
+      - llm
+      summary: Search Restaurants
+      description: |-
+        Search for restaurants by name or query.
+
+        This endpoint:
+        - Searches for restaurants matching the query
+        - Returns basic information suitable for LLM consumption
+        - Includes flags for entity existence and Michelin data
+        - Optimized for quick disambiguation and selection
+
+        Use this endpoint when the LLM needs to:
+        - Find a restaurant by name
+        - Disambiguate between multiple restaurants with similar names
+        - Get a list of candidates for further detailed queries
+
+        Example use case:
+        User: "Tell me about Dom Manolo restaurant"
+        LLM: Calls this endpoint to find candidates, then calls get-restaurant-snapshot
+      operationId: search_restaurants_api_v3_llm_search_restaurants_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/LLMSearchRestaurantsRequest"
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/LLMSearchRestaurantsResponse"
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v3/llm/get-restaurant-snapshot":
+    post:
+      tags:
+      - llm
+      summary: Get Restaurant Snapshot
+      description: |-
+        Get complete restaurant snapshot with all available data.
+
+        This is the **primary endpoint** for getting detailed restaurant information.
+
+        It consolidates data from:
+        - Google Places (if enabled)
+        - MongoDB entities (if exists)
+        - Michelin guide (if available)
+        - Curations (if exists)
+
+        The response is optimized for LLM consumption with:
+        - Clear boolean flags (is_open_now, open_on_weekend, etc.)
+        - Structured opening hours by day of week
+        - Consolidated ratings and scores
+        - Optional raw source data for debugging
+
+        Use this endpoint when the LLM needs to:
+        - Provide comprehensive information about a restaurant
+        - Answer questions about hours, ratings, amenities
+        - Generate recommendations with full context
+
+        Example use cases:
+        - "Tell me about this restaurant"
+        - "What are the opening hours?"
+        - "Does it have a Michelin star?"
+      operationId: get_restaurant_snapshot_api_v3_llm_get_restaurant_snapshot_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/LLMGetRestaurantSnapshotRequest"
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/LLMGetRestaurantSnapshotResponse"
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v3/llm/get-restaurant-availability":
+    post:
+      tags:
+      - llm
+      summary: Get Restaurant Availability
+      description: |-
+        Get restaurant availability and opening hours information.
+
+        This endpoint is optimized for answering availability questions:
+        - "Is it open now?"
+        - "Does it open on weekends?"
+        - "What days is it open?"
+
+        It provides:
+        - Current open/closed status
+        - Weekend availability (configurable weekend days)
+        - Detailed availability by day of week
+        - Human-readable notes about availability
+
+        This is a specialized endpoint that internally uses the snapshot logic
+        but returns only availability-related information in a format optimized
+        for natural language generation.
+
+        Use this endpoint when the LLM needs to:
+        - Answer specific availability questions
+        - Check weekend hours
+        - Verify current open status
+
+        Example use cases:
+        - "Is this restaurant open on Saturday?"
+        - "Does it open for weekend brunch?"
+        - "What are the weekend hours?"
+      operationId: get_restaurant_availability_api_v3_llm_get_restaurant_availability_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/LLMGetRestaurantAvailabilityRequest"
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/LLMGetRestaurantAvailabilityResponse"
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/HTTPValidationError"
+  "/api/v3/llm/health":
+    get:
+      tags:
+      - llm
+      summary: Health Check
+      description: Health check endpoint for LLM Gateway
+      operationId: health_check_api_v3_llm_health_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  "/api/v3/llm/tools":
+    get:
+      tags:
+      - llm
+      summary: Get Tools
+      description: |-
+        Get MCP tool definitions.
+
+        Returns the JSON Schema definitions for all available tools.
+        This endpoint is used by MCP clients to discover available tools.
+
+        Returns:
+            List of tool schemas in MCP format
+      operationId: get_tools_api_v3_llm_tools_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  "/api/v3/llm/tools-manifest":
+    get:
+      tags:
+      - llm
+      summary: Get Manifest
+      description: |-
+        Get complete MCP tools manifest with metadata.
+
+        Returns comprehensive information about the tools service including:
+        - All tool schemas
+        - Service metadata
+        - API endpoints
+        - Data sources
+
+        Returns:
+            Complete manifest dictionary
+      operationId: get_manifest_api_v3_llm_tools_manifest_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  "/api/v3/openai/v1/models":
+    get:
+      tags:
+      - openai-compatible
+      summary: List Models
+      description: |-
+        List available models (OpenAI-compatible).
+
+        Returns a single model: concierge-restaurant
+      operationId: list_models_api_v3_openai_v1_models_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/ModelsResponse"
+  "/api/v3/openai/v1/functions":
+    get:
+      tags:
+      - openai-compatible
+      summary: List Functions
+      description: |-
+        List available functions for restaurant search and information.
+
+        This endpoint returns all function definitions that can be used
+        with the chat completions endpoint.
+      operationId: list_functions_api_v3_openai_v1_functions_get
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+  "/api/v3/openai/v1/chat/completions":
+    post:
+      tags:
+      - openai-compatible
+      summary: Chat Completions
+      description: |-
+        OpenAI-compatible chat completions with function calling.
+
+        This endpoint does NOT run an LLM - it only executes functions.
+        The LLM runs locally in LM Studio (or other client) and calls this API
+        when it needs to execute functions.
+
+        Features:
+        - Tools array in response (LLM can see available functions)
+        - Streaming support (stream=true)
+        - tool_choice: auto, none, required, or specific function
+        - parallel_tool_calls: execute multiple tools simultaneously
+        - System message injection with tool descriptions
+
+        Flow:
+        1. Client sends request (with or without tool_calls)
+        2. We inject system message with available tools if needed
+        3. If tool_calls present, execute them (parallel if enabled)
+        4. Return response with tools array so LLM knows what's available
+      operationId: chat_completions_api_v3_openai_v1_chat_completions_post
+      requestBody:
+        content:
+          application/json:
+            schema:
+              "$ref": "#/components/schemas/ChatCompletionRequest"
+        required: true
+      responses:
+        '200':
+          description: Successful Response
+          content:
+            application/json:
+              schema: {}
+        '422':
+          description: Validation Error
+          content:
+            application/json:
+              schema:
+                "$ref": "#/components/schemas/HTTPValidationError"
 components:
   schemas:
     APIInfo:
@@ -734,30 +1583,209 @@ components:
       - description
       title: APIInfo
       description: API information
+    ChatCompletionRequest:
+      properties:
+        model:
+          type: string
+          title: Model
+        messages:
+          items:
+            "$ref": "#/components/schemas/ChatMessage"
+          type: array
+          title: Messages
+        tools:
+          anyOf:
+          - items:
+              "$ref": "#/components/schemas/Tool"
+            type: array
+          - type: 'null'
+          title: Tools
+        tool_choice:
+          anyOf:
+          - type: string
+            const: auto
+          - type: string
+            const: required
+          - type: string
+            const: none
+          - "$ref": "#/components/schemas/ToolChoiceFunction"
+          - type: 'null'
+          title: Tool Choice
+          default: auto
+        parallel_tool_calls:
+          type: boolean
+          title: Parallel Tool Calls
+          default: true
+        temperature:
+          anyOf:
+          - type: number
+            maximum: 2.0
+            minimum: 0.0
+          - type: 'null'
+          title: Temperature
+          default: 1.0
+        max_tokens:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Max Tokens
+        stream:
+          type: boolean
+          title: Stream
+          default: false
+      type: object
+      required:
+      - model
+      - messages
+      title: ChatCompletionRequest
+      description: Chat completion request (OpenAI format)
+    ChatMessage:
+      properties:
+        role:
+          type: string
+          enum:
+          - system
+          - user
+          - assistant
+          - tool
+          title: Role
+        content:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Content
+        name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Name
+        tool_calls:
+          anyOf:
+          - items:
+              "$ref": "#/components/schemas/ToolCall"
+            type: array
+          - type: 'null'
+          title: Tool Calls
+        tool_call_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Tool Call Id
+      type: object
+      required:
+      - role
+      title: ChatMessage
+      description: Chat message
+    ConceptMatch:
+      properties:
+        text:
+          type: string
+          title: Text
+          description: Full text of the match (e.g., 'cuisine japanese')
+        category:
+          type: string
+          title: Category
+          description: Category of the concept
+        concept:
+          type: string
+          title: Concept
+          description: Concept value
+        similarity:
+          type: number
+          title: Similarity
+          description: Cosine similarity score (0-1)
+      type: object
+      required:
+      - text
+      - category
+      - concept
+      - similarity
+      title: ConceptMatch
+      description: Individual concept match with similarity score
     Curation:
       properties:
+        restaurant_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Restaurant Name
+          description: Display name of the curation before/after linking
+        status:
+          type: string
+          enum:
+          - draft
+          - linked
+          - active
+          - deleted
+          - archived
+          title: Status
+          description: Curation lifecycle status
+          default: draft
         notes:
           anyOf:
-          - $ref: '#/components/schemas/CurationNotes'
+          - "$ref": "#/components/schemas/CurationNotes"
           - type: 'null'
         categories:
-          $ref: '#/components/schemas/CurationCategories'
+          "$ref": "#/components/schemas/CurationCategories"
+        transcript:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Transcript
+          description: Transcription text associated with the curation
         sources:
-          items:
-            type: string
-          type: array
+          type: object
           title: Sources
+          description: Structured sources grouped by source type (audio, image, google_places,
+            etc.)
+        items:
+          anyOf:
+          - items:
+              type: object
+            type: array
+          - type: 'null'
+          title: Items
+          description: Detailed items/concepts list
         _id:
           type: string
-          title: ' Id'
+          title: Id
         curation_id:
           type: string
           title: Curation Id
         entity_id:
-          type: string
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Entity Id
+        curator_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Curator Id
         curator:
-          $ref: '#/components/schemas/CuratorInfo'
+          "$ref": "#/components/schemas/CuratorInfo"
+        createdBy:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Createdby
+        updatedBy:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Updatedby
+        embeddings:
+          anyOf:
+          - items:
+              type: object
+            type: array
+          - type: 'null'
+          title: Embeddings
+        embeddings_metadata:
+          anyOf:
+          - type: object
+          - type: 'null'
+          title: Embeddings Metadata
         createdAt:
           type: string
           format: date-time
@@ -774,92 +1802,87 @@ components:
       required:
       - _id
       - curation_id
-      - entity_id
       - curator
       title: Curation
       description: Complete Curation with system fields
     CurationCategories:
-      properties:
-        cuisine:
-          items:
-            type: string
-          type: array
-          title: Cuisine
-        mood:
-          items:
-            type: string
-          type: array
-          title: Mood
-        occasion:
-          items:
-            type: string
-          type: array
-          title: Occasion
-        price_range:
-          items:
-            type: string
-          type: array
-          title: Price Range
-        setting:
-          items:
-            type: string
-          type: array
-          title: Setting
-        crowd:
-          items:
-            type: string
-          type: array
-          title: Crowd
-        food_style:
-          items:
-            type: string
-          type: array
-          title: Food Style
-        drinks:
-          items:
-            type: string
-          type: array
-          title: Drinks
-        menu:
-          items:
-            type: string
-          type: array
-          title: Menu
-        suitable_for:
-          items:
-            type: string
-          type: array
-          title: Suitable For
+      properties: {}
+      additionalProperties: true
       type: object
       title: CurationCategories
-      description: Concept categories
+      description: |-
+        Concept categories - flexible structure loaded from MongoDB concepts collection
+        Categories are NOT hardcoded - they come from database and can change dynamically
     CurationCreate:
       properties:
+        restaurant_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Restaurant Name
+          description: Display name of the curation before/after linking
+        status:
+          type: string
+          enum:
+          - draft
+          - linked
+          - active
+          - deleted
+          - archived
+          title: Status
+          description: Curation lifecycle status
+          default: draft
         notes:
           anyOf:
-          - $ref: '#/components/schemas/CurationNotes'
+          - "$ref": "#/components/schemas/CurationNotes"
           - type: 'null'
         categories:
-          $ref: '#/components/schemas/CurationCategories'
+          "$ref": "#/components/schemas/CurationCategories"
+        transcript:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Transcript
+          description: Transcription text associated with the curation
         sources:
-          items:
-            type: string
-          type: array
+          type: object
           title: Sources
+          description: Structured sources grouped by source type (audio, image, google_places,
+            etc.)
+        items:
+          anyOf:
+          - items:
+              type: object
+            type: array
+          - type: 'null'
+          title: Items
+          description: Detailed items/concepts list
         curation_id:
           type: string
           title: Curation Id
           description: Unique curation ID
         entity_id:
-          type: string
+          anyOf:
+          - type: string
+          - type: 'null'
           title: Entity Id
-          description: Entity this curation is about
+          description: Entity this curation is about (null for orphaned curations)
+        curator_id:
+          type: string
+          title: Curator Id
+          description: Curator ID for filtering
         curator:
-          $ref: '#/components/schemas/CuratorInfo'
+          "$ref": "#/components/schemas/CuratorInfo"
+        createdBy:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Createdby
+          description: Curator ID who originally created this curation
       type: object
       required:
       - curation_id
-      - entity_id
+      - curator_id
       - curator
       title: CurationCreate
       description: Curation creation request
@@ -880,21 +1903,78 @@ components:
       description: Public and private notes
     CurationUpdate:
       properties:
+        restaurant_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Restaurant Name
+        entity_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Entity Id
+        curator_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Curator Id
+        curator:
+          anyOf:
+          - "$ref": "#/components/schemas/CuratorInfo"
+          - type: 'null'
+        status:
+          anyOf:
+          - type: string
+            enum:
+            - draft
+            - linked
+            - active
+            - deleted
+            - archived
+          - type: 'null'
+          title: Status
         notes:
           anyOf:
-          - $ref: '#/components/schemas/CurationNotes'
+          - "$ref": "#/components/schemas/CurationNotes"
           - type: 'null'
         categories:
           anyOf:
-          - $ref: '#/components/schemas/CurationCategories'
+          - "$ref": "#/components/schemas/CurationCategories"
           - type: 'null'
+        transcript:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Transcript
         sources:
           anyOf:
-          - items:
-              type: string
-            type: array
+          - type: object
           - type: 'null'
           title: Sources
+        embeddings:
+          anyOf:
+          - items:
+              type: object
+            type: array
+          - type: 'null'
+          title: Embeddings
+        embeddings_metadata:
+          anyOf:
+          - type: object
+          - type: 'null'
+          title: Embeddings Metadata
+        items:
+          anyOf:
+          - items:
+              type: object
+            type: array
+          - type: 'null'
+          title: Items
+        updatedBy:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Updatedby
       type: object
       title: CurationUpdate
       description: Curation update request (all optional for PATCH)
@@ -950,12 +2030,12 @@ components:
           title: Externalid
         metadata:
           items:
-            $ref: '#/components/schemas/Metadata'
+            "$ref": "#/components/schemas/Metadata"
           type: array
           title: Metadata
         sync:
           anyOf:
-          - $ref: '#/components/schemas/SyncInfo'
+          - "$ref": "#/components/schemas/SyncInfo"
           - type: 'null'
         data:
           anyOf:
@@ -966,7 +2046,7 @@ components:
             etc.)
         _id:
           type: string
-          title: ' Id'
+          title: Id
         entity_id:
           type: string
           title: Entity Id
@@ -1033,12 +2113,12 @@ components:
           title: Externalid
         metadata:
           items:
-            $ref: '#/components/schemas/Metadata'
+            "$ref": "#/components/schemas/Metadata"
           type: array
           title: Metadata
         sync:
           anyOf:
-          - $ref: '#/components/schemas/SyncInfo'
+          - "$ref": "#/components/schemas/SyncInfo"
           - type: 'null'
         data:
           anyOf:
@@ -1102,13 +2182,13 @@ components:
         metadata:
           anyOf:
           - items:
-              $ref: '#/components/schemas/Metadata'
+              "$ref": "#/components/schemas/Metadata"
             type: array
           - type: 'null'
           title: Metadata
         sync:
           anyOf:
-          - $ref: '#/components/schemas/SyncInfo'
+          - "$ref": "#/components/schemas/SyncInfo"
           - type: 'null'
         data:
           anyOf:
@@ -1125,11 +2205,62 @@ components:
       type: object
       title: EntityUpdate
       description: Entity update request (all optional for PATCH)
+    FunctionDefinition:
+      properties:
+        name:
+          type: string
+          title: Name
+          description: Function name
+        description:
+          type: string
+          title: Description
+          description: Function description
+        parameters:
+          "$ref": "#/components/schemas/FunctionParameters"
+          description: Function parameters as JSON schema
+        strict:
+          type: boolean
+          title: Strict
+          description: Whether to enforce strict mode
+          default: true
+      type: object
+      required:
+      - name
+      - description
+      - parameters
+      title: FunctionDefinition
+      description: Function definition for tool calling
+    FunctionParameters:
+      properties:
+        type:
+          type: string
+          const: object
+          title: Type
+          default: object
+        properties:
+          type: object
+          title: Properties
+        required:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Required
+        additionalProperties:
+          type: boolean
+          title: Additionalproperties
+          default: false
+      type: object
+      required:
+      - properties
+      title: FunctionParameters
+      description: JSON Schema for function parameters
     HTTPValidationError:
       properties:
         detail:
           items:
-            $ref: '#/components/schemas/ValidationError'
+            "$ref": "#/components/schemas/ValidationError"
           type: array
           title: Detail
       type: object
@@ -1153,6 +2284,820 @@ components:
       - database
       title: HealthResponse
       description: Health check response
+    HybridSearchRequest:
+      properties:
+        query:
+          type: string
+          maxLength: 500
+          minLength: 1
+          title: Query
+          description: Search query text
+        location:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Location
+          description: Location filter (city, neighborhood)
+        limit:
+          type: integer
+          maximum: 100.0
+          minimum: 1.0
+          title: Limit
+          description: Maximum number of results
+          default: 10
+        min_similarity:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Min Similarity
+          description: Minimum cosine similarity for semantic matches
+          default: 0.5
+        categories:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Categories
+          description: Filter by specific categories
+        boost_semantic:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Boost Semantic
+          description: Weight for semantic score (0-1)
+          default: 0.7
+      type: object
+      required:
+      - query
+      title: HybridSearchRequest
+      description: Request para busca híbrida (entities + semantic curations)
+    HybridSearchResponse:
+      properties:
+        results:
+          items:
+            "$ref": "#/components/schemas/HybridSearchResult"
+          type: array
+          title: Results
+          description: Ranked results
+        query:
+          type: string
+          title: Query
+          description: Original query
+        entity_search_time:
+          type: number
+          title: Entity Search Time
+          description: Time for entity search (seconds)
+        semantic_search_time:
+          type: number
+          title: Semantic Search Time
+          description: Time for semantic search (seconds)
+        total_time:
+          type: number
+          title: Total Time
+          description: Total search time (seconds)
+        total_results:
+          type: integer
+          title: Total Results
+          description: Total number of results
+      type: object
+      required:
+      - results
+      - query
+      - entity_search_time
+      - semantic_search_time
+      - total_time
+      - total_results
+      title: HybridSearchResponse
+      description: Response da busca híbrida
+    HybridSearchResult:
+      properties:
+        entity_id:
+          type: string
+          title: Entity Id
+          description: Entity ID
+        entity:
+          type: object
+          title: Entity
+          description: Entity data
+        curation:
+          anyOf:
+          - type: object
+          - type: 'null'
+          title: Curation
+          description: Curation data if available
+        score:
+          type: number
+          title: Score
+          description: Combined score (0-1)
+        match_type:
+          type: string
+          title: Match Type
+          description: 'Type of match: ''entity'', ''semantic'', ''hybrid'''
+        entity_score:
+          type: number
+          title: Entity Score
+          description: Entity match score
+          default: 0.0
+        semantic_score:
+          type: number
+          title: Semantic Score
+          description: Semantic match score
+          default: 0.0
+        semantic_matches:
+          anyOf:
+          - items:
+              "$ref": "#/components/schemas/ConceptMatch"
+            type: array
+          - type: 'null'
+          title: Semantic Matches
+          description: Top semantic matches
+      type: object
+      required:
+      - entity_id
+      - entity
+      - score
+      - match_type
+      title: HybridSearchResult
+      description: Resultado combinado de busca híbrida
+    LLMDayAvailability:
+      properties:
+        is_open:
+          type: boolean
+          title: Is Open
+          description: Whether the place is open on this day
+        periods:
+          items:
+            "$ref": "#/components/schemas/LLMRestaurantHoursPeriod"
+          type: array
+          title: Periods
+          description: Opening periods for this day
+      type: object
+      required:
+      - is_open
+      - periods
+      title: LLMDayAvailability
+      description: Availability for a specific day
+    LLMGetRestaurantAvailabilityRequest:
+      properties:
+        place_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Place Id
+          description: Google Place ID
+        entity_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Entity Id
+          description: Internal entity ID
+        date_iso:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Date Iso
+          description: Date in ISO format (YYYY-MM-DD)
+        datetime_iso:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Datetime Iso
+          description: Datetime in ISO format
+        timezone:
+          type: string
+          title: Timezone
+          description: Timezone
+          default: America/Sao_Paulo
+        weekend_days:
+          items:
+            type: string
+          type: array
+          title: Weekend Days
+          description: Days considered as weekend
+          default:
+          - saturday
+          - sunday
+      type: object
+      title: LLMGetRestaurantAvailabilityRequest
+      description: Request to get restaurant availability information
+    LLMGetRestaurantAvailabilityResponse:
+      properties:
+        resolved_entity_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Resolved Entity Id
+          description: Resolved entity ID
+        resolved_place_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Resolved Place Id
+          description: Resolved place ID
+        name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Name
+          description: Restaurant name
+        is_open_now:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Is Open Now
+          description: Whether currently open
+        open_on_weekend:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Open On Weekend
+          description: Whether open on any weekend day
+        weekend_days_open:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Weekend Days Open
+          description: Which weekend days are open
+        availability_by_day:
+          anyOf:
+          - additionalProperties:
+              "$ref": "#/components/schemas/LLMDayAvailability"
+            type: object
+          - type: 'null'
+          title: Availability By Day
+          description: Detailed availability by day of week
+        notes:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Notes
+          description: Additional availability notes
+        timezone:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Timezone
+          description: Timezone used for calculations
+      type: object
+      title: LLMGetRestaurantAvailabilityResponse
+      description: Response with restaurant availability information
+    LLMGetRestaurantSnapshotRequest:
+      properties:
+        place_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Place Id
+          description: Google Place ID
+        entity_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Entity Id
+          description: Internal entity ID
+        include_google_places:
+          type: boolean
+          title: Include Google Places
+          description: Include Google Places data
+          default: true
+        include_michelin:
+          type: boolean
+          title: Include Michelin
+          description: Include Michelin guide data
+          default: true
+        include_curations:
+          type: boolean
+          title: Include Curations
+          description: Include curation data
+          default: true
+        include_raw_sources:
+          type: boolean
+          title: Include Raw Sources
+          description: Include raw source data
+          default: false
+        reference_datetime_iso:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Reference Datetime Iso
+          description: Reference datetime in ISO format
+        timezone:
+          type: string
+          title: Timezone
+          description: Timezone for time calculations
+          default: America/Sao_Paulo
+      type: object
+      title: LLMGetRestaurantSnapshotRequest
+      description: Request to get complete restaurant snapshot
+    LLMGetRestaurantSnapshotResponse:
+      properties:
+        snapshot:
+          "$ref": "#/components/schemas/LLMRestaurantSnapshot"
+          description: Complete restaurant data
+        sources_used:
+          items:
+            type: string
+          type: array
+          title: Sources Used
+          description: List of data sources used
+        metadata:
+          anyOf:
+          - type: object
+          - type: 'null'
+          title: Metadata
+          description: Additional metadata
+      type: object
+      required:
+      - snapshot
+      - sources_used
+      title: LLMGetRestaurantSnapshotResponse
+      description: Response with complete restaurant snapshot
+    LLMRestaurantCuration:
+      properties:
+        tags:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Tags
+          description: Curated tags (e.g., ['romantic', 'good-wines'])
+        avoid_for:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Avoid For
+          description: Situations to avoid (e.g., ['large-groups'])
+        highlights:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Highlights
+          description: Key highlights from curators
+        sources:
+          anyOf:
+          - items:
+              "$ref": "#/components/schemas/LLMRestaurantCurationSource"
+            type: array
+          - type: 'null'
+          title: Sources
+          description: Curation sources
+      type: object
+      title: LLMRestaurantCuration
+      description: Curated information about the restaurant
+    LLMRestaurantCurationSource:
+      properties:
+        curator_id:
+          type: string
+          title: Curator Id
+          description: Curator identifier
+        curator_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Curator Name
+          description: Curator display name
+        strength:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Strength
+          description: Recommendation strength (e.g., strong, medium, weak)
+      type: object
+      required:
+      - curator_id
+      title: LLMRestaurantCurationSource
+      description: Curation source information
+    LLMRestaurantGeo:
+      properties:
+        lat:
+          type: number
+          title: Lat
+          description: Latitude
+        lng:
+          type: number
+          title: Lng
+          description: Longitude
+        city:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: City
+          description: City name
+        state:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: State
+          description: State/region
+        country:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Country
+          description: Country code (e.g., BR, US)
+        postal_code:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Postal Code
+          description: Postal/ZIP code
+      type: object
+      required:
+      - lat
+      - lng
+      title: LLMRestaurantGeo
+      description: Geographic information
+    LLMRestaurantHoursPeriod:
+      properties:
+        open:
+          type: string
+          title: Open
+          description: Opening time in HH:MM format
+        close:
+          type: string
+          title: Close
+          description: Closing time in HH:MM format
+      type: object
+      required:
+      - open
+      - close
+      title: LLMRestaurantHoursPeriod
+      description: Single opening/closing period
+    LLMRestaurantMichelin:
+      properties:
+        has_star:
+          type: boolean
+          title: Has Star
+          description: Whether the restaurant has Michelin star(s)
+          default: false
+        stars:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Stars
+          description: Number of Michelin stars (1-3)
+        guide_year:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Guide Year
+          description: Year of Michelin guide
+        bib_gourmand:
+          type: boolean
+          title: Bib Gourmand
+          description: Whether the restaurant has Bib Gourmand
+          default: false
+        comment:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Comment
+          description: Michelin guide comment/description
+        cuisine:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Cuisine
+          description: Cuisine type from Michelin
+        price:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Price
+          description: Price level from Michelin
+      type: object
+      title: LLMRestaurantMichelin
+      description: Michelin guide information
+    LLMRestaurantOpeningHours:
+      properties:
+        source:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Source
+          description: Data source (e.g., google_places)
+        timezone:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Timezone
+          description: Timezone (e.g., America/Sao_Paulo)
+        regular_hours:
+          anyOf:
+          - additionalProperties:
+              items:
+                "$ref": "#/components/schemas/LLMRestaurantHoursPeriod"
+              type: array
+            type: object
+          - type: 'null'
+          title: Regular Hours
+          description: Regular hours by day of week
+        notes:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Notes
+          description: Additional notes about hours
+      type: object
+      title: LLMRestaurantOpeningHours
+      description: Opening hours information
+    LLMRestaurantScores:
+      properties:
+        google_rating:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Google Rating
+          description: Google rating (0-5)
+        google_reviews_count:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Google Reviews Count
+          description: Number of Google reviews
+        internal_quality_score:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Internal Quality Score
+          description: Internal quality score (0-1)
+      type: object
+      title: LLMRestaurantScores
+      description: Rating and scoring information
+    LLMRestaurantSnapshot:
+      properties:
+        entity_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Entity Id
+          description: Internal entity ID
+        place_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Place Id
+          description: Google Place ID
+        external_refs:
+          anyOf:
+          - type: object
+          - type: 'null'
+          title: External Refs
+          description: External reference IDs
+        name:
+          type: string
+          title: Name
+          description: Restaurant name
+        canonical_address:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Canonical Address
+          description: Full formatted address
+        geo:
+          anyOf:
+          - "$ref": "#/components/schemas/LLMRestaurantGeo"
+          - type: 'null'
+          description: Geographic information
+        status:
+          anyOf:
+          - "$ref": "#/components/schemas/LLMRestaurantStatus"
+          - type: 'null'
+          description: Operational status
+        opening_hours:
+          anyOf:
+          - "$ref": "#/components/schemas/LLMRestaurantOpeningHours"
+          - type: 'null'
+          description: Opening hours information
+        michelin:
+          anyOf:
+          - "$ref": "#/components/schemas/LLMRestaurantMichelin"
+          - type: 'null'
+          description: Michelin guide information
+        curation:
+          anyOf:
+          - "$ref": "#/components/schemas/LLMRestaurantCuration"
+          - type: 'null'
+          description: Curated information
+        scores:
+          anyOf:
+          - "$ref": "#/components/schemas/LLMRestaurantScores"
+          - type: 'null'
+          description: Ratings and scores
+        phone:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Phone
+          description: Phone number
+        website:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Website
+          description: Website URL
+        types:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Types
+          description: Place types (e.g., ['restaurant', 'italian_restaurant'])
+        price_level:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Price Level
+          description: Price level (e.g., MODERATE, EXPENSIVE)
+        raw_sources:
+          anyOf:
+          - type: object
+          - type: 'null'
+          title: Raw Sources
+          description: Raw data from sources
+      type: object
+      required:
+      - name
+      title: LLMRestaurantSnapshot
+      description: |-
+        Complete snapshot of a restaurant, unified from multiple sources.
+        This is the main data structure that LLMs will interact with.
+    LLMRestaurantStatus:
+      properties:
+        is_open_now:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Is Open Now
+          description: Whether the place is currently open
+        open_on_weekend:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Open On Weekend
+          description: Whether the place opens on weekends
+        weekend_days_open:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Weekend Days Open
+          description: Which weekend days are open (e.g., ['saturday', 'sunday'])
+        supports_reservation:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Supports Reservation
+          description: Whether reservations are supported
+        business_status:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Business Status
+          description: Business operational status (e.g., OPERATIONAL, CLOSED)
+      type: object
+      title: LLMRestaurantStatus
+      description: Operational status information
+    LLMSearchRestaurantItem:
+      properties:
+        place_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Place Id
+          description: Google Place ID
+        entity_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Entity Id
+          description: Internal entity ID (if exists)
+        name:
+          type: string
+          title: Name
+          description: Restaurant name
+        canonical_address:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Canonical Address
+          description: Full address
+        geo:
+          anyOf:
+          - "$ref": "#/components/schemas/LLMRestaurantGeo"
+          - type: 'null'
+          description: Geographic coordinates
+        google_rating:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Google Rating
+          description: Google rating
+        has_entity:
+          type: boolean
+          title: Has Entity
+          description: Whether this place has an entity record
+          default: false
+        has_michelin_data:
+          type: boolean
+          title: Has Michelin Data
+          description: Whether this place has Michelin data
+          default: false
+        michelin:
+          anyOf:
+          - "$ref": "#/components/schemas/LLMRestaurantMichelin"
+          - type: 'null'
+          description: Basic Michelin info if available
+      type: object
+      required:
+      - name
+      title: LLMSearchRestaurantItem
+      description: Single search result item
+    LLMSearchRestaurantsRequest:
+      properties:
+        query:
+          type: string
+          title: Query
+          description: Restaurant name or search query
+        latitude:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Latitude
+          description: Latitude for location bias
+        longitude:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Longitude
+          description: Longitude for location bias
+        radius_m:
+          type: integer
+          maximum: 50000.0
+          minimum: 100.0
+          title: Radius M
+          description: Search radius in meters
+          default: 5000
+        max_results:
+          type: integer
+          maximum: 20.0
+          minimum: 1.0
+          title: Max Results
+          description: Maximum number of results
+          default: 5
+        language:
+          type: string
+          title: Language
+          description: Language code for results
+          default: pt-BR
+        region:
+          type: string
+          title: Region
+          description: Region code for results
+          default: BR
+      type: object
+      required:
+      - query
+      title: LLMSearchRestaurantsRequest
+      description: Request to search for restaurants
+    LLMSearchRestaurantsResponse:
+      properties:
+        items:
+          items:
+            "$ref": "#/components/schemas/LLMSearchRestaurantItem"
+          type: array
+          title: Items
+          description: Search results
+        total_results:
+          type: integer
+          title: Total Results
+          description: Number of results returned
+        search_metadata:
+          anyOf:
+          - type: object
+          - type: 'null'
+          title: Search Metadata
+          description: Additional search metadata
+      type: object
+      required:
+      - items
+      - total_results
+      title: LLMSearchRestaurantsResponse
+      description: Response from restaurant search
     Metadata:
       properties:
         type:
@@ -1180,11 +3125,51 @@ components:
       - source
       title: Metadata
       description: Extensible metadata from multiple sources
+    Model:
+      properties:
+        id:
+          type: string
+          title: Id
+        object:
+          type: string
+          const: model
+          title: Object
+          default: model
+        created:
+          type: integer
+          title: Created
+        owned_by:
+          type: string
+          title: Owned By
+      type: object
+      required:
+      - id
+      - created
+      - owned_by
+      title: Model
+      description: Model object
+    ModelsResponse:
+      properties:
+        object:
+          type: string
+          const: list
+          title: Object
+          default: list
+        data:
+          items:
+            "$ref": "#/components/schemas/Model"
+          type: array
+          title: Data
+      type: object
+      required:
+      - data
+      title: ModelsResponse
+      description: List of available models
     NearbySearchResponse:
       properties:
         results:
           items:
-            $ref: '#/components/schemas/PlaceResult'
+            "$ref": "#/components/schemas/PlaceResult"
           type: array
           title: Results
         status:
@@ -1413,6 +3398,340 @@ components:
       - geometry
       title: PlaceResult
       description: Google Places API result (simplified)
+    PlacesOrchestrationRequest:
+      properties:
+        query:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Query
+          description: Text query for search
+        place_id:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Place Id
+          description: Place ID for details lookup
+        place_ids:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Place Ids
+          description: List of Place IDs for bulk details lookup
+        latitude:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Latitude
+          description: Latitude for location-based search
+        longitude:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Longitude
+          description: Longitude for location-based search
+        radius:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Radius
+          description: Search radius in meters (max 50000)
+          default: 500.0
+        included_types:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Included Types
+          description: Filter by place types
+        excluded_types:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Excluded Types
+          description: Exclude place types
+        min_rating:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Min Rating
+          description: Minimum rating (0-5)
+        price_levels:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Price Levels
+          description: Filter by price levels
+        open_now:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Open Now
+          description: Only return open places
+        max_results:
+          anyOf:
+          - type: integer
+          - type: 'null'
+          title: Max Results
+          description: Maximum results to return (1-20)
+          default: 20
+        language:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Language
+          description: Language code for results
+          default: en
+        region_code:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Region Code
+          description: Region code for formatting
+        rank_preference:
+          anyOf:
+          - type: string
+            enum:
+            - DISTANCE
+            - POPULARITY
+          - type: 'null'
+          title: Rank Preference
+          description: Result ranking
+        include_pure_service_area:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Include Pure Service Area
+          description: Include service-area-only businesses
+          default: false
+        bulk:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Bulk
+          description: Enable bulk processing mode
+          default: false
+        combine_results:
+          anyOf:
+          - type: boolean
+          - type: 'null'
+          title: Combine Results
+          description: Combine results from multiple operations
+          default: true
+        operations:
+          anyOf:
+          - items:
+              type: object
+            type: array
+          - type: 'null'
+          title: Operations
+          description: List of operations to execute in bulk
+      type: object
+      title: PlacesOrchestrationRequest
+      description: Unified request for all Places API operations
+    PlacesOrchestrationResponse:
+      properties:
+        operation:
+          type: string
+          title: Operation
+          description: 'Operation performed: nearby|text_search|details|autocomplete|bulk'
+        results:
+          items:
+            type: object
+          type: array
+          title: Results
+          description: Search results
+        total_results:
+          type: integer
+          title: Total Results
+          description: Number of results returned
+        next_page_token:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Next Page Token
+          description: Token for next page
+        operations_executed:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Operations Executed
+          description: List of operations executed in bulk mode
+        errors:
+          anyOf:
+          - items:
+              type: object
+            type: array
+          - type: 'null'
+          title: Errors
+          description: Errors encountered during bulk operations
+      type: object
+      required:
+      - operation
+      - results
+      - total_results
+      title: PlacesOrchestrationResponse
+      description: Unified response from Places orchestration
+    RestaurantNameExtractionRequest:
+      properties:
+        text:
+          type: string
+          title: Text
+          description: Text to analyze
+      type: object
+      required:
+      - text
+      title: RestaurantNameExtractionRequest
+      description: Request model for restaurant name extraction from text
+    RestaurantNameExtractionResponse:
+      properties:
+        restaurant_name:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Restaurant Name
+        confidence_score:
+          anyOf:
+          - type: number
+          - type: 'null'
+          title: Confidence Score
+        model:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Model
+        service:
+          type: string
+          title: Service
+      type: object
+      required:
+      - restaurant_name
+      - service
+      title: RestaurantNameExtractionResponse
+      description: Response model for restaurant name extraction
+    SemanticSearchRequest:
+      properties:
+        query:
+          type: string
+          maxLength: 500
+          minLength: 1
+          title: Query
+          description: Query text for semantic search
+        limit:
+          type: integer
+          maximum: 100.0
+          minimum: 1.0
+          title: Limit
+          description: Maximum number of results
+          default: 10
+        min_similarity:
+          type: number
+          maximum: 1.0
+          minimum: 0.0
+          title: Min Similarity
+          description: Minimum cosine similarity threshold (0.0 returns all results
+            ranked)
+          default: 0.0
+        entity_types:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Entity Types
+          description: Filter by entity types (e.g., ['restaurant'])
+        categories:
+          anyOf:
+          - items:
+              type: string
+            type: array
+          - type: 'null'
+          title: Categories
+          description: Filter by specific categories
+        include_entity:
+          type: boolean
+          title: Include Entity
+          description: Include entity data in response
+          default: true
+      type: object
+      required:
+      - query
+      title: SemanticSearchRequest
+      description: Request para busca semântica por embeddings
+    SemanticSearchResponse:
+      properties:
+        results:
+          items:
+            "$ref": "#/components/schemas/SemanticSearchResult"
+          type: array
+          title: Results
+        query:
+          type: string
+          title: Query
+        query_embedding_time:
+          type: number
+          title: Query Embedding Time
+        search_time:
+          type: number
+          title: Search Time
+        total_results:
+          type: integer
+          title: Total Results
+      type: object
+      required:
+      - results
+      - query
+      - query_embedding_time
+      - search_time
+      - total_results
+      title: SemanticSearchResponse
+      description: Complete semantic search response
+    SemanticSearchResult:
+      properties:
+        entity_id:
+          type: string
+          title: Entity Id
+        entity:
+          anyOf:
+          - type: object
+          - type: 'null'
+          title: Entity
+        curation:
+          type: object
+          title: Curation
+        matches:
+          items:
+            "$ref": "#/components/schemas/ConceptMatch"
+          type: array
+          title: Matches
+        avg_similarity:
+          type: number
+          title: Avg Similarity
+        max_similarity:
+          type: number
+          title: Max Similarity
+        match_count:
+          type: integer
+          title: Match Count
+      type: object
+      required:
+      - entity_id
+      - curation
+      - matches
+      - avg_similarity
+      - max_similarity
+      - match_count
+      title: SemanticSearchResult
+      description: Individual result from semantic search
     SyncInfo:
       properties:
         serverId:
@@ -1436,6 +3755,103 @@ components:
       type: object
       title: SyncInfo
       description: Client-server synchronization metadata
+    TokenRefreshRequest:
+      properties:
+        refresh_token:
+          type: string
+          title: Refresh Token
+          description: Refresh token
+      type: object
+      required:
+      - refresh_token
+      title: TokenRefreshRequest
+      description: Token refresh request
+    Tool:
+      properties:
+        type:
+          type: string
+          const: function
+          title: Type
+          default: function
+        function:
+          "$ref": "#/components/schemas/FunctionDefinition"
+      type: object
+      required:
+      - function
+      title: Tool
+      description: Tool definition (function)
+    ToolCall:
+      properties:
+        id:
+          type: string
+          title: Id
+        type:
+          type: string
+          const: function
+          title: Type
+          default: function
+        function:
+          "$ref": "#/components/schemas/ToolCallFunction"
+      type: object
+      required:
+      - id
+      - function
+      title: ToolCall
+      description: Tool call from assistant
+    ToolCallFunction:
+      properties:
+        name:
+          type: string
+          title: Name
+        arguments:
+          type: string
+          title: Arguments
+      type: object
+      required:
+      - name
+      - arguments
+      title: ToolCallFunction
+      description: Function details in tool call
+    ToolChoiceFunction:
+      properties:
+        type:
+          type: string
+          const: function
+          title: Type
+          default: function
+        name:
+          type: string
+          title: Name
+      type: object
+      required:
+      - name
+      title: ToolChoiceFunction
+      description: Specific function to call
+    UserAuthResponse:
+      properties:
+        email:
+          type: string
+          format: email
+          title: Email
+        name:
+          type: string
+          title: Name
+        picture:
+          anyOf:
+          - type: string
+          - type: 'null'
+          title: Picture
+        authorized:
+          type: boolean
+          title: Authorized
+      type: object
+      required:
+      - email
+      - name
+      - picture
+      - authorized
+      title: UserAuthResponse
+      description: Authenticated user response
     ValidationError:
       properties:
         loc:
@@ -1458,14 +3874,10 @@ components:
       - type
       title: ValidationError
   securitySchemes:
+    HTTPBearer:
+      type: http
+      scheme: bearer
     APIKeyHeader:
       type: apiKey
       in: header
       name: X-API-Key
-      description: API Key for bots and scripts
-    BearerAuth:
-      type: http
-      scheme: bearer
-      bearerFormat: JWT
-      description: OAuth JWT token for web users
-
