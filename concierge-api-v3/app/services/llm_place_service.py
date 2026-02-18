@@ -1155,7 +1155,7 @@ class LLMPlaceService:
             name = display_name.get("text") if isinstance(display_name, dict) else google_data.get("name", "Unknown")
         
         # Extract IDs
-        entity_id = entity.get("_id") if entity else None
+        entity_id = str(entity.get("_id")) if entity and entity.get("_id") is not None else None
         
         place_id = None
         if google_data:
