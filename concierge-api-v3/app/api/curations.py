@@ -337,60 +337,81 @@ def semantic_search_curations(
             model="text-embedding-3-small",
             dimensions=1536
         )
-        query_vector = np.array(response.data[0].embedding)
+        query_vector = np.asarray(response.data[0].embedding, dtype=np.float32)
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to generate embedding: {str(e)}")
+
+    query_norm = float(np.linalg.norm(query_vector))
+    if query_norm == 0.0:
+        raise HTTPException(status_code=500, detail="Failed to generate valid query embedding")
     
     query_embed_time = time.time() - query_embed_start
     
     # 2. Fetch all curations with embeddings (only restaurants for now)
     query_filter = {"embeddings": {"$exists": True, "$ne": []}}
-    curations = list(db.curations.find(query_filter))
+    projection = {
+        "entity_id": 1,
+        "curation_id": 1,
+        "categories": 1,
+        "curator": 1,
+        "notes": 1,
+        "embeddings": 1,
+    }
+    curations = list(db.curations.find(query_filter, projection))
     
     # 3. Calculate similarities for each curation
     results = []
     
+    allowed_categories = set(request.categories) if request.categories else None
+
     for curation in curations:
         embeddings = curation.get("embeddings", [])
         if not embeddings:
             continue
         
         matches = []
+        similarity_sum = 0.0
+        max_similarity = 0.0
+        match_count = 0
         
         for emb in embeddings:
             # Filter by category if specified
-            if request.categories and emb.get("category") not in request.categories:
+            if allowed_categories and emb.get("category") not in allowed_categories:
                 continue
             
             # Calculate cosine similarity
             try:
-                concept_vector = np.array(emb["vector"])
+                concept_vector = np.asarray(emb["vector"], dtype=np.float32)
+                concept_norm = float(np.linalg.norm(concept_vector))
+                if concept_norm == 0.0:
+                    continue
                 similarity = float(
                     np.dot(query_vector, concept_vector) / 
-                    (np.linalg.norm(query_vector) * np.linalg.norm(concept_vector))
+                    (query_norm * concept_norm)
                 )
             except Exception:
                 continue
             
             # Filter by threshold
             if similarity >= request.min_similarity:
-                matches.append(ConceptMatch(
-                    text=emb.get("text", ""),
-                    category=emb.get("category", ""),
-                    concept=emb.get("concept", ""),
-                    similarity=round(similarity, 4)
-                ))
+                rounded_similarity = round(similarity, 4)
+                matches.append({
+                    "text": emb.get("text", ""),
+                    "category": emb.get("category", ""),
+                    "concept": emb.get("concept", ""),
+                    "similarity": rounded_similarity,
+                })
+                similarity_sum += rounded_similarity
+                match_count += 1
+                if rounded_similarity > max_similarity:
+                    max_similarity = rounded_similarity
         
         if not matches:
             continue
         
         # Sort matches by similarity (descending)
-        matches.sort(key=lambda x: x.similarity, reverse=True)
-        
-        # Calculate aggregate scores
-        similarities = [m.similarity for m in matches]
-        avg_similarity = sum(similarities) / len(similarities)
-        max_similarity = max(similarities)
+        matches.sort(key=lambda x: x["similarity"], reverse=True)
+        avg_similarity = similarity_sum / match_count
         
         entity_id = curation.get("entity_id")
         if entity_id is None:
@@ -405,22 +426,11 @@ def semantic_search_curations(
                 "curator": curation.get("curator", {}),
                 "notes": curation.get("notes", {})
             },
-            "matches": [m.model_dump() for m in matches[:10]],  # Top 10 matches
+            "matches": matches[:10],  # Top 10 matches
             "avg_similarity": round(avg_similarity, 4),
             "max_similarity": round(max_similarity, 4),
-            "match_count": len(matches)
+            "match_count": match_count
         }
-        
-        # Include entity data if requested
-        if request.include_entity:
-            entity = db.entities.find_one({"_id": entity_id})
-            if entity:
-                result_data["entity"] = {
-                    "name": entity.get("name"),
-                    "entity_type": entity.get("entity_type"),
-                    "location": entity.get("location"),
-                    "contact": entity.get("contact")
-                }
         
         results.append(result_data)
     
@@ -429,6 +439,29 @@ def semantic_search_curations(
     
     # 6. Limit results
     results = results[:request.limit]
+
+    if request.include_entity and results:
+        entity_ids = [result["entity_id"] for result in results]
+        entity_projection = {
+            "name": 1,
+            "entity_type": 1,
+            "location": 1,
+            "contact": 1,
+        }
+        entities = list(db.entities.find({"_id": {"$in": entity_ids}}, entity_projection))
+        entities_by_id = {
+            entity["_id"]: {
+                "name": entity.get("name"),
+                "entity_type": entity.get("entity_type"),
+                "location": entity.get("location"),
+                "contact": entity.get("contact"),
+            }
+            for entity in entities
+        }
+        for result in results:
+            entity_data = entities_by_id.get(result["entity_id"])
+            if entity_data:
+                result["entity"] = entity_data
     
     # 7. Calculate total time
     total_time = time.time() - start_time
