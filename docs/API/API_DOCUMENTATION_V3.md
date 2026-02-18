@@ -1,5 +1,7 @@
 # Concierge API V3 - Complete Documentation
 
+> **Status:** Ativo (Parcial) — saneamento crítico de URLs executado em 2026-02-18. Harmonização completa de conteúdo legado em andamento.
+
 **Production**: `https://concierge-collector.onrender.com/api/v3`  
 **Local**: `http://localhost:8000/api/v3`  
 **Version**: `3.0.0` | **Content-Type**: `application/json`
@@ -24,8 +26,8 @@ The Concierge API V3 is a professional async FastAPI implementation designed for
 - **Database:** MongoDB Atlas (async with Motor)
 - **AI:** OpenAI API (GPT-4, Whisper, Vision)
 - **Places:** Google Places API (New)
-- **Auth:** API Key for AI endpoints
-- **Deployment:** PythonAnywhere + Local development
+- **Auth:** Dual auth (OAuth Bearer JWT or X-API-Key)
+- **Deployment:** Render.com + Local development
 
 ---
 
@@ -83,9 +85,9 @@ Generate API key: `python scripts/generate_api_key.py`
 ```
 
 ### Optimistic Locking
-Updates (PATCH) require the `If-Match` header with the current ETag:
+Updates (PATCH) require the `If-Match` header with the current `version` value:
 ```http
-If-Match: "version-123"
+If-Match: "3"
 ```
 
 ### Timestamps
@@ -124,16 +126,14 @@ GET /api/v3/info
   "description": "Document-oriented REST API for Concierge Analyzer",
   "features": [
     "Document-oriented storage",
-    "JSON_MERGE_PATCH for partial updates",
     "Optimistic locking with version control",
-    "Functional indexes on JSON paths",
-    "JSON_TABLE for array queries",
-    "Flexible query DSL"
+    "Entity-Curation architecture",
+    "AI orchestration endpoints",
+    "Semantic and hybrid curation search"
   ],
   "endpoints": {
     "entities": {...},
-    "curations": {...},
-    "query": {...}
+    "curations": {...}
   }
 }
 ```
@@ -198,11 +198,7 @@ POST /api/v3/entities
 }
 ```
 
-**Headers:**
-```
-ETag: "1"
-Location: /api/v3/entities/rest_example
-```
+**Note:** Use the `version` field from the response body for subsequent `If-Match` updates.
 
 ### Get Entity
 ```http
@@ -221,10 +217,7 @@ GET /api/v3/entities/{entity_id}
 }
 ```
 
-**Headers:**
-```
-ETag: "1"
-```
+**Note:** Current version is returned in the response payload (`version`).
 
 ### Update Entity (Partial)
 ```http
@@ -267,10 +260,7 @@ Content-Type: application/json
 }
 ```
 
-**Headers:**
-```
-ETag: "2"
-```
+**Note:** Incremented version is returned in the response payload after update.
 
 ### Delete Entity
 ```http
@@ -405,7 +395,7 @@ POST /api/v3/curations
 GET /api/v3/curations/{curation_id}
 ```
 
-**Response:** `200 OK` - Full curation object with ETag header
+**Response:** `200 OK` - Full curation object with current `version` in payload
 
 ### Update Curation (Partial)
 ```http
@@ -486,47 +476,15 @@ GET /api/v3/curations/search
 ## Advanced Query
 
 ### Flexible Query DSL
-```http
-POST /api/v3/query
-```
 
-**Request Body:**
-```json
-{
-  "type": "entities|curations",
-  "filters": {
-    "entity_type": "restaurant",
-    "location": "San Francisco",
-    "rating_range": [4.0, 5.0],
-    "cuisine": ["Italian", "Mediterranean"]
-  },
-  "sort": [
-    {"field": "metadata.rating", "order": "desc"},
-    {"field": "created_at", "order": "asc"}
-  ],
-  "limit": 20,
-  "offset": 0
-}
-```
+`/api/v3/query` **não faz parte da API ativa atual**.
 
-**Response:** `200 OK`
-```json
-{
-  "results": [...],
-  "query": {
-    "type": "entities",
-    "filters": {...},
-    "sort": [...],
-    "execution_time": 0.045
-  },
-  "pagination": {
-    "total": 156,
-    "limit": 20,
-    "offset": 0,
-    "has_more": true
-  }
-}
-```
+Use os endpoints de listagem e busca específicos:
+
+- `GET /api/v3/entities`
+- `GET /api/v3/curations/search`
+- `POST /api/v3/curations/semantic-search`
+- `POST /api/v3/curations/hybrid-search`
 
 ---
 
@@ -726,16 +684,28 @@ GET /api/v3/concepts/
 
 ## AI Services 🤖
 
-AI endpoints require API key authentication and use OpenAI services.
+AI endpoints use OpenAI services.
 
 ⚠️ **Cost Warning:** These endpoints use OpenAI API and incur costs. Monitor your usage.
 
 ### Authentication
 
-Include API key in header:
+Protected AI endpoints accept **either** OAuth Bearer token **or** API key:
+
 ```http
+Authorization: Bearer <jwt_token>
 X-API-Key: your-api-key-here
 ```
+
+Protected AI endpoints:
+
+- `POST /api/v3/ai/orchestrate`
+- `POST /api/v3/ai/extract-restaurant-name`
+
+Public AI endpoints:
+
+- `GET /api/v3/ai/health`
+- `GET /api/v3/ai/usage-stats`
 
 ### Orchestrate (Intelligent Workflow)
 
@@ -852,16 +822,16 @@ GET /api/v3/ai/health
 
 ```typescript
 // API Client Setup
-const API_BASE = 'https://wsmontes.pythonanywhere.com/api/v3';
+const API_BASE = 'https://concierge-collector.onrender.com/api/v3';
 
 class ConciergeAPI {
-  private async request(method: string, path: string, data?: any, etag?: string) {
+  private async request(method: string, path: string, data?: any, currentVersion?: number) {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
     
-    if (etag) {
-      headers['If-Match'] = etag;
+    if (currentVersion !== undefined) {
+      headers['If-Match'] = String(currentVersion);
     }
     
     const response = await fetch(`${API_BASE}${path}`, {
@@ -876,9 +846,8 @@ class ConciergeAPI {
     }
     
     const result = await response.json();
-    const responseEtag = response.headers.get('ETag');
     
-    return { data: result, etag: responseEtag };
+    return { data: result };
   }
   
   // Entity operations
@@ -890,8 +859,8 @@ class ConciergeAPI {
     return this.request('GET', `/entities/${entityId}`);
   }
   
-  async updateEntity(entityId: string, updates: any, etag: string) {
-    return this.request('PATCH', `/entities/${entityId}`, updates, etag);
+  async updateEntity(entityId: string, updates: any, currentVersion: number) {
+    return this.request('PATCH', `/entities/${entityId}`, updates, currentVersion);
   }
   
   async deleteEntity(entityId: string) {
@@ -912,8 +881,8 @@ class ConciergeAPI {
     return this.request('GET', `/curations/${curationId}`);
   }
   
-  async updateCuration(curationId: string, updates: any, etag: string) {
-    return this.request('PATCH', `/curations/${curationId}`, updates, etag);
+  async updateCuration(curationId: string, updates: any, currentVersion: number) {
+    return this.request('PATCH', `/curations/${curationId}`, updates, currentVersion);
   }
   
   async getEntityCurations(entityId: string, params?: Record<string, string>) {
@@ -924,11 +893,6 @@ class ConciergeAPI {
   async searchCurations(params: Record<string, string>) {
     const query = new URLSearchParams(params).toString();
     return this.request('GET', `/curations/search?${query}`);
-  }
-  
-  // Advanced query
-  async query(queryRequest: any) {
-    return this.request('POST', '/query', queryRequest);
   }
   
   // System endpoints
@@ -945,7 +909,7 @@ class ConciergeAPI {
 const api = new ConciergeAPI();
 
 // Create a restaurant
-const { data: restaurant, etag } = await api.createEntity({
+const { data: restaurant } = await api.createEntity({
   entity_id: 'my_restaurant',
   type: 'restaurant',
   name: 'My Restaurant',
@@ -962,7 +926,7 @@ await api.updateEntity('my_restaurant', {
     rating: 4.7,
     updated: true
   }
-}, etag);
+}, restaurant.version);
 
 // Search restaurants
 const { data: results } = await api.searchEntities({
@@ -1002,15 +966,15 @@ import requests
 from typing import Dict, Any, Optional, Tuple
 
 class ConciergeAPI:
-    def __init__(self, base_url: str = 'https://wsmontes.pythonanywhere.com/api/v3'):
+  def __init__(self, base_url: str = 'https://concierge-collector.onrender.com/api/v3'):
         self.base_url = base_url
     
     def _request(self, method: str, path: str, data: Optional[Dict] = None, 
-                etag: Optional[str] = None) -> Tuple[Dict[str, Any], Optional[str]]:
-        """Make API request and return (data, etag)"""
+          if_match_version: Optional[int] = None) -> Dict[str, Any]:
+      """Make API request and return response payload"""
         headers = {'Content-Type': 'application/json'}
-        if etag:
-            headers['If-Match'] = etag
+      if if_match_version is not None:
+        headers['If-Match'] = str(if_match_version)
         
         response = requests.request(
             method=method,
@@ -1022,44 +986,39 @@ class ConciergeAPI:
         response.raise_for_status()
         
         result = response.json() if response.content else {}
-        response_etag = response.headers.get('ETag')
-        
-        return result, response_etag
+        return result
     
     # Entity operations
-    def create_entity(self, entity: Dict[str, Any]) -> Tuple[Dict, str]:
+    def create_entity(self, entity: Dict[str, Any]) -> Dict[str, Any]:
         return self._request('POST', '/entities', entity)
     
-    def get_entity(self, entity_id: str) -> Tuple[Dict, str]:
+    def get_entity(self, entity_id: str) -> Dict[str, Any]:
         return self._request('GET', f'/entities/{entity_id}')
     
     def update_entity(self, entity_id: str, updates: Dict[str, Any], 
-                     etag: str) -> Tuple[Dict, str]:
-        return self._request('PATCH', f'/entities/{entity_id}', updates, etag)
+             version: int) -> Dict[str, Any]:
+      return self._request('PATCH', f'/entities/{entity_id}', updates, version)
     
-    def search_entities(self, **params) -> Tuple[Dict, Optional[str]]:
+    def search_entities(self, **params) -> Dict[str, Any]:
         query = '&'.join(f"{k}={v}" for k, v in params.items())
         return self._request('GET', f'/entities?{query}')
     
     # Curation operations
-    def create_curation(self, curation: Dict[str, Any]) -> Tuple[Dict, str]:
+    def create_curation(self, curation: Dict[str, Any]) -> Dict[str, Any]:
         return self._request('POST', '/curations', curation)
     
-    def get_curation(self, curation_id: str) -> Tuple[Dict, str]:
+    def get_curation(self, curation_id: str) -> Dict[str, Any]:
         return self._request('GET', f'/curations/{curation_id}')
     
-    def search_curations(self, **params) -> Tuple[Dict, Optional[str]]:
+    def search_curations(self, **params) -> Dict[str, Any]:
         query = '&'.join(f"{k}={v}" for k, v in params.items())
         return self._request('GET', f'/curations/search?{query}')
     
-    def query(self, query_request: Dict[str, Any]) -> Tuple[Dict, Optional[str]]:
-        return self._request('POST', '/query', query_request)
-
 # Usage
 api = ConciergeAPI()
 
 # Create restaurant
-restaurant, etag = api.create_entity({
+restaurant = api.create_entity({
     'entity_id': 'python_restaurant',
     'type': 'restaurant',
     'name': 'Python Café',
@@ -1072,8 +1031,8 @@ restaurant, etag = api.create_entity({
 print(f"Created restaurant: {restaurant['name']}")
 
 # Search restaurants
-results, _ = api.search_entities(type='restaurant', name='Python')
-print(f"Found {len(results['entities'])} restaurants")
+results = api.search_entities(type='restaurant', name='Python')
+print(f"Found {results.get('total', 0)} restaurants")
 ```
 
 ---
@@ -1097,17 +1056,16 @@ Currently, no rate limits are enforced, but this may change in future versions.
 - ✅ **Google Places API**: Secure server-side proxy
   - Nearby search
   - Place details
-  - Autocomplete
   - Photo retrieval
-- ✅ **Authentication**: API Key for AI endpoints
+- ✅ **Authentication**: Dual auth (OAuth Bearer JWT or X-API-Key) on protected endpoints
 - ✅ **Documentation**: Interactive Swagger UI + ReDoc
 - ✅ **Testing**: Comprehensive test suite (78 tests, 79.5% passing)
 - ✅ **CORS**: Full frontend integration support
-- ✅ **Deployment**: PythonAnywhere production + local development
+- ✅ **Deployment**: Render production + local development
 
 ### Version 2.0 (Legacy - MySQL)
 - Document-oriented storage with JSON fields
-- Optimistic locking with ETags
+- Optimistic locking with `If-Match`
 - JSON Merge Patch for partial updates
 - Flexible query DSL
 - Improved error handling and validation
@@ -1118,15 +1076,15 @@ Currently, no rate limits are enforced, but this may change in future versions.
 ## Support & Resources
 
 ### Documentation
-- **Interactive Docs**: https://wsmontes.pythonanywhere.com/api/v3/docs (Swagger UI)
-- **ReDoc**: https://wsmontes.pythonanywhere.com/api/v3/redoc
+- **Interactive Docs**: https://concierge-collector.onrender.com/api/v3/docs (Swagger UI)
+- **ReDoc**: https://concierge-collector.onrender.com/api/v3/redoc
 - **Quick Reference**: [API_QUICK_REFERENCE.md](./API_QUICK_REFERENCE.md)
 - **Backend README**: [concierge-api-v3/README.md](../concierge-api-v3/README.md)
 
 ### Health & Status
-- **Health Check**: https://wsmontes.pythonanywhere.com/api/v3/health
-- **API Info**: https://wsmontes.pythonanywhere.com/api/v3/info
-- **OpenAPI Schema**: https://wsmontes.pythonanywhere.com/api/v3/openapi.json
+- **Health Check**: https://concierge-collector.onrender.com/api/v3/health
+- **API Info**: https://concierge-collector.onrender.com/api/v3/info
+- **OpenAPI Schema**: https://concierge-collector.onrender.com/api/v3/openapi.json
 
 ### Development
 - **GitHub**: wsmontes/Concierge-Collector

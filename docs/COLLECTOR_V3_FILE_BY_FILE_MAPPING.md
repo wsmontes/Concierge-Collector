@@ -1,5 +1,7 @@
 # Collector V3 - Mapeamento Arquivo por Arquivo
 
+> **Nota:** referências a “Sprint” neste documento são históricas e não representam cronograma vigente; a execução atual é contínua (vibe coding).
+
 **Data:** 19 de Novembro de 2025  
 **Objetivo:** Documentar TODAS as mudanças necessárias em cada arquivo para completar a migração V3
 

@@ -1219,7 +1219,7 @@ async showUsageStats() {
 - `scripts/services/PlacesOrchestrationService.js` - Places orchestration
 
 ### API Documentation
-- `/docs/API_V3_INTEGRATION_SPEC.md`
+- `/docs/archive/api-planning/API_V3_INTEGRATION_SPEC.md` (histórico)
 - `/docs/COLLECTOR_V3_ARCHITECTURE.md`
 - `/API-REF/API_DOCUMENTATION_V3.md`
 

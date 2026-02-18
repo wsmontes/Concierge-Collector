@@ -1,8 +1,10 @@
 # Multi-Curator Architecture & Entity-Agnostic System
 
+> **Nota:** menções a “Sprint” neste documento são nomenclatura histórica de fases e não correspondem ao modelo atual de execução contínua (vibe coding).
+
 **Created**: November 17, 2025  
 **Status**: Architecture Design Document  
-**Related**: Sprint 2 Roadmap, Sprint 3 Planning
+**Related**: Historical sprint planning docs (`docs/archive/sprints/`)
 
 ---
 

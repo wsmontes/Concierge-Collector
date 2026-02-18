@@ -1,9 +1,17 @@
+<!--
+Purpose: Preservar a especificação histórica do cliente ApiService V3 usada durante a transição para o backend V3.
+Main responsibilities: Documentar contexto legado de integração frontend-backend para referência histórica.
+Dependencies: scripts/services/apiService.js, docs/API/API_DOCUMENTATION_V3.md, docs/API/API_QUICK_REFERENCE.md.
+-->
+
 # ApiService V3 - Complete Specification
+
+> **Status:** Histórico (Supersedido) — para integração atual consulte `docs/API/README.md` e `docs/API/API_DOCUMENTATION_V3.md`.
 
 **File:** `scripts/apiService.js`  
 **Version:** 3.0.0  
 **Date:** November 18, 2025  
-**Purpose:** Unified API client for V3 FastAPI backend
+**Purpose:** Historical specification of ApiService V3 integration decisions
 
 ---
 

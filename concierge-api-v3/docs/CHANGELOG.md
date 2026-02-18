@@ -9,9 +9,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+> Cadence note: references to historical sprint/day labels are preserved only as implementation chronology and are not current planning commitments.
+
 ### Added - 2025-01-XX
 
-#### V3 Data Transformation Layer (Sprint 1, Day 3)
+#### V3 Data Transformation Layer (Historical Phase)
 
 **Decision**: Implement bidirectional transformation layer for 100% MongoDB ↔ IndexedDB compatibility.
 
@@ -53,11 +55,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated `index.html` to load V3DataTransformer before dataStorage
 
 **Related Documentation**:
-- See `docs/COLLECTOR_MODERNIZATION_PLAN.md` Sprint 1, Day 3
+- See `docs/COLLECTOR_MODERNIZATION_PLAN.md` (historical phase context)
 
 ---
 
-#### Google Places Service-Based Architecture (Sprint 1, Day 2)
+#### Google Places Service-Based Architecture (Historical Phase)
 
 **Decision**: Refactor Google Places integration from monolithic module to service-based architecture.
 
@@ -99,7 +101,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Updated `index.html` to load services before module
 
 **Related Documentation**:
-- See `docs/COLLECTOR_MODERNIZATION_PLAN.md` Sprint 1, Day 2
+- See `docs/COLLECTOR_MODERNIZATION_PLAN.md` (historical phase context)
 
 ---
 
@@ -127,7 +129,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - No breaking changes to entity data model - Michelin metadata format preserved for compatibility
 
 **Related Documentation**:
-- See `docs/COLLECTOR_MODERNIZATION_PLAN.md` Sprint 1, Day 1 for full context
+- See `docs/COLLECTOR_MODERNIZATION_PLAN.md` for full historical context
 
 ---
 

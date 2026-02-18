@@ -1,5 +1,7 @@
 # 📋 Plano de Modernização do Concierge Collector
 
+> **Nota de cadência:** este plano usa nomenclaturas históricas de fases; os prazos de sprint/dia não representam a execução atual contínua (vibe coding).
+
 **Data:** 17 de Novembro de 2025  
 **Versão:** V3 Modernization Roadmap  
 **Status:** Planning Phase
@@ -344,96 +346,96 @@ appState.subscribe('entities', (entities) => {
 
 ---
 
-## 🗓️ Roadmap de Implementação
+## 🗓️ Roadmap de Implementação (Sequência Histórica)
 
-### **Sprint 1: Cleanup & Foundation** (3 dias)
+### **Fase 1: Cleanup & Foundation**
 
-**Dia 1:**
+**Bloco A:**
 - ✅ Remover `michelinStagingModule.js`
 - ✅ Remover referências Michelin do `config.js`
 - ✅ Atualizar `index.html` (remover script Michelin)
 - ✅ Documentar decisão no `CHANGELOG.md`
 
-**Dia 2:**
+**Bloco B:**
 - 🔄 Criar nova estrutura de pastas `services/`
 - 🔄 Extrair `PlacesService.js` de `placesModule.js`
 - 🔄 Criar `PlacesCache.js` standalone
 - 🔄 Testes unitários para PlacesService
 
-**Dia 3:**
+**Bloco C:**
 - 🔄 Implementar `V3DataTransformer`
 - 🔄 Atualizar schema IndexedDB para 100% compatibilidade MongoDB
 - 🔄 Testes de transformação bidirecion al
 
 ---
 
-### **Sprint 2: Google Places Automation** (5 dias)
+### **Fase 2: Google Places Automation**
 
-**Dia 4-5:**
+**Bloco A:**
 - 🔄 Criar `PlacesAutomation.js`
 - 🔄 Implementar auto-creation flow
 - 🔄 Duplicate detection por Place ID
 - 🔄 Draft entity creation
 
-**Dia 6-7:**
+**Bloco B:**
 - 🔄 Concept extraction de reviews
 - 🔄 Smart tagging system
 - 🔄 Background processing com Web Worker
 
-**Dia 8:**
+**Bloco C:**
 - 🔄 UI para batch import
 - 🔄 Progress tracking
 - 🔄 Error handling & retry
 
 ---
 
-### **Sprint 3: Sync & IndexedDB** (4 dias)
+### **Fase 3: Sync & IndexedDB**
 
-**Dia 9-10:**
+**Bloco A:**
 - 🔄 Implementar `SyncManagerV3`
 - 🔄 Conflict resolution strategy
 - 🔄 Retry logic com exponential backoff
 
-**Dia 11-12:**
+**Bloco B:**
 - 🔄 Entity validation antes de sync
 - 🔄 Partial sync (delta sync)
 - 🔄 Sync status UI
 
 ---
 
-### **Sprint 4: Frontend Modernization** (5 dias)
+### **Fase 4: Frontend Modernization**
 
-**Dia 13:**
+**Bloco A:**
 - 🔄 Setup Vite
 - 🔄 Configurar build pipeline
 - 🔄 Migrar scripts para módulos ES6
 
-**Dia 14-15:**
+**Bloco B:**
 - 🔄 Criar Web Components básicos
 - 🔄 Entity Card component
 - 🔄 Search component
 - 🔄 Curation Form component
 
-**Dia 16-17:**
+**Bloco C:**
 - 🔄 Implementar StateManager
 - 🔄 Migrar state management
 - 🔄 Reactive UI updates
 
 ---
 
-### **Sprint 5: Polish & Testing** (3 dias)
+### **Fase 5: Polish & Testing**
 
-**Dia 18:**
+**Bloco A:**
 - 🔄 E2E tests (Playwright)
 - 🔄 Performance profiling
 - 🔄 Accessibility audit
 
-**Dia 19:**
+**Bloco B:**
 - 🔄 Documentation completa
 - 🔄 API usage examples
 - 🔄 Deployment guide
 
-**Dia 20:**
+**Bloco C:**
 - 🔄 User acceptance testing
 - 🔄 Bug fixes
 - 🔄 Production deployment

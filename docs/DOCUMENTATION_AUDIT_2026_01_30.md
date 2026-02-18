@@ -52,7 +52,7 @@ Other:                    15+ files
 ❌ docs/API/API_TESTING_GUIDE.md
 ❌ docs/API/api_standards.md
 ❌ docs/COLLECTOR_V3_UPDATE_ANALYSIS.md
-❌ docs/API_IMPLEMENTATION_ANALYSIS.md
+⚠️ docs/API_IMPLEMENTATION_ANALYSIS.md (arquivo não localizado em 2026-02-18)
 ❌ docs/MySQL/mysql_api_testing_guide.md
 
 Status: ✅ FIXED (4 main files updated on Jan 30)
@@ -105,7 +105,7 @@ Remaining: 10+ files still need URL updates
    - Migration guides reference PythonAnywhere
 
 6. docs/API_IMPLEMENTATION_ANALYSIS.md
-   - Implementation examples use obsolete URLs
+   - Arquivo não localizado no workspace em 2026-02-18 (manter referência apenas histórica)
 
 7. docs/MySQL/mysql_api_testing_guide.md
    - MySQL was never used! Should be archived or deleted
@@ -166,11 +166,11 @@ Recommendation: Create single "COLLECTOR_V3_GUIDE.md" that links to these
 
 #### C. Overlapping API Docs
 ```
-docs/API_V3_STATUS.md                    ← Archive (snapshot from Nov 2025)
-docs/API_V3_INTEGRATION_SPEC.md          ← Archive (planning doc)
-docs/API_SERVICE_V3_SPECIFICATION.md     ← Archive (old spec)
-docs/API_IMPLEMENTATION_ANALYSIS.md      ← Archive (analysis doc)
-docs/API_ENDPOINT_DECISION_TREE.md       ← Archive (planning)
+docs/archive/API_V3_STATUS.md            ← Archived (snapshot from Nov 2025)
+docs/archive/api-planning/API_V3_INTEGRATION_SPEC.md ← Archived (planning doc)
+docs/archive/API_SERVICE_V3_SPECIFICATION.md ← Archived (old spec)
+docs/API_IMPLEMENTATION_ANALYSIS.md      ← Missing in workspace (historical reference)
+docs/archive/api-planning/API_ENDPOINT_DECISION_TREE.md ← Archived (planning)
 
 Current source of truth: docs/API/API_DOCUMENTATION_V3.md
 ```
@@ -192,13 +192,13 @@ Recommendation: 2 files total
 
 #### A. Sprint Planning Docs (Completed)
 ```
-docs/SPRINT_2_ROADMAP.md                 - November 2025
-docs/SPRINT_2_REVISED_ROADMAP.md         - November 2025
+docs/archive/sprints/SPRINT_2_ROADMAP.md                 - Archived (Nov 2025)
+docs/archive/sprints/SPRINT_2_REVISED_ROADMAP.md         - Archived (Nov 2025)
 docs/archive/SPRINT_1_COMPLETE_SUMMARY.md
 docs/archive/SPRINT_2_DAY_4_SUMMARY.md
 
-Status: COMPLETED sprints
-Action: Move to docs/archive/sprints/ for historical reference
+Status: ✅ Archived sprint docs (planning legado)
+Action: tratar referências de sprint apenas como contexto histórico (cadência atual é contínua)
 ```
 
 #### B. Migration & Fix Summaries
@@ -217,12 +217,12 @@ Action: Good in archive, no action needed
 
 #### C. Investigation/Analysis Docs
 ```
-docs/FRONTEND_ARCHITECTURE_INVESTIGATION.md  - Nov 21, 2025
-docs/LOCAL_VS_SERVER_DATA_ANALYSIS.md        - Analysis doc
-docs/EXPORT_FORMAT_VS_ENTITY_FORMAT.md       - Format comparison
-docs/V3_API_SERVER_ISSUES_ANALYSIS.md        - Issue investigation
+docs/archive/investigations/FRONTEND_ARCHITECTURE_INVESTIGATION.md  - Archived (Nov 21, 2025)
+docs/archive/investigations/LOCAL_VS_SERVER_DATA_ANALYSIS.md        - Archived analysis doc
+docs/archive/investigations/EXPORT_FORMAT_VS_ENTITY_FORMAT.md       - Archived format comparison
+docs/archive/investigations/V3_API_SERVER_ISSUES_ANALYSIS.md        - Archived issue investigation
 
-Action: Move to docs/archive/investigations/ for reference
+Action: ✅ Moved to docs/archive/investigations/ (2026-02-18)
 ```
 
 ---
@@ -266,7 +266,7 @@ Action: Move to docs/archive/investigations/ for reference
    Move: SPRINT_*.md → docs/archive/sprints/
 
 4. Archive old API analysis docs
-   Move: API_V3_STATUS.md, API_IMPLEMENTATION_ANALYSIS.md, etc.
+   Move: API_IMPLEMENTATION_ANALYSIS.md, etc. (API_V3_STATUS.md, API_SERVICE_V3_SPECIFICATION.md, API_V3_INTEGRATION_SPEC.md e API_ENDPOINT_DECISION_TREE.md já movidos em 2026-02-18)
    → docs/archive/api-planning/
 
 5. Archive investigations
@@ -362,7 +362,7 @@ Standards:
 | docs/API/API_TESTING_GUIDE.md | Update URLs | Old domain |
 | docs/API/api_standards.md | Update URLs | Old domain |
 | docs/COLLECTOR_V3_UPDATE_ANALYSIS.md | Update URLs | Old domain |
-| docs/API_IMPLEMENTATION_ANALYSIS.md | Update URLs | Old domain |
+| docs/API_IMPLEMENTATION_ANALYSIS.md | Historical reference only | Arquivo não localizado em 2026-02-18 |
 | docs/V3_FINAL_DOCUMENTATION.md | Fix tech stack | Says Flask, should be FastAPI |
 | docs/testing/COLLECTOR_TEST_EXECUTIVE_SUMMARY.md | Fix test patterns | Flask → FastAPI |
 | docs/testing/COLLECTOR_TEST_SUITE_README.md | Fix test patterns | Flask → FastAPI |
@@ -386,21 +386,21 @@ Standards:
 ### Files to ARCHIVE (Move to docs/archive/)
 
 #### API Planning (completed)
-- API_V3_STATUS.md
-- API_V3_INTEGRATION_SPEC.md
-- API_SERVICE_V3_SPECIFICATION.md
+- docs/archive/API_V3_STATUS.md
+- docs/archive/api-planning/API_V3_INTEGRATION_SPEC.md
+- docs/archive/API_SERVICE_V3_SPECIFICATION.md
 - API_IMPLEMENTATION_ANALYSIS.md
-- API_ENDPOINT_DECISION_TREE.md
+- docs/archive/api-planning/API_ENDPOINT_DECISION_TREE.md
 
 #### Sprints (completed)
-- SPRINT_2_ROADMAP.md
-- SPRINT_2_REVISED_ROADMAP.md
+- docs/archive/sprints/SPRINT_2_ROADMAP.md
+- docs/archive/sprints/SPRINT_2_REVISED_ROADMAP.md
 
 #### Investigations (completed)
-- FRONTEND_ARCHITECTURE_INVESTIGATION.md
-- LOCAL_VS_SERVER_DATA_ANALYSIS.md
-- EXPORT_FORMAT_VS_ENTITY_FORMAT.md
-- V3_API_SERVER_ISSUES_ANALYSIS.md
+- docs/archive/investigations/FRONTEND_ARCHITECTURE_INVESTIGATION.md
+- docs/archive/investigations/LOCAL_VS_SERVER_DATA_ANALYSIS.md
+- docs/archive/investigations/EXPORT_FORMAT_VS_ENTITY_FORMAT.md
+- docs/archive/investigations/V3_API_SERVER_ISSUES_ANALYSIS.md
 
 #### Collector V3 Planning (superseded by architecture docs)
 - COLLECTOR_V3_UPDATE_ANALYSIS.md

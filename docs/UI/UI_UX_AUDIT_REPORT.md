@@ -1241,7 +1241,7 @@ Move ALL styles to CSS files
 
 ## 10. Priority Recommendations
 
-### Immediate (This Sprint)
+### Immediate (Current Cycle)
 
 1. **Merge duplicate stylesheets** → Single source of truth
 2. **Add ARIA labels** → Improve accessibility
@@ -1249,7 +1249,7 @@ Move ALL styles to CSS files
 4. **Standardize button components** → UI consistency
 5. **Add focus indicators** → Keyboard navigation
 
-### Short Term (Next 2 Sprints)
+### Short Term (Next 2 Cycles)
 
 1. **Implement design token system** → Complete CSS variables
 2. **Create component library** → Reusable UI components

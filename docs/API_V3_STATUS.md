@@ -1,7 +1,15 @@
+<!--
+Purpose: Registrar um snapshot histórico do status de integração da API V3 durante a fase inicial de rollout.
+Main responsibilities: Preservar contexto de evolução e decisões antigas sem competir com a documentação operacional ativa.
+Dependencies: docs/API/API_DOCUMENTATION_V3.md, docs/API/API_QUICK_REFERENCE.md, docs/API/README.md.
+-->
+
 # API V3 - Status & Integration Guide
 
+> **Status:** Histórico (Supersedido) — use a documentação ativa em `docs/API/` para operação atual.
+
 **Last Updated**: November 17, 2025  
-**Status**: ✅ **Production Ready** (28/28 tests passing)  
+**Status**: ⚠️ **Historical Snapshot** (superseded)  
 **Version**: 1.0.0
 
 ---

@@ -1,5 +1,7 @@
 # API Reference Documentation
 
+> **Status:** Ativo (Parcial) — saneamento crítico de URLs executado em 2026-02-18.
+
 Complete API documentation for Concierge Collector API V3.
 
 ## 📚 Documentation Files
@@ -50,13 +52,13 @@ curl "https://concierge-collector.onrender.com/api/v3/places/orchestrate" \
 # 3. Create Entity (requires auth)
 curl -X POST https://concierge-collector.onrender.com/api/v3/entities \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: your-key" \
+  -H "Authorization: Bearer <jwt_token>" \
   -d '{"entity_id": "my_restaurant", "type": "restaurant", "name": "My Restaurant"}'
 
 # 4. AI Services (requires auth)
 curl -X POST https://concierge-collector.onrender.com/api/v3/ai/orchestrate \
   -H "Content-Type: application/json" \
-  -H "X-API-Key: your-key" \
+  -H "Authorization: Bearer <jwt_token>" \
   -d '{"workflow": "text_only", "input": {"text": "Great food"}, "output": {"save_to_db": false}}'
 ```
 
@@ -91,14 +93,14 @@ curl -X POST https://concierge-collector.onrender.com/api/v3/ai/orchestrate \
 #### Places (Google Places Proxy)
 - `GET /places/nearby` - Search nearby
 - `GET /places/details/{place_id}` - Place details
-- `GET /places/autocomplete` - Autocomplete
-- `GET /places/photo/{photo_ref}` - Get photo
+- `POST /places/orchestrate` - Places orchestration workflow
+- `GET /places/{place_id}/photos` - Get photo collection
 
-#### AI Services 🤖 (requires API key)
+#### AI Services 🤖
 - `POST /ai/orchestrate` - Intelligent workflow
-- `POST /ai/transcribe` - Audio transcription
-- `POST /ai/extract-concepts` - Concept extraction
-- `POST /ai/analyze-image` - Image analysis
+- `POST /ai/extract-restaurant-name` - Name extraction from text
+- `GET /ai/usage-stats` - Usage statistics
+- `GET /ai/health` - AI health check
 
 ---
 
@@ -109,8 +111,10 @@ Most endpoints are public (no auth required):
 - System, Entities, Curations, Places
 
 ### Protected Endpoints
-AI endpoints require API key:
+Protected endpoints accept OAuth Bearer token **or** API key:
 ```bash
+Authorization: Bearer <jwt_token>
+# or
 X-API-Key: your-api-key-here
 ```
 
@@ -142,13 +146,10 @@ POST /curations { "entity_id": "...", "curator": {...}, ... }
 ### Use Case 2: Audio Review Processing
 ```bash
 # 1. Record audio review
-# 2. Transcribe with AI
-POST /ai/transcribe { "audio_file": "...", "language": "pt-BR" }
+# 2. Process with AI orchestrator (transcription + concept extraction)
+POST /ai/orchestrate { "audio_file": "...", "entity_type": "restaurant", "workflow_type": "auto" }
 
-# 3. Extract concepts
-POST /ai/extract-concepts { "text": "...", "entity_type": "restaurant" }
-
-# 4. Create entity and curation
+# 3. Create entity and curation
 POST /entities { ... }
 POST /curations { ... }
 ```
@@ -170,7 +171,7 @@ POST /ai/orchestrate {
 ## 🧪 Testing
 
 ### Manual Testing
-Use interactive docs: https://wsmontes.pythonanywhere.com/api/v3/docs
+Use interactive docs: https://concierge-collector.onrender.com/api/v3/docs
 
 ### Automated Testing
 ```bash
@@ -190,14 +191,14 @@ See [API_QUICK_REFERENCE.md](./API_QUICK_REFERENCE.md) for complete examples.
 - **Database:** MongoDB Atlas
 - **Framework:** FastAPI (async)
 - **Tests:** 78 tests (79.5% passing, 100% functional coverage)
-- **Deployment:** PythonAnywhere
+- **Deployment:** Render.com
 
 ---
 
 ## 🔗 Links
 
-- **Interactive Docs:** https://wsmontes.pythonanywhere.com/api/v3/docs
-- **Health Check:** https://wsmontes.pythonanywhere.com/api/v3/health
+- **Interactive Docs:** https://concierge-collector.onrender.com/api/v3/docs
+- **Health Check:** https://concierge-collector.onrender.com/api/v3/health
 - **GitHub:** wsmontes/Concierge-Collector (branch: V3)
 - **Backend README:** [../concierge-api-v3/README.md](../concierge-api-v3/README.md)
 

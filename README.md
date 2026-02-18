@@ -1,124 +1,104 @@
-# 🏨 Concierge Collector
+<!--
+Purpose: Provide the operational overview of Concierge Collector and act as the single entry point for setup, execution, and active documentation.
+Main responsibilities: Describe current architecture, minimum local run flow, and point to official active guides.
+Dependencies: index.html, scripts/, styles/, concierge-api-v3/, docs/README.md, docs/API/README.md, setup_local.sh.
+-->
 
-**Professional restaurant curation platform** for hospitality professionals to collect, organize, and share dining recommendations.
+# Concierge Collector
 
----
+Restaurant curation platform with a web frontend and FastAPI V3 backend, including semantic search, Places integration, and AI services.
 
-## 🚀 Quick Start
+## Current status
 
-### Frontend (Static Site)
+- Static frontend at repository root ([index.html](index.html)).
+- Main backend in [concierge-api-v3](concierge-api-v3).
+- Production API URL: `https://concierge-collector.onrender.com/api/v3`.
+- Default local API URL: `http://localhost:8000/api/v3`.
+
+## Local quick start
+
+### 1) Backend setup
+
 ```bash
-# Open index.html directly in browser or serve with:
-python -m http.server 8000
-# Access: http://localhost:8000
+./setup_local.sh
 ```
 
-### Backend API
+Or manually:
+
 ```bash
 cd concierge-api-v3
-python3.12 -m venv venv
+cp .env.example .env
+python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
-uvicorn main:app --reload --port 8080
+./run_local.sh
 ```
 
----
+### 2) Start frontend
 
-## 📁 Project Structure
+Open [index.html](index.html) using VS Code Live Server, or run:
 
+```bash
+python3 -m http.server 5500
 ```
+
+Expected local frontend: `http://127.0.0.1:5500`  
+Expected local API: `http://localhost:8000/api/v3`
+
+## Project structure
+
+```text
 Concierge-Collector/
-├── index.html              # Main frontend application
-├── scripts/                # Frontend JavaScript modules
-│   ├── modules/           # Core modules (recording, concepts, etc)
-│   ├── services/          # API & sync services
-│   ├── ui/                # UI components
-│   └── utils/             # Utilities
-├── styles/                # CSS stylesheets
-├── concierge-api-v3/      # Backend FastAPI service
-│   ├── app/              # API routes & services
-│   ├── tests/            # Backend tests
-│   └── requirements.txt  # Python dependencies
-└── docs/                  # Documentation
-    ├── api/              # API specs & OpenAPI
-    ├── development/      # Dev guides & setup
-    └── deployment/       # Deployment & troubleshooting
+├── index.html              # Frontend entry point
+├── scripts/                # JS modules (core, services, UI, utilities)
+├── styles/                 # Frontend styles
+├── concierge-api-v3/       # FastAPI V3 backend
+│   ├── app/                # Routes, models, services, core
+│   ├── tests/              # Backend tests
+│   └── requirements.txt
+├── docs/                   # Active official docs + historical docs
+└── data/                   # Support data and exports
 ```
 
----
+## Main environment variables
 
-## 🔧 Configuration
+Configure [concierge-api-v3/.env.example](concierge-api-v3/.env.example) as `.env`:
 
-### Environment Variables
-Copy `.env.example` to `.env` and configure:
+- `MONGODB_URL`
+- `MONGODB_DB_NAME`
+- `API_SECRET_KEY`
+- `OPENAI_API_KEY` (optional, AI features)
+- `GOOGLE_PLACES_API_KEY` (optional, Places)
+- `GOOGLE_OAUTH_CLIENT_ID` and `GOOGLE_OAUTH_CLIENT_SECRET` (optional, OAuth)
 
-**Backend API:**
-- `MONGODB_URL` - MongoDB connection string
-- `API_SECRET_KEY` - JWT secret
-- `OPENAI_API_KEY` - OpenAI API key
-- `GOOGLE_PLACES_API_KEY` - Google Places API key
+## Active documentation
 
-**OAuth (optional):**
-- `GOOGLE_OAUTH_CLIENT_ID`
-- `GOOGLE_OAUTH_CLIENT_SECRET`
+- Master index: [docs/README.md](docs/README.md)
+- API: [docs/API/README.md](docs/API/README.md)
+- Local development: [docs/LOCAL_DEVELOPMENT.md](docs/LOCAL_DEVELOPMENT.md)
+- Deployment: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
+- OAuth: [docs/OAUTH_SETUP_GUIDE.md](docs/OAUTH_SETUP_GUIDE.md)
+- Environment detection: [docs/ENVIRONMENT_DETECTION.md](docs/ENVIRONMENT_DETECTION.md)
 
-**Deployment:**
-- `RENDER_API_KEY` - Render.com API key (for monitoring)
+## Testing
 
----
+Backend:
 
-## 📚 Documentation
-
-- **[API Documentation](docs/api/README.md)** - REST API specs & OpenAPI schema
-- **[Development Guide](docs/development/)** - Setup, OAuth, security
-- **[Deployment Guide](docs/deployment/)** - Production setup & troubleshooting
-- **[Render Deployment Manager](docs/RENDER_DEPLOYMENT_MANAGER_GUIDE.md)** - Monitor deployments
-
----
-
-## 🧪 Testing
-
-### Backend Tests
 ```bash
 cd concierge-api-v3
 source venv/bin/activate
-PYTHONPATH=. pytest tests/ -v
+pytest tests/ -v
 ```
 
----
+Official testing guide: [docs/testing/COLLECTOR_V3_TEST_GUIDE.md](docs/testing/COLLECTOR_V3_TEST_GUIDE.md)
 
-## 🚢 Deployment
+## Production operation
 
-**Frontend:** Static site on Render.com  
-**Backend:** FastAPI service on Render.com  
-**Database:** MongoDB Atlas
+- API: `https://concierge-collector.onrender.com/api/v3`
+- Swagger: `https://concierge-collector.onrender.com/api/v3/docs`
+- Health: `https://concierge-collector.onrender.com/api/v3/health`
 
-Auto-deploy configured from `Front-End-V3` branch.
+## Notes
 
----
-
-## 🛠️ Tech Stack
-
-**Frontend:**
-- Vanilla JavaScript (ES6+)
-- Tailwind CSS
-- IndexedDB (local storage)
-
-**Backend:**
-- Python 3.12
-- FastAPI
-- MongoDB (Motor async driver)
-- OpenAI GPT-4
-- Google Places API
-
----
-
-## 📄 License
-
-Proprietary - All rights reserved
-
----
-
-## 🤝 Contributing
-
-This is a private project. For access or questions, contact the maintainer.
+- This README is operational and links only to active documentation.
+- Historical/superseded documents remain in [docs/archive](docs/archive) and [archive](archive).

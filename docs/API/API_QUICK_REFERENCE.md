@@ -1,5 +1,7 @@
 # Concierge API V3 - Quick Reference
 
+> **Status:** Ativo (Parcial) — saneamento crítico de URLs executado em 2026-02-18.
+
 **Production**: `https://concierge-collector.onrender.com/api/v3`  
 **Local**: `http://localhost:8000/api/v3`
 
@@ -27,7 +29,7 @@ X-API-Key: <api_secret_key>        # Bots/scripts
 |--------|----------|------|-------------|
 | POST | `/entities` | ✅ | Create entity |
 | GET | `/entities/{id}` | ❌ | Get entity |
-| PATCH | `/entities/{id}` | ✅ | Update entity (requires ETag) |
+| PATCH | `/entities/{id}` | ✅ | Update entity (requires `If-Match` with current version) |
 | DELETE | `/entities/{id}` | ✅ | Delete entity |
 | GET | `/entities?type=X&name=Y` | ❌ | Search entities |
 
@@ -36,16 +38,20 @@ X-API-Key: <api_secret_key>        # Bots/scripts
 |--------|----------|------|-------------|
 | POST | `/curations` | ✅ | Create curation |
 | GET | `/curations/{id}` | ❌ | Get curation |
-| PATCH | `/curations/{id}` | ✅ | Update curation (requires ETag) |
+| PATCH | `/curations/{id}` | ✅ | Update curation (requires `If-Match` with current version) |
 | DELETE | `/curations/{id}` | ✅ | Delete curation |
 | GET | `/entities/{id}/curations` | ❌ | Get entity curations |
 | GET | `/curations/search?...` | ❌ | Search curations |
+| POST | `/curations/semantic-search` | ❌ | Semantic search by embeddings |
+| POST | `/curations/hybrid-search` | ❌ | Hybrid search (entity + semantic) |
 
 ### Places (Google Places API Proxy)
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
 | GET | `/places/nearby` | ❌ | Search nearby places |
 | GET | `/places/details/{place_id}` | ❌ | Get place details |
+| POST | `/places/orchestrate` | ❌ | Places orchestration workflow |
+| GET | `/places/{place_id}/photos` | ❌ | Get place photos |
 | GET | `/places/health` | ❌ | Places API health check |
 
 ### Concepts (Dynamic Categories)
@@ -58,7 +64,8 @@ X-API-Key: <api_secret_key>        # Bots/scripts
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
 | POST | `/ai/orchestrate` | ✅ | Intelligent AI workflow (all-in-one) |
-| GET | `/ai/usage-stats` | ✅ | AI usage statistics |
+| POST | `/ai/extract-restaurant-name` | ✅ | Extract restaurant name from text |
+| GET | `/ai/usage-stats` | ❌ | AI usage statistics |
 | GET | `/ai/health` | ❌ | AI services health check |
 
 > **Note:** AI services use a single `/orchestrate` endpoint with different `workflow_type` values:
@@ -70,13 +77,13 @@ X-API-Key: <api_secret_key>        # Bots/scripts
 ### Advanced
 | Method | Endpoint | Auth | Description |
 |--------|----------|------|-------------|
-| POST | `/query` | ❌ | Flexible query DSL |
+| n/a | `/query` | n/a | Endpoint not active in current API |
 
 ## Common Headers
 ```
 Content-Type: application/json
-If-Match: "etag-value"  // Required for updates
-X-API-Key: your-key     // Required for AI endpoints
+If-Match: "<current_version>"  // Required for PATCH updates
+Authorization: Bearer <jwt_token> or X-API-Key: <api_secret_key>
 ```
 
 ## 📍 Places API Examples
@@ -96,7 +103,8 @@ GET /places/details/ChIJ...
 ### Orchestrate (Smart Workflow)
 ```bash
 POST /ai/orchestrate
-X-API-Key: your-key
+Authorization: Bearer <jwt_token>
+# or: X-API-Key: your-key
 
 {
   "audio_file": "base64_encoded_audio...",
@@ -119,36 +127,14 @@ X-API-Key: your-key
 }
 ```
 
-### Transcribe Audio
+### Extract Restaurant Name
 ```bash
-POST /ai/transcribe
-X-API-Key: your-key
+POST /ai/extract-restaurant-name
+Authorization: Bearer <jwt_token>
+# or: X-API-Key: your-key
 
 {
-  "audio_file": "base64_encoded_audio...",
-  "language": "pt-BR"
-}
-```
-
-### Extract Concepts
-```bash
-POST /ai/extract-concepts
-X-API-Key: your-key
-
-{
-  "text": "Had amazing pasta at Mario's Italian Restaurant...",
-  "entity_type": "restaurant"
-}
-```
-
-### Analyze Image
-```bash
-POST /ai/analyze-image
-X-API-Key: your-key
-
-{
-  "image_file": "base64_encoded_image...",
-  "prompt": "Describe this restaurant menu"
+  "text": "Jantei ontem no A Casa do Porco e foi excelente"
 }
 ```
 
@@ -208,12 +194,12 @@ X-API-Key: your-key
 - `204` - No Content (DELETE)
 - `400` - Bad Request
 - `404` - Not Found
-- `409` - Conflict (ETag mismatch)
+- `409` - Conflict (version mismatch)
 - `500` - Server Error
 
 ## JavaScript Quick Start
 ```javascript
-const API_BASE = 'https://wsmontes.pythonanywhere.com/api/v3';
+const API_BASE = 'https://concierge-collector.onrender.com/api/v3';
 
 // Create entity
 const response = await fetch(`${API_BASE}/entities`, {
@@ -228,14 +214,14 @@ const response = await fetch(`${API_BASE}/entities`, {
 });
 
 const entity = await response.json();
-const etag = response.headers.get('ETag');
+const currentVersion = entity.version;
 
-// Update entity (requires ETag)
+// Update entity (requires current version)
 await fetch(`${API_BASE}/entities/my_restaurant`, {
   method: 'PATCH',
   headers: { 
     'Content-Type': 'application/json',
-    'If-Match': etag 
+    'If-Match': String(currentVersion)
   },
   body: JSON.stringify({
     metadata: { rating: 4.7, updated: true }
@@ -247,7 +233,7 @@ await fetch(`${API_BASE}/entities/my_restaurant`, {
 ```python
 import requests
 
-API_BASE = 'https://wsmontes.pythonanywhere.com/api/v3'
+API_BASE = 'https://concierge-collector.onrender.com/api/v3'
 
 # Create entity
 response = requests.post(f'{API_BASE}/entities', json={
@@ -258,11 +244,11 @@ response = requests.post(f'{API_BASE}/entities', json={
 })
 
 entity = response.json()
-etag = response.headers.get('ETag')
+current_version = entity.get('version')
 
 # Update entity
 requests.patch(f'{API_BASE}/entities/my_restaurant', 
-    headers={'If-Match': etag},
+  headers={'If-Match': str(current_version)},
     json={'metadata': {'rating': 4.7, 'updated': True}}
 )
 ```

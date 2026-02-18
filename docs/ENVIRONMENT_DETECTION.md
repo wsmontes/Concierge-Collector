@@ -1,5 +1,7 @@
 # 🔄 Automatic Environment Detection
 
+> **Status:** Ativo — comportamento documentado conforme runtime atual em 2026-02-18.
+
 This document explains how the Concierge Collector automatically adapts to different environments without code changes.
 
 ## 🎯 Design Philosophy
@@ -34,8 +36,9 @@ def model_post_init(self, __context):
             object.__setattr__(self, 'google_oauth_redirect_uri', 
                              "https://concierge-collector.onrender.com/api/v3/auth/callback")
         elif is_pythonanywhere:
+            # Legacy environment fallback (deprecated)
             object.__setattr__(self, 'google_oauth_redirect_uri', 
-                             "https://wsmontes.pythonanywhere.com/api/v3/auth/callback")
+                             "https://concierge-collector.onrender.com/api/v3/auth/callback")
         else:
             object.__setattr__(self, 'google_oauth_redirect_uri',
                              "http://localhost:8000/api/v3/auth/callback")
@@ -44,7 +47,7 @@ def model_post_init(self, __context):
 **Environment Variables Used:**
 - `RENDER_SERVICE_NAME` - Set by Render.com automatically
 - `HOSTNAME` - System hostname
-- File existence checks (e.g., `/home/wsmontes` for PythonAnywhere)
+- File existence checks (legacy compatibility, e.g., `/home/wsmontes` for PythonAnywhere)
 
 **What Gets Auto-Configured:**
 - OAuth redirect URIs
@@ -56,7 +59,7 @@ def model_post_init(self, __context):
 
 ### Frontend Detection (JavaScript)
 
-Location: `scripts/config.js`
+Location: `scripts/core/config.js`
 
 ```javascript
 // Detect environment
@@ -78,6 +81,11 @@ const getApiBaseUrl = () => {
     }
 };
 ```
+
+**Operational Note (important):**
+- Render host (`*.onrender.com`) usa API Render
+- Localhost usa API local
+- GitHub Pages e host PythonAnywhere ainda seguem fallback legado para PythonAnywhere no código atual
 
 **Detection Methods:**
 - `window.location.hostname` - Current page URL
@@ -112,6 +120,14 @@ const getApiBaseUrl = () => {
 | OAuth Redirect | `https://concierge-collector.onrender.com/api/v3/auth/callback` | Backend auto-detect |
 | CORS Origins | Production domains | Render env vars |
 | MongoDB | MongoDB Atlas | Render env vars |
+
+### GitHub Pages / Legacy Host Behavior
+
+| Component | Value | Source |
+|-----------|-------|--------|
+| Frontend URL | `https://wsmontes.github.io/...` | GitHub Pages |
+| API URL (current code path) | `https://wsmontes.pythonanywhere.com/api/v3` | `isGitHubPages || isPythonAnywhere` |
+| Classification | Legacy compatibility path | `scripts/core/config.js` |
 
 ---
 
@@ -169,7 +185,8 @@ The frontend automatically detects its environment from `window.location.hostnam
 **Check:** 
 1. Is backend running? Visit `http://localhost:8000/api/v3/health`
 2. Browser console for CORS errors
-3. `config.js` detection logic - log `window.location.hostname`
+3. `scripts/core/config.js` detection logic - log `window.location.hostname`
+4. If running on GitHub Pages, current code path points to PythonAnywhere legacy URL
 
 ### OAuth redirects to wrong URL
 **Check:**
@@ -188,4 +205,4 @@ The frontend automatically detects its environment from `window.location.hostnam
 
 - [LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md) - Local setup guide
 - [DEPLOYMENT.md](DEPLOYMENT.md) - Production deployment
-- [docs/OAUTH_SETUP_GUIDE.md](docs/OAUTH_SETUP_GUIDE.md) - OAuth configuration
+- [OAUTH_SETUP_GUIDE.md](OAUTH_SETUP_GUIDE.md) - OAuth configuration

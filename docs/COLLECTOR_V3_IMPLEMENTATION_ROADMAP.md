@@ -767,7 +767,7 @@ All previous phases
 ## 🔗 Related Documentation
 
 - [Collector V3 Architecture](./COLLECTOR_V3_ARCHITECTURE.md)
-- [API V3 Integration Spec](./API_V3_INTEGRATION_SPEC.md)
+- [API V3 Integration Spec (Histórico)](./archive/api-planning/API_V3_INTEGRATION_SPEC.md)
 - [API V3 README](../concierge-api-v3/README.md)
 - [Project Status](../PROJECT_STATUS.md)
 
