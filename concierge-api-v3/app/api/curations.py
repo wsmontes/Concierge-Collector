@@ -347,8 +347,8 @@ def semantic_search_curations(
     
     query_embed_time = time.time() - query_embed_start
     
-    # 2. Fetch all curations with embeddings (only restaurants for now)
-    query_filter = {"embeddings": {"$exists": True, "$ne": []}}
+    # 2. Fetch candidate curations with embeddings
+    # Prefer MongoDB native vector search when an index is configured, fallback to full scan.
     projection = {
         "entity_id": 1,
         "curation_id": 1,
@@ -357,7 +357,32 @@ def semantic_search_curations(
         "notes": 1,
         "embeddings": 1,
     }
-    curations = list(db.curations.find(query_filter, projection))
+
+    vector_index_name = os.getenv("MONGODB_CURATIONS_VECTOR_INDEX", "").strip()
+    candidate_limit = min(max(request.limit * 20, 200), 2000)
+    curations = []
+
+    if vector_index_name:
+        try:
+            vector_pipeline = [
+                {
+                    "$vectorSearch": {
+                        "index": vector_index_name,
+                        "path": "embeddings.vector",
+                        "queryVector": query_vector.tolist(),
+                        "numCandidates": min(max(candidate_limit * 5, 400), 5000),
+                        "limit": candidate_limit,
+                    }
+                },
+                {"$project": projection},
+            ]
+            curations = list(db.curations.aggregate(vector_pipeline))
+        except Exception:
+            curations = []
+
+    if not curations:
+        query_filter = {"embeddings": {"$exists": True, "$ne": []}}
+        curations = list(db.curations.find(query_filter, projection))
     
     # 3. Calculate similarities for each curation
     results = []
