@@ -402,70 +402,60 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
     // EXPORT OPERATIONS
     // ========================================
 
-    /**
-     * Export V3 data to file
-     * @param {Object} options - Export options
-     * @returns {Promise<void>}
-     */
     async exportV3Data(options = {}) {
         try {
             this.log.debug('🔄 Starting V3 data export...');
-
             SafetyUtils.showLoading('📤 Preparing export...');
 
             const format = options.format || await this.promptExportFormat();
             if (!format) {
                 SafetyUtils.hideLoading();
-                return; // User cancelled
+                return;
             }
 
-            // Collect export data (server snapshot only)
             SafetyUtils.showLoading('📊 Collecting entities and curations...');
-            const { entities, curations, source } = await this.collectExportData(options);
-
+            const { entities, curations, source, warnings } = await this.collectExportData(options);
+            const exportCurations = this.sanitizeCurationsForExport(curations);
             const authenticatedUserEmail = this.getAuthenticatedUserEmail();
 
-            // Generate export data based on format
             let exportData;
             let filename;
             let mimeType;
 
             switch (format) {
                 case 'v3_json':
-                    exportData = this.generateV3JSON(entities, curations);
+                    exportData = this.generateV3JSON(entities, exportCurations);
                     filename = `concierge_v3_${new Date().toISOString().split('T')[0]}.json`;
                     mimeType = 'application/json';
                     break;
-
                 case 'json_package':
-                    exportData = this.generateJSONPackage(entities, curations, {
+                    exportData = this.generateJSONPackage(entities, exportCurations, {
                         allCurators: true,
                         authenticatedUserEmail,
-                        source
+                        source,
+                        warnings
                     });
                     filename = `collector_package_${new Date().toISOString().split('T')[0]}.json`;
                     mimeType = 'application/json';
                     break;
-
                 case 'csv':
-                    exportData = this.generateCSV(entities, curations);
+                    exportData = this.generateCSV(entities, exportCurations);
                     filename = `collector_entities_curations_${new Date().toISOString().split('T')[0]}.csv`;
                     mimeType = 'text/csv';
                     break;
-
                 default:
                     throw new Error(`Unsupported export format: ${format}`);
             }
 
             SafetyUtils.showLoading('💾 Generating file...');
-
-            // Create and download file
             this.downloadFile(exportData, filename, mimeType);
-
             SafetyUtils.hideLoading();
+
             const sourceLabel = source === 'server' ? 'server snapshot' : source;
             SafetyUtils.showNotification(`✅ Export completed: ${filename} (${sourceLabel})`, 'success');
-
+            if (warnings?.length) {
+                SafetyUtils.showNotification(`⚠️ Export completed with warnings: ${warnings.join(' | ')}`, 'warning');
+            }
         } catch (error) {
             SafetyUtils.hideLoading();
             this.log.error('❌ Export failed:', error);
@@ -473,43 +463,36 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
         }
     }
 
-    /**
-     * Collect data for export using server snapshot only
-     * @param {Object} options - Export options
-     * @returns {Promise<{entities: Array, curations: Array, source: string}>}
-     */
-                const { entities, curations, source, warnings } = await this.collectExportData(options);
-                const exportCurations = this.sanitizeCurationsForExport(curations);
+    async collectExportData(options = {}) {
         const preferServer = options.preferServer !== false;
-
         if (!preferServer) {
             throw new Error('Server export is required. Local export fallback is disabled by design.');
         }
-
-                        exportData = this.generateV3JSON(entities, exportCurations);
+        if (!navigator.onLine) {
             throw new Error('Cannot export while offline. Server snapshot is required.');
         }
-
         if (!window.ApiService) {
             throw new Error('ApiService is unavailable. Cannot export server snapshot.');
-                        exportData = this.generateJSONPackage(entities, exportCurations, {
+        }
 
-        const entities = await this.fetchAllEntitiesFromApi();
-        const curations = await this.fetchAllCurationsFromApi();
+        const entitiesResult = await this.fetchAllEntitiesFromApi();
+        const curationsResult = await this.fetchAllCurationsFromApi();
 
-        return { entities, curations, source: 'server' };
+        const warnings = [];
+        if (entitiesResult.skippedOffsets.length > 0) warnings.push(`entities skipped=${entitiesResult.skippedOffsets.length}`);
+        if (curationsResult.skippedOffsets.length > 0) warnings.push(`curations skipped=${curationsResult.skippedOffsets.length}`);
+
+        return {
+            entities: entitiesResult.items,
+            curations: curationsResult.items,
+            source: 'server',
+            warnings
+        };
     }
 
-    /**
-     * Get authenticated Google user email when available
-     * @returns {string|null}
-                        exportData = this.generateCSV(entities, exportCurations);
     getAuthenticatedUserEmail() {
         try {
-            if (!window.AuthService || typeof window.AuthService.getCurrentUser !== 'function') {
-                return null;
-            }
-
+            if (!window.AuthService || typeof window.AuthService.getCurrentUser !== 'function') return null;
             const user = window.AuthService.getCurrentUser();
             return user?.email || null;
         } catch (error) {
@@ -518,76 +501,89 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
         }
     }
 
-    /**
-     * Fetch all entities from API using pagination
-     * @returns {Promise<Array>}
-     */
     async fetchAllEntitiesFromApi() {
-        const limit = 200;
-        let offset = 0;
-        let total = null;
-        const entities = [];
-
-        while (total === null || offset < total) {
-            const response = await window.ApiService.listEntities({ limit, offset });
-            const items = Array.isArray(response?.items)
-                ? response.items
-                : (Array.isArray(response) ? response : []);
-
-            const batchTotal = Number.isFinite(response?.total) ? response.total : null;
-            if (batchTotal !== null) {
-                total = batchTotal;
-            }
-
-            entities.push(...items);
-
-            if (items.length < limit) {
-                break;
-            }
-
-            offset += items.length;
-        }
-
-        return entities;
+        return await this.fetchPaginatedWithRecovery(
+            async ({ limit, offset }) => await window.ApiService.listEntities({ limit, offset }),
+            'entities'
+        );
     }
 
-    /**
-     * Fetch all curations from API using pagination
-     * @returns {Promise<Array>}
-     */
     async fetchAllCurationsFromApi() {
+        return await this.fetchPaginatedWithRecovery(
+            async ({ limit, offset }) => await window.ApiService.listCurations({ limit, offset }),
+            'curations'
+        );
+    }
+
+    async fetchPaginatedWithRecovery(fetchPage, label) {
         const limit = 200;
         let offset = 0;
         let total = null;
-        const curations = [];
+        const items = [];
+        const skippedOffsets = [];
 
         while (total === null || offset < total) {
-            const response = await window.ApiService.listCurations({ limit, offset });
-            const items = Array.isArray(response?.items)
-                ? response.items
-                : (Array.isArray(response) ? response : []);
+            try {
+                const response = await fetchPage({ limit, offset });
+                const batchItems = this.extractPaginatedItems(response);
+                const batchTotal = Number.isFinite(response?.total) ? response.total : null;
+                if (batchTotal !== null) total = batchTotal;
+                items.push(...batchItems);
 
-            const batchTotal = Number.isFinite(response?.total) ? response.total : null;
-            if (batchTotal !== null) {
-                total = batchTotal;
+                if (batchItems.length < limit && (total === null || (offset + batchItems.length) >= total)) {
+                    break;
+                }
+            } catch (error) {
+                this.log.warn(`⚠️ ${label} batch failed at offset=${offset}, limit=${limit}. Attempting per-record recovery.`, error?.message || error);
+                const recoveryCount = total !== null ? Math.max(0, Math.min(limit, total - offset)) : limit;
+                const recoveredItems = await this.recoverFailedBatch(fetchPage, offset, recoveryCount, skippedOffsets, label);
+                items.push(...recoveredItems);
             }
-
-            curations.push(...items);
-
-            if (items.length < limit) {
-                break;
-            }
-
-            offset += items.length;
+            offset += limit;
         }
 
-        return curations;
+        if (skippedOffsets.length > 0) {
+            this.log.warn(`⚠️ ${label} export skipped ${skippedOffsets.length} invalid records`, skippedOffsets.slice(0, 20));
+        }
+
+        return { items, skippedOffsets };
     }
 
-    /**
-     * Prompt user for export format
-     * @returns {Promise<string|null>} - Selected format or null if cancelled
-     */
+    async recoverFailedBatch(fetchPage, batchOffset, count, skippedOffsets, label) {
+        const recovered = [];
+        for (let index = 0; index < count; index++) {
+            const singleOffset = batchOffset + index;
+            try {
+                const singleResponse = await fetchPage({ limit: 1, offset: singleOffset });
+                const singleItems = this.extractPaginatedItems(singleResponse);
+                if (singleItems.length > 0) recovered.push(...singleItems);
+            } catch (singleError) {
+                skippedOffsets.push(singleOffset);
+                this.log.warn(`Skipping invalid ${label} record at offset=${singleOffset}`, singleError?.message || singleError);
+            }
+        }
+        return recovered;
+    }
+
+    extractPaginatedItems(response) {
+        if (Array.isArray(response?.items)) return response.items;
+        if (Array.isArray(response)) return response;
+        return [];
+    }
+
+    sanitizeCurationsForExport(curations = []) {
+        if (!Array.isArray(curations)) return [];
+        return curations.map(curation => this.sanitizeSingleCurationForExport(curation));
+    }
+
+    sanitizeSingleCurationForExport(curation = {}) {
+        if (!curation || typeof curation !== 'object') return {};
+        const sanitized = { ...curation };
+        delete sanitized.embeddings;
+        delete sanitized.embeddings_metadata;
+        return sanitized;
+    }
+
     async promptExportFormat() {
         return new Promise((resolve) => {
             const modal = document.createElement('div');
@@ -596,52 +592,32 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
                 <div class="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
                     <h3 class="text-xl font-semibold mb-4">📤 Export Format</h3>
                     <p class="text-gray-600 mb-4">Choose the export format:</p>
-                    
                     <div class="space-y-3">
                         <label class="flex items-center space-x-3 cursor-pointer">
                             <input type="radio" name="format" value="v3_json" class="text-blue-500" checked>
-                            <div>
-                                <div class="font-medium">V3 JSON Format</div>
-                                <div class="text-sm text-gray-500">Full V3 entities and curations</div>
-                            </div>
+                            <div><div class="font-medium">V3 JSON Format</div><div class="text-sm text-gray-500">Full V3 entities and curations</div></div>
                         </label>
-                        
                         <label class="flex items-center space-x-3 cursor-pointer">
                             <input type="radio" name="format" value="json_package" class="text-blue-500">
-                            <div>
-                                <div class="font-medium">JSON Package</div>
-                                <div class="text-sm text-gray-500">entities.json + curations.json in one package</div>
-                            </div>
+                            <div><div class="font-medium">JSON Package</div><div class="text-sm text-gray-500">entities.json + curations.json in one package</div></div>
                         </label>
-                        
                         <label class="flex items-center space-x-3 cursor-pointer">
                             <input type="radio" name="format" value="csv" class="text-blue-500">
-                            <div>
-                                <div class="font-medium">CSV Format</div>
-                                <div class="text-sm text-gray-500">Spreadsheet compatible</div>
-                            </div>
+                            <div><div class="font-medium">CSV Format</div><div class="text-sm text-gray-500">Spreadsheet compatible</div></div>
                         </label>
                     </div>
-                    
                     <div class="flex space-x-3 mt-6">
-                        <button id="export-confirm" class="flex-1 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">
-                            Export
-                        </button>
-                        <button id="export-cancel" class="flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-400">
-                            Cancel
-                        </button>
+                        <button id="export-confirm" class="flex-1 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Export</button>
+                        <button id="export-cancel" class="flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-400">Cancel</button>
                     </div>
                 </div>
             `;
-
             document.body.appendChild(modal);
-
             document.getElementById('export-confirm').onclick = () => {
                 const selectedFormat = modal.querySelector('input[name="format"]:checked')?.value;
                 document.body.removeChild(modal);
                 resolve(selectedFormat);
             };
-
             document.getElementById('export-cancel').onclick = () => {
                 document.body.removeChild(modal);
                 resolve(null);
@@ -649,39 +625,23 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
         });
     }
 
-    /**
-     * Generate V3 JSON export format
-     * @param {Array} entities - Entities to export
-     * @param {Array} curations - Curations to export
-     * @returns {string} - JSON string
-     */
     generateV3JSON(entities, curations) {
-        const exportData = {
+        return JSON.stringify({
             format: 'v3',
             version: '3.0',
             exportedAt: new Date().toISOString(),
-            entities: entities,
-            curations: curations,
+            entities,
+            curations,
             stats: {
                 entityCount: entities.length,
                 curationCount: curations.length
             }
-        };
-
-        return JSON.stringify(exportData, null, 2);
+        }, null, 2);
     }
 
-    /**
-     * Generate JSON package export format
-     * @param {Array} entities - Entities to export
-     * @param {Array} curations - Curations to export
-     * @param {Object} context - Export context
-     * @returns {string} - JSON package string
-     */
     generateJSONPackage(entities, curations, context = {}) {
         const now = new Date().toISOString();
-
-        const packageData = {
+        return JSON.stringify({
             format: 'collector_json_package',
             version: '1.0',
             exportedAt: now,
@@ -691,150 +651,71 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
                 curationCount: curations.length,
                 scope: context.allCurators ? 'all_curators' : 'filtered',
                 authenticatedUserEmail: context.authenticatedUserEmail || null,
-                source: context.source || 'unknown'
+                source: context.source || 'unknown',
+                warnings: Array.isArray(context.warnings) ? context.warnings : []
             },
             files: {
                 'entities.json': entities,
                 'curations.json': curations
             }
-        };
-
-        return JSON.stringify(packageData, null, 2);
+        }, null, 2);
     }
 
-    /**
-     * Generate CSV export format
-     * @param {Array} entities - Entities to export
-     * @param {Array} curations - Curations to export
-     * @returns {string} - CSV string
-     */
     generateCSV(entities, curations) {
-        const categoryColumns = [
-            'cuisine',
-            'menu',
-            'food_style',
-            'drinks',
-            const { entities, curations, source, warnings } = await this.collectExportData(options);
-            'mood',
-            'crowd',
-            'suitable_for',
-            'special_features',
-            'covid_specials',
-            'price_and_payment',
-            'price_range'
-        ];
-
+        const categoryColumns = ['cuisine', 'menu', 'food_style', 'drinks', 'setting', 'mood', 'crowd', 'suitable_for', 'special_features', 'covid_specials', 'price_and_payment', 'price_range'];
         const separator = ' || ';
 
         const headers = [
-            'entity_id',
-            'entity_name',
-            'entity_type',
-            'entity_status',
-            'entity_created_by',
-            'entity_updated_by',
-            'entity_created_at',
-                        source,
-                        warnings
-            'entity_city',
-            'entity_country',
-            'entity_latitude',
-            'entity_longitude',
-            'curation_id',
-            'curation_curator_id',
-            'curation_status',
-            'curation_created_at',
-            'curation_updated_at',
-            'curation_restaurant_name',
-            'curation_transcript',
-            'curation_notes_public',
-            'curation_notes_private',
+            'entity_id', 'entity_name', 'entity_type', 'entity_status', 'entity_created_by', 'entity_updated_by',
+            'entity_created_at', 'entity_updated_at', 'entity_city', 'entity_country', 'entity_latitude', 'entity_longitude',
+            'curation_id', 'curation_curator_id', 'curation_status', 'curation_created_at', 'curation_updated_at',
+            'curation_restaurant_name', 'curation_transcript', 'curation_notes_public', 'curation_notes_private',
             ...categoryColumns
         ];
-
         const rows = [headers.map(value => this.toCSVCell(value)).join(',')];
 
         const curationsByEntity = {};
-        curations.forEach(curation => {
+        curations.forEach((curation) => {
             const entityId = curation?.entity_id;
-            if (!entityId) {
-                return;
-
-            if (warnings?.length) {
-                SafetyUtils.showNotification(`⚠️ Export completed with warnings: ${warnings.join(' | ')}`, 'warning');
-            }
-            }
-
-            if (!curationsByEntity[entityId]) {
-                curationsByEntity[entityId] = [];
-            }
-
+            if (!entityId) return;
+            if (!curationsByEntity[entityId]) curationsByEntity[entityId] = [];
             curationsByEntity[entityId].push(curation);
         });
 
-        entities.forEach(entity => {
+        entities.forEach((entity) => {
             const entityCurations = curationsByEntity[entity.entity_id] || [];
             if (entityCurations.length === 0) {
                 const emptyCategories = categoryColumns.reduce((acc, category) => {
                     acc[category] = '';
                     return acc;
                 }, {});
-
                 rows.push(this.buildCSVRow(entity, null, emptyCategories, categoryColumns));
                 return;
             }
 
-            entityCurations.forEach(curation => {
+            entityCurations.forEach((curation) => {
                 const categoryConcepts = this.extractCategoryConcepts(curation, categoryColumns, separator);
                 rows.push(this.buildCSVRow(entity, curation, categoryConcepts, categoryColumns));
             });
         });
 
-        const entitiesResult = await this.fetchAllEntitiesFromApi();
-        const curationsResult = await this.fetchAllCurationsFromApi();
+        return rows.join('\n');
+    }
 
-        const warnings = [];
-        if (entitiesResult.skippedOffsets.length > 0) {
-            warnings.push(`entities skipped=${entitiesResult.skippedOffsets.length}`);
-        }
-        if (curationsResult.skippedOffsets.length > 0) {
-            warnings.push(`curations skipped=${curationsResult.skippedOffsets.length}`);
-        }
-
-        return {
-            entities: entitiesResult.items,
-            curations: curationsResult.items,
-            source: 'server',
-            warnings
-        };
+    buildCSVRow(entity, curation, categoryConcepts, categoryColumns) {
         const entityData = entity?.data || {};
         const location = entityData.location || {};
 
         const values = [
-            entity?.entity_id || '',
-            entity?.name || '',
-            entity?.type || '',
-            entity?.status || '',
-            entity?.createdBy || '',
-            entity?.updatedBy || '',
-            this.toISODate(entity?.createdAt),
-            this.toISODate(entity?.updatedAt),
-            entityData.city || location.city || '',
-            entityData.country || location.country || '',
-            location.latitude ?? entityData.latitude ?? '',
-            location.longitude ?? entityData.longitude ?? '',
-            curation?.curation_id || '',
-            curation?.curator_id || '',
-            curation?.status || '',
-            this.toISODate(curation?.createdAt),
-            this.toISODate(curation?.updatedAt),
-            curation?.restaurant_name || '',
-            curation?.transcript || '',
-            curation?.notes?.public || '',
-            curation?.notes?.private || ''
+            entity?.entity_id || '', entity?.name || '', entity?.type || '', entity?.status || '', entity?.createdBy || '', entity?.updatedBy || '',
+            this.toISODate(entity?.createdAt), this.toISODate(entity?.updatedAt), entityData.city || location.city || '', entityData.country || location.country || '',
+            location.latitude ?? entityData.latitude ?? '', location.longitude ?? entityData.longitude ?? '',
+            curation?.curation_id || '', curation?.curator_id || '', curation?.status || '',
+            this.toISODate(curation?.createdAt), this.toISODate(curation?.updatedAt),
+            curation?.restaurant_name || '', curation?.transcript || '', curation?.notes?.public || '', curation?.notes?.private || ''
         ];
 
-        categoryColumns.forEach(category => {
+        categoryColumns.forEach((category) => {
             values.push(categoryConcepts[category] || '');
         });
 
@@ -848,55 +729,40 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
         }, {});
 
         const categoriesData = curation?.categories || {};
-        categoryColumns.forEach(category => {
+        categoryColumns.forEach((category) => {
             const rawValue = categoriesData[category];
             if (Array.isArray(rawValue)) {
-                rawValue.forEach(value => this.pushUniqueConcept(categories[category], value));
+                rawValue.forEach((value) => this.pushUniqueConcept(categories[category], value));
             } else if (typeof rawValue === 'string') {
                 this.pushUniqueConcept(categories[category], rawValue);
             }
         });
 
         const items = Array.isArray(curation?.items) ? curation.items : [];
-        items.forEach(item => {
+        items.forEach((item) => {
             const category = item?.metadata?.category;
-            if (!category || !categories[category]) {
-                return;
-            }
-
+            if (!category || !categories[category]) return;
             this.pushUniqueConcept(categories[category], item?.name);
         });
 
         const output = {};
-        categoryColumns.forEach(category => {
+        categoryColumns.forEach((category) => {
             output[category] = categories[category]
-                .map(value => String(value).replaceAll(separator, ' \\|| '))
+                .map(value => String(value).split(separator).join(' \\|| '))
                 .join(separator);
         });
-
         return output;
     }
 
     pushUniqueConcept(targetArray, value) {
-        if (value === null || value === undefined) {
-            return;
-        }
-
+        if (value === null || value === undefined) return;
         const normalized = String(value).trim();
-        if (!normalized) {
-            return;
-        }
-
-        if (!targetArray.includes(normalized)) {
-            targetArray.push(normalized);
-        }
+        if (!normalized) return;
+        if (!targetArray.includes(normalized)) targetArray.push(normalized);
     }
 
     toISODate(value) {
-        if (!value) {
-            return '';
-        }
-
+        if (!value) return '';
         const date = new Date(value);
         return Number.isNaN(date.getTime()) ? String(value) : date.toISOString();
     }
@@ -906,12 +772,6 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
         return `"${text.replace(/"/g, '""')}"`;
     }
 
-    /**
-     * Download file to user's device
-     * @param {string} content - File content
-     * @param {string} filename - File name
-     * @param {string} mimeType - MIME type
-     */
     downloadFile(content, filename, mimeType) {
         const blob = new Blob([content], { type: mimeType });
         const url = window.URL.createObjectURL(blob);
@@ -924,7 +784,6 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
-
         window.URL.revokeObjectURL(url);
     }
 
@@ -932,29 +791,17 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
     // UTILITY METHODS
     // ========================================
 
-    /**
-     * Get import/export statistics
-     * @returns {Promise<Object>} - Statistics
-     */
     async getStats() {
         try {
             const stats = await window.dataStore.getStats();
             const syncStatus = await window.SyncManager.getSyncStatus();
-
-            return {
-                ...stats,
-                sync: syncStatus
-            };
+            return { ...stats, sync: syncStatus };
         } catch (error) {
             this.log.error('❌ Failed to get stats:', error);
             return null;
         }
     }
-                warnings: Array.isArray(context.warnings) ? context.warnings : []
 
-    /**
-     * Clear all data (for testing/development)
-     */
     async clearAllData() {
         if (!confirm('⚠️ This will delete ALL local data. Are you sure?')) {
             return;
@@ -966,7 +813,6 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
             SafetyUtils.hideLoading();
             SafetyUtils.showNotification('✅ All data cleared', 'success');
 
-            // Refresh UI
             if (window.uiManager?.refreshCurrentView) {
                 window.uiManager.refreshCurrentView();
             }
