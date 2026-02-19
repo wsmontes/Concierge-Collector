@@ -419,26 +419,11 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
                 return; // User cancelled
             }
 
-            // Get current curator filter
-            const curator = await window.dataStore.getCurrentCurator();
-            if (!options.allCurators && !curator?.curator_id) {
-                throw new Error('No active curator selected for export');
-            }
+            // Collect export data (server snapshot only)
+            SafetyUtils.showLoading('📊 Collecting entities and curations...');
+            const { entities, curations, source } = await this.collectExportData(options);
 
-            const curatorFilter = options.allCurators ? {} : { createdBy: curator.curator_id };
-
-            // Get entities
-            SafetyUtils.showLoading('📊 Collecting entities...');
-            const entities = await window.dataStore.getEntities(curatorFilter);
-
-            // Get curations
-            SafetyUtils.showLoading('📋 Collecting curations...');
-            const curations = options.allCurators
-                ? await window.dataStore.getCurations({ excludeDeleted: true })
-                : await window.dataStore.getCurations({
-                    curatorId: curator.curator_id,
-                    excludeDeleted: true
-                });
+            const authenticatedUserEmail = this.getAuthenticatedUserEmail();
 
             // Generate export data based on format
             let exportData;
@@ -454,8 +439,9 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
 
                 case 'json_package':
                     exportData = this.generateJSONPackage(entities, curations, {
-                        allCurators: !!options.allCurators,
-                        curatorId: curator?.curator_id || null
+                        allCurators: true,
+                        authenticatedUserEmail,
+                        source
                     });
                     filename = `collector_package_${new Date().toISOString().split('T')[0]}.json`;
                     mimeType = 'application/json';
@@ -477,13 +463,124 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
             this.downloadFile(exportData, filename, mimeType);
 
             SafetyUtils.hideLoading();
-            SafetyUtils.showNotification(`✅ Export completed: ${filename}`, 'success');
+            const sourceLabel = source === 'server' ? 'server snapshot' : source;
+            SafetyUtils.showNotification(`✅ Export completed: ${filename} (${sourceLabel})`, 'success');
 
         } catch (error) {
             SafetyUtils.hideLoading();
             this.log.error('❌ Export failed:', error);
             throw error;
         }
+    }
+
+    /**
+     * Collect data for export using server snapshot only
+     * @param {Object} options - Export options
+     * @returns {Promise<{entities: Array, curations: Array, source: string}>}
+     */
+    async collectExportData(options = {}) {
+        const preferServer = options.preferServer !== false;
+
+        if (!preferServer) {
+            throw new Error('Server export is required. Local export fallback is disabled by design.');
+        }
+
+        if (!navigator.onLine) {
+            throw new Error('Cannot export while offline. Server snapshot is required.');
+        }
+
+        if (!window.ApiService) {
+            throw new Error('ApiService is unavailable. Cannot export server snapshot.');
+        }
+
+        const entities = await this.fetchAllEntitiesFromApi();
+        const curations = await this.fetchAllCurationsFromApi();
+
+        return { entities, curations, source: 'server' };
+    }
+
+    /**
+     * Get authenticated Google user email when available
+     * @returns {string|null}
+     */
+    getAuthenticatedUserEmail() {
+        try {
+            if (!window.AuthService || typeof window.AuthService.getCurrentUser !== 'function') {
+                return null;
+            }
+
+            const user = window.AuthService.getCurrentUser();
+            return user?.email || null;
+        } catch (error) {
+            this.log.warn('Failed to resolve authenticated user email:', error?.message || error);
+            return null;
+        }
+    }
+
+    /**
+     * Fetch all entities from API using pagination
+     * @returns {Promise<Array>}
+     */
+    async fetchAllEntitiesFromApi() {
+        const limit = 200;
+        let offset = 0;
+        let total = null;
+        const entities = [];
+
+        while (total === null || offset < total) {
+            const response = await window.ApiService.listEntities({ limit, offset });
+            const items = Array.isArray(response?.items)
+                ? response.items
+                : (Array.isArray(response) ? response : []);
+
+            const batchTotal = Number.isFinite(response?.total) ? response.total : null;
+            if (batchTotal !== null) {
+                total = batchTotal;
+            }
+
+            entities.push(...items);
+
+            if (items.length < limit) {
+                break;
+            }
+
+            offset += items.length;
+        }
+
+        return entities;
+    }
+
+    /**
+     * Fetch all curations from API using pagination
+     * @returns {Promise<Array>}
+     */
+    async fetchAllCurationsFromApi() {
+        const limit = 200;
+        let offset = 0;
+        let total = null;
+        const curations = [];
+
+        while (total === null || offset < total) {
+            const response = await window.ApiService.listCurations({ limit, offset });
+            const items = Array.isArray(response?.items)
+                ? response.items
+                : (Array.isArray(response) ? response : []);
+
+            const batchTotal = Number.isFinite(response?.total) ? response.total : null;
+            if (batchTotal !== null) {
+                total = batchTotal;
+            }
+
+            curations.push(...items);
+
+            if (items.length < limit) {
+                break;
+            }
+
+            offset += items.length;
+        }
+
+        return curations;
     }
 
     /**
@@ -591,8 +688,9 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
                 files: ['entities.json', 'curations.json'],
                 entityCount: entities.length,
                 curationCount: curations.length,
-                scope: context.allCurators ? 'all_curators' : 'current_curator',
-                curatorId: context.curatorId || null
+                scope: context.allCurators ? 'all_curators' : 'filtered',
+                authenticatedUserEmail: context.authenticatedUserEmail || null,
+                source: context.source || 'unknown'
             },
             files: {
                 'entities.json': entities,
