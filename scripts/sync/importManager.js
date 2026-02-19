@@ -307,7 +307,7 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
             case 'csv':
                 return this.importCSVFile(file);
             case 'zip':
-                return this.importZipFile(file);
+                throw new Error('ZIP import is not supported in the current build. Please import a JSON file.');
             default:
                 throw new Error(`Unsupported file format: ${extension}`);
         }
@@ -421,7 +421,11 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
 
             // Get current curator filter
             const curator = await window.dataStore.getCurrentCurator();
-            const curatorFilter = options.allCurators ? {} : { createdBy: curator?.curator_id };
+            if (!options.allCurators && !curator?.curator_id) {
+                throw new Error('No active curator selected for export');
+            }
+
+            const curatorFilter = options.allCurators ? {} : { createdBy: curator.curator_id };
 
             // Get entities
             SafetyUtils.showLoading('📊 Collecting entities...');
@@ -429,7 +433,12 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
 
             // Get curations
             SafetyUtils.showLoading('📋 Collecting curations...');
-            const curations = await window.dataStore.db.curations.toArray();
+            const curations = options.allCurators
+                ? await window.dataStore.getCurations({ excludeDeleted: true })
+                : await window.dataStore.getCurations({
+                    curatorId: curator.curator_id,
+                    excludeDeleted: true
+                });
 
             // Generate export data based on format
             let exportData;
@@ -443,15 +452,18 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
                     mimeType = 'application/json';
                     break;
 
-                case 'concierge':
-                    exportData = this.generateConciergeFormat(entities, curations);
-                    filename = `concierge_export_${new Date().toISOString().split('T')[0]}.json`;
+                case 'json_package':
+                    exportData = this.generateJSONPackage(entities, curations, {
+                        allCurators: !!options.allCurators,
+                        curatorId: curator?.curator_id || null
+                    });
+                    filename = `collector_package_${new Date().toISOString().split('T')[0]}.json`;
                     mimeType = 'application/json';
                     break;
 
                 case 'csv':
                     exportData = this.generateCSV(entities, curations);
-                    filename = `restaurants_${new Date().toISOString().split('T')[0]}.csv`;
+                    filename = `collector_entities_curations_${new Date().toISOString().split('T')[0]}.csv`;
                     mimeType = 'text/csv';
                     break;
 
@@ -497,10 +509,10 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
                         </label>
                         
                         <label class="flex items-center space-x-3 cursor-pointer">
-                            <input type="radio" name="format" value="concierge" class="text-blue-500">
+                            <input type="radio" name="format" value="json_package" class="text-blue-500">
                             <div>
-                                <div class="font-medium">Concierge Format</div>
-                                <div class="text-sm text-gray-500">Compatible with import</div>
+                                <div class="font-medium">JSON Package</div>
+                                <div class="text-sm text-gray-500">entities.json + curations.json in one package</div>
                             </div>
                         </label>
                         
@@ -562,59 +574,33 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
     }
 
     /**
-     * Generate Concierge format for export
+     * Generate JSON package export format
      * @param {Array} entities - Entities to export
      * @param {Array} curations - Curations to export
-     * @returns {string} - JSON string in Concierge format
+     * @param {Object} context - Export context
+     * @returns {string} - JSON package string
      */
-    generateConciergeFormat(entities, curations) {
-        const conciergeData = {};
+    generateJSONPackage(entities, curations, context = {}) {
+        const now = new Date().toISOString();
 
-        // Group curations by entity
-        const curationsByEntity = {};
-        curations.forEach(curation => {
-            if (!curationsByEntity[curation.entity_id]) {
-                curationsByEntity[curation.entity_id] = [];
+        const packageData = {
+            format: 'collector_json_package',
+            version: '1.0',
+            exportedAt: now,
+            manifest: {
+                files: ['entities.json', 'curations.json'],
+                entityCount: entities.length,
+                curationCount: curations.length,
+                scope: context.allCurators ? 'all_curators' : 'current_curator',
+                curatorId: context.curatorId || null
+            },
+            files: {
+                'entities.json': entities,
+                'curations.json': curations
             }
-            curationsByEntity[curation.entity_id].push(curation);
-        });
+        };
 
-        // Convert entities to Concierge format
-        entities.forEach(entity => {
-            if (entity.type !== 'restaurant') return;
-
-            const restaurantData = {
-                cuisine: [],
-                menu: [],
-                food_style: [],
-                drinks: [],
-                setting: [],
-                mood: [],
-                crowd: [],
-                suitable_for: [],
-                special_features: [],
-                covid_specials: [],
-                price_and_payment: [],
-                price_range: []
-            };
-
-            // Extract concepts from curations
-            const entityCurations = curationsByEntity[entity.entity_id] || [];
-            entityCurations.forEach(curation => {
-                if (curation.items) {
-                    curation.items.forEach(item => {
-                        const category = item.metadata?.category;
-                        if (category && restaurantData[category]) {
-                            restaurantData[category].push(item.name);
-                        }
-                    });
-                }
-            });
-
-            conciergeData[entity.name] = restaurantData;
-        });
-
-        return JSON.stringify(conciergeData, null, 2);
+        return JSON.stringify(packageData, null, 2);
     }
 
     /**
@@ -624,37 +610,183 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
      * @returns {string} - CSV string
      */
     generateCSV(entities, curations) {
-        const headers = ['Name', 'Type', 'Status', 'Created By', 'Created At', 'Concepts Count'];
-        const rows = [headers.join(',')];
+        const categoryColumns = [
+            'cuisine',
+            'menu',
+            'food_style',
+            'drinks',
+            'setting',
+            'mood',
+            'crowd',
+            'suitable_for',
+            'special_features',
+            'covid_specials',
+            'price_and_payment',
+            'price_range'
+        ];
 
-        // Group curations by entity
+        const separator = ' || ';
+
+        const headers = [
+            'entity_id',
+            'entity_name',
+            'entity_type',
+            'entity_status',
+            'entity_created_by',
+            'entity_updated_by',
+            'entity_created_at',
+            'entity_updated_at',
+            'entity_city',
+            'entity_country',
+            'entity_latitude',
+            'entity_longitude',
+            'curation_id',
+            'curation_curator_id',
+            'curation_status',
+            'curation_created_at',
+            'curation_updated_at',
+            'curation_restaurant_name',
+            'curation_transcript',
+            'curation_notes_public',
+            'curation_notes_private',
+            ...categoryColumns
+        ];
+
+        const rows = [headers.map(value => this.toCSVCell(value)).join(',')];
+
         const curationsByEntity = {};
         curations.forEach(curation => {
-            if (!curationsByEntity[curation.entity_id]) {
-                curationsByEntity[curation.entity_id] = [];
+            const entityId = curation?.entity_id;
+            if (!entityId) {
+                return;
             }
-            curationsByEntity[curation.entity_id].push(curation);
+
+            if (!curationsByEntity[entityId]) {
+                curationsByEntity[entityId] = [];
+            }
+
+            curationsByEntity[entityId].push(curation);
         });
 
         entities.forEach(entity => {
             const entityCurations = curationsByEntity[entity.entity_id] || [];
-            const conceptsCount = entityCurations.reduce((sum, curation) =>
-                sum + (curation.items ? curation.items.length : 0), 0
-            );
+            if (entityCurations.length === 0) {
+                const emptyCategories = categoryColumns.reduce((acc, category) => {
+                    acc[category] = '';
+                    return acc;
+                }, {});
 
-            const row = [
-                `"${entity.name}"`,
-                entity.type,
-                entity.status,
-                entity.createdBy,
-                entity.createdAt ? new Date(entity.createdAt).toISOString() : '',
-                conceptsCount
-            ];
+                rows.push(this.buildCSVRow(entity, null, emptyCategories, categoryColumns));
+                return;
+            }
 
-            rows.push(row.join(','));
+            entityCurations.forEach(curation => {
+                const categoryConcepts = this.extractCategoryConcepts(curation, categoryColumns, separator);
+                rows.push(this.buildCSVRow(entity, curation, categoryConcepts, categoryColumns));
+            });
         });
 
-        return rows.join('\\n');
+        return rows.join('\n');
+    }
+
+    buildCSVRow(entity, curation, categoryConcepts, categoryColumns) {
+        const entityData = entity?.data || {};
+        const location = entityData.location || {};
+
+        const values = [
+            entity?.entity_id || '',
+            entity?.name || '',
+            entity?.type || '',
+            entity?.status || '',
+            entity?.createdBy || '',
+            entity?.updatedBy || '',
+            this.toISODate(entity?.createdAt),
+            this.toISODate(entity?.updatedAt),
+            entityData.city || location.city || '',
+            entityData.country || location.country || '',
+            location.latitude ?? entityData.latitude ?? '',
+            location.longitude ?? entityData.longitude ?? '',
+            curation?.curation_id || '',
+            curation?.curator_id || '',
+            curation?.status || '',
+            this.toISODate(curation?.createdAt),
+            this.toISODate(curation?.updatedAt),
+            curation?.restaurant_name || '',
+            curation?.transcript || '',
+            curation?.notes?.public || '',
+            curation?.notes?.private || ''
+        ];
+
+        categoryColumns.forEach(category => {
+            values.push(categoryConcepts[category] || '');
+        });
+
+        return values.map(value => this.toCSVCell(value)).join(',');
+    }
+
+    extractCategoryConcepts(curation, categoryColumns, separator) {
+        const categories = categoryColumns.reduce((acc, category) => {
+            acc[category] = [];
+            return acc;
+        }, {});
+
+        const categoriesData = curation?.categories || {};
+        categoryColumns.forEach(category => {
+            const rawValue = categoriesData[category];
+            if (Array.isArray(rawValue)) {
+                rawValue.forEach(value => this.pushUniqueConcept(categories[category], value));
+            } else if (typeof rawValue === 'string') {
+                this.pushUniqueConcept(categories[category], rawValue);
+            }
+        });
+
+        const items = Array.isArray(curation?.items) ? curation.items : [];
+        items.forEach(item => {
+            const category = item?.metadata?.category;
+            if (!category || !categories[category]) {
+                return;
+            }
+
+            this.pushUniqueConcept(categories[category], item?.name);
+        });
+
+        const output = {};
+        categoryColumns.forEach(category => {
+            output[category] = categories[category]
+                .map(value => String(value).replaceAll(separator, ' \\|| '))
+                .join(separator);
+        });
+
+        return output;
+    }
+
+    pushUniqueConcept(targetArray, value) {
+        if (value === null || value === undefined) {
+            return;
+        }
+
+        const normalized = String(value).trim();
+        if (!normalized) {
+            return;
+        }
+
+        if (!targetArray.includes(normalized)) {
+            targetArray.push(normalized);
+        }
+    }
+
+    toISODate(value) {
+        if (!value) {
+            return '';
+        }
+
+        const date = new Date(value);
+        return Number.isNaN(date.getTime()) ? String(value) : date.toISOString();
+    }
+
+    toCSVCell(value) {
+        const text = value === null || value === undefined ? '' : String(value);
+        return `"${text.replace(/"/g, '""')}"`;
     }
 
     /**
