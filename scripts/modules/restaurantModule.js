@@ -289,8 +289,12 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
                 throw new Error('Curation not found for export');
             }
 
+            const curationForExport = { ...curationRaw };
+            delete curationForExport.embeddings;
+            delete curationForExport.embeddings_metadata;
+
             const exportPayload = {
-                curation: curationRaw
+                curation: curationForExport
             };
 
             const entityId = curationRaw.entity_id || this.currentEntity?.entity_id || null;

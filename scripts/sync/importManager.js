@@ -478,20 +478,21 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
      * @param {Object} options - Export options
      * @returns {Promise<{entities: Array, curations: Array, source: string}>}
      */
-    async collectExportData(options = {}) {
+                const { entities, curations, source, warnings } = await this.collectExportData(options);
+                const exportCurations = this.sanitizeCurationsForExport(curations);
         const preferServer = options.preferServer !== false;
 
         if (!preferServer) {
             throw new Error('Server export is required. Local export fallback is disabled by design.');
         }
 
-        if (!navigator.onLine) {
+                        exportData = this.generateV3JSON(entities, exportCurations);
             throw new Error('Cannot export while offline. Server snapshot is required.');
         }
 
         if (!window.ApiService) {
             throw new Error('ApiService is unavailable. Cannot export server snapshot.');
-        }
+                        exportData = this.generateJSONPackage(entities, exportCurations, {
 
         const entities = await this.fetchAllEntitiesFromApi();
         const curations = await this.fetchAllCurationsFromApi();
@@ -502,7 +503,7 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
     /**
      * Get authenticated Google user email when available
      * @returns {string|null}
-     */
+                        exportData = this.generateCSV(entities, exportCurations);
     getAuthenticatedUserEmail() {
         try {
             if (!window.AuthService || typeof window.AuthService.getCurrentUser !== 'function') {
@@ -713,7 +714,7 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
             'menu',
             'food_style',
             'drinks',
-            'setting',
+            const { entities, curations, source, warnings } = await this.collectExportData(options);
             'mood',
             'crowd',
             'suitable_for',
@@ -733,7 +734,8 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
             'entity_created_by',
             'entity_updated_by',
             'entity_created_at',
-            'entity_updated_at',
+                        source,
+                        warnings
             'entity_city',
             'entity_country',
             'entity_latitude',
@@ -757,6 +759,10 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
             const entityId = curation?.entity_id;
             if (!entityId) {
                 return;
+
+            if (warnings?.length) {
+                SafetyUtils.showNotification(`⚠️ Export completed with warnings: ${warnings.join(' | ')}`, 'warning');
+            }
             }
 
             if (!curationsByEntity[entityId]) {
@@ -784,10 +790,23 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
             });
         });
 
-        return rows.join('\n');
-    }
+        const entitiesResult = await this.fetchAllEntitiesFromApi();
+        const curationsResult = await this.fetchAllCurationsFromApi();
 
-    buildCSVRow(entity, curation, categoryConcepts, categoryColumns) {
+        const warnings = [];
+        if (entitiesResult.skippedOffsets.length > 0) {
+            warnings.push(`entities skipped=${entitiesResult.skippedOffsets.length}`);
+        }
+        if (curationsResult.skippedOffsets.length > 0) {
+            warnings.push(`curations skipped=${curationsResult.skippedOffsets.length}`);
+        }
+
+        return {
+            entities: entitiesResult.items,
+            curations: curationsResult.items,
+            source: 'server',
+            warnings
+        };
         const entityData = entity?.data || {};
         const location = entityData.location || {};
 
@@ -931,6 +950,7 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
             return null;
         }
     }
+                warnings: Array.isArray(context.warnings) ? context.warnings : []
 
     /**
      * Clear all data (for testing/development)

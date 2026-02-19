@@ -27,6 +27,27 @@ from openai import OpenAI
 router = APIRouter(prefix="/curations", tags=["curations"])
 
 
+CURATION_RESPONSE_PROJECTION = {
+    "embeddings": 0,
+    "embeddings_metadata": 0,
+}
+
+
+def build_curation_response_payload(curation_doc: dict) -> dict:
+    """Build lightweight curation payload without embeddings."""
+    if not curation_doc:
+        return {}
+
+    return {
+        "curation_id": curation_doc.get("curation_id", curation_doc.get("_id")),
+        "categories": curation_doc.get("categories", {}),
+        "curator": curation_doc.get("curator", {}),
+        "notes": curation_doc.get("notes", {}),
+        "status": curation_doc.get("status"),
+        "restaurant_name": curation_doc.get("restaurant_name"),
+    }
+
+
 async def verify_auth(
     api_key: Optional[str] = Depends(api_key_header),
     bearer: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme)
@@ -91,7 +112,7 @@ def create_curation(
         )
     
     # Return created curation
-    result = db.curations.find_one({"_id": curation.curation_id})
+    result = db.curations.find_one({"_id": curation.curation_id}, CURATION_RESPONSE_PROJECTION)
     return Curation(**result)
 
 
@@ -138,10 +159,7 @@ def search_curations(
     total = db.curations.count_documents(query)
     
     # Exclude heavy embedding payloads for listing/sync endpoints
-    projection = {
-        "embeddings": 0,
-        "embeddings_metadata": 0,
-    }
+    projection = CURATION_RESPONSE_PROJECTION
 
     # Get paginated results
     cursor = db.curations.find(query, projection).skip(offset).limit(limit)
@@ -172,10 +190,7 @@ def get_entity_curations(
         )
     
     # Get curations (exclude deleted by default)
-    projection = {
-        "embeddings": 0,
-        "embeddings_metadata": 0,
-    }
+    projection = CURATION_RESPONSE_PROJECTION
 
     cursor = db.curations.find({
         "entity_id": entity_id,
@@ -194,7 +209,7 @@ def get_curation(
     db: Database = Depends(get_database)
 ):
     """Get curation by ID"""
-    result = db.curations.find_one({"_id": curation_id})
+    result = db.curations.find_one({"_id": curation_id}, CURATION_RESPONSE_PROJECTION)
     
     if not result:
         raise HTTPException(
@@ -218,7 +233,7 @@ def update_curation(
     **Authentication Required:** Include `Authorization: Bearer <token>` OR `X-API-Key: <key>` header
     """
     # Get current curation for version
-    current = db.curations.find_one({"_id": curation_id})
+    current = db.curations.find_one({"_id": curation_id}, CURATION_RESPONSE_PROJECTION)
     if not current:
         raise HTTPException(status_code=404, detail="Curation not found")
     
@@ -274,6 +289,7 @@ def update_curation(
     result = db.curations.find_one_and_update(
         {"_id": curation_id},
         {"$set": update_data},
+        projection=CURATION_RESPONSE_PROJECTION,
         return_document=True
     )
     
@@ -456,12 +472,7 @@ def semantic_search_curations(
         # Build result
         result_data = {
             "entity_id": entity_id,
-            "curation": {
-                "curation_id": curation.get("curation_id", curation["_id"]),
-                "categories": curation.get("categories", {}),
-                "curator": curation.get("curator", {}),
-                "notes": curation.get("notes", {})
-            },
+            "curation": build_curation_response_payload(curation),
             "matches": matches[:10],  # Top 10 matches
             "avg_similarity": round(avg_similarity, 4),
             "max_similarity": round(max_similarity, 4),
@@ -684,7 +695,7 @@ def hybrid_search(
                 continue
 
             semantic_results[entity_key] = {
-                "curation": curation,
+                "curation": build_curation_response_payload(curation),
                 "semantic_score": semantic_score,
                 "matches": matches[:10],  # Top 10 matches
                 "entity_id_raw": entity_id,
