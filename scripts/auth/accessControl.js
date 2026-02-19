@@ -68,7 +68,7 @@ const AccessControl = (function() {
         overlay.innerHTML = `
             <div class="access-control-container">
                 <div class="access-control-card">
-                    <img src="images/Lotier_Logo.webp" alt="Lotier Logo" class="access-control-logo">
+                    <img src="images/Lotier_Concierge_logo_v3.png" alt="Lotier Logo" class="access-control-logo">
                     <h1>Collector</h1>
                     <p>Sign in with your authorized Google account</p>
                     
