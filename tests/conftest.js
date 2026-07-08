@@ -152,9 +152,17 @@ global.Dexie = class MockDexie {
   isOpen() {
     return this._isOpen;
   }
+
+  close() {
+    this._isOpen = false;
+  }
   
   async delete() {
     this._isOpen = false;
+  }
+
+  static async delete() {
+    return;
   }
 };
 

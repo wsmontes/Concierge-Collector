@@ -227,6 +227,36 @@ class PaginatedResponse(BaseModel):
 
 
 # ============================================================================
+# BULK OPERATION MODELS
+# ============================================================================
+
+class BulkEntityCreate(BaseModel):
+    """Bulk entity upsert request — max 500 items per call"""
+    entities: List[EntityCreate] = Field(..., min_length=1, max_length=500)
+
+
+class BulkCurationCreate(BaseModel):
+    """Bulk curation upsert request — max 500 items per call"""
+    curations: List[CurationCreate] = Field(..., min_length=1, max_length=500)
+
+
+class BulkItemError(BaseModel):
+    """Error detail for a single item in a bulk operation"""
+    index: int = Field(..., description="Zero-based position in the request array")
+    id: Optional[str] = Field(None, description="entity_id or curation_id if available")
+    error: str = Field(..., description="Error message")
+
+
+class BulkOperationResponse(BaseModel):
+    """Result of a bulk create/upsert operation"""
+    created: int = Field(default=0, description="Items newly inserted")
+    updated: int = Field(default=0, description="Items updated (upsert)")
+    skipped: int = Field(default=0, description="Items skipped (duplicate, no change)")
+    errors: List[BulkItemError] = Field(default_factory=list, description="Per-item errors")
+    total_received: int = Field(..., description="Total items received in this request")
+
+
+# ============================================================================
 # SEMANTIC SEARCH MODELS
 # ============================================================================
 

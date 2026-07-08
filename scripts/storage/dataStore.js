@@ -64,6 +64,9 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
             // Verify database is working by testing basic operations
             await this.validateDatabaseOperations();
 
+            // Warn user if IndexedDB storage is running low
+            this.checkStorageQuota();
+
             this.isInitialized = true;
             this.log.debug('✅ V3 Entity Store initialized successfully');
             return this;
@@ -302,6 +305,72 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
         } catch (error) {
             this.log.error('❌ Database operations validation failed:', error);
             throw error;
+        }
+    }
+
+    /**
+     * Check IndexedDB storage quota and warn the user if usage exceeds 80%.
+     * Uses the Storage API (navigator.storage.estimate) — non-blocking.
+     * Only fires a UI notification if window.ToastService or window.UINotify is available;
+     * otherwise logs a warning to the console.
+     */
+    checkStorageQuota() {
+        if (!navigator.storage || !navigator.storage.estimate) {
+            this.log.debug('Storage Estimation API not available, skipping quota check');
+            return;
+        }
+
+        navigator.storage.estimate().then(estimate => {
+            const used = estimate.usage || 0;
+            const quota = estimate.quota || 0;
+
+            if (quota === 0) return;
+
+            const usedMB = (used / 1024 / 1024).toFixed(1);
+            const quotaMB = (quota / 1024 / 1024).toFixed(1);
+            const usedPct = Math.round((used / quota) * 100);
+
+            this.log.debug(`💾 Storage: ${usedMB} MB used of ${quotaMB} MB (${usedPct}%)`);
+
+            const WARN_THRESHOLD = 80;
+            const CRITICAL_THRESHOLD = 95;
+
+            if (usedPct >= CRITICAL_THRESHOLD) {
+                const msg = `⚠️ Armazenamento local crítico: ${usedPct}% usado (${usedMB} MB de ${quotaMB} MB). Sincronize e libere espaço para evitar perda de dados.`;
+                this.log.error(msg);
+                this._notifyStorageQuota(msg, 'critical');
+            } else if (usedPct >= WARN_THRESHOLD) {
+                const msg = `⚠️ Armazenamento local: ${usedPct}% usado (${usedMB} MB de ${quotaMB} MB). Considere sincronizar os dados com o servidor.`;
+                this.log.warn(msg);
+                this._notifyStorageQuota(msg, 'warning');
+            }
+        }).catch(err => {
+            this.log.warn('Storage estimate failed:', err);
+        });
+    }
+
+    /**
+     * Dispatch a storage quota notification via available UI services.
+     * Falls back to console.warn if no notification service is present.
+     * @param {string} message - Human-readable warning message
+     * @param {'warning'|'critical'} level - Severity level
+     */
+    _notifyStorageQuota(message, level) {
+        // Try ToastService (used elsewhere in the app)
+        if (window.ToastService && typeof window.ToastService.show === 'function') {
+            window.ToastService.show(message, level === 'critical' ? 'error' : 'warning');
+            return;
+        }
+        // Try generic UINotify
+        if (window.UINotify && typeof window.UINotify.show === 'function') {
+            window.UINotify.show(message, level === 'critical' ? 'error' : 'warning');
+            return;
+        }
+        // Final fallback: browser console
+        if (level === 'critical') {
+            console.error('[DataStore]', message);
+        } else {
+            console.warn('[DataStore]', message);
         }
     }
 

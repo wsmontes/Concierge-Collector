@@ -334,6 +334,73 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         return await this.listCurations(filters);
     }
 
+    /**
+     * Bulk upsert entities — sends items in chunks to respect the server-side
+     * limit of 500 per call. Chunk size is controlled by AppConfig.api.backend.bulkChunkSize.
+     *
+     * @param {Array} entities - Full list of EntityCreate-shaped objects
+     * @returns {Object} - Aggregated BulkOperationResponse { created, updated, skipped, errors, total_received }
+     */
+    async bulkUpsertEntities(entities) {
+        const chunkSize = AppConfig?.api?.backend?.bulkChunkSize || 200;
+        const aggregate = { created: 0, updated: 0, skipped: 0, errors: [], total_received: 0 };
+
+        for (let i = 0; i < entities.length; i += chunkSize) {
+            const chunk = entities.slice(i, i + chunkSize);
+            try {
+                const response = await this.request('POST', '/entities/bulk', {
+                    body: JSON.stringify({ entities: chunk })
+                });
+                const result = await response.json();
+                aggregate.created += result.created || 0;
+                aggregate.updated += result.updated || 0;
+                aggregate.skipped += result.skipped || 0;
+                aggregate.errors.push(...(result.errors || []).map(e => ({ ...e, index: e.index + i })));
+                aggregate.total_received += result.total_received || chunk.length;
+            } catch (err) {
+                this.log.error(`Bulk entity chunk ${i}–${i + chunk.length} failed:`, err);
+                // Record all items in this chunk as errors
+                chunk.forEach((_, j) => aggregate.errors.push({ index: i + j, error: err.message }));
+                aggregate.total_received += chunk.length;
+            }
+        }
+
+        return aggregate;
+    }
+
+    /**
+     * Bulk upsert curations — sends items in chunks to respect the server-side
+     * limit of 500 per call. Chunk size is controlled by AppConfig.api.backend.bulkChunkSize.
+     *
+     * @param {Array} curations - Full list of CurationCreate-shaped objects
+     * @returns {Object} - Aggregated BulkOperationResponse { created, updated, skipped, errors, total_received }
+     */
+    async bulkUpsertCurations(curations) {
+        const chunkSize = AppConfig?.api?.backend?.bulkChunkSize || 200;
+        const aggregate = { created: 0, updated: 0, skipped: 0, errors: [], total_received: 0 };
+
+        for (let i = 0; i < curations.length; i += chunkSize) {
+            const chunk = curations.slice(i, i + chunkSize);
+            try {
+                const response = await this.request('POST', '/curations/bulk', {
+                    body: JSON.stringify({ curations: chunk })
+                });
+                const result = await response.json();
+                aggregate.created += result.created || 0;
+                aggregate.updated += result.updated || 0;
+                aggregate.skipped += result.skipped || 0;
+                aggregate.errors.push(...(result.errors || []).map(e => ({ ...e, index: e.index + i })));
+                aggregate.total_received += result.total_received || chunk.length;
+            } catch (err) {
+                this.log.error(`Bulk curation chunk ${i}–${i + chunk.length} failed:`, err);
+                chunk.forEach((_, j) => aggregate.errors.push({ index: i + j, error: err.message }));
+                aggregate.total_received += chunk.length;
+            }
+        }
+
+        return aggregate;
+    }
+
     async matchConcepts(concepts) {
         const response = await this.request('POST', 'conceptMatch', {
             body: JSON.stringify({ concepts })

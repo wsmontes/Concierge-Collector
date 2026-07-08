@@ -27,7 +27,7 @@ describe('Production Error: DataStore.db is null', () => {
     });
     
     afterEach(async () => {
-        if (DataStore && DataStore.db && DataStore.db.isOpen && DataStore.db.isOpen()) {
+        if (DataStore && DataStore.db && DataStore.db.isOpen && DataStore.db.isOpen() && typeof DataStore.db.close === 'function') {
             await DataStore.db.close();
         }
         if (Dexie && Dexie.delete) {
@@ -211,10 +211,10 @@ describe('Production Error: DataStore.db is null', () => {
         global.DataStore = DataStore;
         
         // WRONG: Try to access db BEFORE initialization completes
-        const wrongAccessPromise = DataStore.db.pendingAudio.toArray();
+        const wrongAccess = () => DataStore.db.pendingAudio.toArray();
         
         // This should throw (like production error)
-        await expect(wrongAccessPromise).rejects.toThrow();
+        expect(wrongAccess).toThrow();
         
         // Now initialize properly
         await DataStore.initialize();
@@ -305,7 +305,7 @@ describe('Complete Production Initialization Flow', () => {
     });
     
     afterEach(async () => {
-        if (DataStore && DataStore.db && DataStore.db.isOpen && DataStore.db.isOpen()) {
+        if (DataStore && DataStore.db && DataStore.db.isOpen && DataStore.db.isOpen() && typeof DataStore.db.close === 'function') {
             await DataStore.db.close();
         }
         if (Dexie && Dexie.delete) {

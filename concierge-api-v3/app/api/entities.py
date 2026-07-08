@@ -2,7 +2,7 @@
 Entity endpoints - CRUD operations
 """
 
-from fastapi import APIRouter, HTTPException, Header, Query, Depends
+from fastapi import APIRouter, HTTPException, Header, Query, Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials
 from typing import Optional, List
 from datetime import datetime, timezone
@@ -11,11 +11,12 @@ from pymongo.database import Database
 import secrets
 
 from app.models.schemas import (
-    Entity, EntityCreate, EntityUpdate, PaginatedResponse, ErrorResponse
+    Entity, EntityCreate, EntityUpdate, PaginatedResponse, ErrorResponse,
+    BulkEntityCreate, BulkOperationResponse, BulkItemError
 )
 from app.core.database import get_database
+from app.models.user import has_role
 from app.core.security import api_key_header, bearer_scheme, get_api_secret_key
-from jose import jwt, JWTError
 
 router = APIRouter(prefix="/entities", tags=["entities"])
 
@@ -40,7 +41,12 @@ async def verify_auth(
             # Import here to avoid circular dependency
             from app.core.security import ALGORITHM
             payload = jwt.decode(bearer.credentials, get_api_secret_key(), algorithms=[ALGORITHM])
-            return {"authenticated": True, "method": "jwt", "user": payload.get("sub")}
+            return {
+                "authenticated": True,
+                "method": "jwt",
+                "user": payload.get("sub"),
+                "role": payload.get("role", "curator")
+            }
         except JWTError:
             pass
     
@@ -165,39 +171,117 @@ def list_entities(
     since: Optional[str] = Query(None, description="ISO timestamp - only return entities updated after this time"),
     limit: int = Query(50, ge=1, le=1000),
     offset: int = Query(0, ge=0),
+    after_id: Optional[str] = Query(None, description="Cursor-based pagination: return items with _id > after_id (O(log n), preferred over offset for large sets)"),
     db: Database = Depends(get_database)
 ):
-    """List entities with filters and pagination
-    
-    Supports incremental sync via ?since parameter:
-    - If since is provided, only returns entities with updatedAt >= since
-    - Reduces bandwidth for large collections (1000 entities → ~10 per sync)
+    """List entities with filters and pagination.
+
+    Two pagination modes (mutually exclusive — after_id takes priority):
+    - **Cursor-based** (?after_id=<last_id>): O(log n), stable under concurrent writes.
+      Preferred for large collections and incremental loads.
+    - **Offset-based** (?offset=N): compatible with legacy callers, degrades at high offsets.
+
+    Supports incremental sync via ?since (updatedAt >= since).
     """
     query = {}
     if type:
         query["type"] = type
     if name:
         query["name"] = {"$regex": name, "$options": "i"}
-    
-    # ✅ INCREMENTAL SYNC: Filter by updatedAt >= since
+
     if since:
         try:
             since_dt = datetime.fromisoformat(since.replace('Z', '+00:00'))
             query["updatedAt"] = {"$gte": since_dt}
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid since timestamp format. Use ISO 8601.")
-    
-    total = db.entities.count_documents(query)
-    
-    cursor = db.entities.find(query).skip(offset).limit(limit)
+
+    # count_documents is only needed for offset-based callers; skip it for cursor mode
+    if after_id:
+        query["_id"] = {"$gt": after_id}
+        total = -1  # unknown / not computed — saves a full collection scan
+        cursor = db.entities.find(query).sort("_id", 1).limit(limit)
+    else:
+        total = db.entities.count_documents(query)
+        cursor = db.entities.find(query).sort("_id", 1).skip(offset).limit(limit)
+
     items = []
     for doc in cursor:
         doc["_id"] = str(doc["_id"])
         items.append(Entity(**doc))
-    
+
     return PaginatedResponse(
         items=items,
         total=total,
         limit=limit,
         offset=offset
+    )
+
+
+@router.post("/bulk", response_model=BulkOperationResponse, status_code=200)
+def bulk_upsert_entities(
+    request: Request,
+    payload: BulkEntityCreate,
+    db: Database = Depends(get_database),
+    auth: dict = Depends(verify_auth)
+):
+    """Bulk upsert entities (create or update) — max 500 per call.
+
+    Each item is processed independently. Errors are collected per item and
+    returned in the response so the caller can decide how to retry.
+
+    **Authentication Required:** Bearer token or X-API-Key header.
+    **Minimum role:** curator
+    """
+    caller_role = auth.get("role", "curator")
+    if not has_role(caller_role, "curator"):
+        raise HTTPException(status_code=403, detail="Insufficient role: curator or admin required for bulk import")
+    created = 0
+    updated = 0
+    errors: list = []
+    now = datetime.now(timezone.utc)
+
+    for idx, entity in enumerate(payload.entities):
+        try:
+            existing = db.entities.find_one({"_id": entity.entity_id}, {"_id": 1, "version": 1, "data": 1})
+
+            if existing:
+                doc = entity.model_dump(exclude_unset=True)
+
+                # Deep-merge the data field instead of replacing it
+                if "data" in doc and existing.get("data"):
+                    doc["data"] = {**existing["data"], **doc["data"]}
+
+                doc["updatedAt"] = now
+                doc["version"] = existing.get("version", 1) + 1
+                doc.pop("createdAt", None)
+                doc.pop("createdBy", None)
+
+                db.entities.update_one({"_id": entity.entity_id}, {"$set": doc})
+                updated += 1
+            else:
+                doc = entity.model_dump()
+                doc["_id"] = entity.entity_id
+                doc["createdAt"] = now
+                doc["updatedAt"] = now
+                doc["version"] = 1
+                db.entities.insert_one(doc)
+                created += 1
+
+        except DuplicateKeyError:
+            # Unique index collision (e.g. duplicate place_id) — treat as updated
+            updated += 1
+        except Exception as exc:
+            errors.append(BulkItemError(
+                index=idx,
+                id=entity.entity_id,
+                error=str(exc)
+            ))
+
+    return BulkOperationResponse(
+        created=created,
+        updated=updated,
+        skipped=0,
+        errors=errors,
+        total_received=len(payload.entities)
     )

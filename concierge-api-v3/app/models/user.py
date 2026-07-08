@@ -3,8 +3,21 @@ User Model - MongoDB Schema for OAuth-authenticated users
 """
 
 from pydantic import BaseModel, Field, EmailStr
-from typing import Optional
+from typing import Optional, Literal
 from datetime import datetime, timezone
+
+# Role hierarchy (highest to lowest):
+#   admin   — full access: bulk import, delete entities, manage users
+#   curator — create/edit own curations, bulk push own data
+#   viewer  — read-only access (no writes)
+UserRole = Literal["admin", "curator", "viewer"]
+
+ROLE_HIERARCHY: dict[UserRole, int] = {"admin": 3, "curator": 2, "viewer": 1}
+
+
+def has_role(user_role: UserRole, required: UserRole) -> bool:
+    """Return True if user_role meets or exceeds the required role level."""
+    return ROLE_HIERARCHY.get(user_role, 0) >= ROLE_HIERARCHY.get(required, 0)
 
 
 class User(BaseModel):
@@ -14,10 +27,11 @@ class User(BaseModel):
     name: str = Field(..., description="User's full name from Google")
     picture: Optional[str] = Field(None, description="User's profile picture URL")
     authorized: bool = Field(False, description="Whether user is authorized to use the application")
+    role: UserRole = Field(default="curator", description="User role: admin | curator | viewer")
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Account creation timestamp")
     last_login: Optional[datetime] = Field(None, description="Last login timestamp")
     refresh_token: Optional[str] = Field(None, description="Encrypted Google refresh token for persistent login")
-    
+
     class Config:
         json_schema_extra = {
             "example": {
@@ -26,6 +40,7 @@ class User(BaseModel):
                 "name": "John Doe",
                 "picture": "https://lh3.googleusercontent.com/...",
                 "authorized": True,
+                "role": "curator",
                 "created_at": "2025-01-15T10:30:00Z",
                 "last_login": "2025-01-15T10:30:00Z"
             }
@@ -68,3 +83,4 @@ class UserAuthResponse(BaseModel):
     name: str
     picture: Optional[str]
     authorized: bool
+    role: UserRole

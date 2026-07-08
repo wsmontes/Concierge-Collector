@@ -80,7 +80,7 @@ describe('Real Production Errors - DataStore Initialization', () => {
     expect(initCalled).toBe(false);
   });
 
-  test('should validate PendingAudioManager checks DataStore before saveAudio', () => {
+  test('should validate PendingAudioManager checks DataStore before saveAudio', async () => {
     // From pendingAudioManager.js:58:47
     // const table = DataStore.db.pendingAudios; // ERROR if db is null
     
@@ -97,11 +97,11 @@ describe('Real Production Errors - DataStore Initialization', () => {
     };
 
     // Should detect the error
-    expect(() => pendingAudioManager.saveAudio(new Blob()))
-      .toThrow();
+    await expect(pendingAudioManager.saveAudio(new Blob()))
+      .rejects.toThrow();
   });
 
-  test('should validate DraftRestaurantManager checks DataStore before operations', () => {
+  test('should validate DraftRestaurantManager checks DataStore before operations', async () => {
     // From draftRestaurantManager.js:61:47
     // const table = DataStore.db.draftRestaurants; // ERROR if db is null
     
@@ -124,10 +124,10 @@ describe('Real Production Errors - DataStore Initialization', () => {
     };
 
     // Should detect both errors
-    expect(() => draftRestaurantManager.createDraft({ name: 'Test' }))
-      .toThrow();
-    expect(() => draftRestaurantManager.getDrafts())
-      .toThrow();
+    await expect(draftRestaurantManager.createDraft({ name: 'Test' }))
+      .rejects.toThrow();
+    await expect(draftRestaurantManager.getDrafts())
+      .rejects.toThrow();
   });
 });
 

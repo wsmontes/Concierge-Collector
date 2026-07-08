@@ -28,14 +28,14 @@ class TestCurationEndpoints:
     
     def test_search_curations_filter_by_status(self, client):
         """Test filtering curations by status"""
-        response = client.get("/api/v3/curations/search?status=pending")
+        response = client.get("/api/v3/curations/search?status=draft")
         
         assert response.status_code == 200
         data = response.json()
         # All returned items should have pending status (if any)
         for item in data["items"]:
             if "status" in item:
-                assert item["status"] == "pending"
+                assert item["status"] == "draft"
     
     def test_search_curations_filter_by_curator(self, client):
         """Test filtering curations by curator"""

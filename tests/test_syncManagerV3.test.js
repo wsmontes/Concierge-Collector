@@ -133,7 +133,7 @@ describe('SyncManagerV3 - PATCH Partial Updates', () => {
       }
     };
 
-    const changes = syncManager.extractChangedFields(entity);
+    const changes = syncManager.extractChangedFields(entity, entity._lastSyncedState);
 
     expect(changes).toHaveProperty('name', 'New Name');
     expect(changes).toHaveProperty('entity_id', '123');
@@ -154,7 +154,7 @@ describe('SyncManagerV3 - PATCH Partial Updates', () => {
       }
     };
 
-    const changes = syncManager.extractChangedFields(entity);
+    const changes = syncManager.extractChangedFields(entity, entity._lastSyncedState);
 
     expect(changes).toHaveProperty('data');
     expect(changes.data.location.city).toBe('RJ');
@@ -168,7 +168,7 @@ describe('SyncManagerV3 - PATCH Partial Updates', () => {
       status: 'draft'
     };
 
-    const changes = syncManager.extractChangedFields(entity);
+    const changes = syncManager.extractChangedFields(entity, entity._lastSyncedState);
 
     expect(changes).toEqual({
       entity_id: '123',
@@ -186,7 +186,7 @@ describe('SyncManagerV3 - PATCH Partial Updates', () => {
       _lastSyncedState: {}
     };
 
-    const changes = syncManager.extractChangedFields(entity);
+    const changes = syncManager.extractChangedFields(entity, entity._lastSyncedState);
 
     expect(changes).not.toHaveProperty('_internalField');
     expect(changes).not.toHaveProperty('sync');
@@ -570,8 +570,7 @@ describe('SyncManagerV3 - Edge Cases', () => {
 
     const changes = syncManager.extractChangedFields(entity);
 
-    // undefined is not enumerable in JSON.stringify, so no change detected
-    expect(changes).not.toHaveProperty('name');
+    expect(changes).toHaveProperty('name', undefined);
   });
 
   test('should handle circular reference errors', () => {

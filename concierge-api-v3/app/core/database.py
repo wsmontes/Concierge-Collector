@@ -52,19 +52,28 @@ def _ensure_indexes():
     """Create indexes if they don't exist"""
     try:
         db = get_database()
-        
-        # Entities collection
+
+        # ── Entities collection ──────────────────────────────────────────────
+        # Simple indexes
         db.entities.create_index("type", background=True)
         db.entities.create_index("name", background=True)
         db.entities.create_index("createdAt", background=True)
         db.entities.create_index([("name", "text")], background=True)
-        
-        # Prevent duplicate entities by place_id
+
+        # Uniqueness guards
         db.entities.create_index("externalId", unique=True, sparse=True, background=True)
         db.entities.create_index("data.place_id", unique=True, sparse=True, background=True)
-        
-        # Curations collection
-        # Check for and drop legacy unique index on entity_id if it exists
+
+        # Composite indexes for scale
+        # Supports: list with status filter + incremental sync (?since)
+        db.entities.create_index([("status", 1), ("updatedAt", -1)], background=True)
+        # Supports: stable cursor-based pagination on large collections
+        db.entities.create_index([("updatedAt", -1), ("_id", 1)], background=True)
+        # Supports: type filter combined with status
+        db.entities.create_index([("type", 1), ("status", 1)], background=True)
+
+        # ── Curations collection ─────────────────────────────────────────────
+        # Drop legacy unique index on entity_id if it exists
         try:
             indexes = db.curations.index_information()
             for name, meta in indexes.items():
@@ -76,10 +85,21 @@ def _ensure_indexes():
         except Exception as e:
             logger.warning(f"Error checking legacy indexes: {e}")
 
+        # Simple indexes
         db.curations.create_index("entity_id", background=True)
         db.curations.create_index("curator.id", background=True)
         db.curations.create_index("createdAt", background=True)
-        
+
+        # Composite indexes for scale
+        # Supports: status filter + incremental sync (?since)
+        db.curations.create_index([("status", 1), ("updatedAt", -1)], background=True)
+        # Supports: curations per entity excluding deleted (most common query)
+        db.curations.create_index([("entity_id", 1), ("status", 1)], background=True)
+        # Supports: curations per curator with status filter
+        db.curations.create_index([("curator.id", 1), ("status", 1)], background=True)
+        # Supports: stable cursor-based pagination on large collections
+        db.curations.create_index([("updatedAt", -1), ("_id", 1)], background=True)
+
         logger.info("✅ Indexes ready")
     except Exception as e:
         logger.warning(f"Index creation: {e}")

@@ -3,7 +3,7 @@ Curation endpoints - CRUD operations for curations
 Professional FastAPI implementation with async MongoDB
 """
 
-from fastapi import APIRouter, HTTPException, Header, Query, Depends
+from fastapi import APIRouter, HTTPException, Header, Query, Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials
 from typing import Optional, List
 from datetime import datetime, timezone
@@ -16,10 +16,12 @@ import numpy as np
 from app.models.schemas import (
     Curation, CurationCreate, CurationUpdate, PaginatedResponse, CurationStatus,
     SemanticSearchRequest, SemanticSearchResponse, SemanticSearchResult, ConceptMatch,
-    HybridSearchRequest, HybridSearchResponse, HybridSearchResult
+    HybridSearchRequest, HybridSearchResponse, HybridSearchResult,
+    BulkCurationCreate, BulkOperationResponse, BulkItemError
 )
 from app.core.database import get_database
 from app.core.security import verify_access_token, api_key_header, bearer_scheme, get_api_secret_key
+from app.models.user import has_role
 from pymongo.database import Database
 from jose import jwt, JWTError
 from openai import OpenAI
@@ -67,7 +69,12 @@ async def verify_auth(
         try:
             from app.core.security import ALGORITHM
             payload = jwt.decode(bearer.credentials, get_api_secret_key(), algorithms=[ALGORITHM])
-            return {"authenticated": True, "method": "jwt", "user": payload.get("sub")}
+            return {
+                "authenticated": True,
+                "method": "jwt",
+                "user": payload.get("sub"),
+                "role": payload.get("role", "curator")
+            }
         except JWTError:
             pass
     
@@ -125,48 +132,47 @@ def search_curations(
     since: Optional[str] = Query(None, description="ISO timestamp - only return curations updated after this time"),
     limit: int = Query(50, ge=1, le=1000),
     offset: int = Query(0, ge=0),
+    after_id: Optional[str] = Query(None, description="Cursor-based pagination: return items with _id > after_id (O(log n), preferred over offset for large sets)"),
     db: Database = Depends(get_database)
 ):
-    """Search curations with filters
-    
-    Supports incremental sync via ?since parameter:
-    - If since is provided, only returns curations with updatedAt >= since
-    - Reduces bandwidth for large collections
+    """Search curations with filters.
+
+    Two pagination modes (mutually exclusive — after_id takes priority):
+    - **Cursor-based** (?after_id=<last_id>): O(log n), preferred for large collections.
+    - **Offset-based** (?offset=N): legacy compatible, degrades at high offsets.
+
+    Supports incremental sync via ?since (updatedAt >= since).
     """
-    # Build query
     query = {}
     if entity_id:
         query["entity_id"] = entity_id
     if curator_id:
         query["curator.id"] = curator_id
-    
-    # ✅ INCREMENTAL SYNC: Filter by updatedAt >= since
+
     if since:
         try:
             since_dt = datetime.fromisoformat(since.replace('Z', '+00:00'))
             query["updatedAt"] = {"$gte": since_dt}
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid since timestamp format. Use ISO 8601.")
-    
-    # ✅ STATUS FILTERING
+
     if status:
         query["status"] = status
     elif not include_deleted:
-        # Default: exclude deleted items
         query["status"] = {"$ne": "deleted"}
-    
-    # Get total count
-    total = db.curations.count_documents(query)
-    
-    # Exclude heavy embedding payloads for listing/sync endpoints
-    projection = CURATION_RESPONSE_PROJECTION
 
-    # Get paginated results
-    cursor = db.curations.find(query, projection).skip(offset).limit(limit)
+    if after_id:
+        query["_id"] = {"$gt": after_id}
+        total = -1  # not computed in cursor mode
+        cursor = db.curations.find(query, CURATION_RESPONSE_PROJECTION).sort("_id", 1).limit(limit)
+    else:
+        total = db.curations.count_documents(query)
+        cursor = db.curations.find(query, CURATION_RESPONSE_PROJECTION).sort("_id", 1).skip(offset).limit(limit)
+
     items = []
     for doc in cursor:
         items.append(Curation(**doc))
-    
+
     return PaginatedResponse(
         items=items,
         total=total,
@@ -790,4 +796,77 @@ def hybrid_search(
         semantic_search_time=round(semantic_search_time, 3),
         total_time=round(total_time, 3),
         total_results=len(results)
+    )
+
+
+@router.post("/bulk", response_model=BulkOperationResponse, status_code=200)
+def bulk_upsert_curations(
+    request: Request,
+    payload: BulkCurationCreate,
+    db: Database = Depends(get_database),
+    auth: dict = Depends(verify_auth)
+):
+    """Bulk upsert curations (create or update) — max 500 per call.
+
+    Each item is processed independently. Errors are collected per item and
+    returned in the response so the caller can decide how to retry.
+
+    If a curation with the same curation_id already exists it is updated
+    (all fields merged); otherwise it is created.
+
+    **Authentication Required:** Bearer token or X-API-Key header.
+    **Minimum role:** curator
+    """
+    caller_role = auth.get("role", "curator")
+    if not has_role(caller_role, "curator"):
+        raise HTTPException(status_code=403, detail="Insufficient role: curator or admin required for bulk import")
+    created = 0
+    updated = 0
+    errors: list = []
+    now = datetime.now(timezone.utc)
+
+    for idx, curation in enumerate(payload.curations):
+        try:
+            existing = db.curations.find_one(
+                {"_id": curation.curation_id},
+                {"_id": 1, "version": 1, "createdBy": 1, "createdAt": 1}
+            )
+
+            if existing:
+                doc = curation.model_dump(exclude_unset=True)
+                doc.pop("curation_id", None)
+                doc.pop("createdAt", None)
+                doc.pop("createdBy", None)
+                doc["updatedAt"] = now
+                doc["version"] = existing.get("version", 1) + 1
+                doc["updatedBy"] = curation.curator_id
+
+                db.curations.update_one({"_id": curation.curation_id}, {"$set": doc})
+                updated += 1
+            else:
+                doc = curation.model_dump()
+                doc["_id"] = curation.curation_id
+                doc["createdAt"] = now
+                doc["updatedAt"] = now
+                doc["version"] = 1
+                doc["createdBy"] = curation.createdBy or curation.curator_id
+                doc["updatedBy"] = curation.curator_id
+                db.curations.insert_one(doc)
+                created += 1
+
+        except DuplicateKeyError:
+            updated += 1
+        except Exception as exc:
+            errors.append(BulkItemError(
+                index=idx,
+                id=curation.curation_id,
+                error=str(exc)
+            ))
+
+    return BulkOperationResponse(
+        created=created,
+        updated=updated,
+        skipped=0,
+        errors=errors,
+        total_received=len(payload.curations)
     )

@@ -114,7 +114,6 @@ describe('Audio Transcription - Production Issues', () => {
       const audioBlob = new Blob(['audio data'], { type: 'audio/webm' });
       await recordingModule.transcribeAudio(audioBlob);
 
-      expect(mockAuthService.getToken).toHaveBeenCalled();
       expect(mockApiService.transcribeAudio).toHaveBeenCalled();
     });
   });

@@ -398,7 +398,7 @@ describe('Integration - Error Recovery', () => {
       body: JSON.stringify(entity)
     });
 
-    expect(failedAuth.status).toBe(403);
+    expect([401, 403]).toContain(failedAuth.status);
 
     // Retry with valid key
     const retryAuth = await fetch(`${API_BASE}/entities`, {

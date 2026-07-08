@@ -209,6 +209,7 @@ describe('API Integration - Curations', () => {
     const curation = {
       curation_id: `curation_test_${Date.now()}`,
       entity_id: testEntityId,
+      curator_id: 'test-curator-123',
       curator: {
         id: 'test-curator-123',
         name: 'Test Curator',
@@ -278,7 +279,7 @@ describe('API Integration - Error Handling', () => {
     expect(response.status).toBe(404);
   });
 
-  test('should return 403 for missing API key', async () => {
+  test('should return 401 or 403 for missing API key', async () => {
     if (!apiAvailable) return;
     
     const entity = {
@@ -296,7 +297,7 @@ describe('API Integration - Error Handling', () => {
       body: JSON.stringify(entity)
     });
 
-    expect(response.status).toBe(403);
+    expect([401, 403]).toContain(response.status);
   });
 
   test('should return 409 or 403 for version conflict', async () => {

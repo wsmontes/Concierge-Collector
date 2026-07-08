@@ -712,11 +712,10 @@ if (typeof window.UIManager === 'undefined') {
                 });
             }
 
-            // Display
+            // Store filtered results and delegate rendering to paginated method
             this.curationsFilteredCount = filtered.length;
             this.updateCurationsCountSummary(this.curationsCache.length, filtered.length);
 
-            container.innerHTML = '';
             if (filtered.length === 0) {
                 container.innerHTML = `
                         <div class="col-span-full text-center py-12">
@@ -727,8 +726,65 @@ if (typeof window.UIManager === 'undefined') {
                 return;
             }
 
-            filtered.forEach(curation => {
-                const entity = curation.entity_id ? this.curationsEntitiesMap.get(curation.entity_id) : null;
+            // Reset to first page when filters change then render
+            if (!this.curationPagination) {
+                this.curationPagination = { currentPage: 0, pageSize: 20 };
+            } else {
+                this.curationPagination.currentPage = 0;
+            }
+            this.curationsFiltered = filtered;
+            this.renderCurationsPage(filtered);
+        }
+
+        /**
+         * Render one page of curations with prev/next pagination controls.
+         * Mirrors the same pattern used by renderEntitiesPage for entities.
+         * @param {Array} allCurations - Full filtered curations array
+         */
+        renderCurationsPage(allCurations) {
+            const container = this.containers.curations;
+            if (!container) return;
+
+            const { currentPage, pageSize } = this.curationPagination;
+            const start = currentPage * pageSize;
+            const end = start + pageSize;
+            const pageCurations = allCurations.slice(start, end);
+            const totalPages = Math.ceil(allCurations.length / pageSize);
+
+            container.innerHTML = '';
+
+            // Only show pagination controls when there is more than one page
+            if (totalPages > 1) {
+                const header = document.createElement('div');
+                header.className = 'col-span-full mb-4 p-4 bg-blue-50 border border-blue-100 rounded-lg flex items-center justify-between';
+                header.innerHTML = `
+                    <div class="text-sm text-gray-600">
+                        Showing <span class="font-semibold">${start + 1}</span>–<span class="font-semibold">${Math.min(end, allCurations.length)}</span> of <span class="font-semibold">${allCurations.length}</span> curations
+                    </div>
+                    <div class="flex gap-2">
+                        <button id="curation-prev-page" class="px-3 py-1 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" ${currentPage === 0 ? 'disabled' : ''}>
+                            <span class="material-icons text-sm">chevron_left</span>
+                        </button>
+                        <div class="px-3 py-1 text-sm font-medium">Page ${currentPage + 1} of ${totalPages}</div>
+                        <button id="curation-next-page" class="px-3 py-1 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" ${currentPage >= totalPages - 1 ? 'disabled' : ''}>
+                            <span class="material-icons text-sm">chevron_right</span>
+                        </button>
+                    </div>
+                `;
+                container.appendChild(header);
+
+                header.querySelector('#curation-prev-page')?.addEventListener('click', () => {
+                    this.curationPagination.currentPage--;
+                    this.renderCurationsPage(allCurations);
+                });
+                header.querySelector('#curation-next-page')?.addEventListener('click', () => {
+                    this.curationPagination.currentPage++;
+                    this.renderCurationsPage(allCurations);
+                });
+            }
+
+            pageCurations.forEach(curation => {
+                const entity = curation.entity_id ? this.curationsEntitiesMap?.get(curation.entity_id) : null;
                 if (entity) {
                     const card = window.CardFactory.createCurationCard(entity, curation);
                     container.appendChild(card);

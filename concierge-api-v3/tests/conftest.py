@@ -95,8 +95,10 @@ def sample_entity():
 def sample_curation():
     """Sample curation data for testing"""
     return {
+        "curation_id": "test_curation_001",
         "entity_id": "test_restaurant_001",
-        "status": "pending",
+        "curator_id": "test_curator",
+        "status": "draft",
         "curator": {
             "id": "test_curator",
             "name": "Test Curator"

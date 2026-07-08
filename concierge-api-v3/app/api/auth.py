@@ -130,34 +130,38 @@ def get_user_by_email(db: Database, email: str) -> Optional[UserInDB]:
 
 def create_or_update_user(db: Database, user_data: dict) -> UserInDB:
     """
-    Create new user or update existing user's last login and refresh token
-    New users are created as unauthorized by default
+    Create new user or update existing user's last login and refresh token.
+    Lotier.com users are auto-authorized with role=admin.
+    New non-Lotier users start as unauthorized with role=curator.
     """
+    is_lotier = user_data["email"].lower().endswith("@lotier.com")
     existing_user = get_user_by_google_id(db, user_data["google_id"])
-    
+
     if existing_user:
-        # Update user info from Google (name, picture can change)
         update_data = {
             "name": user_data["name"],
             "picture": user_data.get("picture"),
             "last_login": datetime.now(timezone.utc)
         }
-        
-        # Auto-authorize if from lotier.com domain and not already authorized
-        if not existing_user.authorized and user_data["email"].lower().endswith("@lotier.com"):
-            update_data["authorized"] = True
-            existing_user.authorized = True
-            logger.info(f"[OAuth] Auto-authorized existing user from domain: {user_data['email']}")
+
+        # Auto-authorize Lotier users and promote to admin if not already
+        if is_lotier:
+            if not existing_user.authorized:
+                update_data["authorized"] = True
+                existing_user.authorized = True
+                logger.info(f"[OAuth] Auto-authorized existing user from domain: {user_data['email']}")
+            if getattr(existing_user, "role", "curator") != "admin":
+                update_data["role"] = "admin"
+                logger.info(f"[OAuth] Promoted {user_data['email']} to admin")
 
         if user_data.get("refresh_token"):
             update_data["refresh_token"] = user_data["refresh_token"]
-        
+
         db.users.update_one(
             {"google_id": user_data["google_id"]},
             {"$set": update_data}
         )
-        
-        # Update local object
+
         existing_user.name = user_data["name"]
         existing_user.picture = user_data.get("picture")
         existing_user.last_login = datetime.now(timezone.utc)
@@ -166,16 +170,13 @@ def create_or_update_user(db: Database, user_data: dict) -> UserInDB:
         logger.info(f"[OAuth] Updated existing user: {existing_user.email} (name, picture, last_login)")
         return existing_user
     else:
-        # Check if email is from lotier.com domain
-        is_lotier = user_data["email"].lower().endswith("@lotier.com")
-        
-        # Create new user (authorized automatically if from lotier.com)
         new_user = User(
             email=user_data["email"],
             google_id=user_data["google_id"],
             name=user_data["name"],
             picture=user_data.get("picture"),
-            authorized=is_lotier,  # Auto-authorize Lotier domain
+            authorized=is_lotier,
+            role="admin" if is_lotier else "curator",
             created_at=datetime.now(timezone.utc),
             last_login=datetime.now(timezone.utc),
             refresh_token=user_data.get("refresh_token")
@@ -183,8 +184,8 @@ def create_or_update_user(db: Database, user_data: dict) -> UserInDB:
         result = db.users.insert_one(new_user.dict())
         user_dict = new_user.dict()
         user_dict["_id"] = str(result.inserted_id)
-        
-        auth_status = "True (Auto-authorized)" if is_lotier else "False"
+
+        auth_status = "True (Auto-authorized, admin)" if is_lotier else "False (curator)"
         logger.info(f"[OAuth] Created new user: {new_user.email} (authorized={auth_status})")
         return UserInDB(**user_dict)
 
@@ -436,7 +437,7 @@ def google_oauth_callback(
     # User is authorized - create JWT tokens for app session
     logger.info(f"[OAuth] Creating JWT tokens...")
     access_token = create_access_token(
-        data={"sub": user.email, "google_id": user.google_id},
+        data={"sub": user.email, "google_id": user.google_id, "role": getattr(user, "role", "curator")},
         expires_delta=timedelta(minutes=settings.access_token_expire_minutes)
     )
     
@@ -501,7 +502,8 @@ def verify_token(
         email=user.email,
         name=user.name,
         picture=user.picture,
-        authorized=user.authorized
+        authorized=user.authorized,
+        role=getattr(user, "role", "curator")
     )
 
 
@@ -546,7 +548,7 @@ async def refresh_access_token(
         )
     
     # Create new tokens
-    new_access_token = create_access_token(data={"sub": user.email})
+    new_access_token = create_access_token(data={"sub": user.email, "role": getattr(user, "role", "curator")})
     new_refresh_token = create_refresh_token(data={"sub": user.email})
     
     logger.info(f"[OAuth] Token refreshed for user: {user.email}")
@@ -560,7 +562,8 @@ async def refresh_access_token(
             email=user.email,
             name=user.name,
             picture=user.picture,
-            authorized=user.authorized
+            authorized=user.authorized,
+            role=getattr(user, "role", "curator")
         )
     }
 

@@ -32,12 +32,12 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
         this.syncInterval = null;
         this.retryTimeout = null;
 
-        // Configuration
+        // Configuration — batchSize read from AppConfig so a single change propagates everywhere
         this.config = {
             maxRetries: 3,
             retryDelay: 2000,           // 2 seconds
             backgroundSyncInterval: 60000, // 60 seconds
-            batchSize: 10,              // Pull 10 items at a time (Render free tier limitation)
+            batchSize: (AppConfig?.api?.backend?.syncBatchSize) || 50,  // Pull N items at a time
             conflictRetryDelay: 5000    // 5 seconds before retrying conflict
         };
 
@@ -957,7 +957,6 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
         try {
             this.log.debug('⬆️ Pushing pending entities to server...');
 
-            // Find all entities with pending sync
             const pendingEntities = await window.DataStore.db.entities
                 .where('sync.status').equals('pending')
                 .toArray();
@@ -970,74 +969,80 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             let pushed = 0;
             let conflicts = 0;
 
-            for (const entity of pendingEntities) {
+            // ── Fast path: bulk upsert for NEW items (no serverId yet) ──────────
+            const newEntities = pendingEntities.filter(e => !e.sync?.serverId);
+            const existingEntities = pendingEntities.filter(e => !!e.sync?.serverId);
+
+            if (newEntities.length > 0) {
+                this.log.debug(`Bulk creating ${newEntities.length} new entities...`);
+                const payloads = newEntities.map(e => this.cleanEntityForSync(e));
+                let bulkResult;
                 try {
-                    const serverId = entity.sync?.serverId;
+                    bulkResult = await window.ApiService.bulkUpsertEntities(payloads);
+                } catch (bulkErr) {
+                    this.log.error('Bulk entity push failed, falling back to individual creates:', bulkErr);
+                    bulkResult = { errors: newEntities.map((_, i) => ({ index: i, error: String(bulkErr) })) };
+                }
 
-                    if (serverId) {
-                        // Extract only changed fields for PATCH
-                        const changedFields = this.extractChangedFields(entity);
+                const errorIndexes = new Set((bulkResult.errors || []).map(e => e.index));
 
-                        // Only update if there are actual changes
-                        const hasChanges = Object.keys(changedFields).some(
-                            key => !['entity_id', 'curation_id', 'version'].includes(key)
-                        );
-
-                        if (!hasChanges) {
-                            this.log.debug(`No changes for entity ${entity.name}, skipping`);
-                            await window.DataStore.db.entities.update(entity.id, {
-                                sync: {
-                                    ...(entity.sync || {}),
-                                    status: 'synced'
-                                }
-                            });
-                            continue;
-                        }
-
-                        // Update existing entity on server (PATCH with partial data)
-                        const updated = await window.ApiService.updateEntity(
-                            entity.entity_id,
-                            changedFields,  // ✅ Only changed fields
-                            entity.version
-                        );
-
-                        // Store current state for future change detection
-                        await this.storeItemState('entity', entity.id, updated);
-
-                        // Update local with new version
-                        await window.DataStore.db.entities.update(entity.id, {
-                            version: updated.version,
-                            sync: {
-                                ...(entity.sync || {}),
-                                status: 'synced',
-                                lastSyncedAt: new Date().toISOString()
-                            }
-                        });
-                        pushed++;
-                        this.log.debug(`✅ Pushed entity ${entity.name} (${Object.keys(changedFields).length} fields)`);
-
+                for (let i = 0; i < newEntities.length; i++) {
+                    const entity = newEntities[i];
+                    if (errorIndexes.has(i)) {
+                        this.log.warn(`Bulk create failed for entity ${entity.entity_id}: ${bulkResult.errors.find(e => e.index === i)?.error}`);
+                        // Leave as pending — will retry on next sync
                     } else {
-                        // Create new entity on server
-                        const cleanEntity = this.extractChangedFields(entity);
-                        const created = await window.ApiService.createEntity(cleanEntity);
-
-                        // Store state for future change detection
-                        await this.storeItemState('entity', entity.id, created);
-
-                        // Update local with server ID
                         await window.DataStore.db.entities.update(entity.id, {
                             sync: {
                                 ...(entity.sync || {}),
-                                serverId: created._id,
+                                serverId: entity.entity_id,
                                 status: 'synced',
                                 lastSyncedAt: new Date().toISOString()
                             }
                         });
                         pushed++;
-                        this.log.debug(`✅ Created entity ${entity.name} on server`);
                     }
+                }
+
+                this.log.debug(`✅ Bulk pushed ${bulkResult.created || 0} created, ${bulkResult.updated || 0} updated entities`);
+            }
+
+            // ── Careful path: individual PATCH for EXISTING items (conflict-aware) ─
+            for (const entity of existingEntities) {
+                try {
+                    const changedFields = this.extractChangedFields(entity);
+
+                    const hasChanges = Object.keys(changedFields).some(
+                        key => !['entity_id', 'curation_id', 'version'].includes(key)
+                    );
+
+                    if (!hasChanges) {
+                        this.log.debug(`No changes for entity ${entity.name}, skipping`);
+                        await window.DataStore.db.entities.update(entity.id, {
+                            sync: { ...(entity.sync || {}), status: 'synced' }
+                        });
+                        continue;
+                    }
+
+                    const updated = await window.ApiService.updateEntity(
+                        entity.entity_id,
+                        changedFields,
+                        entity.version
+                    );
+
+                    await this.storeItemState('entity', entity.id, updated);
+                    await window.DataStore.db.entities.update(entity.id, {
+                        version: updated.version,
+                        sync: {
+                            ...(entity.sync || {}),
+                            status: 'synced',
+                            lastSyncedAt: new Date().toISOString()
+                        }
+                    });
+                    pushed++;
+                    this.log.debug(`✅ Pushed entity ${entity.name} (${Object.keys(changedFields).length} fields)`);
+
                 } catch (error) {
-                    // Check if error is "already exists" (entity was created in previous sync but client didn't update status)
                     if (error.message.includes('already exists')) {
                         this.log.warn(`Entity ${entity.name} already exists on server, marking as synced`);
                         await window.DataStore.db.entities.update(entity.id, {
@@ -1053,17 +1058,10 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
 
                     if (this.isVersionConflictError(error)) {
                         const resolved = await this.tryResolveEntityVersionConflict(entity);
-                        if (resolved) {
-                            pushed++;
-                            continue;
-                        }
+                        if (resolved) { pushed++; continue; }
 
-                        // Version conflict - mark for manual resolution
                         await window.DataStore.db.entities.update(entity.id, {
-                            sync: {
-                                ...(entity.sync || {}),
-                                status: 'conflict'
-                            }
+                            sync: { ...(entity.sync || {}), status: 'conflict' }
                         });
                         conflicts++;
                         this.log.warn(`Conflict detected for entity: ${entity.name}`);
@@ -1105,219 +1103,105 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             let pushed = 0;
             let conflicts = 0;
 
-            for (const curation of pendingCurations) {
+            // ── Fast path: bulk upsert for items without a known serverId ────────
+            // The server bulk endpoint does a true upsert (create OR update), so
+            // it handles the "might already exist on server" ambiguity automatically.
+            const noServerIdCurations = pendingCurations.filter(c => !c.sync?.serverId);
+            const hasServerIdCurations = pendingCurations.filter(c => !!c.sync?.serverId);
+
+            if (noServerIdCurations.length > 0) {
+                this.log.debug(`Bulk upserting ${noServerIdCurations.length} curations (no serverId)...`);
+                const payloads = noServerIdCurations.map(c => this.cleanCurationForSync(c));
+                let bulkResult;
                 try {
-                    const serverId = curation.sync?.serverId;
+                    bulkResult = await window.ApiService.bulkUpsertCurations(payloads);
+                } catch (bulkErr) {
+                    this.log.error('Bulk curation push failed, will retry individually next sync:', bulkErr);
+                    bulkResult = { errors: noServerIdCurations.map((_, i) => ({ index: i, error: String(bulkErr) })) };
+                }
 
-                    if (serverId) {
-                        // Extract only changed fields for PATCH
-                        const changedFields = this.extractChangedFields(curation);
+                const errorIndexes = new Set((bulkResult.errors || []).map(e => e.index));
 
-                        // Only update if there are actual changes
-                        const hasChanges = Object.keys(changedFields).some(
-                            key => !['curation_id', 'version'].includes(key)
-                        );
-
-                        if (!hasChanges) {
-                            this.log.debug(`No changes for curation ${curation.curation_id}, skipping`);
-                            await window.DataStore.db.curations.update(curation.id, {
-                                sync: {
-                                    ...(curation.sync || {}),
-                                    status: 'synced'
-                                }
-                            });
-                            continue;
-                        }
-
-                        const updated = await window.ApiService.updateCuration(
-                            curation.curation_id,
-                            changedFields,  // ✅ Only changed fields
-                            curation.version || 1
-                        );
-
-                        // Store current state for future change detection
-                        await this.storeItemState('curation', curation.id, updated);
-
-                        await window.DataStore.db.curations.update(curation.id, {
-                            version: updated.version,
-                            sync: {
-                                ...(curation.sync || {}),
-                                status: 'synced',
-                                lastSyncedAt: new Date().toISOString()
-                            }
-                        });
-                        pushed++;
-                        this.log.debug(`✅ Pushed curation ${curation.curation_id} (${Object.keys(changedFields).length} fields)`);
-
+                for (let i = 0; i < noServerIdCurations.length; i++) {
+                    const curation = noServerIdCurations[i];
+                    if (errorIndexes.has(i)) {
+                        this.log.warn(`Bulk upsert failed for curation ${curation.curation_id}: ${bulkResult.errors.find(e => e.index === i)?.error}`);
+                        // Leave as pending — will retry next sync
                     } else {
-                        const changedFields = this.extractChangedFields(curation);
-                        const hasChanges = Object.keys(changedFields).some(
-                            key => !['curation_id', 'version'].includes(key)
-                        );
-
-                        if (!hasChanges) {
-                            await window.DataStore.db.curations.update(curation.id, {
-                                sync: {
-                                    ...(curation.sync || {}),
-                                    status: 'synced',
-                                    lastSyncedAt: new Date().toISOString()
-                                }
-                            });
-                            continue;
-                        }
-
-                        let upsertedCuration = null;
-                        try {
-                            // Try PATCH first for records that already exist on server but lack local serverId
-                            upsertedCuration = await window.ApiService.updateCuration(
-                                curation.curation_id,
-                                changedFields,
-                                curation.version || 1
-                            );
-
-                            this.log.debug(`✅ Patched existing curation ${curation.curation_id} without local serverId`);
-                        } catch (patchError) {
-                            const patchMessage = String(patchError?.message || patchError || '').toLowerCase();
-                            const isNotFound = patchMessage.includes('404') || patchMessage.includes('not found');
-
-                            if (!isNotFound) {
-                                throw patchError;
-                            }
-
-                            // If not found on server, then create
-                            upsertedCuration = await window.ApiService.createCuration(changedFields);
-                            this.log.debug(`✅ Created curation ${curation.curation_id} on server after 404 fallback`);
-                        }
-
-                        // Store state for future change detection
-                        await this.storeItemState('curation', curation.id, upsertedCuration);
-
                         await window.DataStore.db.curations.update(curation.id, {
-                            version: upsertedCuration.version || curation.version,
                             sync: {
                                 ...(curation.sync || {}),
-                                serverId: upsertedCuration._id || curation.curation_id,
+                                serverId: curation.curation_id,
                                 status: 'synced',
                                 lastSyncedAt: new Date().toISOString()
                             }
                         });
                         pushed++;
                     }
-                } catch (error) {
-                    // Check if error is "already exists" (curation was created in previous sync but client didn't update status)
-                    if (error.message.includes('already exists')) {
-                        this.log.warn(`Curation ${curation.curation_id} already exists on server, fetching serverId...`);
+                }
 
-                        try {
-                            // Try to get the curation from server to obtain its serverId
-                            let serverCuration;
-                            try {
-                                serverCuration = await window.ApiService.getCuration(curation.curation_id);
-                            } catch (getError) {
-                                // If GET fails (404), try searching via curator_id
-                                if (getError.message.includes('404') || getError.message.includes('not found')) {
-                                    this.log.debug('GET failed, trying via search endpoint...');
-                                    const searchResult = await window.ApiService.listCurations({
-                                        curator_id: curation.curator_id,
-                                        limit: 1000  // Get all curator's curations
-                                    });
+                this.log.debug(`✅ Bulk pushed ${bulkResult.created || 0} created, ${bulkResult.updated || 0} updated curations`);
+            }
 
-                                    // Find the specific curation by ID
-                                    serverCuration = searchResult.items?.find(c => c._id === curation.curation_id);
+            // ── Careful path: individual PATCH for items where we know the serverId ─
+            for (const curation of hasServerIdCurations) {
+                try {
+                    const changedFields = this.extractChangedFields(curation);
 
-                                    if (!serverCuration) {
-                                        throw new Error('Curation not found in search results');
-                                    }
-                                } else {
-                                    throw getError;
-                                }
+                    const hasChanges = Object.keys(changedFields).some(
+                        key => !['curation_id', 'version'].includes(key)
+                    );
+
+                    if (!hasChanges) {
+                        this.log.debug(`No changes for curation ${curation.curation_id}, skipping`);
+                        await window.DataStore.db.curations.update(curation.id, {
+                            sync: {
+                                ...(curation.sync || {}),
+                                status: 'synced',
+                                lastSyncedAt: new Date().toISOString()
                             }
+                        });
+                        continue;
+                    }
 
-                            // Update local with serverId so future syncs use PATCH
-                            await window.DataStore.db.curations.update(curation.id, {
-                                sync: {
-                                    ...(curation.sync || {}),
-                                    serverId: serverCuration._id
-                                }
-                            });
+                    const updated = await window.ApiService.updateCuration(
+                        curation.curation_id,
+                        changedFields,
+                        curation.version || 1
+                    );
 
-                            this.log.info(`✅ Resolved duplicate: ${curation.curation_id} mapped to serverId ${serverCuration._id}`);
-
-                            // Now push local changes via PATCH (e.g. entity_id link)
-                            try {
-                                const changedFields = this.extractChangedFields(curation);
-                                const hasChanges = Object.keys(changedFields).some(
-                                    key => !['curation_id', 'version'].includes(key)
-                                );
-                                if (hasChanges) {
-                                    const updated = await window.ApiService.updateCuration(
-                                        curation.curation_id,
-                                        changedFields,
-                                        serverCuration.version || curation.version || 1
-                                    );
-                                    await this.storeItemState('curation', curation.id, updated);
-                                    await window.DataStore.db.curations.update(curation.id, {
-                                        version: updated.version,
-                                        sync: {
-                                            ...(curation.sync || {}),
-                                            serverId: serverCuration._id,
-                                            status: 'synced',
-                                            lastSyncedAt: new Date().toISOString()
-                                        }
-                                    });
-                                    this.log.info(`✅ Pushed pending changes for ${curation.curation_id}`);
-                                } else {
-                                    await this.storeItemState('curation', curation.id, serverCuration);
-                                    await window.DataStore.db.curations.update(curation.id, {
-                                        sync: {
-                                            ...(curation.sync || {}),
-                                            serverId: serverCuration._id,
-                                            status: 'synced',
-                                            lastSyncedAt: new Date().toISOString()
-                                        }
-                                    });
-                                }
-                            } catch (patchError) {
-                                this.log.warn(`Could not push changes after resolving duplicate: ${patchError.message}`);
-                                // Still mark as synced with serverId so next sync can PATCH
-                                await this.storeItemState('curation', curation.id, serverCuration);
-                                await window.DataStore.db.curations.update(curation.id, {
-                                    sync: {
-                                        ...(curation.sync || {}),
-                                        serverId: serverCuration._id,
-                                        status: 'pending',
-                                        lastSyncedAt: new Date().toISOString()
-                                    }
-                                });
-                            }
-                        } catch (fetchError) {
-                            this.log.error(`Cannot resolve serverId for ${curation.curation_id}: ${fetchError.message}`);
-                            await window.DataStore.db.curations.update(curation.id, {
-                                sync: {
-                                    ...(curation.sync || {}),
-                                    status: 'error',
-                                    error: `Duplicate exists but unreachable: ${fetchError.message}`,
-                                    lastAttempt: new Date().toISOString()
-                                }
-                            });
+                    await this.storeItemState('curation', curation.id, updated);
+                    await window.DataStore.db.curations.update(curation.id, {
+                        version: updated.version,
+                        sync: {
+                            ...(curation.sync || {}),
+                            status: 'synced',
+                            lastSyncedAt: new Date().toISOString()
                         }
+                    });
+                    pushed++;
+                    this.log.debug(`✅ Pushed curation ${curation.curation_id} (${Object.keys(changedFields).length} fields)`);
 
+                } catch (error) {
+                    if (error.message.includes('already exists')) {
+                        this.log.warn(`Curation ${curation.curation_id} already exists, marking synced`);
+                        await window.DataStore.db.curations.update(curation.id, {
+                            sync: {
+                                ...(curation.sync || {}),
+                                status: 'synced',
+                                lastSyncedAt: new Date().toISOString()
+                            }
+                        });
                         pushed++;
                         continue;
                     }
 
                     if (this.isVersionConflictError(error)) {
                         const resolved = await this.tryResolveCurationVersionConflict(curation);
-                        if (resolved) {
-                            pushed++;
-                            continue;
-                        }
+                        if (resolved) { pushed++; continue; }
 
                         await window.DataStore.db.curations.update(curation.id, {
-                            sync: {
-                                ...(curation.sync || {}),
-                                status: 'conflict'
-                            }
+                            sync: { ...(curation.sync || {}), status: 'conflict' }
                         });
                         conflicts++;
                         this.log.warn(`Conflict detected for curation: ${curation.curation_id}`);

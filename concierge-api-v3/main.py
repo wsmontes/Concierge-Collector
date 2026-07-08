@@ -3,13 +3,26 @@ Concierge Collector API V3 - Professional FastAPI Implementation
 Main application entry point with PyMongo (sync) support
 """
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+from slowapi.middleware import SlowAPIMiddleware
 
 from app.core.config import settings
 from app.core.database import connect_to_mongo, close_mongo_connection
 from app.api import entities, curations, system, places, places_orchestrate, ai, concepts, auth, llm_gateway, openai_compat, places_router
+
+# ---------------------------------------------------------------------------
+# Rate limiter — keyed by client IP
+# Default limits (can be overridden per-endpoint with @limiter.limit):
+#   - Read endpoints: 300 requests / minute
+#   - Write/AI endpoints: 60 requests / minute
+#   - Bulk endpoints: 20 requests / minute
+# ---------------------------------------------------------------------------
+limiter = Limiter(key_func=get_remote_address, default_limits=["300/minute"])
 
 
 @asynccontextmanager
@@ -37,6 +50,11 @@ app = FastAPI(
     openapi_url="/api/v3/openapi.json",  # OpenAPI schema
     redirect_slashes=False  # CRITICAL: Disable automatic trailing slash redirects for OAuth
 )
+
+# Attach rate limiter to app state and register its exception handler
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+app.add_middleware(SlowAPIMiddleware)
 
 # Configure CORS
 app.add_middleware(

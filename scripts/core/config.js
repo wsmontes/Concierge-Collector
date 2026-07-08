@@ -59,6 +59,8 @@ const AppConfig = {
             timeout: 30000,        // 30 seconds
             retryAttempts: 3,      // Number of retry attempts
             retryDelay: 1000,      // Delay between retries (ms)
+            bulkChunkSize: 200,    // Items per bulk API call (max 500 per server limit)
+            syncBatchSize: 50,     // Items per incremental sync pull (increased from 10)
             features: {
                 optimisticLocking: true,     // version field (int) + If-Match header
                 partialUpdates: true,        // PATCH for partial updates
@@ -77,11 +79,15 @@ const AppConfig = {
                 entityById: '/entities/{id}',    // GET (no auth), PATCH (X-API-Key + If-Match), DELETE (X-API-Key)
                 entitiesSearch: '/entities/search',  // GET - Search entities with filters (no auth)
                 
+                // Entity bulk endpoint
+                entitiesBulk: '/entities/bulk',  // POST - Bulk upsert entities (X-API-Key, max 500)
+
                 // Curation endpoints
                 curations: '/curations',         // GET list (filters, no auth), POST create (X-API-Key)
                 curationById: '/curations/{id}', // GET (no auth), PATCH (X-API-Key + If-Match), DELETE (X-API-Key)
                 curationsSearch: '/curations/search',  // GET - Search curations with filters (no auth)
                 entityCurations: '/entities/{id}/curations',  // GET - All curations for entity (no auth)
+                curationsBulk: '/curations/bulk',  // POST - Bulk upsert curations (X-API-Key, max 500)
                 
                 // Concepts endpoints
                 conceptMatch: '/concepts/match',  // POST - Match concepts to categories (X-API-Key)
