@@ -273,25 +273,25 @@ def _format_vocab_block(vocabulary: Dict[str, List[str]], max_per_cat: int = 40)
     return "\n".join(lines)
 
 
+DESCRIPTION_MAX_CHARS = 400
+
+
 def extract_concepts_llm(
     research_block: str,
     entity_name: str,
     client,
     model: str,
     vocabulary: Dict[str, List[str]] | None = None,
-) -> Dict[str, List[str]]:
+) -> Dict[str, Any]:
     cats = ", ".join(TARGET_CATEGORIES)
     price_scale = " | ".join(PRICE_RANGE_SCALE)
     system = (
-        "You extract structured concept tags about a restaurant from web-researched "
-        "text. Rules: use ONLY information explicitly supported by the text; if a "
-        "category has no evidence, omit it; NEVER invent. Output ALL tag values in "
-        "ENGLISH, lowercase, as short tags of 1-3 words — never full sentences, never a "
-        "website's navigation labels, never raw menu prices. Reply with a single JSON "
-        "object only."
+        "You extract structured data about a restaurant from web-researched text. "
+        "Rules: use ONLY information explicitly supported by the text; if something "
+        "has no evidence, omit it; NEVER invent. Reply with a single JSON object only."
     )
     semantics = (
-        "Category meanings:\n"
+        "Category meanings (tag values in ENGLISH, lowercase, 1-3 words):\n"
         "- cuisine: kind of cuisine (italian, japanese, brazilian, wine bar) — NOT an "
         "aggregator's navigation label.\n"
         "- menu: specific dishes/items served (pasta, oysters, feijoada).\n"
@@ -299,11 +299,9 @@ def extract_concepts_llm(
         "- drinks: beverages offered (wine list, craft beers, signature cocktails).\n"
         "- setting: physical space/decor (terrace, open kitchen, upscale, rustic).\n"
         "- mood: the vibe/atmosphere (lively, cozy, romantic, formal).\n"
-        "- crowd: WHO goes there (tourists, locals, families, executives, young) — never "
-        "vibe words.\n"
+        "- crowd: WHO goes there (tourists, locals, families, executives, young).\n"
         "- suitable_for: occasions (dating, business lunches, celebrations, quick bite).\n"
-        "- special_features: services/amenities (delivery, valet parking, reservations "
-        "recommended).\n"
+        "- special_features: services/amenities (delivery, valet parking, reservations recommended).\n"
         f"- price_range: choose EXACTLY ONE from this closed scale: {price_scale}.\n"
     )
     vocab_block = _format_vocab_block(vocabulary or {})
@@ -321,8 +319,11 @@ def extract_concepts_llm(
         f"{vocab_section}\n"
         "Part of the text may be about ANOTHER establishment — ignore anything not "
         "clearly about the target restaurant.\n"
-        'Return JSON shaped as {"category": ["tag", ...]} with only categories that have '
-        "explicit support in the text.\n\n"
+        "Also write a `description`: 1-3 factual sentences IN PORTUGUESE describing this "
+        "restaurant, grounded strictly in the text (no marketing fluff, no invention). "
+        "If the text does not support a description, use an empty string.\n\n"
+        'Return JSON exactly as {"categories": {"category": ["tag", ...], ...}, '
+        '"description": "..."} with only categories that have explicit support.\n\n'
         f"RESEARCHED TEXT:\n{research_block}"
     )
     resp = client.chat.completions.create(
@@ -331,7 +332,11 @@ def extract_concepts_llm(
         temperature=0,
     )
     content = resp.choices[0].message.content
-    return clean_llm_categories(_parse_json_object(content))
+    data = _parse_json_object(content)
+    categories = clean_llm_categories(data.get("categories") if isinstance(data, dict) else {})
+    raw_desc = data.get("description") if isinstance(data, dict) else ""
+    description = (raw_desc or "").strip()[:DESCRIPTION_MAX_CHARS] if isinstance(raw_desc, str) else ""
+    return {"categories": categories, "description": description}
 
 
 def search_web(query: str, max_results: int = 5, searcher=None) -> List[str]:

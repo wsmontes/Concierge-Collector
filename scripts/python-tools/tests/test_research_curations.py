@@ -139,30 +139,38 @@ class _FakeClient:
         return _FakeResp(self._content)
 
 
-def test_extract_concepts_llm_parses_and_cleans():
-    payload = _json.dumps({"cuisine": ["Japanese"], "lixo": ["x"], "mood": []})
+def test_extract_llm_returns_categories_and_description():
+    payload = _json.dumps({
+        "categories": {"cuisine": ["Italian"], "price_range": ["Mid-Range"]},
+        "description": "Cantina italiana aconchegante, com massas e pizzas.",
+    })
     client = _FakeClient(payload)
-    out = extract_concepts_llm("--- FONTE: a ---\nsushi", "Sushi X", client, "deepseek-chat")
-    assert out == {"cuisine": ["japanese"]}  # inglês minúsculo, normalizado
-    # prompt precisa conter instrução grounded e o nome da entidade
+    out = extract_concepts_llm("--- FONTE: a ---\ntexto", "Cantina X", client, "deepseek-chat")
+    assert out["categories"] == {"cuisine": ["italian"], "price_range": ["mid-range"]}
+    assert out["description"].startswith("Cantina italiana")
     sent = client.last_kwargs["messages"][-1]["content"]
-    assert "Sushi X" in sent
+    assert "Cantina X" in sent
+    assert "descri" in sent.lower()          # prompt pede description
 
 
-def test_extract_concepts_llm_handles_bad_json():
-    client = _FakeClient("desculpa, não achei nada")
-    out = extract_concepts_llm("texto", "X", client, "deepseek-chat")
-    assert out == {}
+def test_extract_llm_empty_description_when_absent():
+    payload = _json.dumps({"categories": {"cuisine": ["bar"]}})
+    out = extract_concepts_llm("t", "X", _FakeClient(payload), "deepseek-chat")
+    assert out["categories"] == {"cuisine": ["bar"]}
+    assert out["description"] == ""
 
 
-def test_extract_concepts_llm_injects_vocabulary_and_price_scale():
-    client = _FakeClient(_json.dumps({"cuisine": ["italian"]}))
+def test_extract_llm_handles_bad_json():
+    out = extract_concepts_llm("t", "X", _FakeClient("desculpa"), "deepseek-chat")
+    assert out == {"categories": {}, "description": ""}
+
+
+def test_extract_llm_injects_vocabulary_and_price_scale():
+    client = _FakeClient(_json.dumps({"categories": {"cuisine": ["italian"]}, "description": ""}))
     vocab = {"cuisine": ["italian", "japanese"], "mood": ["cozy"]}
     extract_concepts_llm("texto", "X", client, "deepseek-chat", vocabulary=vocab)
     sent = client.last_kwargs["messages"][-1]["content"]
-    # vocabulário preferido injetado no prompt
     assert "italian" in sent and "japanese" in sent and "cozy" in sent
-    # escala fechada de price_range presente
     assert "unexpensive" in sent and "mid-range" in sent and "expensive" in sent
 
 
