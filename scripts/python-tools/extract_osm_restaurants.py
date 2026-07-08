@@ -214,6 +214,18 @@ def fetch_overpass(query: str) -> List[Dict[str, Any]]:
 # OSM element normalizer → API v3 EntityCreate schema
 # ---------------------------------------------------------------------------
 
+def _osm_bool(value: Optional[str]) -> Optional[bool]:
+    """Convert OSM yes/no tag value to Python bool. Returns None for unknown/missing."""
+    if value is None:
+        return None
+    v = value.strip().lower()
+    if v in ("yes", "true", "1"):
+        return True
+    if v in ("no", "false", "0"):
+        return False
+    return None  # values like "limited", "only" are kept as strings by the caller
+
+
 def _split_tag(raw: str) -> List[str]:
     """Split an OSM multi-value tag (separated by ; or ,) into a list."""
     if not raw:
@@ -236,6 +248,10 @@ def normalize_element(
 ) -> Optional[Dict[str, Any]]:
     """Convert a single OSM element dict to the API v3 EntityCreate schema.
 
+    Captures all tags with meaningful coverage in the OSM dataset:
+    location (including suburb/neighbourhood), contact (including social media),
+    dietary options, service features, payment methods, facilities, brand info.
+
     Returns None if the element has no usable name (unnamed venues are skipped).
     """
     tags = element.get("tags", {})
@@ -245,37 +261,30 @@ def normalize_element(
 
     osm_type = element.get("type", "node")  # node | way | relation
     osm_id = element.get("id")
-    # Prefix: n = node, w = way, r = relation — avoids ID collisions across types
     prefix = {"node": "n", "way": "w", "relation": "r"}.get(osm_type, "n")
     entity_id = f"osm_{prefix}_{osm_id}"
 
-    # Coordinates: nodes expose lat/lon directly; ways/relations have a center point
+    # Coordinates: nodes expose lat/lon directly; ways/relations have a center
     center = element.get("center", {})
     lat = element.get("lat") or center.get("lat")
     lon = element.get("lon") or center.get("lon")
 
     amenity = tags.get("amenity", "restaurant")
+
+    # ── Location ──────────────────────────────────────────────────────────────
+    location: Dict[str, Any] = {}
     city = tags.get("addr:city", "").strip() or city_hint or None
     state_tag = tags.get("addr:state", "").strip() or None
     country = tags.get("addr:country", "BR").strip() or "BR"
     postal_code = tags.get("addr:postcode", "").strip() or None
+    suburb = tags.get("addr:suburb", "").strip() or None          # e.g. "Pinheiros"
+    neighbourhood = (
+        tags.get("addr:neighbourhood", "").strip()
+        or tags.get("addr:district", "").strip()
+        or None
+    )
     address = _build_address(tags)
-    phone = (tags.get("phone") or tags.get("contact:phone") or "").strip() or None
-    website = (tags.get("website") or tags.get("contact:website") or "").strip() or None
-    opening_hours = tags.get("opening_hours", "").strip() or None
-    description = tags.get("description", "").strip() or None
-    cuisine = _split_tag(tags.get("cuisine", ""))
-    stars_raw = tags.get("stars") or tags.get("michelin:stars")
 
-    # --- Build nested data dict ---
-    data: Dict[str, Any] = {
-        "amenity": amenity,
-        "osm_id": osm_id,
-        "osm_type": osm_type,
-        "source": "openstreetmap",
-    }
-
-    location: Dict[str, Any] = {}
     if city:
         location["city"] = city
     if state_tag:
@@ -286,30 +295,160 @@ def normalize_element(
         location["postal_code"] = postal_code
     if address:
         location["address"] = address
+    if suburb:
+        location["suburb"] = suburb
+    if neighbourhood:
+        location["neighbourhood"] = neighbourhood
     if lat is not None and lon is not None:
         location["coordinates"] = {"lat": lat, "lng": lon}
-    if location:
-        data["location"] = location
 
+    # ── Contact ───────────────────────────────────────────────────────────────
     contact: Dict[str, Any] = {}
+    phone = (tags.get("phone") or tags.get("contact:phone") or tags.get("contact:mobile") or "").strip() or None
+    website = (tags.get("website") or tags.get("contact:website") or "").strip() or None
+    email = (tags.get("email") or tags.get("contact:email") or "").strip() or None
+    instagram = (tags.get("contact:instagram") or "").strip() or None
+    facebook = (tags.get("contact:facebook") or "").strip() or None
+
     if phone:
         contact["phone"] = phone
     if website:
         contact["website"] = website
+    if email:
+        contact["email"] = email
+    if instagram:
+        contact["instagram"] = instagram
+    if facebook:
+        contact["facebook"] = facebook
+
+    # ── Dietary options ───────────────────────────────────────────────────────
+    diet: Dict[str, Any] = {}
+    for option in ("vegan", "vegetarian", "halal", "kosher", "gluten_free", "fish", "meat"):
+        raw = tags.get(f"diet:{option}")
+        if raw is not None:
+            coerced = _osm_bool(raw)
+            diet[option] = coerced if coerced is not None else raw
+
+    # ── Service features ──────────────────────────────────────────────────────
+    features: Dict[str, Any] = {}
+    for bool_tag, key in (
+        ("outdoor_seating", "outdoor_seating"),
+        ("indoor_seating", "indoor_seating"),
+        ("takeaway", "takeaway"),
+        ("delivery", "delivery"),
+        ("toilets", "toilets"),
+        ("highchair", "highchair"),
+        ("dog", "dog_friendly"),
+        ("self_service", "self_service"),
+    ):
+        raw = tags.get(bool_tag)
+        if raw is not None:
+            coerced = _osm_bool(raw)
+            features[key] = coerced if coerced is not None else raw
+
+    # String-valued features
+    for str_tag, key in (
+        ("wheelchair", "wheelchair"),
+        ("smoking", "smoking"),
+        ("reservation", "reservation"),
+        ("internet_access", "wifi"),
+        ("internet_access:fee", "wifi_fee"),
+        ("alcohol", "alcohol"),
+        ("bar", "has_bar"),
+        ("lgbtq", "lgbtq"),
+    ):
+        raw = tags.get(str_tag, "").strip()
+        if raw:
+            coerced = _osm_bool(raw)
+            features[key] = coerced if coerced is not None else raw
+
+    capacity_raw = tags.get("capacity", "").strip()
+    if capacity_raw:
+        try:
+            features["capacity"] = int(capacity_raw)
+        except ValueError:
+            features["capacity"] = capacity_raw
+
+    # ── Payment methods ───────────────────────────────────────────────────────
+    payment: Dict[str, Any] = {}
+    for p_tag, p_key in (
+        ("payment:cash", "cash"),
+        ("payment:credit_cards", "credit_cards"),
+        ("payment:debit_cards", "debit_cards"),
+        ("payment:contactless", "contactless"),
+        ("payment:lightning", "bitcoin_lightning"),
+        ("payment:onchain", "bitcoin_onchain"),
+    ):
+        raw = tags.get(p_tag)
+        if raw is not None:
+            coerced = _osm_bool(raw)
+            payment[p_key] = coerced if coerced is not None else raw
+
+    # ── Assemble data dict ────────────────────────────────────────────────────
+    data: Dict[str, Any] = {
+        "amenity": amenity,
+        "osm_id": osm_id,
+        "osm_type": osm_type,
+        "source": "openstreetmap",
+    }
+
+    if location:
+        data["location"] = location
     if contact:
         data["contact"] = contact
 
+    cuisine = _split_tag(tags.get("cuisine", ""))
     if cuisine:
         data["cuisine"] = cuisine
+
+    opening_hours = tags.get("opening_hours", "").strip() or None
     if opening_hours:
         data["opening_hours"] = opening_hours
+
+    kitchen_hours = tags.get("opening_hours:kitchen", "").strip() or None
+    if kitchen_hours:
+        data["opening_hours_kitchen"] = kitchen_hours
+
+    description = tags.get("description", "").strip() or None
     if description:
         data["description"] = description
+
+    alt_name = (tags.get("alt_name") or tags.get("short_name") or "").strip() or None
+    if alt_name:
+        data["alt_name"] = alt_name
+
+    name_pt = tags.get("name:pt", "").strip() or None
+    if name_pt and name_pt != name:
+        data["name_pt"] = name_pt
+
+    brand = tags.get("brand", "").strip() or None
+    if brand:
+        data["brand"] = brand
+        brand_wikidata = tags.get("brand:wikidata", "").strip() or None
+        if brand_wikidata:
+            data["brand_wikidata"] = brand_wikidata
+
+    wikidata = tags.get("wikidata", "").strip() or None
+    if wikidata:
+        data["wikidata"] = wikidata
+
+    check_date = tags.get("check_date", "").strip() or None
+    if check_date:
+        data["check_date"] = check_date
+
+    stars_raw = tags.get("stars") or tags.get("michelin:stars")
     if stars_raw:
         try:
             data["stars"] = int(stars_raw)
         except (ValueError, TypeError):
             data["stars"] = stars_raw
+
+    if diet:
+        data["diet"] = diet
+    if features:
+        data["features"] = features
+    if payment:
+        data["payment"] = payment
 
     return {
         "entity_id": entity_id,
