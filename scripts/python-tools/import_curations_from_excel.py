@@ -1,14 +1,18 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3\
 """
 File: import_curations_from_excel.py
-Purpose: Import curation documents directly into MongoDB from Excel files.
-Dependencies: pymongo, openpyxl
+Purpose: Import curation documents from Excel files via the API v3 bulk endpoint.
+Dependencies: requests, openpyxl, python-dotenv
 
 Main Responsibilities:
 - Read all .xlsx files from a folder
-- Extract category concepts from spreadsheet rows
+- Extract category concepts from spreadsheet rows (one sheet = one restaurant)
 - Build normalized curation documents for API V3 schema
-- Support dry-run preview and apply mode (write to MongoDB)
+- Support dry-run preview and apply mode (POST /curations/bulk)
+- Report per-file and aggregate import results
+
+Note: Uses the API bulk endpoint instead of direct MongoDB access so that
+Pydantic schema validation and auth are always enforced.
 """
 
 import argparse
@@ -19,25 +23,27 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
+import requests
 from openpyxl import load_workbook
-from pymongo import MongoClient
 
 
 def parse_args() -> argparse.Namespace:
     default_input = Path(__file__).resolve().parents[2] / "data" / "aiconciergerevisorestaurantessopaulomaro2023"
-    parser = argparse.ArgumentParser(description="Import curations from Excel files into MongoDB")
+    parser = argparse.ArgumentParser(description="Import curations from Excel files via API v3 bulk endpoint")
     parser.add_argument("--input-dir", type=Path, default=default_input, help="Folder containing .xlsx files")
-    parser.add_argument("--apply", action="store_true", help="Write to MongoDB (default is dry-run)")
+    parser.add_argument("--apply", action="store_true", help="Send to API (default is dry-run)")
     parser.add_argument("--default-curator-id", default="curator-import-excel", help="Curator ID for imported curations")
     parser.add_argument("--default-curator-name", default="Excel Import Script", help="Curator name for imported curations")
+    parser.add_argument("--chunk-size", type=int, default=200, help="Curations per bulk request (default: 200)")
     return parser.parse_args()
 
 
-def load_env_values() -> Dict[str, str]:
-    env_values: Dict[str, str] = {}
+def load_settings() -> Tuple[str, str]:
+    """Load API base URL and API key from .env file."""
     root = Path(__file__).resolve().parents[2]
     env_path = root / "concierge-api-v3" / ".env"
 
+    env_values: Dict[str, str] = {}
     if env_path.exists():
         for line in env_path.read_text(encoding="utf-8").splitlines():
             text = line.strip()
@@ -46,18 +52,17 @@ def load_env_values() -> Dict[str, str]:
             key, value = text.split("=", 1)
             env_values[key.strip()] = value.strip().strip('"').strip("'")
 
-    return env_values
+    api_base_url = (
+        env_values.get("API_BASE_URL")
+        or os.getenv("API_BASE_URL")
+        or "https://concierge-collector.onrender.com"
+    ).rstrip("/")
 
+    api_key = env_values.get("API_SECRET_KEY") or os.getenv("API_SECRET_KEY")
+    if not api_key:
+        raise RuntimeError("API_SECRET_KEY not found in concierge-api-v3/.env")
 
-def get_mongo_connection() -> Tuple[MongoClient, str]:
-    env_values = load_env_values()
-    mongo_uri = env_values.get("MONGODB_URL") or env_values.get("MONGODB_URI") or env_values.get("MONGO_URI") or os.getenv("MONGODB_URL") or os.getenv("MONGODB_URI") or os.getenv("MONGO_URI")
-    db_name = env_values.get("MONGODB_DB_NAME") or env_values.get("MONGO_DB_NAME") or env_values.get("DB_NAME") or os.getenv("MONGODB_DB_NAME") or os.getenv("MONGO_DB_NAME") or os.getenv("DB_NAME") or "concierge_collector"
-
-    if not mongo_uri:
-        raise RuntimeError("Mongo URI not found. Expected MONGODB_URL/MONGODB_URI/MONGO_URI in concierge-api-v3/.env")
-
-    return MongoClient(mongo_uri), db_name
+    return api_base_url, api_key
 
 
 def normalize_value(value: Any) -> List[str]:
@@ -166,33 +171,42 @@ def extract_from_excel(excel_path: Path, curator_id: str, curator_name: str) -> 
     return curations
 
 
-def save_curation(collection, curation: Dict[str, Any]) -> str:
-    now = datetime.now(timezone.utc)
+def post_curations_bulk(
+    api_bulk_url: str,
+    api_key: str,
+    curations: List[Dict[str, Any]],
+    chunk_size: int,
+) -> Dict[str, int]:
+    """Send curations in chunks via POST /curations/bulk and return aggregate counts."""
+    headers = {"X-API-Key": api_key, "Content-Type": "application/json"}
+    totals = {"created": 0, "updated": 0, "skipped": 0, "errors": 0}
 
-    update_result = collection.update_one(
-        {"_id": curation["_id"]},
-        {
-            "$set": {
-                "curation_id": curation["curation_id"],
-                "restaurant_name": curation["restaurant_name"],
-                "status": curation["status"],
-                "notes": curation["notes"],
-                "categories": curation["categories"],
-                "sources": curation["sources"],
-                "items": curation["items"],
-                "curator_id": curation["curator_id"],
-                "curator": curation["curator"],
-                "updatedAt": now,
-            },
-            "$setOnInsert": {
-                "createdAt": now,
-                "version": 1,
-            },
-        },
-        upsert=True,
-    )
+    for start in range(0, len(curations), chunk_size):
+        chunk = curations[start:start + chunk_size]
+        end_idx = min(start + chunk_size, len(curations))
+        print(f"  Chunk [{start + 1}–{end_idx}] ({len(chunk)} items)… ", end="", flush=True)
+        try:
+            response = requests.post(
+                api_bulk_url,
+                json={"curations": chunk},
+                headers=headers,
+                timeout=120,
+            )
+            response.raise_for_status()
+            result = response.json()
+            totals["created"] += result.get("created", 0)
+            totals["updated"] += result.get("updated", 0)
+            totals["skipped"] += result.get("skipped", 0)
+            chunk_errors = len(result.get("errors", []))
+            totals["errors"] += chunk_errors
+            print(f"created={result.get('created', 0)} updated={result.get('updated', 0)} errors={chunk_errors}")
+            for err in result.get("errors", []):
+                print(f"    [item {err.get('index', '?')}] {err.get('error', 'unknown')}")
+        except Exception as exc:
+            totals["errors"] += len(chunk)
+            print(f"FAILED: {exc}")
 
-    return "created" if update_result.upserted_id else "updated"
+    return totals
 
 
 def main() -> int:
@@ -209,67 +223,62 @@ def main() -> int:
         return 0
 
     print(f"Found {len(excel_files)} Excel file(s)")
-    print(f"Mode: {'APPLY' if args.apply else 'DRY-RUN'}")
+    print(f"Mode: {'APPLY' if args.apply else 'DRY-RUN'} | chunk-size={args.chunk_size}")
 
-    client = None
-    collection = None
+    api_base_url: str = ""
+    api_key: str = ""
     if args.apply:
-        client, db_name = get_mongo_connection()
-        collection = client[db_name].curations
+        try:
+            api_base_url, api_key = load_settings()
+            print(f"API: {api_base_url}")
+        except Exception as error:
+            print(f"ERROR: {error}")
+            return 1
 
-    created = 0
-    updated = 0
-    failed = 0
-    total_sheets = 0
+    api_bulk_url = f"{api_base_url}/api/v3/curations/bulk"
+
+    all_curations: List[Dict[str, Any]] = []
+    failed_files = 0
 
     for index, excel_path in enumerate(excel_files, start=1):
         try:
             curations = extract_from_excel(excel_path, args.default_curator_id, args.default_curator_name)
-            total_sheets += len(curations)
-
-            for sheet_index, curation in enumerate(curations, start=1):
-                concepts_count = sum(len(values) for values in curation["categories"].values())
-
-                if not args.apply:
-                    print(
-                        f"[{index}/{len(excel_files)} | {sheet_index}/{len(curations)}] "
-                        f"DRY-RUN {curation['curation_id']} | name={curation['restaurant_name']} "
-                        f"| categories={len(curation['categories'])} | concepts={concepts_count}"
-                    )
-                    continue
-
-                outcome = save_curation(collection, curation)
-                if outcome == "created":
-                    created += 1
-                else:
-                    updated += 1
-
+            for curation in curations:
+                concepts_count = sum(len(v) for v in curation["categories"].values())
                 print(
-                    f"[{index}/{len(excel_files)} | {sheet_index}/{len(curations)}] "
-                    f"{outcome.upper()} {curation['curation_id']} | name={curation['restaurant_name']} "
-                    f"| categories={len(curation['categories'])} | concepts={concepts_count}"
+                    f"[{index}/{len(excel_files)}] {curation['curation_id']} | "
+                    f"name={curation['restaurant_name']} | "
+                    f"categories={len(curation['categories'])} | concepts={concepts_count}"
                 )
-
+            all_curations.extend(curations)
         except Exception as error:
-            failed += 1
+            failed_files += 1
             print(f"[{index}/{len(excel_files)}] FAILED {excel_path.name} -> {error}")
 
-    if client:
-        client.close()
+    print(f"\nExtracted {len(all_curations)} curations from {len(excel_files) - failed_files} file(s)")
+
+    if not args.apply:
+        print("\nDry-run only. Use --apply to send to the API.")
+        return 0
+
+    # Remove internal _id key — the API uses curation_id as the identifier
+    payloads = [{k: v for k, v in c.items() if k != "_id"} for c in all_curations]
+
+    print(f"\nSending {len(payloads)} curations to {api_bulk_url}…")
+    totals = post_curations_bulk(api_bulk_url, api_key, payloads, args.chunk_size)
 
     print("\n" + "=" * 72)
     print("Summary")
     print("=" * 72)
-    print(f"Total files: {len(excel_files)}")
-    print(f"Total sheets (restaurants): {total_sheets}")
-    print(f"Created: {created}")
-    print(f"Updated: {updated}")
-    print(f"Failed: {failed}")
+    print(f"Excel files:  {len(excel_files)}")
+    print(f"Failed files: {failed_files}")
+    print(f"Curations:    {len(all_curations)}")
+    print(f"Created:      {totals['created']}")
+    print(f"Updated:      {totals['updated']}")
+    print(f"Skipped:      {totals['skipped']}")
+    print(f"Errors:       {totals['errors']}")
 
-    if not args.apply:
-        print("\nDry-run only. Use --apply to write into MongoDB.")
-
-    return 0 if failed == 0 else 2
+    return 0 if totals["errors"] == 0 and failed_files == 0 else 2
 
 
 if __name__ == "__main__":
