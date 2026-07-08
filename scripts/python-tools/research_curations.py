@@ -93,6 +93,43 @@ def build_research_block(pages: List[Dict[str, str]], max_chars: int = 12000) ->
     return block[:max_chars]
 
 
+_NAV_TOKENS = {
+    "home", "menu", "login", "logout", "sign in", "sign up", "assine",
+    "buscar", "search", "compartilhar", "share", "contato", "sobre",
+    "reservar", "fechar", "close", "faq", "imagens", "avaliações",
+}
+_BOILERPLATE_PATTERNS = [
+    re.compile(r"cookie", re.I),
+    re.compile(r"newsletter|assine|subscribe", re.I),
+    re.compile(r"último update", re.I),
+    re.compile(r"^\s*★?\s*\d+([.,]\d+)?\s*/\s*5", re.I),   # ★ 2.3 / 5
+    re.compile(r"\(\s*\d+\s+avalia", re.I),                # (6 Avaliação)
+    re.compile(r"^avalia(ç|c)", re.I),                     # Avaliações
+    re.compile(r"compartilh|facebook|whatsapp|twitter", re.I),
+]
+
+
+def clean_scraped_text(text: str) -> str:
+    if not text:
+        return ""
+    seen = set()
+    out: List[str] = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        low = line.lower()
+        if low in _NAV_TOKENS:
+            continue
+        if any(p.search(line) for p in _BOILERPLATE_PATTERNS):
+            continue
+        if low in seen:
+            continue
+        seen.add(low)
+        out.append(line)
+    return "\n".join(out)
+
+
 def snap_price_range(values: List[str]) -> List[str]:
     """Trava valores de price_range na escala fechada (com sinônimos); descarta o resto."""
     out: List[str] = []

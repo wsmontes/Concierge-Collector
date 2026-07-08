@@ -8,6 +8,7 @@ from research_curations import (  # noqa: E402
     build_queries,
     build_research_block,
     clean_llm_categories,
+    clean_scraped_text,
     build_curation,
     build_vocabulary,
     snap_price_range,
@@ -236,3 +237,32 @@ def test_research_entity_returns_none_without_concepts():
     rc.search_web = lambda q, max_results, searcher=None: ["https://a.com"]
     rc.scrape_url = lambda url, fetcher=None: "texto"
     assert research_entity(entity, client, "deepseek-chat") is None
+
+
+# --- Task 1: clean_scraped_text -------------------------------------------------
+
+def test_clean_scraped_text_removes_nav_boilerplate_and_dedups():
+    raw = "\n".join([
+        "Home",
+        "Último update: 17.01.2026",
+        "★ 2.3 / 5",
+        "(6 Avaliação)",
+        "Comida italiana, ambiente romântico.",
+        "Comida italiana, ambiente romântico.",          # duplicada
+        "pizza",                                          # conteúdo curto real -> preservar
+        "Aceitamos cookies para melhorar sua experiência.",
+    ])
+    out = clean_scraped_text(raw)
+    linhas = out.split("\n")
+    assert "Home" not in linhas
+    assert "Último update" not in out
+    assert "★" not in out
+    assert "Avaliação" not in out
+    assert "cookie" not in out.lower()
+    assert "pizza" in linhas                              # preservado
+    assert out.count("Comida italiana, ambiente romântico.") == 1   # dedup
+
+
+def test_clean_scraped_text_empty():
+    assert clean_scraped_text("") == ""
+    assert clean_scraped_text("\n\n   \n") == ""
