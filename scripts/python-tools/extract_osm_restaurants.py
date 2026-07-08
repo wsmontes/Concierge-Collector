@@ -214,6 +214,21 @@ def fetch_overpass(query: str) -> List[Dict[str, Any]]:
 # OSM element normalizer → API v3 EntityCreate schema
 # ---------------------------------------------------------------------------
 
+# Maps OSM amenity / category values to the API v3 EntityType literals.
+# Only "bar" and "cafe" get distinct types; everything else is "restaurant".
+_AMENITY_TO_ENTITY_TYPE: Dict[str, str] = {
+    "bar": "bar",
+    "pub": "bar",
+    "biergarten": "bar",
+    "cafe": "cafe",
+}
+
+
+def _entity_type(amenity: str) -> str:
+    """Return the API v3 EntityType string for an OSM amenity tag value."""
+    return _AMENITY_TO_ENTITY_TYPE.get(amenity.lower(), "restaurant")
+
+
 def _osm_bool(value: Optional[str]) -> Optional[bool]:
     """Convert OSM yes/no tag value to Python bool. Returns None for unknown/missing."""
     if value is None:
@@ -452,7 +467,7 @@ def normalize_element(
 
     return {
         "entity_id": entity_id,
-        "type": "restaurant",
+        "type": _entity_type(amenity),
         "name": name,
         "status": "active",
         "data": data,
