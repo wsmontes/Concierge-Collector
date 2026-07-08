@@ -8,7 +8,9 @@ from research_curations import (  # noqa: E402
     build_queries,
     build_research_block,
     clean_llm_categories,
+    clean_scraped_text,
     build_curation,
+    build_entity_patch,
     build_vocabulary,
     snap_price_range,
     extract_concepts_llm,
@@ -137,30 +139,38 @@ class _FakeClient:
         return _FakeResp(self._content)
 
 
-def test_extract_concepts_llm_parses_and_cleans():
-    payload = _json.dumps({"cuisine": ["Japanese"], "lixo": ["x"], "mood": []})
+def test_extract_llm_returns_categories_and_description():
+    payload = _json.dumps({
+        "categories": {"cuisine": ["Italian"], "price_range": ["Mid-Range"]},
+        "description": "Cantina italiana aconchegante, com massas e pizzas.",
+    })
     client = _FakeClient(payload)
-    out = extract_concepts_llm("--- FONTE: a ---\nsushi", "Sushi X", client, "deepseek-chat")
-    assert out == {"cuisine": ["japanese"]}  # inglês minúsculo, normalizado
-    # prompt precisa conter instrução grounded e o nome da entidade
+    out = extract_concepts_llm("--- FONTE: a ---\ntexto", "Cantina X", client, "deepseek-chat")
+    assert out["categories"] == {"cuisine": ["italian"], "price_range": ["mid-range"]}
+    assert out["description"].startswith("Cantina italiana")
     sent = client.last_kwargs["messages"][-1]["content"]
-    assert "Sushi X" in sent
+    assert "Cantina X" in sent
+    assert "descri" in sent.lower()          # prompt pede description
 
 
-def test_extract_concepts_llm_handles_bad_json():
-    client = _FakeClient("desculpa, não achei nada")
-    out = extract_concepts_llm("texto", "X", client, "deepseek-chat")
-    assert out == {}
+def test_extract_llm_empty_description_when_absent():
+    payload = _json.dumps({"categories": {"cuisine": ["bar"]}})
+    out = extract_concepts_llm("t", "X", _FakeClient(payload), "deepseek-chat")
+    assert out["categories"] == {"cuisine": ["bar"]}
+    assert out["description"] == ""
 
 
-def test_extract_concepts_llm_injects_vocabulary_and_price_scale():
-    client = _FakeClient(_json.dumps({"cuisine": ["italian"]}))
+def test_extract_llm_handles_bad_json():
+    out = extract_concepts_llm("t", "X", _FakeClient("desculpa"), "deepseek-chat")
+    assert out == {"categories": {}, "description": ""}
+
+
+def test_extract_llm_injects_vocabulary_and_price_scale():
+    client = _FakeClient(_json.dumps({"categories": {"cuisine": ["italian"]}, "description": ""}))
     vocab = {"cuisine": ["italian", "japanese"], "mood": ["cozy"]}
     extract_concepts_llm("texto", "X", client, "deepseek-chat", vocabulary=vocab)
     sent = client.last_kwargs["messages"][-1]["content"]
-    # vocabulário preferido injetado no prompt
     assert "italian" in sent and "japanese" in sent and "cozy" in sent
-    # escala fechada de price_range presente
     assert "unexpensive" in sent and "mid-range" in sent and "expensive" in sent
 
 
@@ -187,52 +197,124 @@ def test_scrape_url_returns_empty_on_failure():
 
 # --- Task 6: research_entity (end to end with fakes) -------------------------
 
-def test_research_entity_end_to_end_with_fakes():
-    entity = {"_id": "overture_x", "entity_id": "overture_x", "name": "Trattoria Y",
+def test_research_entity_returns_curation_and_patch(monkeypatch):
+    entity = {"_id": "x", "entity_id": "x", "name": "Trattoria", "type": "restaurant",
               "data": {"location": {"city": "Rio de Janeiro"}}}
-
-    payload = _json.dumps({"cuisine": ["Italian"], "price_range": ["Mid-Range"]})
+    payload = _json.dumps({"categories": {"cuisine": ["Italian"]},
+                           "description": "Trattoria italiana simpática."})
     client = _FakeClient(payload)
-
-    def fake_search(query, max_results, searcher=None):
-        return ["https://a.com"]
-
-    def fake_scrape(url, fetcher=None):
-        return "Comida italiana, ambiente aconchegante."
-
     import research_curations as rc
-    rc.search_web = fake_search
-    rc.scrape_url = fake_scrape
+    monkeypatch.setattr(rc, "search_web", lambda q, max_results, searcher=None: ["https://a.com"])
+    monkeypatch.setattr(rc, "scrape_url", lambda url, fetcher=None: "Home\nComida italiana boa.\nComida italiana boa.")
+    curation, patch = rc.research_entity(entity, client, "deepseek-chat")
+    assert curation["categories"] == {"cuisine": ["italian"]}
+    assert "Home" not in curation["transcript"]                       # nav removida
+    assert curation["transcript"].count("Comida italiana boa.") == 1  # dedup
+    assert patch == {"entity_id": "x", "name": "Trattoria", "type": "restaurant",
+                     "data": {"description": "Trattoria italiana simpática."}}
 
-    cur = research_entity(entity, client, "deepseek-chat")
-    assert cur["entity_id"] == "overture_x"
-    assert cur["categories"] == {"cuisine": ["italian"], "price_range": ["mid-range"]}
-    assert cur["sources"]["web_research"] == ["https://a.com"]
+
+def test_research_entity_no_description_no_patch(monkeypatch):
+    entity = {"_id": "z", "entity_id": "z", "name": "Z", "type": "bar", "data": {}}
+    client = _FakeClient(_json.dumps({"categories": {"cuisine": ["bar"]}}))  # sem description
+    import research_curations as rc
+    monkeypatch.setattr(rc, "search_web", lambda q, max_results, searcher=None: ["https://a.com"])
+    monkeypatch.setattr(rc, "scrape_url", lambda url, fetcher=None: "texto valido aqui.")
+    curation, patch = rc.research_entity(entity, client, "deepseek-chat")
+    assert curation is not None
+    assert patch is None
+
+
+def test_research_entity_none_none_without_content(monkeypatch):
+    entity = {"_id": "z", "entity_id": "z", "name": "Z", "type": "bar", "data": {}}
+    import research_curations as rc
+    monkeypatch.setattr(rc, "search_web", lambda q, max_results, searcher=None: [])
+    monkeypatch.setattr(rc, "scrape_url", lambda url, fetcher=None: "")
+    assert rc.research_entity(entity, _FakeClient("{}"), "deepseek-chat") == (None, None)
+
+
+def test_research_entity_patch_without_curation(monkeypatch):
+    import research_curations as rc
+    monkeypatch.setattr(rc, "search_web", lambda q, max_results, searcher=None: ["https://a.com"])
+    monkeypatch.setattr(rc, "scrape_url", lambda url, fetcher=None: "texto valido.")
+    monkeypatch.setattr(rc, "extract_concepts_llm",
+                        lambda block, name, client, model, vocabulary=None: {"categories": {}, "description": "Uma frase factual."})
+    entity = {"_id": "x", "entity_id": "x", "name": "X", "type": "bar", "data": {}}
+    curation, patch = rc.research_entity(entity, client=None, model="m")
+    assert curation is None
+    assert patch == {"entity_id": "x", "name": "X", "type": "bar", "data": {"description": "Uma frase factual."}}
 
 
 def test_research_entity_forwards_vocabulary(monkeypatch):
     import research_curations as rc
     monkeypatch.setattr(rc, "search_web", lambda q, max_results, searcher=None: ["https://a.com"])
-    monkeypatch.setattr(rc, "scrape_url", lambda url, fetcher=None: "texto")
-
+    monkeypatch.setattr(rc, "scrape_url", lambda url, fetcher=None: "texto valido.")
     captured = {}
 
     def fake_extract(block, name, client, model, vocabulary=None):
         captured["vocab"] = vocabulary
-        return {"cuisine": ["italian"]}
+        return {"categories": {"cuisine": ["bar"]}, "description": ""}
 
     monkeypatch.setattr(rc, "extract_concepts_llm", fake_extract)
-
-    entity = {"_id": "x", "entity_id": "x", "name": "X", "data": {}}
-    vocab = {"cuisine": ["italian"]}
+    entity = {"_id": "x", "entity_id": "x", "name": "X", "type": "bar", "data": {}}
+    vocab = {"cuisine": ["bar"]}
     rc.research_entity(entity, client=None, model="m", vocabulary=vocab)
     assert captured["vocab"] == vocab
 
 
-def test_research_entity_returns_none_without_concepts():
-    entity = {"_id": "z", "entity_id": "z", "name": "Nada", "data": {}}
-    client = _FakeClient("{}")
+# --- Task 1: clean_scraped_text -------------------------------------------------
+
+def test_clean_scraped_text_removes_nav_boilerplate_and_dedups():
+    raw = "\n".join([
+        "Home",
+        "Último update: 17.01.2026",
+        "★ 2.3 / 5",
+        "(6 Avaliação)",
+        "Comida italiana, ambiente romântico.",
+        "Comida italiana, ambiente romântico.",          # duplicada
+        "pizza",                                          # conteúdo curto real -> preservar
+        "Aceitamos cookies para melhorar sua experiência.",
+    ])
+    out = clean_scraped_text(raw)
+    linhas = out.split("\n")
+    assert "Home" not in linhas
+    assert "Último update" not in out
+    assert "★" not in out
+    assert "Avaliação" not in out
+    assert "cookie" not in out.lower()
+    assert "pizza" in linhas                              # preservado
+    assert out.count("Comida italiana, ambiente romântico.") == 1   # dedup
+
+
+def test_clean_scraped_text_empty():
+    assert clean_scraped_text("") == ""
+    assert clean_scraped_text("\n\n   \n") == ""
+
+
+# --- Task 3: build_entity_patch -----------------------------------------------
+
+def test_build_entity_patch_shape():
+    entity = {"_id": "osm_1", "entity_id": "osm_1", "name": "Bar X", "type": "bar",
+              "data": {"location": {"city": "Rio"}}}
+    patch = build_entity_patch(entity, "Bar aconchegante no centro.")
+    assert patch == {
+        "entity_id": "osm_1",
+        "name": "Bar X",
+        "type": "bar",
+        "data": {"description": "Bar aconchegante no centro."},
+    }
+
+
+def test_build_entity_patch_uses_id_fallback():
+    entity = {"_id": "osm_9", "name": "Y", "type": "cafe", "data": {}}
+    patch = build_entity_patch(entity, "Café tranquilo.")
+    assert patch["entity_id"] == "osm_9"
+
+
+# --- Task 5: parse_args ------------------------------------------------------
+
+def test_parse_args_descriptions_output_default(monkeypatch):
     import research_curations as rc
-    rc.search_web = lambda q, max_results, searcher=None: ["https://a.com"]
-    rc.scrape_url = lambda url, fetcher=None: "texto"
-    assert research_entity(entity, client, "deepseek-chat") is None
+    monkeypatch.setattr("sys.argv", ["prog"])
+    args = rc.parse_args()
+    assert args.descriptions_output == "data/rio_entity_descriptions.json"

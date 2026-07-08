@@ -93,6 +93,44 @@ def build_research_block(pages: List[Dict[str, str]], max_chars: int = 12000) ->
     return block[:max_chars]
 
 
+_NAV_TOKENS = {
+    "home", "menu", "login", "logout", "sign in", "sign up",
+    "buscar", "search", "compartilhar", "share", "contato", "sobre",
+    "reservar", "fechar", "close", "faq", "imagens", "avaliações",
+}
+_BOILERPLATE_PATTERNS = [
+    re.compile(r"cookie", re.I),
+    re.compile(r"newsletter|assine|subscribe", re.I),
+    re.compile(r"último update", re.I),
+    re.compile(r"^\s*★?\s*\d+([.,]\d+)?\s*/\s*5"),          # ★ 2.3 / 5
+    re.compile(r"\(\s*\d+\s+avalia", re.I),                # (6 Avaliação)
+    re.compile(r"^avalia(ç|c)", re.I),                     # Avaliações
+    re.compile(r"compartilh|facebook|whatsapp|twitter", re.I),
+]
+
+
+def clean_scraped_text(text: str) -> str:
+    """Conservative heuristic cleaning: remove nav/boilerplate/rating lines and dedup, preserve real content."""
+    if not text:
+        return ""
+    seen = set()
+    out: List[str] = []
+    for raw_line in text.splitlines():
+        line = raw_line.strip()
+        if not line:
+            continue
+        low = line.lower()
+        if low in _NAV_TOKENS:
+            continue
+        if any(p.search(line) for p in _BOILERPLATE_PATTERNS):
+            continue
+        if low in seen:
+            continue
+        seen.add(low)
+        out.append(line)
+    return "\n".join(out)
+
+
 def snap_price_range(values: List[str]) -> List[str]:
     """Trava valores de price_range na escala fechada (com sinônimos); descarta o resto."""
     out: List[str] = []
@@ -196,6 +234,15 @@ def build_curation(
     }
 
 
+def build_entity_patch(entity: Dict[str, Any], description: str) -> Dict[str, Any]:
+    return {
+        "entity_id": entity.get("entity_id") or entity.get("_id"),
+        "name": entity.get("name"),
+        "type": entity.get("type"),
+        "data": {"description": description},
+    }
+
+
 def _parse_json_object(text: str) -> Dict[str, Any]:
     """Extrai o primeiro objeto JSON de uma resposta de LLM; {} se falhar."""
     if not text:
@@ -227,25 +274,25 @@ def _format_vocab_block(vocabulary: Dict[str, List[str]], max_per_cat: int = 40)
     return "\n".join(lines)
 
 
+DESCRIPTION_MAX_CHARS = 400
+
+
 def extract_concepts_llm(
     research_block: str,
     entity_name: str,
     client,
     model: str,
     vocabulary: Dict[str, List[str]] | None = None,
-) -> Dict[str, List[str]]:
+) -> Dict[str, Any]:
     cats = ", ".join(TARGET_CATEGORIES)
     price_scale = " | ".join(PRICE_RANGE_SCALE)
     system = (
-        "You extract structured concept tags about a restaurant from web-researched "
-        "text. Rules: use ONLY information explicitly supported by the text; if a "
-        "category has no evidence, omit it; NEVER invent. Output ALL tag values in "
-        "ENGLISH, lowercase, as short tags of 1-3 words — never full sentences, never a "
-        "website's navigation labels, never raw menu prices. Reply with a single JSON "
-        "object only."
+        "You extract structured data about a restaurant from web-researched text. "
+        "Rules: use ONLY information explicitly supported by the text; if something "
+        "has no evidence, omit it; NEVER invent. Reply with a single JSON object only."
     )
     semantics = (
-        "Category meanings:\n"
+        "Category meanings (tag values in ENGLISH, lowercase, 1-3 words):\n"
         "- cuisine: kind of cuisine (italian, japanese, brazilian, wine bar) — NOT an "
         "aggregator's navigation label.\n"
         "- menu: specific dishes/items served (pasta, oysters, feijoada).\n"
@@ -253,11 +300,9 @@ def extract_concepts_llm(
         "- drinks: beverages offered (wine list, craft beers, signature cocktails).\n"
         "- setting: physical space/decor (terrace, open kitchen, upscale, rustic).\n"
         "- mood: the vibe/atmosphere (lively, cozy, romantic, formal).\n"
-        "- crowd: WHO goes there (tourists, locals, families, executives, young) — never "
-        "vibe words.\n"
+        "- crowd: WHO goes there (tourists, locals, families, executives, young).\n"
         "- suitable_for: occasions (dating, business lunches, celebrations, quick bite).\n"
-        "- special_features: services/amenities (delivery, valet parking, reservations "
-        "recommended).\n"
+        "- special_features: services/amenities (delivery, valet parking, reservations recommended).\n"
         f"- price_range: choose EXACTLY ONE from this closed scale: {price_scale}.\n"
     )
     vocab_block = _format_vocab_block(vocabulary or {})
@@ -275,8 +320,11 @@ def extract_concepts_llm(
         f"{vocab_section}\n"
         "Part of the text may be about ANOTHER establishment — ignore anything not "
         "clearly about the target restaurant.\n"
-        'Return JSON shaped as {"category": ["tag", ...]} with only categories that have '
-        "explicit support in the text.\n\n"
+        "Also write a `description`: 1-3 factual sentences IN PORTUGUESE describing this "
+        "restaurant, grounded strictly in the text (no marketing fluff, no invention). "
+        "If the text does not support a description, use an empty string.\n\n"
+        'Return JSON exactly as {"categories": {"category": ["tag", ...], ...}, '
+        '"description": "..."} with only categories that have explicit support.\n\n'
         f"RESEARCHED TEXT:\n{research_block}"
     )
     resp = client.chat.completions.create(
@@ -285,7 +333,13 @@ def extract_concepts_llm(
         temperature=0,
     )
     content = resp.choices[0].message.content
-    return clean_llm_categories(_parse_json_object(content))
+    data = _parse_json_object(content)
+    if not isinstance(data, dict):
+        return {"categories": {}, "description": ""}
+    categories = clean_llm_categories(data.get("categories"))  # safe: clean_llm_categories(None) -> {}
+    raw_desc = data.get("description")
+    description = (raw_desc or "").strip()[:DESCRIPTION_MAX_CHARS] if isinstance(raw_desc, str) else ""
+    return {"categories": categories, "description": description}
 
 
 def search_web(query: str, max_results: int = 5, searcher=None) -> List[str]:
@@ -326,30 +380,32 @@ def research_entity(
     model: str,
     per_query_results: int = 5,
     vocabulary: Dict[str, List[str]] | None = None,
-) -> Dict[str, Any] | None:
+) -> "tuple[Dict[str, Any] | None, Dict[str, Any] | None]":
     urls: List[str] = []
     for q in build_queries(entity):
         for u in search_web(q, max_results=per_query_results):
             if u not in urls:
                 urls.append(u)
-    pages = [{"url": u, "text": scrape_url(u)} for u in urls]
+    pages = [{"url": u, "text": clean_scraped_text(scrape_url(u))} for u in urls]
     pages = [p for p in pages if p["text"]]
     block = build_research_block(pages)
     if not block:
-        return None
-    categories = extract_concepts_llm(
-        block, entity.get("name") or "", client, model, vocabulary=vocabulary
-    )
-    if not categories:
-        return None
-    return build_curation(
-        entity=entity,
-        categories=categories,
-        urls=[p["url"] for p in pages],
-        research_block=block,
-        curator_id=CURATOR_ID,
-        curator_name=CURATOR_NAME,
-    )
+        return None, None
+    result = extract_concepts_llm(block, entity.get("name") or "", client, model, vocabulary=vocabulary)
+    categories = result.get("categories") or {}
+    description = (result.get("description") or "").strip()
+    curation = None
+    if categories:
+        curation = build_curation(
+            entity=entity,
+            categories=categories,
+            urls=[p["url"] for p in pages],
+            research_block=block,
+            curator_id=CURATOR_ID,
+            curator_name=CURATOR_NAME,
+        )
+    patch = build_entity_patch(entity, description) if description else None
+    return curation, patch
 
 
 def parse_args() -> argparse.Namespace:
@@ -357,6 +413,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--city", default="Rio", help="Filtro de cidade (regex em data.location.city)")
     p.add_argument("--limit", type=int, default=30, help="Máx. de entidades (0 = todas)")
     p.add_argument("--output", default="data/rio_curations_research.json")
+    p.add_argument("--descriptions-output", default="data/rio_entity_descriptions.json",
+                   dest="descriptions_output")
     p.add_argument("--per-query-results", type=int, default=5, dest="per_query_results")
     p.add_argument("--sleep", type=float, default=1.0, help="Pausa entre entidades (s)")
     return p.parse_args()
@@ -397,38 +455,57 @@ def main() -> int:
     entities = list(cursor)
     print(f"{len(entities)} entidades candidatas")
 
+    # --- saída 1: curations ---
     out_path = Path(args.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    existing = []
+    curations = []
     done_ids = set()
     if out_path.exists():
-        existing = json.loads(out_path.read_text(encoding="utf-8"))
-        done_ids = {c.get("entity_id") for c in existing}
+        curations = json.loads(out_path.read_text(encoding="utf-8"))
+        done_ids = {c.get("entity_id") for c in curations}
 
-    results = list(existing)
+    # --- saída 2: entity descriptions ---
+    desc_path = Path(args.descriptions_output)
+    desc_path.parent.mkdir(parents=True, exist_ok=True)
+    descriptions = []
+    done_desc_ids = set()
+    if desc_path.exists():
+        descriptions = json.loads(desc_path.read_text(encoding="utf-8"))
+        done_desc_ids = {d.get("entity_id") for d in descriptions}
+
+    # Cache combinado: pula entidade já presente em qualquer artefato. Nota: um
+    # kill entre as duas escritas pode, no pior caso, perder a description de UMA
+    # entidade (a curadoria, escrita antes, é preservada).
+    done = done_ids | done_desc_ids
     for i, e in enumerate(entities, 1):
         eid = e.get("entity_id") or e.get("_id")
-        if eid in done_ids:
+        if eid in done:
             print(f"[{i}/{len(entities)}] {e.get('name')} — já feito, pulando")
             continue
         print(f"[{i}/{len(entities)}] {e.get('name')} …", end="", flush=True)
         try:
-            cur = research_entity(e, client, model, args.per_query_results, vocabulary=vocabulary)
+            cur, patch = research_entity(e, client, model, args.per_query_results, vocabulary=vocabulary)
         except Exception as exc:
             print(f" ERRO: {exc}")
-            cur = None
+            cur, patch = None, None
         if cur:
-            results.append(cur)
-            print(f" ok ({len(cur['categories'])} categorias)")
-        else:
-            print(" sem conceitos")
-        out_path.write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
+            curations.append(cur)
+        if patch:
+            descriptions.append(patch)
+        n_cats = len(cur["categories"]) if cur else 0
+        has_desc = "desc" if patch else "—"
+        print(f" ok ({n_cats} categorias, {has_desc})" if (cur or patch) else " sem conceitos")
+        out_path.write_text(json.dumps(curations, ensure_ascii=False, indent=2), encoding="utf-8")
+        desc_path.write_text(json.dumps(descriptions, ensure_ascii=False, indent=2), encoding="utf-8")
         time.sleep(args.sleep)
 
-    print(f"\nSalvo: {out_path}  ({len(results)} curadorias)")
+    print(f"\nSalvo: {out_path}  ({len(curations)} curadorias)")
+    print(f"Salvo: {desc_path}  ({len(descriptions)} descriptions)")
     print("Revisar e depois importar com:")
     print(f"  ./concierge-api-v3/venv/bin/python scripts/python-tools/import_curations.py "
           f"--input {out_path} --keep-entity-id --apply")
+    print(f"  ./concierge-api-v3/venv/bin/python scripts/python-tools/import_entities.py "
+          f"--input {desc_path} --apply")
     return 0
 
 
