@@ -27,6 +27,22 @@ TARGET_CATEGORIES = [
     "price_range", "drinks", "special_features", "crowd", "suitable_for",
 ]
 
+# price_range é uma escala fechada nas curadorias humanas (ver memória
+# curation-category-vocabulary). O extractor sempre trava nesses 3 valores.
+PRICE_RANGE_SCALE = ["unexpensive", "mid-range", "expensive"]
+PRICE_RANGE_SYNONYMS = {
+    "inexpensive": "unexpensive", "cheap": "unexpensive", "budget": "unexpensive",
+    "affordable": "unexpensive", "low": "unexpensive", "low-priced": "unexpensive",
+    "mid range": "mid-range", "midrange": "mid-range", "moderate": "mid-range",
+    "medium": "mid-range", "average": "mid-range", "reasonable": "mid-range",
+    "pricey": "expensive", "high-end": "expensive", "high end": "expensive",
+    "upscale": "expensive", "fine dining": "expensive", "very expensive": "expensive",
+    "premium": "expensive",
+}
+
+# Curadores de automação/import cujos valores NÃO contam como vocabulário humano.
+AUTOMATION_CURATOR_MARKERS = ("research", "import", "michelin", "ai-", "curator-json")
+
 CURATOR_ID = "curator-ai-research"
 CURATOR_NAME = "AI Web Research"
 
@@ -77,7 +93,65 @@ def build_research_block(pages: List[Dict[str, str]], max_chars: int = 12000) ->
     return block[:max_chars]
 
 
+def snap_price_range(values: List[str]) -> List[str]:
+    """Trava valores de price_range na escala fechada (com sinônimos); descarta o resto."""
+    out: List[str] = []
+    for v in values:
+        if not isinstance(v, str):
+            continue
+        key = v.strip().lower()
+        if not key:
+            continue
+        mapped = PRICE_RANGE_SYNONYMS.get(key)
+        if mapped is None and key in PRICE_RANGE_SCALE:
+            mapped = key
+        if mapped and mapped not in out:
+            out.append(mapped)
+    return out
+
+
+def build_vocabulary(
+    curations: List[Dict[str, Any]],
+    exclude_substrings=AUTOMATION_CURATOR_MARKERS,
+) -> Dict[str, List[str]]:
+    """Vocabulário controlado por categoria a partir de curadorias HUMANAS.
+
+    Ignora curadorias de automação/import. Valores em minúsculo, ordenados por
+    frequência (mais comum primeiro). Só chaves em TARGET_CATEGORIES.
+    """
+    from collections import Counter
+
+    counters: Dict[str, Counter] = {cat: Counter() for cat in TARGET_CATEGORIES}
+    for c in curations:
+        if not isinstance(c, dict):
+            continue
+        curator = c.get("curator") if isinstance(c.get("curator"), dict) else {}
+        cid = str(c.get("curator_id") or curator.get("id") or "").lower()
+        if any(marker in cid for marker in exclude_substrings):
+            continue
+        cats = c.get("categories")
+        if not isinstance(cats, dict):
+            continue
+        for cat in TARGET_CATEGORIES:
+            values = cats.get(cat)
+            if not isinstance(values, list):
+                continue
+            for v in values:
+                if isinstance(v, str) and v.strip():
+                    counters[cat][v.strip().lower()] += 1
+
+    vocab: Dict[str, List[str]] = {}
+    for cat, counter in counters.items():
+        if counter:
+            vocab[cat] = [val for val, _ in counter.most_common()]
+    return vocab
+
+
 def clean_llm_categories(raw: Dict[str, Any]) -> Dict[str, List[str]]:
+    """Normaliza a saída do LLM: só chaves-alvo, minúsculo, sem duplicatas/vazios.
+
+    `price_range` é travado na escala fechada via snap_price_range.
+    """
     if not isinstance(raw, dict):
         return {}
     cleaned: Dict[str, List[str]] = {}
@@ -85,7 +159,14 @@ def clean_llm_categories(raw: Dict[str, Any]) -> Dict[str, List[str]]:
         values = raw.get(key)
         if not isinstance(values, list):
             continue
-        vals = [v.strip() for v in values if isinstance(v, str) and v.strip()]
+        vals: List[str] = []
+        for v in values:
+            if isinstance(v, str) and v.strip():
+                tag = v.strip().lower()
+                if tag not in vals:
+                    vals.append(tag)
+        if key == "price_range":
+            vals = snap_price_range(vals)
         if vals:
             cleaned[key] = vals
     return cleaned
@@ -132,22 +213,71 @@ def _parse_json_object(text: str) -> Dict[str, Any]:
     return {}
 
 
-def extract_concepts_llm(research_block: str, entity_name: str, client, model: str) -> Dict[str, List[str]]:
+def _format_vocab_block(vocabulary: Dict[str, List[str]], max_per_cat: int = 40) -> str:
+    """Bloco compacto de vocabulário preferido por categoria (limitado por categoria)."""
+    if not vocabulary:
+        return ""
+    lines: List[str] = []
+    for cat in TARGET_CATEGORIES:
+        vals = vocabulary.get(cat)
+        if not vals:
+            continue
+        shown = vals[:max_per_cat]
+        lines.append(f"- {cat}: {', '.join(shown)}")
+    return "\n".join(lines)
+
+
+def extract_concepts_llm(
+    research_block: str,
+    entity_name: str,
+    client,
+    model: str,
+    vocabulary: Dict[str, List[str]] | None = None,
+) -> Dict[str, List[str]]:
     cats = ", ".join(TARGET_CATEGORIES)
+    price_scale = " | ".join(PRICE_RANGE_SCALE)
     system = (
-        "Você extrai conceitos estruturados sobre restaurantes a partir de texto "
-        "pesquisado na web. Regras: use SOMENTE informação presente no texto. "
-        "Se não houver evidência para uma categoria, omita-a. NUNCA invente. "
-        "Responda apenas com um objeto JSON."
+        "You extract structured concept tags about a restaurant from web-researched "
+        "text. Rules: use ONLY information explicitly supported by the text; if a "
+        "category has no evidence, omit it; NEVER invent. Output ALL tag values in "
+        "ENGLISH, lowercase, as short tags of 1-3 words — never full sentences, never a "
+        "website's navigation labels, never raw menu prices. Reply with a single JSON "
+        "object only."
     )
+    semantics = (
+        "Category meanings:\n"
+        "- cuisine: kind of cuisine (italian, japanese, brazilian, wine bar) — NOT an "
+        "aggregator's navigation label.\n"
+        "- menu: specific dishes/items served (pasta, oysters, feijoada).\n"
+        "- food_style: preparation/style (slow food, casual food, gourmet, traditional).\n"
+        "- drinks: beverages offered (wine list, craft beers, signature cocktails).\n"
+        "- setting: physical space/decor (terrace, open kitchen, upscale, rustic).\n"
+        "- mood: the vibe/atmosphere (lively, cozy, romantic, formal).\n"
+        "- crowd: WHO goes there (tourists, locals, families, executives, young) — never "
+        "vibe words.\n"
+        "- suitable_for: occasions (dating, business lunches, celebrations, quick bite).\n"
+        "- special_features: services/amenities (delivery, valet parking, reservations "
+        "recommended).\n"
+        f"- price_range: choose EXACTLY ONE from this closed scale: {price_scale}.\n"
+    )
+    vocab_block = _format_vocab_block(vocabulary or {})
+    vocab_section = ""
+    if vocab_block:
+        vocab_section = (
+            "\nPREFERRED VOCABULARY (reuse these exact tags whenever they fit the "
+            "evidence; add a new lowercase english tag only if clearly supported and none "
+            "of these fit):\n" + vocab_block + "\n"
+        )
     user = (
-        f"Restaurante alvo: {entity_name}\n"
-        f"Categorias possíveis: {cats}\n\n"
-        "Parte do texto pode ser sobre OUTRO estabelecimento — ignore o que não "
-        "for claramente sobre o restaurante alvo.\n"
-        "Retorne JSON no formato {\"categoria\": [\"valor\", ...]} apenas com "
-        "categorias que tenham suporte explícito no texto.\n\n"
-        f"TEXTO PESQUISADO:\n{research_block}"
+        f"Target restaurant: {entity_name}\n"
+        f"Possible categories: {cats}\n"
+        f"{semantics}"
+        f"{vocab_section}\n"
+        "Part of the text may be about ANOTHER establishment — ignore anything not "
+        "clearly about the target restaurant.\n"
+        'Return JSON shaped as {"category": ["tag", ...]} with only categories that have '
+        "explicit support in the text.\n\n"
+        f"RESEARCHED TEXT:\n{research_block}"
     )
     resp = client.chat.completions.create(
         model=model,
@@ -190,7 +320,13 @@ def scrape_url(url: str, fetcher=None) -> str:
         return ""
 
 
-def research_entity(entity: Dict[str, Any], client, model: str, per_query_results: int = 5) -> Dict[str, Any] | None:
+def research_entity(
+    entity: Dict[str, Any],
+    client,
+    model: str,
+    per_query_results: int = 5,
+    vocabulary: Dict[str, List[str]] | None = None,
+) -> Dict[str, Any] | None:
     urls: List[str] = []
     for q in build_queries(entity):
         for u in search_web(q, max_results=per_query_results):
@@ -201,7 +337,9 @@ def research_entity(entity: Dict[str, Any], client, model: str, per_query_result
     block = build_research_block(pages)
     if not block:
         return None
-    categories = extract_concepts_llm(block, entity.get("name") or "", client, model)
+    categories = extract_concepts_llm(
+        block, entity.get("name") or "", client, model, vocabulary=vocabulary
+    )
     if not categories:
         return None
     return build_curation(
@@ -224,6 +362,13 @@ def parse_args() -> argparse.Namespace:
     return p.parse_args()
 
 
+def load_vocabulary_from_db(db) -> Dict[str, List[str]]:
+    """Carrega o vocabulário controlado das curadorias humanas do Mongo."""
+    proj = {"categories": 1, "curator": 1, "curator_id": 1, "_id": 0}
+    curations = list(db.curations.find({"categories": {"$exists": True}}, proj))
+    return build_vocabulary(curations)
+
+
 def main() -> int:
     from pymongo import MongoClient
     from openai import OpenAI
@@ -238,6 +383,11 @@ def main() -> int:
     model = s["deepseek_model"]
 
     db = MongoClient(s["mongodb_url"])[s["mongodb_db_name"]]
+
+    vocabulary = load_vocabulary_from_db(db)
+    print("Vocabulário (curadorias humanas): "
+          + ", ".join(f"{k}={len(v)}" for k, v in vocabulary.items()))
+
     query = {"type": {"$in": ["restaurant", "bar", "cafe"]}}
     if args.city:
         query["data.location.city"] = {"$regex": args.city, "$options": "i"}
@@ -263,7 +413,7 @@ def main() -> int:
             continue
         print(f"[{i}/{len(entities)}] {e.get('name')} …", end="", flush=True)
         try:
-            cur = research_entity(e, client, model, args.per_query_results)
+            cur = research_entity(e, client, model, args.per_query_results, vocabulary=vocabulary)
         except Exception as exc:
             print(f" ERRO: {exc}")
             cur = None

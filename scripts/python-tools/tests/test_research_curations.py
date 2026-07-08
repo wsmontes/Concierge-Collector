@@ -9,6 +9,8 @@ from research_curations import (  # noqa: E402
     build_research_block,
     clean_llm_categories,
     build_curation,
+    build_vocabulary,
+    snap_price_range,
     extract_concepts_llm,
     search_web,
     scrape_url,
@@ -56,15 +58,46 @@ def test_build_research_block_empty():
 
 # --- Task 3: clean_llm_categories + build_curation ---------------------------
 
-def test_clean_llm_categories_filters_unknown_and_empties():
+def test_clean_llm_categories_lowercases_dedups_and_drops_bad_price_range():
     raw = {
-        "cuisine": ["Italiana", ""],
+        "cuisine": ["Italian", "italian", ""],   # dedup + lowercase
         "mood": [],
-        "lixo_inventado": ["x"],
-        "price_range": ["$$"],
+        "lixo_inventado": ["x"],                 # chave fora do alvo
+        "price_range": ["Preço justo"],          # fora da escala -> descartado
     }
     out = clean_llm_categories(raw)
-    assert out == {"cuisine": ["Italiana"], "price_range": ["$$"]}
+    assert out == {"cuisine": ["italian"]}
+
+
+def test_clean_llm_categories_snaps_valid_price_range():
+    out = clean_llm_categories({"price_range": ["Moderate"]})
+    assert out == {"price_range": ["mid-range"]}
+
+
+# --- Vocabulário controlado (das curadorias humanas) -------------------------
+
+def test_snap_price_range_maps_synonyms_to_closed_scale():
+    assert snap_price_range(["Mid-Range"]) == ["mid-range"]
+    assert snap_price_range(["moderate"]) == ["mid-range"]
+    assert snap_price_range(["cheap", "budget"]) == ["unexpensive"]   # dedup
+    assert snap_price_range(["expensive", "pricey"]) == ["expensive"]
+    assert snap_price_range(["$$", "preço justo"]) == []             # desconhecidos caem
+
+
+def test_build_vocabulary_aggregates_humans_lowercased_by_frequency():
+    curations = [
+        {"curator_id": "wagner@x.com",
+         "categories": {"cuisine": ["Italian", "Bar"], "price_range": ["mid-range"]}},
+        {"curator_id": "wagner@x.com",
+         "categories": {"cuisine": ["italian"], "mood": ["Cozy"]}},
+        {"curator_id": "curator-ai-research",   # automação -> ignorada
+         "categories": {"cuisine": ["should-be-ignored"]}},
+    ]
+    vocab = build_vocabulary(curations)
+    assert vocab["cuisine"] == ["italian", "bar"]   # italian (2x) antes de bar (1x), lowercase
+    assert vocab["mood"] == ["cozy"]
+    assert "should-be-ignored" not in vocab["cuisine"]
+    assert "lixo" not in vocab                        # só chaves em TARGET_CATEGORIES
 
 
 def test_build_curation_shape():
@@ -105,10 +138,10 @@ class _FakeClient:
 
 
 def test_extract_concepts_llm_parses_and_cleans():
-    payload = _json.dumps({"cuisine": ["Japonesa"], "lixo": ["x"], "mood": []})
+    payload = _json.dumps({"cuisine": ["Japanese"], "lixo": ["x"], "mood": []})
     client = _FakeClient(payload)
     out = extract_concepts_llm("--- FONTE: a ---\nsushi", "Sushi X", client, "deepseek-chat")
-    assert out == {"cuisine": ["Japonesa"]}
+    assert out == {"cuisine": ["japanese"]}  # inglês minúsculo, normalizado
     # prompt precisa conter instrução grounded e o nome da entidade
     sent = client.last_kwargs["messages"][-1]["content"]
     assert "Sushi X" in sent
@@ -118,6 +151,17 @@ def test_extract_concepts_llm_handles_bad_json():
     client = _FakeClient("desculpa, não achei nada")
     out = extract_concepts_llm("texto", "X", client, "deepseek-chat")
     assert out == {}
+
+
+def test_extract_concepts_llm_injects_vocabulary_and_price_scale():
+    client = _FakeClient(_json.dumps({"cuisine": ["italian"]}))
+    vocab = {"cuisine": ["italian", "japanese"], "mood": ["cozy"]}
+    extract_concepts_llm("texto", "X", client, "deepseek-chat", vocabulary=vocab)
+    sent = client.last_kwargs["messages"][-1]["content"]
+    # vocabulário preferido injetado no prompt
+    assert "italian" in sent and "japanese" in sent and "cozy" in sent
+    # escala fechada de price_range presente
+    assert "unexpensive" in sent and "mid-range" in sent and "expensive" in sent
 
 
 # --- Task 5: search_web + scrape_url (injected doubles) ----------------------
@@ -147,7 +191,7 @@ def test_research_entity_end_to_end_with_fakes():
     entity = {"_id": "overture_x", "entity_id": "overture_x", "name": "Trattoria Y",
               "data": {"location": {"city": "Rio de Janeiro"}}}
 
-    payload = _json.dumps({"cuisine": ["Italiana"], "price_range": ["$$"]})
+    payload = _json.dumps({"cuisine": ["Italian"], "price_range": ["Mid-Range"]})
     client = _FakeClient(payload)
 
     def fake_search(query, max_results, searcher=None):
@@ -162,8 +206,27 @@ def test_research_entity_end_to_end_with_fakes():
 
     cur = research_entity(entity, client, "deepseek-chat")
     assert cur["entity_id"] == "overture_x"
-    assert cur["categories"] == {"cuisine": ["Italiana"], "price_range": ["$$"]}
+    assert cur["categories"] == {"cuisine": ["italian"], "price_range": ["mid-range"]}
     assert cur["sources"]["web_research"] == ["https://a.com"]
+
+
+def test_research_entity_forwards_vocabulary(monkeypatch):
+    import research_curations as rc
+    monkeypatch.setattr(rc, "search_web", lambda q, max_results, searcher=None: ["https://a.com"])
+    monkeypatch.setattr(rc, "scrape_url", lambda url, fetcher=None: "texto")
+
+    captured = {}
+
+    def fake_extract(block, name, client, model, vocabulary=None):
+        captured["vocab"] = vocabulary
+        return {"cuisine": ["italian"]}
+
+    monkeypatch.setattr(rc, "extract_concepts_llm", fake_extract)
+
+    entity = {"_id": "x", "entity_id": "x", "name": "X", "data": {}}
+    vocab = {"cuisine": ["italian"]}
+    rc.research_entity(entity, client=None, model="m", vocabulary=vocab)
+    assert captured["vocab"] == vocab
 
 
 def test_research_entity_returns_none_without_concepts():
