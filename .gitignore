@@ -199,3 +199,5 @@ scripts/fetch_render_logs.py
 
 # Archive - old code not needed in version control
 archive/
+# Superpowers plugin local state (SDD progress, scratch)
+.superpowers/
