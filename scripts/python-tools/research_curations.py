@@ -374,6 +374,21 @@ def scrape_url(url: str, fetcher=None) -> str:
         return ""
 
 
+def scrape_urls(urls: List[str], max_workers: int = 8, scraper=None) -> List[Dict[str, str]]:
+    """Baixa várias URLs em paralelo (I/O-bound), preservando a ordem de `urls`.
+
+    `scraper` é injetável (default: scrape_url). Retorna [{"url", "text"}].
+    """
+    if not urls:
+        return []
+    if scraper is None:
+        scraper = scrape_url
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=min(max_workers, len(urls))) as ex:
+        texts = list(ex.map(scraper, urls))
+    return [{"url": u, "text": t} for u, t in zip(urls, texts)]
+
+
 def research_entity(
     entity: Dict[str, Any],
     client,
@@ -386,7 +401,8 @@ def research_entity(
         for u in search_web(q, max_results=per_query_results):
             if u not in urls:
                 urls.append(u)
-    pages = [{"url": u, "text": clean_scraped_text(scrape_url(u))} for u in urls]
+    pages = scrape_urls(urls)
+    pages = [{"url": p["url"], "text": clean_scraped_text(p["text"])} for p in pages]
     pages = [p for p in pages if p["text"]]
     block = build_research_block(pages)
     if not block:

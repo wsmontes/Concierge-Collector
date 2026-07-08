@@ -17,6 +17,7 @@ from research_curations import (  # noqa: E402
     metadata_field_count,
     search_web,
     scrape_url,
+    scrape_urls,
     research_entity,
 )
 
@@ -349,3 +350,20 @@ def test_metadata_field_count_counts_nested_nonempty_leaves():
 def test_metadata_field_count_empty():
     assert metadata_field_count({}) == 0
     assert metadata_field_count({"data": {}}) == 0
+
+
+# --- scraping paralelo -------------------------------------------------------
+
+def test_scrape_urls_parallel_preserves_order_and_shape():
+    def fake(u):
+        return f"text-{u}"
+    pages = scrape_urls(["a", "b", "c"], scraper=fake)
+    assert pages == [
+        {"url": "a", "text": "text-a"},
+        {"url": "b", "text": "text-b"},
+        {"url": "c", "text": "text-c"},
+    ]
+
+
+def test_scrape_urls_empty():
+    assert scrape_urls([]) == []
