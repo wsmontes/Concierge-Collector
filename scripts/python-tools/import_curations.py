@@ -8,6 +8,8 @@ Main Responsibilities:
 - Read curation JSON in object/array/wrapper formats
 - Normalize legacy curation fields to API v3 contract
 - Support dry-run preview and apply mode for real import
+- Send curations in bulk batches via POST /curations/bulk (default)
+- Fall back to one-by-one POST /curations via --no-bulk flag
 - Report per-item and aggregate import results
 """
 
@@ -347,6 +349,48 @@ def post_curation(api_url: str, api_key: str, curation: Dict[str, Any]) -> Tuple
     return False, f'HTTP {response.status_code}: {detail}'
 
 
+def post_curations_bulk(
+    api_bulk_url: str,
+    api_key: str,
+    curations: List[Dict[str, Any]],
+    chunk_size: int,
+) -> Dict[str, int]:
+    """Send curations in bulk chunks via POST /curations/bulk.
+
+    Returns aggregate counts: created, updated, skipped, errors.
+    """
+    headers = {'X-API-Key': api_key, 'Content-Type': 'application/json'}
+    totals = {'created': 0, 'updated': 0, 'skipped': 0, 'errors': 0}
+
+    for start in range(0, len(curations), chunk_size):
+        chunk = curations[start:start + chunk_size]
+        end_idx = min(start + chunk_size, len(curations))
+        print(f"  Sending chunk [{start + 1}–{end_idx}] ({len(chunk)} items)…", end=' ', flush=True)
+        try:
+            response = requests.post(
+                api_bulk_url,
+                json={'curations': chunk},
+                headers=headers,
+                timeout=120,
+            )
+            response.raise_for_status()
+            result = response.json()
+            totals['created'] += result.get('created', 0)
+            totals['updated'] += result.get('updated', 0)
+            totals['skipped'] += result.get('skipped', 0)
+            chunk_errors = len(result.get('errors', []))
+            totals['errors'] += chunk_errors
+            print(f"created={result.get('created', 0)} updated={result.get('updated', 0)} errors={chunk_errors}")
+            if result.get('errors'):
+                for err in result['errors']:
+                    print(f"    [item {err.get('index', '?')}] {err.get('error', 'unknown error')}")
+        except Exception as exc:
+            totals['errors'] += len(chunk)
+            print(f"FAILED: {exc}")
+
+    return totals
+
+
 def parse_args() -> argparse.Namespace:
     """Parse command-line arguments."""
     default_input = Path(__file__).resolve().parents[2] / 'data' / 'curations.json'
@@ -356,6 +400,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--limit', type=int, default=0, help='Limit number of records processed (0 = all)')
     parser.add_argument('--default-curator-id', default='curator-import-script', help='Fallback curator_id')
     parser.add_argument('--keep-entity-id', action='store_true', help='Preserve entity_id from input (default: disabled)')
+    parser.add_argument('--no-bulk', action='store_true', help='Use one-by-one POST instead of bulk endpoint')
+    parser.add_argument('--chunk-size', type=int, default=200, help='Items per bulk request (default: 200)')
     return parser.parse_args()
 
 
@@ -383,53 +429,69 @@ def main() -> int:
     if args.limit > 0:
         raw_items = raw_items[:args.limit]
 
+    use_bulk = not args.no_bulk
     print(f"Loaded {len(raw_items)} raw item(s) from {args.input}")
-    print(f"Mode: {'APPLY' if args.apply else 'DRY-RUN'}")
+    print(f"Mode: {'APPLY' if args.apply else 'DRY-RUN'} | Transport: {'bulk' if use_bulk else 'one-by-one'}")
 
     api_curations_url = f'{api_base_url}/api/v3/curations'
+    api_bulk_url = f'{api_base_url}/api/v3/curations/bulk'
+
     stats = {
         'total': len(raw_items),
         'valid': 0,
         'created': 0,
+        'updated': 0,
         'failed': 0,
         'skipped_invalid': 0,
     }
 
+    # ── Normalize all items first ────────────────────────────────────────────
+    normalized_items: List[Dict[str, Any]] = []
     for index, raw_item in enumerate(raw_items, start=1):
         try:
             normalized = normalize_curation(raw_item, args.default_curator_id, args.keep_entity_id)
             stats['valid'] += 1
+            normalized_items.append(normalized)
         except Exception as error:
             stats['skipped_invalid'] += 1
             print(f"[{index}/{stats['total']}] {Colors.WARNING}SKIP{Colors.ENDC} invalid item: {error}")
-            continue
 
-        curation_id = normalized['curation_id']
-        if not args.apply:
-            print(f"[{index}/{stats['total']}] {Colors.OKGREEN}DRY-RUN{Colors.ENDC} {curation_id}")
-            continue
-
-        success, message = post_curation(api_curations_url, api_key, normalized)
-        if success:
-            stats['created'] += 1
-            print(f"[{index}/{stats['total']}] {Colors.OKGREEN}CREATED{Colors.ENDC} {curation_id}")
-        else:
-            stats['failed'] += 1
-            print(f"[{index}/{stats['total']}] {Colors.FAIL}FAILED{Colors.ENDC} {curation_id} -> {message}")
+    if not args.apply:
+        for normalized in normalized_items:
+            print(f"  {Colors.OKGREEN}DRY-RUN{Colors.ENDC} {normalized['curation_id']}")
+        print(f"\n{Colors.WARNING}Dry-run only. Use --apply to create curations.{Colors.ENDC}")
+    elif use_bulk:
+        # ── Bulk path ────────────────────────────────────────────────────────
+        print(f"\nSending {len(normalized_items)} curations in bulk (chunk size={args.chunk_size})…")
+        totals = post_curations_bulk(api_bulk_url, api_key, normalized_items, args.chunk_size)
+        stats['created'] = totals['created']
+        stats['updated'] = totals['updated']
+        stats['failed'] = totals['errors']
+    else:
+        # ── One-by-one path (fallback) ────────────────────────────────────────
+        for index, normalized in enumerate(normalized_items, start=1):
+            curation_id = normalized['curation_id']
+            success, message = post_curation(api_curations_url, api_key, normalized)
+            if success:
+                stats['created'] += 1
+                print(f"[{index}/{stats['valid']}] {Colors.OKGREEN}CREATED{Colors.ENDC} {curation_id}")
+            else:
+                stats['failed'] += 1
+                print(f"[{index}/{stats['valid']}] {Colors.FAIL}FAILED{Colors.ENDC} {curation_id} -> {message}")
 
     print('\n' + '=' * 72)
     print('Summary')
     print('=' * 72)
-    print(f"Total: {stats['total']}")
-    print(f"Valid: {stats['valid']}")
-    print(f"Skipped invalid: {stats['skipped_invalid']}")
-    print(f"Created: {stats['created']}")
-    print(f"Failed: {stats['failed']}")
+    print(f"Total input: {stats['total']}")
+    print(f"Valid:       {stats['valid']}")
+    print(f"Invalid:     {stats['skipped_invalid']}")
+    if args.apply:
+        print(f"Created:     {stats['created']}")
+        if use_bulk:
+            print(f"Updated:     {stats['updated']}")
+        print(f"Failed:      {stats['failed']}")
 
-    if not args.apply:
-        print(f"\n{Colors.WARNING}Dry-run only. Use --apply to create curations.{Colors.ENDC}")
-
-    return 0
+    return 0 if stats['failed'] == 0 else 2
 
 
 if __name__ == '__main__':
