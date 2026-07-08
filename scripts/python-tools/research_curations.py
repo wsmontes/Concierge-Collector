@@ -94,7 +94,7 @@ def build_research_block(pages: List[Dict[str, str]], max_chars: int = 12000) ->
 
 
 _NAV_TOKENS = {
-    "home", "menu", "login", "logout", "sign in", "sign up", "assine",
+    "home", "menu", "login", "logout", "sign in", "sign up",
     "buscar", "search", "compartilhar", "share", "contato", "sobre",
     "reservar", "fechar", "close", "faq", "imagens", "avaliações",
 }
@@ -102,7 +102,7 @@ _BOILERPLATE_PATTERNS = [
     re.compile(r"cookie", re.I),
     re.compile(r"newsletter|assine|subscribe", re.I),
     re.compile(r"último update", re.I),
-    re.compile(r"^\s*★?\s*\d+([.,]\d+)?\s*/\s*5", re.I),   # ★ 2.3 / 5
+    re.compile(r"^\s*★?\s*\d+([.,]\d+)?\s*/\s*5"),          # ★ 2.3 / 5
     re.compile(r"\(\s*\d+\s+avalia", re.I),                # (6 Avaliação)
     re.compile(r"^avalia(ç|c)", re.I),                     # Avaliações
     re.compile(r"compartilh|facebook|whatsapp|twitter", re.I),
@@ -110,6 +110,7 @@ _BOILERPLATE_PATTERNS = [
 
 
 def clean_scraped_text(text: str) -> str:
+    """Conservative heuristic cleaning: remove nav/boilerplate/rating lines and dedup, preserve real content."""
     if not text:
         return ""
     seen = set()
@@ -333,8 +334,10 @@ def extract_concepts_llm(
     )
     content = resp.choices[0].message.content
     data = _parse_json_object(content)
-    categories = clean_llm_categories(data.get("categories") if isinstance(data, dict) else {})
-    raw_desc = data.get("description") if isinstance(data, dict) else ""
+    if not isinstance(data, dict):
+        return {"categories": {}, "description": ""}
+    categories = clean_llm_categories(data.get("categories"))  # safe: clean_llm_categories(None) -> {}
+    raw_desc = data.get("description")
     description = (raw_desc or "").strip()[:DESCRIPTION_MAX_CHARS] if isinstance(raw_desc, str) else ""
     return {"categories": categories, "description": description}
 
@@ -470,6 +473,9 @@ def main() -> int:
         descriptions = json.loads(desc_path.read_text(encoding="utf-8"))
         done_desc_ids = {d.get("entity_id") for d in descriptions}
 
+    # Cache combinado: pula entidade já presente em qualquer artefato. Nota: um
+    # kill entre as duas escritas pode, no pior caso, perder a description de UMA
+    # entidade (a curadoria, escrita antes, é preservada).
     done = done_ids | done_desc_ids
     for i, e in enumerate(entities, 1):
         eid = e.get("entity_id") or e.get("_id")

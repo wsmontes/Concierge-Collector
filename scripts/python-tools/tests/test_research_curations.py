@@ -197,15 +197,15 @@ def test_scrape_url_returns_empty_on_failure():
 
 # --- Task 6: research_entity (end to end with fakes) -------------------------
 
-def test_research_entity_returns_curation_and_patch():
+def test_research_entity_returns_curation_and_patch(monkeypatch):
     entity = {"_id": "x", "entity_id": "x", "name": "Trattoria", "type": "restaurant",
               "data": {"location": {"city": "Rio de Janeiro"}}}
     payload = _json.dumps({"categories": {"cuisine": ["Italian"]},
                            "description": "Trattoria italiana simpática."})
     client = _FakeClient(payload)
     import research_curations as rc
-    rc.search_web = lambda q, max_results, searcher=None: ["https://a.com"]
-    rc.scrape_url = lambda url, fetcher=None: "Home\nComida italiana boa.\nComida italiana boa."
+    monkeypatch.setattr(rc, "search_web", lambda q, max_results, searcher=None: ["https://a.com"])
+    monkeypatch.setattr(rc, "scrape_url", lambda url, fetcher=None: "Home\nComida italiana boa.\nComida italiana boa.")
     curation, patch = rc.research_entity(entity, client, "deepseek-chat")
     assert curation["categories"] == {"cuisine": ["italian"]}
     assert "Home" not in curation["transcript"]                       # nav removida
@@ -214,23 +214,35 @@ def test_research_entity_returns_curation_and_patch():
                      "data": {"description": "Trattoria italiana simpática."}}
 
 
-def test_research_entity_no_description_no_patch():
+def test_research_entity_no_description_no_patch(monkeypatch):
     entity = {"_id": "z", "entity_id": "z", "name": "Z", "type": "bar", "data": {}}
     client = _FakeClient(_json.dumps({"categories": {"cuisine": ["bar"]}}))  # sem description
     import research_curations as rc
-    rc.search_web = lambda q, max_results, searcher=None: ["https://a.com"]
-    rc.scrape_url = lambda url, fetcher=None: "texto valido aqui."
+    monkeypatch.setattr(rc, "search_web", lambda q, max_results, searcher=None: ["https://a.com"])
+    monkeypatch.setattr(rc, "scrape_url", lambda url, fetcher=None: "texto valido aqui.")
     curation, patch = rc.research_entity(entity, client, "deepseek-chat")
     assert curation is not None
     assert patch is None
 
 
-def test_research_entity_none_none_without_content():
+def test_research_entity_none_none_without_content(monkeypatch):
     entity = {"_id": "z", "entity_id": "z", "name": "Z", "type": "bar", "data": {}}
     import research_curations as rc
-    rc.search_web = lambda q, max_results, searcher=None: []
-    rc.scrape_url = lambda url, fetcher=None: ""
+    monkeypatch.setattr(rc, "search_web", lambda q, max_results, searcher=None: [])
+    monkeypatch.setattr(rc, "scrape_url", lambda url, fetcher=None: "")
     assert rc.research_entity(entity, _FakeClient("{}"), "deepseek-chat") == (None, None)
+
+
+def test_research_entity_patch_without_curation(monkeypatch):
+    import research_curations as rc
+    monkeypatch.setattr(rc, "search_web", lambda q, max_results, searcher=None: ["https://a.com"])
+    monkeypatch.setattr(rc, "scrape_url", lambda url, fetcher=None: "texto valido.")
+    monkeypatch.setattr(rc, "extract_concepts_llm",
+                        lambda block, name, client, model, vocabulary=None: {"categories": {}, "description": "Uma frase factual."})
+    entity = {"_id": "x", "entity_id": "x", "name": "X", "type": "bar", "data": {}}
+    curation, patch = rc.research_entity(entity, client=None, model="m")
+    assert curation is None
+    assert patch == {"entity_id": "x", "name": "X", "type": "bar", "data": {"description": "Uma frase factual."}}
 
 
 def test_research_entity_forwards_vocabulary(monkeypatch):
@@ -291,6 +303,12 @@ def test_build_entity_patch_shape():
         "type": "bar",
         "data": {"description": "Bar aconchegante no centro."},
     }
+
+
+def test_build_entity_patch_uses_id_fallback():
+    entity = {"_id": "osm_9", "name": "Y", "type": "cafe", "data": {}}
+    patch = build_entity_patch(entity, "Café tranquilo.")
+    assert patch["entity_id"] == "osm_9"
 
 
 # --- Task 5: parse_args ------------------------------------------------------
