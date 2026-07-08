@@ -14,6 +14,7 @@ from research_curations import (  # noqa: E402
     build_vocabulary,
     snap_price_range,
     extract_concepts_llm,
+    metadata_field_count,
     search_web,
     scrape_url,
     research_entity,
@@ -318,3 +319,33 @@ def test_parse_args_descriptions_output_default(monkeypatch):
     monkeypatch.setattr("sys.argv", ["prog"])
     args = rc.parse_args()
     assert args.descriptions_output == "data/rio_entity_descriptions.json"
+
+
+def test_parse_args_sort_and_skip_defaults(monkeypatch):
+    import research_curations as rc
+    monkeypatch.setattr("sys.argv", ["prog"])
+    args = rc.parse_args()
+    assert args.sort == "natural"
+    assert args.skip_with_description is False
+
+
+# --- Ordenação por metadados -------------------------------------------------
+
+def test_metadata_field_count_counts_nested_nonempty_leaves():
+    entity = {
+        "data": {
+            "amenity": "bar",                                    # 1
+            "empty": "",                                         # 0
+            "none": None,                                        # 0
+            "location": {"city": "SP", "coordinates": {"lat": 1, "lng": 2}},  # 3
+            "contact": {"phone": "123", "website": ""},          # 1 (website vazio)
+            "cuisine": ["italian", "pizza"],                     # 2
+            "tags": [],                                          # 0
+        }
+    }
+    assert metadata_field_count(entity) == 7
+
+
+def test_metadata_field_count_empty():
+    assert metadata_field_count({}) == 0
+    assert metadata_field_count({"data": {}}) == 0
