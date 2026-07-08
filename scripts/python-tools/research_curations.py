@@ -410,6 +410,8 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--city", default="Rio", help="Filtro de cidade (regex em data.location.city)")
     p.add_argument("--limit", type=int, default=30, help="Máx. de entidades (0 = todas)")
     p.add_argument("--output", default="data/rio_curations_research.json")
+    p.add_argument("--descriptions-output", default="data/rio_entity_descriptions.json",
+                   dest="descriptions_output")
     p.add_argument("--per-query-results", type=int, default=5, dest="per_query_results")
     p.add_argument("--sleep", type=float, default=1.0, help="Pausa entre entidades (s)")
     return p.parse_args()
@@ -450,38 +452,54 @@ def main() -> int:
     entities = list(cursor)
     print(f"{len(entities)} entidades candidatas")
 
+    # --- saída 1: curations ---
     out_path = Path(args.output)
     out_path.parent.mkdir(parents=True, exist_ok=True)
-    existing = []
+    curations = []
     done_ids = set()
     if out_path.exists():
-        existing = json.loads(out_path.read_text(encoding="utf-8"))
-        done_ids = {c.get("entity_id") for c in existing}
+        curations = json.loads(out_path.read_text(encoding="utf-8"))
+        done_ids = {c.get("entity_id") for c in curations}
 
-    results = list(existing)
+    # --- saída 2: entity descriptions ---
+    desc_path = Path(args.descriptions_output)
+    desc_path.parent.mkdir(parents=True, exist_ok=True)
+    descriptions = []
+    done_desc_ids = set()
+    if desc_path.exists():
+        descriptions = json.loads(desc_path.read_text(encoding="utf-8"))
+        done_desc_ids = {d.get("entity_id") for d in descriptions}
+
+    done = done_ids | done_desc_ids
     for i, e in enumerate(entities, 1):
         eid = e.get("entity_id") or e.get("_id")
-        if eid in done_ids:
+        if eid in done:
             print(f"[{i}/{len(entities)}] {e.get('name')} — já feito, pulando")
             continue
         print(f"[{i}/{len(entities)}] {e.get('name')} …", end="", flush=True)
         try:
-            cur = research_entity(e, client, model, args.per_query_results, vocabulary=vocabulary)
+            cur, patch = research_entity(e, client, model, args.per_query_results, vocabulary=vocabulary)
         except Exception as exc:
             print(f" ERRO: {exc}")
-            cur = None
+            cur, patch = None, None
         if cur:
-            results.append(cur)
-            print(f" ok ({len(cur['categories'])} categorias)")
-        else:
-            print(" sem conceitos")
-        out_path.write_text(json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8")
+            curations.append(cur)
+        if patch:
+            descriptions.append(patch)
+        n_cats = len(cur["categories"]) if cur else 0
+        has_desc = "desc" if patch else "—"
+        print(f" ok ({n_cats} categorias, {has_desc})" if (cur or patch) else " sem conceitos")
+        out_path.write_text(json.dumps(curations, ensure_ascii=False, indent=2), encoding="utf-8")
+        desc_path.write_text(json.dumps(descriptions, ensure_ascii=False, indent=2), encoding="utf-8")
         time.sleep(args.sleep)
 
-    print(f"\nSalvo: {out_path}  ({len(results)} curadorias)")
+    print(f"\nSalvo: {out_path}  ({len(curations)} curadorias)")
+    print(f"Salvo: {desc_path}  ({len(descriptions)} descriptions)")
     print("Revisar e depois importar com:")
     print(f"  ./concierge-api-v3/venv/bin/python scripts/python-tools/import_curations.py "
           f"--input {out_path} --keep-entity-id --apply")
+    print(f"  ./concierge-api-v3/venv/bin/python scripts/python-tools/import_entities.py "
+          f"--input {desc_path} --apply")
     return 0
 
 

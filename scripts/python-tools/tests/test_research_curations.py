@@ -291,3 +291,12 @@ def test_build_entity_patch_shape():
         "type": "bar",
         "data": {"description": "Bar aconchegante no centro."},
     }
+
+
+# --- Task 5: parse_args ------------------------------------------------------
+
+def test_parse_args_descriptions_output_default(monkeypatch):
+    import research_curations as rc
+    monkeypatch.setattr("sys.argv", ["prog"])
+    args = rc.parse_args()
+    assert args.descriptions_output == "data/rio_entity_descriptions.json"
