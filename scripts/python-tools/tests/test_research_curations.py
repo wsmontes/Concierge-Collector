@@ -10,6 +10,7 @@ from research_curations import (  # noqa: E402
     clean_llm_categories,
     clean_scraped_text,
     build_curation,
+    build_entity_patch,
     build_vocabulary,
     snap_price_range,
     extract_concepts_llm,
@@ -266,3 +267,17 @@ def test_clean_scraped_text_removes_nav_boilerplate_and_dedups():
 def test_clean_scraped_text_empty():
     assert clean_scraped_text("") == ""
     assert clean_scraped_text("\n\n   \n") == ""
+
+
+# --- Task 3: build_entity_patch -----------------------------------------------
+
+def test_build_entity_patch_shape():
+    entity = {"_id": "osm_1", "entity_id": "osm_1", "name": "Bar X", "type": "bar",
+              "data": {"location": {"city": "Rio"}}}
+    patch = build_entity_patch(entity, "Bar aconchegante no centro.")
+    assert patch == {
+        "entity_id": "osm_1",
+        "name": "Bar X",
+        "type": "bar",
+        "data": {"description": "Bar aconchegante no centro."},
+    }

@@ -233,6 +233,15 @@ def build_curation(
     }
 
 
+def build_entity_patch(entity: Dict[str, Any], description: str) -> Dict[str, Any]:
+    return {
+        "entity_id": entity.get("entity_id") or entity.get("_id"),
+        "name": entity.get("name"),
+        "type": entity.get("type"),
+        "data": {"description": description},
+    }
+
+
 def _parse_json_object(text: str) -> Dict[str, Any]:
     """Extrai o primeiro objeto JSON de uma resposta de LLM; {} se falhar."""
     if not text:
