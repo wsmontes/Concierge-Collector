@@ -197,55 +197,57 @@ def test_scrape_url_returns_empty_on_failure():
 
 # --- Task 6: research_entity (end to end with fakes) -------------------------
 
-def test_research_entity_end_to_end_with_fakes():
-    entity = {"_id": "overture_x", "entity_id": "overture_x", "name": "Trattoria Y",
+def test_research_entity_returns_curation_and_patch():
+    entity = {"_id": "x", "entity_id": "x", "name": "Trattoria", "type": "restaurant",
               "data": {"location": {"city": "Rio de Janeiro"}}}
-
-    payload = _json.dumps({"cuisine": ["Italian"], "price_range": ["Mid-Range"]})
+    payload = _json.dumps({"categories": {"cuisine": ["Italian"]},
+                           "description": "Trattoria italiana simpática."})
     client = _FakeClient(payload)
-
-    def fake_search(query, max_results, searcher=None):
-        return ["https://a.com"]
-
-    def fake_scrape(url, fetcher=None):
-        return "Comida italiana, ambiente aconchegante."
-
     import research_curations as rc
-    rc.search_web = fake_search
-    rc.scrape_url = fake_scrape
+    rc.search_web = lambda q, max_results, searcher=None: ["https://a.com"]
+    rc.scrape_url = lambda url, fetcher=None: "Home\nComida italiana boa.\nComida italiana boa."
+    curation, patch = rc.research_entity(entity, client, "deepseek-chat")
+    assert curation["categories"] == {"cuisine": ["italian"]}
+    assert "Home" not in curation["transcript"]                       # nav removida
+    assert curation["transcript"].count("Comida italiana boa.") == 1  # dedup
+    assert patch == {"entity_id": "x", "name": "Trattoria", "type": "restaurant",
+                     "data": {"description": "Trattoria italiana simpática."}}
 
-    cur = research_entity(entity, client, "deepseek-chat")
-    assert cur["entity_id"] == "overture_x"
-    assert cur["categories"] == {"cuisine": ["italian"], "price_range": ["mid-range"]}
-    assert cur["sources"]["web_research"] == ["https://a.com"]
+
+def test_research_entity_no_description_no_patch():
+    entity = {"_id": "z", "entity_id": "z", "name": "Z", "type": "bar", "data": {}}
+    client = _FakeClient(_json.dumps({"categories": {"cuisine": ["bar"]}}))  # sem description
+    import research_curations as rc
+    rc.search_web = lambda q, max_results, searcher=None: ["https://a.com"]
+    rc.scrape_url = lambda url, fetcher=None: "texto valido aqui."
+    curation, patch = rc.research_entity(entity, client, "deepseek-chat")
+    assert curation is not None
+    assert patch is None
+
+
+def test_research_entity_none_none_without_content():
+    entity = {"_id": "z", "entity_id": "z", "name": "Z", "type": "bar", "data": {}}
+    import research_curations as rc
+    rc.search_web = lambda q, max_results, searcher=None: []
+    rc.scrape_url = lambda url, fetcher=None: ""
+    assert rc.research_entity(entity, _FakeClient("{}"), "deepseek-chat") == (None, None)
 
 
 def test_research_entity_forwards_vocabulary(monkeypatch):
     import research_curations as rc
     monkeypatch.setattr(rc, "search_web", lambda q, max_results, searcher=None: ["https://a.com"])
-    monkeypatch.setattr(rc, "scrape_url", lambda url, fetcher=None: "texto")
-
+    monkeypatch.setattr(rc, "scrape_url", lambda url, fetcher=None: "texto valido.")
     captured = {}
 
     def fake_extract(block, name, client, model, vocabulary=None):
         captured["vocab"] = vocabulary
-        return {"cuisine": ["italian"]}
+        return {"categories": {"cuisine": ["bar"]}, "description": ""}
 
     monkeypatch.setattr(rc, "extract_concepts_llm", fake_extract)
-
-    entity = {"_id": "x", "entity_id": "x", "name": "X", "data": {}}
-    vocab = {"cuisine": ["italian"]}
+    entity = {"_id": "x", "entity_id": "x", "name": "X", "type": "bar", "data": {}}
+    vocab = {"cuisine": ["bar"]}
     rc.research_entity(entity, client=None, model="m", vocabulary=vocab)
     assert captured["vocab"] == vocab
-
-
-def test_research_entity_returns_none_without_concepts():
-    entity = {"_id": "z", "entity_id": "z", "name": "Nada", "data": {}}
-    client = _FakeClient("{}")
-    import research_curations as rc
-    rc.search_web = lambda q, max_results, searcher=None: ["https://a.com"]
-    rc.scrape_url = lambda url, fetcher=None: "texto"
-    assert research_entity(entity, client, "deepseek-chat") is None
 
 
 # --- Task 1: clean_scraped_text -------------------------------------------------

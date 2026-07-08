@@ -377,30 +377,32 @@ def research_entity(
     model: str,
     per_query_results: int = 5,
     vocabulary: Dict[str, List[str]] | None = None,
-) -> Dict[str, Any] | None:
+) -> "tuple[Dict[str, Any] | None, Dict[str, Any] | None]":
     urls: List[str] = []
     for q in build_queries(entity):
         for u in search_web(q, max_results=per_query_results):
             if u not in urls:
                 urls.append(u)
-    pages = [{"url": u, "text": scrape_url(u)} for u in urls]
+    pages = [{"url": u, "text": clean_scraped_text(scrape_url(u))} for u in urls]
     pages = [p for p in pages if p["text"]]
     block = build_research_block(pages)
     if not block:
-        return None
-    categories = extract_concepts_llm(
-        block, entity.get("name") or "", client, model, vocabulary=vocabulary
-    )
-    if not categories:
-        return None
-    return build_curation(
-        entity=entity,
-        categories=categories,
-        urls=[p["url"] for p in pages],
-        research_block=block,
-        curator_id=CURATOR_ID,
-        curator_name=CURATOR_NAME,
-    )
+        return None, None
+    result = extract_concepts_llm(block, entity.get("name") or "", client, model, vocabulary=vocabulary)
+    categories = result.get("categories") or {}
+    description = (result.get("description") or "").strip()
+    curation = None
+    if categories:
+        curation = build_curation(
+            entity=entity,
+            categories=categories,
+            urls=[p["url"] for p in pages],
+            research_block=block,
+            curator_id=CURATOR_ID,
+            curator_name=CURATOR_NAME,
+        )
+    patch = build_entity_patch(entity, description) if description else None
+    return curation, patch
 
 
 def parse_args() -> argparse.Namespace:
