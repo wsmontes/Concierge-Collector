@@ -374,6 +374,21 @@ def scrape_url(url: str, fetcher=None) -> str:
         return ""
 
 
+def scrape_urls(urls: List[str], max_workers: int = 8, scraper=None) -> List[Dict[str, str]]:
+    """Baixa várias URLs em paralelo (I/O-bound), preservando a ordem de `urls`.
+
+    `scraper` é injetável (default: scrape_url). Retorna [{"url", "text"}].
+    """
+    if not urls:
+        return []
+    if scraper is None:
+        scraper = scrape_url
+    from concurrent.futures import ThreadPoolExecutor
+    with ThreadPoolExecutor(max_workers=min(max_workers, len(urls))) as ex:
+        texts = list(ex.map(scraper, urls))
+    return [{"url": u, "text": t} for u, t in zip(urls, texts)]
+
+
 def research_entity(
     entity: Dict[str, Any],
     client,
@@ -386,7 +401,8 @@ def research_entity(
         for u in search_web(q, max_results=per_query_results):
             if u not in urls:
                 urls.append(u)
-    pages = [{"url": u, "text": clean_scraped_text(scrape_url(u))} for u in urls]
+    pages = scrape_urls(urls)
+    pages = [{"url": p["url"], "text": clean_scraped_text(p["text"])} for p in pages]
     pages = [p for p in pages if p["text"]]
     block = build_research_block(pages)
     if not block:
@@ -408,6 +424,27 @@ def research_entity(
     return curation, patch
 
 
+def metadata_field_count(entity: Dict[str, Any]) -> int:
+    """Conta valores-folha não-vazios em entity['data'] (recursivo).
+
+    Densidade de metadados: dict soma as chaves, list soma os itens, escalar
+    não-vazio vale 1 (string vazia e None valem 0). Usado para ordenar por
+    'mais metadados'.
+    """
+    def count(v: Any) -> int:
+        if isinstance(v, dict):
+            return sum(count(x) for x in v.values())
+        if isinstance(v, list):
+            return sum(count(x) for x in v)
+        if v is None:
+            return 0
+        if isinstance(v, str) and not v.strip():
+            return 0
+        return 1
+
+    return count((entity.get("data") or {}))
+
+
 def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description="Gera curadorias draft via pesquisa web + LLM")
     p.add_argument("--city", default="Rio", help="Filtro de cidade (regex em data.location.city)")
@@ -417,6 +454,10 @@ def parse_args() -> argparse.Namespace:
                    dest="descriptions_output")
     p.add_argument("--per-query-results", type=int, default=5, dest="per_query_results")
     p.add_argument("--sleep", type=float, default=1.0, help="Pausa entre entidades (s)")
+    p.add_argument("--sort", choices=["natural", "metadata"], default="natural",
+                   help="Ordem das entidades: natural (Mongo) ou metadata (densidade de campos, desc)")
+    p.add_argument("--skip-with-description", action="store_true", dest="skip_with_description",
+                   help="Não emite patch de description p/ entidades que já têm data.description")
     return p.parse_args()
 
 
@@ -449,11 +490,18 @@ def main() -> int:
     query = {"type": {"$in": ["restaurant", "bar", "cafe"]}}
     if args.city:
         query["data.location.city"] = {"$regex": args.city, "$options": "i"}
-    cursor = db.entities.find(query)
-    if args.limit:
-        cursor = cursor.limit(args.limit)
-    entities = list(cursor)
-    print(f"{len(entities)} entidades candidatas")
+    if args.sort == "metadata":
+        entities = list(db.entities.find(query))
+        entities.sort(key=metadata_field_count, reverse=True)
+        if args.limit:
+            entities = entities[:args.limit]
+        print(f"{len(entities)} entidades candidatas (top por densidade de metadados)")
+    else:
+        cursor = db.entities.find(query)
+        if args.limit:
+            cursor = cursor.limit(args.limit)
+        entities = list(cursor)
+        print(f"{len(entities)} entidades candidatas")
 
     # --- saída 1: curations ---
     out_path = Path(args.output)
@@ -490,6 +538,10 @@ def main() -> int:
             cur, patch = None, None
         if cur:
             curations.append(cur)
+        if patch and args.skip_with_description:
+            existing_desc = ((e.get("data") or {}).get("description") or "").strip()
+            if existing_desc:
+                patch = None
         if patch:
             descriptions.append(patch)
         n_cats = len(cur["categories"]) if cur else 0
