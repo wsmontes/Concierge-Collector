@@ -177,6 +177,12 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
             pendingAudio: '++id, restaurantId, draftId, timestamp, retryCount, status'
         });
 
+        // Version 92: Add cache metadata (lastAccessedAt, source) for curations and entities
+        this.db.version(92).stores({
+            curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt, updatedAt, etag, sync.status, lastAccessedAt, source',
+            entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt, etag, sync.status, lastAccessedAt, source',
+        });
+
         // Open the database and wait for it to be ready
         await this.db.open();
 
