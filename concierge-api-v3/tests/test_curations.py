@@ -1,6 +1,7 @@
 """
 Test curation endpoints
 """
+import os
 import pytest
 
 
@@ -108,6 +109,30 @@ class TestCurationValidation:
     def test_search_curations_invalid_status(self, client):
         """Test searching with invalid status"""
         response = client.get("/api/v3/curations/search?status=invalid_status")
-        
+
         # Should either accept (empty results) or reject
         assert response.status_code in [200, 422]
+
+
+def _api_headers():
+    return {"X-API-Key": os.environ["API_SECRET_KEY"]}
+
+
+@pytest.mark.mongo
+def test_create_curation_denormalizes_city_type(client, test_db, clean_test_entities, clean_test_curations):
+    test_db.entities.insert_one({
+        "_id": "test_ent_denorm", "entity_id": "test_ent_denorm", "name": "T", "type": "bar",
+        "data": {"location": {"city": "São Paulo"}},
+    })
+    payload = {
+        "curation_id": "test_cur_denorm", "entity_id": "test_ent_denorm",
+        "curator_id": "test_curator", "curator": {"id": "test_curator", "name": "Test"},
+        "categories": {"cuisine": ["bar"]},
+        "status": "draft",
+    }
+    resp = client.post("/api/v3/curations", json=payload, headers=_api_headers())
+    assert resp.status_code == 201, resp.text
+    doc = test_db.curations.find_one({"_id": "test_cur_denorm"})
+    assert doc["city"] == "São Paulo"
+    assert doc["type"] == "bar"
+    test_db.curations.delete_one({"_id": "test_cur_denorm"})

@@ -22,6 +22,7 @@ from app.models.schemas import (
 from app.core.database import get_database
 from app.core.security import verify_access_token, api_key_header, bearer_scheme, get_api_secret_key
 from app.models.user import has_role
+from app.services.curation_denorm import denormalize_curation_location
 from pymongo.database import Database
 from jose import jwt, JWTError
 from openai import OpenAI
@@ -102,6 +103,8 @@ def create_curation(
     
     # Prepare document
     doc = curation.model_dump()
+    if curation.entity_id and entity:
+        doc.update(denormalize_curation_location(entity))
     doc["_id"] = curation.curation_id
     doc["createdAt"] = datetime.now(timezone.utc)
     doc["updatedAt"] = datetime.now(timezone.utc)
@@ -287,6 +290,15 @@ def update_curation(
         or auth.get("user")
         or current.get("updatedBy")
     )
+
+    # Denormalize city/type if entity_id is changing
+    if "entity_id" in update_data and update_data["entity_id"]:
+        entity = db.entities.find_one(
+            {"_id": update_data["entity_id"]},
+            {"type": 1, "data.location": 1}
+        )
+        if entity:
+            update_data.update(denormalize_curation_location(entity))
 
     update_data["updatedAt"] = datetime.now(timezone.utc)
     update_data["version"] = current_version + 1
@@ -832,6 +844,14 @@ def bulk_upsert_curations(
                 {"_id": 1, "version": 1, "createdBy": 1, "createdAt": 1}
             )
 
+            # Denormalize city/type from entity
+            entity_for_denorm = None
+            if curation.entity_id:
+                entity_for_denorm = db.entities.find_one(
+                    {"_id": curation.entity_id},
+                    {"type": 1, "data.location": 1}
+                )
+
             if existing:
                 doc = curation.model_dump(exclude_unset=True)
                 doc.pop("curation_id", None)
@@ -840,6 +860,8 @@ def bulk_upsert_curations(
                 doc["updatedAt"] = now
                 doc["version"] = existing.get("version", 1) + 1
                 doc["updatedBy"] = curation.curator_id
+                if entity_for_denorm:
+                    doc.update(denormalize_curation_location(entity_for_denorm))
 
                 db.curations.update_one({"_id": curation.curation_id}, {"$set": doc})
                 updated += 1
@@ -851,6 +873,8 @@ def bulk_upsert_curations(
                 doc["version"] = 1
                 doc["createdBy"] = curation.createdBy or curation.curator_id
                 doc["updatedBy"] = curation.curator_id
+                if entity_for_denorm:
+                    doc.update(denormalize_curation_location(entity_for_denorm))
                 db.curations.insert_one(doc)
                 created += 1
 
