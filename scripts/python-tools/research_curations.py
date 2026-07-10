@@ -545,10 +545,15 @@ def main() -> int:
         descriptions = json.loads(desc_path.read_text(encoding="utf-8"))
         done_desc_ids = {d.get("entity_id") for d in descriptions}
 
-    # Cache combinado: pula entidade já presente em qualquer artefato. Nota: um
-    # kill entre as duas escritas pode, no pior caso, perder a description de UMA
-    # entidade (a curadoria, escrita antes, é preservada).
-    done = done_ids | done_desc_ids
+    # --- ledger de processados: registra TODOS os entity_ids tentados (inclusive
+    # "sem conceitos"), para o relaunch não reprocessar a cauda vazia toda vez ---
+    processed_path = out_path.with_suffix(out_path.suffix + ".processed.txt")
+    processed_ids = set()
+    if processed_path.exists():
+        processed_ids = {ln.strip() for ln in processed_path.read_text(encoding="utf-8").splitlines() if ln.strip()}
+
+    # Cache combinado: pula entidade já com artefato OU já tentada (ledger).
+    done = done_ids | done_desc_ids | processed_ids
     for i, e in enumerate(entities, 1):
         eid = e.get("entity_id") or e.get("_id")
         if eid in done:
@@ -573,6 +578,9 @@ def main() -> int:
         print(f" ok ({n_cats} categorias, {has_desc})" if (cur or patch) else " sem conceitos")
         out_path.write_text(json.dumps(curations, ensure_ascii=False, indent=2), encoding="utf-8")
         desc_path.write_text(json.dumps(descriptions, ensure_ascii=False, indent=2), encoding="utf-8")
+        with processed_path.open("a", encoding="utf-8") as pf:  # registra a tentativa
+            pf.write(f"{eid}\n")
+        done.add(eid)
         time.sleep(args.sleep)
 
     print(f"\nSalvo: {out_path}  ({len(curations)} curadorias)")
