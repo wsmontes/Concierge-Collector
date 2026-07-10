@@ -88,9 +88,15 @@ class TestCurationEndpoints:
     def test_delete_curation_without_auth(self, client):
         """Test deleting curation without authentication"""
         response = client.delete("/api/v3/curations/test_id")
-        
+
         # Should fail without auth
         assert response.status_code == 401
+
+    def test_search_long_special_query_no_500(self, client):
+        """200 chars ending in a regex-special char; must not 500 (invalid-regex bug)"""
+        q = "a" * 199 + "."
+        r = client.get("/api/v3/curations/search", params={"q": q, "limit": 5})
+        assert r.status_code == 200, r.text
 
 
 class TestCurationValidation:

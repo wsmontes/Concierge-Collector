@@ -160,7 +160,8 @@ def search_curations(
     if type:
         query["type"] = type
     if q:
-        query["restaurant_name"] = {"$regex": re.escape(q.strip())[:200], "$options": "i"}
+        sanitized = q.strip()[:200]
+        query["restaurant_name"] = {"$regex": re.escape(sanitized), "$options": "i"}
 
     if since:
         try:
