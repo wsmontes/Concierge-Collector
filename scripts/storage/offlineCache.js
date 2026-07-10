@@ -56,6 +56,22 @@ class OfflineCache {
     return rec?.source === 'owned' || s === 'pending' || s === 'conflict';
   }
 
+  async markCurationOwned(curationId, apiService) {
+    const cur = await this.db.curations.get(curationId)
+      || await this.db.curations.where('curation_id').equals(curationId).first();
+    if (!cur) return;
+    await this.db.curations.update(cur.id, { source: 'owned' });
+    if (cur.entity_id) {
+      const ent = await this.db.entities.where('entity_id').equals(cur.entity_id).first();
+      if (!ent) {
+        const fetched = await apiService.getEntity(cur.entity_id);
+        if (fetched) await this.db.entities.put({ ...fetched, source: 'owned' });
+      } else {
+        await this.db.entities.update(ent.id, { source: 'owned' });
+      }
+    }
+  }
+
   async enforceBudget(now = Date.now()) {
     const { maxBytes } = await this.budget.getBudget();
     const all = await this.db.curations.toArray();

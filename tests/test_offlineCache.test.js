@@ -1,5 +1,5 @@
 // tests/test_offlineCache.test.js
-import { describe, test, expect } from 'vitest';
+import { describe, test, expect, vi } from 'vitest';
 import { OfflineCache } from '../scripts/storage/offlineCache.js';
 import 'fake-indexeddb/auto';
 import Dexie from 'dexie';
@@ -61,5 +61,36 @@ describe('OfflineCache persistência', () => {
     // teto 1 byte -> tudo limpo é evictável; sobra 0 (ou o mais novo, conforme bytes)
     const remaining = await db.curations.count();
     expect(remaining).toBeLessThan(2);
+  });
+});
+
+describe('OfflineCache.markCurationOwned', () => {
+  test('marca curadoria e entidade como owned; hidrata se faltar', async () => {
+    const db = makeDb();
+    await db.curations.put({ id: 'c1', curation_id: 'c1', entity_id: 'e1', source: 'cache' });
+    // entidade ainda não está local -> deve hidratar
+    const apiService = { getEntity: vi.fn(async (id) => ({ id, entity_id: id, name: 'n' })) };
+    const c = new OfflineCache({ db, budget: { getBudget: async () => ({ maxBytes: 1e9 }) } });
+
+    await c.markCurationOwned('c1', apiService);
+
+    expect((await db.curations.get('c1')).source).toBe('owned');
+    const ent = await db.entities.where('entity_id').equals('e1').first();
+    expect(ent).toBeTruthy();
+    expect(ent.source).toBe('owned');
+    expect(apiService.getEntity).toHaveBeenCalledWith('e1');
+  });
+
+  test('se a entidade já existe local, só marca owned (sem fetch)', async () => {
+    const db = makeDb();
+    await db.curations.put({ id: 'c2', curation_id: 'c2', entity_id: 'e2', source: 'cache' });
+    await db.entities.put({ id: 'e2', entity_id: 'e2', source: 'cache' });
+    const apiService = { getEntity: vi.fn() };
+    const c = new OfflineCache({ db, budget: { getBudget: async () => ({ maxBytes: 1e9 }) } });
+
+    await c.markCurationOwned('c2', apiService);
+
+    expect((await db.entities.where('entity_id').equals('e2').first()).source).toBe('owned');
+    expect(apiService.getEntity).not.toHaveBeenCalled();
   });
 });

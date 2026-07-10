@@ -570,15 +570,9 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             this.emitSyncEvent('sync-start');
             this.log.info('�� Starting full sync...');
 
-            // 1. Pull from server (server → client)
-            // IMPORTANT: Curations first, then only entities linked by curation.entity_id
-            this.emitSyncEvent('sync-progress', { stage: 'pull-curations', message: 'Syncing curations from server...' });
-            await this.pullCurations().catch(e => this.log.error('Pull curations failed:', e));
+            // Startup é push-only: navegação/cache é sob demanda (CurationBrowser + OfflineCache).
 
-            this.emitSyncEvent('sync-progress', { stage: 'pull-entities', message: 'Syncing linked entities from server...' });
-            await this.pullLinkedEntities().catch(e => this.log.error('Pull linked entities failed:', e));
-
-            // 2. Push to server (client → server)
+            // 1. Push to server (client → server)
             this.emitSyncEvent('sync-progress', { stage: 'push-entities', message: 'Uploading local entity updates...' });
             await this.pushEntities();
 
@@ -601,6 +595,15 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             };
         } finally {
             this.isSyncing = false;
+        }
+    }
+
+    /**
+     * Checkout (own) a curation: delegates to OfflineCache for testable logic.
+     */
+    async checkoutCuration(curationId) {
+        if (window.OfflineCache && typeof window.OfflineCache.markCurationOwned === 'function') {
+            return window.OfflineCache.markCurationOwned(curationId, window.ApiService);
         }
     }
 
