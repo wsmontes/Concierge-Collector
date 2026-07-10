@@ -608,6 +608,7 @@ if (typeof window.UIManager === 'undefined') {
 
                 // Render loaded items directly (server-side filtering applied by CurationBrowser)
                 this.renderCurationsPage(items);
+                this.updateCurationsCountSummary(this.curationsCache.length, this.curationsCache.length);
 
             } catch (error) {
                 console.error('Failed to load curations:', error);
@@ -636,14 +637,8 @@ if (typeof window.UIManager === 'undefined') {
                 container.innerHTML = '';
 
                 allCurations.forEach(curation => {
-                    const entity = curation.entity_id ? this.curationsEntitiesMap?.get(curation.entity_id) : null;
-                    if (entity) {
-                        const card = window.CardFactory.createCurationCard(entity, curation);
-                        container.appendChild(card);
-                    } else {
-                        const reviewCard = this.createReviewCard(curation);
-                        container.appendChild(reviewCard);
-                    }
+                    const reviewCard = this.createReviewCard(curation);
+                    container.appendChild(reviewCard);
                 });
 
                 // Append "load more" button if server has more pages
@@ -710,14 +705,8 @@ if (typeof window.UIManager === 'undefined') {
             }
 
             pageCurations.forEach(curation => {
-                const entity = curation.entity_id ? this.curationsEntitiesMap?.get(curation.entity_id) : null;
-                if (entity) {
-                    const card = window.CardFactory.createCurationCard(entity, curation);
-                    container.appendChild(card);
-                } else {
-                    const reviewCard = this.createReviewCard(curation);
-                    container.appendChild(reviewCard);
-                }
+                const reviewCard = this.createReviewCard(curation);
+                container.appendChild(reviewCard);
             });
         }
 
@@ -751,6 +740,7 @@ if (typeof window.UIManager === 'undefined') {
 
                 // Re-render all loaded items (server-side filtering already applied by scope)
                 this.renderCurationsPage(this.curationsCache);
+                this.updateCurationsCountSummary(this.curationsCache.length, this.curationsCache.length);
             } catch (error) {
                 this.curationsBrowserLoading = false;
                 console.error('Failed to load more curations:', error);

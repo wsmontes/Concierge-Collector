@@ -125,7 +125,6 @@ def _api_headers():
 
 
 @pytest.mark.mongo
-@pytest.mark.mongo
 def test_search_filters_by_city_and_text(client, test_db, clean_test_curations):
     test_db.curations.insert_many([
         {"_id": "test_c_sp", "curation_id": "test_c_sp", "entity_id": "test_e1",
