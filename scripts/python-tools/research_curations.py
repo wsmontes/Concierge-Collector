@@ -363,11 +363,18 @@ def search_web(query: str, max_results: int = 5, searcher=None) -> List[str]:
 def scrape_url(url: str, fetcher=None) -> str:
     if fetcher is None:
         def fetcher(u):
+            import requests
             import trafilatura
-            downloaded = trafilatura.fetch_url(u)
-            if not downloaded:
+            # timeout por fetch: evita travar o run inteiro numa URL que
+            # mantém a conexão aberta (ThreadPoolExecutor.map espera todas).
+            resp = requests.get(
+                u,
+                timeout=15,
+                headers={"User-Agent": "Mozilla/5.0 (compatible; ConciergeBot/1.0)"},
+            )
+            if resp.status_code != 200 or not resp.text:
                 return ""
-            return trafilatura.extract(downloaded) or ""
+            return trafilatura.extract(resp.text) or ""
     try:
         return (fetcher(url) or "").strip()
     except Exception:
