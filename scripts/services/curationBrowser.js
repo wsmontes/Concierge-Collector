@@ -11,8 +11,8 @@ class CurationBrowser {
     this._prefetched = null;
   }
 
-  openScope({ curatorId = null, status = null } = {}) {
-    this.scope = { curatorId, status };
+  openScope({ curatorId = null, status = null, city = null, type = null, q = null } = {}) {
+    this.scope = { curatorId, status, city, type, q };
     this.cursor = null;
     this.done = false;
     this._prefetched = null;
@@ -23,6 +23,9 @@ class CurationBrowser {
     if (afterId != null) p.after_id = afterId;
     if (this.scope.curatorId) p.curator_id = this.scope.curatorId;
     if (this.scope.status) p.status = this.scope.status;
+    if (this.scope.city) p.city = this.scope.city;
+    if (this.scope.type) p.type = this.scope.type;
+    if (this.scope.q) p.q = this.scope.q;
     return p;
   }
 

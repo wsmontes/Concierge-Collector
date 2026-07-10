@@ -1,6 +1,7 @@
 """
 Test curation endpoints
 """
+import os
 import pytest
 
 
@@ -87,9 +88,15 @@ class TestCurationEndpoints:
     def test_delete_curation_without_auth(self, client):
         """Test deleting curation without authentication"""
         response = client.delete("/api/v3/curations/test_id")
-        
+
         # Should fail without auth
         assert response.status_code == 401
+
+    def test_search_long_special_query_no_500(self, client):
+        """200 chars ending in a regex-special char; must not 500 (invalid-regex bug)"""
+        q = "a" * 199 + "."
+        r = client.get("/api/v3/curations/search", params={"q": q, "limit": 5})
+        assert r.status_code == 200, r.text
 
 
 class TestCurationValidation:
@@ -108,6 +115,49 @@ class TestCurationValidation:
     def test_search_curations_invalid_status(self, client):
         """Test searching with invalid status"""
         response = client.get("/api/v3/curations/search?status=invalid_status")
-        
+
         # Should either accept (empty results) or reject
         assert response.status_code in [200, 422]
+
+
+def _api_headers():
+    return {"X-API-Key": os.environ["API_SECRET_KEY"]}
+
+
+@pytest.mark.mongo
+def test_search_filters_by_city_and_text(client, test_db, clean_test_curations):
+    test_db.curations.insert_many([
+        {"_id": "test_c_sp", "curation_id": "test_c_sp", "entity_id": "test_e1",
+         "restaurant_name": "Pizzaria Napoli", "status": "draft", "city": "São Paulo", "type": "restaurant",
+         "curator": {"id": "test_curator", "name": "Test"}},
+        {"_id": "test_c_rio", "curation_id": "test_c_rio", "entity_id": "test_e2",
+         "restaurant_name": "Bar do Rio", "status": "draft", "city": "Rio de Janeiro", "type": "bar",
+         "curator": {"id": "test_curator", "name": "Test"}},
+    ])
+    r = client.get("/api/v3/curations/search?city=São Paulo&limit=100")
+    ids = [i.get("curation_id") for i in r.json()["items"]]
+    assert "test_c_sp" in ids and "test_c_rio" not in ids
+
+    r2 = client.get("/api/v3/curations/search?q=napoli&limit=100")
+    ids2 = [i.get("curation_id") for i in r2.json()["items"]]
+    assert "test_c_sp" in ids2 and "test_c_rio" not in ids2
+    test_db.curations.delete_many({"_id": {"$in": ["test_c_sp", "test_c_rio"]}})
+
+
+def test_create_curation_denormalizes_city_type(client, test_db, clean_test_entities, clean_test_curations):
+    test_db.entities.insert_one({
+        "_id": "test_ent_denorm", "entity_id": "test_ent_denorm", "name": "T", "type": "bar",
+        "data": {"location": {"city": "São Paulo"}},
+    })
+    payload = {
+        "curation_id": "test_cur_denorm", "entity_id": "test_ent_denorm",
+        "curator_id": "test_curator", "curator": {"id": "test_curator", "name": "Test"},
+        "categories": {"cuisine": ["bar"]},
+        "status": "draft",
+    }
+    resp = client.post("/api/v3/curations", json=payload, headers=_api_headers())
+    assert resp.status_code == 201, resp.text
+    doc = test_db.curations.find_one({"_id": "test_cur_denorm"})
+    assert doc["city"] == "São Paulo"
+    assert doc["type"] == "bar"
+    test_db.curations.delete_one({"_id": "test_cur_denorm"})

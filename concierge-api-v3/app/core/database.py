@@ -89,6 +89,8 @@ def _ensure_indexes():
         db.curations.create_index("entity_id", background=True)
         db.curations.create_index("curator.id", background=True)
         db.curations.create_index("createdAt", background=True)
+        db.curations.create_index("city", background=True)
+        db.curations.create_index("type", background=True)
 
         # Composite indexes for scale
         # Supports: status filter + incremental sync (?since)

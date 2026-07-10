@@ -95,7 +95,8 @@ if (typeof window.UIManager === 'undefined') {
             this.refreshDebounceTimer = null;
             this.pendingRefreshReason = null;
             this.curationsCache = [];
-            this.curationsFilteredCount = 0;
+            this.currentFilterScope = null;
+            this.searchDebounceTimer = null;
             this.entitiesCache = [];
             this.entitiesFiltered = [];
 
@@ -124,14 +125,6 @@ if (typeof window.UIManager === 'undefined') {
             this.listScrollRestoreY = 0;
             this.shouldRestoreListScroll = false;
 
-            // Curation filtering state
-            this.curationFilters = {
-                search: '',
-                status: 'all',
-                curator: 'all',
-                city: 'all',
-                type: 'all'
-            };
 
             // Initialize UI Utils module first to ensure availability of UI utility functions
             this.initializeUIUtilsModule();
@@ -450,50 +443,78 @@ if (typeof window.UIManager === 'undefined') {
          * Setup event listeners for curation search and filters
          */
         setupCurationEvents() {
-            // Search input
+            // Search input with debounce (300ms)
             const searchInput = document.getElementById('curation-search');
             if (searchInput) {
-                searchInput.addEventListener('input', (e) => {
-                    this.curationFilters.search = e.target.value.toLowerCase();
-                    this.filterAndDisplayCurations();
+                searchInput.addEventListener('input', () => {
+                    if (this.searchDebounceTimer) clearTimeout(this.searchDebounceTimer);
+                    this.searchDebounceTimer = setTimeout(() => {
+                        this._applyFilterScope();
+                    }, 300);
                 });
             }
 
-            // Status filter
+            // Status filter (immediate re-scope)
             const statusFilter = document.getElementById('curation-status-filter');
             if (statusFilter) {
-                statusFilter.addEventListener('change', (e) => {
-                    this.curationFilters.status = e.target.value;
-                    this.filterAndDisplayCurations();
+                statusFilter.addEventListener('change', () => {
+                    this._applyFilterScope();
                 });
             }
 
-            // Curator filter
+            // Curator filter (immediate re-scope)
             const curatorFilter = document.getElementById('curation-curator-filter');
             if (curatorFilter) {
-                curatorFilter.addEventListener('change', (e) => {
-                    this.curationFilters.curator = e.target.value;
-                    this.filterAndDisplayCurations();
+                curatorFilter.addEventListener('change', () => {
+                    this._applyFilterScope();
                 });
             }
 
-            // City filter
+            // City filter (immediate re-scope)
             const cityFilter = document.getElementById('curation-city-filter');
             if (cityFilter) {
-                cityFilter.addEventListener('change', (e) => {
-                    this.curationFilters.city = e.target.value;
-                    this.filterAndDisplayCurations();
+                cityFilter.addEventListener('change', () => {
+                    this._applyFilterScope();
                 });
             }
 
-            // Type filter
+            // Type filter (immediate re-scope)
             const typeFilter = document.getElementById('curation-type-filter');
             if (typeFilter) {
-                typeFilter.addEventListener('change', (e) => {
-                    this.curationFilters.type = e.target.value;
-                    this.filterAndDisplayCurations();
+                typeFilter.addEventListener('change', () => {
+                    this._applyFilterScope();
                 });
             }
+        }
+
+        /**
+         * Build filter scope from UI controls and trigger a server-side re-scope.
+         * Reads all filter inputs, constructs a scope object, stores it,
+         * clears the cache, and reloads from the first page.
+         */
+        async _applyFilterScope() {
+            const getVal = (id) => document.getElementById(id)?.value || '';
+
+            const scope = {};
+
+            const status = getVal('curation-status-filter');
+            if (status && status !== 'all') scope.status = status;
+
+            const curator = getVal('curation-curator-filter');
+            if (curator && curator !== 'all') scope.curatorId = curator;
+
+            const city = getVal('curation-city-filter');
+            if (city && city !== 'all') scope.city = city;
+
+            const type = getVal('curation-type-filter');
+            if (type && type !== 'all') scope.type = type;
+
+            const q = getVal('curation-search');
+            if (q) scope.q = q;
+
+            this.currentFilterScope = scope;
+            this.curationsCache = [];
+            await this.loadCurations();
         }
 
         /**
@@ -562,13 +583,11 @@ if (typeof window.UIManager === 'undefined') {
 
                 // Reset browser pagination state
                 this.curationBrowser = window.CurationBrowser;
-                this.curationsCache = [];
                 this.curationsBrowserDone = false;
                 this.curationsBrowserLoading = false;
-                this.curationsEntitiesMap = new Map();
 
-                // Open scope: all curations, no server-side filters
-                this.curationBrowser.openScope({ status: null, curatorId: null });
+                // Open scope: use current filter scope or empty (all curations)
+                this.curationBrowser.openScope(this.currentFilterScope || {});
 
                 // Load first page (denormalized fields: restaurant_name, categories, status)
                 const { items, done } = await this.curationBrowser.nextPage();
@@ -587,11 +606,9 @@ if (typeof window.UIManager === 'undefined') {
                     return;
                 }
 
-                // Populate dynamic filters from loaded items
-                this.populateCurationFilters(items, this.curationsEntitiesMap);
-
-                // Initial display (client-side filters operate on the loaded page)
-                this.filterAndDisplayCurations();
+                // Render loaded items directly (server-side filtering applied by CurationBrowser)
+                this.renderCurationsPage(items);
+                this.updateCurationsCountSummary(this.curationsCache.length, this.curationsCache.length);
 
             } catch (error) {
                 console.error('Failed to load curations:', error);
@@ -604,156 +621,6 @@ if (typeof window.UIManager === 'undefined') {
             }
         }
 
-        /**
-         * Populates the curation filter dropdowns dynamically
-         */
-        populateCurationFilters(curations, entitiesMap) {
-            const curators = new Map();
-            const cities = new Set();
-            const types = new Set();
-
-            curations.forEach(curation => {
-                // Collect curators
-                if (curation.curator && curation.curator.id) {
-                    curators.set(curation.curator.id, curation.curator.name || curation.curator.id);
-                } else if (curation.curator_id) {
-                    curators.set(curation.curator_id, curation.curator_id);
-                }
-
-                // Collect city and type from linked entity
-                const entity = curation.entity_id ? entitiesMap.get(curation.entity_id) : null;
-                if (entity) {
-                    if (entity.type) types.add(entity.type);
-                    const city = window.CardFactory.extractCity(entity);
-                    if (city && city !== 'Unknown') cities.add(city);
-                }
-            });
-
-            // Populate Curator filter
-            const curatorFilter = document.getElementById('curation-curator-filter');
-            if (curatorFilter) {
-                const currentValue = curatorFilter.value;
-                curatorFilter.innerHTML = '<option value="all">All Curators</option>';
-                Array.from(curators.entries()).sort((a, b) => a[1].localeCompare(b[1])).forEach(([id, name]) => {
-                    const option = document.createElement('option');
-                    option.value = id;
-                    option.textContent = name;
-                    curatorFilter.appendChild(option);
-                });
-                curatorFilter.value = currentValue || 'all';
-            }
-
-            // Populate City filter
-            const cityFilter = document.getElementById('curation-city-filter');
-            if (cityFilter) {
-                const currentValue = cityFilter.value;
-                cityFilter.innerHTML = '<option value="all">All Cities</option>';
-                Array.from(cities).sort().forEach(city => {
-                    const option = document.createElement('option');
-                    option.value = city;
-                    option.textContent = city;
-                    cityFilter.appendChild(option);
-                });
-                cityFilter.value = currentValue || 'all';
-            }
-
-            // Populate Type Filter
-            const typeFilter = document.getElementById('curation-type-filter');
-            if (typeFilter) {
-                const currentValue = typeFilter.value;
-                typeFilter.innerHTML = '<option value="all">All Types</option>';
-                Array.from(types).sort().forEach(type => {
-                    const option = document.createElement('option');
-                    option.value = type;
-                    option.textContent = type.charAt(0).toUpperCase() + type.slice(1);
-                    typeFilter.appendChild(option);
-                });
-                typeFilter.value = currentValue || 'all';
-            }
-        }
-
-        /**
-         * Filter and display curations based on current filter state
-         */
-        filterAndDisplayCurations() {
-            const container = this.containers.curations;
-            if (!container || !this.curationsCache) return;
-
-            let filtered = [...this.curationsCache];
-
-            // 1. Search filter (Entity name or notes)
-            if (this.curationFilters.search) {
-                const query = this.curationFilters.search.toLowerCase();
-                filtered = filtered.filter(curation => {
-                    const entity = curation.entity_id ? this.curationsEntitiesMap.get(curation.entity_id) : null;
-                    const entityName = (entity?.name || '').toLowerCase();
-                    const restaurantName = (curation.restaurant_name || curation.restaurantName || '').toLowerCase();
-                    const notes = (curation.notes?.public || '').toLowerCase();
-                    const curatorName = (curation.curator?.name || '').toLowerCase();
-                    const transcription = (
-                        curation.transcript ||
-                        curation.sources?.audio?.[0]?.transcript ||
-                        curation.unstructured_text ||
-                        curation.transcription ||
-                        ''
-                    ).toLowerCase();
-                    return entityName.includes(query) || restaurantName.includes(query) || notes.includes(query) || transcription.includes(query) || curatorName.includes(query);
-                });
-            }
-
-            // 2. Status filter
-            if (this.curationFilters.status !== 'all') {
-                filtered = filtered.filter(curation => {
-                    const rawStatus = (curation.status || 'draft').toLowerCase();
-                    const normalizedStatus = rawStatus === 'done' ? 'linked' : rawStatus;
-                    return normalizedStatus === this.curationFilters.status;
-                });
-            }
-
-            // 3. Curator filter
-            if (this.curationFilters.curator !== 'all') {
-                filtered = filtered.filter(curation => (curation.curator?.id || curation.curator_id) === this.curationFilters.curator);
-            }
-
-            // 4. City filter
-            if (this.curationFilters.city !== 'all') {
-                filtered = filtered.filter(curation => {
-                    const entity = curation.entity_id ? this.curationsEntitiesMap.get(curation.entity_id) : null;
-                    return entity && window.CardFactory.extractCity(entity) === this.curationFilters.city;
-                });
-            }
-
-            // 5. Type filter
-            if (this.curationFilters.type !== 'all') {
-                filtered = filtered.filter(curation => {
-                    const entity = curation.entity_id ? this.curationsEntitiesMap.get(curation.entity_id) : null;
-                    return entity && entity.type === this.curationFilters.type;
-                });
-            }
-
-            // Store filtered results and delegate rendering to paginated method
-            this.curationsFilteredCount = filtered.length;
-            this.updateCurationsCountSummary(this.curationsCache.length, filtered.length);
-
-            if (filtered.length === 0) {
-                container.innerHTML = `
-                        <div class="col-span-full text-center py-12">
-                            <span class="material-icons text-6xl text-gray-300 mb-4">search_off</span>
-                            <p class="text-gray-500">No curations match your filters</p>
-                        </div>
-                    `;
-                return;
-            }
-
-            // Reset to first page when filters change then render
-            if (!this.curationPagination) {
-                this.curationPagination = { currentPage: 0, pageSize: 20 };
-            } else {
-                this.curationPagination.currentPage = 0;
-            }
-            this.curationsFiltered = filtered;
-            this.renderCurationsPage(filtered);
-        }
 
         /**
          * Render one page of curations with prev/next pagination controls.
@@ -770,14 +637,8 @@ if (typeof window.UIManager === 'undefined') {
                 container.innerHTML = '';
 
                 allCurations.forEach(curation => {
-                    const entity = curation.entity_id ? this.curationsEntitiesMap?.get(curation.entity_id) : null;
-                    if (entity) {
-                        const card = window.CardFactory.createCurationCard(entity, curation);
-                        container.appendChild(card);
-                    } else {
-                        const reviewCard = this.createReviewCard(curation);
-                        container.appendChild(reviewCard);
-                    }
+                    const reviewCard = this.createReviewCard(curation);
+                    container.appendChild(reviewCard);
                 });
 
                 // Append "load more" button if server has more pages
@@ -844,14 +705,8 @@ if (typeof window.UIManager === 'undefined') {
             }
 
             pageCurations.forEach(curation => {
-                const entity = curation.entity_id ? this.curationsEntitiesMap?.get(curation.entity_id) : null;
-                if (entity) {
-                    const card = window.CardFactory.createCurationCard(entity, curation);
-                    container.appendChild(card);
-                } else {
-                    const reviewCard = this.createReviewCard(curation);
-                    container.appendChild(reviewCard);
-                }
+                const reviewCard = this.createReviewCard(curation);
+                container.appendChild(reviewCard);
             });
         }
 
@@ -874,20 +729,18 @@ if (typeof window.UIManager === 'undefined') {
                 const { items, done } = await this.curationBrowser.nextPage();
 
                 if (items.length > 0) {
-                    // Append to existing cache (accumulated items for client-side filtering)
+                    // Append to existing cache (accumulated items)
                     this.curationsCache = [...this.curationsCache, ...items];
                 }
-
-                // Refresh filter dropdowns so curators from new pages become selectable
-                this.populateCurationFilters(this.curationsCache, this.curationsEntitiesMap);
 
                 this.curationsBrowserDone = done;
 
                 // Clear loading flag BEFORE re-render so the new button state is correct
                 this.curationsBrowserLoading = false;
 
-                // Re-render all loaded items with current filters applied
-                this.filterAndDisplayCurations();
+                // Re-render all loaded items (server-side filtering already applied by scope)
+                this.renderCurationsPage(this.curationsCache);
+                this.updateCurationsCountSummary(this.curationsCache.length, this.curationsCache.length);
             } catch (error) {
                 this.curationsBrowserLoading = false;
                 console.error('Failed to load more curations:', error);

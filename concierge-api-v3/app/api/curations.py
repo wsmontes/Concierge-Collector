@@ -6,6 +6,7 @@ Professional FastAPI implementation with async MongoDB
 from fastapi import APIRouter, HTTPException, Header, Query, Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials
 from typing import Optional, List
+import re
 from datetime import datetime, timezone
 from pymongo.errors import DuplicateKeyError
 import secrets
@@ -22,6 +23,7 @@ from app.models.schemas import (
 from app.core.database import get_database
 from app.core.security import verify_access_token, api_key_header, bearer_scheme, get_api_secret_key
 from app.models.user import has_role
+from app.services.curation_denorm import denormalize_curation_location
 from pymongo.database import Database
 from jose import jwt, JWTError
 from openai import OpenAI
@@ -102,6 +104,8 @@ def create_curation(
     
     # Prepare document
     doc = curation.model_dump()
+    if curation.entity_id and entity:
+        doc.update(denormalize_curation_location(entity))
     doc["_id"] = curation.curation_id
     doc["createdAt"] = datetime.now(timezone.utc)
     doc["updatedAt"] = datetime.now(timezone.utc)
@@ -130,6 +134,9 @@ def search_curations(
     status: Optional[CurationStatus] = Query(None),
     include_deleted: bool = Query(False),
     since: Optional[str] = Query(None, description="ISO timestamp - only return curations updated after this time"),
+    city: Optional[str] = Query(None),
+    type: Optional[str] = Query(None),
+    q: Optional[str] = Query(None, description="Busca por texto em restaurant_name"),
     limit: int = Query(50, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     after_id: Optional[str] = Query(None, description="Cursor-based pagination: return items with _id > after_id (O(log n), preferred over offset for large sets)"),
@@ -148,6 +155,13 @@ def search_curations(
         query["entity_id"] = entity_id
     if curator_id:
         query["curator.id"] = curator_id
+    if city:
+        query["city"] = city
+    if type:
+        query["type"] = type
+    if q:
+        sanitized = q.strip()[:200]
+        query["restaurant_name"] = {"$regex": re.escape(sanitized), "$options": "i"}
 
     if since:
         try:
@@ -287,6 +301,15 @@ def update_curation(
         or auth.get("user")
         or current.get("updatedBy")
     )
+
+    # Denormalize city/type if entity_id is changing
+    if "entity_id" in update_data and update_data["entity_id"]:
+        entity = db.entities.find_one(
+            {"_id": update_data["entity_id"]},
+            {"type": 1, "data.location": 1}
+        )
+        if entity:
+            update_data.update(denormalize_curation_location(entity))
 
     update_data["updatedAt"] = datetime.now(timezone.utc)
     update_data["version"] = current_version + 1
@@ -832,6 +855,14 @@ def bulk_upsert_curations(
                 {"_id": 1, "version": 1, "createdBy": 1, "createdAt": 1}
             )
 
+            # Denormalize city/type from entity
+            entity_for_denorm = None
+            if curation.entity_id:
+                entity_for_denorm = db.entities.find_one(
+                    {"_id": curation.entity_id},
+                    {"type": 1, "data.location": 1}
+                )
+
             if existing:
                 doc = curation.model_dump(exclude_unset=True)
                 doc.pop("curation_id", None)
@@ -840,6 +871,8 @@ def bulk_upsert_curations(
                 doc["updatedAt"] = now
                 doc["version"] = existing.get("version", 1) + 1
                 doc["updatedBy"] = curation.curator_id
+                if entity_for_denorm:
+                    doc.update(denormalize_curation_location(entity_for_denorm))
 
                 db.curations.update_one({"_id": curation.curation_id}, {"$set": doc})
                 updated += 1
@@ -851,6 +884,8 @@ def bulk_upsert_curations(
                 doc["version"] = 1
                 doc["createdBy"] = curation.createdBy or curation.curator_id
                 doc["updatedBy"] = curation.curator_id
+                if entity_for_denorm:
+                    doc.update(denormalize_curation_location(entity_for_denorm))
                 db.curations.insert_one(doc)
                 created += 1
 
