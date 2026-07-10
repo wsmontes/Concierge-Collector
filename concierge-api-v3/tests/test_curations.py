@@ -119,6 +119,26 @@ def _api_headers():
 
 
 @pytest.mark.mongo
+@pytest.mark.mongo
+def test_search_filters_by_city_and_text(client, test_db, clean_test_curations):
+    test_db.curations.insert_many([
+        {"_id": "test_c_sp", "curation_id": "test_c_sp", "entity_id": "test_e1",
+         "restaurant_name": "Pizzaria Napoli", "status": "draft", "city": "São Paulo", "type": "restaurant",
+         "curator": {"id": "test_curator", "name": "Test"}},
+        {"_id": "test_c_rio", "curation_id": "test_c_rio", "entity_id": "test_e2",
+         "restaurant_name": "Bar do Rio", "status": "draft", "city": "Rio de Janeiro", "type": "bar",
+         "curator": {"id": "test_curator", "name": "Test"}},
+    ])
+    r = client.get("/api/v3/curations/search?city=São Paulo&limit=100")
+    ids = [i.get("curation_id") for i in r.json()["items"]]
+    assert "test_c_sp" in ids and "test_c_rio" not in ids
+
+    r2 = client.get("/api/v3/curations/search?q=napoli&limit=100")
+    ids2 = [i.get("curation_id") for i in r2.json()["items"]]
+    assert "test_c_sp" in ids2 and "test_c_rio" not in ids2
+    test_db.curations.delete_many({"_id": {"$in": ["test_c_sp", "test_c_rio"]}})
+
+
 def test_create_curation_denormalizes_city_type(client, test_db, clean_test_entities, clean_test_curations):
     test_db.entities.insert_one({
         "_id": "test_ent_denorm", "entity_id": "test_ent_denorm", "name": "T", "type": "bar",

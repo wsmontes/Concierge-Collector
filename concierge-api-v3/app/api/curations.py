@@ -6,6 +6,7 @@ Professional FastAPI implementation with async MongoDB
 from fastapi import APIRouter, HTTPException, Header, Query, Depends, Request
 from fastapi.security import HTTPAuthorizationCredentials
 from typing import Optional, List
+import re
 from datetime import datetime, timezone
 from pymongo.errors import DuplicateKeyError
 import secrets
@@ -133,6 +134,9 @@ def search_curations(
     status: Optional[CurationStatus] = Query(None),
     include_deleted: bool = Query(False),
     since: Optional[str] = Query(None, description="ISO timestamp - only return curations updated after this time"),
+    city: Optional[str] = Query(None),
+    type: Optional[str] = Query(None),
+    q: Optional[str] = Query(None, description="Busca por texto em restaurant_name"),
     limit: int = Query(50, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     after_id: Optional[str] = Query(None, description="Cursor-based pagination: return items with _id > after_id (O(log n), preferred over offset for large sets)"),
@@ -151,6 +155,12 @@ def search_curations(
         query["entity_id"] = entity_id
     if curator_id:
         query["curator.id"] = curator_id
+    if city:
+        query["city"] = city
+    if type:
+        query["type"] = type
+    if q:
+        query["restaurant_name"] = {"$regex": re.escape(q.strip())[:200], "$options": "i"}
 
     if since:
         try:
