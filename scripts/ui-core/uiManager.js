@@ -884,6 +884,9 @@ if (typeof window.UIManager === 'undefined') {
                     this.curationsCache = [...this.curationsCache, ...items];
                 }
 
+                // Refresh filter dropdowns so curators from new pages become selectable
+                this.populateCurationFilters(this.curationsCache, this.curationsEntitiesMap);
+
                 this.curationsBrowserDone = done;
 
                 // Clear loading flag BEFORE re-render so the new button state is correct
@@ -1272,6 +1275,23 @@ if (typeof window.UIManager === 'undefined') {
                 '';
             const transcriptionSnippet = transcription.length > 100 ? transcription.substring(0, 100) + '...' : transcription;
 
+            // Determine badge from curation status
+            const rawStatus = (curation.status || 'draft').toLowerCase();
+            let badgeText, badgeClass;
+            if (rawStatus === 'linked' || rawStatus === 'active') {
+                badgeText = 'Linked';
+                badgeClass = 'bg-green-100 text-green-800';
+            } else if (rawStatus === 'done') {
+                badgeText = 'Done';
+                badgeClass = 'bg-blue-100 text-blue-800';
+            } else if (rawStatus === 'published') {
+                badgeText = 'Published';
+                badgeClass = 'bg-purple-100 text-purple-800';
+            } else {
+                badgeText = 'Draft';
+                badgeClass = 'bg-amber-100 text-amber-800';
+            }
+
             card.innerHTML = `
                 <!-- Header with type icon -->
                 <div class="absolute top-3 right-3 flex items-center gap-2 z-10">
@@ -1288,7 +1308,7 @@ if (typeof window.UIManager === 'undefined') {
                             ${restaurantName}
                         </h3>
                         <div class="flex items-center gap-2 text-xs text-gray-500 mb-2">
-                            <span class="bg-amber-100 text-amber-800 px-2 py-0.5 rounded-full font-medium">Unlinked Draft</span>
+                            <span class="${badgeClass} px-2 py-0.5 rounded-full font-medium">${badgeText}</span>
                             <span>•</span>
                             <span>${date}</span>
                         </div>
