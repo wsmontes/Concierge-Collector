@@ -48,4 +48,12 @@ describe('CurationBrowser', () => {
     await br.nextPage();
     expect(api.listCurations).toHaveBeenCalledWith(expect.objectContaining({ curator_id: 'me', status: 'draft', limit: 25 }));
   });
+
+  test('openScope propaga city/type/q para a API', async () => {
+    const api = { listCurations: vi.fn(async () => ({ items: [] })) };
+    const br = new CurationBrowser({ apiService: api, cache: { putCurations: vi.fn() }, hydrator: { enqueue: vi.fn() }, pageSize: 25 });
+    br.openScope({ city: 'São Paulo', type: 'bar', q: 'pizza', status: 'draft' });
+    await br.nextPage();
+    expect(api.listCurations).toHaveBeenCalledWith(expect.objectContaining({ city: 'São Paulo', type: 'bar', q: 'pizza', status: 'draft', limit: 25 }));
+  });
 });
