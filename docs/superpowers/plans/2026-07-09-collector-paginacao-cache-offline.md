@@ -551,167 +551,179 @@ export { CurationBrowser };
 
 ---
 
-### Task 6: DataStore — metadados de cache no schema (Dexie migration)
+### Task 6: schema de cache + bootstrap de módulo
+
+> **NOTA DE REVISÃO:** o app carrega scripts **clássicos** (`<script src>`, sem bundler) e nenhum arquivo do app usa `export`. Os 4 arquivos novos (Tasks 1-5) têm `export` (para o Vitest) → **não podem** ser carregados como `<script>` clássico (SyntaxError). Solução: carregá-los como **ES modules** via UM bootstrap de módulo que os importa. Não adicionar `export` a arquivos clássicos existentes.
 
 **Files:**
-- Modify: `scripts/storage/dataStore.js` (definição de schema Dexie e bootstrap dos serviços)
-- Modify: `index.html` (carregar os novos `<script>`)
-- Test: `tests/test_offlineCache.test.js` (reutiliza fake db; sem novo teste de schema — validado pelos testes das Tasks 3/5)
+- Modify: `scripts/storage/dataStore.js` (só o schema Dexie — arquivo clássico, sem `export`)
+- Create: `scripts/cacheBootstrap.js` (ES module)
+- Modify: `index.html` (uma tag `<script type="module">`)
+- Test: sem novo teste (integração); validado pela suíte das Tasks 1-5 + verificação manual na Task 8
 
 **Interfaces:**
-- Consumes: `StorageBudget`, `OfflineCache`, `EntityHydrator`, `CurationBrowser`.
-- Produces: índices `lastAccessedAt` e `source` nas tabelas `curations`/`entities`; instâncias globais `window.OfflineCache`, `window.EntityHydrator`, `window.CurationBrowser` conectadas ao `window.DataStore.db`/`window.ApiService`.
+- Produces: índices `lastAccessedAt`/`source` em `curations`/`entities`; após bootstrap, instâncias globais `window.OfflineCache`, `window.EntityHydrator`, `window.CurationBrowser` ligadas a `window.DataStore.db`/`window.ApiService`.
 
-- [ ] **Step 1: Bump da versão do schema Dexie**
+- [ ] **Step 1: Bump da versão do schema Dexie** (em `dataStore.js`)
 
-Localizar o maior `this.db.version(N).stores({...})` em `dataStore.js` e adicionar `version(N+1)` que acrescenta `lastAccessedAt, source` aos índices de `curations` e `entities` (campos aditivos; Dexie preserva dados). Exemplo:
+Localizar o maior `this.db.version(N).stores({...})` e adicionar `version(N+1)` que **copia todos os índices existentes** de `curations` e `entities` e acrescenta `lastAccessedAt, source` (campos aditivos; Dexie preserva dados). Exemplo (ajustar os índices copiando os da versão N real):
 
 ```javascript
 // dataStore.js — após a última .version(N).stores(...)
 this.db.version(/* N+1 */).stores({
-  curations: 'id, curation_id, entity_id, status, updatedAt, lastAccessedAt, source',
-  entities:  'id, entity_id, type, updatedAt, lastAccessedAt, source',
+  curations: '<todos-os-indices-da-versao-anterior>, lastAccessedAt, source',
+  entities:  '<todos-os-indices-da-versao-anterior>, lastAccessedAt, source',
 });
 ```
-(Manter os demais índices já existentes das duas tabelas — copiar da versão anterior e só adicionar os dois campos.)
+NÃO adicionar `export` nem bootstrap de serviços aqui (é arquivo clássico).
 
-- [ ] **Step 2: Bootstrap dos serviços** (fim de `dataStore.js`, após `window.DataStore` existir)
+- [ ] **Step 2: Criar `scripts/cacheBootstrap.js` (ES module)**
 
 ```javascript
-if (typeof window !== 'undefined') {
-  window.__initCollectorCache = function () {
-    const budget = window.StorageBudget || new StorageBudget();
-    const cache = new OfflineCache({ db: window.DataStore.db, budget });
-    const hydrator = new EntityHydrator({
-      apiService: window.ApiService, cache,
-      isEntityCached: async (id) => !!(await window.DataStore.db.entities.where('entity_id').equals(id).first()),
-    });
-    const browser = new CurationBrowser({ apiService: window.ApiService, cache, hydrator });
-    window.OfflineCache = cache;
-    window.EntityHydrator = hydrator;
-    window.CurationBrowser = browser;
-  };
+// scripts/cacheBootstrap.js — carregado como <script type="module">
+import { StorageBudget } from './storage/storageBudget.js';
+import { OfflineCache } from './storage/offlineCache.js';
+import { EntityHydrator } from './services/entityHydrator.js';
+import { CurationBrowser } from './services/curationBrowser.js';
+
+async function waitFor(getter, timeoutMs = 15000) {
+  const start = Date.now();
+  while (Date.now() - start < timeoutMs) {
+    const v = getter();
+    if (v) return v;
+    await new Promise(r => setTimeout(r, 50));
+  }
+  return getter();
 }
+
+async function initCollectorCache() {
+  await waitFor(() => window.DataStore && window.DataStore.db);
+  await waitFor(() => window.ApiService);
+  const budget = new StorageBudget();
+  const cache = new OfflineCache({ db: window.DataStore.db, budget });
+  const hydrator = new EntityHydrator({
+    apiService: window.ApiService,
+    cache,
+    isEntityCached: async (id) =>
+      !!(await window.DataStore.db.entities.where('entity_id').equals(id).first()),
+  });
+  const browser = new CurationBrowser({ apiService: window.ApiService, cache, hydrator });
+  window.OfflineCache = cache;
+  window.EntityHydrator = hydrator;
+  window.CurationBrowser = browser;
+  window.dispatchEvent(new CustomEvent('collector-cache-ready'));
+}
+
+initCollectorCache();
 ```
 
-- [ ] **Step 3: Carregar os scripts** — em `index.html`, junto aos demais `<script src="scripts/...">`, adicionar (antes de `main.js`):
+- [ ] **Step 3: Carregar como módulo** — em `index.html`, adicionar UMA linha junto aos demais scripts (a ordem não importa; o módulo é deferido e espera `DataStore`/`ApiService`):
 
 ```html
-<script src="scripts/storage/storageBudget.js"></script>
-<script src="scripts/services/entityHydrator.js"></script>
-<script src="scripts/storage/offlineCache.js"></script>
-<script src="scripts/services/curationBrowser.js"></script>
+<script type="module" src="scripts/cacheBootstrap.js"></script>
 ```
-E chamar `window.__initCollectorCache()` no init do app (em `main.js`, após `DataStore` e `ApiService` prontos).
+(O `import` do módulo puxa os 4 arquivos das Tasks 1-5; **não** adicionar tags clássicas para eles.)
 
-- [ ] **Step 4: Rodar a suíte inteira** — Run: `npm test` · Expected: PASS (todas as suítes das Tasks 1-5 verdes; schema não quebra as existentes).
+- [ ] **Step 4: Rodar a suíte inteira** — Run: `npx vitest run` · Expected: PASS (todas verdes; o bump de schema não quebra as suítes existentes).
 
-- [ ] **Step 5: Commit** — `git add -A && git commit -m "feat(collector): schema de cache (lastAccessedAt/source) + bootstrap dos serviços"`
+- [ ] **Step 5: Commit** — `git add -A && git commit -m "feat(collector): schema de cache + bootstrap de módulo dos serviços"`
 
 ---
 
-### Task 7: Startup push-only + checkout em `syncManagerV3`
+### Task 7: checkout no `OfflineCache` + startup push-only no `syncManagerV3`
+
+> **NOTA DE REVISÃO:** `syncManagerV3.js` é arquivo clássico (`window.SyncManager = ...`, sem `export`) — **não** adicionar `export` (quebraria o carregamento no browser). Por isso a lógica de checkout (testável) vai para o `OfflineCache` (que já é módulo testado), e o `syncManagerV3` apenas **delega** + fica push-only. O push-only do `fullSync` (arquivo clássico) é verificado manualmente na Task 8; o checkout é coberto por teste no `OfflineCache`.
 
 **Files:**
-- Modify: `scripts/sync/syncManagerV3.js`
-- Test: `tests/test_syncManager_pushonly.test.js`
+- Modify: `scripts/storage/offlineCache.js` (+ teste em `tests/test_offlineCache.test.js`)
+- Modify: `scripts/sync/syncManagerV3.js` (push-only + delegação; SEM `export`)
 
 **Interfaces:**
-- Consumes: `OfflineCache`.
 - Produces:
-  - `fullSync()` deixa de chamar `pullCurations()`/`pullLinkedEntities()`/`pruneUnlinkedSyncedEntities()`; mantém `pushEntities()`/`pushCurations()`.
-  - `async checkoutCuration(curationId)` — marca a curadoria como `source:'owned'` (não-evictável) e garante a entidade local (hidratação síncrona se faltar).
+  - `OfflineCache.markCurationOwned(curationId, apiService)` — marca a curadoria (`source:'owned'`) e garante a entidade local (`source:'owned'`; hidrata via `apiService.getEntity` se faltar). Testável com fake-indexeddb.
+  - `syncManagerV3.fullSync()` deixa de chamar `pullCurations()`/`pullLinkedEntities()`/`pruneUnlinkedSyncedEntities()`; mantém `pushEntities()`/`pushCurations()`.
+  - `syncManagerV3.checkoutCuration(id)` delega para `window.OfflineCache.markCurationOwned(id, window.ApiService)`.
 
-- [ ] **Step 1: Escrever o teste que falha (SyncManager com dublês)**
+- [ ] **Step 1: Escrever o teste que falha (OfflineCache.markCurationOwned, fake-indexeddb)** — adicionar em `tests/test_offlineCache.test.js`:
 
 ```javascript
-// tests/test_syncManager_pushonly.test.js
-import { describe, test, expect, vi } from 'vitest';
-import 'fake-indexeddb/auto';
-import Dexie from 'dexie';
-
-// Importa a classe do syncManager. Se o arquivo só faz `window.SyncManager = ...`,
-// exportar a classe `SyncManagerV3` no fim do arquivo (adição não-quebrante) para poder testar.
-import { SyncManagerV3 } from '../scripts/sync/syncManagerV3.js';
-
-function makeDb() {
-  const db = new Dexie('sm_' + Math.random().toString(36).slice(2));
-  db.version(1).stores({ curations: 'id, curation_id, entity_id, source', entities: 'id, entity_id, source' });
-  return db;
-}
-
-describe('SyncManagerV3 push-only', () => {
-  test('fullSync não puxa em massa; só faz push', async () => {
-    const sm = new SyncManagerV3();
-    sm.isOnline = true;
-    sm.pullCurations = vi.fn();
-    sm.pullLinkedEntities = vi.fn();
-    sm.pushEntities = vi.fn(async () => {});
-    sm.pushCurations = vi.fn(async () => {});
-    await sm.fullSync();
-    expect(sm.pullCurations).not.toHaveBeenCalled();
-    expect(sm.pullLinkedEntities).not.toHaveBeenCalled();
-    expect(sm.pushEntities).toHaveBeenCalled();
-    expect(sm.pushCurations).toHaveBeenCalled();
-  });
-
-  test('checkoutCuration marca source=owned', async () => {
+describe('OfflineCache.markCurationOwned', () => {
+  test('marca curadoria e entidade como owned; hidrata se faltar', async () => {
     const db = makeDb();
     await db.curations.put({ id: 'c1', curation_id: 'c1', entity_id: 'e1', source: 'cache' });
-    await db.entities.put({ id: 'e1', entity_id: 'e1', source: 'cache' });
-    const sm = new SyncManagerV3();
-    sm.getDb = () => db;
-    sm.apiService = { getEntity: vi.fn() };
-    await sm.checkoutCuration('c1');
+    // entidade ainda não está local -> deve hidratar
+    const apiService = { getEntity: vi.fn(async (id) => ({ id, entity_id: id, name: 'n' })) };
+    const c = new OfflineCache({ db, budget: { getBudget: async () => ({ maxBytes: 1e9 }) } });
+
+    await c.markCurationOwned('c1', apiService);
+
     expect((await db.curations.get('c1')).source).toBe('owned');
+    const ent = await db.entities.where('entity_id').equals('e1').first();
+    expect(ent).toBeTruthy();
+    expect(ent.source).toBe('owned');
+    expect(apiService.getEntity).toHaveBeenCalledWith('e1');
+  });
+
+  test('se a entidade já existe local, só marca owned (sem fetch)', async () => {
+    const db = makeDb();
+    await db.curations.put({ id: 'c2', curation_id: 'c2', entity_id: 'e2', source: 'cache' });
+    await db.entities.put({ id: 'e2', entity_id: 'e2', source: 'cache' });
+    const apiService = { getEntity: vi.fn() };
+    const c = new OfflineCache({ db, budget: { getBudget: async () => ({ maxBytes: 1e9 }) } });
+
+    await c.markCurationOwned('c2', apiService);
+
+    expect((await db.entities.where('entity_id').equals('e2').first()).source).toBe('owned');
+    expect(apiService.getEntity).not.toHaveBeenCalled();
   });
 });
 ```
 
-- [ ] **Step 2: Rodar e ver falhar** — Run: `npm test -- tests/test_syncManager_pushonly.test.js` · Expected: FAIL.
+- [ ] **Step 2: Rodar e ver falhar** — Run: `npx vitest run tests/test_offlineCache.test.js` · Expected: FAIL (método inexistente).
 
-- [ ] **Step 3: Implementar**
-
-Em `fullSync()`, remover as chamadas de pull global e o prune, mantendo o push:
+- [ ] **Step 3: Implementar `markCurationOwned` no `OfflineCache`**
 
 ```javascript
-// dentro de fullSync(), substituir o bloco "1. Pull from server" por:
-    // Startup é push-only: navegação/cache é sob demanda (CurationBrowser + OfflineCache).
-    this.emitSyncEvent('sync-progress', { stage: 'push-entities', message: 'Uploading local entity updates...' });
-    await this.pushEntities();
-    this.emitSyncEvent('sync-progress', { stage: 'push-curations', message: 'Uploading local curation updates...' });
-    await this.pushCurations();
-```
-
-Adicionar helpers e o método de checkout:
-
-```javascript
-  getDb() { return window.DataStore.db; }
-
-  async checkoutCuration(curationId) {
-    const db = this.getDb();
-    const cur = await db.curations.get(curationId) || await db.curations.where('curation_id').equals(curationId).first();
+  async markCurationOwned(curationId, apiService) {
+    const cur = await this.db.curations.get(curationId)
+      || await this.db.curations.where('curation_id').equals(curationId).first();
     if (!cur) return;
-    await db.curations.update(cur.id, { source: 'owned' });
+    await this.db.curations.update(cur.id, { source: 'owned' });
     if (cur.entity_id) {
-      const ent = await db.entities.where('entity_id').equals(cur.entity_id).first();
+      const ent = await this.db.entities.where('entity_id').equals(cur.entity_id).first();
       if (!ent) {
-        const fetched = await (this.apiService || window.ApiService).getEntity(cur.entity_id);
-        if (fetched) await db.entities.put({ ...fetched, source: 'owned' });
+        const fetched = await apiService.getEntity(cur.entity_id);
+        if (fetched) await this.db.entities.put({ ...fetched, source: 'owned' });
       } else {
-        await db.entities.update(ent.id, { source: 'owned' });
+        await this.db.entities.update(ent.id, { source: 'owned' });
       }
     }
   }
 ```
 
-E no fim do arquivo, garantir `export { SyncManagerV3 };` (além do `window.SyncManager = ...` existente), sem remover o bootstrap atual.
+- [ ] **Step 4: Rodar e ver passar** — Run: `npx vitest run tests/test_offlineCache.test.js` · Expected: PASS (7 no total: 5 anteriores + 2 novos).
 
-- [ ] **Step 4: Rodar e ver passar** — Run: `npm test -- tests/test_syncManager_pushonly.test.js` · Expected: PASS (2).
+- [ ] **Step 5: Alterar `syncManagerV3.js` (SEM export)** — em `fullSync()`, substituir o bloco "1. Pull from server" (as chamadas `pullCurations()`/`pullLinkedEntities()`) por comentário de push-only, mantendo os pushes já existentes:
 
-- [ ] **Step 5: Rodar a suíte inteira** — Run: `npm test` · Expected: PASS (todas).
+```javascript
+// dentro de fullSync(), no lugar do bloco de pull global:
+            // Startup é push-only: navegação/cache é sob demanda (CurationBrowser + OfflineCache).
+```
+(Os `pushEntities()`/`pushCurations()` já existentes permanecem. Remover também a chamada de `pruneUnlinkedSyncedEntities`, se houver, dentro do fluxo de startup.)
 
-- [ ] **Step 6: Commit** — `git add -A && git commit -m "feat(collector): startup push-only + checkoutCuration no syncManager"`
+E adicionar o método de delegação (arquivo clássico, sem export):
+
+```javascript
+  async checkoutCuration(curationId) {
+    if (window.OfflineCache && typeof window.OfflineCache.markCurationOwned === 'function') {
+      return window.OfflineCache.markCurationOwned(curationId, window.ApiService);
+    }
+  }
+```
+
+- [ ] **Step 6: Rodar a suíte inteira** — Run: `npx vitest run` · Expected: PASS (todas).
+
+- [ ] **Step 7: Commit** — `git add -A && git commit -m "feat(collector): checkout no OfflineCache + startup push-only no syncManager"`
 
 ---
 
