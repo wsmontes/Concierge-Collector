@@ -40,16 +40,28 @@ class CurationBrowser {
   async nextPage() {
     if (this.done) return { items: [], done: true };
     let items;
-    if (this._prefetched) { items = this._prefetched; this._prefetched = null; }
-    else { items = await this._fetch(this.cursor); await this._ingest(items); }
+    if (this._prefetched && this._prefetched.forCursor === this.cursor) {
+      items = this._prefetched.items;
+      this._prefetched = null;
+    } else {
+      this._prefetched = null; // descarta prefetch obsoleto
+      items = await this._fetch(this.cursor);
+      await this._ingest(items);
+    }
 
     if (items.length) this.cursor = items[items.length - 1].id;
     if (items.length < this.pageSize) this.done = true;
 
-    // prefetch da próxima página (background), sem bloquear o retorno
     if (!this.done) {
+      const forCursor = this.cursor;
       Promise.resolve().then(async () => {
-        try { const next = await this._fetch(this.cursor); await this._ingest(next); this._prefetched = next; } catch (_) {}
+        try {
+          const next = await this._fetch(forCursor);
+          if (this.cursor === forCursor) { // ainda relevante?
+            await this._ingest(next);
+            this._prefetched = { forCursor, items: next };
+          }
+        } catch (_) {}
       });
     }
     return { items, done: this.done };

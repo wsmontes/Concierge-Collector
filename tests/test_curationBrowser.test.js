@@ -30,6 +30,17 @@ describe('CurationBrowser', () => {
     expect(p2.done).toBe(true); // página < pageSize -> fim
   });
 
+  test('ignora prefetch obsoleto (forCursor != cursor) e faz fetch ao vivo', async () => {
+    const api = fakeApi([[{ id: 'a', entity_id: 'ea' }, { id: 'b', entity_id: 'eb' }]]);
+    const br = new CurationBrowser({ apiService: api, cache: { putCurations: vi.fn() }, hydrator: { enqueue: vi.fn() }, pageSize: 2 });
+    br.openScope({});
+    // injeta prefetch obsoleto (cursor atual é null, forCursor é 'z')
+    br._prefetched = { forCursor: 'z', items: [{ id: 'STALE' }] };
+    const p = await br.nextPage();
+    expect(p.items.map(i => i.id)).toEqual(['a', 'b']); // ignorou o obsoleto
+    expect(api.listCurations).toHaveBeenCalled();
+  });
+
   test('openScope passa curator_id/status para a API', async () => {
     const api = fakeApi([[]]);
     const br = new CurationBrowser({ apiService: api, cache: { putCurations: vi.fn() }, hydrator: { enqueue: vi.fn() }, pageSize: 25 });
