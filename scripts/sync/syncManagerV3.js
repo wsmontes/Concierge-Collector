@@ -552,7 +552,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
     }
 
     /**
-     * Perform full bidirectional sync (pull then push)
+     * Perform startup sync (push-only; navigation/cache is on-demand via CurationBrowser/OfflineCache)
      */
     async fullSync() {
         if (this.isSyncing) {

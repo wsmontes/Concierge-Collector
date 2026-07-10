@@ -542,28 +542,22 @@ if (typeof window.UIManager === 'undefined') {
                         </div>
                     `;
 
-                    if (window.collectorCacheReady) {
-                        if (!window.CurationBrowser) {
-                            throw new Error('CurationBrowser not available after cache ready');
-                        }
-                    } else {
-                        await new Promise((resolve, reject) => {
-                            const timeout = setTimeout(() => {
-                                window.removeEventListener('collector-cache-ready', handler);
-                                reject(new Error('Timed out waiting for CurationBrowser'));
-                            }, 10000);
-                            const handler = () => {
-                                clearTimeout(timeout);
-                                window.removeEventListener('collector-cache-ready', handler);
-                                if (!window.CurationBrowser) {
-                                    reject(new Error('CurationBrowser not available after collector-cache-ready event'));
-                                } else {
-                                    resolve();
-                                }
-                            };
-                            window.addEventListener('collector-cache-ready', handler);
-                        });
-                    }
+                    await new Promise((resolve, reject) => {
+                        const timeout = setTimeout(() => {
+                            window.removeEventListener('collector-cache-ready', handler);
+                            reject(new Error('Timed out waiting for CurationBrowser'));
+                        }, 10000);
+                        const handler = () => {
+                            clearTimeout(timeout);
+                            window.removeEventListener('collector-cache-ready', handler);
+                            if (!window.CurationBrowser) {
+                                reject(new Error('CurationBrowser not available after collector-cache-ready event'));
+                            } else {
+                                resolve();
+                            }
+                        };
+                        window.addEventListener('collector-cache-ready', handler);
+                    });
                 }
 
                 // Reset browser pagination state

@@ -28,6 +28,7 @@ async function initCollectorCache() {
   const browser = new CurationBrowser({ apiService: window.ApiService, cache, hydrator });
   window.OfflineCache = cache;
   window.EntityHydrator = hydrator;
+  hydrator.start();
   window.CurationBrowser = browser;
   window.dispatchEvent(new CustomEvent('collector-cache-ready'));
 }
