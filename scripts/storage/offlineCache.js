@@ -20,6 +20,65 @@ class OfflineCache {
     }
     return toEvict;
   }
+
+  estimateBytes(obj) {
+    try { return JSON.stringify(obj).length; } catch (_) { return 500; }
+  }
+
+  async putCurations(items, now = Date.now()) {
+    for (const item of items) {
+      const existing = await this.db.curations.get(item.id);
+      const record = {
+        ...existing,
+        ...item,
+        lastAccessedAt: now,
+        source: existing?.source === 'owned' ? 'owned' : 'cache',
+      };
+      await this.db.curations.put(record);
+    }
+    await this.enforceBudget(now);
+  }
+
+  async putEntity(entity, now = Date.now()) {
+    const existing = await this.db.entities.get(entity.id);
+    await this.db.entities.put({
+      ...existing, ...entity, lastAccessedAt: now,
+      source: existing?.source === 'owned' ? 'owned' : 'cache',
+    });
+  }
+
+  async touch(id, now = Date.now()) {
+    await this.db.curations.update(id, { lastAccessedAt: now });
+  }
+
+  isDirty(rec) {
+    const s = rec?.sync?.status;
+    return rec?.source === 'owned' || s === 'pending' || s === 'conflict';
+  }
+
+  async enforceBudget(now = Date.now()) {
+    const { maxBytes } = await this.budget.getBudget();
+    const all = await this.db.curations.toArray();
+    let currentBytes = 0;
+    const items = all.map(rec => {
+      const bytes = this.estimateBytes(rec);
+      currentBytes += bytes;
+      return { id: rec.id, bytes, lastAccessedAt: rec.lastAccessedAt || 0, dirty: this.isDirty(rec) };
+    });
+    const evict = this.selectEvictions(items, currentBytes, maxBytes);
+    for (const id of evict) {
+      const rec = await this.db.curations.get(id);
+      await this.db.curations.delete(id);
+      // remove entidade órfã (nenhuma outra curadoria a referencia)
+      if (rec?.entity_id) {
+        const others = await this.db.curations.where('entity_id').equals(rec.entity_id).count();
+        if (others === 0) {
+          const ent = await this.db.entities.where('entity_id').equals(rec.entity_id).first();
+          if (ent && !this.isDirty(ent)) await this.db.entities.delete(ent.id);
+        }
+      }
+    }
+  }
 }
 
 export { OfflineCache };
