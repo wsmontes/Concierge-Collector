@@ -532,14 +532,56 @@ if (typeof window.UIManager === 'undefined') {
             }
 
             try {
-                // Get ALL active curations using centralized query logic
-                const curations = await window.DataStore.getCurations({
-                    reverse: true,
-                    excludeDeleted: true
-                });
+                // Guard: wait for CurationBrowser to be ready (async bootstrap)
+                if (!window.CurationBrowser) {
+                    console.log('CurationBrowser not ready, waiting for collector-cache-ready event...');
+                    container.innerHTML = `
+                        <div class="col-span-full text-center py-12">
+                            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
+                            <p class="text-gray-500">Loading curations...</p>
+                        </div>
+                    `;
 
-                if (curations.length === 0) {
-                    this.curationsCache = [];
+                    if (window.collectorCacheReady) {
+                        if (!window.CurationBrowser) {
+                            throw new Error('CurationBrowser not available after cache ready');
+                        }
+                    } else {
+                        await new Promise((resolve, reject) => {
+                            const timeout = setTimeout(() => {
+                                window.removeEventListener('collector-cache-ready', handler);
+                                reject(new Error('Timed out waiting for CurationBrowser'));
+                            }, 10000);
+                            const handler = () => {
+                                clearTimeout(timeout);
+                                window.removeEventListener('collector-cache-ready', handler);
+                                if (!window.CurationBrowser) {
+                                    reject(new Error('CurationBrowser not available after collector-cache-ready event'));
+                                } else {
+                                    resolve();
+                                }
+                            };
+                            window.addEventListener('collector-cache-ready', handler);
+                        });
+                    }
+                }
+
+                // Reset browser pagination state
+                this.curationBrowser = window.CurationBrowser;
+                this.curationsCache = [];
+                this.curationsBrowserDone = false;
+                this.curationsBrowserLoading = false;
+                this.curationsEntitiesMap = new Map();
+
+                // Open scope: all curations, no server-side filters
+                this.curationBrowser.openScope({ status: null, curatorId: null });
+
+                // Load first page (denormalized fields: restaurant_name, categories, status)
+                const { items, done } = await this.curationBrowser.nextPage();
+                this.curationsCache = items;
+                this.curationsBrowserDone = done;
+
+                if (items.length === 0) {
                     this.updateCurationsCountSummary(0, 0);
                     container.innerHTML = `
                         <div class="col-span-full text-center py-12">
@@ -551,27 +593,10 @@ if (typeof window.UIManager === 'undefined') {
                     return;
                 }
 
-                // Get unique entity IDs from curations
-                const entityIds = [...new Set(curations.map(c => c.entity_id).filter(Boolean))];
+                // Populate dynamic filters from loaded items
+                this.populateCurationFilters(items, this.curationsEntitiesMap);
 
-                // Fetch entities for curations that have entity_id
-                const entitiesMap = new Map();
-                if (entityIds.length > 0) {
-                    const entities = await window.DataStore.db.entities
-                        .where('entity_id')
-                        .anyOf(entityIds)
-                        .toArray();
-                    entities.forEach(entity => entitiesMap.set(entity.entity_id, entity));
-                }
-
-                // Cache for filtering
-                this.curationsCache = curations;
-                this.curationsEntitiesMap = entitiesMap;
-
-                // Populate dynamic filters
-                this.populateCurationFilters(curations, entitiesMap);
-
-                // Initial display
+                // Initial display (client-side filters operate on the loaded page)
                 this.filterAndDisplayCurations();
 
             } catch (error) {
@@ -745,6 +770,47 @@ if (typeof window.UIManager === 'undefined') {
             const container = this.containers.curations;
             if (!container) return;
 
+            // When using CurationBrowser pagination, render all filtered items in a
+            // single page with a "load more" button instead of client-side prev/next controls.
+            if (this.curationBrowser) {
+                container.innerHTML = '';
+
+                allCurations.forEach(curation => {
+                    const entity = curation.entity_id ? this.curationsEntitiesMap?.get(curation.entity_id) : null;
+                    if (entity) {
+                        const card = window.CardFactory.createCurationCard(entity, curation);
+                        container.appendChild(card);
+                    } else {
+                        const reviewCard = this.createReviewCard(curation);
+                        container.appendChild(reviewCard);
+                    }
+                });
+
+                // Append "load more" button if server has more pages
+                if (!this.curationsBrowserDone) {
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'col-span-full text-center py-4';
+                    wrapper.id = 'curation-load-more-wrapper';
+                    wrapper.innerHTML = `
+                        <button id="btn-load-more-curations"
+                            class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors
+                                   disabled:opacity-50 disabled:cursor-not-allowed"
+                            ${this.curationsBrowserLoading ? 'disabled' : ''}>
+                            ${this.curationsBrowserLoading ? 'Loading...' : 'Load more curations'}
+                        </button>
+                    `;
+                    container.appendChild(wrapper);
+
+                    wrapper.querySelector('#btn-load-more-curations')?.addEventListener('click', (e) => {
+                        e.stopPropagation();
+                        this.loadMoreCurations();
+                    });
+                }
+
+                return;
+            }
+
+            // Original: client-side pagination with prev/next controls
             const { currentPage, pageSize } = this.curationPagination;
             const start = currentPage * pageSize;
             const end = start + pageSize;
@@ -793,6 +859,43 @@ if (typeof window.UIManager === 'undefined') {
                     container.appendChild(reviewCard);
                 }
             });
+        }
+
+        /**
+         * Load another page of curations from CurationBrowser and append to existing cache.
+         * Called by the "Load more curations" button in the browser-paginated view.
+         */
+        async loadMoreCurations() {
+            if (this.curationsBrowserLoading || this.curationsBrowserDone || !this.curationBrowser) {
+                return;
+            }
+
+            this.curationsBrowserLoading = true;
+
+            // Disable the load-more button immediately
+            const btn = document.getElementById('btn-load-more-curations');
+            if (btn) btn.disabled = true;
+
+            try {
+                const { items, done } = await this.curationBrowser.nextPage();
+
+                if (items.length > 0) {
+                    // Append to existing cache (accumulated items for client-side filtering)
+                    this.curationsCache = [...this.curationsCache, ...items];
+                }
+
+                this.curationsBrowserDone = done;
+
+                // Clear loading flag BEFORE re-render so the new button state is correct
+                this.curationsBrowserLoading = false;
+
+                // Re-render all loaded items with current filters applied
+                this.filterAndDisplayCurations();
+            } catch (error) {
+                this.curationsBrowserLoading = false;
+                console.error('Failed to load more curations:', error);
+                window.uiUtils?.showNotification?.('Failed to load more curations', 'error');
+            }
         }
 
         /**
@@ -1736,11 +1839,23 @@ if (typeof window.UIManager === 'undefined') {
         }
 
         /**
-         * Edit a specific curation
+         * Edit a specific curation.
+         * Checks out the curation first (pulls it into the local working set
+         * if owned by another curator) before opening the editor.
          */
-        editCuration(curation) {
+        async editCuration(curation) {
             if (!this.canMutateWhileSyncing()) {
                 return;
+            }
+
+            // Checkout curation before editing so others' curations enter the local working set
+            if (window.SyncManager && typeof window.SyncManager.checkoutCuration === 'function') {
+                try {
+                    await window.SyncManager.checkoutCuration(curation.curation_id);
+                } catch (error) {
+                    console.error('Failed to checkout curation:', error);
+                    // Continue anyway — the editor may still work with local data
+                }
             }
 
             this.restaurantModule.editCuration(curation);
