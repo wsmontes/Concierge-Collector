@@ -367,3 +367,19 @@ def test_scrape_urls_parallel_preserves_order_and_shape():
 
 def test_scrape_urls_empty():
     assert scrape_urls([]) == []
+
+
+def test_scrape_urls_skips_url_that_exceeds_timeout():
+    import time
+
+    def slow(u):
+        if u == "slow":
+            time.sleep(2)
+            return "late"
+        return "fast"
+
+    pages = scrape_urls(["fast", "slow"], scraper=slow, timeout=0.3)
+    by_url = {p["url"]: p["text"] for p in pages}
+    assert by_url["fast"] == "fast"
+    assert by_url["slow"] == ""          # não esperou a URL lenta
+    assert [p["url"] for p in pages] == ["fast", "slow"]  # ordem preservada

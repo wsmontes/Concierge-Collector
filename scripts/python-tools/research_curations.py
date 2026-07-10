@@ -381,19 +381,36 @@ def scrape_url(url: str, fetcher=None) -> str:
         return ""
 
 
-def scrape_urls(urls: List[str], max_workers: int = 8, scraper=None) -> List[Dict[str, str]]:
+def scrape_urls(urls: List[str], max_workers: int = 8, scraper=None, timeout: float = 30) -> List[Dict[str, str]]:
     """Baixa várias URLs em paralelo (I/O-bound), preservando a ordem de `urls`.
 
-    `scraper` é injetável (default: scrape_url). Retorna [{"url", "text"}].
+    `scraper` é injetável (default: scrape_url). `timeout` é o teto TOTAL (s) para
+    o conjunto: URLs que não terminam a tempo (ex.: servidor "drip") viram "" e não
+    travam a entidade — a thread pendurada é abandonada (shutdown wait=False).
+    Retorna [{"url", "text"}].
     """
     if not urls:
         return []
     if scraper is None:
         scraper = scrape_url
-    from concurrent.futures import ThreadPoolExecutor
-    with ThreadPoolExecutor(max_workers=min(max_workers, len(urls))) as ex:
-        texts = list(ex.map(scraper, urls))
-    return [{"url": u, "text": t} for u, t in zip(urls, texts)]
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    from concurrent.futures import TimeoutError as _FutTimeout
+    results: Dict[str, str] = {u: "" for u in urls}
+    ex = ThreadPoolExecutor(max_workers=min(max_workers, len(urls)))
+    try:
+        futs = {ex.submit(scraper, u): u for u in urls}
+        try:
+            for fut in as_completed(futs, timeout=timeout):
+                u = futs[fut]
+                try:
+                    results[u] = fut.result() or ""
+                except Exception:
+                    results[u] = ""
+        except _FutTimeout:
+            pass  # URLs não terminadas ficam "" (não espera as lentas)
+    finally:
+        ex.shutdown(wait=False)
+    return [{"url": u, "text": results[u]} for u in urls]
 
 
 def research_entity(
@@ -485,7 +502,7 @@ def main() -> int:
         print("ERRO: DEEPSEEK_API_KEY não definida em concierge-api-v3/.env")
         return 1
 
-    client = OpenAI(api_key=s["deepseek_api_key"], base_url=s["deepseek_base_url"])
+    client = OpenAI(api_key=s["deepseek_api_key"], base_url=s["deepseek_base_url"], timeout=90)
     model = s["deepseek_model"]
 
     db = MongoClient(s["mongodb_url"])[s["mongodb_db_name"]]
