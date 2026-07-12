@@ -583,10 +583,98 @@ async def refresh_access_token(
 def logout(token_data: dict = Depends(verify_access_token)):
     """
     Logout user
-    
+
     In production, add token to blacklist (Redis)
     For now, client-side token deletion is sufficient
     """
     email = token_data.get("sub")
     logger.info(f"[OAuth] User logged out: {email}")
     return {"message": "Logged out successfully"}
+
+
+@router.get("/dev-login")
+def dev_login(db: Database = Depends(get_database)):
+    """
+    Development-only login — bypass Google OAuth for local debugging.
+
+    Creates or retrieves a test admin user and returns valid JWT tokens.
+    Only works when ENVIRONMENT=development. Returns 403 in production.
+
+    Returns:
+        dict: access_token, refresh_token, expires_in, user_email, user_name
+    """
+    from app.core.security import create_access_token, create_refresh_token
+    from datetime import timedelta
+
+    # 🔒 CRITICAL: Only available in development
+    if settings.environment != "development":
+        logger.warning(f"[DevLogin] ⛔ Blocked in production (ENVIRONMENT={settings.environment})")
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Dev login only available in development environment"
+        )
+
+    logger.info("[DevLogin] 🔧 Development login requested")
+
+    dev_email = "dev@collectordev.com"
+    dev_name = "Dev User"
+
+    # Check if dev user already exists
+    user = get_user_by_email(db, dev_email)
+
+    if not user:
+        # Create dev user directly in MongoDB (skip OAuth fields)
+        import uuid
+        dev_user = {
+            "email": dev_email,
+            "google_id": f"dev-{uuid.uuid4().hex[:16]}",
+            "name": dev_name,
+            "picture": None,
+            "authorized": True,
+            "role": "admin",
+            "created_at": datetime.now(timezone.utc),
+            "last_login": datetime.now(timezone.utc),
+            "refresh_token": None
+        }
+        result = db.users.insert_one(dev_user)
+        dev_user["_id"] = str(result.inserted_id)
+        logger.info(f"[DevLogin] ✓ Created dev user: {dev_email}")
+
+        # Also create curator profile
+        db.curators.update_one(
+            {"curator_id": dev_email},
+            {"$set": {
+                "curator_id": dev_email,
+                "name": dev_name,
+                "email": dev_email,
+                "picture": None,
+                "updatedAt": datetime.now(timezone.utc),
+                "createdAt": datetime.now(timezone.utc)
+            }},
+            upsert=True
+        )
+    else:
+        # Update last_login
+        db.users.update_one(
+            {"email": dev_email},
+            {"$set": {"last_login": datetime.now(timezone.utc)}}
+        )
+        logger.info(f"[DevLogin] ✓ Using existing dev user: {dev_email}")
+
+    # Generate real JWT tokens
+    access_token = create_access_token(
+        data={"sub": dev_email, "google_id": f"dev-{dev_email}", "role": "admin"},
+        expires_delta=timedelta(minutes=settings.access_token_expire_minutes)
+    )
+    refresh_token = create_refresh_token(data={"sub": dev_email})
+
+    logger.info(f"[DevLogin] ✓ Tokens generated (expires in {settings.access_token_expire_minutes}m)")
+
+    return {
+        "access_token": access_token,
+        "refresh_token": refresh_token,
+        "expires_in": settings.access_token_expire_minutes * 60,
+        "token_type": "bearer",
+        "user_email": dev_email,
+        "user_name": dev_name
+    }

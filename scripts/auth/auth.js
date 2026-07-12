@@ -653,8 +653,78 @@ const AuthService = (function() {
             console.log('[AuthService] ========================================');
         }
 
+        // ── Dev Mode Auto-Login ────────────────────────────────────────────────
+        // On localhost, if no valid auth, auto-fetch a dev token from backend.
+        // Only works when backend ENVIRONMENT=development (blocked in production).
+        if (!_currentUser && isLocalhost()) {
+            console.log('[AuthService] 🔧 Dev mode detected — attempting auto-login...');
+            const devToken = await fetchDevToken();
+            if (devToken) {
+                console.log('[AuthService] ✓ Dev auto-login successful');
+                const user = await verifyToken();
+                if (user) {
+                    scheduleTokenRefresh();
+                    console.log('[AuthService] ========================================');
+                    console.log('[AuthService] ✓ Initialization complete (dev mode)');
+                    console.log(`[AuthService] ✓ Logged in as: ${user.email}`);
+                    console.log('[AuthService] ========================================');
+                }
+            } else {
+                console.log('[AuthService] ✗ Dev auto-login failed (is backend running?)');
+            }
+        }
+
         _initialized = true;
         return _currentUser;
+    }
+
+    /**
+     * Check if running on localhost (dev environment)
+     * @returns {boolean}
+     */
+    function isLocalhost() {
+        const hostname = window.location.hostname;
+        return hostname === 'localhost' || hostname === '127.0.0.1' || hostname.startsWith('192.168.');
+    }
+
+    /**
+     * Fetch a dev token from the backend's /auth/dev-login endpoint.
+     * Only works when backend has ENVIRONMENT=development.
+     * @returns {Promise<Object|null>} Token data or null
+     */
+    async function fetchDevToken() {
+        try {
+            const baseUrl = AppConfig.api.backend.baseUrl;
+            const devLoginUrl = `${baseUrl}/auth/dev-login`;
+
+            console.log(`[AuthService] Calling dev-login: ${devLoginUrl}`);
+            const response = await fetch(devLoginUrl);
+
+            if (!response.ok) {
+                const text = await response.text();
+                console.warn(`[AuthService] Dev-login returned ${response.status}: ${text}`);
+                return null;
+            }
+
+            const data = await response.json();
+            console.log('[AuthService] ✓ Dev token received:', {
+                hasAccessToken: !!data.access_token,
+                hasRefreshToken: !!data.refresh_token,
+                user: data.user_email
+            });
+
+            // Store the tokens
+            storeTokens({
+                access_token: data.access_token,
+                refresh_token: data.refresh_token,
+                expires_in: data.expires_in
+            });
+
+            return data;
+        } catch (error) {
+            console.error('[AuthService] Dev-login fetch error:', error.message);
+            return null;
+        }
     }
 
     /**
