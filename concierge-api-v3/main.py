@@ -5,6 +5,8 @@ Main application entry point with PyMongo (sync) support
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.staticfiles import StaticFiles
+from pathlib import Path
 from contextlib import asynccontextmanager
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
@@ -13,7 +15,7 @@ from slowapi.middleware import SlowAPIMiddleware
 
 from app.core.config import settings
 from app.core.database import connect_to_mongo, close_mongo_connection
-from app.api import entities, curations, system, places, places_orchestrate, ai, concepts, auth, llm_gateway, openai_compat, places_router
+from app.api import entities, curations, system, places, places_orchestrate, ai, concepts, auth, llm_gateway, openai_compat, places_router, capture
 
 # ---------------------------------------------------------------------------
 # Rate limiter — keyed by client IP
@@ -98,6 +100,12 @@ app.include_router(ai.router, prefix="/api/v3")
 app.include_router(concepts.router, prefix="/api/v3")
 app.include_router(llm_gateway.router, prefix="/api/v3")
 app.include_router(openai_compat.router, prefix="/api/v3")
+app.include_router(capture.router, prefix="/api/v3")
+
+# ── Capture mode static files (served at /capture) ───────────────────────────
+_CAPTURE_DIR = Path(__file__).resolve().parents[1] / "capture"
+if _CAPTURE_DIR.is_dir():
+    app.mount("/capture", StaticFiles(directory=str(_CAPTURE_DIR), html=True), name="capture")
 
 
 if __name__ == "__main__":

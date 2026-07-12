@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>Concierge Capture</title>
+
+  <!-- Typography: Cormorant Garamond (display) + DM Sans (body) -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=DM+Sans:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="styles.css">
+
+  <link rel="icon" href="../images/favicon.ico" sizes="any">
+</head>
+<body>
+
+<main id="app">
+
+  <!-- Session list: confirmed captures scroll above the record button -->
+  <section id="session-list" class="session-list" aria-label="Capturas desta sessão">
+    <div id="session-items"></div>
+    <p id="session-empty" class="session-empty">Você ainda não gravou nenhum restaurante nesta sessão.</p>
+  </section>
+
+  <!-- Match card: slides up from the record button when AI responds -->
+  <section id="match-area" class="match-area" aria-live="polite">
+    <div id="match-card" class="match-card" hidden>
+      <div class="match-card__header">
+        <h2 id="match-name" class="match-card__name"></h2>
+        <span id="match-type" class="match-card__type"></span>
+      </div>
+      <p id="match-address" class="match-card__address"></p>
+
+      <!-- Entity alternatives -->
+      <div id="match-alternatives" class="match-card__alternatives" hidden>
+        <p class="match-card__alt-label">Alternativas</p>
+        <div id="match-alt-list" class="match-card__alt-list"></div>
+      </div>
+
+      <div class="match-card__actions">
+        <button id="match-confirm" class="match-card__confirm">
+          <span class="match-card__check">&#10003;</span>
+          <span>Confirmar</span>
+        </button>
+      </div>
+
+      <p id="match-status" class="match-card__status" hidden></p>
+    </div>
+  </section>
+
+  <!-- Spacer: pushes the record button to the lower third -->
+  <div class="spacer"></div>
+
+  <!-- Record button: the signature element -->
+  <section id="record-area" class="record-area" aria-label="Gravar">
+    <button id="record-btn" class="record-btn" aria-label="Gravar áudio sobre um restaurante">
+      <svg class="record-btn__mic" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round">
+        <path d="M12 1a3 3 0 0 0-3 3v8a3 3 0 0 0 6 0V4a3 3 0 0 0-3-3z"/>
+        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+        <line x1="12" y1="19" x2="12" y2="23"/>
+        <line x1="8" y1="23" x2="16" y2="23"/>
+      </svg>
+    </button>
+    <p id="record-label" class="record-label">Toque para falar sobre um restaurante</p>
+    <p id="record-status" class="record-status" hidden></p>
+  </section>
+
+  <!-- Navigation: subtle link to legacy Collector -->
+  <nav class="bottom-nav">
+    <a href="/" class="bottom-nav__link">Browse</a>
+    <span class="bottom-nav__current">Capture</span>
+  </nav>
+
+</main>
+
+<!-- Scripts: load order matters — store → service → queue → app -->
+<script type="module" src="captureStore.js"></script>
+<script type="module" src="captureService.js"></script>
+<script type="module" src="queueProcessor.js"></script>
+<script type="module" src="app.js"></script>
+
+</body>
+</html>
