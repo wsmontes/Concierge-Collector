@@ -209,7 +209,7 @@ body{
   <p class="splash__sub">Restaurant knowledge, captured.</p>
 
   <div class="splash__cards">
-    <a href="/capture" class="splash__card">
+    <a href="/capture/" class="splash__card">
       <span class="splash__card-icon splash__card-icon--capture">&#127908;</span>
       <span>
         <div class="splash__card-title">Capture</div>
@@ -217,7 +217,7 @@ body{
       </span>
     </a>
 
-    <a href="/app" class="splash__card">
+    <a href="/app/" class="splash__card">
       <span class="splash__card-icon splash__card-icon--collector">&#9776;</span>
       <span>
         <div class="splash__card-title">Collector</div>
