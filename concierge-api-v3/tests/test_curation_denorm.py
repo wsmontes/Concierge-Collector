@@ -7,6 +7,9 @@ def test_denorm_extracts_city_and_type():
 
 
 def test_denorm_omits_missing():
-    assert denormalize_curation_location({"type": "restaurant", "data": {}}) == {"type": "restaurant"}
-    assert denormalize_curation_location({"data": {"location": {"city": ""}}}) == {}
-    assert denormalize_curation_location(None) == {}
+    # type present, city missing → city=None
+    assert denormalize_curation_location({"type": "restaurant", "data": {}}) == {"city": None, "type": "restaurant"}
+    # both missing
+    assert denormalize_curation_location({"data": {"location": {"city": ""}}}) == {"city": None, "type": None}
+    # None input
+    assert denormalize_curation_location(None) == {"city": None, "type": None}

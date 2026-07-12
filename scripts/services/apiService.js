@@ -293,6 +293,11 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         if (filters.since) params.append('since', filters.since);  // ✅ Incremental sync support
         if (filters.limit) params.append('limit', filters.limit);
         if (filters.offset) params.append('offset', filters.offset);
+        if (filters.after_id) params.append('after_id', filters.after_id);
+        if (filters.status) params.append('status', filters.status);
+        if (filters.city) params.append('city', filters.city);
+        if (filters.type) params.append('type', filters.type);
+        if (filters.q) params.append('q', filters.q);
 
         // Use /search endpoint for curations list
         const endpoint = `/curations/search?${params.toString()}`;

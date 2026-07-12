@@ -161,7 +161,13 @@ def search_curations(
         query["type"] = type
     if q:
         sanitized = q.strip()[:200]
-        query["restaurant_name"] = {"$regex": re.escape(sanitized), "$options": "i"}
+        if sanitized:
+            escaped = re.escape(sanitized)
+            query["$or"] = [
+                {"restaurant_name": {"$regex": escaped, "$options": "i"}},
+                {"notes.public": {"$regex": escaped, "$options": "i"}},
+                {"curator.name": {"$regex": escaped, "$options": "i"}},
+            ]
 
     if since:
         try:
@@ -848,6 +854,16 @@ def bulk_upsert_curations(
     errors: list = []
     now = datetime.now(timezone.utc)
 
+    # Pre-fetch all unique entity_ids to avoid N+1 queries in the loop
+    unique_eids = list({c.entity_id for c in payload.curations if c.entity_id})
+    entities_by_id: dict = {}
+    if unique_eids:
+        entity_docs = db.entities.find(
+            {"_id": {"$in": unique_eids}},
+            {"type": 1, "data.location": 1}
+        )
+        entities_by_id = {e["_id"]: e for e in entity_docs}
+
     for idx, curation in enumerate(payload.curations):
         try:
             existing = db.curations.find_one(
@@ -855,13 +871,8 @@ def bulk_upsert_curations(
                 {"_id": 1, "version": 1, "createdBy": 1, "createdAt": 1}
             )
 
-            # Denormalize city/type from entity
-            entity_for_denorm = None
-            if curation.entity_id:
-                entity_for_denorm = db.entities.find_one(
-                    {"_id": curation.entity_id},
-                    {"type": 1, "data.location": 1}
-                )
+            # Denormalize city/type from entity (pre-fetched batch)
+            entity_for_denorm = entities_by_id.get(curation.entity_id) if curation.entity_id else None
 
             if existing:
                 doc = curation.model_dump(exclude_unset=True)

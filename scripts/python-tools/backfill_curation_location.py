@@ -1,33 +1,33 @@
 #!/usr/bin/env python3
 """Backfill de city/type nas curadorias existentes a partir da entity linkada."""
-import argparse, os
+import argparse, os, sys
 from pathlib import Path
 from typing import Any, Dict, List
 
-
-def _denorm(entity: Dict[str, Any]) -> Dict[str, Any]:
-    out = {}
-    t = (entity or {}).get("type")
-    if isinstance(t, str) and t.strip():
-        out["type"] = t.strip()
-    c = (((entity or {}).get("data") or {}).get("location") or {}).get("city")
-    if isinstance(c, str) and c.strip():
-        out["city"] = c.strip()
-    return out
+# Import shared denorm logic instead of duplicating
+_THIS_DIR = Path(__file__).resolve().parents[0]
+_API_SERVICES = Path(__file__).resolve().parents[2] / "concierge-api-v3" / "app" / "services"
+if str(_API_SERVICES) not in sys.path:
+    sys.path.insert(0, str(_API_SERVICES))
+from curation_denorm import denormalize_curation_location
 
 
 def plan_backfill(curations: List[Dict[str, Any]], entities_by_id: Dict[str, Dict]) -> List[Dict[str, Any]]:
     plan = []
     for c in curations:
-        if (c.get("city") or c.get("type")):
-            continue
         eid = c.get("entity_id")
         ent = entities_by_id.get(eid) if eid else None
         if not ent:
             continue
-        s = _denorm(ent)
-        if s:
-            plan.append({"curation_id": c.get("curation_id") or c.get("_id"), "set": s})
+        denorm = denormalize_curation_location(ent)
+        # Check which fields are missing on the curation and need backfill
+        needed = {}
+        if not c.get("city") and denorm.get("city"):
+            needed["city"] = denorm["city"]
+        if not c.get("type") and denorm.get("type"):
+            needed["type"] = denorm["type"]
+        if needed:
+            plan.append({"curation_id": c.get("curation_id") or c.get("_id"), "set": needed})
     return plan
 
 
@@ -47,8 +47,7 @@ def main() -> int:
     if not args.apply:
         print("dry-run; use --apply"); return 0
     for item in plan:
-        db.curations.update_one({"$or": [{"_id": item["curation_id"]}, {"curation_id": item["curation_id"]}]},
-                                {"$set": item["set"]})
+        db.curations.update_one({"_id": item["curation_id"]}, {"$set": item["set"]})
     print("aplicado.")
     return 0
 

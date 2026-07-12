@@ -37,7 +37,7 @@ class CurationBrowser {
   async _ingest(items) {
     if (!items.length) return;
     await this.cache.putCurations(items);
-    this.hydrator.enqueue(items.map(i => i.entity_id).filter(Boolean));
+    this.hydrator.enqueue(items.map(i => i.entity_id).filter(Boolean))?.catch?.(() => {});
   }
 
   async nextPage() {

@@ -637,8 +637,14 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
         }
     }
 
+    // ── Legacy pull helpers ────────────────────────────────────────────────
+    // These are NOT called during normal startup (fullSync is push-only).
+    // Kept for potential manual/scheduled use (admin force-refresh, migration).
+    // DO NOT call these in hot paths — they scan the entire local collection.
+
     /**
      * Collect linked entity IDs from local curations
+     * @deprecated Not called in normal flow; startup is push-only.
      */
     async collectLinkedEntityIdsFromCurations() {
         const linkedIds = new Set();

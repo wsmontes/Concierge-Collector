@@ -96,6 +96,7 @@ if (typeof window.UIManager === 'undefined') {
             this.pendingRefreshReason = null;
             this.curationsCache = [];
             this.currentFilterScope = null;
+            this._filterGeneration = 0;
             this.searchDebounceTimer = null;
             this.entitiesCache = [];
             this.entitiesFiltered = [];
@@ -493,6 +494,9 @@ if (typeof window.UIManager === 'undefined') {
          * clears the cache, and reloads from the first page.
          */
         async _applyFilterScope() {
+            // Generation counter prevents async races: if two filter changes
+            // happen in rapid succession, only the latest one's results are applied.
+            const gen = ++this._filterGeneration;
             const getVal = (id) => document.getElementById(id)?.value || '';
 
             const scope = {};
@@ -515,6 +519,47 @@ if (typeof window.UIManager === 'undefined') {
             this.currentFilterScope = scope;
             this.curationsCache = [];
             await this.loadCurations();
+
+            // Discard stale results if a newer filter was applied while loading
+            if (this._filterGeneration !== gen) return;
+        }
+
+        /**
+         * Populate curator filter dropdown from curators seen in loaded curations.
+         * Preserves the currently selected value across repopulations.
+         */
+        _populateCuratorFilter(items) {
+            const filter = document.getElementById('curation-curator-filter');
+            if (!filter) return;
+
+            const currentValue = filter.value;
+            const curators = new Map();
+
+            // Collect from provided items
+            for (const c of items) {
+                if (c.curator && c.curator.id) {
+                    curators.set(c.curator.id, c.curator.name || c.curator.id);
+                } else if (c.curator_id) {
+                    curators.set(c.curator_id, c.curator_id);
+                }
+            }
+            // Also preserve existing options so accumulated curators persist
+            for (const opt of filter.options) {
+                if (opt.value !== 'all' && !curators.has(opt.value)) {
+                    curators.set(opt.value, opt.textContent);
+                }
+            }
+
+            filter.innerHTML = '<option value="all">All Curators</option>';
+            Array.from(curators.entries())
+                .sort((a, b) => a[1].localeCompare(b[1]))
+                .forEach(([id, name]) => {
+                    const option = document.createElement('option');
+                    option.value = id;
+                    option.textContent = name;
+                    filter.appendChild(option);
+                });
+            filter.value = currentValue || 'all';
         }
 
         /**
@@ -609,6 +654,7 @@ if (typeof window.UIManager === 'undefined') {
                 // Render loaded items directly (server-side filtering applied by CurationBrowser)
                 this.renderCurationsPage(items);
                 this.updateCurationsCountSummary(this.curationsCache.length, this.curationsCache.length);
+                this._populateCuratorFilter(items);
 
             } catch (error) {
                 console.error('Failed to load curations:', error);

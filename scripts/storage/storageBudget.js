@@ -17,7 +17,9 @@ class StorageBudget {
     }
     const free = Math.max(0, quota - usage);
     let budget = Math.floor(free * this.freeFraction);
-    if (!budget) budget = this.maxAbsoluteBytes;
+    // budget may be 0 legitimately (disk full) — only fall back when
+    // the estimate API was unavailable (both quota and usage are 0).
+    if (quota === 0 && usage === 0) budget = this.maxAbsoluteBytes;
     budget = Math.min(budget, this.maxAbsoluteBytes);
     if (typeof this.deviceMemory === 'number' && this.deviceMemory <= 2) {
       budget = Math.min(budget, this.lowMemoryBytes);

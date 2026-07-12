@@ -1,4 +1,6 @@
 // scripts/services/entityHydrator.js
+const MAX_SEEN = 5000; // bound dedup set to prevent unbounded memory growth
+
 class EntityHydrator {
   constructor({ apiService, cache, isEntityCached, scheduler } = {}) {
     this.apiService = apiService;
@@ -12,9 +14,16 @@ class EntityHydrator {
     this.paused = false;
   }
 
-  enqueue(entityIds = []) {
+  async enqueue(entityIds = []) {
     for (const id of entityIds) {
-      if (!id || this.seen.has(id) || this.isEntityCached(id)) continue;
+      if (!id || this.seen.has(id)) continue;
+      // isEntityCached may be sync or async — await handles both
+      if (await this.isEntityCached(id)) continue;
+      if (this.seen.size >= MAX_SEEN) {
+        // Reset dedup set to prevent unbounded memory; acceptable to
+        // re-enqueue entities that were seen long ago.
+        this.seen.clear();
+      }
       this.seen.add(id);
       this.queue.push(id);
     }
@@ -25,8 +34,14 @@ class EntityHydrator {
     const id = this.queue.shift();
     try {
       const entity = await this.apiService.getEntity(id);
-      if (entity) await this.cache.putEntity(entity);
-    } catch (_) { /* mantém a fila viva */ }
+      if (entity) { await this.cache.putEntity(entity); return true; }
+    } catch (_) {
+      // Transient error — re-enqueue for one retry
+      if (!this.seen.has(id + ':retried')) {
+        this.seen.add(id + ':retried');
+        this.queue.push(id);
+      }
+    }
     return true;
   }
 

@@ -3,13 +3,15 @@ from typing import Any, Dict
 
 
 def denormalize_curation_location(entity: Dict[str, Any]) -> Dict[str, Any]:
+    """Extrai city/type da entity para denormalizar na curadoria.
+
+    Retorna sempre ambas as chaves; valores ausentes viram None para que
+    MongoDB $set limpe campos stale quando a entity linkada mudar.
+    """
     if not isinstance(entity, dict):
-        return {}
-    out: Dict[str, Any] = {}
+        return {"city": None, "type": None}
     etype = entity.get("type")
-    if isinstance(etype, str) and etype.strip():
-        out["type"] = etype.strip()
+    type_val = etype.strip() if isinstance(etype, str) and etype.strip() else None
     city = ((entity.get("data") or {}).get("location") or {}).get("city")
-    if isinstance(city, str) and city.strip():
-        out["city"] = city.strip()
-    return out
+    city_val = city.strip() if isinstance(city, str) and city.strip() else None
+    return {"city": city_val, "type": type_val}
