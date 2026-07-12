@@ -27,13 +27,17 @@ class OfflineCache {
 
   async putCurations(items, now = Date.now()) {
     for (const item of items) {
-      const existing = await this.db.curations.get(item.id);
+      // Use curation_id for lookup (API returns _id and curation_id, not id)
+      const lookupKey = item.curation_id || item._id || item.id;
+      const existing = lookupKey ? await this.db.curations.where('curation_id').equals(lookupKey).first() : null;
       const record = {
-        ...existing,
+        ...(existing || {}),
         ...item,
         lastAccessedAt: now,
         source: existing?.source === 'owned' ? 'owned' : 'cache',
       };
+      // Preserve the Dexie auto-generated id if the record was already cached
+      if (existing?.id) record.id = existing.id;
       await this.db.curations.put(record);
     }
     await this.enforceBudget(now);

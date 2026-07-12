@@ -52,7 +52,7 @@ class CurationBrowser {
       await this._ingest(items);
     }
 
-    if (items.length) this.cursor = items[items.length - 1].id;
+    if (items.length) this.cursor = items[items.length - 1]._id || items[items.length - 1].curation_id;
     if (items.length < this.pageSize) this.done = true;
 
     if (!this.done) {

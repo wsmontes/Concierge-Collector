@@ -15,21 +15,27 @@ async function waitFor(getter, timeoutMs = 15000) {
 }
 
 async function initCollectorCache() {
-  await waitFor(() => window.DataStore && window.DataStore.db);
-  await waitFor(() => window.ApiService);
-  const budget = new StorageBudget();
-  const cache = new OfflineCache({ db: window.DataStore.db, budget });
-  const hydrator = new EntityHydrator({
-    apiService: window.ApiService,
-    cache,
-    isEntityCached: async (id) =>
-      !!(await window.DataStore.db.entities.where('entity_id').equals(id).first()),
-  });
-  const browser = new CurationBrowser({ apiService: window.ApiService, cache, hydrator });
-  window.OfflineCache = cache;
-  window.EntityHydrator = hydrator;
-  hydrator.start();
-  window.CurationBrowser = browser;
+  try {
+    await waitFor(() => window.DataStore && window.DataStore.db);
+    await waitFor(() => window.ApiService);
+    const budget = new StorageBudget();
+    const cache = new OfflineCache({ db: window.DataStore.db, budget });
+    const hydrator = new EntityHydrator({
+      apiService: window.ApiService,
+      cache,
+      isEntityCached: async (id) =>
+        !!(await window.DataStore.db.entities.where('entity_id').equals(id).first()),
+    });
+    const browser = new CurationBrowser({ apiService: window.ApiService, cache, hydrator });
+    window.OfflineCache = cache;
+    window.EntityHydrator = hydrator;
+    hydrator.start();
+    window.CurationBrowser = browser;
+  } catch (err) {
+    console.error('[cacheBootstrap] Failed to initialize:', err);
+    // Still set a minimal browser so the UI doesn't hang forever
+    window.CurationBrowser = new CurationBrowser({ apiService: window.ApiService, cache: null, hydrator: null });
+  }
   window.dispatchEvent(new CustomEvent('collector-cache-ready'));
 }
 
