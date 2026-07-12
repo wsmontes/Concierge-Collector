@@ -227,14 +227,15 @@ def google_oauth_init(
     # Determine frontend URL for final redirect
     frontend_redirect_url = callback_url
     if not frontend_redirect_url and request:
-        # Try to extract from referer header
+        # Extract origin from Referer header (works for any domain: Render, localhost, custom)
         referer = request.headers.get('referer', '')
-        if 'github.io' in referer:
-            frontend_redirect_url = settings.frontend_url_production
-        elif 'localhost' in referer or '127.0.0.1' in referer:
-            frontend_redirect_url = settings.frontend_url
-    
-    # Default to configured frontend_url
+        if referer:
+            try:
+                from urllib.parse import urlparse
+                parsed = urlparse(referer)
+                frontend_redirect_url = f"{parsed.scheme}://{parsed.netloc}"
+            except Exception:
+                pass
     if not frontend_redirect_url:
         frontend_redirect_url = settings.frontend_url
     
@@ -307,7 +308,18 @@ def google_oauth_callback(
         if error == "access_denied":
             error_msg = "Login cancelled by user"
         logger.warning(f"[OAuth] Error in callback: {error_msg}")
-        return RedirectResponse(url=f"{settings.frontend_url}/?auth_error={error_msg}")
+        # Try to extract frontend URL from state, fall back to default
+        error_redirect_url = settings.frontend_url
+        if state:
+            try:
+                state_data = verify_state(state)
+                if state_data:
+                    parts = state_data.split('|', 1)
+                    if len(parts) > 1:
+                        error_redirect_url = parts[1]
+            except Exception:
+                pass
+        return RedirectResponse(url=f"{error_redirect_url}/?auth_error={error_msg}")
     
     # Validate required parameters
     if not code or not state:
