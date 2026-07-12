@@ -1145,6 +1145,10 @@ if (typeof window.UIManager === 'undefined') {
             const cardCreatedAt = curation.createdAt || curation.created_at;
             const date = cardCreatedAt ? new Date(cardCreatedAt).toLocaleDateString() : 'Unknown date';
 
+            // Check if curation is already linked to an entity
+            const isLinked = !!(curation.entity_id);
+            const linkedEntityName = curation.entity_name || curation.restaurant_name || null;
+
             // Extract concept names from categories object
             const categories = curation.categories || {};
             const conceptNames = [];
@@ -1238,13 +1242,25 @@ if (typeof window.UIManager === 'undefined') {
                 <!-- Actions Footer (Matching Linked Card style) -->
                 <div class="mt-auto p-4 mx-1 border-t border-gray-100 flex items-center justify-between bg-white z-20 relative">
                      <div class="flex flex-col gap-1">
-                        <button class="btn-link-entity px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1.5 shadow-sm">
-                            <span class="material-icons text-[14px]">link</span>
-                            <span class="font-bold uppercase tracking-wider">Link Entity</span>
-                        </button>
+                        ${isLinked ? `
+                            <div class="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 px-2.5 py-1.5 rounded-lg border border-green-200">
+                                <span class="material-icons text-[14px]">link</span>
+                                <span class="font-medium">${linkedEntityName || 'Linked'}</span>
+                            </div>
+                        ` : `
+                            <button class="btn-link-entity px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1.5 shadow-sm">
+                                <span class="material-icons text-[14px]">link</span>
+                                <span class="font-bold uppercase tracking-wider">Link Entity</span>
+                            </button>
+                        `}
                     </div>
                     <div class="flex items-center gap-2">
-                        <button class="btn-edit-curation p-2 bg-gray-50 text-gray-600 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-all border border-gray-100 hover:border-blue-100 shadow-sm" title="Edit Draft">
+                        ${isLinked ? `
+                            <button class="btn-unlink-entity p-2 bg-amber-50 text-amber-600 hover:bg-amber-100 hover:text-amber-700 rounded-lg transition-all border border-amber-100 shadow-sm" title="Unlink from entity">
+                                <span class="material-icons text-[18px]">link_off</span>
+                            </button>
+                        ` : ''}
+                        <button class="btn-edit-curation p-2 bg-gray-50 text-gray-600 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-all border border-gray-100 hover:border-blue-100 shadow-sm" title="Edit Curation">
                             <span class="material-icons text-[20px]">edit</span>
                         </button>
                         <button class="btn-delete-curation p-2 bg-gray-50 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-lg transition-all border border-gray-100 hover:border-red-100 shadow-sm" title="Delete Draft">
@@ -1266,6 +1282,11 @@ if (typeof window.UIManager === 'undefined') {
             card.querySelector('.btn-link-entity')?.addEventListener('click', (e) => {
                 e.stopPropagation();
                 this.handleLinkReviewToEntity(curation);
+            });
+
+            card.querySelector('.btn-unlink-entity')?.addEventListener('click', (e) => {
+                e.stopPropagation();
+                this.confirmUnlinkCuration(curation);
             });
 
             card.querySelector('.btn-delete-curation')?.addEventListener('click', (e) => {
