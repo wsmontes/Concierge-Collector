@@ -98,6 +98,7 @@ if (typeof window.UIManager === 'undefined') {
             this.currentFilterScope = null;
             this._filterGeneration = 0;
             this.searchDebounceTimer = null;
+            this._cityDebounceTimer = null;
             this.entitiesCache = [];
             this.entitiesFiltered = [];
 
@@ -471,11 +472,14 @@ if (typeof window.UIManager === 'undefined') {
                 });
             }
 
-            // City filter (immediate re-scope)
+            // City filter (text input, debounced 300ms)
             const cityFilter = document.getElementById('curation-city-filter');
             if (cityFilter) {
-                cityFilter.addEventListener('change', () => {
-                    this._applyFilterScope();
+                cityFilter.addEventListener('input', () => {
+                    if (this._cityDebounceTimer) clearTimeout(this._cityDebounceTimer);
+                    this._cityDebounceTimer = setTimeout(() => {
+                        this._applyFilterScope();
+                    }, 300);
                 });
             }
 
@@ -508,7 +512,7 @@ if (typeof window.UIManager === 'undefined') {
             if (curator && curator !== 'all') scope.curatorId = curator;
 
             const city = getVal('curation-city-filter');
-            if (city && city !== 'all') scope.city = city;
+            if (city) scope.city = city;
 
             const type = getVal('curation-type-filter');
             if (type && type !== 'all') scope.type = type;
