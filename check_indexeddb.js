@@ -3,8 +3,10 @@
 
 (async function checkIndexedDB() {
     try {
-        // Open IndexedDB
-        const request = indexedDB.open('lotier-collector', 91);
+        // Open without specifying version — lets the browser use the current version.
+        // Hardcoding a version number (e.g. 91) would bump the version above what
+        // Dexie expects, causing VersionError on next app load.
+        const request = indexedDB.open('lotier-collector');
         
         request.onsuccess = async function(event) {
             const db = event.target.result;
