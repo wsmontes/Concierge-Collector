@@ -29,6 +29,39 @@ class TestSystemEndpoints:
         assert data["version"] == "3.0.0"
         assert "description" in data
 
+    def test_openai_endpoints_require_auth(self, client):
+        """Endpoints OpenAI-compatíveis devem exigir autenticação."""
+        # POST /v1/chat/completions sem auth
+        response = client.post("/api/v3/openai/v1/chat/completions", json={
+            "model": "gpt-4",
+            "messages": [{"role": "user", "content": "hello"}],
+        })
+        assert response.status_code == 401
+
+        # GET /v1/functions sem auth
+        response = client.get("/api/v3/openai/v1/functions")
+        assert response.status_code == 401
+
+    def test_openai_endpoints_with_auth(self, client, auth_headers):
+        """Endpoints OpenAI-compatíveis com autenticação válida."""
+        # POST /v1/chat/completions com auth
+        response = client.post(
+            "/api/v3/openai/v1/chat/completions",
+            json={
+                "model": "gpt-4",
+                "messages": [{"role": "user", "content": "hello"}],
+            },
+            headers=auth_headers
+        )
+        assert response.status_code != 401  # Deve passar auth
+
+        # GET /v1/functions com auth
+        response = client.get(
+            "/api/v3/openai/v1/functions",
+            headers=auth_headers
+        )
+        assert response.status_code != 401  # Deve passar auth
+
     def test_global_exception_handler_does_not_leak_details(self, client):
         """O exception handler global não deve expor detalhes internos no body."""
         # Usa uma rota existente que pode disparar erro interno

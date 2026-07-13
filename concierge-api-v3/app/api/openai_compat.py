@@ -10,13 +10,18 @@ and other OpenAI-compatible clients for function calling / tool use.
 
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
+from fastapi.security import HTTPAuthorizationCredentials
 from typing import List, Dict, Any, Optional
 import logging
 import time
 import json
 import uuid
 import asyncio
+import secrets
 
+from jose import jwt, JWTError
+
+from app.core.security import api_key_header, bearer_scheme, get_api_secret_key
 from app.models.openai_models import (
     ChatCompletionRequest,
     ChatCompletionResponse,
@@ -39,6 +44,28 @@ logger = logging.getLogger(__name__)
 
 # Create router
 router = APIRouter(prefix="/openai", tags=["openai-compatible"])
+
+
+async def verify_auth(
+    api_key: Optional[str] = Depends(api_key_header),
+    bearer: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme)
+) -> dict:
+    """Verify either OAuth token or API key"""
+    if api_key:
+        try:
+            expected_key = get_api_secret_key()
+            if secrets.compare_digest(api_key, expected_key):
+                return {"authenticated": True, "method": "api_key"}
+        except:
+            pass
+    if bearer:
+        try:
+            from app.core.security import ALGORITHM
+            payload = jwt.decode(bearer.credentials, get_api_secret_key(), algorithms=[ALGORITHM])
+            return {"authenticated": True, "method": "jwt", "user": payload.get("sub")}
+        except JWTError:
+            pass
+    raise HTTPException(status_code=401, detail="Missing authorization token")
 
 
 def get_llm_service() -> LLMPlaceService:
@@ -313,10 +340,12 @@ async def list_models():
 
 
 @router.get("/v1/functions")
-async def list_functions():
+async def list_functions(
+    auth: dict = Depends(verify_auth),
+):
     """
     List available functions for restaurant search and information.
-    
+
     This endpoint returns all function definitions that can be used
     with the chat completions endpoint.
     """
@@ -330,6 +359,7 @@ async def list_functions():
 @router.post("/v1/chat/completions")
 async def chat_completions(
     request: ChatCompletionRequest,
+    auth: dict = Depends(verify_auth),
     service: LLMPlaceService = Depends(get_llm_service)
 ):
     """
