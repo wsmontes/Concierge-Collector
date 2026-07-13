@@ -10,6 +10,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import tempfile
 import time
 from datetime import datetime, timezone
@@ -195,20 +196,22 @@ def _match_entities(db: Database, restaurant_name: Optional[str]) -> List[Dict[s
     entities: List[Dict[str, Any]] = []
 
     if restaurant_name:
+        escaped_name = re.escape(restaurant_name)
         # 1. Exact match
         exact = list(
             db.entities.find(
-                {"name": {"$regex": f"^{restaurant_name}$", "$options": "i"}},
+                {"name": {"$regex": f"^{escaped_name}$", "$options": "i"}},
                 {"name": 1, "type": 1, "data.location": 1, "data.place_id": 1},
             ).limit(5)
         )
         entities.extend(exact)
 
     if not entities and restaurant_name:
+        escaped_name = re.escape(restaurant_name)
         # 2. Partial match
         partial = list(
             db.entities.find(
-                {"name": {"$regex": restaurant_name, "$options": "i"}},
+                {"name": {"$regex": escaped_name, "$options": "i"}},
                 {"name": 1, "type": 1, "data.location": 1, "data.place_id": 1},
             ).limit(5)
         )
@@ -416,7 +419,11 @@ async def capture(
     try:
         col.replace_one({"_id": request.idempotency_key}, session_doc, upsert=True)
     except Exception as e:
-        logger.warning(f"Failed to persist capture session: {e}")
+        logger.error(f"Failed to persist capture session: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail="Failed to persist capture session. Please try again.",
+        )
 
     result = CaptureResponse(
         capture_id=request.idempotency_key,
