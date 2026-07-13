@@ -160,3 +160,28 @@ class TestEntityValidation:
         """Test listing with invalid offset"""
         response = client.get("/api/v3/entities?offset=-1")
         assert response.status_code == 422
+
+
+class TestAuth:
+    """Test authentication for entities"""
+
+    @pytest.mark.asyncio
+    async def test_verify_auth_with_valid_jwt_token(self):
+        """Verifica que verify_auth funciona com Bearer token JWT válido."""
+        from unittest.mock import patch, MagicMock
+        from fastapi import HTTPException
+
+        # Importa o módulo após o patch para garantir import limpo
+        from app.api.entities import verify_auth
+
+        # Simula um token JWT válido
+        mock_bearer = MagicMock()
+        mock_bearer.credentials = "valid.jwt.token"
+
+        with patch("app.api.entities.get_api_secret_key", return_value="test-secret"):
+            with patch("app.api.entities.jwt.decode", return_value={"sub": "test@test.com", "role": "curator"}):
+                result = await verify_auth(api_key=None, bearer=mock_bearer)
+                assert result["authenticated"] is True
+                assert result["method"] == "jwt"
+                assert result["user"] == "test@test.com"
+                assert result["role"] == "curator"

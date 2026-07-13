@@ -10,6 +10,8 @@ from pymongo.errors import DuplicateKeyError
 from pymongo.database import Database
 import secrets
 
+from jose import jwt, JWTError
+
 from app.models.schemas import (
     Entity, EntityCreate, EntityUpdate, PaginatedResponse, ErrorResponse,
     BulkEntityCreate, BulkOperationResponse, BulkItemError
