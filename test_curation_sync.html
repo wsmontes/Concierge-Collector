@@ -118,8 +118,18 @@
                 log(`   Curations in local DB: ${beforeCount}`, 'info');
                 log(`   Batch size: ${window.SyncManager.config.batchSize}`, 'info');
                 
-                // Clear curations for clean test
+                // ⚠️ Destructive: confirm before clearing local data
                 if (beforeCount > 0) {
+                    const confirmed = confirm(
+                        "⚠️ This will DELETE all local curation data before running the sync test.\n\n" +
+                        "Make sure you have a backup or are in a test environment.\n\n" +
+                        "Continue?"
+                    );
+                    if (!confirmed) {
+                        log('Test cancelled by user.');
+                        return;
+                    }
+
                     log('\n🗑️  Clearing existing curations for clean test...', 'warning');
                     await window.DataStore.db.curations.clear();
                     log('   Cleared', 'success');
