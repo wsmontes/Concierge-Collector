@@ -444,7 +444,7 @@ def semantic_search_curations(
 
     if not curations:
         query_filter = {"embeddings": {"$exists": True, "$ne": []}}
-        curations = list(db.curations.find(query_filter, projection))
+        curations = list(db.curations.find(query_filter, projection).limit(candidate_limit))
     
     # 3. Calculate similarities for each curation
     results = []
@@ -674,7 +674,7 @@ def hybrid_search(
         curations = list(db.curations.find({
             "embeddings": {"$exists": True, "$ne": []},
             "entity_id": {"$ne": None, "$exists": True}
-        }, projection))
+        }, projection).limit(candidate_limit))
 
     allowed_categories = set(request.categories) if request.categories else None
     
