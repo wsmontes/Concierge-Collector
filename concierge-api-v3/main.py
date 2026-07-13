@@ -70,16 +70,21 @@ app.add_middleware(
 # Add exception handler to ensure CORS headers are included in error responses
 @app.exception_handler(Exception)
 async def global_exception_handler(request, exc):
-    """Ensure CORS headers are present even on error responses"""
+    """Ensure CORS headers are present even on error responses.
+
+    Logs the full exception for debugging but returns a generic message
+    to the client — never leak internal details (connection strings, keys,
+    stack traces) in HTTP responses.
+    """
     from fastapi.responses import JSONResponse
     import logging
     logger = logging.getLogger(__name__)
-    
-    logger.error(f"[Global Exception Handler] {type(exc).__name__}: {str(exc)}")
-    
+
+    logger.error(f"[Global Exception Handler] {type(exc).__name__}: {str(exc)}", exc_info=True)
+
     return JSONResponse(
         status_code=500,
-        content={"detail": f"Internal server error: {str(exc)}"},
+        content={"detail": "Internal server error"},
         headers={
             "Access-Control-Allow-Origin": request.headers.get("origin", "*"),
             "Access-Control-Allow-Credentials": "true",
