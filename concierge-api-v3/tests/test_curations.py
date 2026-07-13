@@ -144,6 +144,40 @@ def test_search_filters_by_city_and_text(client, test_db, clean_test_curations):
     test_db.curations.delete_many({"_id": {"$in": ["test_c_sp", "test_c_rio"]}})
 
 
+def test_bulk_upsert_handles_duplicate_key_race():
+    """DuplicateKeyError no bulk upsert deve fazer update, não descartar dados."""
+    from unittest.mock import patch, MagicMock
+    from app.api.curations import bulk_upsert_curations
+    from app.models.schemas import BulkCurationCreate, CurationCreate, CuratorInfo
+    from pymongo.errors import DuplicateKeyError
+
+    mock_db = MagicMock()
+    mock_auth = {"role": "admin", "user": "test@test.com"}
+
+    curation = CurationCreate(
+        curation_id="cur_test_001",
+        entity_id="ent_001",
+        curator_id="curator_001",
+        curator=CuratorInfo(id="curator_001", name="Test"),
+        status="draft",
+    )
+    payload = BulkCurationCreate(curations=[curation])
+
+    # Simula: find_one retorna None (não existe), insert_one lança DuplicateKeyError
+    mock_db.curations.find_one.return_value = None
+    mock_db.curations.insert_one.side_effect = DuplicateKeyError("dup")
+
+    mock_db.entities.find.return_value = []
+
+    with patch("app.api.curations.denormalize_curation_location", return_value={"city": None, "type": None}):
+        result = bulk_upsert_curations(request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth)
+
+    # Deve ter chamado update_one (não só incrementar counter)
+    mock_db.curations.update_one.assert_called()
+    # Não deve ter erros
+    assert len(result.errors) == 0
+
+
 def test_create_curation_denormalizes_city_type(client, test_db, clean_test_entities, clean_test_curations):
     test_db.entities.insert_one({
         "_id": "test_ent_denorm", "entity_id": "test_ent_denorm", "name": "T", "type": "bar",

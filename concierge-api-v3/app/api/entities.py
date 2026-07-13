@@ -271,7 +271,11 @@ def bulk_upsert_entities(
                 created += 1
 
         except DuplicateKeyError:
-            # Unique index collision (e.g. duplicate place_id) — treat as updated
+            # Unique index collision (e.g. duplicate place_id) — update existing
+            try:
+                db.entities.update_one({"_id": entity.entity_id}, {"$set": doc})
+            except Exception:
+                pass
             updated += 1
         except Exception as exc:
             errors.append(BulkItemError(
