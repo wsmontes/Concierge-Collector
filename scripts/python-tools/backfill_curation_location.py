@@ -41,13 +41,13 @@ def main() -> int:
     db = MongoClient(os.environ["MONGODB_URL"])[os.environ.get("MONGODB_DB_NAME", "concierge-collector")]
     curations = list(db.curations.find({}, {"curation_id": 1, "_id": 1, "entity_id": 1, "city": 1, "type": 1}))
     eids = [c["entity_id"] for c in curations if c.get("entity_id")]
-    entities_by_id = {e["_id"]: e for e in db.entities.find({"_id": {"$in": eids}}, {"type": 1, "data.location.city": 1})}
+    entities_by_id = {e["entity_id"]: e for e in db.entities.find({"entity_id": {"$in": eids}}, {"entity_id": 1, "type": 1, "data.location.city": 1})}
     plan = plan_backfill(curations, entities_by_id)
     print(f"{len(plan)} curadorias a preencher (de {len(curations)})")
     if not args.apply:
         print("dry-run; use --apply"); return 0
     for item in plan:
-        db.curations.update_one({"_id": item["curation_id"]}, {"$set": item["set"]})
+        db.curations.update_one({"curation_id": item["curation_id"]}, {"$set": item["set"]})
     print("aplicado.")
     return 0
 
