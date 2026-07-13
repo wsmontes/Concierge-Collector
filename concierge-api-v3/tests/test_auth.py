@@ -119,14 +119,30 @@ def test_oauth_init_rejects_untrusted_callback_url():
     """callback_url deve ser validado contra allowlist de origens confiáveis."""
     from fastapi.testclient import TestClient
     from main import app
+    from app.core.config import settings
+    from urllib.parse import urlparse, parse_qs
+    from jose import jwt
 
     client = TestClient(app)
 
     # URL maliciosa deve ser rejeitada ou ignorada (usar default)
-    response = client.get("/api/v3/auth/google?callback_url=https://evil.com/steal")
+    response = client.get(
+        "/api/v3/auth/google?callback_url=https://evil.com/steal",
+        follow_redirects=False,
+    )
 
-    # Não deve redirecionar para URL maliciosa
-    assert "evil.com" not in str(response.url).lower() or response.status_code >= 400
+    # Deve redirecionar para o Google (não erro)
+    assert response.status_code == 307
+
+    # Decodificar state JWT e verificar que evil.com NÃO está no payload
+    location = response.headers.get("location", "")
+    parsed = urlparse(location)
+    params = parse_qs(parsed.query)
+    state_encoded = params.get("state", [""])[0]
+    assert state_encoded, "State deveria estar presente"
+    decoded = jwt.decode(state_encoded, settings.api_secret_key, algorithms=["HS256"])
+    sd = decoded.get("sd", "")
+    assert "evil.com" not in sd, f"State contém URL não confiável: {sd}"
 
 
 def test_oauth_init_accepts_trusted_callback_url():
@@ -134,11 +150,26 @@ def test_oauth_init_accepts_trusted_callback_url():
     from fastapi.testclient import TestClient
     from main import app
     from app.core.config import settings
+    from urllib.parse import urlparse, parse_qs
+    from jose import jwt
 
     client = TestClient(app)
 
     trusted = settings.frontend_url
-    response = client.get(f"/api/v3/auth/google?callback_url={trusted}")
+    response = client.get(
+        f"/api/v3/auth/google?callback_url={trusted}",
+        follow_redirects=False,
+    )
 
     # Deve redirecionar para o Google (não erro)
     assert response.status_code == 307  # RedirectResponse
+
+    # Verificar que a URL confiável está presente no state
+    location = response.headers.get("location", "")
+    parsed = urlparse(location)
+    params = parse_qs(parsed.query)
+    state_encoded = params.get("state", [""])[0]
+    assert state_encoded, "State deveria estar presente"
+    decoded = jwt.decode(state_encoded, settings.api_secret_key, algorithms=["HS256"])
+    sd = decoded.get("sd", "")
+    assert trusted in sd, f"State deveria conter a URL confiável: {sd}"
