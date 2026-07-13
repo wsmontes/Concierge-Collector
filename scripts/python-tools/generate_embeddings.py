@@ -22,7 +22,8 @@ from openai import OpenAI
 from dotenv import load_dotenv
 
 # Load environment variables
-env_path = os.path.join(os.path.dirname(__file__), '..', 'concierge-api-v3', '.env')
+# Two levels up from scripts/python-tools/ to project root
+env_path = os.path.join(os.path.dirname(__file__), '..', '..', 'concierge-api-v3', '.env')
 load_dotenv(env_path)
 
 # Configuration
@@ -196,9 +197,11 @@ def get_all_curations() -> List[Dict]:
         limit = 100
         
         while True:
+            headers = {"X-API-Key": API_SECRET_KEY} if API_SECRET_KEY else {}
             response = requests.get(
                 f"{API_CURATIONS_URL}/search",
                 params={"limit": limit, "offset": offset},
+                headers=headers,
                 timeout=30
             )
             
