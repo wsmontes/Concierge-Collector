@@ -3,7 +3,7 @@ Curation endpoints - CRUD operations for curations
 Professional FastAPI implementation with async MongoDB
 """
 
-from fastapi import APIRouter, HTTPException, Header, Query, Depends, Request
+from fastapi import APIRouter, HTTPException, Header, Query, Depends, Request, status
 from fastapi.security import HTTPAuthorizationCredentials
 from typing import Optional, List
 import re
@@ -118,7 +118,7 @@ def create_curation(
         db.curations.insert_one(doc)
     except DuplicateKeyError:
         raise HTTPException(
-            status_code=500,
+            status_code=status.HTTP_409_CONFLICT,
             detail=f"Curation {curation.curation_id} already exists"
         )
     
