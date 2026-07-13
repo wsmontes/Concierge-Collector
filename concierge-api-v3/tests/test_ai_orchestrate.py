@@ -3,6 +3,8 @@ Test AI Orchestrate Endpoint
 Tests specifically designed to catch async/await issues and validate proper endpoint behavior
 """
 import pytest
+from unittest.mock import MagicMock
+from app.services.ai_orchestrator import OutputHandler
 from httpx import AsyncClient
 import base64
 import json
@@ -235,6 +237,28 @@ class TestAsyncAwaitPatterns:
             # None should return 500 from async/await issues
             assert response.status_code != 500, \
                 f"{endpoint} returned 500 - possible async/await bug"
+
+
+class TestOutputHandler:
+    """Tests for OutputHandler methods"""
+
+    def test_save_results_writes_to_mongo(self):
+        """save_results deve usar operações síncronas do PyMongo (sem await)."""
+        mock_db = MagicMock()
+        mock_db.entities.update_one = MagicMock(return_value=MagicMock(modified_count=1))
+        mock_db.curations.insert_one = MagicMock(return_value=MagicMock(inserted_id="abc123"))
+
+        results = {
+            "entity": {"entity_id": "ent_001"},
+            "curation": {"curation_id": "cur_001", "entity_id": "ent_001"},
+        }
+
+        saved = OutputHandler.save_results(mock_db, results)
+
+        assert "entity" in saved
+        assert "curation" in saved
+        mock_db.entities.update_one.assert_called_once()
+        mock_db.curations.insert_one.assert_called_once()
 
 
 # Fixtures removed - using global fixtures from conftest.py

@@ -124,33 +124,35 @@ class OutputHandler:
             return results
     
     @staticmethod
-    async def save_results(db, results: Dict[str, Any]) -> list:
+    def save_results(db, results: Dict[str, Any]) -> list:
         """
         Save entity and curation to MongoDB.
-        
+
+        Uses synchronous PyMongo operations — do NOT await.
+
         Args:
-            db: MongoDB database
+            db: PyMongo synchronous Database
             results: Results dictionary
-            
+
         Returns:
             List of saved item types
         """
         saved_items = []
-        
+
         # Save entity if present
         if "entity" in results:
-            await db.entities.update_one(
+            db.entities.update_one(
                 {"entity_id": results["entity"]["entity_id"]},
                 {"$set": results["entity"]},
                 upsert=True
             )
             saved_items.append("entity")
-        
+
         # Save curation if present
         if "curation" in results:
-            await db.curations.insert_one(results["curation"])
+            db.curations.insert_one(results["curation"])
             saved_items.append("curation")
-        
+
         return saved_items
 
 
@@ -238,7 +240,7 @@ class AIOrchestrator:
         
         # Handle output
         if request["output"]["save_to_db"]:
-            await self.output_handler.save_results(self.db, results)
+            self.output_handler.save_results(self.db, results)
         
         # Format response
         if request["output"]["return_results"]:
