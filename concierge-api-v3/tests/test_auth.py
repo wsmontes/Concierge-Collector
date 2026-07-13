@@ -72,6 +72,73 @@ class TestAuthValidation:
             json={"entity_id": "test", "type": "restaurant", "name": "Test"},
             headers=headers
         )
-        
+
         # Should fail with invalid token
         assert response.status_code == 401
+
+
+import os
+from unittest.mock import patch
+
+
+def test_testing_bypass_only_works_in_development():
+    """TESTING=true só deve bypassar auth quando ENVIRONMENT=development."""
+    from app.core.security import verify_access_token
+    from app.core.config import settings
+
+    # Salva valores originais
+    orig_testing = os.environ.get("TESTING")
+    orig_env = settings.environment
+
+    try:
+        os.environ["TESTING"] = "true"
+
+        # Caso 1: development deve permitir bypass
+        with patch.object(settings, "environment", "development"):
+            # Não deve lançar exceção
+            import asyncio
+            result = asyncio.run(verify_access_token(credentials=None))
+            assert result["sub"] == "test@example.com"
+
+        # Caso 2: production NÃO deve permitir bypass
+        with patch.object(settings, "environment", "production"):
+            from fastapi import HTTPException
+            try:
+                asyncio.run(verify_access_token(credentials=None))
+                assert False, "Deveria ter lançado HTTPException 401"
+            except HTTPException as e:
+                assert e.status_code == 401
+    finally:
+        if orig_testing is not None:
+            os.environ["TESTING"] = orig_testing
+        else:
+            os.environ.pop("TESTING", None)
+
+
+def test_oauth_init_rejects_untrusted_callback_url():
+    """callback_url deve ser validado contra allowlist de origens confiáveis."""
+    from fastapi.testclient import TestClient
+    from main import app
+
+    client = TestClient(app)
+
+    # URL maliciosa deve ser rejeitada ou ignorada (usar default)
+    response = client.get("/api/v3/auth/google?callback_url=https://evil.com/steal")
+
+    # Não deve redirecionar para URL maliciosa
+    assert "evil.com" not in str(response.url).lower() or response.status_code >= 400
+
+
+def test_oauth_init_accepts_trusted_callback_url():
+    """callback_url de origens confiáveis deve ser aceito."""
+    from fastapi.testclient import TestClient
+    from main import app
+    from app.core.config import settings
+
+    client = TestClient(app)
+
+    trusted = settings.frontend_url
+    response = client.get(f"/api/v3/auth/google?callback_url={trusted}")
+
+    # Deve redirecionar para o Google (não erro)
+    assert response.status_code == 307  # RedirectResponse

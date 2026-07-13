@@ -264,9 +264,10 @@ async def verify_access_token(
     import logging
     logger = logging.getLogger(__name__)
     
-    # Test mode bypass - allows tests to run without real OAuth tokens
-    if os.getenv("TESTING") == "true":
-        logger.info("[Token Verify] TEST MODE - bypassing auth")
+    # Test mode bypass — ONLY in development, NEVER in production.
+    # Guards against accidentally leaving TESTING=true in deployed environments.
+    if os.getenv("TESTING") == "true" and settings.environment == "development":
+        logger.info("[Token Verify] TEST MODE - bypassing auth (development only)")
         return {
             "sub": "test@example.com",
             "email": "test@example.com",
