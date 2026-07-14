@@ -555,6 +555,10 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
      * Perform startup sync (push-only; navigation/cache is on-demand via CurationBrowser/OfflineCache)
      */
     async fullSync() {
+        if (window.DataStore?._degraded) {
+            this.log.warn('DataStore in degraded mode — skipping sync');
+            return { status: 'degraded' };
+        }
         if (this.isSyncing) {
             this.log.debug('Sync already in progress');
             return { status: 'already_syncing' };
@@ -599,12 +603,12 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
     }
 
     /**
-     * Checkout (own) a curation: delegates to OfflineCache for testable logic.
+     * Checkout (own) a curation — no-op since OfflineCache was removed.
+     * @deprecated OfflineCache was removed in the server-driven browsing refactor.
      */
-    async checkoutCuration(curationId) {
-        if (window.OfflineCache && typeof window.OfflineCache.markCurationOwned === 'function') {
-            return window.OfflineCache.markCurationOwned(curationId, window.ApiService);
-        }
+    async checkoutCuration(_curationId) {
+        // No-op: ownership tracking was managed by OfflineCache, now removed.
+        // Callers have if-guards so this returning undefined is safe.
     }
 
     /**
@@ -1248,7 +1252,8 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
         };
 
         const countBySyncStatus = async (table, statusValue) => {
-            if (!table) return 0;
+            // Guard: if table or its backing IndexedDB store doesn't exist, return 0
+            if (!table || !table.schema) return 0;
 
             try {
                 return await table.where('sync.status').equals(statusValue).count();
@@ -1268,7 +1273,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
 
         try {
             const db = window.DataStore?.db;
-            if (!db?.entities || !db?.curations) {
+            if (!db?.entities?.schema || !db?.curations?.schema) {
                 return fallbackStatus;
             }
 

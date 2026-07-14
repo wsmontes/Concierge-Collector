@@ -77,15 +77,25 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
             // Try to recover
             if (this.dbManager) {
                 this.log.warn('Attempting recovery...');
-                const recovered = await this.dbManager.attemptRecovery();
-                if (recovered) {
-                    this.db = this.dbManager.getDatabase();
-                    this.isInitialized = true;
-                    return this;
+                try {
+                    const recovered = await this.dbManager.attemptRecovery();
+                    if (recovered) {
+                        this.db = this.dbManager.getDatabase();
+                        this.isInitialized = true;
+                        return this;
+                    }
+                } catch (recoveryError) {
+                    this.log.error('Recovery also failed:', recoveryError);
                 }
             }
 
-            throw error;
+            // Last resort: mark as degraded (API-only) so the app still loads.
+            // Curation browsing is server-driven; offline create/edit will be unavailable.
+            this.log.warn('⚠️ Entering degraded mode — IndexedDB unavailable, app will use API only');
+            this.isInitialized = true;
+            this._degraded = true;
+            this.db = null;
+            return this;
         }
     }
 

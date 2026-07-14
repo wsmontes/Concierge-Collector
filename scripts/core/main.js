@@ -21,8 +21,64 @@ if (isLiveServer) {
     });
 }
 
+/**
+ * Heal IndexedDB before app initialization.
+ * If a previous session left a corrupted database (object stores missing),
+ * this deletes it so DatabaseManager can create a fresh one.
+ */
+async function ensureHealthyIndexedDB() {
+    const RECOVERY_KEY = 'concierge_db_recovery_needed';
+    const needsRecovery = localStorage.getItem(RECOVERY_KEY) === '1';
+
+    if (!needsRecovery) return;
+
+    console.warn('🔄 IndexedDB recovery flag detected — deleting corrupted database...');
+    localStorage.removeItem(RECOVERY_KEY);
+    localStorage.removeItem('concierge_db_schema_version');
+
+    try {
+        // Close any lingering Dexie connections
+        if (window.DataStore?.db) {
+            try { window.DataStore.db.close(); } catch (_) {}
+        }
+        await window.indexedDB?.deleteDatabase?.('ConciergeCollector');
+        console.log('✅ Corrupted IndexedDB deleted — fresh database will be created');
+    } catch (e) {
+        console.warn('Failed to delete corrupted database:', e);
+    }
+}
+
+/** Check if an error originated from IndexedDB/Dexie. */
+function isIndexedDBError(error) {
+    const msg = error?.message || '';
+    const name = error?.name || '';
+    return name === 'NotFoundError'
+        || name === 'VersionError'
+        || msg.includes('objectStore')
+        || msg.includes('object store')
+        || msg.includes('IDBTransaction')
+        || msg.includes('IndexedDB');
+}
+
+/** Nuclear reset: delete IndexedDB and clear all related state. */
+async function forceResetIndexedDB() {
+    localStorage.setItem('concierge_db_recovery_needed', '1');
+    try {
+        if (window.DataStore?.db) {
+            try { window.DataStore.db.close(); } catch (_) {}
+        }
+        const dbs = await window.indexedDB?.databases?.() || [];
+        for (const db of dbs) {
+            if (db.name === 'ConciergeCollector') {
+                await window.indexedDB?.deleteDatabase?.('ConciergeCollector');
+            }
+        }
+    } catch (_) {}
+    localStorage.removeItem('concierge_db_schema_version');
+}
+
 // Expose startApplication function for AccessControl to call after unlock
-window.startApplication = function () {
+window.startApplication = async function () {
     console.log('🔵 startApplication called, applicationStarted:', applicationStarted);
 
     if (isLiveServer) {
@@ -54,6 +110,9 @@ window.startApplication = function () {
     // Cleanup browser data before initialization
     cleanupBrowserData();
 
+    // Pre-init: force-reset IndexedDB if corrupted on previous session
+    await ensureHealthyIndexedDB();
+
     // Initialize the application with clean entity-curation backend
     initializeApp()
         .then(() => {
@@ -62,9 +121,18 @@ window.startApplication = function () {
             // Trigger initial sync
             triggerInitialSync();
         })
-        .catch(error => {
+        .catch(async (error) => {
             console.error('❌ Error during application initialization:', error);
             console.error('Stack trace:', error.stack);
+
+            // Auto-recover from IndexedDB corruption: reset and reload once
+            if (isIndexedDBError(error)) {
+                console.warn('🔄 IndexedDB error detected — resetting database and reloading...');
+                await forceResetIndexedDB();
+                window.location.reload();
+                return;
+            }
+
             showFatalError('There was an error initializing the application. Please check the console for details.');
         });
 };
@@ -130,12 +198,14 @@ async function initializeApp() {
         }
 
         // CRITICAL: Validate DataStore.db is ready before proceeding
-        // This prevents race conditions where modules try to access db before it's open
-        if (!window.DataStore.db || !window.DataStore.db.isOpen()) {
+        // In degraded mode (IndexedDB unavailable), db is null but the app runs API-only
+        if (window.DataStore._degraded) {
+            console.warn('⚠️ DataStore running in degraded mode — IndexedDB unavailable, using API only');
+        } else if (!window.DataStore.db || !window.DataStore.db.isOpen()) {
             throw new Error('DataStore.db is not ready - async initialization incomplete');
         }
 
-        console.log('✅ DataStore initialized successfully - db is ready and open');
+        console.log('✅ DataStore initialized successfully');
 
         // Initialize utility managers that depend on DataStore
         console.log('🔄 Initializing utility managers...');
@@ -161,6 +231,14 @@ async function initializeApp() {
             console.log('✅ API Service initialized');
         } else {
             console.warn('⚠️ API Service not available');
+        }
+
+        // Initialize CurationBrowser (server-driven pagination — no local cache)
+        // window.CurationBrowser is the class at this point — instantiate it
+        const CurationBrowserClass = window.CurationBrowser;
+        if (CurationBrowserClass && window.ApiService) {
+            window.CurationBrowser = new CurationBrowserClass({ apiService: window.ApiService });
+            console.log('✅ CurationBrowser initialized');
         }
 
         // Initialize Sync Manager V3 (depends on DataStore and ApiService)

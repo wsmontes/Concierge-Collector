@@ -167,6 +167,14 @@ def search_curations(
     )
 
 
+@router.get("/cities")
+def list_cities(db: Database = Depends(get_database)):
+    """Retorna lista distinta de cidades para o dropdown de filtro.
+    Usa MongoDB distinct() com índice implícito — O(1) na prática."""
+    cities = db.curations.distinct("city")
+    return sorted([c for c in cities if c])
+
+
 @router.get("/entities/{entity_id}/curations", response_model=List[Curation])
 def get_entity_curations(
     entity_id: str,

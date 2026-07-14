@@ -21,7 +21,7 @@
 const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
     constructor() {
         this.dbName = 'ConciergeCollector'; // Match DataStore database name
-        this.currentVersion = 91; // Match DataStore version
+        this.currentVersion = 92; // Match DataStore version (v92 adds lastAccessedAt, source indexes)
         this.db = null;
         this.migrations = new Map();
         this.validators = new Map();
@@ -153,6 +153,9 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
         try {
             this.log.info(`Initializing database (target version: ${this.currentVersion})`);
 
+            // Auto-recovery: check localStorage sentinel for schema version mismatch
+            await this._checkSchemaSentinel();
+
             // Check if database exists and get current version
             const existingVersion = await this.getCurrentVersion();
 
@@ -164,23 +167,34 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
                 // Old database without _meta table (pre-DatabaseManager)
                 this.log.info('Legacy database detected - adding version tracking');
 
-                // Close any existing connection
+                // Close any existing connection before attempting upgrade
                 if (this.db) {
-                    this.db.close();
+                    try { this.db.close(); } catch (_) {}
+                    this.db = null;
                 }
 
-                // Open existing database and get its version
-                const tempDb = new Dexie(this.dbName);
-                await tempDb.open();
-                const actualVersion = tempDb.verno;
-                tempDb.close();
+                // Try to open existing database and read its version.
+                // If this fails (e.g., version too high for our schema), auto-reset.
+                let actualVersion;
+                try {
+                    const tempDb = new Dexie(this.dbName);
+                    await tempDb.open();
+                    actualVersion = tempDb.verno;
+                    tempDb.close();
+                } catch (openError) {
+                    this.log.warn('Cannot open legacy database for version check, auto-resetting:', openError?.message || openError);
+                    await this._autoReset();
+                    this.log.info('✅ Database auto-reset after legacy open failure');
+                    // _autoReset sets the sentinel and creates fresh — we're done
+                    return this.db;
+                }
 
                 this.log.info(`Legacy database is at version ${actualVersion}, adding _meta table`);
 
-                // Define schemas for all versions
+                // Define schemas for upgrade
                 this.db = new Dexie(this.dbName);
 
-                // Preserve existing schema at current version (without _meta)
+                // Preserve existing schema at current version (without _meta or v92 indexes)
                 this.db.version(actualVersion).stores({
                     entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt, etag, sync.status',
                     curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt, updatedAt, etag, sync.status',
@@ -193,10 +207,10 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
                     pendingAudio: '++id, restaurantId, draftId, timestamp, retryCount, status'
                 });
 
-                // Add new version that includes _meta
+                // Add new version that includes _meta + v92 indexes (lastAccessedAt, source)
                 this.db.version(actualVersion + 1).stores({
-                    entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt, etag, sync.status',
-                    curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt, updatedAt, etag, sync.status',
+                    entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt, etag, sync.status, lastAccessedAt, source',
+                    curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt, updatedAt, etag, sync.status, lastAccessedAt, source',
                     curators: '++id, curator_id, name, email, status, createdAt, lastActive',
                     drafts: '++id, type, data, curator_id, createdAt, lastModified',
                     syncQueue: '++id, type, action, local_id, entity_id, data, createdAt, retryCount, lastError',
@@ -204,31 +218,43 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
                     cache: 'key, expires',
                     draftRestaurants: '++id, curatorId, name, timestamp, lastModified, hasAudio',
                     pendingAudio: '++id, restaurantId, draftId, timestamp, retryCount, status',
-                    _meta: 'key'  // Add the new table
+                    _meta: 'key'
                 }).upgrade(tx => {
-                    // Add version tracking record during upgrade
                     return tx.table('_meta').add({ key: 'version', value: this.currentVersion });
                 });
 
-                await this.db.open();
-                this.log.info('✅ Legacy database upgraded with version tracking');
-
-                // Run validation and repair
-                await this.validateAndRepair();
+                try {
+                    await this.db.open();
+                    const missing = await this._validateTablesExist();
+                    if (missing) throw new Error(`Table '${missing}' missing after legacy upgrade — database corrupted`);
+                    this.log.info('✅ Legacy database upgraded with version tracking');
+                    // Run validation and repair
+                    await this.validateAndRepair();
+                } catch (upgradeError) {
+                    this.log.warn('Legacy upgrade failed, auto-resetting:', upgradeError?.message || upgradeError);
+                    if (this.db) { try { this.db.close(); } catch (_) {} }
+                    await this._autoReset();
+                    this.log.info('✅ Database auto-reset after failed legacy upgrade');
+                    return this.db;
+                }
             } else if (existingVersion < this.currentVersion) {
                 // Needs migration
                 this.log.info(`Database needs migration: v${existingVersion} → v${this.currentVersion}`);
                 await this.migrateDatabase(existingVersion);
             } else if (existingVersion > this.currentVersion) {
-                // Database is newer than code (user downgraded?)
-                this.log.error(`Database version (${existingVersion}) is newer than code (${this.currentVersion})`);
-                throw new Error('Database version mismatch - please update the application');
+                // Database is newer than code (likely from a deployment rollback)
+                this.log.warn(`Database version (${existingVersion}) > code (${this.currentVersion}), auto-resetting...`);
+                await this._autoReset();
+                this.log.info('✅ Database auto-reset after version downgrade');
             } else {
                 // Same version - validate and repair if needed
                 this.log.info('Database version matches - validating data');
                 await this.openDatabase();
                 await this.validateAndRepair();
             }
+
+            // Persist schema version so future mismatches auto-recover
+            this._setSentinelVersion(this.currentVersion);
 
             this.log.info('✅ Database initialized successfully');
             return this.db;
@@ -238,6 +264,7 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
 
             // Try to recover
             if (await this.attemptRecovery()) {
+                this._setSentinelVersion(this.currentVersion);
                 this.log.info('✅ Database recovered successfully');
                 return this.db;
             }
@@ -283,16 +310,102 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
     }
 
     /**
-     * Create fresh database with current schema (version 91)
+     * Check localStorage sentinel for schema version mismatch.
+     * If the stored version differs from currentVersion, delete the old
+     * IndexedDB so users don't need to manually clear their storage.
+     */
+    async _checkSchemaSentinel() {
+        const SENTINEL_KEY = 'concierge_db_schema_version';
+
+        // Check for schema version change
+        const stored = localStorage.getItem(SENTINEL_KEY);
+        if (stored !== null) {
+            const storedVersion = parseInt(stored, 10);
+            if (storedVersion !== this.currentVersion) {
+                this.log.warn(`Schema sentinel mismatch (stored: v${storedVersion}, code: v${this.currentVersion}) — resetting IndexedDB`);
+                try {
+                    await Dexie.delete(this.dbName);
+                    this.log.info('🗑️ Old IndexedDB deleted due to schema version change');
+                } catch (e) {
+                    this.log.warn('Failed to delete old IndexedDB during sentinel check:', e);
+                }
+                localStorage.removeItem(SENTINEL_KEY);
+            }
+        }
+    }
+
+    _setSentinelVersion(version) {
+        try {
+            localStorage.setItem('concierge_db_schema_version', String(version));
+        } catch (e) {
+            // localStorage may be full or unavailable — non-critical
+            this.log.warn('Failed to persist schema sentinel:', e);
+        }
+    }
+
+    _getSentinelVersion() {
+        const stored = localStorage.getItem('concierge_db_schema_version');
+        return stored !== null ? parseInt(stored, 10) : null;
+    }
+
+    /**
+     * Verify that expected tables actually have backing IndexedDB object stores.
+     * Uses the native IDBDatabase API because Dexie's table.schema can be
+     * non-null even when the backing store was lost (e.g. upgrade interrupted).
+     * @returns {string|null} Missing table name, or null if all OK.
+     */
+    async _validateTablesExist() {
+        if (!this.db) return 'no database instance';
+        try {
+            const backend = await this.db.backendDB();
+            const required = ['entities', 'curations', 'curators', 'syncQueue', 'settings', 'drafts'];
+            for (const name of required) {
+                if (!backend.objectStoreNames.contains(name)) return name;
+            }
+            return null;
+        } catch (e) {
+            this.log.warn('Native objectStore check failed:', e?.message || e);
+            // Fallback: Dexie schema check (less reliable but better than nothing)
+            const required = ['entities', 'curations', 'curators', 'syncQueue', 'settings', 'drafts'];
+            for (const name of required) {
+                const table = this.db[name];
+                if (!table || !table.schema) return name;
+            }
+            return null;
+        }
+    }
+
+    /**
+     * Nuclear reset: delete IndexedDB and recreate from scratch.
+     * Used when version downgrade is detected or recovery is needed.
+     */
+    async _autoReset() {
+        try {
+            // Close any existing connection
+            if (this.db) {
+                try { this.db.close(); } catch (_) {}
+                this.db = null;
+            }
+            await Dexie.delete(this.dbName);
+            this.log.info('🗑️ Database deleted for auto-reset');
+        } catch (e) {
+            this.log.warn('Failed to delete database during auto-reset:', e);
+        }
+        await this.createFreshDatabase();
+        this._setSentinelVersion(this.currentVersion);
+    }
+
+    /**
+     * Create fresh database with current schema (version 92)
      */
     async createFreshDatabase() {
         this.db = new Dexie(this.dbName);
 
-        // Define schema matching DataStore version 91
+        // Define schema matching DataStore version 92
         this.db.version(this.currentVersion).stores({
-            // Core V3 Tables with sync.status indexed
-            entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt, etag, sync.status',
-            curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt, updatedAt, etag, sync.status',
+            // Core V3 Tables with sync.status indexed + v92 cache indexes
+            entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt, etag, sync.status, lastAccessedAt, source',
+            curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt, updatedAt, etag, sync.status, lastAccessedAt, source',
             curators: '++id, curator_id, name, email, status, createdAt, lastActive',
 
             // System Tables
@@ -310,6 +423,9 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
         });
 
         await this.db.open();
+
+        const missing = await this._validateTablesExist();
+        if (missing) throw new Error(`Table '${missing}' missing after fresh create — IndexedDB may be corrupted`);
 
         // Store version
         await this.db._meta.put({ key: 'version', value: this.currentVersion });
@@ -324,9 +440,9 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
         this.db = new Dexie(this.dbName);
 
         this.db.version(this.currentVersion).stores({
-            // Core V3 Tables with sync.status indexed
-            entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt, etag, sync.status',
-            curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt, updatedAt, etag, sync.status',
+            // Core V3 Tables with sync.status indexed + v92 cache indexes
+            entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt, etag, sync.status, lastAccessedAt, source',
+            curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt, updatedAt, etag, sync.status, lastAccessedAt, source',
             curators: '++id, curator_id, name, email, status, createdAt, lastActive',
 
             // System Tables
@@ -344,6 +460,9 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
         });
 
         await this.db.open();
+
+        const missing = await this._validateTablesExist();
+        if (missing) throw new Error(`Table '${missing}' missing after open — IndexedDB may be corrupted`);
     }
 
     /**
@@ -647,9 +766,16 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
     async attemptRecovery() {
         this.log.warn('Attempting database recovery...');
 
+        // Close any lingering connections before attempting recovery
+        if (this.db) {
+            try { this.db.close(); } catch (_) {}
+            this.db = null;
+        }
+
         try {
             // Try to restore from backup
             await this.restoreBackup();
+            this._setSentinelVersion(this.currentVersion);
             return true;
         } catch (error) {
             this.log.error('Backup restore failed, trying nuclear option');
@@ -658,11 +784,15 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
             try {
                 await Dexie.delete(this.dbName);
                 await this.createFreshDatabase();
+                this._setSentinelVersion(this.currentVersion);
                 this.log.warn('⚠️  Database recreated from scratch - all local data lost');
                 return true;
             } catch (finalError) {
                 this.log.error('Recovery failed completely:', finalError);
                 return false;
+            }
+        }
+    }
             }
         }
     }

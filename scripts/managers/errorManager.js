@@ -227,6 +227,18 @@ window.ErrorManager = (function() {
         });
 
         window.addEventListener('unhandledrejection', (event) => {
+            // Dexie IndexedDB errors are caught internally by our guards
+            // (countBySyncStatus, _dbReady, etc.) but Dexie's internal promise
+            // chain still fires unhandledrejection before our catch runs.
+            const reason = event.reason;
+            if (reason && (reason.name === 'NotFoundError' || reason.name === 'VersionError')) {
+                const msg = reason.message || '';
+                if (msg.includes('objectStore') || msg.includes('object store') ||
+                    msg.includes('IDBTransaction') || msg.includes('IndexedDB')) {
+                    // Silenced: handled internally, harmless in degraded mode
+                    return;
+                }
+            }
             console.error('[ErrorManager] Unhandled rejection:', event.reason);
             this.logError({
                 category: ERROR_CATEGORIES.UNKNOWN,
