@@ -7,14 +7,13 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
-from contextlib import asynccontextmanager
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from app.core.config import settings
-from app.core.database import connect_to_mongo, close_mongo_connection
+from app.core.lifespan import lifespan
 from app.api import entities, curations, system, places, places_orchestrate, ai, concepts, auth, llm_gateway, openai_compat, places_router, capture
 
 # ---------------------------------------------------------------------------
@@ -25,20 +24,6 @@ from app.api import entities, curations, system, places, places_orchestrate, ai,
 #   - Bulk endpoints: 20 requests / minute
 # ---------------------------------------------------------------------------
 limiter = Limiter(key_func=get_remote_address, default_limits=["300/minute"])
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    """Startup and shutdown events"""
-    # Startup
-    try:
-        connect_to_mongo()
-    except Exception as e:
-        print(f"⚠️  MongoDB connection failed (continuing without it): {e}")
-        print("⚠️  Only Places API endpoints will work")
-    yield
-    # Shutdown
-    close_mongo_connection()
 
 
 # Create FastAPI application

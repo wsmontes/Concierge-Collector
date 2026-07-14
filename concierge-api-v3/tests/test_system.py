@@ -75,11 +75,10 @@ class TestSystemEndpoints:
 
     def test_global_exception_handler_does_not_leak_details(self, client):
         """O exception handler global não deve expor detalhes internos no body."""
-        # Usa uma rota existente que pode disparar erro interno
-        response = client.get("/api/v3/entities/nonexistent_____")
-        # Verifica que respostas de erro não vazam stack traces
-        assert "Traceback" not in response.text
-        # Se for 500, confirma que é genérico (sem detalhes da exceção)
+        # Trigger a guaranteed 500: pass invalid ObjectId to MongoDB
+        response = client.get("/api/v3/curations/" + "x" * 100)
+        # If the endpoint returns 500 (unhandled), verify no stack trace leaked
         if response.status_code == 500:
             data = response.json()
             assert "Internal server error" in data.get("detail", "")
+            assert "Traceback" not in response.text

@@ -187,7 +187,7 @@ def get_entity_curations(
     cursor = db.curations.find({
         "entity_id": entity_id,
         "status": {"$ne": "deleted"}
-    }, projection)
+    }, projection).limit(200)
     curations = []
     for doc in cursor:
         curations.append(Curation(**doc))

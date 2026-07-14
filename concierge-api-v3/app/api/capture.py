@@ -6,7 +6,6 @@ POST /capture/{id}/confirm  Confirm the match, create the curation.
 """
 
 import base64
-import hashlib
 import json
 import logging
 import os
@@ -92,14 +91,8 @@ _idempotency_cache = _LRUDict(maxsize=2000)
 # ── Capture state store (MongoDB) ────────────────────────────────────────────
 
 def _capture_collection(db: Database):
-    """Ensure the capture_sessions collection has indexes."""
-    col = db["capture_sessions"]
-    # Ensure TTL index: auto-delete sessions after 48 hours
-    try:
-        col.create_index("createdAt", expireAfterSeconds=172800, background=True)
-    except Exception:
-        pass
-    return col
+    """Get the capture_sessions collection."""
+    return db["capture_sessions"]
 
 
 # ── AI helpers ───────────────────────────────────────────────────────────────
@@ -182,7 +175,7 @@ def _match_entities(db: Database, restaurant_name: Optional[str]) -> List[Dict[s
         entities.extend(exact)
 
     if not entities and restaurant_name:
-        escaped_name = re.escape(restaurant_name)
+        # escaped_name already computed above
         # 2. Partial match
         partial = list(
             db.entities.find(
