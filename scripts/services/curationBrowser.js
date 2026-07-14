@@ -8,14 +8,15 @@ class CurationBrowser {
     this.done = false;
     this.loading = false;
     this.items = [];
+    this.total = -1; // -1 = unknown (cursor mode on subsequent pages)
   }
 
   openScope({ curatorId = null, status = null, city = null, type = null, q = null } = {}) {
-    // Only reset if the scope actually changed
     if (this._scopeChanged({ curatorId, status, city, type, q })) {
       this.cursor = null;
       this.done = false;
       this.items = [];
+      this.total = -1;
     }
     this.scope = { curatorId, status, city, type, q };
   }
@@ -42,14 +43,19 @@ class CurationBrowser {
 
   async _fetch(afterId) {
     const resp = await this.apiService.listCurations(this._params(afterId));
-    return resp.items || [];
+    return { items: resp.items || [], total: resp.total };
   }
 
   async nextPage() {
     if (this.done || this.loading) return { items: [], done: true };
     this.loading = true;
     try {
-      const items = await this._fetch(this.cursor);
+      const { items, total } = await this._fetch(this.cursor);
+
+      // Capture total from first page (subsequent pages return -1 in cursor mode)
+      if (total > 0 && this.total <= 0) {
+        this.total = total;
+      }
 
       if (items.length) {
         this.cursor = items[items.length - 1]._id || items[items.length - 1].curation_id;

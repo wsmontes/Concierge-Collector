@@ -331,7 +331,13 @@ if (typeof window.UIManager === 'undefined') {
 
         updateCurationsCountSummary(total, filtered) {
             if (!this.curationsCountSummary) return;
-            this.curationsCountSummary.textContent = `Showing ${filtered} of ${total} curations`;
+            // Use server total when available (CurationBrowser reports it from first page)
+            const serverTotal = window.CurationBrowser?.total;
+            if (serverTotal > 0) {
+                this.curationsCountSummary.textContent = `Showing ${filtered} of ${serverTotal} curations`;
+            } else {
+                this.curationsCountSummary.textContent = `Showing ${filtered} of ${total} curations`;
+            }
         }
 
         updateEntitiesCountSummary(total, filtered) {
