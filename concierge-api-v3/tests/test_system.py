@@ -74,11 +74,26 @@ class TestSystemEndpoints:
         assert response.status_code != 401  # Deve passar auth
 
     def test_global_exception_handler_does_not_leak_details(self, client):
-        """O exception handler global não deve expor detalhes internos no body."""
-        # Trigger a guaranteed 500: pass invalid ObjectId to MongoDB
-        response = client.get("/api/v3/curations/" + "x" * 100)
-        # If the endpoint returns 500 (unhandled), verify no stack trace leaked
-        if response.status_code == 500:
-            data = response.json()
-            assert "Internal server error" in data.get("detail", "")
-            assert "Traceback" not in response.text
+        """O exception handler global nao deve expor detalhes internos no body."""
+        from unittest.mock import patch
+        from pymongo.collection import Collection
+
+        # The session-scoped client has raise_server_exceptions=True (default),
+        # so ServerErrorMiddleware re-raises after sending the 500.
+        # We need a throwaway client with raise_server_exceptions=False to
+        # actually capture the 500 response body and verify no leak.
+        from starlette.testclient import TestClient
+        from main import app
+
+        with patch.object(Collection, "find_one", side_effect=RuntimeError("Something broke internally")):
+            with TestClient(app, raise_server_exceptions=False) as tc:
+                response = tc.get("/api/v3/curations/test_id_that_will_crash")
+
+        assert response.status_code == 500, (
+            f"Expected 500, got {response.status_code}: {response.text[:200]}"
+        )
+        data = response.json()
+        assert "Internal server error" in data.get("detail", "")
+        # Ensure no Python stack trace, exception type, or variable leaked
+        assert "Traceback" not in response.text
+        assert "RuntimeError" not in response.text

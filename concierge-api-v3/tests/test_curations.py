@@ -266,30 +266,29 @@ def test_bulk_upsert_duplicate_key_reports_recovery_failure():
     assert result.updated == 0
 
 
-def test_hybrid_search_escapes_location_regex():
+@pytest.mark.parametrize("location", [
+    ".*",
+    "São Paulo (Centro) $$$",
+])
+def test_hybrid_search_escapes_location_regex(location):
     """Location parameter with regex metacharacters must be escaped before $regex."""
+    import re
     from app.api.curations import hybrid_search
     from app.models.schemas import HybridSearchRequest
     from unittest.mock import MagicMock, patch
     import numpy as np
     import os
 
-    # Ensure OPENAI_API_KEY is set (patched OpenAI constructor, but check still runs)
     old_key = os.environ.get("OPENAI_API_KEY")
     if not old_key:
         os.environ["OPENAI_API_KEY"] = "test-key"
 
     try:
         mock_db = MagicMock()
-        # Return empty for entity find
         mock_db.entities.find.return_value.limit.return_value = []
-        # Return empty for curation find
         mock_db.curations.find.return_value.limit.return_value = []
 
-        request = HybridSearchRequest(
-            query="pizza",
-            location=".*",  # regex metacharacter — should be escaped
-        )
+        request = HybridSearchRequest(query="pizza", location=location)
 
         with patch("app.api.curations.OpenAI") as mock_openai:
             mock_client = MagicMock()
@@ -303,20 +302,21 @@ def test_hybrid_search_escapes_location_regex():
                            return_value=np.array([0.1] * 1536)):
                     response = hybrid_search(request, mock_db)
 
-        # Should complete without error (no regex injection crash)
+        # Must complete without error (no regex injection crash)
         assert response.total_results >= 0
+        assert response.query == "pizza"
 
         # Verify that find was called with escaped location
-        # .*  →  re.escape(".*") = "\\.\\*"
+        expected = re.escape(location)
         call_kwargs = mock_db.entities.find.call_args[0][0]
         or_clauses = call_kwargs["$or"]
+        assert len(or_clauses) > 0, "Expected location $or clauses to be present"
         for clause in or_clauses:
             for field_key, regex_condition in clause.items():
-                assert regex_condition["$regex"] == "\\.\\*", (
-                    f"Expected escaped regex, got: {regex_condition['$regex']!r}"
+                assert regex_condition["$regex"] == expected, (
+                    f"Expected escaped regex {expected!r}, got: {regex_condition['$regex']!r}"
                 )
     finally:
-        # Restore env
         if old_key is None:
             del os.environ["OPENAI_API_KEY"]
         else:
