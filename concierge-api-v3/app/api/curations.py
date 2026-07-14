@@ -869,12 +869,17 @@ def bulk_upsert_curations(
 
         except DuplicateKeyError:
             # Race: another request inserted between our find_one and insert_one.
-            # Update the existing document with our data instead of silently losing it.
+            # Update the existing document with our data (preserve createdAt).
             try:
-                db.curations.update_one({"_id": curation.curation_id}, {"$set": doc})
-            except Exception:
-                pass
-            updated += 1
+                update_doc = {k: v for k, v in doc.items() if k not in ("_id", "createdAt")}
+                db.curations.update_one({"_id": curation.curation_id}, {"$set": update_doc})
+                updated += 1
+            except Exception as update_exc:
+                errors.append(BulkItemError(
+                    index=idx,
+                    id=curation.curation_id,
+                    error=f"Race recovery failed after DuplicateKeyError: {str(update_exc)}"
+                ))
         except Exception as exc:
             errors.append(BulkItemError(
                 index=idx,

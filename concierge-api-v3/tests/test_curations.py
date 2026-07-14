@@ -174,8 +174,96 @@ def test_bulk_upsert_handles_duplicate_key_race():
 
     # Deve ter chamado update_one (não só incrementar counter)
     mock_db.curations.update_one.assert_called()
+    # $set não deve conter createdAt (preservar o original)
+    call_args, call_kwargs = mock_db.curations.update_one.call_args
+    set_doc = call_kwargs["$set"] if "$set" in call_kwargs else call_args[1]["$set"]
+    assert "createdAt" not in set_doc, "createdAt must not be in $set (preserve original)"
+    assert "_id" not in set_doc, "_id must not be in $set"
+    # Deve ter contabilizado como updated
+    assert result.updated == 1
     # Não deve ter erros
     assert len(result.errors) == 0
+
+
+def test_bulk_upsert_duplicate_key_preserves_created_at():
+    """DuplicateKeyError recovery must not overwrite original createdAt."""
+    from unittest.mock import patch, MagicMock
+    from app.api.curations import bulk_upsert_curations
+    from app.models.schemas import BulkCurationCreate, CurationCreate, CuratorInfo
+    from pymongo.errors import DuplicateKeyError
+
+    mock_db = MagicMock()
+    mock_auth = {"role": "admin", "user": "test@test.com"}
+
+    curation = CurationCreate(
+        curation_id="cur_test_002",
+        entity_id="ent_002",
+        curator_id="curator_002",
+        curator=CuratorInfo(id="curator_002", name="Test"),
+        status="active",
+    )
+    payload = BulkCurationCreate(curations=[curation])
+
+    mock_db.curations.find_one.return_value = None
+    mock_db.curations.insert_one.side_effect = DuplicateKeyError("dup")
+    # Provide a matching entity so denormalization runs
+    mock_db.entities.find.return_value = [
+        {"_id": "ent_002", "type": "restaurant", "data": {"location": {"city": "NYC"}}}
+    ]
+
+    with patch("app.api.curations.denormalize_curation_location", return_value={"city": "NYC", "type": "restaurant"}) as mock_denorm:
+        result = bulk_upsert_curations(request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth)
+
+    mock_denorm.assert_called_once()
+    mock_db.curations.update_one.assert_called_once()
+    call_args, call_kwargs = mock_db.curations.update_one.call_args
+    set_doc = call_kwargs.get("$set") or call_args[1].get("$set")
+
+    # Must NOT contain createdAt
+    assert "createdAt" not in set_doc, "createdAt must NOT be in $set"
+    # Must contain the fields from the new document (status update etc.)
+    assert set_doc.get("status") == "active"
+    # Must contain denormalized fields
+    assert set_doc.get("city") == "NYC"
+    # Must NOT contain _id
+    assert "_id" not in set_doc
+    assert result.updated == 1
+    assert len(result.errors) == 0
+
+
+def test_bulk_upsert_duplicate_key_reports_recovery_failure():
+    """When update_one fails after DuplicateKeyError, error must be reported."""
+    from unittest.mock import patch, MagicMock
+    from app.api.curations import bulk_upsert_curations
+    from app.models.schemas import BulkCurationCreate, CurationCreate, CuratorInfo
+    from pymongo.errors import DuplicateKeyError
+
+    mock_db = MagicMock()
+    mock_auth = {"role": "admin", "user": "test@test.com"}
+
+    curation = CurationCreate(
+        curation_id="cur_test_003",
+        entity_id="ent_003",
+        curator_id="curator_003",
+        curator=CuratorInfo(id="curator_003", name="Test"),
+        status="draft",
+    )
+    payload = BulkCurationCreate(curations=[curation])
+
+    mock_db.curations.find_one.return_value = None
+    mock_db.curations.insert_one.side_effect = DuplicateKeyError("dup")
+    mock_db.curations.update_one.side_effect = RuntimeError("connection lost")
+    mock_db.entities.find.return_value = []
+
+    with patch("app.api.curations.denormalize_curation_location", return_value={"city": None, "type": None}):
+        result = bulk_upsert_curations(request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth)
+
+    # Must report the error instead of silently passing
+    assert len(result.errors) == 1
+    assert result.errors[0].index == 0
+    assert result.errors[0].id == "cur_test_003"
+    assert "DuplicateKeyError" in result.errors[0].error
+    assert result.updated == 0
 
 
 def test_hybrid_search_escapes_location_regex():
