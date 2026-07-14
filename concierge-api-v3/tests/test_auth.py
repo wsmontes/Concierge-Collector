@@ -115,15 +115,8 @@ def test_testing_bypass_only_works_in_development():
             os.environ.pop("TESTING", None)
 
 
-def test_oauth_init_rejects_untrusted_callback_url():
+def test_oauth_init_rejects_untrusted_callback_url(client):
     """callback_url deve ser validado contra allowlist de origens confiáveis."""
-    from fastapi.testclient import TestClient
-    from main import app
-    from app.core.config import settings
-    from urllib.parse import urlparse, parse_qs
-    from jose import jwt
-
-    client = TestClient(app)
 
     # URL maliciosa deve ser rejeitada ou ignorada (usar default)
     response = client.get(
