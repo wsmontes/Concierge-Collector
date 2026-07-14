@@ -17,42 +17,16 @@ from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 
 from fastapi import APIRouter, Depends, HTTPException, Query
-from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from pymongo.database import Database
-import secrets
 
 from app.core.database import get_database
-from app.core.security import api_key_header, bearer_scheme, get_api_secret_key
+from app.core.security import verify_auth
 from app.services.curation_denorm import denormalize_curation_location
-from jose import jwt, JWTError
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/capture", tags=["Capture"])
-
-
-# ── Auth ─────────────────────────────────────────────────────────────────────
-
-async def verify_auth(
-    api_key: Optional[str] = Depends(api_key_header),
-    bearer: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
-) -> dict:
-    if api_key:
-        try:
-            expected_key = get_api_secret_key()
-            if secrets.compare_digest(api_key, expected_key):
-                return {"authenticated": True, "method": "api_key"}
-        except Exception:
-            pass
-    if bearer:
-        try:
-            from app.core.security import ALGORITHM
-            payload = jwt.decode(bearer.credentials, get_api_secret_key(), algorithms=[ALGORITHM])
-            return {"authenticated": True, "method": "jwt", "user": payload.get("sub")}
-        except JWTError:
-            pass
-    raise HTTPException(status_code=401, detail="Missing authorization token")
 
 
 # ── Pydantic models ─────────────────────────────────────────────────────────

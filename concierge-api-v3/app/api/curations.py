@@ -4,12 +4,10 @@ Professional FastAPI implementation with async MongoDB
 """
 
 from fastapi import APIRouter, HTTPException, Header, Query, Depends, Request, status
-from fastapi.security import HTTPAuthorizationCredentials
 from typing import Optional, List
 import re
 from datetime import datetime, timezone
 from pymongo.errors import DuplicateKeyError
-import secrets
 import time
 import os
 import numpy as np
@@ -21,11 +19,10 @@ from app.models.schemas import (
     BulkCurationCreate, BulkOperationResponse, BulkItemError
 )
 from app.core.database import get_database
-from app.core.security import verify_access_token, api_key_header, bearer_scheme, get_api_secret_key
+from app.core.security import verify_access_token, verify_auth
 from app.models.user import has_role
 from app.services.curation_denorm import denormalize_curation_location
 from pymongo.database import Database
-from jose import jwt, JWTError
 from openai import OpenAI
 
 router = APIRouter(prefix="/curations", tags=["curations"])
@@ -50,37 +47,6 @@ def build_curation_response_payload(curation_doc: dict) -> dict:
         "status": curation_doc.get("status"),
         "restaurant_name": curation_doc.get("restaurant_name"),
     }
-
-
-async def verify_auth(
-    api_key: Optional[str] = Depends(api_key_header),
-    bearer: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme)
-) -> dict:
-    """Verify either OAuth token or API key"""
-    # Try API key first
-    if api_key:
-        try:
-            expected_key = get_api_secret_key()
-            if secrets.compare_digest(api_key, expected_key):
-                return {"authenticated": True, "method": "api_key"}
-        except:
-            pass
-    
-    # Try Bearer token
-    if bearer:
-        try:
-            from app.core.security import ALGORITHM
-            payload = jwt.decode(bearer.credentials, get_api_secret_key(), algorithms=[ALGORITHM])
-            return {
-                "authenticated": True,
-                "method": "jwt",
-                "user": payload.get("sub"),
-                "role": payload.get("role", "curator")
-            }
-        except JWTError:
-            pass
-    
-    raise HTTPException(status_code=401, detail="Missing authorization token")
 
 
 @router.post("", response_model=Curation, status_code=201)

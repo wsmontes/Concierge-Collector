@@ -332,10 +332,64 @@ async def verify_access_token(
         )
 
 
+def verify_auth(
+    api_key: Optional[str] = Security(api_key_header),
+    bearer: Optional[HTTPAuthorizationCredentials] = Security(bearer_scheme),
+) -> dict:
+    """Verify either API key (X-API-Key header) or JWT Bearer token.
+
+    Returns a dict with authentication metadata. Use as a FastAPI dependency:
+        auth: dict = Depends(verify_auth)
+
+    Raises HTTPException(401) if neither credential is valid.
+    Raises HTTPException(500) if API_SECRET_KEY is not configured.
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+
+    # Try API key first
+    if api_key:
+        try:
+            expected_key = get_api_secret_key()
+            if secrets.compare_digest(api_key, expected_key):
+                return {"authenticated": True, "method": "api_key"}
+        except RuntimeError:
+            # API_SECRET_KEY not configured — surface to operators
+            logger.error("API_SECRET_KEY not configured — rejecting API key auth")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Server authentication not configured (missing API_SECRET_KEY)",
+            )
+        except Exception:
+            pass
+
+    # Try JWT Bearer token
+    if bearer:
+        try:
+            payload = jwt.decode(bearer.credentials, get_api_secret_key(), algorithms=[ALGORITHM])
+            return {
+                "authenticated": True,
+                "method": "jwt",
+                "user": payload.get("sub"),
+                "role": payload.get("role", "curator"),
+            }
+        except RuntimeError:
+            logger.error("API_SECRET_KEY not configured — cannot decode JWT")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Server authentication not configured (missing API_SECRET_KEY)",
+            )
+        except JWTError:
+            pass
+
+    raise HTTPException(status_code=401, detail="Missing authorization token")
+
+
 # Export main dependencies
 __all__ = [
     "verify_api_key",
     "optional_api_key",
     "generate_api_key",
     "api_key_header",
+    "verify_auth",
 ]

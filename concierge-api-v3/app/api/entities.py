@@ -3,14 +3,10 @@ Entity endpoints - CRUD operations
 """
 
 from fastapi import APIRouter, HTTPException, Header, Query, Depends, Request
-from fastapi.security import HTTPAuthorizationCredentials
 from typing import Optional, List
 from datetime import datetime, timezone
 from pymongo.errors import DuplicateKeyError
 from pymongo.database import Database
-import secrets
-
-from jose import jwt, JWTError
 
 from app.models.schemas import (
     Entity, EntityCreate, EntityUpdate, PaginatedResponse, ErrorResponse,
@@ -18,41 +14,9 @@ from app.models.schemas import (
 )
 from app.core.database import get_database
 from app.models.user import has_role
-from app.core.security import api_key_header, bearer_scheme, get_api_secret_key
+from app.core.security import api_key_header, bearer_scheme, get_api_secret_key, verify_auth
 
 router = APIRouter(prefix="/entities", tags=["entities"])
-
-
-async def verify_auth(
-    api_key: Optional[str] = Depends(api_key_header),
-    bearer: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme)
-) -> dict:
-    """Verify either OAuth token or API key"""
-    # Try API key first
-    if api_key:
-        try:
-            expected_key = get_api_secret_key()
-            if secrets.compare_digest(api_key, expected_key):
-                return {"authenticated": True, "method": "api_key"}
-        except:
-            pass
-    
-    # Try Bearer token
-    if bearer:
-        try:
-            # Import here to avoid circular dependency
-            from app.core.security import ALGORITHM
-            payload = jwt.decode(bearer.credentials, get_api_secret_key(), algorithms=[ALGORITHM])
-            return {
-                "authenticated": True,
-                "method": "jwt",
-                "user": payload.get("sub"),
-                "role": payload.get("role", "curator")
-            }
-        except JWTError:
-            pass
-    
-    raise HTTPException(status_code=401, detail="Missing authorization token")
 
 
 @router.post("", response_model=Entity, status_code=201)

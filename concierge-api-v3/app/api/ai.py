@@ -5,46 +5,17 @@ Handles transcription, concept extraction, image analysis, and intelligent orche
 """
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.security import HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any, List
 import os
-import secrets
 
 from app.core.database import get_database
-from app.core.security import verify_access_token, api_key_header, bearer_scheme, get_api_secret_key
+from app.core.security import verify_access_token, verify_auth
 from app.services.openai_service import OpenAIService
 from app.services.ai_orchestrator import AIOrchestrator
-from jose import jwt, JWTError
 
 
 router = APIRouter(prefix="/ai", tags=["AI Services"])
-
-
-async def verify_auth(
-    api_key: Optional[str] = Depends(api_key_header),
-    bearer: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme)
-) -> dict:
-    """Verify either OAuth token or API key"""
-    # Try API key first
-    if api_key:
-        try:
-            expected_key = get_api_secret_key()
-            if secrets.compare_digest(api_key, expected_key):
-                return {"authenticated": True, "method": "api_key"}
-        except:
-            pass
-    
-    # Try Bearer token
-    if bearer:
-        try:
-            from app.core.security import ALGORITHM
-            payload = jwt.decode(bearer.credentials, get_api_secret_key(), algorithms=[ALGORITHM])
-            return {"authenticated": True, "method": "jwt", "user": payload.get("sub")}
-        except JWTError:
-            pass
-    
-    raise HTTPException(status_code=401, detail="Missing authorization token")
 
 
 # Pydantic Models
