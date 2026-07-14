@@ -42,6 +42,10 @@ class TestSystemEndpoints:
         response = client.get("/api/v3/openai/v1/functions")
         assert response.status_code == 401
 
+        # GET /v1/models sem auth
+        response = client.get("/api/v3/openai/v1/models")
+        assert response.status_code == 401
+
     def test_openai_endpoints_with_auth(self, client, auth_headers):
         """Endpoints OpenAI-compatíveis com autenticação válida."""
         # POST /v1/chat/completions com auth
@@ -58,6 +62,13 @@ class TestSystemEndpoints:
         # GET /v1/functions com auth
         response = client.get(
             "/api/v3/openai/v1/functions",
+            headers=auth_headers
+        )
+        assert response.status_code != 401  # Deve passar auth
+
+        # GET /v1/models com auth
+        response = client.get(
+            "/api/v3/openai/v1/models",
             headers=auth_headers
         )
         assert response.status_code != 401  # Deve passar auth

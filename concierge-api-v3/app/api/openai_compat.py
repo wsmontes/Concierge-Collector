@@ -294,10 +294,12 @@ def execute_function(
 # ============================================================================
 
 @router.get("/v1/models", response_model=ModelsResponse)
-async def list_models():
+async def list_models(
+    auth: dict = Depends(verify_auth),
+):
     """
     List available models (OpenAI-compatible).
-    
+
     Returns a single model: concierge-restaurant
     """
     return ModelsResponse(
