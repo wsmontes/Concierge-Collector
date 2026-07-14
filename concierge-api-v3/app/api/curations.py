@@ -555,10 +555,11 @@ def hybrid_search(
     
     # Location filter
     if request.location:
+        escaped_location = re.escape(request.location)
         entity_filter["$or"] = [
-            {"location.city": {"$regex": request.location, "$options": "i"}},
-            {"location.neighborhood": {"$regex": request.location, "$options": "i"}},
-            {"location.address": {"$regex": request.location, "$options": "i"}}
+            {"location.city": {"$regex": escaped_location, "$options": "i"}},
+            {"location.neighborhood": {"$regex": escaped_location, "$options": "i"}},
+            {"location.address": {"$regex": escaped_location, "$options": "i"}}
         ]
     
     # Se tiver filtros, busca entities

@@ -178,6 +178,63 @@ def test_bulk_upsert_handles_duplicate_key_race():
     assert len(result.errors) == 0
 
 
+def test_hybrid_search_escapes_location_regex():
+    """Location parameter with regex metacharacters must be escaped before $regex."""
+    from app.api.curations import hybrid_search
+    from app.models.schemas import HybridSearchRequest
+    from unittest.mock import MagicMock, patch
+    import numpy as np
+    import os
+
+    # Ensure OPENAI_API_KEY is set (patched OpenAI constructor, but check still runs)
+    old_key = os.environ.get("OPENAI_API_KEY")
+    if not old_key:
+        os.environ["OPENAI_API_KEY"] = "test-key"
+
+    try:
+        mock_db = MagicMock()
+        # Return empty for entity find
+        mock_db.entities.find.return_value.limit.return_value = []
+        # Return empty for curation find
+        mock_db.curations.find.return_value.limit.return_value = []
+
+        request = HybridSearchRequest(
+            query="pizza",
+            location=".*",  # regex metacharacter — should be escaped
+        )
+
+        with patch("app.api.curations.OpenAI") as mock_openai:
+            mock_client = MagicMock()
+            mock_emb = MagicMock()
+            mock_emb.data = [MagicMock(embedding=[0.1] * 1536)]
+            mock_client.embeddings.create.return_value = mock_emb
+            mock_openai.return_value = mock_client
+
+            with patch("app.api.curations.np.linalg.norm", return_value=1.0):
+                with patch("app.api.curations.np.asarray",
+                           return_value=np.array([0.1] * 1536)):
+                    response = hybrid_search(request, mock_db)
+
+        # Should complete without error (no regex injection crash)
+        assert response.total_results >= 0
+
+        # Verify that find was called with escaped location
+        # .*  →  re.escape(".*") = "\\.\\*"
+        call_kwargs = mock_db.entities.find.call_args[0][0]
+        or_clauses = call_kwargs["$or"]
+        for clause in or_clauses:
+            for field_key, regex_condition in clause.items():
+                assert regex_condition["$regex"] == "\\.\\*", (
+                    f"Expected escaped regex, got: {regex_condition['$regex']!r}"
+                )
+    finally:
+        # Restore env
+        if old_key is None:
+            del os.environ["OPENAI_API_KEY"]
+        else:
+            os.environ["OPENAI_API_KEY"] = old_key
+
+
 def test_create_curation_denormalizes_city_type(client, test_db, clean_test_entities, clean_test_curations):
     test_db.entities.insert_one({
         "_id": "test_ent_denorm", "entity_id": "test_ent_denorm", "name": "T", "type": "bar",
