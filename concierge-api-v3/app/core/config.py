@@ -45,7 +45,10 @@ class Settings(BaseSettings):
     # Frontend URLs (localhost and production)
     frontend_url: str = "http://127.0.0.1:5500"
     frontend_url_production: str = "https://wsmontes.github.io/Concierge-Collector"
-    
+
+    # OAuth callback URL allowlist (JSON list of trusted frontend origins)
+    trusted_callback_origins: str = '[]'
+
     # JWT Token Settings
     access_token_expire_minutes: int = 60  # 1 hour
     refresh_token_expire_days: int = 30  # 30 days for refresh token
@@ -77,10 +80,25 @@ class Settings(BaseSettings):
         try:
             # Try JSON first
             return json.loads(self.cors_origins)
-        except:
+        except Exception:
             # Fall back to comma-separated string
             origins = [origin.strip() for origin in self.cors_origins.split(',')]
             return origins if origins else ["http://localhost:3000"]
+
+    @property
+    def trusted_callback_origins_list(self) -> List[str]:
+        """Parse trusted callback origins from JSON string, merge with frontend URLs."""
+        try:
+            explicit = json.loads(self.trusted_callback_origins)
+        except (json.JSONDecodeError, TypeError):
+            explicit = []
+        # Always include the configured frontend URLs
+        merged = set(explicit)
+        if self.frontend_url:
+            merged.add(self.frontend_url)
+        if self.frontend_url_production:
+            merged.add(self.frontend_url_production)
+        return sorted(merged)
     
     class Config:
         env_file = ".env"

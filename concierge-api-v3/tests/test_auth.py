@@ -131,18 +131,10 @@ def test_oauth_init_rejects_untrusted_callback_url():
         follow_redirects=False,
     )
 
-    # Deve redirecionar para o Google (não erro)
-    assert response.status_code == 307
-
-    # Decodificar state JWT e verificar que evil.com NÃO está no payload
-    location = response.headers.get("location", "")
-    parsed = urlparse(location)
-    params = parse_qs(parsed.query)
-    state_encoded = params.get("state", [""])[0]
-    assert state_encoded, "State deveria estar presente"
-    decoded = jwt.decode(state_encoded, settings.api_secret_key, algorithms=["HS256"])
-    sd = decoded.get("sd", "")
-    assert "evil.com" not in sd, f"State contém URL não confiável: {sd}"
+    # Deve rejeitar com 400 (não redirecionar silenciosamente)
+    assert response.status_code == 400
+    data = response.json()
+    assert "Untrusted callback URL" in data.get("detail", "")
 
 
 def test_oauth_init_accepts_trusted_callback_url():

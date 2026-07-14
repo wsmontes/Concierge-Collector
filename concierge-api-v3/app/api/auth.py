@@ -239,19 +239,22 @@ def google_oauth_init(
     if not frontend_redirect_url:
         frontend_redirect_url = settings.frontend_url
 
-    # Validate frontend_redirect_url against trusted origins
-    trusted_origins = {
-        settings.frontend_url,
-        settings.frontend_url_production,
+    # Validate frontend_redirect_url against config-driven trusted origins
+    trusted_origins = set(settings.trusted_callback_origins_list)
+    # Also accept localhost dev URLs (not stored in production config)
+    trusted_origins.update({
         "http://localhost:3000",
         "http://localhost:5500",
         "http://127.0.0.1:5500",
         "http://127.0.0.1:5501",
         "http://localhost:8080",
-    }
+    })
     if frontend_redirect_url not in trusted_origins:
         logger.warning(f"[OAuth] Untrusted callback_url rejected: {frontend_redirect_url}")
-        frontend_redirect_url = settings.frontend_url
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Untrusted callback URL: {frontend_redirect_url}"
+        )
 
     # Generate PKCE pair
     code_verifier, code_challenge = generate_pkce_pair()
