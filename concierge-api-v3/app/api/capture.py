@@ -19,6 +19,7 @@ from typing import Optional, Dict, Any, List
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from pymongo.database import Database
+from pymongo.errors import DuplicateKeyError
 
 from app.core.database import get_database
 from app.core.security import verify_auth
@@ -367,17 +368,8 @@ async def capture(
     logger.info(f"Extracted concepts: {list(concepts.keys())}")
 
     # ── 5. Store capture session ──
-    capture_id = _idempotency_cache.set(
-        request.idempotency_key,
-        {
-            "capture_id": request.idempotency_key,
-            "transcription": transcription,
-            "restaurant_name": restaurant_name,
-            "entities": entities,
-            "concepts": concepts,
-        },
-    )
-    # Also store in MongoDB for durability (confirmation endpoint needs it)
+    # Persist to MongoDB FIRST, then cache on success.
+    # If MongoDB is down, we return 503 without polluting the cache.
     col = _capture_collection(db)
     session_doc = {
         "_id": request.idempotency_key,
@@ -407,7 +399,11 @@ async def capture(
         concepts=concepts,
     )
 
-    _idempotency_cache.set(request.idempotency_key, result.model_dump())
+    # Now that MongoDB succeeded, populate the idempotency cache
+    # Include curator_id so cache fallback in confirm preserves provenance
+    cache_entry = result.model_dump()
+    cache_entry["curator_id"] = request.curator_id
+    _idempotency_cache.set(request.idempotency_key, cache_entry)
 
     elapsed_ms = int((time.time() - t0) * 1000)
     logger.info(f"Capture {request.idempotency_key} completed in {elapsed_ms}ms")
@@ -436,7 +432,11 @@ async def confirm_capture(
 
     # ── Retrieve capture session ──
     col = _capture_collection(db)
-    session = col.find_one({"_id": capture_id})
+    try:
+        session = col.find_one({"_id": capture_id})
+    except Exception as e:
+        logger.warning(f"MongoDB unavailable during confirm, trying cache: {e}")
+        session = None
     if not session:
         # Try cache fallback
         cached = _idempotency_cache.get(capture_id)
@@ -469,6 +469,12 @@ async def confirm_capture(
             new_entity = _create_entity_from_place(matched_entity, db)
             if new_entity:
                 entity_doc = new_entity
+            else:
+                logger.warning(
+                    f"Google Places enrichment failed for {matched_entity.get('name')} "
+                    f"(place_id={matched_entity.get('place_id')}), "
+                    f"creating skeleton entity with minimal data"
+                )
 
         if not entity_doc:
             # Last resort: create a minimal entity
@@ -483,7 +489,12 @@ async def confirm_capture(
                 "createdAt": datetime.now(timezone.utc),
                 "updatedAt": datetime.now(timezone.utc),
             }
-            db.entities.insert_one(entity_doc)
+            try:
+                db.entities.insert_one(entity_doc)
+            except DuplicateKeyError:
+                # Another parallel confirm already created this entity
+                entity_doc = db.entities.find_one({"_id": request.entity_id})
+                logger.info(f"Entity {request.entity_id} already exists (race), reusing")
 
     # ── Create curation ──
     now = datetime.now(timezone.utc)
@@ -514,13 +525,20 @@ async def confirm_capture(
 
     try:
         db.curations.insert_one(curation_doc)
-    except Exception as e:
-        # DuplicateKeyError — already exists
-        logger.warning(f"Insert curation failed (may be duplicate): {e}")
-        db.curations.replace_one({"_id": curation_id}, curation_doc, upsert=True)
+    except DuplicateKeyError:
+        # Race: another confirm request created this curation between
+        # our existence check and insert. Update with our data, preserving
+        # the original createdAt from whoever won the race.
+        logger.warning(f"Curation {curation_id} already exists (race), updating")
+        update_fields = {k: v for k, v in curation_doc.items() if k not in ("_id", "createdAt")}
+        db.curations.update_one({"_id": curation_id}, {"$set": update_fields})
 
     # ── Mark session as done ──
-    col.update_one({"_id": capture_id}, {"$set": {"status": "confirmed"}})
+    try:
+        col.update_one({"_id": capture_id}, {"$set": {"status": "confirmed"}})
+    except Exception as e:
+        # Curation already created — don't fail the request over status update
+        logger.warning(f"Failed to update session status to confirmed: {e}")
 
     result = CaptureConfirmResponse(
         curation_id=curation_id,
@@ -571,7 +589,11 @@ def _create_entity_from_place(match: Dict[str, Any], db: Database) -> Optional[D
             "createdAt": datetime.now(timezone.utc),
             "updatedAt": datetime.now(timezone.utc),
         }
-        db.entities.insert_one(entity_doc)
+        try:
+            db.entities.insert_one(entity_doc)
+        except DuplicateKeyError:
+            logger.info(f"Entity {entity_id} already exists (race), reusing existing")
+            entity_doc = db.entities.find_one({"_id": entity_id})
         logger.info(f"Created entity from Google Places: {entity_id}")
         return entity_doc
     except Exception as e:
