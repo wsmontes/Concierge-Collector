@@ -95,6 +95,7 @@ if (typeof window.UIManager === 'undefined') {
             this.refreshDebounceTimer = null;
             this.pendingRefreshReason = null;
             this.curationsCache = [];
+            this.curationPagination = { currentPage: 0, pageSize: 20 };
             this.currentFilterScope = null;
             this._filterGeneration = 0;
             this.searchDebounceTimer = null;
@@ -445,49 +446,50 @@ if (typeof window.UIManager === 'undefined') {
          * Setup event listeners for curation search and filters
          */
         setupCurationEvents() {
+            var self = this;
             // Search input with debounce (300ms)
             const searchInput = document.getElementById('curation-search');
             if (searchInput) {
-                searchInput.addEventListener('input', () => {
-                    if (this.searchDebounceTimer) clearTimeout(this.searchDebounceTimer);
-                    this.searchDebounceTimer = setTimeout(() => {
-                        this._applyFilterScope();
+                searchInput.addEventListener('input', function() {
+                    if (self.searchDebounceTimer) clearTimeout(self.searchDebounceTimer);
+                    self.searchDebounceTimer = setTimeout(function() {
+                        self.filterAndDisplayCurations();
                     }, 300);
                 });
             }
 
-            // Status filter (immediate re-scope)
+            // Status filter (immediate)
             const statusFilter = document.getElementById('curation-status-filter');
             if (statusFilter) {
-                statusFilter.addEventListener('change', () => {
-                    this._applyFilterScope();
+                statusFilter.addEventListener('change', function() {
+                    self.filterAndDisplayCurations();
                 });
             }
 
-            // Curator filter (immediate re-scope)
+            // Curator filter (immediate)
             const curatorFilter = document.getElementById('curation-curator-filter');
             if (curatorFilter) {
-                curatorFilter.addEventListener('change', () => {
-                    this._applyFilterScope();
+                curatorFilter.addEventListener('change', function() {
+                    self.filterAndDisplayCurations();
                 });
             }
 
             // City filter (text input, debounced 300ms)
             const cityFilter = document.getElementById('curation-city-filter');
             if (cityFilter) {
-                cityFilter.addEventListener('input', () => {
-                    if (this._cityDebounceTimer) clearTimeout(this._cityDebounceTimer);
-                    this._cityDebounceTimer = setTimeout(() => {
-                        this._applyFilterScope();
+                cityFilter.addEventListener('input', function() {
+                    if (self._cityDebounceTimer) clearTimeout(self._cityDebounceTimer);
+                    self._cityDebounceTimer = setTimeout(function() {
+                        self.filterAndDisplayCurations();
                     }, 300);
                 });
             }
 
-            // Type filter (immediate re-scope)
+            // Type filter (immediate)
             const typeFilter = document.getElementById('curation-type-filter');
             if (typeFilter) {
-                typeFilter.addEventListener('change', () => {
-                    this._applyFilterScope();
+                typeFilter.addEventListener('change', function() {
+                    self.filterAndDisplayCurations();
                 });
             }
         }
@@ -602,48 +604,16 @@ if (typeof window.UIManager === 'undefined') {
             }
 
             try {
-                // Guard: wait for CurationBrowser to be ready (async bootstrap)
-                if (!window.CurationBrowser) {
-                    console.log('CurationBrowser not ready, waiting for collector-cache-ready event...');
-                    container.innerHTML = `
-                        <div class="col-span-full text-center py-12">
-                            <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
-                            <p class="text-gray-500">Loading curations...</p>
-                        </div>
-                    `;
+                const allCurations = window.DataStore
+                    ? await window.DataStore.getCurations({ excludeDeleted: true })
+                    : [];
 
-                    await new Promise((resolve, reject) => {
-                        const timeout = setTimeout(() => {
-                            window.removeEventListener('collector-cache-ready', handler);
-                            reject(new Error('Timed out waiting for CurationBrowser'));
-                        }, 10000);
-                        const handler = () => {
-                            clearTimeout(timeout);
-                            window.removeEventListener('collector-cache-ready', handler);
-                            if (!window.CurationBrowser) {
-                                reject(new Error('CurationBrowser not available after collector-cache-ready event'));
-                            } else {
-                                resolve();
-                            }
-                        };
-                        window.addEventListener('collector-cache-ready', handler);
-                    });
-                }
-
-                // Reset browser pagination state
-                this.curationBrowser = window.CurationBrowser;
-                this.curationsBrowserDone = false;
-                this.curationsBrowserLoading = false;
-
-                // Open scope: use current filter scope or empty (all curations)
-                this.curationBrowser.openScope(this.currentFilterScope || {});
-
-                // Load first page (denormalized fields: restaurant_name, categories, status)
-                const { items, done } = await this.curationBrowser.nextPage();
-                this.curationsCache = items;
-                this.curationsBrowserDone = done;
-
-                if (items.length === 0) {
+                if (allCurations.length === 0) {
+                    if (window.CurationBrowser) {
+                        await this._seedCurationsFromServer(container);
+                        return;
+                    }
+                    this.curationsCache = [];
                     this.updateCurationsCountSummary(0, 0);
                     container.innerHTML = `
                         <div class="col-span-full text-center py-12">
@@ -655,10 +625,10 @@ if (typeof window.UIManager === 'undefined') {
                     return;
                 }
 
-                // Render loaded items directly (server-side filtering applied by CurationBrowser)
-                this.renderCurationsPage(items);
-                this.updateCurationsCountSummary(this.curationsCache.length, this.curationsCache.length);
-                this._populateCuratorFilter(items);
+                this.curationsCache = allCurations;
+                this._populateCuratorFilter(allCurations);
+                this.populateCurationFilters(allCurations);
+                this.filterAndDisplayCurations();
 
             } catch (error) {
                 console.error('Failed to load curations:', error);
@@ -671,137 +641,182 @@ if (typeof window.UIManager === 'undefined') {
             }
         }
 
+        async _seedCurationsFromServer(container) {
+            container.innerHTML = `
+                <div class="col-span-full text-center py-12">
+                    <div class="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-500 mx-auto mb-4"></div>
+                    <p class="text-gray-500">Loading curations for the first time...</p>
+                </div>
+            `;
 
-        /**
-         * Render one page of curations with prev/next pagination controls.
-         * Mirrors the same pattern used by renderEntitiesPage for entities.
-         * @param {Array} allCurations - Full filtered curations array
-         */
-        renderCurationsPage(allCurations) {
-            const container = this.containers.curations;
-            if (!container) return;
+            const browser = window.CurationBrowser;
+            browser.openScope({});
+            let totalLoaded = 0;
+            const maxPages = 50;
 
-            // When using CurationBrowser pagination, render all filtered items in a
-            // single page with a "load more" button instead of client-side prev/next controls.
-            if (this.curationBrowser) {
-                container.innerHTML = '';
+            for (let i = 0; i < maxPages; i++) {
+                const { items, done } = await browser.nextPage();
+                totalLoaded += items.length;
+                if (done) break;
+            }
 
-                allCurations.forEach(curation => {
-                    const reviewCard = this.createReviewCard(curation);
-                    container.appendChild(reviewCard);
+            console.log('Seeded ' + totalLoaded + ' curations into DataStore');
+            await this.loadCurations();
+        }
+
+        populateCurationFilters(curations) {
+            const cityFilter = document.getElementById('curation-city-filter');
+            if (cityFilter) {
+                const cities = new Set();
+                curations.forEach(function(c) {
+                    var city = c.city || (c.location && c.location.city) || '';
+                    if (city) cities.add(city);
                 });
+                var currentVal = cityFilter.value;
+                cityFilter.innerHTML = '<option value="">All Cities</option>';
+                Array.from(cities).sort().forEach(function(city) {
+                    var opt = document.createElement('option');
+                    opt.value = city;
+                    opt.textContent = city;
+                    cityFilter.appendChild(opt);
+                });
+                cityFilter.value = currentVal || '';
+            }
 
-                // Append "load more" button if server has more pages
-                if (!this.curationsBrowserDone) {
-                    const wrapper = document.createElement('div');
-                    wrapper.className = 'col-span-full text-center py-4';
-                    wrapper.id = 'curation-load-more-wrapper';
-                    wrapper.innerHTML = `
-                        <button id="btn-load-more-curations"
-                            class="px-6 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors
-                                   disabled:opacity-50 disabled:cursor-not-allowed"
-                            ${this.curationsBrowserLoading ? 'disabled' : ''}>
-                            ${this.curationsBrowserLoading ? 'Loading...' : 'Load more curations'}
-                        </button>
-                    `;
-                    container.appendChild(wrapper);
+            const typeFilter = document.getElementById('curation-type-filter');
+            if (typeFilter) {
+                const types = new Set();
+                curations.forEach(function(c) {
+                    var t = c.type || (c.location && c.location.type) || '';
+                    if (t) types.add(t);
+                });
+                var currentVal = typeFilter.value;
+                typeFilter.innerHTML = '<option value="all">All Types</option>';
+                Array.from(types).sort().forEach(function(t) {
+                    var opt = document.createElement('option');
+                    opt.value = t;
+                    opt.textContent = t;
+                    typeFilter.appendChild(opt);
+                });
+                typeFilter.value = currentVal || 'all';
+            }
+        }
 
-                    wrapper.querySelector('#btn-load-more-curations')?.addEventListener('click', (e) => {
-                        e.stopPropagation();
-                        this.loadMoreCurations();
-                    });
-                }
-
+        filterAndDisplayCurations() {
+            if (!this.curationsCache || this.curationsCache.length === 0) {
+                this.updateCurationsCountSummary(0, 0);
                 return;
             }
 
-            // Original: client-side pagination with prev/next controls
-            const { currentPage, pageSize } = this.curationPagination;
-            const start = currentPage * pageSize;
-            const end = start + pageSize;
-            const pageCurations = allCurations.slice(start, end);
-            const totalPages = Math.ceil(allCurations.length / pageSize);
+            var query = (document.getElementById('curation-search')?.value || '').toLowerCase().trim();
+            var statusFilter = document.getElementById('curation-status-filter')?.value || 'all';
+            var curatorFilter = document.getElementById('curation-curator-filter')?.value || 'all';
+            var cityFilter = document.getElementById('curation-city-filter')?.value || '';
+            var typeFilter = document.getElementById('curation-type-filter')?.value || 'all';
+
+            var filtered = this.curationsCache.slice();
+
+            if (query) {
+                filtered = filtered.filter(function(c) {
+                    var name = (c.restaurant_name || '').toLowerCase();
+                    var curatorName = ((c.curator && c.curator.name) || c.curator_id || '').toLowerCase();
+                    return name.includes(query) || curatorName.includes(query);
+                });
+            }
+
+            if (statusFilter !== 'all') {
+                filtered = filtered.filter(function(c) { return c.status === statusFilter; });
+            }
+
+            if (curatorFilter !== 'all') {
+                filtered = filtered.filter(function(c) { return c.curator_id === curatorFilter; });
+            }
+
+            if (cityFilter) {
+                filtered = filtered.filter(function(c) {
+                    var city = c.city || (c.location && c.location.city) || '';
+                    return city.toLowerCase().includes(cityFilter.toLowerCase());
+                });
+            }
+
+            if (typeFilter !== 'all') {
+                filtered = filtered.filter(function(c) {
+                    var t = c.type || (c.location && c.location.type) || '';
+                    return t === typeFilter;
+                });
+            }
+
+            this.curationPagination.currentPage = 0;
+
+            if (filtered.length === 0) {
+                var container = this.containers.curations;
+                if (container) {
+                    container.innerHTML = `
+                        <div class="col-span-full text-center py-12">
+                            <span class="material-icons text-6xl text-gray-300 mb-4">search_off</span>
+                            <p class="text-gray-500">No curations match your filters</p>
+                        </div>
+                    `;
+                }
+                this.updateCurationsCountSummary(this.curationsCache.length, 0);
+                return;
+            }
+
+            this.renderCurationsPage(filtered);
+        }
+
+        renderCurationsPage(allCurations) {
+            var container = this.containers.curations;
+            if (!container) return;
+
+            var cp = this.curationPagination;
+            var start = cp.currentPage * cp.pageSize;
+            var end = Math.min(start + cp.pageSize, allCurations.length);
+            var pageCurations = allCurations.slice(start, end);
+            var totalPages = Math.ceil(allCurations.length / cp.pageSize);
+
+            this.updateCurationsCountSummary(allCurations.length, allCurations.length);
 
             container.innerHTML = '';
 
-            // Only show pagination controls when there is more than one page
+            var self = this;
+
             if (totalPages > 1) {
-                const header = document.createElement('div');
+                var header = document.createElement('div');
                 header.className = 'col-span-full mb-4 p-4 bg-blue-50 border border-blue-100 rounded-lg flex items-center justify-between';
                 header.innerHTML = `
                     <div class="text-sm text-gray-600">
-                        Showing <span class="font-semibold">${start + 1}</span>–<span class="font-semibold">${Math.min(end, allCurations.length)}</span> of <span class="font-semibold">${allCurations.length}</span> curations
+                        Showing <span class="font-semibold">${start + 1}</span>&ndash;<span class="font-semibold">${end}</span> of <span class="font-semibold">${allCurations.length}</span> curations
                     </div>
                     <div class="flex gap-2">
-                        <button id="curation-prev-page" class="px-3 py-1 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" ${currentPage === 0 ? 'disabled' : ''}>
+                        <button id="curation-prev-page" class="px-3 py-1 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" ${cp.currentPage === 0 ? 'disabled' : ''}>
                             <span class="material-icons text-sm">chevron_left</span>
                         </button>
-                        <div class="px-3 py-1 text-sm font-medium">Page ${currentPage + 1} of ${totalPages}</div>
-                        <button id="curation-next-page" class="px-3 py-1 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" ${currentPage >= totalPages - 1 ? 'disabled' : ''}>
+                        <div class="px-3 py-1 text-sm font-medium">Page ${cp.currentPage + 1} of ${totalPages}</div>
+                        <button id="curation-next-page" class="px-3 py-1 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" ${cp.currentPage >= totalPages - 1 ? 'disabled' : ''}>
                             <span class="material-icons text-sm">chevron_right</span>
                         </button>
                     </div>
                 `;
                 container.appendChild(header);
 
-                header.querySelector('#curation-prev-page')?.addEventListener('click', () => {
-                    this.curationPagination.currentPage--;
-                    this.renderCurationsPage(allCurations);
+                header.querySelector('#curation-prev-page')?.addEventListener('click', function() {
+                    self.curationPagination.currentPage--;
+                    self.renderCurationsPage(allCurations);
                 });
-                header.querySelector('#curation-next-page')?.addEventListener('click', () => {
-                    this.curationPagination.currentPage++;
-                    this.renderCurationsPage(allCurations);
+                header.querySelector('#curation-next-page')?.addEventListener('click', function() {
+                    self.curationPagination.currentPage++;
+                    self.renderCurationsPage(allCurations);
                 });
             }
 
-            pageCurations.forEach(curation => {
-                const reviewCard = this.createReviewCard(curation);
-                container.appendChild(reviewCard);
+            pageCurations.forEach(function(curation) {
+                var card = self.createReviewCard(curation);
+                container.appendChild(card);
             });
         }
 
-        /**
-         * Load another page of curations from CurationBrowser and append to existing cache.
-         * Called by the "Load more curations" button in the browser-paginated view.
-         */
-        async loadMoreCurations() {
-            if (this.curationsBrowserLoading || this.curationsBrowserDone || !this.curationBrowser) {
-                return;
-            }
-
-            this.curationsBrowserLoading = true;
-
-            // Disable the load-more button immediately
-            const btn = document.getElementById('btn-load-more-curations');
-            if (btn) btn.disabled = true;
-
-            try {
-                const { items, done } = await this.curationBrowser.nextPage();
-
-                if (items.length > 0) {
-                    // Append to existing cache (accumulated items)
-                    this.curationsCache = [...this.curationsCache, ...items];
-                }
-
-                this.curationsBrowserDone = done;
-
-                // Clear loading flag BEFORE re-render so the new button state is correct
-                this.curationsBrowserLoading = false;
-
-                // Re-render all loaded items (server-side filtering already applied by scope)
-                this.renderCurationsPage(this.curationsCache);
-                this.updateCurationsCountSummary(this.curationsCache.length, this.curationsCache.length);
-            } catch (error) {
-                this.curationsBrowserLoading = false;
-                console.error('Failed to load more curations:', error);
-                window.uiUtils?.showNotification?.('Failed to load more curations', 'error');
-            }
-        }
-
-        /**
-         * Load Curation Details (Legacy/Alternate)
-         * @deprecated Use loadCurations with filtering instead
-         */
+        /** @deprecated */
         async loadCurationsOld() {
             console.log('Loading curations view...');
 
