@@ -331,13 +331,10 @@ if (typeof window.UIManager === 'undefined') {
 
         updateCurationsCountSummary(total, filtered) {
             if (!this.curationsCountSummary) return;
-            // Use server total when available (CurationBrowser reports it from first page)
+            // Server-driven mode: always use browser.total as the canonical count
             const serverTotal = window.CurationBrowser?.total;
-            if (serverTotal > 0) {
-                this.curationsCountSummary.textContent = `Showing ${filtered} of ${serverTotal} curations`;
-            } else {
-                this.curationsCountSummary.textContent = `Showing ${filtered} of ${total} curations`;
-            }
+            const displayTotal = serverTotal > 0 ? serverTotal : total;
+            this.curationsCountSummary.textContent = `Showing ${filtered} of ${displayTotal} curations`;
         }
 
         updateEntitiesCountSummary(total, filtered) {
@@ -867,19 +864,32 @@ if (typeof window.UIManager === 'undefined') {
             var container = this.containers.curations;
             if (!container) return;
 
+            // Server-driven mode: no client-side pagination — items accumulate via Load More
+            var isServerDriven = !!(window.CurationBrowser && window.CurationBrowser.nextPage);
             var cp = this.curationPagination;
-            var start = cp.currentPage * cp.pageSize;
-            var end = Math.min(start + cp.pageSize, allCurations.length);
-            var pageCurations = allCurations.slice(start, end);
-            var totalPages = Math.ceil(allCurations.length / cp.pageSize);
+            var start, end, pageCurations;
+
+            if (isServerDriven) {
+                // Show all loaded items (server handles pagination via Load More)
+                start = 0;
+                end = allCurations.length;
+                pageCurations = allCurations;
+            } else {
+                // Client-side pagination for DataStore fallback
+                start = cp.currentPage * cp.pageSize;
+                end = Math.min(start + cp.pageSize, allCurations.length);
+                pageCurations = allCurations.slice(start, end);
+            }
 
             this.updateCurationsCountSummary(allCurations.length, allCurations.length);
 
             container.innerHTML = '';
 
             var self = this;
+            var totalPages = Math.ceil(allCurations.length / cp.pageSize);
 
-            if (totalPages > 1) {
+            // Only show page navigation in fallback mode (not server-driven)
+            if (!isServerDriven && totalPages > 1) {
                 var header = document.createElement('div');
                 header.className = 'col-span-full mb-4 p-4 bg-blue-50 border border-blue-100 rounded-lg flex items-center justify-between';
                 header.innerHTML = `
