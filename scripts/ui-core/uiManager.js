@@ -96,6 +96,7 @@ if (typeof window.UIManager === 'undefined') {
             this.pendingRefreshReason = null;
             this.curationsCache = [];
             this.curationPagination = { currentPage: 0, pageSize: 20 };
+            this._curationsSeeded = false;
             this.currentFilterScope = null;
             this._filterGeneration = 0;
             this.searchDebounceTimer = null;
@@ -531,25 +532,47 @@ if (typeof window.UIManager === 'undefined') {
         }
 
         /**
-         * Populate curator filter dropdown from curators seen in loaded curations.
+         * Populate curator filter dropdown from two sources:
+         *   1. Server's canonical curators collection (/curators API)
+         *   2. Curator data found in locally cached curations
+         * This ensures both OAuth-registered curators AND script/bulk-import
+         * curators (who never logged in) appear in the dropdown.
          * Preserves the currently selected value across repopulations.
          */
-        _populateCuratorFilter(items) {
+        async _populateCuratorFilter() {
             const filter = document.getElementById('curation-curator-filter');
             if (!filter) return;
 
             const currentValue = filter.value;
             const curators = new Map();
 
-            // Collect from provided items
-            for (const c of items) {
-                if (c.curator && c.curator.id) {
+            // ── Source 1: canonical curator profiles from server ──
+            try {
+                if (window.ApiService && window.ApiService.listCurators) {
+                    const profiles = await window.ApiService.listCurators();
+                    for (const p of profiles) {
+                        const id = p.curator_id || p._id;
+                        const name = p.name || id;
+                        if (id) curators.set(id, name);
+                    }
+                }
+            } catch (err) {
+                console.warn('Failed to fetch curators from server:', err);
+            }
+
+            // ── Source 2: curators seen in cached curations ──
+            // Captures script/bulk-import curators (e.g. curator-ai-research)
+            // that have no profile in the curators collection.
+            const cache = this.curationsCache || [];
+            for (const c of cache) {
+                if (c.curator && c.curator.id && !curators.has(c.curator.id)) {
                     curators.set(c.curator.id, c.curator.name || c.curator.id);
-                } else if (c.curator_id) {
+                } else if (c.curator_id && !curators.has(c.curator_id)) {
                     curators.set(c.curator_id, c.curator_id);
                 }
             }
-            // Also preserve existing options so accumulated curators persist
+
+            // Preserve existing options as fallback (survives API errors)
             for (const opt of filter.options) {
                 if (opt.value !== 'all' && !curators.has(opt.value)) {
                     curators.set(opt.value, opt.textContent);
@@ -604,15 +627,22 @@ if (typeof window.UIManager === 'undefined') {
             }
 
             try {
-                const allCurations = window.DataStore
+                let allCurations = window.DataStore
                     ? await window.DataStore.getCurations({ excludeDeleted: true })
                     : [];
 
+                // Always seed from server on first load to ensure all curators
+                // are represented in the filter dropdown.  DataStore may have
+                // only the logged-in curator's data from previous syncs, which
+                // would cause other curators (e.g. Anwar) to never appear.
+                if (window.CurationBrowser && !this._curationsSeeded) {
+                    await this._seedCurationsFromServer(container);
+                    // _seedCurationsFromServer sets _curationsSeeded and calls
+                    // loadCurations() which handles rendering → just return
+                    return;
+                }
+
                 if (allCurations.length === 0) {
-                    if (window.CurationBrowser) {
-                        await this._seedCurationsFromServer(container);
-                        return;
-                    }
                     this.curationsCache = [];
                     this.updateCurationsCountSummary(0, 0);
                     container.innerHTML = `
@@ -626,7 +656,7 @@ if (typeof window.UIManager === 'undefined') {
                 }
 
                 this.curationsCache = allCurations;
-                this._populateCuratorFilter(allCurations);
+                this._populateCuratorFilter();
                 this.populateCurationFilters(allCurations);
                 this.filterAndDisplayCurations();
 
@@ -661,6 +691,7 @@ if (typeof window.UIManager === 'undefined') {
             }
 
             console.log('Seeded ' + totalLoaded + ' curations into DataStore');
+            this._curationsSeeded = true;
             await this.loadCurations();
         }
 

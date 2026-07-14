@@ -14,7 +14,7 @@ from slowapi.middleware import SlowAPIMiddleware
 
 from app.core.config import settings
 from app.core.lifespan import lifespan
-from app.api import entities, curations, system, places, places_orchestrate, ai, concepts, auth, llm_gateway, openai_compat, places_router, capture
+from app.api import entities, curations, system, places, places_orchestrate, ai, concepts, auth, llm_gateway, openai_compat, places_router, capture, curators
 
 # ---------------------------------------------------------------------------
 # Rate limiter — keyed by client IP
@@ -91,6 +91,7 @@ app.include_router(concepts.router, prefix="/api/v3")
 app.include_router(llm_gateway.router, prefix="/api/v3")
 app.include_router(openai_compat.router, prefix="/api/v3")
 app.include_router(capture.router, prefix="/api/v3")
+app.include_router(curators.router, prefix="/api/v3")
 
 # ── Root redirects to Capture ─────────────────────────────────────────────
 @app.get("/", include_in_schema=False)

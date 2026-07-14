@@ -339,6 +339,12 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         return await this.listCurations(filters);
     }
 
+    async listCurators() {
+        const endpoint = AppConfig.api.backend.endpoints.curators;
+        const response = await this.request('GET', endpoint);
+        return await response.json();
+    }
+
     /**
      * Bulk upsert entities — sends items in chunks to respect the server-side
      * limit of 500 per call. Chunk size is controlled by AppConfig.api.backend.bulkChunkSize.

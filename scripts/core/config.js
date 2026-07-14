@@ -88,6 +88,7 @@ const AppConfig = {
                 curationsSearch: '/curations/search',  // GET - Search curations with filters (no auth)
                 entityCurations: '/entities/{id}/curations',  // GET - All curations for entity (no auth)
                 curationsBulk: '/curations/bulk',  // POST - Bulk upsert curations (X-API-Key, max 500)
+                curators: '/curators',               // GET - List all curator profiles (no auth)
                 
                 // Concepts endpoints
                 conceptMatch: '/concepts/match',  // POST - Match concepts to categories (X-API-Key)
