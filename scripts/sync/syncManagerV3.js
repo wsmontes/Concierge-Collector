@@ -31,6 +31,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
         this.isSyncing = false;
         this.syncInterval = null;
         this.retryTimeout = null;
+        this._rerunQueued = false; // P8: sync re-agendado após o atual terminar
 
         // Configuration — batchSize read from AppConfig so a single change propagates everywhere
         this.config = {
@@ -561,7 +562,8 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             return { status: 'degraded' };
         }
         if (this.isSyncing) {
-            this.log.debug('Sync already in progress');
+            this.log.debug('Sync already in progress — re-agendando (P8)');
+            this._queueSyncRerun();
             return { status: 'already_syncing' };
         }
 
@@ -625,10 +627,31 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
     }
 
     /**
+     * P8: re-agenda um sync quando chamadas chegam durante um sync em andamento.
+     * Antes eram descartadas — mudanças ficavam esperando o próximo ciclo de 60s.
+     */
+    _queueSyncRerun() {
+        if (this._rerunQueued) {
+            return;
+        }
+        this._rerunQueued = true;
+        setTimeout(() => {
+            this._rerunQueued = false;
+            if (this.isOnline && !this.isSyncing) {
+                this.quickSync().catch(err => this.log.warn('Sync re-agendado falhou:', err.message));
+            }
+        }, 500);
+    }
+
+    /**
      * Quick sync (push pending items only)
      */
     async quickSync() {
-        if (this.isSyncing || !this.isOnline) {
+        if (this.isSyncing) {
+            this._queueSyncRerun();
+            return;
+        }
+        if (!this.isOnline) {
             return;
         }
 
