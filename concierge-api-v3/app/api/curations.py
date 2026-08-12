@@ -22,6 +22,7 @@ from app.core.database import get_database
 from app.core.security import verify_access_token, verify_auth
 from app.models.user import has_role
 from app.services.curation_denorm import denormalize_curation_location
+from app.api.entities import find_entity
 from pymongo.database import Database
 from openai import OpenAI
 
@@ -182,7 +183,7 @@ def get_entity_curations(
 ):
     """Get all curations for an entity"""
     # Verify entity exists
-    entity = db.entities.find_one({"_id": entity_id})
+    entity = find_entity(db, entity_id)
     if not entity:
         raise HTTPException(
             status_code=404,

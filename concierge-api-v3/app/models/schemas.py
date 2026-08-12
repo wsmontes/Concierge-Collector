@@ -67,13 +67,19 @@ class EntityUpdate(BaseModel):
 class Entity(EntityBase):
     """Complete Entity with system fields"""
     id: str = Field(..., alias="_id")
-    entity_id: str
+    entity_id: Optional[str] = None
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     createdBy: Optional[str] = None
     updatedBy: Optional[str] = None
     version: int = Field(default=1, description="Optimistic locking version")
-    
+
+    @field_validator("id", mode="before")
+    @classmethod
+    def _coerce_id_to_str(cls, v):
+        """Mongo _id pode ser ObjectId (bulk imports) ou str (criadas via API)."""
+        return str(v)
+
     model_config = ConfigDict(populate_by_name=True)
 
 

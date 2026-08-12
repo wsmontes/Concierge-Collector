@@ -42,16 +42,16 @@ def get_concepts(
     """
     category_service = CategoryService(db)
     
-    # Get the full document from MongoDB
-    doc = db.concepts.find_one({
+    # Get the full document from MongoDB (coleção real: 'categories', não 'concepts')
+    doc = db.categories.find_one({
         "entity_type": entity_type,
         "active": True
     })
-    
+
     if not doc:
         # Fallback to restaurant
         if entity_type != "restaurant":
-            doc = db.concepts.find_one({
+            doc = db.categories.find_one({
                 "entity_type": "restaurant",
                 "active": True
             })
@@ -90,7 +90,7 @@ def list_concepts(
             "count": 1
         }
     """
-    cursor = db.concepts.find({"active": True})
+    cursor = db.categories.find({"active": True})
     concepts = []
     
     for doc in cursor:

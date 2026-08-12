@@ -65,13 +65,27 @@ def create_entity(
         return Entity(**result)
 
 
+def entity_query(entity_id: str) -> dict:
+    """Resolve entidades por _id em ambos os formatos coexistentes no banco:
+    ObjectId (bulk imports), string (criadas via API) ou campo entity_id (slug)."""
+    from bson import ObjectId
+    q = [{"_id": entity_id}, {"entity_id": entity_id}]
+    if ObjectId.is_valid(entity_id):
+        q.insert(0, {"_id": ObjectId(entity_id)})
+    return {"$or": q}
+
+
+def find_entity(db: Database, entity_id: str):
+    return db.entities.find_one(entity_query(entity_id))
+
+
 @router.get("/{entity_id}", response_model=Entity)
 def get_entity(
     entity_id: str,
     db: Database = Depends(get_database)
 ):
     """Get entity by ID"""
-    result = db.entities.find_one({"_id": entity_id})
+    result = find_entity(db, entity_id)
     
     if not result:
         raise HTTPException(status_code=404, detail=f"Entity {entity_id} not found")
@@ -104,7 +118,7 @@ def update_entity(
     update_data["version"] = current_version + 1
     
     result = db.entities.find_one_and_update(
-        {"_id": entity_id, "version": current_version},
+        {**entity_query(entity_id), "version": current_version},
         {"$set": update_data},
         return_document=True
     )
@@ -122,7 +136,7 @@ def delete_entity(
     auth: dict = Depends(verify_auth)
 ):
     """Delete entity"""
-    result = db.entities.delete_one({"_id": entity_id})
+    result = db.entities.delete_one(entity_query(entity_id))
     
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail=f"Entity {entity_id} not found")
