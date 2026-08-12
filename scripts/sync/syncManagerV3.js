@@ -1083,69 +1083,15 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                 this.log.debug(`✅ Bulk pushed ${bulkResult.created || 0} created, ${bulkResult.updated || 0} updated entities`);
             }
 
-            // ── Careful path: individual PATCH for EXISTING items (conflict-aware) ─
-            for (const entity of existingEntities) {
-                try {
-                    const changedFields = this.extractChangedFields(entity);
-
-                    const hasChanges = Object.keys(changedFields).some(
-                        key => !['entity_id', 'curation_id', 'version'].includes(key)
-                    );
-
-                    if (!hasChanges) {
-                        this.log.debug(`No changes for entity ${entity.name}, skipping`);
-                        await window.DataStore.db.entities.update(entity.id, {
-                            sync: { ...(entity.sync || {}), status: 'synced' }
-                        });
-                        continue;
-                    }
-
-                    const updated = await window.ApiService.updateEntity(
-                        entity.entity_id,
-                        changedFields,
-                        entity.version
-                    );
-
-                    await this.storeItemState('entity', entity.id, updated);
-                    await window.DataStore.db.entities.update(entity.id, {
-                        version: updated.version,
-                        sync: {
-                            ...(entity.sync || {}),
-                            status: 'synced',
-                            lastSyncedAt: new Date().toISOString()
-                        }
-                    });
-                    await window.DataStore.db.syncQueue.where('entity_id').equals(entity.entity_id).delete();
-                    pushed++;
-                    this.log.debug(`✅ Pushed entity ${entity.name} (${Object.keys(changedFields).length} fields)`);
-
-                } catch (error) {
-                    if (error.message.includes('already exists')) {
-                        this.log.warn(`Entity ${entity.name} already exists on server, marking as synced`);
-                        await window.DataStore.db.entities.update(entity.id, {
-                            sync: {
-                                ...(entity.sync || {}),
-                                status: 'synced',
-                                lastSyncedAt: new Date().toISOString()
-                            }
-                        });
-                        pushed++;
-                        continue;
-                    }
-
-                    if (this.isVersionConflictError(error)) {
-                        const resolved = await this.tryResolveEntityVersionConflict(entity);
-                        if (resolved) { pushed++; continue; }
-
-                        await window.DataStore.db.entities.update(entity.id, {
-                            sync: { ...(entity.sync || {}), status: 'conflict' }
-                        });
-                        conflicts++;
-                        this.log.warn(`Conflict detected for entity: ${entity.name}`);
-                        this.emitSyncEvent('sync-conflict', { type: 'entity', id: entity.entity_id, name: entity.name });
-                    } else {
-                        this.log.error(`Failed to push entity ${entity.name}:`, error);
-                    }
+            // ── Careful path: PATCH em chunks paralelos (P5 — antes era serial, 1 request por vez) ─
+            const PATCH_CHUNK = 4;
+            for (let i = 0; i < existingEntities.length; i += PATCH_CHUNK) {
+                const results = await Promise.all(
+                    existingEntities.slice(i, i + PATCH_CHUNK).map(e => this.pushExistingEntity(e))
+                );
+                for (const r of results) {
+                    if (r === 'pushed') pushed++;
+                    else if (r === 'conflict') conflicts++;
                 }
             }
 
@@ -1158,6 +1104,76 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
         } catch (error) {
             this.log.error('Failed to push entities:', error);
             throw error;
+        }
+    }
+
+    /**
+     * Push de UMA entidade existente (PATCH com If-Match + auto-resolve de conflito).
+     * Extraído do loop serial para permitir chunks paralelos (P5).
+     * @returns {Promise<'pushed'|'conflict'|'skipped'|'failed'>}
+     */
+    async pushExistingEntity(entity) {
+        try {
+            const changedFields = this.extractChangedFields(entity);
+
+            const hasChanges = Object.keys(changedFields).some(
+                key => !['entity_id', 'curation_id', 'version'].includes(key)
+            );
+
+            if (!hasChanges) {
+                this.log.debug(`No changes for entity ${entity.name}, skipping`);
+                await window.DataStore.db.entities.update(entity.id, {
+                    sync: { ...(entity.sync || {}), status: 'synced' }
+                });
+                return 'skipped';
+            }
+
+            const updated = await window.ApiService.updateEntity(
+                entity.entity_id,
+                changedFields,
+                entity.version
+            );
+
+            await this.storeItemState('entity', entity.id, updated);
+            await window.DataStore.db.entities.update(entity.id, {
+                version: updated.version,
+                sync: {
+                    ...(entity.sync || {}),
+                    status: 'synced',
+                    lastSyncedAt: new Date().toISOString()
+                }
+            });
+            await window.DataStore.db.syncQueue.where('entity_id').equals(entity.entity_id).delete();
+            this.log.debug(`✅ Pushed entity ${entity.name} (${Object.keys(changedFields).length} fields)`);
+            return 'pushed';
+        } catch (error) {
+            const msg = String(error?.message || error || '');
+            if (msg.includes('already exists')) {
+                this.log.warn(`Entity ${entity.name} already exists on server, marking as synced`);
+                await window.DataStore.db.entities.update(entity.id, {
+                    sync: {
+                        ...(entity.sync || {}),
+                        status: 'synced',
+                        lastSyncedAt: new Date().toISOString()
+                    }
+                });
+                return 'pushed';
+            }
+
+            if (this.isVersionConflictError(error)) {
+                const resolved = await this.tryResolveEntityVersionConflict(entity);
+                if (resolved) { return 'pushed'; }
+
+                await window.DataStore.db.entities.update(entity.id, {
+                    sync: { ...(entity.sync || {}), status: 'conflict' }
+                });
+                this.log.warn(`Conflict detected for entity: ${entity.name}`);
+                this.emitSyncEvent('sync-conflict', { type: 'entity', id: entity.entity_id, name: entity.name });
+                return 'conflict';
+            }
+
+            this.log.warn(`Push failed for entity ${entity.name}: ${msg}`);
+            return 'failed';
         }
     }
 
@@ -1220,71 +1236,15 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                 this.log.debug(`✅ Bulk pushed ${bulkResult.created || 0} created, ${bulkResult.updated || 0} updated curations`);
             }
 
-            // ── Careful path: individual PATCH for items where we know the serverId ─
-            for (const curation of hasServerIdCurations) {
-                try {
-                    const changedFields = this.extractChangedFields(curation);
-
-                    const hasChanges = Object.keys(changedFields).some(
-                        key => !['curation_id', 'version'].includes(key)
-                    );
-
-                    if (!hasChanges) {
-                        this.log.debug(`No changes for curation ${curation.curation_id}, skipping`);
-                        await window.DataStore.db.curations.update(curation.id, {
-                            sync: {
-                                ...(curation.sync || {}),
-                                status: 'synced',
-                                lastSyncedAt: new Date().toISOString()
-                            }
-                        });
-                        continue;
-                    }
-
-                    const updated = await window.ApiService.updateCuration(
-                        curation.curation_id,
-                        changedFields,
-                        curation.version || 1
-                    );
-
-                    await this.storeItemState('curation', curation.id, updated);
-                    await window.DataStore.db.curations.update(curation.id, {
-                        version: updated.version,
-                        sync: {
-                            ...(curation.sync || {}),
-                            status: 'synced',
-                            lastSyncedAt: new Date().toISOString()
-                        }
-                    });
-                    pushed++;
-                    this.log.debug(`✅ Pushed curation ${curation.curation_id} (${Object.keys(changedFields).length} fields)`);
-
-                } catch (error) {
-                    if (error.message.includes('already exists')) {
-                        this.log.warn(`Curation ${curation.curation_id} already exists, marking synced`);
-                        await window.DataStore.db.curations.update(curation.id, {
-                            sync: {
-                                ...(curation.sync || {}),
-                                status: 'synced',
-                                lastSyncedAt: new Date().toISOString()
-                            }
-                        });
-                        pushed++;
-                        continue;
-                    }
-
-                    if (this.isVersionConflictError(error)) {
-                        const resolved = await this.tryResolveCurationVersionConflict(curation);
-                        if (resolved) { pushed++; continue; }
-
-                        await window.DataStore.db.curations.update(curation.id, {
-                            sync: { ...(curation.sync || {}), status: 'conflict' }
-                        });
-                        conflicts++;
-                        this.log.warn(`Conflict detected for curation: ${curation.curation_id}`);
-                    } else {
-                        this.log.error(`Failed to push curation ${curation.curation_id}:`, error);
-                    }
+            // ── Careful path: PATCH em chunks paralelos (P5 — antes era serial) ─
+            const PATCH_CHUNK = 4;
+            for (let i = 0; i < hasServerIdCurations.length; i += PATCH_CHUNK) {
+                const results = await Promise.all(
+                    hasServerIdCurations.slice(i, i + PATCH_CHUNK).map(c => this.pushExistingCuration(c))
+                );
+                for (const r of results) {
+                    if (r === 'pushed') pushed++;
+                    else if (r === 'conflict') conflicts++;
                 }
             }
 
@@ -1297,6 +1257,78 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
         } catch (error) {
             this.log.error('Failed to push curations:', error);
             throw error;
+        }
+    }
+
+    /**
+     * Push de UMA curation existente (PATCH com If-Match + auto-resolve de conflito).
+     * Extraído do loop serial para permitir chunks paralelos (P5).
+     * @returns {Promise<'pushed'|'conflict'|'skipped'|'failed'>}
+     */
+    async pushExistingCuration(curation) {
+        try {
+            const changedFields = this.extractChangedFields(curation);
+
+            const hasChanges = Object.keys(changedFields).some(
+                key => !['curation_id', 'version'].includes(key)
+            );
+
+            if (!hasChanges) {
+                this.log.debug(`No changes for curation ${curation.curation_id}, skipping`);
+                await window.DataStore.db.curations.update(curation.id, {
+                    sync: {
+                        ...(curation.sync || {}),
+                        status: 'synced',
+                        lastSyncedAt: new Date().toISOString()
+                    }
+                });
+                return 'skipped';
+            }
+
+            const updated = await window.ApiService.updateCuration(
+                curation.curation_id,
+                changedFields,
+                curation.version || 1
+            );
+
+            await this.storeItemState('curation', curation.id, updated);
+            await window.DataStore.db.curations.update(curation.id, {
+                version: updated.version,
+                sync: {
+                    ...(curation.sync || {}),
+                    status: 'synced',
+                    lastSyncedAt: new Date().toISOString()
+                }
+            });
+            this.log.debug(`✅ Pushed curation ${curation.curation_id} (${Object.keys(changedFields).length} fields)`);
+            return 'pushed';
+        } catch (error) {
+            const msg = String(error?.message || error || '');
+            if (msg.includes('already exists')) {
+                this.log.warn(`Curation ${curation.curation_id} already exists, marking synced`);
+                await window.DataStore.db.curations.update(curation.id, {
+                    sync: {
+                        ...(curation.sync || {}),
+                        status: 'synced',
+                        lastSyncedAt: new Date().toISOString()
+                    }
+                });
+                return 'pushed';
+            }
+
+            if (this.isVersionConflictError(error)) {
+                const resolved = await this.tryResolveCurationVersionConflict(curation);
+                if (resolved) { return 'pushed'; }
+
+                await window.DataStore.db.curations.update(curation.id, {
+                    sync: { ...(curation.sync || {}), status: 'conflict' }
+                });
+                this.log.warn(`Conflict detected for curation: ${curation.curation_id}`);
+                return 'conflict';
+            }
+
+            this.log.error(`Failed to push curation ${curation.curation_id}:`, msg);
+            return 'failed';
         }
     }
 
