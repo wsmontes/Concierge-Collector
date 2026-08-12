@@ -17,6 +17,7 @@ const CHROME_PATHS = [
 
 const URL = process.env.PROD_URL || 'https://concierge-collector-web.onrender.com';
 const API_HEALTH = process.env.API_HEALTH_URL || 'https://concierge-collector.onrender.com/api/v3/health';
+const TOKEN = process.env.TOKEN || ''; // JWT válido (sub=email, HS256, API_SECRET_KEY de prod)
 
 const chromePath = CHROME_PATHS.find(p => existsSync(p));
 if (!chromePath) {
@@ -37,8 +38,16 @@ page.on('console', msg => {
 });
 page.on('pageerror', err => consoleErrors.push(`[pageerror] ${String(err).slice(0, 300)}`));
 
+if (TOKEN) {
+  // AccessControl exige oauth_access_token para destravar e chamar startApplication
+  await page.evaluateOnNewDocument((token) => {
+    localStorage.setItem('oauth_access_token', token);
+    localStorage.setItem('oauth_token_expiry', String(Date.now() + 55 * 60 * 1000));
+  }, TOKEN);
+}
+
 await page.goto(URL, { waitUntil: 'load', timeout: 90000 });
-await new Promise(r => setTimeout(r, 6000)); // espera bootstrap + sync inicial
+await new Promise(r => setTimeout(r, TOKEN ? 20000 : 6000)); // boot + DataStore init + sync inicial
 
 const report = await page.evaluate(() => ({
   title: document.title,
