@@ -16,6 +16,7 @@
     "dotenv": "^17.2.3",
     "fake-indexeddb": "^5.0.2",
     "jsdom": "^23.2.0",
+    "puppeteer-core": "^25.6.0",
     "vitest": "^1.0.4"
   },
   "engines": {

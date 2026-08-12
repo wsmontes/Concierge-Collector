@@ -793,9 +793,6 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
             }
         }
     }
-            }
-        }
-    }
 
     /**
      * Get database instance (after initialization)
