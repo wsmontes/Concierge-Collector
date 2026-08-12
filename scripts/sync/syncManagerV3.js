@@ -310,7 +310,8 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
      */
     isVersionConflictError(error) {
         const message = String(error?.message || error || '').toLowerCase();
-        return message.includes('409') || message.includes('conflict') || message.includes('if-match');
+        return message.includes('409') || message.includes('conflict') || message.includes('if-match')
+            || message.includes('428') || message.includes('version information required');
     }
 
     /**
@@ -574,14 +575,19 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             this.emitSyncEvent('sync-start');
             this.log.info('�� Starting full sync...');
 
-            // Startup é push-only: navegação/cache é sob demanda (CurationBrowser + OfflineCache).
-
             // 1. Push to server (client → server)
             this.emitSyncEvent('sync-progress', { stage: 'push-entities', message: 'Uploading local entity updates...' });
             await this.pushEntities();
 
             this.emitSyncEvent('sync-progress', { stage: 'push-curations', message: 'Uploading local curation updates...' });
             await this.pushCurations();
+
+            // 2. Pull incremental (server → client) — dados de outros dispositivos/curadores
+            this.emitSyncEvent('sync-progress', { stage: 'pull-curations', message: 'Baixando curations do servidor...' });
+            await this.pullCurations();
+
+            this.emitSyncEvent('sync-progress', { stage: 'pull-entities', message: 'Baixando entidades vinculadas...' });
+            await this.pullLinkedEntities();
 
             this.log.info('✅ Full sync complete', this.stats);
             this.emitSyncEvent('sync-complete', { status: 'success', stats: this.stats });
@@ -703,18 +709,44 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
     async pullLinkedEntities() {
         try {
             const linkedEntityIds = await this.collectLinkedEntityIdsFromCurations();
-            this.log.debug(`⬇️ Pulling ${linkedEntityIds.size} linked entities only`);
+            this.log.debug(`⬇️ Pulling entidades vinculadas (${linkedEntityIds.size} ids locais)`);
 
+            // Paginação por lotes via GET /entities (1 request por lote,
+            // em vez de 1 GET por id — muito mais rápido para coleções grandes)
+            const since = this.stats.lastEntityPullAt;
+            const batchLimit = 200;
+            let offset = 0;
             let totalPulled = 0;
-            for (const entityId of linkedEntityIds) {
-                try {
-                    const serverEntity = await window.ApiService.getEntity(entityId);
-                    if (serverEntity) {
+            let hasMore = true;
+
+            while (hasMore) {
+                const params = { limit: batchLimit, offset };
+                if (since) {
+                    params.since = since;
+                }
+                const response = await window.ApiService.listEntities(params);
+                const items = response.items || [];
+                if (!items.length) {
+                    hasMore = false;
+                    break;
+                }
+                for (const serverEntity of items) {
+                    // curation.entity_id pode referenciar slug OU _id (hex) — aceitar ambos
+                    const slug = serverEntity.entity_id;
+                    const oid = typeof serverEntity._id === 'object'
+                        ? String(serverEntity._id?.$oid || '')
+                        : String(serverEntity._id || '');
+                    const id = typeof serverEntity.id === 'object'
+                        ? String(serverEntity.id?.$oid || '')
+                        : String(serverEntity.id || '');
+                    if (linkedEntityIds.has(slug) || linkedEntityIds.has(oid) || linkedEntityIds.has(id)) {
                         await this.processServerEntity(serverEntity);
                         totalPulled++;
                     }
-                } catch (error) {
-                    this.log.warn(`Failed to pull linked entity ${entityId}: ${error.message}`);
+                }
+                offset += items.length;
+                if (items.length < batchLimit) {
+                    hasMore = false;
                 }
             }
 
@@ -753,6 +785,13 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                 // Entity exists - compare versions
                 const serverVersion = serverEntity.version || 0;
                 const localVersion = localEntity.version || 0;
+                const localStatus = localEntity.sync?.status;
+
+                // P7b fix: nunca sobrescrever mudanças locais não enviadas
+                if (localStatus === 'pending' || localStatus === 'conflict') {
+                    this.log.debug(`Local entity pending/conflict — mantendo local: ${serverEntity.name}`);
+                    return;
+                }
 
                 if (serverVersion > localVersion) {
                     // Server is newer - update local
@@ -853,12 +892,9 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             this.stats.curationsPulled = totalPulled;
             this.stats.lastPullAt = new Date().toISOString();
 
-            // Only update lastCurationPullAt if we successfully pulled curations
-            // This prevents marking sync as complete when nothing was found
-            // Use current time (not syncStartTime) to mark when sync actually completed
-            if (totalPulled > 0) {
-                this.stats.lastCurationPullAt = new Date().toISOString();
-            }
+            // P7a fix: avança o marcador SEMPRE que a paginação completar com sucesso —
+            // se não avançar quando não há mudanças, o próximo pull faz full scan
+            this.stats.lastCurationPullAt = new Date().toISOString();
 
             await this.saveSyncMetadata();
 
@@ -919,6 +955,13 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
 
                 const serverVersion = serverCuration.version || 0;
                 const localVersion = localCuration.version || 0;
+                const localStatus = localCuration.sync?.status;
+
+                // P7b fix: nunca sobrescrever mudanças locais não enviadas
+                if (localStatus === 'pending' || localStatus === 'conflict') {
+                    this.log.debug(`Local curation pending/conflict — mantendo local: ${serverCuration.curation_id}`);
+                    return false;
+                }
 
                 if (serverVersion > localVersion || !localCuration.curator_id) {
                     await window.DataStore.db.curations.put({
@@ -970,6 +1013,24 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
         try {
             this.log.debug('⬆️ Pushing pending entities to server...');
 
+            // P2 fix: deleções locais (docs já removidos do IndexedDB) via syncQueue
+            const deleteOps = await window.DataStore.db.syncQueue.where('action').equals('delete').toArray();
+            for (const op of deleteOps) {
+                try {
+                    await window.ApiService.deleteEntity(op.entity_id);
+                    await window.DataStore.removeFromSyncQueue(op.id);
+                    this.log.debug(`✅ Deletado no servidor: ${op.entity_id}`);
+                } catch (error) {
+                    const msg = String(error?.message || '');
+                    if (msg.includes('404') || msg.includes('not found')) {
+                        // já não existe no servidor — tira da fila
+                        await window.DataStore.removeFromSyncQueue(op.id);
+                    } else {
+                        this.log.warn(`Falha ao deletar ${op.entity_id}: ${msg}`);
+                    }
+                }
+            }
+
             const pendingEntities = await window.DataStore.db.entities
                 .where('sync.status').equals('pending')
                 .toArray();
@@ -1013,6 +1074,8 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                                 lastSyncedAt: new Date().toISOString()
                             }
                         });
+                        // limpa a syncQueue correspondente (senão acumula para sempre)
+                        await window.DataStore.db.syncQueue.where('entity_id').equals(entity.entity_id).delete();
                         pushed++;
                     }
                 }
@@ -1052,6 +1115,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                             lastSyncedAt: new Date().toISOString()
                         }
                     });
+                    await window.DataStore.db.syncQueue.where('entity_id').equals(entity.entity_id).delete();
                     pushed++;
                     this.log.debug(`✅ Pushed entity ${entity.name} (${Object.keys(changedFields).length} fields)`);
 
@@ -1440,12 +1504,16 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                 this.log.debug(`Applying local version for ${type} ${id}`);
 
                 if (type === 'entity') {
-                    // Update with force flag (overwrite server version)
-                    const updated = await window.ApiService.updateEntity(
-                        id,
-                        local,
-                        null  // No version check - force update
-                    );
+                    // "Keep Mine": sobrescreve o servidor — mas o servidor EXIGE
+                    // If-Match (sem ele retorna 428), então usar a versão do servidor
+                    let updated;
+                    if (server?.version != null) {
+                        updated = await window.ApiService.updateEntity(id, local, server.version);
+                    } else {
+                        // Ainda não existe no servidor — criar via bulk
+                        await window.ApiService.bulkUpsertEntities([this.cleanEntityForSync(local)]);
+                        updated = { ...local, version: 1 };
+                    }
 
                     // Store synced state
                     await this.storeItemState('entity', id, updated);

@@ -523,7 +523,7 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
                 data: baseData,
                 updated_at: new Date().toISOString(),
                 updatedAt: new Date().toISOString(),
-                version: (this.editingEntity.version || 1) + 1,
+                version: this.editingEntity.version || 1,
                 sync: {
                     ...(this.editingEntity.sync || {}),
                     status: 'pending',

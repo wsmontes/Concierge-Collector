@@ -503,6 +503,9 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
             // Add to sync queue
             await this.addToSyncQueue('entity', 'create', id, createdEntity.entity_id, createdEntity);
 
+            // Marcar como pendente de sync (SyncManager lê sync.status)
+            await this.db.entities.update(id, { sync: { status: 'pending', lastModified: Date.now() } });
+
             this.log.debug(`✅ Created entity: ${entity.name} (${entity.entity_id})`);
             return createdEntity;
 
@@ -597,6 +600,11 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
             // Add to sync queue
             await this.addToSyncQueue('entity', 'update', entity.id, entityId, updatedEntity);
 
+            // Marcar como pendente de sync (SyncManager lê sync.status)
+            await this.db.entities.where('entity_id').equals(entityId).modify({
+                sync: { ...(updatedEntity.sync || {}), status: 'pending', lastModified: Date.now() }
+            });
+
             this.log.debug(`✅ Updated entity: ${entityId}`);
             return updatedEntity;
 
@@ -664,6 +672,9 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
 
             // Add to sync queue
             await this.addToSyncQueue('curation', 'create', id, createdCuration.curation_id, createdCuration);
+
+            // Marcar como pendente de sync (SyncManager lê sync.status)
+            await this.db.curations.update(id, { sync: { status: 'pending', lastModified: Date.now() } });
 
             this.log.debug(`✅ Created curation: ${curation.curation_id} for entity: ${curation.entity_id}`);
             return createdCuration;
