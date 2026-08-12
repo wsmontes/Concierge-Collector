@@ -26,6 +26,15 @@ from app.api.entities import find_entity
 from pymongo.database import Database
 from openai import OpenAI
 
+def _vector_to_array(vector) -> "np.ndarray":
+    """Converte vetor de embedding para array numpy — aceita lista (doubles,
+    formato antigo) ou Binary float32 (formato compactado, ~metade do espaço)."""
+    if isinstance(vector, bytes):
+        return np.frombuffer(vector, dtype=np.float32)
+    return np.asarray(vector, dtype=np.float32)
+
+
+
 router = APIRouter(prefix="/curations", tags=["curations"])
 
 
@@ -443,7 +452,7 @@ def semantic_search_curations(
             
             # Calculate cosine similarity
             try:
-                concept_vector = np.asarray(emb["vector"], dtype=np.float32)
+                concept_vector = _vector_to_array(emb["vector"])
                 concept_norm = float(np.linalg.norm(concept_vector))
                 if concept_norm == 0.0:
                     continue
@@ -674,7 +683,7 @@ def hybrid_search(
             
             # Calculate cosine similarity
             try:
-                concept_vector = np.asarray(emb["vector"], dtype=np.float32)
+                concept_vector = _vector_to_array(emb["vector"])
                 concept_norm = float(np.linalg.norm(concept_vector))
                 if concept_norm == 0.0:
                     continue
