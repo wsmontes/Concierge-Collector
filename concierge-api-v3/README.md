@@ -12,9 +12,8 @@ pip install -r requirements.txt
 cp .env.example .env
 # Edit .env with your configuration
 
-# Run the API (from project root)
-./start-api.sh   # Starts in background
-./stop-api.sh    # Stops the API
+# Run the API (from concierge-api-v3/)
+./run_local.sh   # Cria venv, instala deps e sobe em background (logs em uvicorn.log; para: kill $(cat .server.pid))
 
 # Or run directly
 cd concierge-api-v3

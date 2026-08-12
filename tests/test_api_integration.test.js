@@ -4,7 +4,7 @@
  * Dependencies: Live API at http://localhost:8000
  * 
  * These tests use the REAL API - no mocks!
- * Requires API to be running: npm run start-api (in concierge-api-v3/)
+ * Requires API to be running: ./run_local.sh (in concierge-api-v3/)
  */
 
 import { describe, test, expect, beforeAll, afterAll } from 'vitest';
@@ -28,7 +28,7 @@ beforeAll(async () => {
   apiAvailable = await isApiAvailable();
   if (!apiAvailable) {
     console.warn('⚠️  API not available at http://localhost:8000 - skipping integration tests');
-    console.warn('   Start the API with: cd concierge-api-v3 && ./start-api.sh');
+    console.warn('   Start the API with: cd concierge-api-v3 && ./run_local.sh');
   }
 });
 
