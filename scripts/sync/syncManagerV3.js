@@ -777,6 +777,9 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             // ~21.6k entidades do servidor em ~108 requests sequenciais por
             // fullSync; o cursor usa o índice _id (O(log n), estável sob
             // escritas concorrentes)
+            // Watermark no INÍCIO (mesma regra do pullCurations): edições de
+            // outro device DURANTE o pull voltam no próximo ?since
+            const entityPullStartedAt = new Date().toISOString();
             const since = this.stats.lastEntityPullAt;
             const batchLimit = 200;
             let afterId = null;
@@ -832,7 +835,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
 
             this.stats.entitiesPulled = totalPulled;
             this.stats.lastPullAt = new Date().toISOString();
-            this.stats.lastEntityPullAt = new Date().toISOString();
+            this.stats.lastEntityPullAt = entityPullStartedAt;
             await this.saveSyncMetadata();
         } catch (error) {
             this.log.error('Failed to pull linked entities:', error);
@@ -921,6 +924,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             let afterId = null;
             let totalPulled = 0;
             let totalProcessed = 0;
+            let allApplied = true;  // item que falhou localmente NÃO avança o watermark
             let hasMore = true;
             let batchCount = 0;
 
@@ -956,6 +960,8 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                     const saved = await this.processServerCuration(serverCuration);
                     if (saved) {
                         totalPulled++;
+                    } else {
+                        allApplied = false;  // falha local: NÃO avança o watermark
                     }
                 }
 
@@ -981,7 +987,9 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
 
             // P7a fix: avança o marcador SEMPRE que a paginação completar com sucesso —
             // se não avançar quando não há mudanças, o próximo pull faz full scan
-            this.stats.lastCurationPullAt = pullStartedAt;
+            // Se alguma curadoria não aplicou localmente, NÃO avança o
+            // watermark — senão ela nunca seria re-puxada
+            this.stats.lastCurationPullAt = allApplied ? pullStartedAt : since;
 
             await this.saveSyncMetadata();
 

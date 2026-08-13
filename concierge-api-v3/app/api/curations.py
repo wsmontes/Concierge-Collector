@@ -123,6 +123,18 @@ CURATION_RESPONSE_PROJECTION = {
 }
 
 
+def _clean_created_by(curation, doc):
+    """createdBy sem o placeholder 'unknown' (case-insensitive) — cai para o
+    curator_id normalizado; sem nada, None."""
+    raw = curation.createdBy
+    if raw and str(raw).lower() != "unknown":
+        return raw
+    cur_id = doc.get("curator_id")
+    if cur_id and str(cur_id).lower() != "unknown":
+        return cur_id
+    return None
+
+
 def _normalize_curator_id(doc):
     """Regra ÚNICA server-side: curator.id é autoritativo e o placeholder
     'unknown' (sync sem usuário) nunca persiste sobre um valor real."""
@@ -143,19 +155,20 @@ def curation_query(curation_id: str) -> dict:
     return {"$or": q}
 
 
-def find_curation(db, curation_id):
+def find_curation(db, curation_id, projection=None):
     """Resolução DETERMINÍSTICA por probes sequenciais: _id string exato →
-    campo curation_id → _id ObjectId. O $or do Mongo NÃO garante ordem entre
-    branches — twins resolviam por plano de query, não por prioridade."""
-    doc = db.curations.find_one({"_id": curation_id})
-    if doc:
-        return doc
-    doc = db.curations.find_one({"curation_id": curation_id})
+    _id ObjectId → campo curation_id. O $or do Mongo NÃO garante ordem entre
+    branches — twins resolviam por plano de query, não por prioridade.
+    projection evita transferir embeddings inteiros (~6KB/vetor) em buscas
+    de existência."""
+    doc = db.curations.find_one({"_id": curation_id}, projection)
     if doc:
         return doc
     if ObjectId.is_valid(curation_id):
-        return db.curations.find_one({"_id": ObjectId(curation_id)})
-    return None
+        doc = db.curations.find_one({"_id": ObjectId(curation_id)}, projection)
+        if doc:
+            return doc
+    return db.curations.find_one({"curation_id": curation_id}, projection)
 
 
 def build_curation_response_payload(curation_doc: dict) -> dict:
@@ -203,8 +216,7 @@ def create_curation(
     doc["updatedAt"] = datetime.now(timezone.utc)
     doc["version"] = 1
     _normalize_curator_id(doc)
-    doc["createdBy"] = (curation.createdBy if curation.createdBy and curation.createdBy != "unknown"
-                   else None) or doc.get("curator_id")
+    doc["createdBy"] = _clean_created_by(curation, doc)
     doc["updatedBy"] = doc.get("curator_id")
 
     # Twin guard: um doc ObjectId com o mesmo id pode existir (índice único
@@ -218,10 +230,14 @@ def create_curation(
     try:
         db.curations.insert_one(doc)
     except DuplicateKeyError:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Curation {curation.curation_id} already exists"
-        )
+        # twin criado por corrida entre o guard e o insert: re-checa e
+        # devolve 409 consistente (o índice unique é type-aware)
+        if find_curation(db, curation.curation_id, projection={"_id": 1}):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Curation {curation.curation_id} already exists"
+            )
+        raise
     
     # Return created curation
     result = db.curations.find_one({"_id": curation.curation_id}, CURATION_RESPONSE_PROJECTION)
@@ -356,14 +372,14 @@ def get_curation(
     db: Database = Depends(get_database)
 ):
     """Get curation by ID"""
-    result = db.curations.find_one(curation_query(curation_id), CURATION_RESPONSE_PROJECTION)
-    
+    result = find_curation(db, curation_id, projection=CURATION_RESPONSE_PROJECTION)
+
     if not result:
         raise HTTPException(
             status_code=404,
             detail=f"Curation {curation_id} not found"
         )
-    
+
     return Curation(**result)
 
 
@@ -379,8 +395,10 @@ def update_curation(
     
     **Authentication Required:** Include `Authorization: Bearer <token>` OR `X-API-Key: <key>` header
     """
-    # Get current curation for version
-    current = db.curations.find_one(curation_query(curation_id), CURATION_RESPONSE_PROJECTION)
+    # Get current curation for version — resolução DETERMINÍSTICA: o $or
+    # poderia ler a versão de UM twin e escrever no OUTRO (dois contadores
+    # de versão independentes ping-pongando 409)
+    current = find_curation(db, curation_id, projection=CURATION_RESPONSE_PROJECTION)
     if not current:
         raise HTTPException(status_code=404, detail="Curation not found")
     
@@ -444,9 +462,10 @@ def update_curation(
     if "embeddings" in update_data:
         update_data["embeddings"] = _compact_embeddings_for_storage(update_data["embeddings"])
     
-    # Update
+    # Update — escreve no _id ESPECÍFICO do doc que a versão leu (nunca no
+    # twin por decisão do planner)
     result = db.curations.find_one_and_update(
-        curation_query(curation_id),
+        {"_id": current["_id"], "version": current_version},
         {"$set": update_data},
         projection=CURATION_RESPONSE_PROJECTION,
         return_document=True
@@ -472,8 +491,11 @@ def delete_curation(
     Marks the curation as 'deleted' instead of removing from DB.
     **Authentication Required:** Include `Authorization: Bearer <token>` OR `X-API-Key: <key>` header
     """
+    alvo = find_curation(db, curation_id, projection={"_id": 1})
+    if not alvo:
+        raise HTTPException(status_code=404, detail=f"Curation {curation_id} not found")
     result = db.curations.update_one(
-        curation_query(curation_id),
+        {"_id": alvo["_id"]},
         {
             "$set": {
                 "status": "deleted",
@@ -958,18 +980,22 @@ def bulk_upsert_curations(
             {"$or": [{"_id": {"$in": eid_variants}}, {"entity_id": {"$in": unique_eids}}]},
             {"type": 1, "data.location": 1, "entity_id": 1}  # entity_id NA projeção (senão o slug nunca casa)
         )
-        for e in entity_docs:
+        # strings ANTES de ObjectIds (prioridade documentada do repo) —
+        # setdefault: o primeiro escreve, o outro não sobrescreve
+        for e in sorted(entity_docs, key=lambda e: 0 if isinstance(e["_id"], str) else 1):
             # DOIS dicts: str(_id) e slug nunca se sobrescrevem (colisão
             # slug==str(_id) de outra entity denormalizaria cidade errada)
-            by_id[str(e["_id"])] = e
+            by_id.setdefault(str(e["_id"]), e)
             if e.get("entity_id"):
-                by_slug[e["entity_id"]] = e
+                by_slug.setdefault(e["entity_id"], e)
 
     for idx, curation in enumerate(payload.curations):
         try:
-            existing = find_curation(db, curation.curation_id)
-            if existing:
-                existing = {k: existing.get(k) for k in ("_id", "version", "createdBy", "createdAt")}
+            existing = find_curation(
+                db, curation.curation_id,
+                projection={"_id": 1, "version": 1, "createdBy": 1,
+                            "createdAt": 1, "curator_id": 1},
+            )
 
             # Denormalize city/type from entity (pre-fetched batch) — _id
             # exato tem prioridade sobre o slug
@@ -985,7 +1011,7 @@ def bulk_upsert_curations(
                 doc["updatedAt"] = now
                 doc["version"] = existing.get("version", 1) + 1
                 _normalize_curator_id(doc)  # ANTES do updatedBy: 'unknown' não persiste
-                if doc.get("curator_id") == "unknown" and existing.get("curator_id"):
+                if (doc.get("curator_id") or "").lower() == "unknown" and existing.get("curator_id"):
                     # payload de device deslogado não clobber o valor real
                     doc["curator_id"] = existing["curator_id"]
                 doc["updatedBy"] = doc.get("curator_id") or curation.curator_id
@@ -1003,7 +1029,7 @@ def bulk_upsert_curations(
                 doc["createdAt"] = now
                 doc["updatedAt"] = now
                 doc["version"] = 1
-                doc["createdBy"] = curation.createdBy or doc.get("curator_id")
+                doc["createdBy"] = _clean_created_by(curation, doc)
                 doc["updatedBy"] = doc.get("curator_id")
                 if entity_for_denorm:
                     doc.update(denormalize_curation_location(entity_for_denorm))
