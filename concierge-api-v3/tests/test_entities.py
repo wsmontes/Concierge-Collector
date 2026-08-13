@@ -185,3 +185,70 @@ class TestAuth:
                 assert result["method"] == "jwt"
                 assert result["user"] == "test@test.com"
                 assert result["role"] == "curator"
+
+
+@pytest.mark.mongo
+def test_list_entities_ids_filter(client, test_db, clean_test_entities):
+    """GET /entities?ids= busca SÓ as entidades pedidas (string + hex
+    ObjectId + slug) — o fast-path do pull do collector depende disso."""
+    test_db.entities.insert_many(
+        [
+            {
+                "_id": "ids_slug_ent",
+                "entity_id": "ids_slug_ent",
+                "name": "Alvo Slug",
+                "status": "active",
+                "type": "restaurant",
+                "updatedAt": "2026-08-13T00:00:00Z",
+            },
+            {
+                "_id": "ids_hex_ent",
+                "entity_id": "ids_hex_ent",
+                "name": "Alvo Hex",
+                "status": "active",
+                "type": "restaurant",
+                "updatedAt": "2026-08-13T00:00:00Z",
+            },
+            {
+                "_id": "ids_noise",
+                "entity_id": "ids_noise",
+                "name": "Ruído",
+                "status": "active",
+                "type": "restaurant",
+                "updatedAt": "2026-08-13T00:00:00Z",
+            },
+        ]
+    )
+
+    r = client.get(
+        "/api/v3/entities", params={"ids": "ids_slug_ent,ids_hex_ent", "limit": 50}
+    )
+    assert r.status_code == 200
+    items = r.json()["items"]
+    ids = {i.get("entity_id") or i.get("_id") for i in items}
+    assert "ids_slug_ent" in ids
+    assert "ids_hex_ent" in ids
+    assert "ids_noise" not in ids
+
+    # hex válido casa ObjectId ($in de string NÃO casa ObjectId sem variante)
+    from bson import ObjectId
+
+    test_db.entities.insert_one(
+        {
+            "_id": ObjectId("507f1f77bcf86cd799439011"),
+            "entity_id": "hex-oid-slug",
+            "name": "Alvo ObjectId",
+            "status": "active",
+            "type": "restaurant",
+            "updatedAt": "2026-08-13T00:00:00Z",
+        }
+    )
+    r2 = client.get(
+        "/api/v3/entities", params={"ids": "507f1f77bcf86cd799439011", "limit": 50}
+    )
+    assert r2.status_code == 200
+    r2_ids = [i.get("entity_id") or i.get("_id") for i in r2.json()["items"]]
+    assert (
+        any(str(i) == "507f1f77bcf86cd799439011" for i in r2_ids)
+        or "hex-oid-slug" in r2_ids
+    )

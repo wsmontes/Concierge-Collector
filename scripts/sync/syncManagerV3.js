@@ -39,6 +39,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
         // State
         this.isOnline = navigator.onLine;
         this.isSyncing = false;
+        this.isPushing = false; // true APENAS na fase de PUSH — o pull não bloqueia mutações
         this.syncInterval = null;
         this.retryTimeout = null;
         this._rerunQueued = false; // P8: sync re-agendado após o atual terminar
@@ -626,6 +627,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
 
         try {
             this.isSyncing = true;
+            this.isPushing = true;  // trava de mutação SÓ durante o push
             this.emitSyncEvent('sync-start');
             this.log.info('�� Starting full sync...');
 
@@ -635,6 +637,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
 
             this.emitSyncEvent('sync-progress', { stage: 'push-curations', message: 'Uploading local curation updates...' });
             await this.pushCurations();
+            this.isPushing = false;  // pull não trava edições (guards de pending protegem)
 
             // 2. Pull incremental (server → client) — dados de outros dispositivos/curadores
             this.emitSyncEvent('sync-progress', { stage: 'pull-curations', message: 'Baixando curations do servidor...' });
@@ -659,6 +662,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             };
         } finally {
             this.isSyncing = false;
+            this.isPushing = false;
         }
     }
 
@@ -719,6 +723,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             this.emitSyncEvent('sync-error', { error: error.message, mode: 'quick' });
         } finally {
             this.isSyncing = false;
+            this.isPushing = false;
         }
     }
 
@@ -806,66 +811,75 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             const linkedEntityIds = await this.collectLinkedEntityIdsFromCurations();
             this.log.debug(`⬇️ Pulling entidades vinculadas (${linkedEntityIds.size} ids locais)`);
 
-            // Paginação por CURSOR (after_id) — o offset antigo varria as
-            // ~21.6k entidades do servidor em ~108 requests sequenciais por
-            // fullSync; o cursor usa o índice _id (O(log n), estável sob
-            // escritas concorrentes)
             // Watermark no INÍCIO (mesma regra do pullCurations): edições de
             // outro device DURANTE o pull voltam no próximo ?since
             const entityPullStartedAt = new Date().toISOString();
             const since = this.stats.lastEntityPullAt;
-            const batchLimit = 200;
-            let afterId = null;
             let totalPulled = 0;
-            let hasMore = true;
 
-            while (hasMore) {
-                const params = { limit: batchLimit };
+            // FAST PATH: filtro `ids` do servidor — busca SÓ as entidades
+            // vinculadas a curadorias locais (1-2 requests) em vez de paginar
+            // as ~21.6k do acervo (108 requests × pacing = minutos de sync,
+            // e o watermark nunca salvava se o usuário fechasse antes do fim)
+            const idList = Array.from(linkedEntityIds);
+            if (idList.length) {
+                const params = { limit: 500, ids: idList.slice(0, 500).join(',') };
                 if (since) {
-                    params.since = since;
-                }
-                if (afterId) {
-                    params.after_id = afterId;
+                    params.since = since;  // incremental: só vinculadas MUDADAS desde o último pull
                 }
                 const response = await window.ApiService.listEntities(params);
                 const items = response.items || [];
-                if (!items.length) {
-                    hasMore = false;
-                    break;
-                }
                 for (const serverEntity of items) {
-                    // curation.entity_id pode referenciar slug OU _id (hex) — aceitar ambos
-                    const slug = serverEntity.entity_id;
-                    const oid = typeof serverEntity._id === 'object'
-                        ? String(serverEntity._id?.$oid || '')
-                        : String(serverEntity._id || '');
-                    const id = typeof serverEntity.id === 'object'
-                        ? String(serverEntity.id?.$oid || '')
-                        : String(serverEntity.id || '');
-                    if (linkedEntityIds.has(slug) || linkedEntityIds.has(oid) || linkedEntityIds.has(id)) {
-                        await this.processServerEntity(serverEntity);
-                        totalPulled++;
-                    }
+                    await this.processServerEntity(serverEntity);
+                    totalPulled++;
                 }
-                const last = items[items.length - 1];
-                const rawId = last?._id ?? last?.id ?? '';
-                // _id serializado como objeto ({"$oid": ...}) viraria
-                // '[object Object]' — cursor de lixo que re-puxa a mesma
-                // página para sempre
-                afterId = typeof rawId === 'object'
-                    ? String(rawId?.$oid || '')
-                    : String(rawId || '');
-                // NÃO parar em página curta: _ids ObjectId ordenam DEPOIS das
-                // strings no Mongo — a cauda curta de strings é seguida pelos
-                // ObjectIds (471 entities ficavam invisíveis). Só página VAZIA
-                // ou cursor ausente termina; o preço é 1 request extra vazio.
-                if (!this.shouldContinuePull(items, afterId)) {
-                    hasMore = false;
-                } else {
-                    // pacing: ~108 páginas em rajada estouravam o rate limit
-                    // de 300/min (main.py Limiter) no primeiro full sync
-                    const delayMs = window.AppConfig?.api?.backend?.syncBatchDelayMs || 200;
-                    await new Promise(resolve => setTimeout(resolve, delayMs));
+            }
+
+            // FALLBACK (sem ids locais): paginação por CURSOR como antes
+            if (!idList.length) {
+                const batchLimit = 200;
+                let afterId = null;
+                let hasMore = true;
+
+                while (hasMore) {
+                    const params = { limit: batchLimit };
+                    if (since) {
+                        params.since = since;
+                    }
+                    if (afterId) {
+                        params.after_id = afterId;
+                    }
+                    const response = await window.ApiService.listEntities(params);
+                    const items = response.items || [];
+                    if (!items.length) {
+                        hasMore = false;
+                        break;
+                    }
+                    for (const serverEntity of items) {
+                        // curation.entity_id pode referenciar slug OU _id (hex) — aceitar ambos
+                        const slug = serverEntity.entity_id;
+                        const oid = typeof serverEntity._id === 'object'
+                            ? String(serverEntity._id?.$oid || '')
+                            : String(serverEntity._id || '');
+                        const id = typeof serverEntity.id === 'object'
+                            ? String(serverEntity.id?.$oid || '')
+                            : String(serverEntity.id || '');
+                        if (linkedEntityIds.has(slug) || linkedEntityIds.has(oid) || linkedEntityIds.has(id)) {
+                            await this.processServerEntity(serverEntity);
+                            totalPulled++;
+                        }
+                    }
+                    const last = items[items.length - 1];
+                    const rawId = last?._id ?? last?.id ?? '';
+                    afterId = typeof rawId === 'object'
+                        ? String(rawId?.$oid || '')
+                        : String(rawId || '');
+                    if (!this.shouldContinuePull(items, afterId)) {
+                        hasMore = false;
+                    } else {
+                        const delayMs = window.AppConfig?.api?.backend?.syncBatchDelayMs || 200;
+                        await new Promise(resolve => setTimeout(resolve, delayMs));
+                    }
                 }
             }
 

@@ -381,12 +381,22 @@ if (typeof window.UIManager === 'undefined') {
         }
 
         canMutateWhileSyncing() {
-            if (!window.SyncManager || !window.SyncManager.isSyncing) {
+            const sm = window.SyncManager;
+            if (!sm) {
                 return true;
             }
 
-            this.showNotification('Sync in progress. Please wait a few seconds before editing/deleting items.', 'info');
-            return false;
+            // Só o PUSH precisa da trava (evita mandar versão velha por cima
+            // do servidor). O PULL não bloqueia: edições locais são
+            // protegidas pelos guards de pending — antes, um pull de minutos
+            // deixava o usuário travado com "Sync in progress..." a cada
+            // load.
+            const blocking = sm.isPushing !== undefined ? sm.isPushing : sm.isSyncing;
+            if (blocking) {
+                this.showNotification('Sync in progress. Please wait a few seconds before editing/deleting items.', 'info');
+                return false;
+            }
+            return true;
         }
 
         /**

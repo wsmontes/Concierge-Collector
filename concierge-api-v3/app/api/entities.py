@@ -188,6 +188,15 @@ def list_entities(
     since: Optional[str] = Query(
         None, description="ISO timestamp - only return entities updated after this time"
     ),
+    ids: Optional[str] = Query(
+        None,
+        description=(
+            "Comma-separated entity ids (_id string, hex ObjectId ou slug). "
+            "Usado pelo pull do collector: busca SÓ as entidades vinculadas "
+            "a curadorias locais em vez de paginar as ~21k do acervo "
+            "(108 requests → 1)."
+        ),
+    ),
     limit: int = Query(50, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     after_id: Optional[str] = Query(
@@ -224,6 +233,22 @@ def list_entities(
             raise HTTPException(
                 status_code=400, detail="Invalid since timestamp format. Use ISO 8601."
             )
+
+    if isinstance(ids, str) and ids:
+        # ids explícitos: $in com variantes string E ObjectId (hex válido) —
+        # cobre _id string, _id ObjectId e slug (campo entity_id), o mesmo
+        # padrão do pre-fetch do bulk_upsert. Limite de segurança no tamanho.
+        # isinstance: chamadas DIRETAS (testes) recebem o default Query(...)
+        # como objeto — sem o guard, .split() estoura.
+        id_list = [i.strip() for i in ids.split(",") if i.strip()][:500]
+        variants = list(id_list)
+        for eid in id_list:
+            if ObjectId.is_valid(eid):
+                variants.append(ObjectId(eid))
+        query["$or"] = [
+            {"_id": {"$in": variants}},
+            {"entity_id": {"$in": id_list}},
+        ]
 
     # count_documents is only needed for offset-based callers; skip it for cursor mode
     if after_id:
