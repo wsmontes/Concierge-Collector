@@ -10,11 +10,13 @@ Usage:
   python3 backfill_embeddings.py go        # executa o backfill
 """
 import os
+import struct
 import sys
 import time
 from datetime import datetime, timezone
 
 import pymongo
+from bson import Binary
 from openai import OpenAI
 
 EMBEDDING_MODEL = 'text-embedding-3-small'
@@ -99,8 +101,11 @@ def main():
             embeddings = []
             for m in meta:
                 if m['text'] in vectors:
+                    arr = [float(x) for x in vectors[m['text']]]
+                    # float32 binário: ~6KB por vetor (vs ~20KB do array de doubles no BSON)
+                    packed = Binary(struct.pack('<%df' % len(arr), *arr), subtype=0)
                     embeddings.append({'text': m['text'], 'category': m['category'],
-                                       'concept': m['concept'], 'vector': vectors[m['text']]})
+                                       'concept': m['concept'], 'vector': packed})
             if not embeddings:
                 falhas += 1
                 continue
