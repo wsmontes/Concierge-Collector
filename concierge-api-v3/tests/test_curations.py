@@ -126,26 +126,24 @@ def _api_headers():
 
 @pytest.mark.mongo
 def test_search_filters_by_city_and_text(client, test_db, clean_test_curations):
-    # _ids com prefixo "0-" ordenam ANTES de todos os ids reais de produção
-    # (curation-research-*) na busca por _id ascendente — sem isso, o volume
-    # de curadorias reais (900+) empurra os docs de teste para fora da
-    # primeira página (limit=100) e o assert falha por dado externo.
+    # roda no banco HERMÉTICO (conftest força <db>-test), então os únicos
+    # docs da busca são os inseridos aqui — sem dependência do volume real
     test_db.curations.insert_many([
-        {"_id": "0-test_c_sp", "curation_id": "0-test_c_sp", "entity_id": "test_e1",
+        {"_id": "test_c_sp", "curation_id": "test_c_sp", "entity_id": "test_e1",
          "restaurant_name": "Pizzaria Napoli", "status": "draft", "city": "São Paulo", "type": "restaurant",
          "curator": {"id": "test_curator", "name": "Test"}},
-        {"_id": "0-test_c_rio", "curation_id": "0-test_c_rio", "entity_id": "test_e2",
+        {"_id": "test_c_rio", "curation_id": "test_c_rio", "entity_id": "test_e2",
          "restaurant_name": "Bar do Rio", "status": "draft", "city": "Rio de Janeiro", "type": "bar",
          "curator": {"id": "test_curator", "name": "Test"}},
     ])
     r = client.get("/api/v3/curations/search?city=São Paulo&limit=100")
     ids = [i.get("curation_id") for i in r.json()["items"]]
-    assert "0-test_c_sp" in ids and "0-test_c_rio" not in ids
+    assert "test_c_sp" in ids and "test_c_rio" not in ids
 
     r2 = client.get("/api/v3/curations/search?q=napoli&limit=100")
     ids2 = [i.get("curation_id") for i in r2.json()["items"]]
-    assert "0-test_c_sp" in ids2 and "0-test_c_rio" not in ids2
-    test_db.curations.delete_many({"_id": {"$in": ["0-test_c_sp", "0-test_c_rio"]}})
+    assert "test_c_sp" in ids2 and "test_c_rio" not in ids2
+    test_db.curations.delete_many({"_id": {"$in": ["test_c_sp", "test_c_rio"]}})
 
 
 def test_bulk_upsert_handles_duplicate_key_race():

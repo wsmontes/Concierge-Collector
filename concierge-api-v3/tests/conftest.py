@@ -26,13 +26,31 @@ from dotenv import load_dotenv
 env_path = Path(__file__).parent.parent / ".env"
 load_dotenv(env_path)
 
+# TESTES NUNCA TOCAM O ATLAS DE PRODUÇÃO: banco de teste dedicado
+# (<nome>-test) forçado ANTES do import — pydantic-settings congela settings
+# no import, e get_database/lifespan seguem o settings. Sem isso, mongo tests
+# inserem/apagam docs no banco real e asserts dependem do volume de produção
+# (o incidente do '0-' prefix no review 30).
+os.environ["MONGODB_DB_NAME"] = f"{os.environ.get('MONGODB_DB_NAME', 'concierge-collector')}-test"
+
 from main import app
 from app.core.config import settings
 
 
 @pytest.fixture(scope="session")
+def hermetic_test_database():
+    """Drop do banco de teste no início da sessão (startup recria índices);
+    mantém o banco ao final para inspeção pós-falha."""
+    client = MongoClient(settings.mongodb_url)
+    client.drop_database(settings.mongodb_db_name)
+    client.close()
+    yield
+
+
+@pytest.fixture(scope="session")
 def test_db():
-    """Get test database - uses same DB but test collections"""
+    """Banco de teste HERMÉTICO (<db>-test, dropado no início da sessão) —
+    nunca o Atlas de produção."""
     client = MongoClient(settings.mongodb_url)
     db = client[settings.mongodb_db_name]
     yield db
@@ -40,8 +58,9 @@ def test_db():
 
 
 @pytest.fixture(scope="session")
-def client():
-    """FastAPI test client"""
+def client(hermetic_test_database):
+    """FastAPI test client — hermetic_test_database garante o drop ANTES do
+    startup (lifespan cria os índices no banco de teste vazio)."""
     with TestClient(app) as c:
         yield c
 
