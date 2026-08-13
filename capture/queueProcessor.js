@@ -31,6 +31,12 @@ export function start() {
   processQueue(); // immediate attempt
 }
 
+/** Reenfileira um item 'failed' (zerando as tentativas) — chamado pela UI. */
+export async function requeueItem(id) {
+  await Store.updateItem(id, { status: 'queued', retries: 0 });
+  processQueue();
+}
+
 /** Stop the processor (cleanup). */
 export function stop() {
   window.removeEventListener('online', onOnline);
@@ -54,13 +60,23 @@ export async function processQueue() {
 
   processing = true;
   try {
-    const items = await Store.getPendingItems();
+    const items = (await Store.getPendingItems()) || [];
 
     for (const item of items) {
-      // ── Step 1: Upload audio (queued → matched) ──
-      if (item.status === 'queued') {
+      // Itens que já esgotaram as tentativas não são reprocessados pelo
+      // heartbeat (senão um item permanentemente falho — ex.: 401 — seria
+      // reenviado a cada 30s para sempre). Voltam à fila via requeueItem().
+      if ((item.retries || 0) >= MAX_RETRIES) continue;
+
+      // ── Step 1: Upload audio (queued/failed → matched) ──
+      // 'failed' com retries < MAX_RETRIES é retentado pelo heartbeat; o
+      // contador acumula e o item para de ser retentado ao esgotar (a UI
+      // oferece Reenviar via requeueItem)
+      if (item.status === 'queued' || item.status === 'failed') {
         try {
-          await Store.updateItem(item.id, { status: 'uploading', retries: 0 });
+          // retries NÃO é zerado aqui: reprocessar um item 'failed' acumula
+          // tentativas até MAX_RETRIES (zerar só na criação/requeue)
+          await Store.updateItem(item.id, { status: 'uploading' });
           notify(item.id, 'uploading');
 
           const base64 = await blobToBase64(item.audioBlob);

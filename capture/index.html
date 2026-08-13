@@ -67,6 +67,15 @@
     <p id="record-status" class="record-status" hidden></p>
   </section>
 
+  <!-- Auth: credencial da API (JWT ou X-API-Key) — escondido quando autenticado -->
+  <section id="auth-panel" class="auth-panel" hidden aria-label="Credenciais da API">
+    <p class="auth-panel__title">Conecte-se para enviar capturas</p>
+    <input id="auth-input" class="auth-panel__input" type="password"
+           placeholder="Cole o token JWT ou a X-API-Key">
+    <button id="auth-save" class="auth-panel__btn">Salvar</button>
+    <button id="auth-clear" class="auth-panel__clear" hidden>Sair</button>
+  </section>
+
   <!-- Navigation: subtle link to legacy Collector -->
   <nav class="bottom-nav">
     <a href="/" class="bottom-nav__link">Browse</a>

@@ -560,11 +560,13 @@ def main() -> int:
             print(f"[{i}/{len(entities)}] {e.get('name')} — já feito, pulando")
             continue
         print(f"[{i}/{len(entities)}] {e.get('name')} …", end="", flush=True)
+        falhou = False
         try:
             cur, patch = research_entity(e, client, model, args.per_query_results, vocabulary=vocabulary)
         except Exception as exc:
-            print(f" ERRO: {exc}")
+            print(f" ERRO: {exc} (transitório — será retentada no próximo run)")
             cur, patch = None, None
+            falhou = True
         if cur:
             curations.append(cur)
         if patch and args.skip_with_description:
@@ -578,9 +580,12 @@ def main() -> int:
         print(f" ok ({n_cats} categorias, {has_desc})" if (cur or patch) else " sem conceitos")
         out_path.write_text(json.dumps(curations, ensure_ascii=False, indent=2), encoding="utf-8")
         desc_path.write_text(json.dumps(descriptions, ensure_ascii=False, indent=2), encoding="utf-8")
-        with processed_path.open("a", encoding="utf-8") as pf:  # registra a tentativa
-            pf.write(f"{eid}\n")
-        done.add(eid)
+        if not falhou:
+            # ledger só no SUCESSO (ou cauda vazia legítima): uma falha
+            # transitória de web/LLM não pode queimar a entidade para sempre
+            with processed_path.open("a", encoding="utf-8") as pf:
+                pf.write(f"{eid}\n")
+            done.add(eid)
         time.sleep(args.sleep)
 
     print(f"\nSalvo: {out_path}  ({len(curations)} curadorias)")

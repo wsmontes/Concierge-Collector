@@ -6,11 +6,46 @@
 
 const BASE = '/api/v3';
 
-async function request(method, path, body) {
+/**
+ * Credenciais do capture (mesma origin da API em produção — o app é servido
+ * em /capture/): JWT Bearer (capture_token, vindo do dev-login local ou da UI)
+ * ou X-API-Key (api_key, digitada na UI). Nunca envia header inválido.
+ */
+export function authHeaders() {
   const headers = { 'Content-Type': 'application/json' };
-  // Propagate auth from the legacy app if available
-  const apiKey = localStorage?.getItem('api_key');
-  if (apiKey) headers['X-API-Key'] = apiKey;
+  const token = localStorage?.getItem('capture_token') || localStorage?.getItem('auth_token');
+  if (token) {
+    headers['Authorization'] = `Bearer ${token}`;
+  } else {
+    const apiKey = localStorage?.getItem('api_key');
+    if (apiKey) headers['X-API-Key'] = apiKey;
+  }
+  return headers;
+}
+
+/** Salva credencial digitada na UI (token JWT ou API key). */
+export function saveCredentials({ token, apiKey }) {
+  if (token) localStorage?.setItem('capture_token', token);
+  if (apiKey) localStorage?.setItem('api_key', apiKey);
+}
+
+/** Limpa credenciais salvas. */
+export function clearCredentials() {
+  localStorage?.removeItem('capture_token');
+  localStorage?.removeItem('api_key');
+}
+
+/** true se há alguma credencial salva (Bearer ou X-API-Key). */
+export function hasCredentials() {
+  return Boolean(
+    localStorage?.getItem('capture_token')
+    || localStorage?.getItem('auth_token')
+    || localStorage?.getItem('api_key')
+  );
+}
+
+async function request(method, path, body) {
+  const headers = authHeaders();
 
   const res = await fetch(`${BASE}${path}`, {
     method,

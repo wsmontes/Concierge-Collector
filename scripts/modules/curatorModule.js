@@ -1026,6 +1026,14 @@ class CuratorModule {
                 timestamp: curator.lastActive || new Date().toISOString()
             };
 
+            // A API v3 só expõe GET /curators — não existe criação server-side.
+            // window.apiService.createCurator nunca existiu (TypeError a cada
+            // tentativa); pula graciosamente em vez de quebrar o sync.
+            if (!window.apiService || typeof window.apiService.createCurator !== 'function') {
+                this.log.debug('API v3 não suporta criação de curator — pulando sync server-side');
+                return;
+            }
+
             // Send to server using centralized apiService
             const response = await window.apiService.createCurator(curatorData);
 

@@ -372,13 +372,29 @@ def post_entities_bulk(
 # Settings loader
 # ---------------------------------------------------------------------------
 
-def load_settings() -> Tuple[str, str]:
-    env_path = Path(__file__).resolve().parents[2] / ".env"
-    load_dotenv(dotenv_path=env_path)
-    base_url = os.environ.get("API_BASE_URL", "https://concierge-collector.onrender.com/api/v3")
-    api_key  = os.environ.get("API_KEY", "")
+def load_settings(env_path=None) -> Tuple[str, str]:
+    # O .env vive em concierge-api-v3/ (a raiz do repo NÃO tem .env) e a chave
+    # é API_SECRET_KEY — mesmo padrão de import_entities.py. Lê SÓ o arquivo
+    # (sem os.environ): um valor pré-carregado no ambiente não pode mascarar
+    # um .env sem a chave.
+    env_path = env_path or (Path(__file__).resolve().parents[2] / "concierge-api-v3" / ".env")
+    valores = {}
+    if Path(env_path).exists():
+        with open(env_path, encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#") or "=" not in line:
+                    continue
+                k, v = line.split("=", 1)
+                valores[k] = v.strip().strip('"')
+    base_url = valores.get(
+        "API_BASE_URL", "https://concierge-collector.onrender.com/api/v3"
+    )
+    api_key = valores.get("API_SECRET_KEY", "")
     if not api_key:
-        raise RuntimeError("API_KEY not set. Add it to .env as API_KEY=<your_key>")
+        raise RuntimeError(
+            "API_SECRET_KEY not set. Add it to concierge-api-v3/.env as API_SECRET_KEY=<your_key>"
+        )
     return base_url.rstrip("/") + "/entities/bulk", api_key
 
 

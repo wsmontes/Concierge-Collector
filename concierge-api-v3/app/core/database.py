@@ -9,6 +9,7 @@ from pymongo.read_preferences import ReadPreference
 import logging
 
 from app.core.config import settings
+from app.core.index_specs import INDEX_SPECS
 
 logger = logging.getLogger(__name__)
 
@@ -49,59 +50,38 @@ def get_database() -> Database:
 
 
 def _ensure_indexes():
-    """Create indexes if they don't exist"""
+    """Create indexes if they don't exist — one try/except PER INDEX.
+
+    Incidente 2026-08-12: um try/except único em volta de tudo fazia o primeiro
+    índice que falhasse (ex.: unique 'externalId' com duplicatas de bulk
+    imports) abortar SILENCIOSAMENTE os demais — em produção entities ficou com
+    4 de 10 índices e curations só com _id_."""
+    db = get_database()
+
+    # ── Curations collection: drop legacy unique index on entity_id ─────────
     try:
-        db = get_database()
-
-        # ── Entities collection ──────────────────────────────────────────────
-        # Simple indexes
-        db.entities.create_index("type", background=True)
-        db.entities.create_index("name", background=True)
-        db.entities.create_index("createdAt", background=True)
-        db.entities.create_index([("name", "text")], background=True)
-
-        # Uniqueness guards
-        db.entities.create_index("externalId", unique=True, sparse=True, background=True)
-        db.entities.create_index("data.place_id", unique=True, sparse=True, background=True)
-
-        # Composite indexes for scale
-        # Supports: list with status filter + incremental sync (?since)
-        db.entities.create_index([("status", 1), ("updatedAt", -1)], background=True)
-        # Supports: stable cursor-based pagination on large collections
-        db.entities.create_index([("updatedAt", -1), ("_id", 1)], background=True)
-        # Supports: type filter combined with status
-        db.entities.create_index([("type", 1), ("status", 1)], background=True)
-
-        # ── Curations collection ─────────────────────────────────────────────
-        # Drop legacy unique index on entity_id if it exists
-        try:
-            indexes = db.curations.index_information()
-            for name, meta in indexes.items():
-                if "key" in meta and meta["key"] == [("entity_id", 1)] and meta.get("unique") is True:
-                    logger.warning(f"Found legacy unique index '{name}' on entity_id - Dropping...")
-                    db.curations.drop_index(name)
-                    logger.info("✅ Dropped legacy unique index")
-                    break
-        except Exception as e:
-            logger.warning(f"Error checking legacy indexes: {e}")
-
-        # Simple indexes
-        db.curations.create_index("entity_id", background=True)
-        db.curations.create_index("curator.id", background=True)
-        db.curations.create_index("createdAt", background=True)
-        db.curations.create_index("city", background=True)
-        db.curations.create_index("type", background=True)
-
-        # Composite indexes for scale
-        # Supports: status filter + incremental sync (?since)
-        db.curations.create_index([("status", 1), ("updatedAt", -1)], background=True)
-        # Supports: curations per entity excluding deleted (most common query)
-        db.curations.create_index([("entity_id", 1), ("status", 1)], background=True)
-        # Supports: curations per curator with status filter
-        db.curations.create_index([("curator.id", 1), ("status", 1)], background=True)
-        # Supports: stable cursor-based pagination on large collections
-        db.curations.create_index([("updatedAt", -1), ("_id", 1)], background=True)
-
-        logger.info("✅ Indexes ready")
+        indexes = db.curations.index_information()
+        for name, meta in indexes.items():
+            if "key" in meta and meta["key"] == [("entity_id", 1)] and meta.get("unique") is True:
+                logger.warning(f"Found legacy unique index '{name}' on entity_id - Dropping...")
+                db.curations.drop_index(name)
+                logger.info("✅ Dropped legacy unique index")
+                break
     except Exception as e:
-        logger.warning(f"Index creation: {e}")
+        logger.warning(f"Error checking legacy indexes: {e}")
+
+    # Fonte única das specs: app/core/index_specs.py (mesma lista que o
+    # db_rebuild usa no restore). O TTL de capture_sessions fica de fora —
+    # é criado pelo lifespan.py.
+    specs = [s for s in INDEX_SPECS if s[0] != "capture_sessions"]
+
+    created, failed = 0, 0
+    for coll_name, keys, kwargs in specs:
+        try:
+            getattr(db, coll_name).create_index(keys, background=True, **kwargs)
+            created += 1
+        except Exception as e:
+            failed += 1
+            logger.warning(f"Index creation failed on {coll_name} {keys}: {e}")
+
+    logger.info(f"✅ Indexes ready ({created} created, {failed} failed)")

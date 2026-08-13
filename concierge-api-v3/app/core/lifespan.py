@@ -3,6 +3,8 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 import logging
 
+from app.core.index_specs import INDEX_SPECS
+
 logger = logging.getLogger(__name__)
 
 
@@ -22,11 +24,11 @@ async def lifespan(app: FastAPI):
 
     db = get_database()
 
-    # Ensure TTL index on capture_sessions (auto-delete after 48h)
+    # Ensure TTL index on capture_sessions (auto-delete after 48h) — spec vinda
+    # da fonte única app/core/index_specs.py (mesma que o db_rebuild usa)
     try:
-        db["capture_sessions"].create_index(
-            "createdAt", expireAfterSeconds=172800, background=True
-        )
+        ttl_spec = next(s for s in INDEX_SPECS if s[0] == "capture_sessions")
+        db["capture_sessions"].create_index(ttl_spec[1], background=True, **ttl_spec[2])
         logger.info("capture_sessions TTL index ensured")
     except Exception as e:
         logger.warning(f"Failed to create capture_sessions TTL index: {e}")

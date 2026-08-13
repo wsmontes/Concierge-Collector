@@ -6,6 +6,7 @@ Professional FastAPI implementation with async MongoDB
 from fastapi import APIRouter, HTTPException, Header, Query, Depends, Request, status
 from typing import Optional, List
 import re
+import logging
 from datetime import datetime, timezone
 from pymongo.errors import DuplicateKeyError
 import time
@@ -23,8 +24,12 @@ from app.core.security import verify_access_token, verify_auth
 from app.models.user import has_role
 from app.services.curation_denorm import denormalize_curation_location
 from app.api.entities import find_entity
+from app.core.vector_packing import try_pack_vector
 from pymongo.database import Database
 from openai import OpenAI
+
+logger = logging.getLogger(__name__)
+
 
 def _vector_to_array(vector) -> "np.ndarray":
     """Converte vetor de embedding para array numpy — aceita lista (doubles,
@@ -33,6 +38,75 @@ def _vector_to_array(vector) -> "np.ndarray":
         return np.frombuffer(vector, dtype=np.float32)
     return np.asarray(vector, dtype=np.float32)
 
+
+def _compact_embeddings_for_storage(embeddings):
+    """Compacta 'vector' de cada entrada para Binary float32 (~6KB/1536d vs
+    ~20KB do array de doubles no BSON). Fronteira de escrita: todo vetor que
+    entra no Mongo via API passa por aqui — o formato de lista estourou a cota
+    do Atlas em 2026-08-12. Usa try_pack_vector (política única, em
+    app/core/vector_packing.py). Vetor ausente/vazio/malformado tem a CHAVE
+    'vector' REMOVIDA (texto preservado) — nunca re-entra no Mongo no formato
+    caro, nem como Binary de lixo."""
+    if not isinstance(embeddings, list):
+        return embeddings
+    out = []
+    for emb in embeddings:
+        if not isinstance(emb, dict) or "vector" not in emb:
+            out.append(emb)
+            continue
+        vector = emb["vector"]
+        if isinstance(vector, bytes):
+            out.append(emb)
+            continue
+        packed = try_pack_vector(vector)
+        if packed is None:
+            logger.warning(
+                "vetor de embeddings mantido sem compactar foi REMOVIDO "
+                "(ausente/vazio/malformado) — entrada fica só com texto: %r",
+                emb.get("text"),
+            )
+            out.append({k: v for k, v in emb.items() if k != "vector"})
+            continue
+        out.append({**emb, "vector": packed})
+    return out
+
+
+def _vector_search_or_fallback(db, projection, query_vector, candidate_limit, fallback_filter):
+    """Tenta o $vectorSearch (índice Atlas) e cai para a varredura bounded por
+    recência. RECALL conhecido: o Atlas não indexa o Binary subtype 0 do
+    formato compactado, então sem o índice vector só as candidate_limit
+    curadorias com embeddings MAIS RECENTES são pontuadas em Python —
+    curadorias antigas ficam fora dos candidatos enquanto o índice não for
+    recriado no Atlas. Falha do $vectorSearch é logada, nunca silenciosa."""
+    vector_index_name = os.getenv("MONGODB_CURATIONS_VECTOR_INDEX", "").strip()
+    if vector_index_name:
+        try:
+            vector_pipeline = [
+                {
+                    "$vectorSearch": {
+                        "index": vector_index_name,
+                        "path": "embeddings.vector",
+                        "queryVector": query_vector.tolist(),
+                        "numCandidates": min(max(candidate_limit * 5, 400), 5000),
+                        "limit": candidate_limit,
+                    }
+                },
+                {"$project": projection},
+            ]
+            resultados = list(db.curations.aggregate(vector_pipeline))
+            if resultados:
+                return resultados
+        except Exception as e:
+            logger.warning(
+                f"$vectorSearch falhou (índice '{vector_index_name}' indisponível "
+                f"ou vetores em formato não indexável — Binary float32): {e}. "
+                "Usando fallback por varredura + score em Python."
+            )
+    return list(
+        db.curations.find(fallback_filter, projection)
+        .sort("updatedAt", -1)
+        .limit(candidate_limit)
+    )
 
 
 router = APIRouter(prefix="/curations", tags=["curations"])
@@ -303,6 +377,10 @@ def update_curation(
 
     update_data["updatedAt"] = datetime.now(timezone.utc)
     update_data["version"] = current_version + 1
+
+    # Fronteira de escrita: vetores entram no Mongo compactados (Binary float32)
+    if "embeddings" in update_data:
+        update_data["embeddings"] = _compact_embeddings_for_storage(update_data["embeddings"])
     
     # Update
     result = db.curations.find_one_and_update(
@@ -404,32 +482,12 @@ def semantic_search_curations(
         "embeddings": 1,
     }
 
-    vector_index_name = os.getenv("MONGODB_CURATIONS_VECTOR_INDEX", "").strip()
     candidate_limit = min(max(request.limit * 20, 200), 2000)
-    curations = []
+    curations = _vector_search_or_fallback(
+        db, projection, query_vector, candidate_limit,
+        {"embeddings": {"$exists": True, "$ne": []}},
+    )
 
-    if vector_index_name:
-        try:
-            vector_pipeline = [
-                {
-                    "$vectorSearch": {
-                        "index": vector_index_name,
-                        "path": "embeddings.vector",
-                        "queryVector": query_vector.tolist(),
-                        "numCandidates": min(max(candidate_limit * 5, 400), 5000),
-                        "limit": candidate_limit,
-                    }
-                },
-                {"$project": projection},
-            ]
-            curations = list(db.curations.aggregate(vector_pipeline))
-        except Exception:
-            curations = []
-
-    if not curations:
-        query_filter = {"embeddings": {"$exists": True, "$ne": []}}
-        curations = list(db.curations.find(query_filter, projection).limit(candidate_limit))
-    
     # 3. Calculate similarities for each curation
     results = []
     
@@ -633,33 +691,14 @@ def hybrid_search(
         "embeddings": 1,
     }
 
-    vector_index_name = os.getenv("MONGODB_CURATIONS_VECTOR_INDEX", "").strip()
     candidate_limit = min(max(request.limit * 20, 200), 2000)
-    curations = []
-
-    if vector_index_name:
-        try:
-            vector_pipeline = [
-                {
-                    "$vectorSearch": {
-                        "index": vector_index_name,
-                        "path": "embeddings.vector",
-                        "queryVector": query_vector.tolist(),
-                        "numCandidates": min(max(candidate_limit * 5, 400), 5000),
-                        "limit": candidate_limit,
-                    }
-                },
-                {"$project": projection},
-            ]
-            curations = list(db.curations.aggregate(vector_pipeline))
-        except Exception:
-            curations = []
-
-    if not curations:
-        curations = list(db.curations.find({
+    curations = _vector_search_or_fallback(
+        db, projection, query_vector, candidate_limit,
+        {
             "embeddings": {"$exists": True, "$ne": []},
-            "entity_id": {"$ne": None, "$exists": True}
-        }, projection).limit(candidate_limit))
+            "entity_id": {"$ne": None, "$exists": True},
+        },
+    )
 
     allowed_categories = set(request.categories) if request.categories else None
     

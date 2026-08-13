@@ -2,7 +2,7 @@
 """
 File: generate_embeddings.py
 Purpose: Generate embeddings for curation concepts using OpenAI API
-Dependencies: requests, openai, python-dotenv
+Dependencies: requests, openai (venv de concierge-api-v3); mongo_tools (mesmo dir)
 Last Updated: November 23, 2025
 
 Creates embeddings for each category+concept pair in curations
@@ -19,12 +19,14 @@ from datetime import datetime
 
 import requests
 from openai import OpenAI
-from dotenv import load_dotenv
 
-# Load environment variables
-# Two levels up from scripts/python-tools/ to project root
+import mongo_tools
+
+# Load environment variables — mongo_tools.load_env SOBRESCREVE o shell nas
+# chaves OPENAI_* (o perfil exporta OPENAI_BASE_URL=http://localhost:1234/v1
+# e OPENAI_API_KEY=lm-studio, que sequestram o SDK da OpenAI)
 env_path = os.path.join(os.path.dirname(__file__), '..', '..', 'concierge-api-v3', '.env')
-load_dotenv(env_path)
+mongo_tools.load_env(env_path)
 
 # Configuration
 API_BASE_URL = 'https://concierge-collector.onrender.com'
@@ -43,8 +45,42 @@ if not OPENAI_API_KEY:
 # API Endpoints
 API_CURATIONS_URL = f"{API_BASE_URL}/api/v3/curations"
 
+
+def openai_client_kwargs(path=None):
+    """kwargs para OpenAI() — a chave vem do .env (vence o lm-studio do shell)
+    e o base_url é SEMPRE explícito: o shell exporta OPENAI_BASE_URL do LM
+    Studio e o SDK a usaria se não fosse sobrescrita."""
+    mongo_tools.load_env(path)
+    return {
+        "api_key": os.environ["OPENAI_API_KEY"],
+        "base_url": "https://api.openai.com/v1",
+    }
+
+
+def curations_sem_embeddings(db):
+    """Curadorias SEM embeddings (modo 2) direto no Mongo — a API /search
+    projeta 'embeddings' fora da resposta, então filtrar a resposta da API
+    reprocessaria TUDO. Mesmo filtro do backfill_embeddings.py. Retorna
+    dicts no formato consumido pela main ({curation_id, entity_id,
+    categories})."""
+    filtro = {
+        "$or": [{"embeddings": {"$exists": False}}, {"embeddings": []}],
+        "status": {"$ne": "deleted"},
+    }
+    return [
+        {
+            "curation_id": str(c["_id"]),
+            "entity_id": c.get("entity_id", "unknown"),
+            "categories": c.get("categories", {}),
+        }
+        for c in db.curations.find(
+            filtro, projection={"_id": 1, "categories": 1, "entity_id": 1}
+        )
+    ]
+
+
 # OpenAI Client
-client = OpenAI(api_key=OPENAI_API_KEY)
+client = OpenAI(**openai_client_kwargs())
 
 # Embedding Model
 EMBEDDING_MODEL = "text-embedding-3-small"
@@ -239,34 +275,36 @@ def main():
     print(f"  Model: {EMBEDDING_MODEL}")
     print(f"  Dimensions: {EMBEDDING_DIMENSIONS}")
     print(f"  Batch size: {BATCH_SIZE}\n")
-    
-    # Fetch all curations
-    print(f"{Colors.OKCYAN}Fetching curations...{Colors.ENDC}")
-    curations = get_all_curations()
-    print(f"{Colors.OKGREEN}Found {len(curations)} curations{Colors.ENDC}\n")
-    
-    if not curations:
-        print(f"{Colors.WARNING}No curations to process{Colors.ENDC}")
-        return
-    
+
     # Ask for mode
     print(f"{Colors.OKCYAN}Select mode:{Colors.ENDC}")
     print(f"  {Colors.BOLD}1{Colors.ENDC} - Process all curations (overwrite existing embeddings)")
     print(f"  {Colors.BOLD}2{Colors.ENDC} - Process only curations without embeddings")
     print()
-    
+
     mode = input(f"{Colors.BOLD}Choose mode (1/2): {Colors.ENDC}").strip()
-    
+
     if mode not in ['1', '2']:
         print(f"{Colors.FAIL}Invalid option. Exiting.{Colors.ENDC}")
         return
-    
+
     print()
-    
-    # Filter curations based on mode
+
     if mode == '2':
-        curations = [c for c in curations if not c.get('embeddings')]
-        print(f"{Colors.OKGREEN}Processing {len(curations)} curations without embeddings{Colors.ENDC}\n")
+        # Direto no Mongo: a API /search projeta 'embeddings' fora da
+        # resposta, então filtrar a resposta da API reprocessaria TUDO
+        # (e sobrescreveria embeddings válidos).
+        print(f"{Colors.OKCYAN}Buscando curadorias sem embeddings direto no Mongo...{Colors.ENDC}")
+        _client_db, db = mongo_tools.connect()
+        curations = curations_sem_embeddings(db)
+    else:
+        print(f"{Colors.OKCYAN}Fetching curations...{Colors.ENDC}")
+        curations = get_all_curations()
+    print(f"{Colors.OKGREEN}Found {len(curations)} curations{Colors.ENDC}\n")
+
+    if not curations:
+        print(f"{Colors.WARNING}No curations to process{Colors.ENDC}")
+        return
     
     # Stats
     stats = {

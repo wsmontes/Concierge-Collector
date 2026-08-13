@@ -2,7 +2,7 @@
 """
 File: data_cleanup.py
 Purpose: Backup e limpeza de dados de teste/órfãos do MongoDB (aprovado pelo usuário em 2026-08-12).
-Dependencies: pymongo, bson (venv de concierge-api-v3)
+Dependencies: bson (venv de concierge-api-v3); mongo_tools (mesmo dir, puxa pymongo)
 Usage:
   python3 data_cleanup.py backup     # exporta tudo que seria deletado para data/backups/
   python3 data_cleanup.py execute    # executa a limpeza (exige backup verificado antes)
@@ -13,30 +13,12 @@ import re
 import sys
 from datetime import datetime, timezone
 
-import pymongo
 from bson import json_util
+
+import mongo_tools
 
 BACKUP_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'data', 'backups')
 BACKUP_FILE = os.path.join(BACKUP_DIR, 'cleanup-2026-08-12.json')
-
-
-def load_env():
-    env = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', '..', 'concierge-api-v3', '.env')
-    with open(env) as f:
-        for line in f:
-            line = line.strip()
-            if not line or line.startswith('#') or '=' not in line:
-                continue
-            k, v = line.split('=', 1)
-            os.environ.setdefault(k, v.strip().strip('"'))
-
-
-def connect():
-    load_env()
-    client = pymongo.MongoClient(os.environ['MONGODB_URL'], serverSelectionTimeoutMS=15000)
-    db = client[os.environ.get('MONGODB_DB_NAME', 'concierge-collector')]
-    client.admin.command('ping')
-    return client, db
 
 
 def to_json(docs):
@@ -86,7 +68,7 @@ def collect(db):
 
 def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else 'backup'
-    client, db = connect()
+    client, db = mongo_tools.connect()
     plan, skipped = collect(db)
 
     print(f'== PLANO DE LIMPEZA ({db.name}) ==')

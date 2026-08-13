@@ -412,12 +412,8 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         return aggregate;
     }
 
-    async matchConcepts(concepts) {
-        const response = await this.request('POST', 'conceptMatch', {
-            body: JSON.stringify({ concepts })
-        });
-        return await response.json();
-    }
+    // matchConcepts removido: a API v3 não tem POST /concepts/match (405) e
+    // nenhum código chamava este método.
 
     async transcribeAudio(audioBlob, language = 'pt') {
         try {
@@ -526,8 +522,9 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
             params.append('longitude', location.longitude || location.lng);
         }
         if (radius) params.append('radius', radius);
-        // Default filter: only restaurants
-        if (placeType) params.append('type', placeType);
+        // Default filter: only restaurants — a API espera 'place_type'
+        // ('type' era silenciosamente ignorado pelo FastAPI)
+        if (placeType) params.append('place_type', placeType);
 
         const endpoint = `places/nearby?${params.toString()}`;
         const response = await this.request('GET', endpoint);

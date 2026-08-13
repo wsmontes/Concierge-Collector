@@ -13,24 +13,18 @@
 // Detect environment
 const isGitHubPages = window.location.hostname.includes('github.io');
 const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
-const isPythonAnywhere = window.location.hostname.includes('pythonanywhere.com');
 const isRenderProduction = window.location.hostname.includes('onrender.com');
 
-// Determine API base URL based on environment
+// Determine API base URL based on environment.
+// O ramo PythonAnywhere foi removido: wsmontes.pythonanywhere.com não existe
+// mais (health 404). Qualquer host não-local aponta para o Render.
 const getApiBaseUrl = () => {
-    if (isRenderProduction) {
-        // Production - Render.com API
-        return 'https://concierge-collector.onrender.com/api/v3';
-    } else if (isPythonAnywhere || isGitHubPages) {
-        // Production - PythonAnywhere API (legacy)
-        return 'https://wsmontes.pythonanywhere.com/api/v3';
-    } else if (isLocalhost) {
+    if (isLocalhost) {
         // Local development
         return 'http://localhost:8000/api/v3';
-    } else {
-        // Default to localhost
-        return 'http://localhost:8000/api/v3';
     }
+    // Production - Render.com API (inclui github.io legado)
+    return 'https://concierge-collector.onrender.com/api/v3';
 };
 
 const AppConfig = {
@@ -73,12 +67,11 @@ const AppConfig = {
                 // System endpoints
                 info: '/info',                   // GET - API info (no auth)
                 health: '/health',               // GET - Health check (no auth)
-                
+
                 // Entity endpoints
                 entities: '/entities',           // GET list (filters, no auth), POST create (X-API-Key)
                 entityById: '/entities/{id}',    // GET (no auth), PATCH (X-API-Key + If-Match), DELETE (X-API-Key)
-                entitiesSearch: '/entities/search',  // GET - Search entities with filters (no auth)
-                
+
                 // Entity bulk endpoint
                 entitiesBulk: '/entities/bulk',  // POST - Bulk upsert entities (X-API-Key, max 500)
 
@@ -86,20 +79,16 @@ const AppConfig = {
                 curations: '/curations',         // GET list (filters, no auth), POST create (X-API-Key)
                 curationById: '/curations/{id}', // GET (no auth), PATCH (X-API-Key + If-Match), DELETE (X-API-Key)
                 curationsSearch: '/curations/search',  // GET - Search curations with filters (no auth)
-                entityCurations: '/entities/{id}/curations',  // GET - All curations for entity (no auth)
+                // rota real da API: /curations/entities/{entity_id}/curations
+                entityCurations: '/curations/entities/{id}/curations',
                 curationsBulk: '/curations/bulk',  // POST - Bulk upsert curations (X-API-Key, max 500)
                 curators: '/curators',               // GET - List all curator profiles (no auth)
-                
-                // Concepts endpoints
-                conceptMatch: '/concepts/match',  // POST - Match concepts to categories (X-API-Key)
-                
+
                 // AI Service endpoints
                 aiOrchestrate: '/ai/orchestrate',      // POST - AI orchestration (audio+concepts)
-                aiTranscribe: '/ai/transcribe',        // POST - Transcribe audio (X-API-Key)
                 aiExtractConcepts: '/ai/orchestrate',  // POST - Extract concepts via orchestrate (JWT)
                 aiExtractRestaurantName: '/ai/extract-restaurant-name', // POST - Extract restaurant name via dedicated OpenAI config
-                aiAnalyzeImage: '/ai/analyze-image',   // POST - Analyze image with GPT-4 Vision (X-API-Key)
-                
+
                 // Places Service endpoints
                 placesSearch: '/places/nearby',        // GET - Search Google Places (OAuth Bearer)
                 placesDetails: '/places/details/{id}'  // GET - Get place details (OAuth Bearer)

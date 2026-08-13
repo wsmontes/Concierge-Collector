@@ -355,6 +355,10 @@ async function initializeApp() {
 
         console.log('✅ Entity-curation backend initialization complete');
 
+        // Background services (sync manual button etc.) — nunca era chamado,
+        // então o #sync-button ficava sem handler
+        initializeBackgroundServices();
+
     } catch (error) {
         console.error('❌ Error during backend initialization:', error);
         console.error('Stack trace:', error.stack);
@@ -421,7 +425,9 @@ function setupManualSyncButton() {
     newButton.addEventListener('click', async () => {
         console.log('🔄 V3: Manual sync triggered');
 
-        const syncManager = window.V3SyncManager || window.syncManager;
+        // window.SyncManager é a instância real (main.js:249); V3SyncManager/
+        // window.syncManager nunca são atribuídos em lugar nenhum
+        const syncManager = window.SyncManager;
         if (!syncManager) {
             console.error('❌ V3: SyncManager not available');
             if (window.uiUtils?.showNotification) {
@@ -449,12 +455,7 @@ function setupManualSyncButton() {
 
         try {
             let syncResults;
-            // Use V3 SyncManager if available, otherwise fallback to legacy
-            if (window.V3SyncManager && typeof window.V3SyncManager.fullSync === 'function') {
-                console.log('🔄 V3: Using V3SyncManager for manual sync');
-                syncResults = await window.V3SyncManager.fullSync();
-            } else if (syncManager && typeof syncManager.performComprehensiveSync === 'function') {
-                console.log('🔄 V3: Fallback to legacy syncManager for manual sync');
+            if (typeof syncManager.performComprehensiveSync === 'function') {
                 syncResults = await syncManager.performComprehensiveSync(true);
             } else {
                 throw new Error('No compatible sync method available');
@@ -565,7 +566,11 @@ function cleanupBrowserData() {
             'auth_token',  // CRITICAL: Preserve API authentication token
             'oauth_access_token',  // CRITICAL: Preserve OAuth access token
             'oauth_refresh_token',  // CRITICAL: Preserve OAuth refresh token
-            'oauth_token_expiry'  // CRITICAL: Preserve OAuth token expiry
+            'oauth_token_expiry',  // CRITICAL: Preserve OAuth token expiry
+            'concierge_db_recovery_needed',  // CRITICAL: lido por ensureHealthyIndexedDB DEPOIS do cleanup
+            'needsInitialSync',  // CRITICAL: sync inicial pós-import (importManager.js)
+            'api_key',  // credencial do app de capture (mesma origin via /capture)
+            'capture_token'  // JWT do app de capture (dev-login local / UI)
         ];
 
         // Clean localStorage (preserve only essential keys)
@@ -844,7 +849,7 @@ async function handleQuickImportNearby() {
             latitude: location.lat.toString(),
             longitude: location.lng.toString(),
             radius: radius.toString(),
-            type: 'restaurant',
+            place_type: 'restaurant',
             max_results: maxResults.toString()
         });
 

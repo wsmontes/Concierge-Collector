@@ -9,7 +9,7 @@
 
 import * as Store from './captureStore.js';
 import * as API from './captureService.js';
-import { processQueue, setOnQueueUpdate, start as startQueue } from './queueProcessor.js';
+import { processQueue, requeueItem, setOnQueueUpdate, start as startQueue } from './queueProcessor.js';
 
 // ── DOM refs ────────────────────────────────────────────────────────────────
 const $recordBtn = document.getElementById('record-btn');
@@ -47,18 +47,86 @@ let curatorId = null;        // loaded from localStorage
 // ── Init ────────────────────────────────────────────────────────────────────
 async function init() {
   loadCuratorId();
+  setupAuthPanel();
   setRecordState(STATE.IDLE);
   setupRecordButton();
   setupMatchCard();
   setupQueueListener();
   renderSessionList();
+  await ensureAuth();
   startQueue();
 }
 
 function loadCuratorId() {
-  // Try to get curator ID from the legacy app's storage
-  const stored = localStorage?.getItem('currentCuratorId');
+  // Chave ALINHADA com o app principal (config.js grava 'current_curator_id';
+  // 'currentCuratorId' era de uma versão antiga e nunca era escrita)
+  const stored = localStorage?.getItem('current_curator_id') || localStorage?.getItem('currentCuratorId');
   curatorId = stored || 'default_curator';
+}
+
+// ── Auth panel ──────────────────────────────────────────────────────────────
+
+function setupAuthPanel() {
+  const panel = document.getElementById('auth-panel');
+  const input = document.getElementById('auth-input');
+  const saveBtn = document.getElementById('auth-save');
+  const clearBtn = document.getElementById('auth-clear');
+  if (!panel || !input || !saveBtn) return;
+  saveBtn.addEventListener('click', () => {
+    const value = input.value.trim();
+    if (!value) return;
+    // JWT começa com eyJ (3 segmentos); senão trata como API key
+    API.saveCredentials(
+      value.startsWith('eyJ') ? { token: value } : { apiKey: value }
+    );
+    input.value = '';
+    hideAuthPanel();
+    processQueue();
+  });
+  if (clearBtn) {
+    clearBtn.addEventListener('click', () => {
+      API.clearCredentials();
+      input.value = '';
+      showAuthPanel();
+    });
+  }
+}
+
+function showAuthPanel() {
+  const panel = document.getElementById('auth-panel');
+  if (panel) panel.hidden = false;
+}
+
+function hideAuthPanel() {
+  const panel = document.getElementById('auth-panel');
+  if (panel) panel.hidden = true;
+}
+
+// ── Auth ────────────────────────────────────────────────────────────────────
+
+/** Garante credencial antes do processamento da fila: JWT salvo/API key na
+ *  UI, ou dev-login automático em localhost. Sem credencial, mostra o painel. */
+async function ensureAuth() {
+  if (API.hasCredentials()) {
+    hideAuthPanel();
+    return;
+  }
+  const isLocal = ['localhost', '127.0.0.1'].includes(window.location.hostname);
+  if (isLocal) {
+    try {
+      const res = await fetch('/api/v3/auth/dev-login', { method: 'POST' });
+      if (res.ok) {
+        const data = await res.json();
+        API.saveCredentials({ token: data.access_token });
+        console.log('dev-login ok — capture autenticado');
+        hideAuthPanel();
+        return;
+      }
+    } catch (e) {
+      console.warn('dev-login falhou:', e);
+    }
+  }
+  showAuthPanel();
 }
 
 // ── Record Button ───────────────────────────────────────────────────────────
@@ -299,21 +367,34 @@ async function confirmMatch() {
 async function renderSessionList() {
   const all = await Store.getAllItems();
   const done = all.filter(i => i.status === 'done');
+  const failed = all.filter(i => i.status === 'failed');
 
-  if (done.length === 0) {
+  if (done.length === 0 && failed.length === 0) {
     $sessionItems.innerHTML = '';
     $sessionEmpty.hidden = false;
     return;
   }
 
   $sessionEmpty.hidden = true;
-  $sessionItems.innerHTML = done.map(item => `
-    <div class="session-item">
-      <span class="session-item__check">&#10003;</span>
-      <span class="session-item__name">${escapeHTML(item.restaurantName || item.captureId || 'Restaurante')}</span>
-      <span class="session-item__meta">${formatDuration(item.duration)}</span>
-    </div>
-  `).join('');
+  $sessionItems.innerHTML = [
+    ...failed.map(item => `
+      <div class="session-item session-item--failed">
+        <span class="session-item__check">!</span>
+        <span class="session-item__name">${escapeHTML(item.restaurantName || item.captureId || 'Restaurante')} (falhou)</span>
+        <button class="session-item__retry" data-retry="${item.id}">Reenviar</button>
+      </div>
+    `),
+    ...done.map(item => `
+      <div class="session-item">
+        <span class="session-item__check">&#10003;</span>
+        <span class="session-item__name">${escapeHTML(item.restaurantName || item.captureId || 'Restaurante')}</span>
+        <span class="session-item__meta">${formatDuration(item.duration)}</span>
+      </div>
+    `),
+  ].join('');
+  $sessionItems.querySelectorAll('[data-retry]').forEach(btn => {
+    btn.addEventListener('click', () => requeueItem(btn.dataset.retry));
+  });
 }
 
 // ── State transitions ───────────────────────────────────────────────────────
