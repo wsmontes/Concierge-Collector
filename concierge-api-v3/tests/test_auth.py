@@ -79,6 +79,34 @@ import os  # noqa: E402  (import localizado — depende de setup acima)
 from unittest.mock import patch  # noqa: E402
 
 
+def test_oauth_callback_error_never_echoes_raw_param():
+    """O query param `error` do callback NUNCA volta cru ao frontend — o valor
+    ecoaria via redirect na tela de login do collector (XSS no origin)."""
+    from unittest.mock import MagicMock
+    from app.api.auth import google_oauth_callback
+
+    resp = google_oauth_callback(
+        code=None,
+        state=None,
+        error="<script>alert(1)</script>",
+        db=MagicMock(),
+    )
+    url = resp.headers.get("location", "")
+    assert "<script" not in url
+    assert "Login%20failed" in url
+
+
+def test_oauth_callback_access_denied_friendly_message():
+    from unittest.mock import MagicMock
+    from app.api.auth import google_oauth_callback
+
+    resp = google_oauth_callback(
+        code=None, state=None, error="access_denied", db=MagicMock()
+    )
+    url = resp.headers.get("location", "")
+    assert "Login%20cancelled%20by%20user" in url
+
+
 def test_testing_bypass_only_works_in_development():
     """TESTING=true só deve bypassar auth quando ENVIRONMENT=development."""
     from app.core.security import verify_access_token

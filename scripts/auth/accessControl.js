@@ -35,11 +35,26 @@ const AccessControl = (function() {
     }
 
     /**
+     * Escapa HTML — a mensagem de erro vem da URL (redirect do backend) e é
+     * renderizada via innerHTML; sem escape, um error param malicioso vira
+     * XSS no origin do collector (leitura do oauth_access_token).
+     */
+    function escapeHtml(value) {
+        if (!value) return '';
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
+    }
+
+    /**
      * Show Google Sign-In overlay with debug info
      */
     function showLoginPrompt(errorMessage = null) {
         console.log('[AccessControl] Showing login prompt');
-        
+
         // Check for error in sessionStorage (from OAuth callback)
         if (!errorMessage) {
             errorMessage = sessionStorage.getItem('auth_error');
@@ -47,7 +62,10 @@ const AccessControl = (function() {
                 sessionStorage.removeItem('auth_error');
             }
         }
-        
+
+        // SEMPRE escapar antes de interpolar em innerHTML (anti-XSS)
+        const safeErrorMessage = escapeHtml(errorMessage);
+
         if (errorMessage) {
             console.log(`[AccessControl] Error message: ${errorMessage}`);
         }
@@ -83,7 +101,7 @@ const AccessControl = (function() {
                         Sign in with Google
                     </button>
                     
-                    ${errorMessage ? `<div class="access-error">${errorMessage}</div>` : ''}
+                    ${safeErrorMessage ? `<div class="access-error">${safeErrorMessage}</div>` : ''}
                     
                     <p class="access-note">Only authorized users can access this application.</p>
                     
@@ -101,7 +119,7 @@ const AccessControl = (function() {
                                 ${hasToken ? `Expires: ${expiryDate}<br>` : ''}
                                 <br>
                                 <strong>Last Error:</strong><br>
-                                ${errorMessage || 'None'}
+                                ${safeErrorMessage || 'None'}
                             </div>
                         </details>
                     </div>
@@ -263,7 +281,8 @@ const AccessControl = (function() {
     return {
         checkAccess,
         logout,
-        hasAccess
+        hasAccess,
+        escapeHtml
     };
 })();
 

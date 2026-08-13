@@ -338,10 +338,13 @@ def google_oauth_callback(
 
     # Handle user cancellation or Google errors
     if error:
-        error_msg = error
-        if error == "access_denied":
-            error_msg = "Login cancelled by user"
-        logger.warning(f"[OAuth] Error in callback: {error_msg}")
+        # SÓ erros conhecidos do Google viram mensagem — o valor volta ao
+        # frontend via redirect e é renderizado na tela de login: ecoar o
+        # query param cru permitiria XSS no origin do collector (anti-XSS).
+        error_msg = (
+            "Login cancelled by user" if error == "access_denied" else "Login failed"
+        )
+        logger.warning(f"[OAuth] Error in callback: {error}")
         # Try to extract frontend URL from state, fall back to default
         error_redirect_url = settings.frontend_url
         if state:
@@ -353,7 +356,11 @@ def google_oauth_callback(
                         error_redirect_url = parts[1]
             except Exception:
                 pass
-        return RedirectResponse(url=f"{error_redirect_url}/?auth_error={error_msg}")
+        from urllib.parse import quote
+
+        return RedirectResponse(
+            url=f"{error_redirect_url}/?auth_error={quote(error_msg)}"
+        )
 
     # Validate required parameters
     if not code or not state:
