@@ -952,6 +952,9 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                 const stillFailed = [];
                 for (const cid of quarantined) {
                     if (!cid) continue;  // id inválido nunca entra
+                    // pacing SEMPRE (o continue de 404 não pode virar rajada)
+                    const delayMs = window.AppConfig?.api?.backend?.syncBatchDelayMs || 200;
+                    await new Promise(resolve => setTimeout(resolve, delayMs));
                     try {
                         const doc = await window.ApiService.getCuration(cid);
                         if (!doc) {
@@ -968,15 +971,12 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         // 404 (deletada/inexistente) RESOLVE a quarentena —
                         // getCuration lança em 404, mas o ApiService reescreve
                         // a mensagem para 'Resource not found'
-                        if (String(e?.message || '').toLowerCase().includes('resource not found')) {
+                        if (e?.status === 404) {
                             this.log.debug(`Quarentena: ${cid} 404 no servidor — resolvida`);
                             continue;
                         }
                         stillFailed.push(cid);
                     }
-                    // pacing: sem estourar o rate limit 300/min
-                    const delayMs = window.AppConfig?.api?.backend?.syncBatchDelayMs || 200;
-                    await new Promise(resolve => setTimeout(resolve, delayMs));
                 }
                 this.stats.failedCurationIds = stillFailed;
                 await this.saveSyncMetadata();

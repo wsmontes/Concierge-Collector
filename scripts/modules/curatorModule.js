@@ -658,10 +658,7 @@ class CuratorModule {
                 this.log.error('Error in sync service:', syncError);
 
                 // Special handling for 404 errors (no curators endpoint)
-                if (syncError.message && (
-                    syncError.message.includes('404') ||
-                    syncError.message.includes('NOT FOUND')
-                )) {
+                if (syncError.status === 404) {
                     throw new Error('Curators API endpoint not available. Using local curators only.');
                 }
 

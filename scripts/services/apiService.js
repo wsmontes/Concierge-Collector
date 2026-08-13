@@ -205,7 +205,11 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         }
 
         this.log.error(errorMessage);
-        throw new Error(errorMessage);
+        // status ANEXADO ao erro — consumidores checam error.status === 404
+        // em vez de grepar mensagens reescritas (três sites divergiam)
+        const err = new Error(errorMessage);
+        err.status = response.status;
+        throw err;
     }
 
     async getInfo() {

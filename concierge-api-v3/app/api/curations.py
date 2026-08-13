@@ -470,14 +470,20 @@ def update_curation(
         update_data["embeddings"] = compacted
         # metadados MERGE com o armazenado (preserva model/dimensions/created_at)
         # e SEMPRE escreve a flag: True quando houve drop, False quando válido
-        stored_meta = db.curations.find_one(
+        stored_raw = db.curations.find_one(
             {"_id": current["_id"]}, {"embeddings_metadata": 1}
         ) or {}
-        meta = {
-            **(stored_meta.get("embeddings_metadata") or {}),
-            **(update_data.get("embeddings_metadata") or {}),
-            "backfill_needed": dropped,
-        }
+        stored_meta = stored_raw.get("embeddings_metadata")
+        # guard de mapping: metadata corrompida (list/string) não pode
+        # quebrar o **splat com TypeError → 500 em todo PATCH de embeddings
+        if not isinstance(stored_meta, dict):
+            stored_meta = {}
+        meta = {**stored_meta, **(update_data.get("embeddings_metadata") or {})}
+        if dropped:
+            # drop parcial: sinaliza o backfill (textos dropados regenerados)
+            meta["backfill_needed"] = True
+        # válido: PRESERVA a flag armazenada — um drop anterior pode ter
+        # textos ainda não regenerados; o backfill limpa a flag ao rodar
         update_data["embeddings_metadata"] = meta
     
     # Update — escreve no _id ESPECÍFICO do doc que a versão leu (nunca no
