@@ -503,6 +503,156 @@ def test_bulk_upsert_batches_existence_lookup_constant_query_count():
     )
 
 
+def _patch_current():
+    """Doc armazenado típico para os testes do PATCH (update_curation)."""
+    return {
+        "_id": "cur_patch_001",
+        "curation_id": "cur_patch_001",
+        "version": 3,
+        "status": "draft",
+        "createdBy": "real-1",
+        "updatedBy": "real-1",
+        "curator_id": "real-1",
+        "curator": {"id": "real-1", "name": "Nome Real", "email": "real@example.com"},
+        "categories": {},
+    }
+
+
+def _call_patch(mock_db, updates_dict, current=None, if_match=None):
+    from app.api.curations import update_curation
+    from app.models.schemas import CurationUpdate
+    from unittest.mock import MagicMock
+
+    stored = current if current is not None else _patch_current()
+    mock_db.curations.find_one.return_value = stored
+    # resposta do banco: o doc armazenado + o $set efetivo (o que o Mongo
+    # retornaria) — o $set reparado só existe DEPOIS da chamada, então o
+    # return_value é remendado a posteriori no helper
+    mock_db.curations.find_one_and_update.return_value = {**stored, **updates_dict}
+    result = update_curation(
+        curation_id="cur_patch_001",
+        updates=CurationUpdate(**updates_dict),
+        if_match=if_match,
+        db=mock_db,
+        auth={"role": "curator", "user": "test@test.com"},
+    )
+    set_doc = mock_db.curations.find_one_and_update.call_args[0][1]["$set"]
+    return result, set_doc
+
+
+def test_patch_returns_404_when_curation_missing():
+    from unittest.mock import MagicMock
+    from fastapi import HTTPException
+    from app.api.curations import update_curation
+    from app.models.schemas import CurationUpdate
+    import pytest as _pytest
+
+    mock_db = MagicMock()
+    mock_db.curations.find_one.return_value = None
+
+    with _pytest.raises(HTTPException) as exc_info:
+        update_curation(
+            curation_id="cur_patch_999",
+            updates=CurationUpdate(status="active"),
+            if_match=None,  # chamada direta: default Header(None) não serve
+            db=mock_db,
+            auth={"role": "curator", "user": "test@test.com"},
+        )
+    assert exc_info.value.status_code == 404
+
+
+def test_patch_if_match_conflict_returns_409():
+    from fastapi import HTTPException
+    from unittest.mock import MagicMock
+    import pytest as _pytest
+
+    mock_db = MagicMock()
+    with _pytest.raises(HTTPException) as exc_info:
+        _call_patch(mock_db, {"status": "active"}, if_match="2")
+    assert exc_info.value.status_code == 409
+    mock_db.curations.find_one_and_update.assert_not_called()
+
+
+def test_patch_if_match_invalid_format_returns_400():
+    from fastapi import HTTPException
+    from unittest.mock import MagicMock
+    import pytest as _pytest
+
+    mock_db = MagicMock()
+    with _pytest.raises(HTTPException) as exc_info:
+        _call_patch(mock_db, {"status": "active"}, if_match="abc")
+    assert exc_info.value.status_code == 400
+
+
+def test_patch_success_bumps_version_and_writes_with_optimistic_lock():
+    from unittest.mock import MagicMock
+
+    mock_db = MagicMock()
+    result, set_doc = _call_patch(mock_db, {"status": "active"})
+
+    assert result.status == "active"
+    write_filter, write_update = mock_db.curations.find_one_and_update.call_args[0]
+    assert write_filter == {"_id": "cur_patch_001", "version": 3}, "optimistic lock pelo _id ESPECÍFICO + versão"
+    assert set_doc["version"] == 4
+    assert set_doc["updatedBy"] == "test@test.com", "sem identidade no PATCH, updatedBy cai no usuário autenticado"
+
+
+def test_patch_placeholder_payload_preserves_stored_identity():
+    """O reparo roda no PATCH também: payload offline placeholder não destrói
+    name/email armazenados e updatedBy é computado DEPOIS do reparo."""
+    from unittest.mock import MagicMock
+
+    mock_db = MagicMock()
+    _result, set_doc = _call_patch(mock_db, {
+        "curator_id": "",
+        "curator": {"id": "unknown", "name": "unknown", "email": None},
+    })
+
+    assert set_doc["curator_id"] == "real-1"
+    assert set_doc["curator"]["id"] == "real-1"
+    assert set_doc["curator"]["name"] == "Nome Real", "name 'unknown' do payload não destrói o real"
+    assert set_doc["curator"]["email"] == "real@example.com", "email None do payload não destrói o real"
+    assert set_doc["updatedBy"] == "real-1", "updatedBy DEPOIS do reparo, nunca placeholder"
+
+
+def test_patch_top_real_with_empty_embedded_syncs_embedded_id():
+    """Payload com curator_id real e id embutido vazio: o embutido sincroniza
+    (não envenena a busca por curator.id)."""
+    from unittest.mock import MagicMock
+
+    mock_db = MagicMock()
+    _result, set_doc = _call_patch(mock_db, {
+        "curator_id": "maria-2",
+        "curator": {"id": "", "name": "Maria"},
+    })
+
+    assert set_doc["curator_id"] == "maria-2"
+    assert set_doc["curator"]["id"] == "maria-2"
+
+
+def test_patch_conflict_when_doc_disappears_mid_update():
+    from fastapi import HTTPException
+    from unittest.mock import MagicMock
+    import pytest as _pytest
+
+    mock_db = MagicMock()
+    current = _patch_current()
+    mock_db.curations.find_one.return_value = current
+    mock_db.curations.find_one_and_update.return_value = None
+
+    from app.api.curations import update_curation
+    from app.models.schemas import CurationUpdate
+    with _pytest.raises(HTTPException) as exc_info:
+        update_curation(
+            curation_id="cur_patch_001",
+            updates=CurationUpdate(status="active"),
+            if_match=None,  # chamada direta: default Header(None) não serve
+            db=mock_db,
+            auth={"role": "curator", "user": "test@test.com"},
+        )
+    assert exc_info.value.status_code == 409
+
+
 def test_repair_curator_identity_untouched_without_identity_keys():
     """PATCH que não menciona identidade (ex.: só status) não pode ganhar
     campos de curator no $set."""
