@@ -336,19 +336,23 @@ def search_curations(
         # das strings entra no segmento ObjectId)
         query["_id"] = {"$gt": resolve_after_id(db, "curations", after_id)}
         total = -1  # not computed in cursor mode
-        docs = list(db.curations.find(query, CURATION_RESPONSE_PROJECTION).sort("_id", 1).limit(limit))
+        # janela 2x: skips de docs malformados não podem esvaziar a página
+        # (o cliente para em página vazia e avançaria o watermark)
+        docs = list(db.curations.find(query, CURATION_RESPONSE_PROJECTION).sort("_id", 1).limit(limit * 2))
         if not docs and isinstance(query["_id"]["$gt"], str):
             transition = dict(query)
             transition["_id"] = {"$gt": ObjectId("0" * 24)}
-            docs = list(db.curations.find(transition, CURATION_RESPONSE_PROJECTION).sort("_id", 1).limit(limit))
+            docs = list(db.curations.find(transition, CURATION_RESPONSE_PROJECTION).sort("_id", 1).limit(limit * 2))
         items = []
         for doc in docs:
             try:
                 items.append(Curation(**doc))
-            except Exception as e:
-                # doc de formato legado (curator/curation_id ausentes) não
-                # pode derrubar a página inteira com 500
+            except ValidationError as e:
+                # doc legado não pode derrubar a página NEM esvaziá-la: o
+                # cliente para em página vazia e avança o watermark — um
+                # skip silencioso causaria invisibilidade permanente
                 logger.warning("curadoria malformada pulada na listagem: %s", e)
+                continue
         return PaginatedResponse(items=items, total=total, limit=limit, offset=offset)
 
     total = db.curations.count_documents(query)
@@ -532,6 +536,12 @@ def update_curation(
             stored_raw.get("embeddings_metadata"),
         )
     
+    # Mesma regra do bulk: curator.id é autoritativo e 'unknown' não
+    # persiste por cima do valor real armazenado
+    _normalize_curator_id(update_data)
+    if (update_data.get("curator_id") or "").lower() == "unknown" and current.get("curator_id"):
+        update_data["curator_id"] = current["curator_id"]
+
     # Cliente NUNCA controla a flag: PATCH só de embeddings_metadata tem a
     # chave removida (o servidor é a autoridade)
     if ("embeddings_metadata" in update_data
@@ -539,6 +549,10 @@ def update_curation(
             and "embeddings" not in update_data):
         meta_client = dict(update_data.get("embeddings_metadata") or {})
         meta_client.pop("backfill_needed", None)
+        # PRESERVA a flag armazenada (o cliente não pode apagar pendência)
+        stored_flag = (current.get("embeddings_metadata") or {}).get("backfill_needed")
+        if stored_flag:
+            meta_client["backfill_needed"] = stored_flag
         update_data["embeddings_metadata"] = meta_client
 
     # Update — escreve no _id ESPECÍFICO do doc que a versão leu (nunca no

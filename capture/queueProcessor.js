@@ -38,7 +38,12 @@ export function start() {
 export async function requeueItem(id) {
   const items = await Store.getPendingItems();
   const item = items.find(i => i.id === id);
-  const updates = item && item.captureId
+  if (!item) {
+    // item já saiu da fila (confirmado por heartbeat concorrente): não
+    // ressuscita 'done' como fantasma 'queued' preso para sempre
+    return;
+  }
+  const updates = item.captureId
     ? { status: 'matched', confirmRetries: 0 }
     : { status: 'queued', retries: 0, confirmRetries: 0 };
   await Store.updateItem(id, updates);
@@ -81,7 +86,11 @@ export async function processQueue() {
       // ── Step 1: Upload audio (queued/failed → matched) ──
       // Só items SEM captureId re-uploadam — confirm-exhausted tem captureId
       // e vai direto para a confirmação (re-upload re-transcreveria o áudio)
-      const precisaUpload = !item.captureId && (item.status === 'queued' || item.status === 'failed');
+      // 'uploading'/'confirming' são estados absorventes: se o tab morreu no
+      // meio da operação, o item ficaria preso para sempre — tratamos como
+      // retry do respectivo leg
+      const precisaUpload = !item.captureId
+        && ['queued', 'failed', 'uploading'].includes(item.status);
       if (precisaUpload) {
         try {
           // retries NÃO é zerado aqui: reprocessar um item 'failed' acumula
@@ -122,7 +131,7 @@ export async function processQueue() {
       }
 
       // ── Step 2: Confirm (matched + has entity → done) ──
-      if (item.status === 'matched' && item.confirmedEntityId) {
+      if (['matched', 'confirming'].includes(item.status) && item.confirmedEntityId) {
         try {
           await Store.updateItem(item.id, { status: 'confirming' });
           notify(item.id, 'confirming');

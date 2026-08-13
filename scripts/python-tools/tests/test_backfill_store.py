@@ -63,13 +63,16 @@ def test_curations_filtro_selects_only_missing_or_empty_embeddings():
     """Regressão no filtro de seleção (ex.: perder o $ne de deleted) quebraria
     o backfill em produção — o fake aplica o filtro de verdade."""
     docs = [
-        {"_id": "sem-embeddings", "status": "active"},
-        {"_id": "embeddings-vazio", "status": "active", "embeddings": []},
-        {"_id": "ja-tem", "status": "active", "embeddings": [{"text": "x"}]},
-        {"_id": "deletada", "status": "deleted"},
+        {"_id": "sem-embeddings", "status": "active", "categories": {"cuisine": ["x"]}},
+        {"_id": "embeddings-vazio", "status": "active", "embeddings": [],
+         "categories": {"cuisine": ["y"]}},
+        {"_id": "sem-categorias", "status": "active", "embeddings": [], "categories": {}},
+        {"_id": "ja-tem", "status": "active", "embeddings": [{"text": "x"}], "categories": {}},
+        {"_id": "deletada", "status": "deleted", "categories": {"cuisine": ["z"]}},
     ]
     coll = FakeCollection(docs)
     selecionadas = {d["_id"] for d in coll.find(CURATIONS_FILTRO)}
+    # 'sem-categorias' NÃO casa (nada a embutir) — zumbi do filtro acabou
     assert selecionadas == {"sem-embeddings", "embeddings-vazio"}
 
 

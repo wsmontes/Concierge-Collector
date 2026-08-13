@@ -8,6 +8,8 @@ from fastapi import APIRouter, HTTPException, Header, Query, Depends, Request
 from typing import Optional, List
 from datetime import datetime, timezone
 from bson import ObjectId
+import logging
+
 from pymongo.errors import DuplicateKeyError
 from pymongo.database import Database
 
@@ -19,6 +21,8 @@ from app.core.database import get_database
 from app.core.query_utils import resolve_after_id
 from app.models.user import has_role
 from app.core.security import api_key_header, bearer_scheme, get_api_secret_key, verify_auth
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/entities", tags=["entities"])
 
@@ -82,7 +86,17 @@ def entity_query(entity_id: str) -> dict:
 
 
 def find_entity(db: Database, entity_id: str):
-    return db.entities.find_one(entity_query(entity_id))
+    """Resolução DETERMINÍSTICA por probes sequenciais (_id string → slug →
+    _id ObjectId) — o $or do Mongo não garante ordem entre branches."""
+    doc = db.entities.find_one({"_id": entity_id})
+    if doc:
+        return doc
+    doc = db.entities.find_one({"entity_id": entity_id})
+    if doc:
+        return doc
+    if ObjectId.is_valid(entity_id):
+        return db.entities.find_one({"_id": ObjectId(entity_id)})
+    return None
 
 
 @router.get("/{entity_id}", response_model=Entity)
@@ -210,8 +224,13 @@ def list_entities(
 
     items = []
     for doc in cursor:
-        doc["_id"] = str(doc["_id"])
-        items.append(Entity(**doc))
+        try:
+            doc["_id"] = str(doc["_id"])
+            items.append(Entity(**doc))
+        except Exception as e:
+            # doc malformado não pode 500ar a página (sync ficaria preso)
+            logger.warning("entity malformada pulada na listagem: %s", e)
+            continue
 
     return PaginatedResponse(
         items=items,

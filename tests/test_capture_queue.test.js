@@ -65,9 +65,16 @@ describe('queueProcessor — política de retries', () => {
   });
 
   test('requeueItem volta o item para queued com retries zerados', async () => {
-    getPendingItems.mockResolvedValue([]);
+    getPendingItems.mockResolvedValue([{ id: 'x', status: 'failed' }]);
     const { requeueItem } = await import('../capture/queueProcessor.js');
     await requeueItem('x');
     expect(updateItem).toHaveBeenCalledWith('x', { status: 'queued', retries: 0, confirmRetries: 0 });
+  });
+
+  test('requeueItem não ressuscita item que saiu da fila (done)', async () => {
+    getPendingItems.mockResolvedValue([]);
+    const { requeueItem } = await import('../capture/queueProcessor.js');
+    await requeueItem('x');
+    expect(updateItem).not.toHaveBeenCalled();
   });
 });

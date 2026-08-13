@@ -33,6 +33,8 @@ CURATIONS_FILTRO = {
         {'embeddings_metadata.backfill_needed': True},
     ],
     'status': {'$ne': 'deleted'},
+    # sem categorias não há NADA a embutir — o doc nunca re-casa o filtro
+    'categories': {'$exists': True, '$ne': {}},
 }
 
 
@@ -119,12 +121,6 @@ def main():
         texts, meta = curation_texts(c)
         if not texts:
             sem_textos.append(str(c['_id']))
-            # terminator do ciclo: doc flagado sem textos deriváveis não pode
-            # re-casar o filtro para sempre (re-read + custo inflado a cada run)
-            db.curations.update_one(
-                {'_id': c['_id']},
-                {'$set': {'embeddings_metadata.backfill_needed': False}},
-            )
             continue
         trabalhos.append((c['_id'], texts, meta))  # valor real, não str()
         total_textos += len(texts)
@@ -139,6 +135,16 @@ def main():
     if mode != 'go':
         print('\n(dry-run — nada foi escrito. Rode "go" para executar.)')
         return 0
+
+    # terminator do ciclo (SÓ no go): doc flagado sem textos deriváveis tem
+    # a flag limpa — o dry-run é estritamente read-only
+    for cid in sem_textos:
+        db.curations.update_one(
+            {'_id': cid},
+            {'$set': {'embeddings_metadata.backfill_needed': False}},
+        )
+    if sem_textos:
+        print(f'{len(sem_textos)} curadoria(s) sem textos deriváveis — flag limpa')
 
     ok, falhas, embutidos = 0, 0, 0
     for i, (cid, texts, meta) in enumerate(trabalhos, 1):

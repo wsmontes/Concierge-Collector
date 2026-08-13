@@ -100,6 +100,9 @@ function showAuthPanel() {
 function hideAuthPanel() {
   const panel = document.getElementById('auth-panel');
   if (panel) panel.hidden = true;
+  // escape visível: com credenciais salvas, o usuário pode trocar
+  const clearBtn = document.getElementById('auth-clear');
+  if (clearBtn && API.hasCredentials()) clearBtn.hidden = false;
 }
 
 // ── Auth ────────────────────────────────────────────────────────────────────
@@ -107,8 +110,6 @@ function hideAuthPanel() {
 /** Garante credencial antes do processamento da fila: JWT salvo/API key na
  *  UI, ou dev-login automático em localhost. Sem credencial, mostra o painel. */
 async function ensureAuth() {
-  // migração do token legado do app principal (mesma origin via /app)
-  API.migrateLegacyToken();
   if (API.hasCredentials()) {
     hideAuthPanel();
     return;
@@ -120,6 +121,10 @@ async function ensureAuth() {
       if (res.ok) {
         const data = await res.json();
         API.saveCredentials({ token: data.access_token });
+        if (data.user_email && !localStorage?.getItem('current_curator_id')) {
+          localStorage.setItem('current_curator_id', data.user_email);
+          curatorId = data.user_email;  // atribuição real do curator
+        }
         console.log('dev-login ok — capture autenticado');
         hideAuthPanel();
         return;
