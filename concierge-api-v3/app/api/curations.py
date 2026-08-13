@@ -924,15 +924,23 @@ def bulk_upsert_curations(
     errors: list = []
     now = datetime.now(timezone.utc)
 
-    # Pre-fetch all unique entity_ids to avoid N+1 queries in the loop
+    # Pre-fetch all unique entity_ids to avoid N+1 queries in the loop.
+    # find_entity resolve ObjectId/string/slug — o $in com strings puras não
+    # casava as 471 entities ObjectId (type bracketing) e a denormalização
+    # city/type era pulada no caminho que o sync offline usa.
     unique_eids = list({c.entity_id for c in payload.curations if c.entity_id})
     entities_by_id: dict = {}
     if unique_eids:
         entity_docs = db.entities.find(
-            {"_id": {"$in": unique_eids}},
+            {"$or": [{"_id": {"$in": unique_eids}}, {"entity_id": {"$in": unique_eids}}]},
             {"type": 1, "data.location": 1}
         )
-        entities_by_id = {e["_id"]: e for e in entity_docs}
+        for e in entity_docs:
+            # chaveado por slug E por str(_id) — o cliente pode endereçar
+            # qualquer um dos dois
+            entities_by_id[str(e["_id"])] = e
+            if e.get("entity_id"):
+                entities_by_id[e["entity_id"]] = e
 
     for idx, curation in enumerate(payload.curations):
         try:
@@ -951,11 +959,11 @@ def bulk_upsert_curations(
                 doc.pop("createdBy", None)
                 doc["updatedAt"] = now
                 doc["version"] = existing.get("version", 1) + 1
-                doc["updatedBy"] = curation.curator_id
+                _normalize_curator_id(doc)  # ANTES do updatedBy: 'unknown' não persiste
+                doc["updatedBy"] = doc.get("curator_id") or curation.curator_id
                 if entity_for_denorm:
                     doc.update(denormalize_curation_location(entity_for_denorm))
 
-                _normalize_curator_id(doc)
                 db.curations.update_one(curation_query(curation.curation_id), {"$set": doc})
                 updated += 1
             else:
