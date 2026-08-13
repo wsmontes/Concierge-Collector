@@ -356,6 +356,143 @@ def test_bulk_upsert_duplicate_key_preserves_winner_identity_and_version():
     assert set_doc["status"] == "draft"
 
 
+def test_bulk_upsert_create_denormalizes_city_and_type_from_entity():
+    """Caminho de CREATE do bulk: city/type vêm da entity pré-buscada (denorm
+    real, sem patch) e o contador created incrementa."""
+    from unittest.mock import MagicMock
+    from app.api.curations import bulk_upsert_curations
+    from app.models.schemas import BulkCurationCreate, CurationCreate, CuratorInfo
+
+    mock_db = MagicMock()
+    mock_auth = {"role": "admin", "user": "test@test.com"}
+
+    # entity_id em hex válido exercita a variante ObjectId do $in; o campo
+    # entity_id do doc exercita o registro by_slug do pre-fetch
+    entity_doc = {"_id": "507f1f77bcf86cd799439011", "entity_id": "slug-x",
+                  "type": "restaurant", "data": {"location": {"city": "NYC"}}}
+    mock_db.entities.find.return_value = [entity_doc]
+    # probes do find_curation (_id string, campo curation_id) → não existe
+    mock_db.curations.find_one.side_effect = [None, None]
+
+    curation = CurationCreate(
+        curation_id="cur_test_020",
+        entity_id="507f1f77bcf86cd799439011",
+        curator_id="curator_001",
+        curator=CuratorInfo(id="curator_001", name="Test"),
+        status="draft",
+    )
+    payload = BulkCurationCreate(curations=[curation])
+
+    result = bulk_upsert_curations(request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth)
+
+    assert result.created == 1
+    assert result.updated == 0
+    assert len(result.errors) == 0
+    inserted = mock_db.curations.insert_one.call_args[0][0]
+    assert inserted["city"] == "NYC"
+    assert inserted["type"] == "restaurant"
+    assert inserted["version"] == 1
+    assert inserted["_id"] == "cur_test_020"
+
+
+def test_bulk_upsert_rejects_role_below_curator():
+    """Role sem permissão de curadoria recebe 403 antes de tocar o banco."""
+    from unittest.mock import MagicMock
+    from app.api.curations import bulk_upsert_curations
+    from app.models.schemas import BulkCurationCreate, CurationCreate, CuratorInfo
+    from fastapi import HTTPException
+
+    mock_db = MagicMock()
+
+    curation = CurationCreate(
+        curation_id="cur_test_022",
+        entity_id="ent_022",
+        curator_id="curator_001",
+        curator=CuratorInfo(id="curator_001", name="Test"),
+        status="draft",
+    )
+    payload = BulkCurationCreate(curations=[curation])
+
+    with pytest.raises(HTTPException) as exc_info:
+        bulk_upsert_curations(
+            request=MagicMock(), payload=payload, db=mock_db,
+            auth={"role": "viewer", "user": "test@test.com"},
+        )
+    assert exc_info.value.status_code == 403
+    mock_db.curations.insert_one.assert_not_called()
+
+
+def test_bulk_upsert_records_generic_item_error():
+    """Falha genérica em um item vira BulkItemError com index/id — os demais
+    itens do payload seguem processando."""
+    from unittest.mock import MagicMock
+    from app.api.curations import bulk_upsert_curations
+    from app.models.schemas import BulkCurationCreate, CurationCreate, CuratorInfo
+
+    mock_db = MagicMock()
+    mock_auth = {"role": "admin", "user": "test@test.com"}
+
+    def boom(*args, **kwargs):
+        raise RuntimeError("db fora do ar")
+
+    mock_db.curations.find_one.side_effect = boom
+    mock_db.entities.find.return_value = []
+
+    curation = CurationCreate(
+        curation_id="cur_test_023",
+        entity_id="ent_023",
+        curator_id="curator_001",
+        curator=CuratorInfo(id="curator_001", name="Test"),
+        status="draft",
+    )
+    payload = BulkCurationCreate(curations=[curation])
+
+    result = bulk_upsert_curations(request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth)
+
+    assert result.created == 0
+    assert result.updated == 0
+    assert len(result.errors) == 1
+    assert result.errors[0].id == "cur_test_023"
+    assert result.errors[0].index == 0
+    assert "db fora do ar" in result.errors[0].error
+
+
+def test_bulk_upsert_update_denormalizes_city_and_type_from_entity():
+    """Caminho de UPDATE do bulk: $set recebe city/type denormalizados da
+    entity (limpa campos stale quando a entity linkada mudar)."""
+    from unittest.mock import MagicMock
+    from app.api.curations import bulk_upsert_curations
+    from app.models.schemas import BulkCurationCreate, CurationCreate, CuratorInfo
+
+    mock_db = MagicMock()
+    mock_auth = {"role": "admin", "user": "test@test.com"}
+
+    existing = {"_id": "cur_test_021", "version": 2}
+    mock_db.curations.find_one.return_value = existing
+    entity_doc = {"_id": "ent_021", "type": "bar",
+                  "data": {"location": {"city": "Rio de Janeiro"}}}
+    mock_db.entities.find.return_value = [entity_doc]
+
+    curation = CurationCreate(
+        curation_id="cur_test_021",
+        entity_id="ent_021",
+        curator_id="curator_001",
+        curator=CuratorInfo(id="curator_001", name="Test"),
+        status="active",
+    )
+    payload = BulkCurationCreate(curations=[curation])
+
+    result = bulk_upsert_curations(request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth)
+
+    assert result.updated == 1
+    assert len(result.errors) == 0
+    call_args, call_kwargs = mock_db.curations.update_one.call_args
+    set_doc = call_kwargs.get("$set") or call_args[1].get("$set")
+    assert set_doc["city"] == "Rio de Janeiro"
+    assert set_doc["type"] == "bar"
+    assert set_doc["version"] == 3
+
+
 @pytest.mark.parametrize("location", [
     ".*",
     "São Paulo (Centro) $$$",
