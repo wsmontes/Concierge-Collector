@@ -178,6 +178,23 @@ def test_list_entities_string_cursor_with_more_strings_does_not_transition():
     assert [i.id for i in resp.items] == ["rest_b"]
 
 
+def test_transition_preserves_other_filters():
+    """A query de transição carrega TODOS os filtros (status/since) — só o
+    _id muda; puxar docs deletados/fora do since no cursor mode seria puxar
+    lixo."""
+    from bson import ObjectId
+
+    oid_doc = _entity_doc(str(ObjectId("ab" * 12)))
+    oid_doc["_id"] = ObjectId("ab" * 12)
+    db, chain = _db_with_chain([oid_doc])
+
+    list_entities(status="active", type=None, name=None, since=None,
+                  limit=50, offset=0, after_id="zzzz", db=db)
+    assert len(chain.queries) == 2
+    assert chain.queries[1]["status"] == "active"
+    assert isinstance(chain.queries[1]["_id"]["$gt"], ObjectId)
+
+
 def test_curation_id_coercion_rejects_none():
     """_id None não pode virar a string 'None' (id de lixo na resposta)."""
     import pytest

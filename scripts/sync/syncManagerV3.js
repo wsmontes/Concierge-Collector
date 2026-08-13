@@ -219,7 +219,10 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
         // NUNCA sombreia um curator_id explícito — senão o bulk re-gravaria
         // 'unknown' por cima do valor real a cada push
         const rawId = raw.id && raw.id !== 'unknown' ? raw.id : null;
-        const id = rawId || curation.curator_id || user?.email || 'unknown';
+        const rawCuratorId = curation.curator_id && curation.curator_id !== 'unknown'
+            ? curation.curator_id
+            : null;
+        const id = rawId || rawCuratorId || user?.email || 'unknown';
         const name = raw.name || user?.name || id;
         return { id, name, email: raw.email || user?.email || null };
     }
@@ -809,7 +812,13 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                     }
                 }
                 const last = items[items.length - 1];
-                afterId = String(last?._id ?? last?.id ?? '');
+                const rawId = last?._id ?? last?.id ?? '';
+                // _id serializado como objeto ({"$oid": ...}) viraria
+                // '[object Object]' — cursor de lixo que re-puxa a mesma
+                // página para sempre
+                afterId = typeof rawId === 'object'
+                    ? String(rawId?.$oid || '')
+                    : String(rawId || '');
                 // NÃO parar em página curta: _ids ObjectId ordenam DEPOIS das
                 // strings no Mongo — a cauda curta de strings é seguida pelos
                 // ObjectIds (471 entities ficavam invisíveis). Só página VAZIA
@@ -904,7 +913,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                 this.log.info('⬇️ Full sync: fetching all curations');
             }
 
-            let offset = 0;
+            let afterId = null;
             let totalPulled = 0;
             let totalProcessed = 0;
             let hasMore = true;
@@ -913,18 +922,18 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             while (hasMore) {
                 batchCount++;
 
-                // Fetch batch from server with optional ?since parameter
-                const params = {
-                    limit: this.config.batchSize,
-                    offset: offset
-                };
-
-                // ✅ Add since parameter for incremental sync
+                // Cursor (after_id) em vez de offset: o offset pagava um
+                // count_documents real + skip crescente (~11.5k walks de
+                // índice por full sync) e 500ms de sleep por página
+                const params = { limit: this.config.batchSize };
                 if (since) {
                     params.since = since;
                 }
+                if (afterId) {
+                    params.after_id = afterId;
+                }
 
-                this.log.debug(`Fetching batch ${batchCount}: offset=${offset}, limit=${this.config.batchSize}`);
+                this.log.debug(`Fetching batch ${batchCount}: after_id=${afterId}, limit=${this.config.batchSize}`);
 
                 const response = await window.ApiService.listCurations(params);
 
@@ -947,14 +956,14 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
 
                 this.log.debug(`Processed ${response.items.length} curations, ${totalPulled} saved so far`);
 
-                offset += response.items.length;
+                const last = response.items[response.items.length - 1];
+                const rawId = last?._id ?? last?.curation_id ?? '';
+                afterId = typeof rawId === 'object'
+                    ? String(rawId?.$oid || '')
+                    : String(rawId || '');
 
-                if (response.items.length < this.config.batchSize) {
-                    this.log.debug(`Last batch (${response.items.length} < ${this.config.batchSize})`);
+                if (!this.shouldContinuePull(response.items, afterId)) {
                     hasMore = false;
-                } else {
-                    // Add small delay between batches to avoid overwhelming the API
-                    await new Promise(resolve => setTimeout(resolve, 500));
                 }
             }
 

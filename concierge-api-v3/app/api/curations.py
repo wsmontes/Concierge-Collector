@@ -123,14 +123,24 @@ CURATION_RESPONSE_PROJECTION = {
 }
 
 
+def _normalize_curator_id(doc):
+    """Regra ÚNICA server-side: curator.id é autoritativo e o placeholder
+    'unknown' (sync sem usuário) nunca persiste sobre um valor real."""
+    curator = doc.get("curator") or {}
+    cur_id = doc.get("curator_id")
+    if (not cur_id or cur_id == "unknown") and curator.get("id"):
+        doc["curator_id"] = curator["id"]
+    return doc
+
+
 def curation_query(curation_id: str) -> dict:
-    """Resolve curadorias por _id em ambos os formatos coexistentes: ObjectId
-    (bulk imports) ou string (criadas via API) — mesmo padrão de
-    entities.entity_query. Sem isso, um doc ObjectId listável pela busca não
-    poderia ser buscado/atualizado/deletado (type bracketing do Mongo)."""
-    q = [{"_id": curation_id}]
+    """Resolve curadorias por _id (ObjectId de bulk imports OU string da API)
+    e pelo CAMPO curation_id (o sync cliente endereça por ele) — mesmo padrão
+    de entities.entity_query. Ordem DETERMINÍSTICA: string primeiro (o caller
+    endereçou uma string), depois ObjectId, depois o campo."""
+    q = [{"_id": curation_id}, {"curation_id": curation_id}]
     if ObjectId.is_valid(curation_id):
-        q.insert(0, {"_id": ObjectId(curation_id)})
+        q.insert(1, {"_id": ObjectId(curation_id)})
     return {"$or": q}
 
 
@@ -160,9 +170,10 @@ def create_curation(
     
     **Authentication Required:** Include `Authorization: Bearer <token>` OR `X-API-Key: <key>` header
     """
-    # Verify entity exists (skip for orphaned curations)
+    # Verify entity exists (skip for orphaned curations) — find_entity
+    # resolve ObjectId/string/slug (os 471 ObjectId não-linkáveis)
     if curation.entity_id:
-        entity = db.entities.find_one({"_id": curation.entity_id})
+        entity = find_entity(db, curation.entity_id)
         if not entity:
             raise HTTPException(
                 status_code=404,
@@ -180,6 +191,13 @@ def create_curation(
     doc["createdBy"] = curation.createdBy or curation.curator_id
     doc["updatedBy"] = curation.curator_id
     
+    # Twin guard: um doc ObjectId com o mesmo id pode existir (índice único
+    # é type-aware) — insert às cegas criaria um duplicado silencioso
+    if db.curations.find_one(curation_query(curation.curation_id), {"_id": 1}):
+        raise HTTPException(
+            status_code=status.HTTP_409_CONFLICT,
+            detail=f"Curation {curation.curation_id} already exists"
+        )
     # Insert
     try:
         db.curations.insert_one(doc)
@@ -267,6 +285,9 @@ def search_curations(
 
     items = []
     for doc in cursor:
+        if doc.get("_id") is None:
+            logger.warning("curadoria sem _id pulada na listagem")
+            continue
         items.append(Curation(**doc))
 
     return PaginatedResponse(
@@ -394,10 +415,9 @@ def update_curation(
 
     # Denormalize city/type if entity_id is changing
     if "entity_id" in update_data and update_data["entity_id"]:
-        entity = db.entities.find_one(
-            {"_id": update_data["entity_id"]},
-            {"type": 1, "data.location": 1}
-        )
+        entity = find_entity(db, update_data["entity_id"])
+        if entity:
+            entity = {k: entity.get(k) for k in ("type", "data")}
         if entity:
             update_data.update(denormalize_curation_location(entity))
 
@@ -935,18 +955,12 @@ def bulk_upsert_curations(
                 if entity_for_denorm:
                     doc.update(denormalize_curation_location(entity_for_denorm))
 
-                # normalização server-side (mesma regra do PATCH): curator.id é
-                # autoritativo — sem isso, payloads divergentes de outros
-                # clientes ficam infindáveis pelo filtro de curator.id
-                if not doc.get("curator_id") and doc.get("curator", {}).get("id"):
-                    doc["curator_id"] = doc["curator"]["id"]
-                db.curations.update_one({"_id": curation.curation_id}, {"$set": doc})
+                _normalize_curator_id(doc)
+                db.curations.update_one(curation_query(curation.curation_id), {"$set": doc})
                 updated += 1
             else:
                 doc = curation.model_dump()
-                # normalização server-side também no INSERT do bulk
-                if not doc.get("curator_id") and doc.get("curator", {}).get("id"):
-                    doc["curator_id"] = doc["curator"]["id"]
+                _normalize_curator_id(doc)
                 doc["_id"] = curation.curation_id
                 doc["createdAt"] = now
                 doc["updatedAt"] = now

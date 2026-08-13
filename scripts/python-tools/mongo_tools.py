@@ -57,6 +57,10 @@ def load_env(path=None, always_env=()):
     explícita do operador (ex.: testar contra cluster scratch)."""
     path = path or ENV_PATH
     loaded = []
+    if not os.path.isfile(path):
+        # arquivo ausente = no-op: CI/workflows com MONGODB_URL exportada no
+        # shell funcionam sem .env local (connect() depende disso)
+        return loaded
     with open(path) as f:
         for line in f:
             line = line.strip()

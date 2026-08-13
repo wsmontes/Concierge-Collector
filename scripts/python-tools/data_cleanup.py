@@ -25,6 +25,21 @@ def to_json(docs):
     return json_util.loads(json_util.dumps(docs))
 
 
+def print_plan(plan, db_name, skipped=None, titulo='PLANO DE LIMPEZA'):
+    """Imprime o plano — UMA cópia só (o print duplicado entre backup e
+    execute já divergiu uma vez; saída enganosa num script destrutivo é
+    perigosa)."""
+    print(f'== {titulo} ({db_name}) ==')
+    print(f"  curadorias a deletar: {len(plan['curations'])}")
+    print(f"  entities a deletar:   {len(plan['entities'])}")
+    print(f"  users audit a deletar:{len(plan['users'])}")
+    print(f"  categories 'active' string -> boolean: {len(plan['categories_active_as_string'])}")
+    if skipped:
+        print('  entidades PULADAS (referenciadas por curation viva):')
+        for s in skipped:
+            print('    -', s)
+
+
 def validar_contra_backup(saved_docs, plan_atual):
     """Guarda do modo execute: todo _id do plano atual precisa estar no
     backup (deleção reversível). Por IDS, não por contagens — uma troca de
@@ -98,15 +113,7 @@ def main():
     if mode != 'execute':
         # No execute o plano é re-coletado na hora da deleção (guarda por
         # IDs) — exibir um plano vazio antes de deletar seria enganoso
-        print(f'== PLANO DE LIMPEZA ({db.name}) ==')
-        print(f"  curadorias a deletar: {len(plan['curations'])}")
-        print(f"  entities a deletar:   {len(plan['entities'])}")
-        print(f"  users audit a deletar:{len(plan['users'])}")
-        print(f"  categories 'active' string -> boolean: {len(plan['categories_active_as_string'])}")
-    if mode != 'execute' and skipped:
-        print('  entidades PULADAS (referenciadas por curation viva):')
-        for s in skipped:
-            print('    -', s)
+        print_plan(plan, db.name, skipped)
 
     if mode == 'backup':
         os.makedirs(BACKUP_DIR, exist_ok=True)
@@ -142,15 +149,7 @@ def main():
             return 1
         # Plano APROVADO é o re-coletado — exibe as contagens reais que serão
         # deletadas (o print acima rodou com o plano vazio do modo execute)
-        print('== PLANO APROVADO (re-coletado) ==')
-        print(f"  curadorias a deletar: {len(plan_atual['curations'])}")
-        print(f"  entities a deletar:   {len(plan_atual['entities'])}")
-        print(f"  users audit a deletar:{len(plan_atual['users'])}")
-        print(f"  categories 'active' string -> boolean: {len(plan_atual['categories_active_as_string'])}")
-        if skipped_atual:
-            print('  entidades PULADAS (referenciadas por curation viva):')
-            for s in skipped_atual:
-                print('    -', s)
+        print_plan(plan_atual, db.name, skipped_atual, titulo='PLANO APROVADO (re-coletado)')
         r = db.curations.delete_many({'_id': {'$in': [d['_id'] for d in plan_atual['curations']]}})
         print(f'curadorias deletadas: {r.deleted_count}')
         r = db.entities.delete_many({'_id': {'$in': [d['_id'] for d in plan_atual['entities']]}})
