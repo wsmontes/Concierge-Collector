@@ -86,9 +86,9 @@ jobs:
       - name: Run Black formatter check
         working-directory: ./concierge-api-v3
         run: |
-          black --check app/ tests/ || echo "⚠️ Code formatting issues found (non-blocking)"
-      
+          black --check app/ tests/
+
       - name: Run Flake8 linter
         working-directory: ./concierge-api-v3
         run: |
-          flake8 app/ tests/ --max-line-length=120 --ignore=E203,W503 || echo "⚠️ Linting issues found (non-blocking)"
+          flake8 app/ tests/ --max-line-length=120 --ignore=E203,W503
