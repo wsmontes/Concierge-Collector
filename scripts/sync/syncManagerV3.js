@@ -758,6 +758,15 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
     }
 
     /**
+     * Continua um walk por cursor SOMENTE com cursor presente e página não
+     * vazia. Página curta NÃO termina: com tipos mistos de _id, a cauda curta
+     * de um segmento é seguida pelo próximo (string → ObjectId).
+     */
+    shouldContinuePull(items, afterId) {
+        return Boolean(afterId) && Array.isArray(items) && items.length > 0;
+    }
+
+    /**
      * Pull only entities linked to curations from server
      */
     async pullLinkedEntities() {
@@ -805,7 +814,11 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                 }
                 const last = items[items.length - 1];
                 afterId = String(last?._id ?? last?.id ?? '');
-                if (!afterId || items.length < batchLimit) {
+                // NÃO parar em página curta: _ids ObjectId ordenam DEPOIS das
+                // strings no Mongo — a cauda curta de strings é seguida pelos
+                // ObjectIds (471 entities ficavam invisíveis). Só página VAZIA
+                // ou cursor ausente termina; o preço é 1 request extra vazio.
+                if (!this.shouldContinuePull(items, afterId)) {
                     hasMore = false;
                 }
             }

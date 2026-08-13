@@ -60,7 +60,10 @@ class CurationBrowser {
       if (items.length) {
         this.cursor = items[items.length - 1]._id || items[items.length - 1].curation_id;
       }
-      if (items.length < this.pageSize) {
+      // Página curta NÃO encerra: _ids de tipos mistos ordenam em segmentos
+      // (string → ObjectId no Mongo) e a cauda curta de um segmento é seguida
+      // pelo próximo. Só página VAZIA termina (custo: 1 request extra).
+      if (items.length === 0) {
         this.done = true;
       }
 

@@ -23,7 +23,10 @@ describe('CurationBrowser', () => {
 
     const p2 = await br.nextPage(); // usa cursor after_id='b'
     expect(p2.items.map(i => i._id)).toEqual(['c']);
-    expect(p2.done).toBe(true); // página < pageSize → fim
+    expect(p2.done).toBe(false); // página curta NÃO encerra (segmento ObjectId pode seguir)
+    const p3 = await br.nextPage(); // página vazia → fim de verdade
+    expect(p3.items).toEqual([]);
+    expect(p3.done).toBe(true);
   });
 
   test('acumula items em this.items', async () => {

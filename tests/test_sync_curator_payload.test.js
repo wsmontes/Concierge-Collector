@@ -90,3 +90,22 @@ describe('cleanCurationForSync (módulo real)', () => {
     expect(cleaned.curator.name).toBe('Ana');
   });
 });
+
+describe('shouldContinuePull (módulo real) — walk por cursor com tipos mistos', () => {
+  test('página CURTA com cursor continua (segmento ObjectId pode seguir)', () => {
+    const sm = makeSyncManager(null);
+    // 150 itens de strings num batch de 200: NÃO é fim — os ObjectIds
+    // ordenam depois das strings no Mongo e seriam pulados
+    expect(sm.shouldContinuePull(new Array(150).fill({}), 'ultimo-id-string')).toBe(true);
+  });
+
+  test('página VAZIA termina', () => {
+    const sm = makeSyncManager(null);
+    expect(sm.shouldContinuePull([], 'ultimo-id')).toBe(false);
+  });
+
+  test('sem cursor termina (coleção esgotada no primeiro batch)', () => {
+    const sm = makeSyncManager(null);
+    expect(sm.shouldContinuePull(new Array(200).fill({}), '')).toBe(false);
+  });
+});
