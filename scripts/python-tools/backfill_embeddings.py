@@ -27,7 +27,11 @@ PRICE_PER_1M_TOKENS = 0.02  # USD, text-embedding-3-small
 # Filtro de seleção do backfill (exercitado nos testes via fakes que aplicam
 # o filtro de verdade — uma regressão aqui re-embutiria curadorias erradas).
 CURATIONS_FILTRO = {
-    '$or': [{'embeddings': {'$exists': False}}, {'embeddings': []}],
+    '$or': [
+        {'embeddings': {'$exists': False}},
+        {'embeddings': []},
+        {'embeddings_metadata.backfill_needed': True},
+    ],
     'status': {'$ne': 'deleted'},
 }
 

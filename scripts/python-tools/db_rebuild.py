@@ -132,19 +132,17 @@ def compact_doc(doc):
     embs = doc.get("embeddings")
     if isinstance(embs, list):
         novas = []
-        dropped = False
         for emb in embs:
             if isinstance(emb, dict) and "vector" in emb:
                 new, s = _pack_or_skip(emb["vector"], doc.get("_id"))
                 skipped += s
                 if new is None:
-                    dropped = True
                     continue  # entrada removida por inteiro
                 emb["vector"] = new
             novas.append(emb)
-        # qualquer entrada dropada → array vazio (backfill re-seleciona a
-        # curadoria; array parcial deixaria os textos dropados perdidos)
-        doc["embeddings"] = [] if dropped else novas
+        # drop parcial preserva os vetores válidos (o restore não destrói o
+        # que está bom; os textos dropados ficam elegíveis para backfill)
+        doc["embeddings"] = novas
     return doc, skipped
 
 
@@ -371,10 +369,21 @@ def _epoch(ts):
         # >1e11 = milissegundos (epoch ~1.7e9 em segundos)
         return float(ts) / 1000.0 if ts > 1e11 else float(ts)
     if isinstance(ts, str) and ts:
+        # '20240813' é data compacta (fromisoformat aceita), NÃO epoch —
+        # tenta data compacta/ISO ANTES do número
+        if len(ts) == 8 and ts.isdigit():
+            try:
+                dt = datetime.fromisoformat(ts)
+                if dt.tzinfo is None:
+                    dt = dt.replace(tzinfo=timezone.utc)
+                return dt.timestamp()
+            except ValueError:
+                pass
         try:
-            # manifest grava updatedAt numérico como str(ts) — tenta número
-            # ANTES do ISO
+            # manifest grava updatedAt numérico como str(ts)
             f = float(ts)
+            if f != f or f in (float("inf"), float("-inf")):
+                return 0.0  # nan/inf não são instantes válidos
             return f / 1000.0 if f > 1e11 else f
         except ValueError:
             pass
@@ -484,14 +493,14 @@ def dedupe_entities(docs):
                     continue
                 dono_id = claimed.get((key, _hashable_key(value)))
                 if dono_id:
-                    # chaveia pelo _id E pelo slug (entity_id): curadorias de
-                    # entities ObjectId referenciam o slug, não o hex
+                    # chaveia por str(_id) (hex para ObjectId) E pelo slug
+                    # (entity_id): curadorias referenciam ambos os formatos
                     dono = next((d for d in docs if d["_id"] == dono_id), None)
-                    rewrite[doc["_id"]] = dono["_id"]
+                    valor_dono = (dono or {}).get("entity_id") or str((dono or {}).get("_id", dono_id))
+                    rewrite.setdefault(str(doc["_id"]), valor_dono)
                     slug_removido = doc.get("entity_id")
-                    slug_dono = (dono or {}).get("entity_id")
-                    if slug_removido and slug_dono:
-                        rewrite[slug_removido] = slug_dono
+                    if slug_removido:
+                        rewrite.setdefault(slug_removido, valor_dono)
                     break
     kept = [d for d in docs if id(d) not in removed_ids]
     removed = [d for d in docs if id(d) in removed_ids]

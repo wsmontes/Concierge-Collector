@@ -157,8 +157,8 @@ class CuratorModule {
 
                 try {
                     // Call the unified sync method from syncManager
-                    if (window.SyncManager && window.SyncManager.performComprehensiveSync) {
-                        await window.SyncManager.performComprehensiveSync(true);
+                    if (window.SyncManager && typeof window.SyncManager.fullSync === 'function') {
+                        await window.SyncManager.fullSync();
                         this.log.debug('Sync completed successfully');
 
                         // Refresh restaurant list if available
@@ -191,8 +191,8 @@ class CuratorModule {
 
                 try {
                     // Call the unified sync method from syncManager
-                    if (window.SyncManager && window.SyncManager.performComprehensiveSync) {
-                        await window.SyncManager.performComprehensiveSync(true);
+                    if (window.SyncManager && typeof window.SyncManager.fullSync === 'function') {
+                        await window.SyncManager.fullSync();
                         this.log.debug('Sync completed successfully');
 
                         // Refresh restaurant list if available
@@ -620,7 +620,7 @@ class CuratorModule {
                 await dataStorage.getAllCurators(true);
 
                 // Fetch curators from server with error handling
-                await window.SyncManager.importCurators();
+                await window.ApiService.listCurators();
             } catch (syncError) {
                 this.log.error('Error in sync service:', syncError);
 

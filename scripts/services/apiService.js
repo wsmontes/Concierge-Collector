@@ -298,7 +298,7 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         if (filters.limit) params.append('limit', filters.limit);
         if (filters.offset) params.append('offset', filters.offset);
         if (filters.after_id) params.append('after_id', filters.after_id);
-        if (filters.include_deleted) params.append('include_deleted', 'true');
+        if (filters.include_deleted !== undefined) params.append('include_deleted', filters.include_deleted ? 'true' : 'false');
         if (filters.status) params.append('status', filters.status);
         if (filters.city) params.append('city', filters.city);
         if (filters.type) params.append('type', filters.type);

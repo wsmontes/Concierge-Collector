@@ -524,6 +524,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             this.stats.lastPushAt = metadata.lastPushAt || null;
             this.stats.lastEntityPullAt = metadata.lastEntityPullAt || null;
             this.stats.lastCurationPullAt = metadata.lastCurationPullAt || null;
+            this.stats.failedCurationIds = metadata.failedCurationIds || [];
             this.syncVersion = metadata.syncVersion || 1; // Default to 1 if not present
 
             this.log.debug('Sync metadata loaded:', { ...this.stats, syncVersion: this.syncVersion });
@@ -550,7 +551,8 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                 lastPushAt: this.stats.lastPushAt,
                 lastEntityPullAt: this.stats.lastEntityPullAt,
                 lastCurationPullAt: this.stats.lastCurationPullAt,
-                syncVersion: this.syncVersion || CURRENT_SYNC_VERSION
+                failedCurationIds: this.stats.failedCurationIds || [],
+                syncVersion: this.syncVersion
             });
         } catch (error) {
             this.log.error('Failed to save sync metadata:', error);
@@ -949,9 +951,15 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                 this.log.info(`Re-tentando ${quarantined.length} item(ns) em quarentena`);
                 const stillFailed = [];
                 for (const cid of quarantined) {
+                    if (!cid) continue;  // id inválido nunca entra
                     try {
                         const doc = await window.ApiService.getCuration(cid);
-                        if (doc && this.interpretPullResult(
+                        if (!doc) {
+                            // 404/deletada no servidor: nada a re-tentar
+                            this.log.debug(`Quarentena: ${cid} não existe mais no servidor — resolvida`);
+                            continue;
+                        }
+                        if (this.interpretPullResult(
                             await this.processServerCuration(doc)
                         ).failed) {
                             stillFailed.push(cid);
@@ -959,6 +967,9 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                     } catch (e) {
                         stillFailed.push(cid);
                     }
+                    // pacing: sem estourar o rate limit 300/min
+                    const delayMs = window.AppConfig?.api?.backend?.syncBatchDelayMs || 200;
+                    await new Promise(resolve => setTimeout(resolve, delayMs));
                 }
                 this.stats.failedCurationIds = stillFailed;
                 await this.saveSyncMetadata();
@@ -1083,6 +1094,14 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
 
             const localCuration = await window.DataStore.getCuration(serverCuration.curation_id);
 
+            // P7b guard PRIMEIRO: edição local não enviada (pending/conflict)
+            // NUNCA é destruída — nem pela propagação de deleção do servidor
+            const localPending = localCuration?.sync?.status;
+            if (localPending === 'pending' || localPending === 'conflict') {
+                this.log.debug(`Local curation pending/conflict — mantendo local: ${serverCuration.curation_id}`);
+                return PULL_RESULT.NOOP;
+            }
+
             // NORMALIZE: Ensure top-level curator_id exists for Dexie filtering
             // IMPORTANT: We do this before the version check to ensure older local records are corrected
             const normalizedCuration = { ...serverCuration };
@@ -1118,13 +1137,6 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
 
                 const serverVersion = Number(serverCuration.version) || 0;
                 const localVersion = Number(localCuration.version) || 0;
-                const localStatus = localCuration.sync?.status;
-
-                // P7b fix: nunca sobrescrever mudanças locais não enviadas
-                if (localStatus === 'pending' || localStatus === 'conflict') {
-                    this.log.debug(`Local curation pending/conflict — mantendo local: ${serverCuration.curation_id}`);
-                    return PULL_RESULT.NOOP;  // processado sem erro — NÃO bloqueia o watermark
-                }
 
                 if (serverVersion > localVersion) {
                     await window.DataStore.db.curations.put({

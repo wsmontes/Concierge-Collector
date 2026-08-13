@@ -54,7 +54,7 @@ def _compact_embeddings_for_storage(embeddings):
     nem vira Binary de lixo, e a curadoria volta a ser selecionável pelo
     backfill ($or: embeddings ausente ou [])."""
     if not isinstance(embeddings, list):
-        return embeddings
+        return embeddings, False
     out = []
     dropped = False
     for emb in embeddings:
@@ -75,10 +75,10 @@ def _compact_embeddings_for_storage(embeddings):
             dropped = True
             continue
         out.append({**emb, "vector": packed})
-    # qualquer entrada dropada → array inteiro vazio: o filtro do backfill
-    # ($or: embeddings ausente ou []) re-seleciona a curadoria — um array
-    # parcialmente válido deixaria os textos dropados perdidos para sempre
-    return [] if dropped else out
+    # drop parcial PRESERVA os vetores válidos e sinaliza backfill — o filtro
+    # do backfill inclui embeddings_metadata.backfill_needed: True, então os
+    # textos dropados são regenerados sem destruir o que está bom
+    return out, dropped
 
 
 def _vector_search_or_fallback(db, projection, query_vector, candidate_limit, fallback_filter):
@@ -306,10 +306,12 @@ def search_curations(
             docs = list(db.curations.find(transition, CURATION_RESPONSE_PROJECTION).sort("_id", 1).limit(limit))
         items = []
         for doc in docs:
-            if doc.get("_id") is None:
-                logger.warning("curadoria sem _id pulada na listagem (cursor)")
-                continue
-            items.append(Curation(**doc))
+            try:
+                items.append(Curation(**doc))
+            except Exception as e:
+                # doc de formato legado (curator/curation_id ausentes) não
+                # pode derrubar a página inteira com 500
+                logger.warning("curadoria malformada pulada na listagem: %s", e)
         return PaginatedResponse(items=items, total=total, limit=limit, offset=offset)
 
     total = db.curations.count_documents(query)
@@ -460,7 +462,13 @@ def update_curation(
 
     # Fronteira de escrita: vetores entram no Mongo compactados (Binary float32)
     if "embeddings" in update_data:
-        update_data["embeddings"] = _compact_embeddings_for_storage(update_data["embeddings"])
+        compacted, dropped = _compact_embeddings_for_storage(update_data["embeddings"])
+        update_data["embeddings"] = compacted
+        if dropped:
+            update_data["embeddings_metadata"] = {
+                **(update_data.get("embeddings_metadata") or {}),
+                "backfill_needed": True,
+            }
     
     # Update — escreve no _id ESPECÍFICO do doc que a versão leu (nunca no
     # twin por decisão do planner). O filtro de version é CONDICIONAL: doc

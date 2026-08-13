@@ -68,6 +68,6 @@ describe('queueProcessor — política de retries', () => {
     getPendingItems.mockResolvedValue([]);
     const { requeueItem } = await import('../capture/queueProcessor.js');
     await requeueItem('x');
-    expect(updateItem).toHaveBeenCalledWith('x', { status: 'queued', retries: 0 });
+    expect(updateItem).toHaveBeenCalledWith('x', { status: 'queued', retries: 0, confirmRetries: 0 });
   });
 });

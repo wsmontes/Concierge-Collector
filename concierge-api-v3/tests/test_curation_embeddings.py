@@ -93,7 +93,8 @@ def test_compact_embeddings_packs_list_vectors():
             "vector": V1536,
         }
     ]
-    out = _compact_embeddings_for_storage(embs)
+    out, dropped = _compact_embeddings_for_storage(embs)
+    assert not dropped
     v = out[0]["vector"]
     assert isinstance(v, Binary)
     assert struct.unpack("<1536f", v)[:4] == tuple(struct.unpack("<f", struct.pack("<f", x))[0] for x in V1536[:4])
@@ -106,32 +107,36 @@ def test_compact_embeddings_keeps_text_only_entries_and_binary():
         {"text": "com vetor", "vector": packed},
         {"text": "vetor nulo", "vector": None},
     ]
-    out = _compact_embeddings_for_storage(embs)
-    # QUALQUER entrada dropada zera o array inteiro (backfill re-seleciona)
-    assert out == []
+    out, dropped = _compact_embeddings_for_storage(embs)
+    # drop parcial: vetor nulo sai, entrada sem vetor e vetor válido ficam
+    assert dropped
+    assert len(out) == 2
+    assert out[0] == {"text": "sem vetor"}
+    assert out[1]["vector"] is packed
 
 
 def test_compact_embeddings_does_not_pack_empty_vector():
     """vector: [] não pode virar Binary(b'') (0 dims, lixo persistido) nem
     re-entrar como lista de doubles (o formato que estourou a cota)."""
     embs = [{"text": "vazio", "vector": []}]
-    out = _compact_embeddings_for_storage(embs)
-    assert out == []
+    out, dropped = _compact_embeddings_for_storage(embs)
+    assert out == [] and dropped
 
 
 def test_compact_embeddings_strips_out_of_range_vector():
     """Float >3.4e38 estoura float32 (OverflowError) — entrada removida com
     warning, nunca persistida no formato caro."""
     embs = [{"text": "gigante", "vector": [1e300]}]
-    out = _compact_embeddings_for_storage(embs)
-    assert out == []
+    out, dropped = _compact_embeddings_for_storage(embs)
+    assert out == [] and dropped
 
 
 def test_compact_embeddings_uses_shared_pack_vector():
     """O formato tem implementação única (app/core/vector_packing) — a saída
     da API bate byte a byte com a função compartilhada."""
     vals = V1536
-    out = _compact_embeddings_for_storage([{"text": "t", "vector": vals}])
+    out, dropped = _compact_embeddings_for_storage([{"text": "t", "vector": vals}])
+    assert not dropped
     assert out[0]["vector"] == pack_vector(vals)
 
 
@@ -139,8 +144,8 @@ def test_compact_embeddings_strips_dict_vector_with_warning(caplog):
     """dict de vetor (JSON legal no schema) não vira Binary de lixo nem 500:
     entrada removida com warning — o formato caro nunca re-entra no Mongo."""
     embs = [{"text": "t", "vector": {"0": 0.31, "1": -0.2}}]
-    out = _compact_embeddings_for_storage(embs)
-    assert out == []
+    out, dropped = _compact_embeddings_for_storage(embs)
+    assert out == [] and dropped
     assert any("sem compactar" in r.getMessage() for r in caplog.records)
 
 
@@ -149,16 +154,16 @@ def test_compact_embeddings_strips_ndarray_vector():
     import numpy as np
 
     embs = [{"text": "t", "vector": np.array(V1536)}]
-    out = _compact_embeddings_for_storage(embs)
-    assert out == []
+    out, dropped = _compact_embeddings_for_storage(embs)
+    assert out == [] and dropped
 
 
 def test_compact_embeddings_rejects_wrong_dimension():
     """Vetor de dimensão ≠ 1536 morreria no np.dot na hora da busca — a
     fronteira de escrita rejeita antes."""
     embs = [{"text": "t", "vector": [0.1] * 100}]
-    out = _compact_embeddings_for_storage(embs)
-    assert out == []
+    out, dropped = _compact_embeddings_for_storage(embs)
+    assert out == [] and dropped
 
 
 def test_vector_to_array_reads_little_endian_explicitly():

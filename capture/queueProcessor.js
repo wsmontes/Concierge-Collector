@@ -31,9 +31,17 @@ export function start() {
   processQueue(); // immediate attempt
 }
 
-/** Reenfileira um item 'failed' (zerando as tentativas) — chamado pela UI. */
+/** Reenfileira um item 'failed' — chamado pela UI. Se o upload já foi
+ * concluído (captureId existe), re-tenta SÓ a confirmação ('matched'); senão
+ * re-enfileira o upload ('queued'). Re-enviar o upload re-transcreveria o
+ * áudio e cunharia um capture novo em vez de consertar a confirmação. */
 export async function requeueItem(id) {
-  await Store.updateItem(id, { status: 'queued', retries: 0 });
+  const items = await Store.getPendingItems();
+  const item = items.find(i => i.id === id);
+  const updates = item && item.captureId
+    ? { status: 'matched', confirmRetries: 0 }
+    : { status: 'queued', retries: 0, confirmRetries: 0 };
+  await Store.updateItem(id, updates);
   processQueue();
 }
 
@@ -132,13 +140,15 @@ export async function processQueue() {
           console.error(`Queue confirm failed for ${item.id}:`, err);
           // Confirmação permanentemente falha não pode re-tentar a cada 30s
           // para sempre — conta as tentativas e exaure como o leg de upload
-          const retries = (item.retries || 0) + 1;
+          // contador SEPARADO do leg de upload (o upload não pode consumir
+          // o orçamento de retries da confirmação)
+          const retries = (item.confirmRetries || 0) + 1;
           if (retries >= MAX_RETRIES) {
-            await Store.updateItem(item.id, { status: 'failed', retries });
-            notify(item.id, 'failed', { confirmError: err.message });
+            await Store.updateItem(item.id, { status: 'failed', confirmRetries: retries });
+            notify(item.id, 'failed', { confirmError: err.message, captureId: item.captureId });
           } else {
-            await Store.updateItem(item.id, { status: 'matched', retries });
-            notify(item.id, 'matched', { confirmError: err.message });
+            await Store.updateItem(item.id, { status: 'matched', confirmRetries: retries });
+            notify(item.id, 'matched', { confirmError: err.message, captureId: item.captureId });
           }
         }
       }

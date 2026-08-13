@@ -103,9 +103,8 @@ def test_compact_doc_keeps_text_only_entry_without_crashing():
         "embeddings": [{"text": "x", "category": "y"}, {"text": "z", "vector": None}],
     }
     out, skipped = compact_doc(doc)
-    # QUALQUER entrada dropada zera o array inteiro: o backfill re-seleciona
-    # a curadoria — um array parcial deixaria os textos dropados perdidos
-    assert out["embeddings"] == []
+    # drop parcial: a entrada sem 'vector' fica; a com vector None sai
+    assert out["embeddings"] == [{"text": "x", "category": "y"}]
     assert skipped == 1
 
 
@@ -657,15 +656,16 @@ def test_read_bson_stream_rejects_negative_header(tmp_path):
 
 
 def test_compact_doc_drops_unpackable_entries_entirely():
-    """Entrada com vetor malformado é REMOVIDA (não fica só com texto): se
-    ficasse, o filtro de backfill ($or: embeddings ausente ou []) nunca a
-    re-selecionaria — curadoria permanentemente inbuscável."""
+    """Entrada com vetor malformado é REMOVIDA; vetores VÁLIDOS são
+    preservados (o restore não destrói o que está bom — o backfill cobre os
+    textos dropados via embeddings_metadata.backfill_needed)."""
     doc = {"_id": "c1", "embeddings": [
         {"text": "valida", "vector": V1536},
         {"text": "lixo", "vector": {"0": 0.31}},
     ]}
     out, skipped = compact_doc(doc)
-    assert out["embeddings"] == []  # drop parcial → array inteiro vazio
+    assert len(out["embeddings"]) == 1
+    assert out["embeddings"][0]["text"] == "valida"
     assert skipped == 1
 
 
