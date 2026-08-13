@@ -746,6 +746,57 @@ def test_patch_conflict_when_doc_disappears_mid_update():
     assert exc_info.value.status_code == 409
 
 
+def test_delete_curation_soft_deletes_and_bumps_version():
+    """DELETE é soft: $set status deleted + updatedBy, $inc version — o doc
+    continua na coleção (recuperável)."""
+    from unittest.mock import MagicMock
+    from app.api.curations import delete_curation
+
+    mock_db = MagicMock()
+    mock_db.curations.find_one.return_value = {"_id": "cur_del_001"}
+
+    delete_curation(
+        curation_id="cur_del_001",
+        db=mock_db,
+        auth={"role": "curator", "user": "test@test.com"},
+    )
+
+    write_filter, write_update = mock_db.curations.update_one.call_args[0]
+    assert write_filter == {"_id": "cur_del_001"}
+    assert write_update["$set"]["status"] == "deleted"
+    assert write_update["$set"]["updatedBy"] == "test@test.com"
+    assert write_update["$inc"] == {"version": 1}
+
+
+def test_delete_curation_404_when_missing():
+    from unittest.mock import MagicMock
+    from fastapi import HTTPException
+    import pytest as _pytest
+    from app.api.curations import delete_curation
+
+    mock_db = MagicMock()
+    mock_db.curations.find_one.return_value = None
+
+    with _pytest.raises(HTTPException) as exc_info:
+        delete_curation(
+            curation_id="cur_del_999",
+            db=mock_db,
+            auth={"role": "curator", "user": "test@test.com"},
+        )
+    assert exc_info.value.status_code == 404
+    mock_db.curations.update_one.assert_not_called()
+
+
+def test_list_cities_filters_falsy_and_sorts():
+    from unittest.mock import MagicMock
+    from app.api.curations import list_cities
+
+    mock_db = MagicMock()
+    mock_db.curations.distinct.return_value = ["São Paulo", None, "Rio de Janeiro", ""]
+
+    assert list_cities(db=mock_db) == ["Rio de Janeiro", "São Paulo"]
+
+
 def test_repair_curator_identity_untouched_without_identity_keys():
     """PATCH que não menciona identidade (ex.: só status) não pode ganhar
     campos de curator no $set."""
