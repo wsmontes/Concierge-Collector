@@ -136,8 +136,11 @@ const CuratorProfile = (function() {
     function updateHeaderProfile() {
         // Check if there's a user profile area in header
         const headerProfile = document.getElementById('user-profile-header');
-        
+
         if (headerProfile && _currentCurator) {
+            const safeName = escapeHtml(_currentCurator.name);
+            const safeEmail = escapeHtml(_currentCurator.email);
+            const safePicture = escapeHtml(_currentCurator.picture);
             headerProfile.innerHTML = `
                 <div class="relative" id="user-profile-dropdown-container">
                     <button 
@@ -147,9 +150,9 @@ const CuratorProfile = (function() {
                         aria-expanded="false"
                     >
                         ${_currentCurator.picture ? `
-                            <img 
-                                src="${_currentCurator.picture}" 
-                                alt="${_currentCurator.name}"
+                            <img
+                                src="${safePicture}"
+                                alt="${safeName}"
                                 class="w-8 h-8 sm:w-10 sm:h-10 rounded-full ring-2 ring-blue-200 object-cover flex-shrink-0"
                                 onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'"
                             >
@@ -162,8 +165,8 @@ const CuratorProfile = (function() {
                             </div>
                         `}
                         <div class="hidden sm:flex flex-col items-start">
-                            <span class="text-sm font-semibold text-gray-900">${_currentCurator.name}</span>
-                            <span class="text-xs text-gray-500">${_currentCurator.email}</span>
+                            <span class="text-sm font-semibold text-gray-900">${safeName}</span>
+                            <span class="text-xs text-gray-500">${safeEmail}</span>
                         </div>
                         <span class="material-icons text-gray-400 ml-1">arrow_drop_down</span>
                     </button>
@@ -176,8 +179,8 @@ const CuratorProfile = (function() {
                     >
                         <!-- User Info -->
                         <div class="px-4 py-3 border-b border-gray-100">
-                            <p class="text-sm font-semibold text-gray-900">${_currentCurator.name}</p>
-                            <p class="text-xs text-gray-500">${_currentCurator.email}</p>
+                            <p class="text-sm font-semibold text-gray-900">${safeName}</p>
+                            <p class="text-xs text-gray-500">${safeEmail}</p>
                             <p class="text-xs text-green-600 mt-1 flex items-center gap-1">
                                 <span class="material-icons" style="font-size: 14px;">check_circle</span>
                                 Authenticated via Google
@@ -231,6 +234,21 @@ const CuratorProfile = (function() {
                 }
             }, 100);
         }
+    }
+
+    /**
+     * Escapa HTML — name/email/picture vêm do perfil Google e são interpolados
+     * em innerHTML; sem escape, um display name malicioso vira HTML arbitrário
+     * no header do collector (mesma classe do fix de auth_error).
+     */
+    function escapeHtml(value) {
+        if (!value) return '';
+        return String(value)
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#39;');
     }
 
     /**
