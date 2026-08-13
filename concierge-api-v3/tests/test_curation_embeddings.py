@@ -248,3 +248,46 @@ def test_hybrid_search_falls_back_with_warning(caplog, monkeypatch):
     assert response.total_results >= 1
     assert any("vectorSearch" in r.getMessage() for r in caplog.records)
     assert curation_find.sorted_by == [("updatedAt", -1)]
+
+
+# ── Regra única da flag backfill_needed ─────────────────────────────────
+
+def test_compute_backfill_flag_stamps_when_pending_uncovered():
+    from app.api.curations import _compute_backfill_flag
+
+    meta = _compute_backfill_flag(
+        {"cuisine": ["japonesa", "italiana"]},
+        [{"text": "cuisine japonesa", "vector": b"x"}],
+        None, {"model": "m"},
+    )
+    assert meta["backfill_needed"] is True  # 'cuisine italiana' sem cobertura
+    assert meta["model"] == "m"  # proveniência preservada
+
+
+def test_compute_backfill_flag_clears_when_covered():
+    from app.api.curations import _compute_backfill_flag
+
+    meta = _compute_backfill_flag(
+        {"cuisine": ["japonesa"]},
+        [{"text": "cuisine japonesa", "vector": b"x"}],
+        None, {"backfill_needed": True},
+    )
+    assert meta["backfill_needed"] is False
+
+
+def test_compute_backfill_flag_client_cannot_force_flag():
+    from app.api.curations import _compute_backfill_flag
+
+    meta = _compute_backfill_flag(
+        {"cuisine": ["japonesa"]}, None,
+        {"backfill_needed": False}, {"backfill_needed": True},
+    )
+    # sem novos embeddings, pendência segue — cliente não controla
+    assert meta["backfill_needed"] is True
+
+
+def test_compute_backfill_flag_tolerates_non_dict_categories():
+    from app.api.curations import _compute_backfill_flag
+
+    meta = _compute_backfill_flag(["nao", "dict"], None, None, {})
+    assert meta["backfill_needed"] is False  # sem categorias válidas = sem pendência

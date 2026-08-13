@@ -156,6 +156,9 @@ def main():
                 'total_embeddings': len(embeddings),
                 'created_at': datetime.now(timezone.utc).isoformat(),
                 'backfilled': True,
+                # parcial (textos pulados) PRESERVA a pendência — sem a flag
+                # os textos restantes nunca seriam re-selecionados
+                'backfill_needed': pulados > 0,
             })
             if not stored:
                 falhas += 1

@@ -139,6 +139,9 @@ def compact_doc(doc):
                 if new is None:
                     continue  # entrada removida por inteiro
                 emb["vector"] = new
+            elif isinstance(emb, dict):
+                # texto sem vetor: conta como pendência (o backfill gera)
+                skipped += 1
             novas.append(emb)
         # drop parcial preserva os vetores válidos (o restore não destrói o
         # que está bom) e SINALIZA o backfill — sem a flag, o filtro do

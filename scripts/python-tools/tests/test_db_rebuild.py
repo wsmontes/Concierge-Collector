@@ -103,9 +103,10 @@ def test_compact_doc_keeps_text_only_entry_without_crashing():
         "embeddings": [{"text": "x", "category": "y"}, {"text": "z", "vector": None}],
     }
     out, skipped = compact_doc(doc)
-    # drop parcial: a entrada sem 'vector' fica; a com vector None sai
+    # entrada sem 'vector' agora CONTA como pendência (backfill) e a com
+    # vector None sai
     assert out["embeddings"] == [{"text": "x", "category": "y"}]
-    assert skipped == 1
+    assert skipped == 2
 
 
 def test_compact_doc_packs_top_level_vector_legacy_embeddings():

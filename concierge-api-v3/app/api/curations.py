@@ -146,6 +146,37 @@ def _clean_created_by(curation, doc):
     return None
 
 
+def _pending_category_texts(categories):
+    """Textos 'category concept' derivados de categories (mesmo formato dos
+    geradores de embeddings) — a ÚNICA fonte de pendência. Guarda contra
+    categories não-dict."""
+    pending = set()
+    if isinstance(categories, dict):
+        for category, concepts in categories.items():
+            if isinstance(concepts, list):
+                for concept in concepts:
+                    pending.add(f"{category} {concept}")
+    return pending
+
+
+def _compute_backfill_flag(stored_categories, new_embeddings, client_meta, stored_meta):
+    """Regra ÚNICA da flag backfill_needed: True se QUALQUER texto pendente de
+    categories não está coberto pelos novos embeddings. O cliente NUNCA
+    controla a flag (o servidor é a autoridade) e metadata não-dict não
+    quebra o merge."""
+    client_meta = dict(client_meta or {})
+    client_meta.pop("backfill_needed", None)
+    base = stored_meta if isinstance(stored_meta, dict) else {}
+    meta = {**base, **client_meta}
+    pending = _pending_category_texts(stored_categories)
+    covered = {
+        e.get("text") for e in (new_embeddings or [])
+        if isinstance(e, dict) and e.get("text")
+    }
+    meta["backfill_needed"] = not pending.issubset(covered)
+    return meta
+
+
 def _normalize_curator_id(doc):
     """Regra ÚNICA server-side: curator.id é autoritativo e o placeholder
     'unknown' (sync sem usuário) nunca persiste sobre um valor real."""
@@ -469,44 +500,25 @@ def update_curation(
     update_data["version"] = current_version + 1
 
     # Fronteira de escrita: vetores entram no Mongo compactados (Binary float32)
-    if "embeddings" in update_data:
-        compacted, dropped = _compact_embeddings_for_storage(update_data["embeddings"])
-        update_data["embeddings"] = compacted
-        # metadados MERGE com o armazenado (preserva model/dimensions/created_at);
-        # a flag é estampada no drop e LIMPA quando o PATCH válido cobre TODOS
-        # os textos armazenados
+    if "categories" in update_data or "embeddings" in update_data:
+        # Fronteira de escrita: vetores compactados + flag de pendência
+        # computada a partir das CATEGORIES (não dos embeddings armazenados,
+        # que drops anteriores podem ter esvaziado)
+        compacted = None
+        if "embeddings" in update_data:
+            compacted, _dropped = _compact_embeddings_for_storage(update_data["embeddings"])
+            update_data["embeddings"] = compacted
         stored_raw = db.curations.find_one(
-            {"_id": current["_id"]},
-            {"embeddings_metadata": 1, "categories": 1},
+            {"_id": current["_id"]}, {"embeddings_metadata": 1, "categories": 1}
         ) or {}
-        stored_meta = stored_raw.get("embeddings_metadata")
-        # guard de mapping: metadata corrompida (list/string) não pode
-        # quebrar o **splat com TypeError → 500 em todo PATCH de embeddings
-        if not isinstance(stored_meta, dict):
-            stored_meta = {}
-        meta = {**stored_meta, **(update_data.get("embeddings_metadata") or {})}
-        if dropped:
-            # drop parcial: sinaliza o backfill (textos dropados regenerados)
-            meta["backfill_needed"] = True
-        else:
-            # válido: limpa a flag APENAS se o PATCH cobre todos os textos
-            # armazenados (um PATCH parcial não pode apagar a pendência de
-            # textos que ele não incluiu — review 22/23)
-            # pendência = textos de CATEGORIES (não os embeddings armazenados:
-            # drops anteriores podem tê-los esvaziado — 'cuisine italiana'
-            # nunca embutida ficaria invisível ao check)
-            pending_texts = set()
-            for category, concepts in (stored_raw.get("categories") or {}).items():
-                if isinstance(concepts, list):
-                    for concept in concepts:
-                        pending_texts.add(f"{category} {concept}")
-            new_texts = {
-                e.get("text") for e in update_data["embeddings"]
-                if isinstance(e, dict) and e.get("text")
-            }
-            if pending_texts.issubset(new_texts):
-                meta.pop("backfill_needed", None)
-        update_data["embeddings_metadata"] = meta
+        # categories do PATCH prevalecem para a pendência (novos conceitos
+        # precisam de backfill mesmo sem embeddings no PATCH)
+        categorias_pendencia = update_data.get("categories") or stored_raw.get("categories") or {}
+        update_data["embeddings_metadata"] = _compute_backfill_flag(
+            categorias_pendencia, compacted,
+            update_data.get("embeddings_metadata"),
+            stored_raw.get("embeddings_metadata"),
+        )
     
     # Update — escreve no _id ESPECÍFICO do doc que a versão leu (nunca no
     # twin por decisão do planner). O filtro de version é CONDICIONAL: doc
@@ -639,6 +651,8 @@ def semantic_search_curations(
         match_count = 0
         
         for emb in embeddings:
+            if not isinstance(emb, dict):
+                continue  # entrada corrompida não pode derrubar a busca
             # Filter by category if specified
             if allowed_categories and emb.get("category") not in allowed_categories:
                 continue
