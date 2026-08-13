@@ -958,11 +958,13 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                 for (const serverCuration of response.items) {
                     totalProcessed++;
                     const saved = await this.processServerCuration(serverCuration);
-                    if (saved) {
+                    if (saved === 'applied') {
                         totalPulled++;
-                    } else {
-                        allApplied = false;  // falha local: NÃO avança o watermark
+                    } else if (saved === 'failed') {
+                        allApplied = false;  // falha REAL de aplicação: NÃO avança
                     }
+                    // 'noop' = já processado com sucesso (up-to-date/pending/
+                    // local-newer) — avança o watermark normalmente
                 }
 
                 this.log.debug(`Processed ${response.items.length} curations, ${totalPulled} saved so far`);
@@ -1055,7 +1057,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                 // P7b fix: nunca sobrescrever mudanças locais não enviadas
                 if (localStatus === 'pending' || localStatus === 'conflict') {
                     this.log.debug(`Local curation pending/conflict — mantendo local: ${serverCuration.curation_id}`);
-                    return false;
+                    return 'noop';  // processado sem erro — NÃO bloqueia o watermark
                 }
 
                 if (serverVersion > localVersion || !localCuration.curator_id) {
@@ -1069,7 +1071,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         }
                     });
                     this.log.debug(`Updated local curation: ${serverCuration.curation_id} (force update for normalization or version)`);
-                    return true;
+                    return 'applied';
                 } else if (localVersion > serverVersion) {
                     // Mark as pending for push
                     const current = await window.DataStore.db.curations
@@ -1086,11 +1088,11 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         });
                         this.log.debug(`Local curation newer: ${serverCuration.curation_id}`);
                     }
-                    return false;
+                    return 'noop';  // local vai para push — não é falha de aplicação
                 } else {
                     // Same version, no action needed
                     this.log.debug(`Curation up to date: ${serverCuration.curation_id}`);
-                    return false;
+                    return 'noop';  // já atualizado — não bloqueia o watermark
                 }
             }
         } catch (error) {

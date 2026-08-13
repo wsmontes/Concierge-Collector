@@ -140,19 +140,9 @@ def _normalize_curator_id(doc):
     'unknown' (sync sem usuário) nunca persiste sobre um valor real."""
     curator = doc.get("curator") or {}
     cur_id = doc.get("curator_id")
-    if (not cur_id or cur_id == "unknown") and curator.get("id"):
+    if (not cur_id or str(cur_id).lower() == "unknown") and curator.get("id"):
         doc["curator_id"] = curator["id"]
     return doc
-
-
-def curation_query(curation_id: str) -> dict:
-    """Filtro $or para buscas por índice — usado onde a ordem não importa
-    (buscas de existência com update no _id ESPECÍFICO do doc resolvido).
-    Prefira find_curation() quando a ordem importa."""
-    q = [{"_id": curation_id}, {"curation_id": curation_id}]
-    if ObjectId.is_valid(curation_id):
-        q.append({"_id": ObjectId(curation_id)})
-    return {"$or": q}
 
 
 def find_curation(db, curation_id, projection=None):
@@ -463,9 +453,14 @@ def update_curation(
         update_data["embeddings"] = _compact_embeddings_for_storage(update_data["embeddings"])
     
     # Update — escreve no _id ESPECÍFICO do doc que a versão leu (nunca no
-    # twin por decisão do planner)
+    # twin por decisão do planner). O filtro de version é CONDICIONAL: doc
+    # sem campo version (legado/restore) nunca casaria com {"version": 1}
+    # no equality match — para esses, o PATCH segue sem optimistic lock.
+    write_filter = {"_id": current["_id"]}
+    if "version" in current:
+        write_filter["version"] = current_version
     result = db.curations.find_one_and_update(
-        {"_id": current["_id"], "version": current_version},
+        write_filter,
         {"$set": update_data},
         projection=CURATION_RESPONSE_PROJECTION,
         return_document=True
