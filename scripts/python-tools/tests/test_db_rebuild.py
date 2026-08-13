@@ -373,7 +373,7 @@ def test_restore_recreates_indexes_after_insert(tmp_path):
     export_dump(FakeClient(), src, str(tmp_path))
     target = FakeDB(_full_colls())
     restore_dump(target, str(tmp_path), confirmed=True)
-    assert len(target["entities"].created_indexes) >= 8
+    assert len(target["entities"].created_indexes) >= 9
     assert len(target["curations"].created_indexes) >= 8
 
 
@@ -417,7 +417,7 @@ def test_ensure_indexes_continues_after_unique_index_failure():
     results = ensure_indexes(db)
     failures = [r for r in results if not r[1]]
     assert failures and "externalId" in failures[0][0]
-    assert len(ents.created_indexes) == 8
+    assert len(ents.created_indexes) == 9
     assert len(db["curations"].created_indexes) == 9
 
 
@@ -719,7 +719,7 @@ def test_index_specs_are_the_shared_source():
     from app.core.index_specs import INDEX_SPECS as SHARED
 
     assert db_rebuild.INDEX_SPECS is SHARED
-    assert len(SHARED) == 19
+    assert len(SHARED) == 20
     assert sum(1 for s in SHARED if s[0] == "capture_sessions") == 1
 
 

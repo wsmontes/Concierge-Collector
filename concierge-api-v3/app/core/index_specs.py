@@ -17,6 +17,7 @@ INDEX_SPECS = [
     ("entities", "type", {}),
     ("entities", "name", {}),
     ("entities", "createdAt", {}),
+    ("entities", "entity_id", {}),
     ("entities", [("name", "text")], {}),
     # Uniqueness guards
     ("entities", "externalId", {"unique": True, "sparse": True}),

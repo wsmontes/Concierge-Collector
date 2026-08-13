@@ -73,9 +73,11 @@ def entity_query(entity_id: str) -> dict:
     """Resolve entidades por _id em ambos os formatos coexistentes no banco:
     ObjectId (bulk imports), string (criadas via API) ou campo entity_id (slug)."""
     from bson import ObjectId
+    # ordem DETERMINÍSTICA: _id string exato → slug → ObjectId (hex válido)
+    # resolve o doc certo quando um slug 24-hex coexiste com um ObjectId
     q = [{"_id": entity_id}, {"entity_id": entity_id}]
     if ObjectId.is_valid(entity_id):
-        q.insert(0, {"_id": ObjectId(entity_id)})
+        q.append({"_id": ObjectId(entity_id)})
     return {"$or": q}
 
 

@@ -964,6 +964,9 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
 
                 if (!this.shouldContinuePull(response.items, afterId)) {
                     hasMore = false;
+                } else {
+                    // pacing: evita rajada que estoura o rate limit 300/min
+                    await new Promise(resolve => setTimeout(resolve, 200));
                 }
             }
 

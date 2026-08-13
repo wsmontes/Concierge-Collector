@@ -188,9 +188,10 @@ def create_curation(
     doc["createdAt"] = datetime.now(timezone.utc)
     doc["updatedAt"] = datetime.now(timezone.utc)
     doc["version"] = 1
-    doc["createdBy"] = curation.createdBy or curation.curator_id
-    doc["updatedBy"] = curation.curator_id
-    
+    _normalize_curator_id(doc)
+    doc["createdBy"] = curation.createdBy or doc.get("curator_id")
+    doc["updatedBy"] = doc.get("curator_id")
+
     # Twin guard: um doc ObjectId com o mesmo id pode existir (índice único
     # é type-aware) — insert às cegas criaria um duplicado silencioso
     if db.curations.find_one(curation_query(curation.curation_id), {"_id": 1}):
@@ -929,28 +930,33 @@ def bulk_upsert_curations(
     # casava as 471 entities ObjectId (type bracketing) e a denormalização
     # city/type era pulada no caminho que o sync offline usa.
     unique_eids = list({c.entity_id for c in payload.curations if c.entity_id})
-    entities_by_id: dict = {}
+    by_id: dict = {}
+    by_slug: dict = {}
     if unique_eids:
         entity_docs = db.entities.find(
             {"$or": [{"_id": {"$in": unique_eids}}, {"entity_id": {"$in": unique_eids}}]},
-            {"type": 1, "data.location": 1}
+            {"type": 1, "data.location": 1, "entity_id": 1}  # entity_id NA projeção (senão o slug nunca casa)
         )
         for e in entity_docs:
-            # chaveado por slug E por str(_id) — o cliente pode endereçar
-            # qualquer um dos dois
-            entities_by_id[str(e["_id"])] = e
+            # DOIS dicts: str(_id) e slug nunca se sobrescrevem (colisão
+            # slug==str(_id) de outra entity denormalizaria cidade errada)
+            by_id[str(e["_id"])] = e
             if e.get("entity_id"):
-                entities_by_id[e["entity_id"]] = e
+                by_slug[e["entity_id"]] = e
+        entities_by_id = None  # removido — lookup abaixo usa by_id/by_slug
 
     for idx, curation in enumerate(payload.curations):
         try:
             existing = db.curations.find_one(
-                {"_id": curation.curation_id},
+                curation_query(curation.curation_id),
                 {"_id": 1, "version": 1, "createdBy": 1, "createdAt": 1}
             )
 
-            # Denormalize city/type from entity (pre-fetched batch)
-            entity_for_denorm = entities_by_id.get(curation.entity_id) if curation.entity_id else None
+            # Denormalize city/type from entity (pre-fetched batch) — _id
+            # exato tem prioridade sobre o slug
+            entity_for_denorm = None
+            if curation.entity_id:
+                entity_for_denorm = by_id.get(curation.entity_id) or by_slug.get(curation.entity_id)
 
             if existing:
                 doc = curation.model_dump(exclude_unset=True)
@@ -964,17 +970,19 @@ def bulk_upsert_curations(
                 if entity_for_denorm:
                     doc.update(denormalize_curation_location(entity_for_denorm))
 
-                db.curations.update_one(curation_query(curation.curation_id), {"$set": doc})
+                # atualiza o doc ESPECÍFICO que a existência achou (twin
+                # ObjectId/string nunca é tocado por engano)
+                db.curations.update_one({"_id": existing["_id"]}, {"$set": doc})
                 updated += 1
             else:
                 doc = curation.model_dump()
-                _normalize_curator_id(doc)
+                _normalize_curator_id(doc)  # ANTES do createdBy/updatedBy
                 doc["_id"] = curation.curation_id
                 doc["createdAt"] = now
                 doc["updatedAt"] = now
                 doc["version"] = 1
-                doc["createdBy"] = curation.createdBy or curation.curator_id
-                doc["updatedBy"] = curation.curator_id
+                doc["createdBy"] = curation.createdBy or doc.get("curator_id")
+                doc["updatedBy"] = doc.get("curator_id")
                 if entity_for_denorm:
                     doc.update(denormalize_curation_location(entity_for_denorm))
                 db.curations.insert_one(doc)

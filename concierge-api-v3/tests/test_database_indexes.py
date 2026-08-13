@@ -46,7 +46,7 @@ def test_ensure_indexes_continues_after_unique_index_failure(monkeypatch, caplog
     # o índice único que falhou NÃO foi criado...
     assert "externalId" not in [k for k, _ in fake.entities.created]
     # ...mas todos os demais de entities e todos os de curations foram
-    assert len(fake.entities.created) == 8
+    assert len(fake.entities.created) == 9
     assert len(fake.curations.created) == 9
     # e a falha foi registrada explicitamente no log
     assert any("externalId" in r.getMessage() for r in caplog.records)
@@ -59,7 +59,7 @@ def test_ensure_indexes_all_success_when_no_duplicates(monkeypatch):
 
     dbmod._ensure_indexes()
 
-    assert len(fake.entities.created) == 9
+    assert len(fake.entities.created) == 10
     assert len(fake.curations.created) == 9
 
 
@@ -69,5 +69,5 @@ def test_index_specs_come_from_the_shared_module():
     from app.core.index_specs import INDEX_SPECS
 
     assert dbmod.INDEX_SPECS is INDEX_SPECS
-    assert len(INDEX_SPECS) == 19
+    assert len(INDEX_SPECS) == 20
     assert sum(1 for s in INDEX_SPECS if s[0] == "capture_sessions") == 1
