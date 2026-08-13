@@ -729,9 +729,25 @@ if (typeof window.UIManager === 'undefined') {
                 return;
             }
 
-            this.curationsCache = browser.items;
+            // Pendências locais (salvas e ainda não sincronizadas) não estão
+            // no servidor — e mesmo sincronizadas, a paginação por _id pode
+            // deixar o save novo fora da página 1. Mescla no topo para o
+            // usuário SEMPRE ver o próprio save imediatamente.
+            const serverIds = new Set(browser.items.map(c => c.curation_id));
+            let localPending = [];
+            try {
+                if (window.DataStore?.db) {
+                    localPending = (await window.DataStore.db.curations
+                        .where('sync.status').equals('pending').toArray())
+                        .filter(c => !serverIds.has(c.curation_id));
+                }
+            } catch (error) {
+                console.warn('Falha ao mesclar pendências locais:', error);
+            }
+
+            this.curationsCache = [...localPending, ...browser.items];
             this._populateCuratorFilter();
-            this.populateCurationFilters(browser.items);
+            this.populateCurationFilters(this.curationsCache);
             this.filterAndDisplayCurations();
             this._renderLoadMoreButton(container);
         }
