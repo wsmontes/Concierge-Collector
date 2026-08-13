@@ -137,6 +137,10 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
                     const retryResponse = await fetch(url, retryFetchOptions);
                     if (!retryResponse.ok) {
                         await this.handleErrorResponse(retryResponse);
+                        // refresh "sucedeu" mas o recurso ainda rejeita: LANÇA —
+                        // devolver o response faria getCuration parsear
+                        // {detail: ...} como um doc de sucesso
+                        throw new Error('Request failed after token refresh');
                     }
                     return retryResponse;
                 }
@@ -169,7 +173,11 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
                 }
             }
             this.log.error(errorMessage);
-            throw new Error(errorMessage);
+            // status anexado também no caminho de 401 sem refresh — o
+            // contrato error.status vale para TODOS os throws
+            const err401 = new Error(errorMessage);
+            err401.status = response.status;
+            throw err401;
         }
 
         // For non-401 errors, try to get error details from body

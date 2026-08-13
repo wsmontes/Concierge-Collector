@@ -468,10 +468,11 @@ def update_curation(
     if "embeddings" in update_data:
         compacted, dropped = _compact_embeddings_for_storage(update_data["embeddings"])
         update_data["embeddings"] = compacted
-        # metadados MERGE com o armazenado (preserva model/dimensions/created_at)
-        # e SEMPRE escreve a flag: True quando houve drop, False quando válido
+        # metadados MERGE com o armazenado (preserva model/dimensions/created_at);
+        # a flag é estampada no drop e LIMPA quando o PATCH válido cobre TODOS
+        # os textos armazenados
         stored_raw = db.curations.find_one(
-            {"_id": current["_id"]}, {"embeddings_metadata": 1}
+            {"_id": current["_id"]}, {"embeddings_metadata": 1, "embeddings.text": 1}
         ) or {}
         stored_meta = stored_raw.get("embeddings_metadata")
         # guard de mapping: metadata corrompida (list/string) não pode
@@ -482,8 +483,20 @@ def update_curation(
         if dropped:
             # drop parcial: sinaliza o backfill (textos dropados regenerados)
             meta["backfill_needed"] = True
-        # válido: PRESERVA a flag armazenada — um drop anterior pode ter
-        # textos ainda não regenerados; o backfill limpa a flag ao rodar
+        else:
+            # válido: limpa a flag APENAS se o PATCH cobre todos os textos
+            # armazenados (um PATCH parcial não pode apagar a pendência de
+            # textos que ele não incluiu — review 22/23)
+            stored_texts = {
+                e["text"] for e in stored_raw.get("embeddings") or []
+                if isinstance(e, dict) and e.get("text")
+            }
+            new_texts = {
+                e.get("text") for e in update_data["embeddings"]
+                if isinstance(e, dict) and e.get("text")
+            }
+            if stored_texts.issubset(new_texts):
+                meta.pop("backfill_needed", None)
         update_data["embeddings_metadata"] = meta
     
     # Update — escreve no _id ESPECÍFICO do doc que a versão leu (nunca no
