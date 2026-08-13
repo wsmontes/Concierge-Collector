@@ -78,3 +78,56 @@ describe('queueProcessor — política de retries', () => {
     expect(updateItem).not.toHaveBeenCalled();
   });
 });
+
+describe('queueProcessor — estados absorventes (uploading/confirming)', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    getPendingItems.mockReset();
+    updateItem.mockReset();
+    postCapture.mockReset();
+    postCaptureConfirm.mockReset();
+  });
+
+  test('item preso em uploading é retentado como upload', async () => {
+    vi.useFakeTimers();
+    try {
+      getPendingItems.mockResolvedValue([
+        { id: 'a', status: 'uploading', createdAt: 1, audioBlob: new Blob(['audio']) },
+      ]);
+      postCapture.mockRejectedValue(new Error('401'));
+      const { processQueue } = await import('../capture/queueProcessor.js');
+      const done = processQueue();
+      await vi.runAllTimersAsync();
+      await done;
+      expect(postCapture).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('item preso em confirming é retentado como confirm', async () => {
+    vi.useFakeTimers();
+    try {
+      getPendingItems.mockResolvedValue([
+        { id: 'a', status: 'confirming', captureId: 'c1', confirmedEntityId: 'e1', createdAt: 1 },
+      ]);
+      const { processQueue } = await import('../capture/queueProcessor.js');
+      const done = processQueue();
+      await vi.runAllTimersAsync();
+      await done;
+      expect(postCaptureConfirm).toHaveBeenCalledWith('c1', expect.objectContaining({ entityId: 'e1' }));
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  test('matched sem captureId exaure com mensagem (não 422 em loop)', async () => {
+    getPendingItems.mockResolvedValue([
+      { id: 'a', status: 'matched', confirmedEntityId: 'e1', createdAt: 1 },
+    ]);
+    const { processQueue } = await import('../capture/queueProcessor.js');
+    await processQueue();
+    expect(updateItem).toHaveBeenCalledWith('a', expect.objectContaining({ status: 'failed' }));
+    expect(postCaptureConfirm).not.toHaveBeenCalled();
+  });
+});

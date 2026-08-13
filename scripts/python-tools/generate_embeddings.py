@@ -70,6 +70,8 @@ def curations_sem_embeddings(db):
             {"embeddings_metadata.backfill_needed": True},
         ],
         "status": {"$ne": "deleted"},
+        # mesmo guard do backfill: sem categorias não há nada a embutir
+        "categories": {"$exists": True, "$ne": {}},
     }
     return [
         {

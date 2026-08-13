@@ -95,6 +95,8 @@ function setupAuthPanel() {
 function showAuthPanel() {
   const panel = document.getElementById('auth-panel');
   if (panel) panel.hidden = false;
+  const clearBtn = document.getElementById('auth-clear');
+  if (clearBtn) clearBtn.hidden = true;  // sem credenciais não há o que sair
 }
 
 function hideAuthPanel() {
@@ -122,7 +124,11 @@ async function ensureAuth() {
         const data = await res.json();
         API.saveCredentials({ token: data.access_token });
         if (data.user_email && !localStorage?.getItem('current_curator_id')) {
-          localStorage.setItem('current_curator_id', data.user_email);
+          try {
+            localStorage.setItem('current_curator_id', data.user_email);
+          } catch (e) {
+            console.warn('localStorage indisponível — curator fica default', e);
+          }
           curatorId = data.user_email;  // atribuição real do curator
         }
         console.log('dev-login ok — capture autenticado');

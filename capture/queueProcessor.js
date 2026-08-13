@@ -132,6 +132,13 @@ export async function processQueue() {
 
       // ── Step 2: Confirm (matched + has entity → done) ──
       if (['matched', 'confirming'].includes(item.status) && item.confirmedEntityId) {
+        if (!item.captureId) {
+          // dados legados sem captureId: confirm de undefined daria 422 em
+          // loop — exaure de uma vez com mensagem clara
+          await Store.updateItem(item.id, { status: 'failed', confirmRetries: MAX_RETRIES });
+          notify(item.id, 'failed', { error: 'Captura sem captureId — reenvie a gravação' });
+          continue;
+        }
         try {
           await Store.updateItem(item.id, { status: 'confirming' });
           notify(item.id, 'confirming');

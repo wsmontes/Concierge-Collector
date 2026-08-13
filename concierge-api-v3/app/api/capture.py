@@ -519,12 +519,23 @@ async def confirm_capture(
     try:
         db.curations.insert_one(curation_doc)
     except DuplicateKeyError:
-        # Race: another confirm request created this curation between
-        # our existence check and insert. Update with our data, preserving
-        # the original createdAt from whoever won the race.
-        logger.warning(f"Curation {curation_id} already exists (race), updating")
-        update_fields = {k: v for k, v in curation_doc.items() if k not in ("_id", "createdAt")}
-        db.curations.update_one({"_id": curation_id}, {"$set": update_fields})
+        # A curadoria JÁ EXISTE — pode ser retry de um confirm que sucedeu
+        # (cache de idempotência é em memória e evicta em restart): NÃO
+        # sobrescrever com o snapshot cru. Um $set aqui clobberaria edições
+        # do curator feitas desde o confirm original e resetaria version=1
+        # (409 em cascata para outros devices).
+        existing = db.curations.find_one({"_id": curation_id})
+        if existing and existing.get("version", 1) > 1:
+            logger.warning(
+                f"Curation {curation_id} already exists with version "
+                f"{existing['version']} (retry de confirm) — preservando edições"
+            )
+        elif existing is None:
+            # corrida real: outro confirm inseriu entre o check e o insert
+            db.curations.update_one(
+                {"_id": curation_id},
+                {"$set": {k: v for k, v in curation_doc.items() if k not in ("_id", "createdAt")}},
+            )
 
     # ── Mark session as done ──
     try:

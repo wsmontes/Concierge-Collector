@@ -352,8 +352,7 @@ def search_curations(
                 # cliente para em página vazia e avança o watermark — um
                 # skip silencioso causaria invisibilidade permanente
                 logger.warning("curadoria malformada pulada na listagem: %s", e)
-                continue
-        return PaginatedResponse(items=items, total=total, limit=limit, offset=offset)
+        return PaginatedResponse(items=items[:limit], total=total, limit=limit, offset=offset)
 
     total = db.curations.count_documents(query)
     cursor = db.curations.find(query, CURATION_RESPONSE_PROJECTION).sort("_id", 1).skip(offset).limit(limit)
@@ -539,8 +538,15 @@ def update_curation(
     # Mesma regra do bulk: curator.id é autoritativo e 'unknown' não
     # persiste por cima do valor real armazenado
     _normalize_curator_id(update_data)
-    if (update_data.get("curator_id") or "").lower() == "unknown" and current.get("curator_id"):
-        update_data["curator_id"] = current["curator_id"]
+    real_curator_id = current.get("curator_id") or (current.get("curator") or {}).get("id")
+    if ((update_data.get("curator_id") or "").lower() == "unknown"
+            or (update_data.get("curator") or {}).get("id") == "unknown"):
+        if real_curator_id and real_curator_id != "unknown":
+            # corrige curator_id E o objeto embutido — o filtro da busca é
+            # query['curator.id']; um doc com id embutido 'unknown' some da
+            # lista do curator real e re-infecta o próximo push
+            update_data["curator_id"] = real_curator_id
+            update_data["curator"] = {**(update_data.get("curator") or {}), "id": real_curator_id}
 
     # Cliente NUNCA controla a flag: PATCH só de embeddings_metadata tem a
     # chave removida (o servidor é a autoridade)
@@ -549,10 +555,13 @@ def update_curation(
             and "embeddings" not in update_data):
         meta_client = dict(update_data.get("embeddings_metadata") or {})
         meta_client.pop("backfill_needed", None)
-        # PRESERVA a flag armazenada (o cliente não pode apagar pendência)
-        stored_flag = (current.get("embeddings_metadata") or {}).get("backfill_needed")
-        if stored_flag:
-            meta_client["backfill_needed"] = stored_flag
+        # PRESERVA a flag armazenada (o cliente não pode apagar pendência) —
+        # lê do BANCO: a projeção do current exclui embeddings_metadata
+        stored_flag = (db.curations.find_one(
+            {"_id": current["_id"]}, {"embeddings_metadata": 1}
+        ) or {}).get("embeddings_metadata") or {}
+        if isinstance(stored_flag, dict) and stored_flag.get("backfill_needed"):
+            meta_client["backfill_needed"] = True
         update_data["embeddings_metadata"] = meta_client
 
     # Update — escreve no _id ESPECÍFICO do doc que a versão leu (nunca no

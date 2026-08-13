@@ -137,8 +137,11 @@ def update_entity(
     update_data["updatedAt"] = datetime.now(timezone.utc)
     update_data["version"] = current_version + 1
     
+    resolved = find_entity(db, entity_id)
+    if not resolved:
+        raise HTTPException(status_code=409, detail="Version conflict or not found")
     result = db.entities.find_one_and_update(
-        {**entity_query(entity_id), "version": current_version},
+        {"_id": resolved["_id"], "version": current_version},
         {"$set": update_data},
         return_document=True
     )
@@ -156,7 +159,10 @@ def delete_entity(
     auth: dict = Depends(verify_auth)
 ):
     """Delete entity"""
-    result = db.entities.delete_one(entity_query(entity_id))
+    resolved = find_entity(db, entity_id)
+    if not resolved:
+        raise HTTPException(status_code=404, detail=f"Entity {entity_id} not found")
+    result = db.entities.delete_one({"_id": resolved["_id"]})
     
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail=f"Entity {entity_id} not found")
