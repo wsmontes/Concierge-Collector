@@ -137,10 +137,13 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
                     const retryResponse = await fetch(url, retryFetchOptions);
                     if (!retryResponse.ok) {
                         await this.handleErrorResponse(retryResponse);
-                        // refresh "sucedeu" mas o recurso ainda rejeita: LANÇA —
+                        // refresh "sucedeu" mas o recurso ainda rejeita: LANÇA
+                        // com .status (o contrato vale para TODOS os throws) —
                         // devolver o response faria getCuration parsear
                         // {detail: ...} como um doc de sucesso
-                        throw new Error('Request failed after token refresh');
+                        const errRetry = new Error('Request failed after token refresh');
+                        errRetry.status = retryResponse.status;
+                        throw errRetry;
                     }
                     return retryResponse;
                 }

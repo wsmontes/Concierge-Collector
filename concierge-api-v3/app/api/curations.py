@@ -61,6 +61,10 @@ def _compact_embeddings_for_storage(embeddings):
     dropped = False
     for emb in embeddings:
         if not isinstance(emb, dict) or "vector" not in emb:
+            # texto sem vetor é EXATAMENTE o que o backfill precisa gerar —
+            # marca o drop (senão o filtro do backfill nunca re-selecionaria)
+            if isinstance(emb, dict):
+                dropped = True
             out.append(emb)
             continue
         vector = emb["vector"]
@@ -472,7 +476,8 @@ def update_curation(
         # a flag é estampada no drop e LIMPA quando o PATCH válido cobre TODOS
         # os textos armazenados
         stored_raw = db.curations.find_one(
-            {"_id": current["_id"]}, {"embeddings_metadata": 1, "embeddings.text": 1}
+            {"_id": current["_id"]},
+            {"embeddings_metadata": 1, "categories": 1},
         ) or {}
         stored_meta = stored_raw.get("embeddings_metadata")
         # guard de mapping: metadata corrompida (list/string) não pode
@@ -487,15 +492,19 @@ def update_curation(
             # válido: limpa a flag APENAS se o PATCH cobre todos os textos
             # armazenados (um PATCH parcial não pode apagar a pendência de
             # textos que ele não incluiu — review 22/23)
-            stored_texts = {
-                e["text"] for e in stored_raw.get("embeddings") or []
-                if isinstance(e, dict) and e.get("text")
-            }
+            # pendência = textos de CATEGORIES (não os embeddings armazenados:
+            # drops anteriores podem tê-los esvaziado — 'cuisine italiana'
+            # nunca embutida ficaria invisível ao check)
+            pending_texts = set()
+            for category, concepts in (stored_raw.get("categories") or {}).items():
+                if isinstance(concepts, list):
+                    for concept in concepts:
+                        pending_texts.add(f"{category} {concept}")
             new_texts = {
                 e.get("text") for e in update_data["embeddings"]
                 if isinstance(e, dict) and e.get("text")
             }
-            if stored_texts.issubset(new_texts):
+            if pending_texts.issubset(new_texts):
                 meta.pop("backfill_needed", None)
         update_data["embeddings_metadata"] = meta
     
