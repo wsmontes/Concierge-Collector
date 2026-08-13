@@ -19,6 +19,16 @@ if (typeof ModuleWrapper === 'undefined') {
     console.log('[SyncManagerV3] ✅ ModuleWrapper available, defining class...');
 }
 
+/**
+ * Contrato tri-state do processamento de itens vindos do servidor — usado
+ * por pullCurations/pullLinkedEntities para decidir o watermark.
+ */
+const PULL_RESULT = Object.freeze({
+    APPLIED: 'applied',  // doc local criado/atualizado/deletado
+    NOOP: 'noop',        // nada a fazer (up-to-date, pending, inválido)
+    FAILED: 'failed',    // falha REAL de aplicação local — bloqueia o watermark
+});
+
 const CURRENT_SYNC_VERSION = 4; // Increment this to force all clients to full re-sync
 
 const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
@@ -757,6 +767,17 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
     }
 
     /**
+     * Interpreta o retorno tri-state de processServerCuration.
+     * @returns {{ pulled: boolean, failed: boolean }}
+     */
+    interpretPullResult(saved) {
+        return {
+            pulled: saved === PULL_RESULT.APPLIED,
+            failed: saved === PULL_RESULT.FAILED,
+        };
+    }
+
+    /**
      * Continua um walk por cursor SOMENTE com cursor presente e página não
      * vazia. Página curta NÃO termina: com tipos mistos de _id, a cauda curta
      * de um segmento é seguida pelo próximo (string → ObjectId).
@@ -934,7 +955,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                 // Cursor (after_id) em vez de offset: o offset pagava um
                 // count_documents real + skip crescente (~11.5k walks de
                 // índice por full sync) e 500ms de sleep por página
-                const params = { limit: this.config.batchSize };
+                const params = { limit: this.config.batchSize, include_deleted: true };
                 if (since) {
                     params.since = since;
                 }
@@ -958,10 +979,15 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                 for (const serverCuration of response.items) {
                     totalProcessed++;
                     const saved = await this.processServerCuration(serverCuration);
-                    if (saved === 'applied') {
+                    const outcome = this.interpretPullResult(saved);
+                    if (outcome.pulled) {
                         totalPulled++;
-                    } else if (saved === 'failed') {
-                        allApplied = false;  // falha REAL de aplicação: NÃO avança
+                    } else if (outcome.failed) {
+                        allApplied = false;  // falha REAL de aplicação: quarentena
+                        this.stats.failedCurationIds = this.stats.failedCurationIds || [];
+                        if (!this.stats.failedCurationIds.includes(serverCuration.curation_id)) {
+                            this.stats.failedCurationIds.push(serverCuration.curation_id);
+                        }
                     }
                     // 'noop' = já processado com sucesso (up-to-date/pending/
                     // local-newer) — avança o watermark normalmente
@@ -989,9 +1015,15 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
 
             // P7a fix: avança o marcador SEMPRE que a paginação completar com sucesso —
             // se não avançar quando não há mudanças, o próximo pull faz full scan
-            // Se alguma curadoria não aplicou localmente, NÃO avança o
-            // watermark — senão ela nunca seria re-puxada
-            this.stats.lastCurationPullAt = allApplied ? pullStartedAt : since;
+            // Quarentena + avanço: itens que FALHARAM são registrados em
+            // stats.failedCurationIds e re-tentados por point-query no
+            // próximo pull — o watermark avança SEMPRE (um item
+            // permanentemente falho não pode congelar o ?since e virar
+            // re-scan ilimitado da janela inteira)
+            if (!allApplied) {
+                this.log.warn('Pull com falhas de aplicação — itens em quarentena serão re-tentados');
+            }
+            this.stats.lastCurationPullAt = pullStartedAt;
 
             await this.saveSyncMetadata();
 
@@ -1003,6 +1035,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             throw error;
         }
     }
+
 
     /**
      * Process a server curation (compare version and update if needed).
@@ -1017,7 +1050,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
         try {
             if (!serverCuration || !serverCuration.curation_id) {
                 this.log.warn('Invalid curation received (missing curation_id):', serverCuration);
-                return 'noop';
+                return PULL_RESULT.FAILED;  // quarentena: doc malformado não é 'nada a fazer'
             }
 
             const localCuration = await window.DataStore.getCuration(serverCuration.curation_id);
@@ -1033,7 +1066,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                 // If the server says it's deleted but we don't have it, just skip
                 if (serverCuration.status === 'deleted') {
                     this.log.debug(`Skipping deleted curation from server: ${serverCuration.curation_id}`);
-                    return 'noop';
+                    return PULL_RESULT.NOOP;
                 }
 
                 // New curation from server
@@ -1046,26 +1079,26 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                     }
                 });
                 this.log.debug(`Created local curation: ${serverCuration.curation_id}`);
-                return 'applied';
+                return PULL_RESULT.APPLIED;
             } else {
                 // If server says it's deleted, remove it locally
                 if (serverCuration.status === 'deleted') {
                     await window.DataStore.db.curations.delete(localCuration.id);
                     this.log.debug(`Deleted local curation (server mark as deleted): ${serverCuration.curation_id}`);
-                    return 'applied';
+                    return PULL_RESULT.APPLIED;
                 }
 
-                const serverVersion = serverCuration.version || 0;
-                const localVersion = localCuration.version || 0;
+                const serverVersion = Number(serverCuration.version) || 0;
+                const localVersion = Number(localCuration.version) || 0;
                 const localStatus = localCuration.sync?.status;
 
                 // P7b fix: nunca sobrescrever mudanças locais não enviadas
                 if (localStatus === 'pending' || localStatus === 'conflict') {
                     this.log.debug(`Local curation pending/conflict — mantendo local: ${serverCuration.curation_id}`);
-                    return 'noop';  // processado sem erro — NÃO bloqueia o watermark
+                    return PULL_RESULT.NOOP;  // processado sem erro — NÃO bloqueia o watermark
                 }
 
-                if (serverVersion > localVersion || !localCuration.curator_id) {
+                if (serverVersion > localVersion) {
                     await window.DataStore.db.curations.put({
                         ...normalizedCuration,
                         id: localCuration.id, // ✅ Critical: Use local primary key
@@ -1076,7 +1109,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         }
                     });
                     this.log.debug(`Updated local curation: ${serverCuration.curation_id} (force update for normalization or version)`);
-                    return 'applied';
+                    return PULL_RESULT.APPLIED;
                 } else if (localVersion > serverVersion) {
                     // Mark as pending for push
                     const current = await window.DataStore.db.curations
@@ -1093,11 +1126,11 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         });
                         this.log.debug(`Local curation newer: ${serverCuration.curation_id}`);
                     }
-                    return 'noop';  // local vai para push — não é falha de aplicação
+                    return PULL_RESULT.NOOP;  // local vai para push — não é falha de aplicação
                 } else {
                     // Same version, no action needed
                     this.log.debug(`Curation up to date: ${serverCuration.curation_id}`);
-                    return 'noop';  // já atualizado — não bloqueia o watermark
+                    return PULL_RESULT.NOOP;  // já atualizado — não bloqueia o watermark
                 }
             }
         } catch (error) {
@@ -1106,7 +1139,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             // Don't throw - continue processing other curations.
             // 'failed' (não false): o caller usa comparação ESTRITA — um
             // booleano cairia entre os ramos e avançaria o watermark
-            return 'failed';
+            return PULL_RESULT.FAILED;
         }
     }
 
@@ -1277,7 +1310,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             }
 
             this.log.warn(`Push failed for entity ${entity.name}: ${msg}`);
-            return 'failed';
+            return PULL_RESULT.FAILED;
         }
     }
 
@@ -1432,7 +1465,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             }
 
             this.log.error(`Failed to push curation ${curation.curation_id}:`, msg);
-            return 'failed';
+            return PULL_RESULT.FAILED;
         }
     }
 

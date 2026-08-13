@@ -151,10 +151,10 @@ return window.SyncManagerV3;`);
     return new Klass();
   }
 
-  test('curadoria inválida → noop (não é falha de aplicação)', async () => {
+  test('curadoria inválida → failed (quarentena — doc malformado não é noop)', async () => {
     const sm = makeProcessManager({});
-    expect(await sm.processServerCuration(null)).toBe('noop');
-    expect(await sm.processServerCuration({})).toBe('noop');
+    expect(await sm.processServerCuration(null)).toBe('failed');
+    expect(await sm.processServerCuration({})).toBe('failed');
   });
 
   test('falha REAL de aplicação local → failed (bloqueia o watermark)', async () => {
