@@ -206,3 +206,5 @@ archive/
 concierge-api-v3/delete_orphaned_curation.py
 concierge-api-v3/check_curation_id_duplicate.py
 concierge-api-v3/check_indexes.py
+concierge-api-v3/check_curations_mongodb.py
+*.DS_Store
