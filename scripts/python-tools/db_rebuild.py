@@ -115,6 +115,8 @@ def main():
         return 0
 
     if mode == 'restore':
+        # Lista do DIRETÓRIO do dump (o banco pode estar vazio pós-wipe)
+        colls = sorted(f[:-5] for f in os.listdir(DUMP_DIR) if f.endswith('.bson'))
         restored = 0
         for coll in colls:
             path = os.path.join(DUMP_DIR, f'{coll}.bson')
