@@ -1156,23 +1156,45 @@ def bulk_upsert_curations(
             if e.get("entity_id"):
                 by_slug.setdefault(e["entity_id"], e)
 
+    # Pré-fetch de existência das curadorias (mesma estratégia do pre-fetch
+    # de entities): sem isso, o loop faz até 2 probes SEQUENCIAIS por item —
+    # ~1000 round trips num lote de 500. Prioridade de resolução idêntica à
+    # do find_curation: _id string exato → _id ObjectId → campo curation_id
+    # (setdefault: o primeiro escreve). Dois grupos de projeção: 'curator'
+    # inteiro só para payloads SEM identidade real (o reparo pode precisar
+    # do armazenado) — sync logado não paga o subdoc no lote todo.
+    plain_ids, curator_ids = [], []
+    for c in payload.curations:
+        needs_stored_curator = (
+            _is_placeholder_identity(c.curator_id)
+            and _is_placeholder_identity((c.curator or {}).id)
+        )
+        (curator_ids if needs_stored_curator else plain_ids).append(c.curation_id)
+    existing_map: dict = {}
+    base_proj = {"_id": 1, "version": 1, "createdBy": 1,
+                 "createdAt": 1, "curator_id": 1}
+
+    def _load_existing_group(ids, extra_proj):
+        """Carga em lote de um grupo de ids no existing_map."""
+        if not ids:
+            return
+        proj = {**base_proj, **extra_proj}
+        for doc in db.curations.find({"_id": {"$in": ids}}, proj):
+            existing_map.setdefault(str(doc["_id"]), doc)
+        hex_ids = [i for i in ids if ObjectId.is_valid(i)]
+        if hex_ids:
+            for doc in db.curations.find({"_id": {"$in": [ObjectId(i) for i in hex_ids]}}, proj):
+                existing_map.setdefault(str(doc["_id"]), doc)
+        for doc in db.curations.find({"curation_id": {"$in": ids}}, proj):
+            key = str(doc.get("curation_id") or doc["_id"])
+            existing_map.setdefault(key, doc)
+
+    _load_existing_group(plain_ids, {})
+    _load_existing_group(curator_ids, {"curator": 1})
+
     for idx, curation in enumerate(payload.curations):
         try:
-            # 'curator' inteiro só quando o payload NÃO traz identidade real
-            # (o reparo pode precisar do armazenado) — sync logado (id real)
-            # não paga a transferência do subdoc em todos os itens do lote
-            needs_stored_curator = (
-                _is_placeholder_identity(curation.curator_id)
-                and _is_placeholder_identity((curation.curator or {}).id)
-            )
-            existing_proj = {"_id": 1, "version": 1, "createdBy": 1,
-                             "createdAt": 1, "curator_id": 1}
-            if needs_stored_curator:
-                existing_proj["curator"] = 1
-            existing = find_curation(
-                db, curation.curation_id,
-                projection=existing_proj,
-            )
+            existing = existing_map.get(curation.curation_id)
 
             # Denormalize city/type from entity (pre-fetched batch) — _id
             # exato tem prioridade sobre o slug

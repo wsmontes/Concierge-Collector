@@ -165,8 +165,9 @@ def test_bulk_upsert_handles_duplicate_key_race():
     )
     payload = BulkCurationCreate(curations=[curation])
 
-    # Simula: find_one retorna None (não existe), insert_one lança DuplicateKeyError
-    mock_db.curations.find_one.return_value = None
+    # Simula: lote não acha existente, insert_one lança DuplicateKeyError
+    mock_db.curations.find.return_value = []
+    mock_db.curations.find_one.return_value = None  # probe do recovery → None
     mock_db.curations.insert_one.side_effect = DuplicateKeyError("dup")
 
     mock_db.entities.find.return_value = []
@@ -213,7 +214,8 @@ def test_bulk_upsert_duplicate_key_preserves_created_at():
     )
     payload = BulkCurationCreate(curations=[curation])
 
-    mock_db.curations.find_one.return_value = None
+    mock_db.curations.find.return_value = []
+    mock_db.curations.find_one.return_value = None  # probe do recovery → None
     mock_db.curations.insert_one.side_effect = DuplicateKeyError("dup")
     # Provide a matching entity so denormalization runs
     mock_db.entities.find.return_value = [
@@ -261,7 +263,8 @@ def test_bulk_upsert_duplicate_key_reports_recovery_failure():
     )
     payload = BulkCurationCreate(curations=[curation])
 
-    mock_db.curations.find_one.return_value = None
+    mock_db.curations.find.return_value = []
+    mock_db.curations.find_one.return_value = None  # probe do recovery → None
     mock_db.curations.insert_one.side_effect = DuplicateKeyError("dup")
     mock_db.curations.update_one.side_effect = RuntimeError("connection lost")
     mock_db.entities.find.return_value = []
@@ -295,7 +298,7 @@ def test_bulk_upsert_update_preserves_stored_curator_when_payload_id_empty():
         "curator_id": "real-1",
         "curator": {"id": "real-1", "name": "Nome Real", "email": "real@example.com"},
     }
-    mock_db.curations.find_one.return_value = existing
+    mock_db.curations.find.return_value = [existing]
     mock_db.entities.find.return_value = []
 
     curation = CurationCreate(
@@ -341,7 +344,7 @@ def test_bulk_upsert_update_offline_placeholder_preserves_stored_name_email():
         "curator_id": "real-1",
         "curator": {"id": "real-1", "name": "Nome Real", "email": "real@example.com"},
     }
-    mock_db.curations.find_one.return_value = existing
+    mock_db.curations.find.return_value = [existing]
     mock_db.entities.find.return_value = []
 
     curation = CurationCreate(
@@ -382,7 +385,7 @@ def test_bulk_upsert_update_stored_unknown_top_level_does_not_shadow_embedded_re
         "curator_id": "unknown",
         "curator": {"id": "real-1", "name": "Nome Real", "email": "real@example.com"},
     }
-    mock_db.curations.find_one.return_value = existing
+    mock_db.curations.find.return_value = [existing]
     mock_db.entities.find.return_value = []
 
     curation = CurationCreate(
@@ -422,7 +425,7 @@ def test_bulk_upsert_update_top_real_with_empty_embedded_keeps_payload_id():
         "curator_id": "joao-1",
         "curator": {"id": "joao-1", "name": "Joao"},
     }
-    mock_db.curations.find_one.return_value = existing
+    mock_db.curations.find.return_value = [existing]
     mock_db.entities.find.return_value = []
 
     curation = CurationCreate(
@@ -462,6 +465,44 @@ def test_repair_curator_identity_patch_poison_shape():
     assert update_data["curator"]["name"] == "x"
 
 
+def test_bulk_upsert_batches_existence_lookup_constant_query_count():
+    """O N+1 está morto: existência de N itens custa 2 queries por grupo de
+    projeção (probe _id string + probe campo curation_id), não 2 por item.
+    3 itens do mesmo grupo → call_count de find == 2."""
+    from unittest.mock import MagicMock
+    from app.api.curations import bulk_upsert_curations
+    from app.models.schemas import BulkCurationCreate, CurationCreate, CuratorInfo
+
+    mock_db = MagicMock()
+    mock_auth = {"role": "admin", "user": "test@test.com"}
+
+    existing = {"_id": "cur_test_040", "version": 1,
+                "curator_id": "curator_001", "curator": {"id": "curator_001", "name": "Test"}}
+    # todos os probes em lote retornam o mesmo doc (probe 3 faz setdefault no-op)
+    mock_db.curations.find.return_value = [existing]
+    mock_db.entities.find.return_value = []
+
+    curations = []
+    for i, cid in enumerate(("cur_test_040", "cur_test_041", "cur_test_042")):
+        curations.append(CurationCreate(
+            curation_id=cid, entity_id=f"ent_04{i}",
+            curator_id="curator_001",
+            curator=CuratorInfo(id="curator_001", name="Test"),
+            status="draft",
+        ))
+    payload = BulkCurationCreate(curations=curations)
+
+    result = bulk_upsert_curations(request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth)
+
+    assert result.updated + result.created == 3
+    assert len(result.errors) == 0
+    # 1 grupo (todos com identidade real): probe 1 + probe 3 = 2 queries
+    # (hex probe não roda: ids não são ObjectId válidos)
+    assert mock_db.curations.find.call_count == 2, (
+        f"existência deve custar 2 queries em lote, veio {mock_db.curations.find.call_count}"
+    )
+
+
 def test_repair_curator_identity_untouched_without_identity_keys():
     """PATCH que não menciona identidade (ex.: só status) não pode ganhar
     campos de curator no $set."""
@@ -489,9 +530,9 @@ def test_bulk_upsert_duplicate_key_preserves_winner_identity_and_version():
 
     winner = {"_id": "cur_test_004", "version": 5,
               "curator_id": "winner-1", "curator": {"id": "winner-1", "name": "Winner"}}
-    # probes do loop principal (_id string, curation_id) → None;
-    # probe do recovery do vencedor → winner
-    mock_db.curations.find_one.side_effect = [None, None, winner]
+    # lote não acha existente (vai pro insert); probe do recovery acha o vencedor
+    mock_db.curations.find.return_value = []
+    mock_db.curations.find_one.return_value = winner
     mock_db.curations.insert_one.side_effect = DuplicateKeyError("dup")
     mock_db.entities.find.return_value = []
 
@@ -533,7 +574,8 @@ def test_bulk_upsert_race_winner_placeholder_adopts_loser_real_identity():
 
     winner = {"_id": "cur_test_005", "version": 2,
               "curator_id": "unknown", "curator": {"id": "unknown", "name": "unknown"}}
-    mock_db.curations.find_one.side_effect = [None, None, winner]
+    mock_db.curations.find.return_value = []
+    mock_db.curations.find_one.return_value = winner
     mock_db.curations.insert_one.side_effect = DuplicateKeyError("dup")
     mock_db.entities.find.return_value = []
 
@@ -571,7 +613,8 @@ def test_bulk_upsert_race_missing_winner_reports_error():
     mock_db = MagicMock()
     mock_auth = {"role": "admin", "user": "test@test.com"}
 
-    mock_db.curations.find_one.return_value = None
+    mock_db.curations.find.return_value = []
+    mock_db.curations.find_one.return_value = None  # probe do recovery → None
     mock_db.curations.insert_one.side_effect = DuplicateKeyError("dup")
     mock_db.curations.update_one.return_value = MagicMock(matched_count=0)
     mock_db.entities.find.return_value = []
@@ -608,8 +651,8 @@ def test_bulk_upsert_create_denormalizes_city_and_type_from_entity():
     entity_doc = {"_id": "507f1f77bcf86cd799439011", "entity_id": "slug-x",
                   "type": "restaurant", "data": {"location": {"city": "NYC"}}}
     mock_db.entities.find.return_value = [entity_doc]
-    # probes do find_curation (_id string, campo curation_id) → não existe
-    mock_db.curations.find_one.side_effect = [None, None]
+    # lote não acha existente → caminho de create
+    mock_db.curations.find.return_value = []
 
     curation = CurationCreate(
         curation_id="cur_test_020",
@@ -672,7 +715,11 @@ def test_bulk_upsert_records_generic_item_error():
     def boom(*args, **kwargs):
         raise RuntimeError("db fora do ar")
 
-    mock_db.curations.find_one.side_effect = boom
+    mock_db.curations.find.return_value = [
+        {"_id": "cur_test_023", "version": 1, "curator_id": "curator_001",
+         "curator": {"id": "curator_001", "name": "Test"}}
+    ]
+    mock_db.curations.update_one.side_effect = boom
     mock_db.entities.find.return_value = []
 
     curation = CurationCreate(
@@ -705,7 +752,7 @@ def test_bulk_upsert_update_denormalizes_city_and_type_from_entity():
     mock_auth = {"role": "admin", "user": "test@test.com"}
 
     existing = {"_id": "cur_test_021", "version": 2}
-    mock_db.curations.find_one.return_value = existing
+    mock_db.curations.find.return_value = [existing]
     entity_doc = {"_id": "ent_021", "type": "bar",
                   "data": {"location": {"city": "Rio de Janeiro"}}}
     mock_db.entities.find.return_value = [entity_doc]
