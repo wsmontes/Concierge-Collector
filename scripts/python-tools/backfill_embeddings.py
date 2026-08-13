@@ -83,11 +83,14 @@ def build_embeddings(vectors_by_text, meta):
 def store_embeddings(db, curation_id, embeddings, metadata):
     """$set de embeddings em uma curadoria filtrando pelo valor REAL de _id
     (str ou ObjectId — str(ObjectId) nunca casa com _id ObjectId de bulk
-    imports). Retorna (ok, matched_count) — matched_count 0 é falha visível,
-    nunca 'sucesso sem gravar'."""
+    imports). updatedAt É atualizado junto: os gates de frescor do db_rebuild
+    (contagem + max_updated_at) detectam o backfill pós-export — sem isso um
+    wipe/restore reverteria silenciosamente os embeddings recém-gravados.
+    Retorna (ok, matched_count) — matched_count 0 é falha visível."""
     result = db.curations.update_one({'_id': curation_id}, {'$set': {
         'embeddings': embeddings,
         'embeddings_metadata': metadata,
+        'updatedAt': datetime.now(timezone.utc),
     }})
     return result.matched_count == 1, result.matched_count
 

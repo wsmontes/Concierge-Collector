@@ -148,6 +148,7 @@ def delete_entity(
 def list_entities(
     type: Optional[str] = Query(None),
     name: Optional[str] = Query(None),
+    status: Optional[str] = Query(None, description="Filter by entity status (active/archived/...)"),
     since: Optional[str] = Query(None, description="ISO timestamp - only return entities updated after this time"),
     limit: int = Query(50, ge=1, le=1000),
     offset: int = Query(0, ge=0),
@@ -168,6 +169,8 @@ def list_entities(
         query["type"] = type
     if name:
         query["name"] = {"$regex": name, "$options": "i"}
+    if status:
+        query["status"] = status
 
     if since:
         try:

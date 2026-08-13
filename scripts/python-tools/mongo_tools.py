@@ -24,6 +24,7 @@ if API_ROOT not in sys.path:
     sys.path.insert(0, API_ROOT)
 
 from app.core.vector_packing import (  # noqa: E402  (re-export)
+    DEFAULT_EMBEDDING_DIMENSIONS,
     pack_vector,
     try_pack_vector,
 )

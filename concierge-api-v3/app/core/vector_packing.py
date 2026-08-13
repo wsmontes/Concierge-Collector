@@ -17,13 +17,17 @@ import struct
 
 from bson import Binary
 
+# text-embedding-3-small — vetor de outra dimensão morreria no np.dot da busca
+DEFAULT_EMBEDDING_DIMENSIONS = 1536
 
-def pack_vector(values):
+
+def pack_vector(values, expected_dim=None):
     """Empacota um vetor (lista/tupla de floats) como Binary float32.
 
     Vetores já empacotados (bytes) passam direto. Qualquer outro tipo (dict,
     str, ndarray) levanta TypeError — um dict iteraria as CHAVES e empacotaria
-    lixo silenciosamente."""
+    lixo silenciosamente. expected_dim (se dado) valida o tamanho antes de
+    gravar — um vetor de 100 dims nunca poderia ser pontuado contra 1536."""
     if isinstance(values, bytes):
         return values
     if not isinstance(values, (list, tuple)):
@@ -31,18 +35,21 @@ def pack_vector(values):
             f"vetor deve ser lista/tupla de floats, recebeu {type(values).__name__}"
         )
     arr = [float(x) for x in values]
+    if expected_dim is not None and len(arr) != expected_dim:
+        raise ValueError(f"vetor de {len(arr)} dims, esperado {expected_dim}")
     return Binary(struct.pack("<%df" % len(arr), *arr), subtype=0)
 
 
-def try_pack_vector(values):
+def try_pack_vector(values, expected_dim=None):
     """pack_vector sem levantar: None para ausente/vazio/malformado/fora da
-    faixa float32. Política única de 'empacota ou mantém como veio' — usada
-    pela API (fronteira de escrita do PATCH) e pelo db_rebuild (restore)."""
+    faixa float32/dimensão errada. Política única de 'empacota ou descarta' —
+    usada pela API (fronteira de escrita do PATCH) e pelo db_rebuild
+    (restore)."""
     if isinstance(values, bytes):
         return values
     if not isinstance(values, (list, tuple)) or not values:
         return None
     try:
-        return pack_vector(values)
+        return pack_vector(values, expected_dim)
     except (TypeError, ValueError, OverflowError):
         return None

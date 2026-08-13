@@ -83,6 +83,10 @@ def read_bson_stream(path):
                     f"{path}: stream truncado no header (offset {f.tell()})"
                 )
             (size,) = struct.unpack("<i", hdr)
+            if size <= 0:
+                raise ValueError(
+                    f"{path}: header inválido ({size} bytes) — stream corrompido"
+                )
             raw = f.read(size)
             if len(raw) != size:
                 raise ValueError(
@@ -92,16 +96,19 @@ def read_bson_stream(path):
 
 
 def _pack_or_skip(vector, doc_id):
-    """Retorna (valor_empacotado_ou_None, pulou_1_ou_0). Entradas sem vetor
-    (ausente/vazio/inválido/fora da faixa float32) não derrubam o restore —
-    são mantidas como estão, com aviso."""
+    """Retorna (valor_empacotado_ou_None, pulou_1_ou_0). Vetor ausente/vazio/
+    malformado/dimensão errada: a ENTRADA é removida por inteiro (o None de
+    retorno sinaliza a remoção) — o formato caro nunca re-entra no Mongo e a
+    curadoria volta a ser elegível para o backfill."""
     if isinstance(vector, bytes):
         return vector, 0
-    packed = mongo_tools.try_pack_vector(vector)
+    packed = mongo_tools.try_pack_vector(
+        vector, expected_dim=mongo_tools.DEFAULT_EMBEDDING_DIMENSIONS
+    )
     if packed is None:
         print(
-            f"  AVISO: vetor ausente/vazio/malformado em {doc_id} — "
-            "entrada mantida sem compactar"
+            f"  AVISO: vetor REMOVIDO (ausente/vazio/malformado/dimensão "
+            f"errada) em {doc_id}"
         )
         return None, 1
     return packed, 0
@@ -110,9 +117,10 @@ def _pack_or_skip(vector, doc_id):
 def compact_doc(doc):
     """Converte vetores double→Binary float32 em qualquer posição do doc:
     campo 'vector' no topo (coleções legadas, ex. 'embeddings') e dentro de
-    cada entrada de 'embeddings' (curadorias). Vetor ausente/vazio/malformado
-    tem a CHAVE 'vector' removida (entrada/texto preservados) — nunca re-entra
-    no Mongo no formato caro que estourou a cota. Retorna (doc, pulados)."""
+    cada entrada de 'embeddings' (curadorias). Entrada com vetor
+    ausente/vazio/malformado/dimensão errada é REMOVIDA por inteiro — nunca
+    re-entra no Mongo no formato caro que estourou a cota, e a curadoria
+    volta a ser elegível para o backfill. Retorna (doc, pulados)."""
     skipped = 0
     if "vector" in doc:
         new, s = _pack_or_skip(doc["vector"], doc.get("_id"))
@@ -123,14 +131,16 @@ def compact_doc(doc):
             doc.pop("vector", None)
     embs = doc.get("embeddings")
     if isinstance(embs, list):
+        novas = []
         for emb in embs:
             if isinstance(emb, dict) and "vector" in emb:
                 new, s = _pack_or_skip(emb["vector"], doc.get("_id"))
                 skipped += s
-                if new is not None:
-                    emb["vector"] = new
-                else:
-                    emb.pop("vector", None)
+                if new is None:
+                    continue  # entrada removida por inteiro
+                emb["vector"] = new
+            novas.append(emb)
+        doc["embeddings"] = novas
     return doc, skipped
 
 
@@ -346,11 +356,16 @@ def _nested_get(doc, dotted_key):
 
 def _epoch(ts):
     """updatedAt → epoch (float) para comparação por INSTANTE. Aceita datetime
-    (naive = UTC) e string ISO; inválido/ausente = 0.0 (mais antigo)."""
+    (naive = UTC), string ISO e NÚMEROS (epoch em segundos ou ms — comuns em
+    pipelines bulk; um número NÃO pode virar 0.0 e abrir o gate de frescor).
+    Inválido/ausente = 0.0 (mais antigo)."""
     if isinstance(ts, datetime):
         if ts.tzinfo is None:
             ts = ts.replace(tzinfo=timezone.utc)
         return ts.timestamp()
+    if isinstance(ts, (int, float)) and not isinstance(ts, bool):
+        # >1e11 = milissegundos (epoch ~1.7e9 em segundos)
+        return float(ts) / 1000.0 if ts > 1e11 else float(ts)
     if isinstance(ts, str) and ts:
         try:
             dt = datetime.fromisoformat(ts.replace("Z", "+00:00"))
@@ -363,12 +378,31 @@ def _epoch(ts):
 
 
 def _hashable_key(value):
-    """Chave única TIPADA para o set do dedupe — igualdade Python ≠ BSON:
-    no índice único do Mongo, 1 (int) ≠ 1.0 (double) ≠ '1' (str) ≠ True.
-    Valor dict/list (lixo de import) usa repr em vez de crashar o set."""
-    if isinstance(value, (str, int, float, bool, bytes)):
-        return (type(value).__name__, value)
+    """Chave única do dedupe com a SEMÂNTICA de comparação do índice único
+    do Mongo: números comparam POR VALOR (1 == 1.0 == True, e NaN == NaN
+    para unicidade); strings só colidem com strings; dict/list (lixo de
+    import) usa repr em vez de crashar o set."""
+    if isinstance(value, bool):
+        return ("num", 1.0 if value else 0.0)
+    if isinstance(value, (int, float)):
+        f = float(value)
+        return ("num", "nan" if f != f else f)
+    if isinstance(value, str):
+        return ("str", value)
+    if isinstance(value, bytes):
+        return ("bytes", value)
     return (type(value).__name__, repr(value))
+
+
+def _nested_exists(doc, dotted_key):
+    """True se o caminho pontuado EXISTE no doc (mesmo com valor None) —
+    _nested_get não distingue 'ausente' de 'null explícito'."""
+    value = doc
+    for part in dotted_key.split("."):
+        if not isinstance(value, dict) or part not in value:
+            return False
+        value = value[part]
+    return True
 
 
 def _unset_nested(doc, dotted_key):
@@ -407,12 +441,17 @@ def dedupe_entities(docs):
     removed_ids = set()
     for doc in sorted(docs, key=sort_key, reverse=True):
         originais = {k: _nested_get(doc, k) for k in ENTITY_UNIQUE_KEYS}
-        if not any(v is not None for v in originais.values()):
-            continue  # sem chave única: nunca conflita, sempre mantido
+        tinha_valor_real = any(v is not None for v in originais.values())
         reivindicou = False
         for key in ENTITY_UNIQUE_KEYS:
             value = originais[key]
             if value is None:
+                if _nested_exists(doc, key):
+                    # null EXPLÍCITO é indexado pelo unique SPARSE do Mongo
+                    # ('dup key: { externalId: null }' no log do incidente) —
+                    # ~21k entities têm externalId: null. Unset deixa o campo
+                    # AUSENTE, que o sparse ignora.
+                    _unset_nested(doc, key)
                 continue
             hv = _hashable_key(value)
             if (key, hv) in claimed:
@@ -420,7 +459,9 @@ def dedupe_entities(docs):
             else:
                 claimed[(key, hv)] = doc["_id"]
                 reivindicou = True
-        if not reivindicou and not any(
+        # Só é removido quem TINHA valor real e perdeu todas as chaves para
+        # docs mais novos — docs só com nulls ficam (com os nulls unsetados).
+        if tinha_valor_real and not reivindicou and not any(
             _nested_get(doc, k) is not None for k in ENTITY_UNIQUE_KEYS
         ):
             removed_ids.add(id(doc))
@@ -445,7 +486,8 @@ def _rewrite_entity_ids(docs, rewrite):
     out, rewritas = [], 0
     for doc in docs:
         eid = doc.get("entity_id")
-        if eid in rewrite:
+        # só tipos hashable (lixo de import não pode crashar o restore)
+        if isinstance(eid, (str, int, float, bytes)) and eid in rewrite:
             doc["entity_id"] = rewrite[eid]
             rewritas += 1
         out.append(doc)
@@ -636,7 +678,7 @@ def main():
             return 0
         print(f"Modo desconhecido: {mode} (export|verify|wipe|restore)")
         return 1
-    except (ValueError, BSONError, PyMongoError, KeyError, OSError) as e:
+    except (ValueError, BSONError, PyMongoError, KeyError, OSError, TypeError) as e:
         print(f"ERRO: {e}")
         if mode == "restore":
             print(

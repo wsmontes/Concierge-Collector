@@ -47,7 +47,8 @@ def test_store_embeddings_reports_matched_count_zero_as_failure():
 
 
 def test_store_embeddings_applies_the_set():
-    """O $set é aplicado de verdade nos docs casados (fake realista)."""
+    """O $set é aplicado de verdade nos docs casados (fake realista) e
+    ATUALIZA updatedAt — os gates de frescor do rebuild dependem disso."""
     oid = ObjectId()
     db = _db_with_curation(oid)
     emb = [{"text": "t", "vector": b"\x00"}]
@@ -55,6 +56,7 @@ def test_store_embeddings_applies_the_set():
     assert ok
     assert db["curations"].docs[0]["embeddings"] == emb
     assert db["curations"].docs[0]["embeddings_metadata"] == {"model": "m"}
+    assert "updatedAt" in db["curations"].docs[0]
 
 
 def test_curations_filtro_selects_only_missing_or_empty_embeddings():

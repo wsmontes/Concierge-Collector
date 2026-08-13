@@ -22,6 +22,9 @@ from app.core.vector_packing import pack_vector
 from app.models.schemas import CurationUpdate, SemanticSearchRequest
 
 
+V1536 = [float(i % 7) / 7.0 for i in range(1536)]  # vetor de dim correta
+
+
 class IterList:
     """Iterável simples para resultados de find() — list(), .limit() e .sort()
     usáveis. sort() REGISTRA a chamada (os testes pregam a ordenação por
@@ -59,7 +62,7 @@ def _curation_doc(entity_id="e1"):
                 "text": "cuisine japonesa",
                 "category": "cuisine",
                 "concept": "japonesa",
-                "vector": [0.5, 0.5],
+                "vector": V1536,
             }
         ],
     }
@@ -73,7 +76,7 @@ def _patch_openai(monkeypatch):
     monkeypatch.setenv("MONGODB_CURATIONS_VECTOR_INDEX", "curations_embeddings_vector")
     fake_client = MagicMock()
     fake_client.embeddings.create.return_value = SimpleNamespace(
-        data=[SimpleNamespace(embedding=[0.5, 0.5])]
+        data=[SimpleNamespace(embedding=V1536)]
     )
     monkeypatch.setattr(mod, "OpenAI", lambda **kw: fake_client)
     return fake_client
@@ -87,13 +90,13 @@ def test_compact_embeddings_packs_list_vectors():
             "text": "cuisine japonesa",
             "category": "cuisine",
             "concept": "japonesa",
-            "vector": [1.0, -2.0, 0.5],
+            "vector": V1536,
         }
     ]
     out = _compact_embeddings_for_storage(embs)
     v = out[0]["vector"]
     assert isinstance(v, Binary)
-    assert struct.unpack("<3f", v) == (1.0, -2.0, 0.5)
+    assert struct.unpack("<1536f", v)[:4] == tuple(struct.unpack("<f", struct.pack("<f", x))[0] for x in V1536[:4])
 
 
 def test_compact_embeddings_keeps_text_only_entries_and_binary():
@@ -106,7 +109,9 @@ def test_compact_embeddings_keeps_text_only_entries_and_binary():
     out = _compact_embeddings_for_storage(embs)
     assert out[0] == {"text": "sem vetor"}
     assert out[1]["vector"] is packed
-    assert "vector" not in out[2]  # vetor nulo: chave removida, texto preservado
+    # vetor nulo: ENTRADA removida — se ficasse só com texto, o filtro de
+    # backfill ($or: embeddings ausente ou []) nunca a re-selecionaria
+    assert len(out) == 2
 
 
 def test_compact_embeddings_does_not_pack_empty_vector():
@@ -114,45 +119,62 @@ def test_compact_embeddings_does_not_pack_empty_vector():
     re-entrar como lista de doubles (o formato que estourou a cota)."""
     embs = [{"text": "vazio", "vector": []}]
     out = _compact_embeddings_for_storage(embs)
-    assert "vector" not in out[0]
-    assert out[0]["text"] == "vazio"
+    assert out == []
 
 
 def test_compact_embeddings_strips_out_of_range_vector():
-    """Float >3.4e38 estoura float32 (OverflowError) — chave removida com
+    """Float >3.4e38 estoura float32 (OverflowError) — entrada removida com
     warning, nunca persistida no formato caro."""
     embs = [{"text": "gigante", "vector": [1e300]}]
     out = _compact_embeddings_for_storage(embs)
-    assert "vector" not in out[0]
-    assert out[0]["text"] == "gigante"
+    assert out == []
 
 
 def test_compact_embeddings_uses_shared_pack_vector():
     """O formato tem implementação única (app/core/vector_packing) — a saída
     da API bate byte a byte com a função compartilhada."""
-    vals = [0.5, -0.25, 1.0]
+    vals = V1536
     out = _compact_embeddings_for_storage([{"text": "t", "vector": vals}])
     assert out[0]["vector"] == pack_vector(vals)
 
 
 def test_compact_embeddings_strips_dict_vector_with_warning(caplog):
     """dict de vetor (JSON legal no schema) não vira Binary de lixo nem 500:
-    chave removida com warning — o formato caro nunca re-entra no Mongo."""
+    entrada removida com warning — o formato caro nunca re-entra no Mongo."""
     embs = [{"text": "t", "vector": {"0": 0.31, "1": -0.2}}]
     out = _compact_embeddings_for_storage(embs)
-    assert "vector" not in out[0]
-    assert out[0]["text"] == "t"
+    assert out == []
     assert any("sem compactar" in r.getMessage() for r in caplog.records)
 
 
 def test_compact_embeddings_strips_ndarray_vector():
-    """ndarray não é list/tuple — chave removida, sem ValueError de truthiness."""
+    """ndarray não é list/tuple — entrada removida, sem ValueError de truthiness."""
     import numpy as np
 
-    embs = [{"text": "t", "vector": np.array([0.1, 0.2])}]
+    embs = [{"text": "t", "vector": np.array(V1536)}]
     out = _compact_embeddings_for_storage(embs)
-    assert "vector" not in out[0]
-    assert out[0]["text"] == "t"
+    assert out == []
+
+
+def test_compact_embeddings_rejects_wrong_dimension():
+    """Vetor de dimensão ≠ 1536 morreria no np.dot na hora da busca — a
+    fronteira de escrita rejeita antes."""
+    embs = [{"text": "t", "vector": [0.1] * 100}]
+    out = _compact_embeddings_for_storage(embs)
+    assert out == []
+
+
+def test_vector_to_array_reads_little_endian_explicitly():
+    """np.frombuffer com dtype nativo trocaria bytes em host big-endian —
+    o formato é little-endian explícito ('<f4')."""
+    import struct as st
+
+    from app.api.curations import _vector_to_array
+
+    raw = st.pack("<2f", 1.0, 2.0)
+    arr = _vector_to_array(raw)
+    assert arr.tolist() == [1.0, 2.0]
+    assert arr.dtype.byteorder in ("<", "=")
 
 
 def test_update_curation_compacts_embeddings_on_write():
@@ -161,7 +183,7 @@ def test_update_curation_compacts_embeddings_on_write():
     db.curations.find_one_and_update.return_value = dict(_curation_doc())
     updates = CurationUpdate(
         embeddings=[
-            {"text": "t", "category": "c", "concept": "x", "vector": [1.0, 2.0]}
+            {"text": "t", "category": "c", "concept": "x", "vector": V1536}
         ]
     )
     update_curation("c1", updates, if_match=None, db=db, auth={})
@@ -169,7 +191,7 @@ def test_update_curation_compacts_embeddings_on_write():
         "embeddings"
     ][0]["vector"]
     assert isinstance(stored, Binary)
-    assert struct.unpack("<2f", stored) == (1.0, 2.0)
+    assert struct.unpack("<1536f", stored)[:4] == tuple(struct.unpack("<f", struct.pack("<f", x))[0] for x in V1536[:4])
 
 
 # ── Fallback do vector search com log ──────────────────────────────────

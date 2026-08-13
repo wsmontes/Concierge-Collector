@@ -116,6 +116,8 @@ class CurationBase(BaseModel):
     restaurant_name: Optional[str] = Field(default=None, description="Display name of the curation before/after linking")
     status: CurationStatus = Field(default="draft", description="Curation lifecycle status")
     notes: Optional[CurationNotes] = None
+    city: Optional[str] = Field(default=None, description="City (denormalized from entity)")
+    type: Optional[str] = Field(default=None, description="Entity type (denormalized from entity)")
     categories: CurationCategories = Field(default_factory=CurationCategories)
     transcript: Optional[str] = Field(
         default=None,

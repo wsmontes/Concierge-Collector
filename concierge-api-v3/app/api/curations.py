@@ -24,7 +24,7 @@ from app.core.security import verify_access_token, verify_auth
 from app.models.user import has_role
 from app.services.curation_denorm import denormalize_curation_location
 from app.api.entities import find_entity
-from app.core.vector_packing import try_pack_vector
+from app.core.vector_packing import DEFAULT_EMBEDDING_DIMENSIONS, try_pack_vector
 from pymongo.database import Database
 from openai import OpenAI
 
@@ -33,9 +33,11 @@ logger = logging.getLogger(__name__)
 
 def _vector_to_array(vector) -> "np.ndarray":
     """Converte vetor de embedding para array numpy — aceita lista (doubles,
-    formato antigo) ou Binary float32 (formato compactado, ~metade do espaço)."""
+    formato antigo) ou Binary float32 (formato compactado, ~metade do espaço).
+    '<f4' é EXPLÍCITO: o formato gravado é little-endian e o dtype nativo
+    trocaria os bytes em host big-endian (similaridade viraria lixo)."""
     if isinstance(vector, bytes):
-        return np.frombuffer(vector, dtype=np.float32)
+        return np.frombuffer(vector, dtype="<f4")
     return np.asarray(vector, dtype=np.float32)
 
 
@@ -44,9 +46,10 @@ def _compact_embeddings_for_storage(embeddings):
     ~20KB do array de doubles no BSON). Fronteira de escrita: todo vetor que
     entra no Mongo via API passa por aqui — o formato de lista estourou a cota
     do Atlas em 2026-08-12. Usa try_pack_vector (política única, em
-    app/core/vector_packing.py). Vetor ausente/vazio/malformado tem a CHAVE
-    'vector' REMOVIDA (texto preservado) — nunca re-entra no Mongo no formato
-    caro, nem como Binary de lixo."""
+    app/core/vector_packing.py). Entrada com vetor ausente/vazio/malformado/
+    dimensão errada é REMOVIDA por inteiro — nunca re-entra no formato caro
+    nem vira Binary de lixo, e a curadoria volta a ser selecionável pelo
+    backfill ($or: embeddings ausente ou [])."""
     if not isinstance(embeddings, list):
         return embeddings
     out = []
@@ -58,14 +61,13 @@ def _compact_embeddings_for_storage(embeddings):
         if isinstance(vector, bytes):
             out.append(emb)
             continue
-        packed = try_pack_vector(vector)
+        packed = try_pack_vector(vector, expected_dim=DEFAULT_EMBEDDING_DIMENSIONS)
         if packed is None:
             logger.warning(
-                "vetor de embeddings mantido sem compactar foi REMOVIDO "
-                "(ausente/vazio/malformado) — entrada fica só com texto: %r",
+                "entrada de embeddings REMOVIDA: vetor mantido sem compactar "
+                "(ausente/vazio/malformado/dimensão errada): %r",
                 emb.get("text"),
             )
-            out.append({k: v for k, v in emb.items() if k != "vector"})
             continue
         out.append({**emb, "vector": packed})
     return out

@@ -30,6 +30,9 @@ from db_rebuild import (
 from tests.fakes import FakeClient, FakeCollection, FakeDB
 
 
+V1536 = [float(i % 7) / 7.0 for i in range(1536)]  # vetor de dim correta
+
+
 def _write_dump(dump_dir, coll, docs):
     write_bson_stream(os.path.join(str(dump_dir), f"{coll}.bson"), iter(docs))
 
@@ -86,11 +89,11 @@ def test_read_bson_stream_raises_on_truncated_header(tmp_path):
 # ── Compactação de vetores ─────────────────────────────────────────────────
 
 def test_compact_doc_packs_vector_list_to_binary():
-    doc = {"_id": "c1", "embeddings": [{"text": "t", "vector": [1.0, 2.0]}]}
+    doc = {"_id": "c1", "embeddings": [{"text": "t", "vector": V1536}]}
     out, skipped = compact_doc(doc)
     v = out["embeddings"][0]["vector"]
     assert isinstance(v, Binary)
-    assert struct.unpack("<2f", v) == (1.0, 2.0)
+    assert struct.unpack("<1536f", v)[:4] == tuple(struct.unpack("<f", struct.pack("<f", x))[0] for x in V1536[:4])
     assert skipped == 0
 
 
@@ -100,16 +103,17 @@ def test_compact_doc_keeps_text_only_entry_without_crashing():
         "embeddings": [{"text": "x", "category": "y"}, {"text": "z", "vector": None}],
     }
     out, skipped = compact_doc(doc)
-    assert out["embeddings"][0] == {"text": "x", "category": "y"}
-    assert out["embeddings"][1]["text"] == "z"
+    # entrada sem 'vector' fica; entrada com vector None é REMOVIDA (senão o
+    # backfill nunca re-selecionaria a curadoria)
+    assert out["embeddings"] == [{"text": "x", "category": "y"}]
     assert skipped == 1
 
 
 def test_compact_doc_packs_top_level_vector_legacy_embeddings():
-    doc = {"_id": "e1", "entity_id": "x", "vector": [0.5, -1.0]}
+    doc = {"_id": "e1", "entity_id": "x", "vector": V1536}
     out, skipped = compact_doc(doc)
     assert isinstance(out["vector"], Binary)
-    assert struct.unpack("<2f", out["vector"]) == (0.5, -1.0)
+    assert struct.unpack("<1536f", out["vector"])[:4] == tuple(struct.unpack("<f", struct.pack("<f", x))[0] for x in V1536[:4])
     assert skipped == 0
 
 
@@ -122,12 +126,12 @@ def test_compact_doc_passes_through_existing_binary():
 
 
 def test_compact_doc_skips_out_of_range_vector():
-    """Float >3.4e38 estoura float32 (OverflowError) — chave removida, texto
-    preservado (nunca re-entra no formato caro)."""
+    """Float >3.4e38 estoura float32 (OverflowError) — entrada REMOVIDA por
+    inteiro (nunca re-entra no formato caro, e o backfill consegue re-selecionar
+    a curadoria depois)."""
     doc = {"_id": "c1", "embeddings": [{"text": "t", "vector": [1e300]}]}
     out, skipped = compact_doc(doc)
-    assert "vector" not in out["embeddings"][0]
-    assert out["embeddings"][0]["text"] == "t"
+    assert out["embeddings"] == []
     assert skipped == 1
 
 
@@ -327,14 +331,14 @@ def test_restore_reports_failed_indexes(tmp_path):
 
 def test_restore_compacts_vectors_on_insert(tmp_path):
     src = FakeDB(_full_colls(curations=FakeCollection(
-        [{"_id": "c1", "embeddings": [{"text": "t", "vector": [1.0, 2.0, 3.0]}]}])))
+        [{"_id": "c1", "embeddings": [{"text": "t", "vector": V1536}]}])))
     export_dump(FakeClient(), src, str(tmp_path))
     target = FakeDB(_full_colls())
     restore_dump(target, str(tmp_path), confirmed=True)
     v = target["curations"].docs[0]["embeddings"][0]["vector"]
     # Binary subtype 0 volta do BSON como bytes puros (como no pymongo real)
     assert isinstance(v, bytes)
-    assert struct.unpack("<3f", v) == (1.0, 2.0, 3.0)
+    assert struct.unpack("<1536f", v)[:4] == tuple(struct.unpack("<f", struct.pack("<f", x))[0] for x in V1536[:4])
 
 
 def test_restore_ignores_bson_files_not_in_manifest(tmp_path):
@@ -580,20 +584,6 @@ def test_dedupe_entities_result_has_no_duplicate_unique_keys():
     assert not removed
 
 
-def test_dedupe_entities_distinguishes_bson_types():
-    """1 (int) ≠ 1.0 (double) ≠ '1' (str) ≠ True — igualdade Python colapsaria
-    tipos que o Mongo trata como chaves únicas distintas."""
-    t = datetime(2026, 8, 10, tzinfo=timezone.utc)
-    docs = [
-        {"_id": "a", "externalId": 1, "updatedAt": t},
-        {"_id": "b", "externalId": 1.0, "updatedAt": t},
-        {"_id": "c", "externalId": "1", "updatedAt": t},
-        {"_id": "d", "externalId": True, "updatedAt": t},
-    ]
-    kept, removed, _rewrite = dedupe_entities(docs)
-    assert len(kept) == 4 and not removed
-
-
 def test_dedupe_entities_collapses_real_empty_string_duplicates():
     """externalId='' é valor real para o índice — duas ocorrências colidem."""
     t1 = datetime(2026, 8, 1, tzinfo=timezone.utc)
@@ -604,6 +594,80 @@ def test_dedupe_entities_collapses_real_empty_string_duplicates():
     ]
     kept, removed, _rewrite = dedupe_entities(docs)
     assert [d["_id"] for d in kept] == ["b"]
+
+
+def test_dedupe_entities_unsets_explicit_null_unique_keys():
+    """O índice unique SPARSE do Mongo INDEXA null explícito (o log do
+    incidente mostra 'dup key: { externalId: null }') — 21k entities têm
+    externalId: null. O dedupe precisa UNSETAR esses nulls, senão a criação
+    do índice falha de novo no restore."""
+    t = datetime(2026, 8, 10, tzinfo=timezone.utc)
+    docs = [
+        {"_id": "a", "externalId": None, "data": {"place_id": None}, "updatedAt": t},
+        {"_id": "b", "externalId": None, "updatedAt": t},
+    ]
+    kept, removed, _rewrite = dedupe_entities(docs)
+    assert len(kept) == 2  # docs mantidos...
+    for d in kept:
+        assert "externalId" not in d  # ...mas null explícito removido (sparse ignora ausente)
+        assert "place_id" not in d.get("data", {})
+    assert not removed
+
+
+def test_dedupe_entities_numeric_types_collide_by_value():
+    """Mongo compara números POR VALOR no índice único: 1 == 1.0 == True."""
+    t1 = datetime(2026, 8, 1, tzinfo=timezone.utc)
+    t2 = datetime(2026, 8, 10, tzinfo=timezone.utc)
+    docs = [
+        {"_id": "a", "externalId": 1, "updatedAt": t1},
+        {"_id": "b", "externalId": 1.0, "updatedAt": t2},
+    ]
+    kept, removed, _rewrite = dedupe_entities(docs)
+    assert [d["_id"] for d in kept] == ["b"]
+    assert [d["_id"] for d in removed] == ["a"]
+
+
+def test_dedupe_entities_nan_collides_with_nan():
+    """NaN == NaN é True para a unicidade do Mongo — o dedupe precisa tratar."""
+    t1 = datetime(2026, 8, 1, tzinfo=timezone.utc)
+    t2 = datetime(2026, 8, 10, tzinfo=timezone.utc)
+    nan = float("nan")
+    docs = [
+        {"_id": "a", "externalId": nan, "updatedAt": t1},
+        {"_id": "b", "externalId": nan, "updatedAt": t2},
+    ]
+    kept, removed, _rewrite = dedupe_entities(docs)
+    assert [d["_id"] for d in kept] == ["b"]
+
+
+def test_epoch_accepts_numeric_timestamps():
+    """updatedAt numérico (epoch) é comum em pipelines bulk — o gate de
+    frescor não pode tratá-lo como 0.0 (fail-open)."""
+    assert db_rebuild._epoch(1755123456.78) == 1755123456.78
+    # epoch em milissegundos (1.7e12) é normalizado
+    assert db_rebuild._epoch(1755123456789) == pytest.approx(1755123456.789)
+
+
+def test_read_bson_stream_rejects_negative_header(tmp_path):
+    """Header int32 negativo não pode mandar f.read() ler o arquivo inteiro."""
+    path = tmp_path / "t.bson"
+    path.write_bytes(struct.pack("<i", -2147483648) + b"resto")
+    with pytest.raises(ValueError, match="header"):
+        list(read_bson_stream(str(path)))
+
+
+def test_compact_doc_drops_unpackable_entries_entirely():
+    """Entrada com vetor malformado é REMOVIDA (não fica só com texto): se
+    ficasse, o filtro de backfill ($or: embeddings ausente ou []) nunca a
+    re-selecionaria — curadoria permanentemente inbuscável."""
+    doc = {"_id": "c1", "embeddings": [
+        {"text": "valida", "vector": V1536},
+        {"text": "lixo", "vector": {"0": 0.31}},
+    ]}
+    out, skipped = compact_doc(doc)
+    assert len(out["embeddings"]) == 1
+    assert out["embeddings"][0]["text"] == "valida"
+    assert skipped == 1
 
 
 def test_dedupe_entities_tolerates_unhashable_key_values():
