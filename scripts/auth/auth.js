@@ -173,8 +173,35 @@ const AuthService = (function() {
         localStorage.removeItem(keys.oauthToken);
         localStorage.removeItem(keys.oauthRefreshToken);
         localStorage.removeItem(keys.oauthExpiry);
+        if (keys.oauthUser) localStorage.removeItem(keys.oauthUser);
         _currentUser = null;
         console.log('[AuthService] Tokens cleared');
+    }
+
+    /**
+     * Persiste o perfil do usuário para uso OFFLINE — sem isso, um reload
+     * sem conexão derruba a identidade (offline-first quebra em campo).
+     */
+    function saveUserProfile(user) {
+        if (!user) return;
+        const keys = getStorageKeys();
+        if (keys.oauthUser) {
+            localStorage.setItem(keys.oauthUser, JSON.stringify(user));
+        }
+        _currentUser = user;
+    }
+
+    /**
+     * Recupera o perfil persistido (sobrevive a reload sem rede).
+     */
+    function getStoredUserProfile() {
+        const keys = getStorageKeys();
+        if (!keys.oauthUser) return null;
+        try {
+            return JSON.parse(localStorage.getItem(keys.oauthUser));
+        } catch (e) {
+            return null;
+        }
     }
 
     /**
@@ -290,8 +317,10 @@ const AuthService = (function() {
             return true;
 
         } catch (error) {
-            console.error('[AuthService] Token refresh error:', error);
-            return false;
+            // FALHA DE REDE ≠ token inválido: retorna 'offline' para os
+            // callers manterem as credenciais (logout só em erro HTTP).
+            console.error('[AuthService] Token refresh error (network?):', error);
+            return 'offline';
         }
     }
 
@@ -413,6 +442,7 @@ const AuthService = (function() {
 
             const userData = await response.json();
             _currentUser = userData;
+            saveUserProfile(userData);  // identidade sobrevive a reload offline
             
             console.log('[AuthService] ✓ Token verified');
             console.log(`[AuthService] ✓ User: ${userData.email}`);
@@ -421,9 +451,13 @@ const AuthService = (function() {
             return userData;
 
         } catch (error) {
-            console.error('[AuthService] Token verification error:', error);
-            clearTokens();
-            return null;
+            // FALHA DE REDE (fetch rejeitou) — NÃO é token inválido: manter
+            // credenciais e devolver o perfil persistido para uso offline.
+            // (HTTP 401/403 já são tratados no branch !response.ok acima.)
+            console.error('[AuthService] Token verification error (network?):', error);
+            const stored = getStoredUserProfile();
+            if (stored) _currentUser = stored;
+            return stored;
         }
     }
 
@@ -570,8 +604,8 @@ const AuthService = (function() {
             if (expired && hasRefreshToken) {
                 console.log('[AuthService] Token expired, attempting refresh...');
                 const refreshed = await refreshAccessToken();
-                
-                if (refreshed) {
+
+                if (refreshed === true) {
                     console.log('[AuthService] ✓ Token refreshed successfully');
                     // Verify the new token
                     const user = await verifyToken();
@@ -584,6 +618,13 @@ const AuthService = (function() {
                         _initialized = true;
                         return _currentUser;
                     }
+                } else if (refreshed === 'offline') {
+                    // sem rede: mantém credenciais e segue com o perfil persistido
+                    console.log('[AuthService] Refresh offline — usando perfil persistido');
+                    const stored = getStoredUserProfile();
+                    if (stored) _currentUser = stored;
+                    _initialized = true;
+                    return _currentUser;
                 } else {
                     console.log('[AuthService] ✗ Token refresh failed');
                     clearTokens();
@@ -595,8 +636,8 @@ const AuthService = (function() {
             // No access token but have refresh token - try to get new access token
             console.log('[AuthService] No access token, but have refresh token. Attempting refresh...');
             const refreshed = await refreshAccessToken();
-            
-            if (refreshed) {
+
+            if (refreshed === true) {
                 const user = await verifyToken();
                 if (user) {
                     scheduleTokenRefresh();
@@ -607,6 +648,12 @@ const AuthService = (function() {
                     _initialized = true;
                     return _currentUser;
                 }
+            } else if (refreshed === 'offline') {
+                console.log('[AuthService] Refresh offline — usando perfil persistido');
+                const stored = getStoredUserProfile();
+                if (stored) _currentUser = stored;
+                _initialized = true;
+                return _currentUser;
             } else {
                 console.log('[AuthService] ✗ Token refresh failed');
                 clearTokens();

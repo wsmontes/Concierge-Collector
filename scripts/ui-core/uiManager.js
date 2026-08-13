@@ -701,13 +701,22 @@ if (typeof window.UIManager === 'undefined') {
             }
         }
 
-        /** Fetch first page from server and render. Called by loadCurations. */
+        /** Fetch first page from server and render. Called by loadCurations.
+         *  Offline: cai para o cache local do Dexie (a cópia completa do
+         *  último pull) — sem isso, o campo sem sinal vê "Failed to load
+         *  curations" com os dados TODOS no IndexedDB. */
         async _loadCurationsFromServer(container) {
             const browser = window.CurationBrowser;
-            browser.openScope({});
-            const { items } = await browser.nextPage();
+            try {
+                browser.openScope({});
+                const { items } = await browser.nextPage();
+            } catch (error) {
+                console.warn('Server curations unavailable — usando cache local:', error);
+                await this._loadCurationsFromLocal(container);
+                return;
+            }
 
-            if (!items.length) {
+            if (!browser.items.length) {
                 this.curationsCache = [];
                 this.updateCurationsCountSummary(0, 0);
                 container.innerHTML = `
@@ -725,6 +734,31 @@ if (typeof window.UIManager === 'undefined') {
             this.populateCurationFilters(browser.items);
             this.filterAndDisplayCurations();
             this._renderLoadMoreButton(container);
+        }
+
+        /** Renderiza a lista a partir do cache local (offline/fallback). */
+        async _loadCurationsFromLocal(container) {
+            let allCurations = window.DataStore
+                ? await window.DataStore.getCurations({ excludeDeleted: true })
+                : [];
+
+            if (allCurations.length === 0) {
+                this.curationsCache = [];
+                this.updateCurationsCountSummary(0, 0);
+                container.innerHTML = `
+                    <div class="col-span-full text-center py-12">
+                        <span class="material-icons text-6xl text-gray-300 mb-4">rate_review</span>
+                        <p class="text-gray-500 mb-2">No curations yet</p>
+                        <p class="text-sm text-gray-400">Start curating entities by clicking on them</p>
+                    </div>
+                `;
+                return;
+            }
+
+            this.curationsCache = allCurations;
+            this._populateCuratorFilter();
+            this.populateCurationFilters(allCurations);
+            this.filterAndDisplayCurations();
         }
 
         /** "Load more" button at the bottom of the curation list. */
@@ -824,7 +858,13 @@ if (typeof window.UIManager === 'undefined') {
             }
 
             if (curatorFilter !== 'all') {
-                filtered = filtered.filter(function(c) { return c.curator_id === curatorFilter; });
+                // o servidor pode devolver curator_id null (reparo de
+                // identidade) com curator.id real — o filtro casa o id
+                // EMBUTIDO, senão essas curadorias somem do filtro do próprio
+                // curator
+                filtered = filtered.filter(function(c) {
+                    return (c.curator?.id || c.curator_id) === curatorFilter;
+                });
             }
 
             if (cityFilter) {

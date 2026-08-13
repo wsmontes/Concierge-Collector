@@ -194,6 +194,7 @@ const AppConfig = {
             oauthToken: 'oauth_access_token',    // Google OAuth access token
             oauthRefreshToken: 'oauth_refresh_token',  // OAuth refresh token
             oauthExpiry: 'oauth_token_expiry',   // Token expiration timestamp
+            oauthUser: 'oauth_user_profile',     // Perfil do usuário (offline-first)
             
             // User Preferences
             currentCurator: 'current_curator_id',

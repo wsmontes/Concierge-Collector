@@ -1,0 +1,101 @@
+/**
+ * Offline-first do auth: falha de REDE nunca pode apagar credenciais —
+ * verifyToken/refreshAccessToken distinguem rede de token inválido.
+ */
+import { readFileSync } from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+import { describe, test, expect, beforeEach, afterEach } from 'vitest';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const src = readFileSync(
+  path.resolve(__dirname, '../scripts/auth/auth.js'),
+  'utf8'
+);
+
+const KEYS = {
+  oauthToken: 'oauth_access_token',
+  oauthRefreshToken: 'oauth_refresh_token',
+  oauthExpiry: 'oauth_token_expiry',
+  oauthUser: 'oauth_user_profile',
+};
+
+function loadAuthService() {
+  window.AppConfig = {
+    api: { backend: { baseUrl: 'http://api.test' } },
+    storage: { keys: KEYS },
+  };
+  // eslint-disable-next-line no-new-func
+  const fn = new Function('window', `${src}\nreturn window.AuthService;`);
+  return fn(window);
+}
+
+const PROFILE = {
+  email: 'concierge@hotel.com',
+  name: 'Ana Concierge',
+  authorized: true,
+};
+
+function seedStoredSession() {
+  localStorage.setItem(KEYS.oauthToken, 'tok');
+  localStorage.setItem(KEYS.oauthRefreshToken, 'rtok');
+  localStorage.setItem(KEYS.oauthExpiry, String(Date.now() + 60000));
+  localStorage.setItem(KEYS.oauthUser, JSON.stringify(PROFILE));
+}
+
+beforeEach(() => {
+  localStorage.clear();
+});
+
+afterEach(() => {
+  delete window.AppConfig;
+  delete window.AuthService;
+});
+
+describe('AuthService offline-first', () => {
+  test('verifyToken com rede fora NÃO apaga tokens e devolve o perfil persistido', async () => {
+    seedStoredSession();
+    const Auth = loadAuthService();
+    global.fetch = () => Promise.reject(new TypeError('Failed to fetch'));
+
+    const user = await Auth.verifyToken();
+
+    expect(user).toEqual(PROFILE);
+    expect(Auth.getToken()).toBe('tok'); // credenciais INTACTAS
+    expect(Auth.getCurrentUser().email).toBe('concierge@hotel.com');
+  });
+
+  test('verifyToken com 401 de verdade limpa os tokens', async () => {
+    seedStoredSession();
+    const Auth = loadAuthService();
+    global.fetch = () =>
+      Promise.resolve({ ok: false, status: 401, statusText: 'Unauthorized', json: () => Promise.resolve({}) });
+
+    const user = await Auth.verifyToken();
+
+    expect(user).toBeNull();
+    expect(Auth.getToken()).toBeNull();
+  });
+
+  test('refreshAccessToken com rede fora retorna "offline" (não false)', async () => {
+    seedStoredSession();
+    const Auth = loadAuthService();
+    global.fetch = () => Promise.reject(new TypeError('Failed to fetch'));
+
+    const result = await Auth.refreshToken();
+
+    expect(result).toBe('offline');
+    expect(Auth.getToken()).toBe('tok'); // credenciais INTACTAS
+  });
+
+  test('refreshAccessToken com erro HTTP (token realmente inválido) retorna false', async () => {
+    seedStoredSession();
+    const Auth = loadAuthService();
+    global.fetch = () =>
+      Promise.resolve({ ok: false, status: 400, statusText: 'Bad Request', json: () => Promise.resolve({}) });
+
+    const result = await Auth.refreshToken();
+
+    expect(result).toBe(false);
+  });
+});

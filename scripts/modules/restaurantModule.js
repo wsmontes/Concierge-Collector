@@ -643,13 +643,21 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
             const curationData = {
                 // Preserve numerical ID if it exists to trigger an update in IndexedDB
                 ...(this.currentCuration?.id && { id: this.currentCuration.id }),
+                ...(this.currentCuration?._lastSyncedState && { _lastSyncedState: this.currentCuration._lastSyncedState }),
                 curation_id: this.currentCuration?.curation_id || crypto.randomUUID(),
                 entity_id: this.currentEntity?.entity_id || null, // Allow orphaned curations
-                status: (this.currentEntity?.entity_id) ? 'linked' : 'draft',
+                // Edição NÃO re-atribui status nem autoria (mesma regra do
+                // conceptModule): preserva o existente; draft→linked só quando
+                // uma entity é anexada a um draft
+                status: this.currentCuration
+                    ? (this.currentEntity?.entity_id && this.currentCuration.status === 'draft'
+                        ? 'linked' : this.currentCuration.status)
+                    : (this.currentEntity?.entity_id ? 'linked' : 'draft'),
                 restaurant_name: this.restaurantNameInput?.value ||
                     (this.currentEntity?.name || this.currentEntity?.restaurant_name) ||
                     'Unmatched Review',
-                curator_id: currentCurator.curator_id,
+                curator_id: this.currentCuration?.curator_id || currentCurator.curator_id,
+                ...(this.currentCuration?.curator?.id && { curator: this.currentCuration.curator }),
                 transcript: this.transcriptionInput?.value || '',
                 notes: {
                     public: this.publicNotesInput?.value || '',
@@ -669,8 +677,12 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
                 created_at: this.currentCuration?.created_at || new Date().toISOString(),
                 updated_at: new Date().toISOString(),
                 source: 'web_manual',
-                version: 1,
+                // versão do server preservada para o If-Match do PATCH (nunca resetar p/ 1)
+                version: this.currentCuration?.version,
                 sync: {
+                    // PRESERVA serverId (rota do PATCH com optimistic lock) —
+                    // sem serverId, o push cai no bulk last-write-wins
+                    ...(this.currentCuration?.sync || {}),
                     status: 'pending',
                     lastModified: Date.now()
                 }

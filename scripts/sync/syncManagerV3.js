@@ -128,8 +128,11 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
      * @returns {Object} - Only the fields that changed
      */
     extractChangedFields(item, original = null) {
-        // If no original, return full item (first sync)
-        if (!original || !item._lastSyncedState) {
+        // Se NÃO há snapshot do último estado sincronizado, envia o item
+        // inteiro (primeiro push). O snapshot É o original — o parâmetro
+        // `original` só existia para comparação externa e nunca era passado
+        // pelos callers, o que matava o diff (push inteiro a cada sync).
+        if (!item._lastSyncedState) {
             // Remove internal fields before sending
             const cleaned = { ...item };
             delete cleaned._lastSyncedState;
@@ -147,11 +150,18 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
         const changes = {};
         const lastState = item._lastSyncedState || {};
 
+        // Chaves client-only que SEMPRE diferem do snapshot (PK do Dexie,
+        // etag, timestamps Date vs ISO) — fora do diff para o PATCH não
+        // carregar lixo e bump de versão em edit sem mudança
+        const JUNK_KEYS = new Set(['id', 'etag', 'createdAt', 'updatedAt',
+                                   'created_at', 'updated_at']);
+
         // Compare all fields except internal ones
         for (const [key, value] of Object.entries(item)) {
             // Skip internal fields
             if (key.startsWith('_')) continue;
             if (key === 'sync') continue;  // Sync metadata is client-only
+            if (JUNK_KEYS.has(key)) continue;
 
             // Deep comparison for objects/arrays
             const oldValue = lastState[key];
@@ -1422,6 +1432,9 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                                 lastSyncedAt: new Date().toISOString()
                             }
                         });
+                        // limpa a syncQueue do item empurrado (senão acumula
+                        // snapshots inteiros para sempre — storage creep)
+                        await this._clearCurationQueueRows(curation.curation_id);
                         pushed++;
                     }
                 }
@@ -1454,6 +1467,20 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
     }
 
     /**
+     * Remove as linhas da syncQueue de uma curation (type=curation) — o push
+     * usa sync.status, não a queue; sem limpeza os snapshots inteiros
+     * acumulam para sempre e poluem getStats().pendingSync.
+     */
+    async _clearCurationQueueRows(curationId) {
+        try {
+            await window.DataStore.db.syncQueue
+                .where('entity_id').equals(curationId).delete();
+        } catch (error) {
+            this.log.warn(`Failed to clean syncQueue rows for ${curationId}:`, error);
+        }
+    }
+
+    /**
      * Push de UMA curation existente (PATCH com If-Match + auto-resolve de conflito).
      * Extraído do loop serial para permitir chunks paralelos (P5).
      * @returns {Promise<'pushed'|'conflict'|'skipped'|'failed'>}
@@ -1475,6 +1502,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         lastSyncedAt: new Date().toISOString()
                     }
                 });
+                await this._clearCurationQueueRows(curation.curation_id);
                 return 'skipped';
             }
 
@@ -1493,6 +1521,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                     lastSyncedAt: new Date().toISOString()
                 }
             });
+            await this._clearCurationQueueRows(curation.curation_id);
             this.log.debug(`✅ Pushed curation ${curation.curation_id} (${Object.keys(changedFields).length} fields)`);
             return 'pushed';
         } catch (error) {
@@ -1506,6 +1535,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         lastSyncedAt: new Date().toISOString()
                     }
                 });
+                await this._clearCurationQueueRows(curation.curation_id);
                 return 'pushed';
             }
 

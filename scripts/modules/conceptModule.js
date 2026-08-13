@@ -534,18 +534,31 @@ class ConceptModule {
             const curation = {
                 // VERY IMPORTANT: Preserve the numerical IndexedDB ID if it exists to trigger an update, not an insert
                 ...(existingCuration?.id && { id: existingCuration.id }),
+                // snapshot do último estado sincronizado: sem ele, o diff de
+                // campos envia o registro inteiro a cada push
+                ...(existingCuration?._lastSyncedState && { _lastSyncedState: existingCuration._lastSyncedState }),
                 curation_id: curationId,
                 entity_id: entityId,  // null for orphaned curations, ID for matched entities
                 restaurant_name: name, // Name for orphaned curations (as requested)
-                status: entityId ? 'linked' : 'draft',
-                curator_id: curator.curator_id,  // Required by loadCurations() filter
+                // Edição NÃO re-atribui status: preserva o existente (active/
+                // approved/etc); só promove draft→linked quando uma entity é
+                // anexada. Novo registro deriva do entityId.
+                status: existingCuration
+                    ? (entityId && existingCuration.status === 'draft' ? 'linked' : existingCuration.status)
+                    : (entityId ? 'linked' : 'draft'),
+                // Edição NÃO re-atribui autoria: mantém o curator original
+                curator_id: existingCuration?.curator_id || curator.curator_id,
                 createdBy: existingCuration?.createdBy || existingCuration?.curator_id || curator.curator_id,
                 updatedBy: curator.curator_id,
-                curator: {
-                    id: user.email,
-                    name: this.capitalizeFullName(user.name || curator.name || user.email.split('@')[0]),
-                    email: user.email
-                },
+                curator: (existingCuration?.curator && existingCuration.curator.id)
+                    ? existingCuration.curator
+                    : {
+                        id: user.email,
+                        name: this.capitalizeFullName(user.name || curator.name || user.email.split('@')[0]),
+                        email: user.email
+                    },
+                // versão do server preservada para o If-Match do PATCH
+                version: existingCuration?.version,
                 // Categories: organized concepts by type
                 categories: this.convertConceptsToCategories(this.uiManager.currentConcepts || []),
                 // Notes: separate public and private notes
@@ -568,6 +581,10 @@ class ConceptModule {
                 updated_at: new Date().toISOString(),
                 updatedAt: new Date(),
                 sync: {
+                    // PRESERVA serverId/_lastSyncedState do registro existente:
+                    // sem serverId, o push cai no bulk (last-write-wins sem
+                    // optimistic lock) e edições concorrentes somem silenciosas
+                    ...(existingCuration?.sync || {}),
                     status: 'pending',
                     lastAttempt: null,
                     error: null

@@ -165,9 +165,15 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
             if (typeof AuthService !== 'undefined' && AuthService.isAuthenticated()) {
                 this.log.debug('Token expired, attempting refresh...');
                 const refreshed = await AuthService.refreshToken();
-                if (refreshed) {
+                if (refreshed === true) {
                     // Return true to signal caller to retry the request
                     return true;
+                } else if (refreshed === 'offline') {
+                    // sem rede: NÃO deslogar — o item fica pendente e re-tenta
+                    this.log.warn('Refresh offline — mantendo sessão');
+                    const errOffline = new Error(errorMessage);
+                    errOffline.status = response.status;
+                    throw errOffline;
                 } else {
                     // Redirect to login
                     if (typeof AccessControl !== 'undefined') {
