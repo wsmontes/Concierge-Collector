@@ -418,7 +418,7 @@ def test_ensure_indexes_continues_after_unique_index_failure():
     failures = [r for r in results if not r[1]]
     assert failures and "externalId" in failures[0][0]
     assert len(ents.created_indexes) == 9
-    assert len(db["curations"].created_indexes) == 9
+    assert len(db["curations"].created_indexes) == 10
 
 
 def test_ensure_indexes_creates_capture_sessions_ttl():
@@ -719,7 +719,7 @@ def test_index_specs_are_the_shared_source():
     from app.core.index_specs import INDEX_SPECS as SHARED
 
     assert db_rebuild.INDEX_SPECS is SHARED
-    assert len(SHARED) == 20
+    assert len(SHARED) == 21
     assert sum(1 for s in SHARED if s[0] == "capture_sessions") == 1
 
 

@@ -3,7 +3,7 @@ File: app/core/index_specs.py
 Purpose: FONTE ÚNICA das specs de índices do MongoDB. Usada por:
          - app/core/database.py:_ensure_indexes (todas EXCETO o TTL);
          - app/core/lifespan.py (TTL de capture_sessions, 48h);
-         - scripts/python-tools/db_rebuild.py (todas as 19).
+         - scripts/python-tools/db_rebuild.py (todas as 21).
          Antes havia duas listas hand-maintained (18 vs 19 specs) com risco de
          deriva silenciosa — a classe exata do incidente 2026-08-12 (entities
          rodando com 4 de 10 índices).
@@ -32,6 +32,7 @@ INDEX_SPECS = [
     # ── Curations ──────────────────────────────────────────────────────────
     # Simple indexes
     ("curations", "entity_id", {}),
+    ("curations", "curation_id", {}),
     ("curations", "curator.id", {}),
     ("curations", "createdAt", {}),
     ("curations", "city", {}),

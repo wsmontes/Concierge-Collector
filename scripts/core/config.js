@@ -55,6 +55,7 @@ const AppConfig = {
             retryDelay: 1000,      // Delay between retries (ms)
             bulkChunkSize: 200,    // Items per bulk API call (max 500 per server limit)
             syncBatchSize: 50,     // Items per incremental sync pull (increased from 10)
+            syncBatchDelayMs: 200, // Pacing entre páginas de cursor (rate limit 300/min do servidor)
             features: {
                 optimisticLocking: true,     // version field (int) + If-Match header
                 partialUpdates: true,        // PATCH for partial updates

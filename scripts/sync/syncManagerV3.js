@@ -906,6 +906,11 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
     async pullCurations() {
         try {
             // ✅ INCREMENTAL SYNC: Only fetch curations updated after last pull
+            // Watermark capturado no INÍCIO do pull: docs atualizados por outro
+            // device DURANTE o pull têm updatedAt >= este instante e voltam no
+            // próximo ?since — salvar o watermark do FIM perdia essas edições
+            // para sempre (janela alargada pelo pacing de 200ms por página)
+            const pullStartedAt = new Date().toISOString();
             const since = this.stats.lastCurationPullAt;
             if (since) {
                 this.log.info(`⏱️ Incremental sync: fetching curations updated after ${since}`);
@@ -966,7 +971,8 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                     hasMore = false;
                 } else {
                     // pacing: evita rajada que estoura o rate limit 300/min
-                    await new Promise(resolve => setTimeout(resolve, 200));
+                    const delayMs = window.AppConfig?.api?.backend?.syncBatchDelayMs || 200;
+                    await new Promise(resolve => setTimeout(resolve, delayMs));
                 }
             }
 
@@ -975,7 +981,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
 
             // P7a fix: avança o marcador SEMPRE que a paginação completar com sucesso —
             // se não avançar quando não há mudanças, o próximo pull faz full scan
-            this.stats.lastCurationPullAt = new Date().toISOString();
+            this.stats.lastCurationPullAt = pullStartedAt;
 
             await this.saveSyncMetadata();
 

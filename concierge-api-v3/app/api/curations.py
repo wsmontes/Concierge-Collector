@@ -134,14 +134,28 @@ def _normalize_curator_id(doc):
 
 
 def curation_query(curation_id: str) -> dict:
-    """Resolve curadorias por _id (ObjectId de bulk imports OU string da API)
-    e pelo CAMPO curation_id (o sync cliente endereça por ele) — mesmo padrão
-    de entities.entity_query. Ordem DETERMINÍSTICA: string primeiro (o caller
-    endereçou uma string), depois ObjectId, depois o campo."""
+    """Filtro $or para buscas por índice — usado onde a ordem não importa
+    (buscas de existência com update no _id ESPECÍFICO do doc resolvido).
+    Prefira find_curation() quando a ordem importa."""
     q = [{"_id": curation_id}, {"curation_id": curation_id}]
     if ObjectId.is_valid(curation_id):
-        q.insert(1, {"_id": ObjectId(curation_id)})
+        q.append({"_id": ObjectId(curation_id)})
     return {"$or": q}
+
+
+def find_curation(db, curation_id):
+    """Resolução DETERMINÍSTICA por probes sequenciais: _id string exato →
+    campo curation_id → _id ObjectId. O $or do Mongo NÃO garante ordem entre
+    branches — twins resolviam por plano de query, não por prioridade."""
+    doc = db.curations.find_one({"_id": curation_id})
+    if doc:
+        return doc
+    doc = db.curations.find_one({"curation_id": curation_id})
+    if doc:
+        return doc
+    if ObjectId.is_valid(curation_id):
+        return db.curations.find_one({"_id": ObjectId(curation_id)})
+    return None
 
 
 def build_curation_response_payload(curation_doc: dict) -> dict:
@@ -189,12 +203,13 @@ def create_curation(
     doc["updatedAt"] = datetime.now(timezone.utc)
     doc["version"] = 1
     _normalize_curator_id(doc)
-    doc["createdBy"] = curation.createdBy or doc.get("curator_id")
+    doc["createdBy"] = (curation.createdBy if curation.createdBy and curation.createdBy != "unknown"
+                   else None) or doc.get("curator_id")
     doc["updatedBy"] = doc.get("curator_id")
 
     # Twin guard: um doc ObjectId com o mesmo id pode existir (índice único
     # é type-aware) — insert às cegas criaria um duplicado silencioso
-    if db.curations.find_one(curation_query(curation.curation_id), {"_id": 1}):
+    if find_curation(db, curation.curation_id):
         raise HTTPException(
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Curation {curation.curation_id} already exists"
@@ -933,8 +948,14 @@ def bulk_upsert_curations(
     by_id: dict = {}
     by_slug: dict = {}
     if unique_eids:
+        # hex válido vira ObjectId no $in: entity ObjectId SEM campo entity_id
+        # (bulk import) é alcançada — $in com string nunca casa ObjectId
+        eid_variants = list(unique_eids)
+        for eid in unique_eids:
+            if ObjectId.is_valid(eid):
+                eid_variants.append(ObjectId(eid))
         entity_docs = db.entities.find(
-            {"$or": [{"_id": {"$in": unique_eids}}, {"entity_id": {"$in": unique_eids}}]},
+            {"$or": [{"_id": {"$in": eid_variants}}, {"entity_id": {"$in": unique_eids}}]},
             {"type": 1, "data.location": 1, "entity_id": 1}  # entity_id NA projeção (senão o slug nunca casa)
         )
         for e in entity_docs:
@@ -943,14 +964,12 @@ def bulk_upsert_curations(
             by_id[str(e["_id"])] = e
             if e.get("entity_id"):
                 by_slug[e["entity_id"]] = e
-        entities_by_id = None  # removido — lookup abaixo usa by_id/by_slug
 
     for idx, curation in enumerate(payload.curations):
         try:
-            existing = db.curations.find_one(
-                curation_query(curation.curation_id),
-                {"_id": 1, "version": 1, "createdBy": 1, "createdAt": 1}
-            )
+            existing = find_curation(db, curation.curation_id)
+            if existing:
+                existing = {k: existing.get(k) for k in ("_id", "version", "createdBy", "createdAt")}
 
             # Denormalize city/type from entity (pre-fetched batch) — _id
             # exato tem prioridade sobre o slug
@@ -966,6 +985,9 @@ def bulk_upsert_curations(
                 doc["updatedAt"] = now
                 doc["version"] = existing.get("version", 1) + 1
                 _normalize_curator_id(doc)  # ANTES do updatedBy: 'unknown' não persiste
+                if doc.get("curator_id") == "unknown" and existing.get("curator_id"):
+                    # payload de device deslogado não clobber o valor real
+                    doc["curator_id"] = existing["curator_id"]
                 doc["updatedBy"] = doc.get("curator_id") or curation.curator_id
                 if entity_for_denorm:
                     doc.update(denormalize_curation_location(entity_for_denorm))
