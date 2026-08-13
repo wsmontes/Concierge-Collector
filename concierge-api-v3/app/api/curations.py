@@ -1122,9 +1122,18 @@ def bulk_upsert_curations(
                 doc["updatedAt"] = now
                 doc["version"] = existing.get("version", 1) + 1
                 _normalize_curator_id(doc)  # ANTES do updatedBy: 'unknown' não persiste
-                if (doc.get("curator_id") or "").lower() == "unknown" and existing.get("curator_id"):
-                    # payload de device deslogado não clobber o valor real
-                    doc["curator_id"] = existing["curator_id"]
+                real_id = existing.get("curator_id") or (existing.get("curator") or {}).get("id")
+                if ((doc.get("curator_id") or "").lower() == "unknown"
+                        or str((doc.get("curator") or {}).get("id") or "").lower() == "unknown"):
+                    if real_id and str(real_id).lower() != "unknown":
+                        # mesmo reparo do PATCH: id embutido corrigido e
+                        # name/email armazenados preservados
+                        doc["curator_id"] = real_id
+                        doc["curator"] = {
+                            **(existing.get("curator") if isinstance(existing.get("curator"), dict) else {}),
+                            **(doc.get("curator") or {}),
+                            "id": real_id,
+                        }
                 doc["updatedBy"] = doc.get("curator_id") or curation.curator_id
                 if entity_for_denorm:
                     doc.update(denormalize_curation_location(entity_for_denorm))

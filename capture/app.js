@@ -122,6 +122,8 @@ async function ensureAuth() {
       const res = await fetch('/api/v3/auth/dev-login', { method: 'POST' });
       if (res.ok) {
         const data = await res.json();
+        // dentro do try: saveCredentials usa localStorage e pode lançar
+        // SecurityError em storage bloqueado (o catch abaixo reporta)
         API.saveCredentials({ token: data.access_token });
         if (data.user_email && !localStorage?.getItem('current_curator_id')) {
           try {

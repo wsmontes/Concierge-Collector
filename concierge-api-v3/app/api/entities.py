@@ -137,14 +137,21 @@ def update_entity(
     update_data["updatedAt"] = datetime.now(timezone.utc)
     update_data["version"] = current_version + 1
     
-    resolved = find_entity(db, entity_id)
-    if not resolved:
-        raise HTTPException(status_code=409, detail="Version conflict or not found")
-    result = db.entities.find_one_and_update(
-        {"_id": resolved["_id"], "version": current_version},
-        {"$set": update_data},
-        return_document=True
-    )
+    # CAS ordenado: string _id primeiro (determinístico), depois slug, depois
+    # ObjectId — 1 round-trip no caso comum; o filtro de version garante o
+    # doc certo mesmo com twins
+    candidates = [{"_id": entity_id}, {"entity_id": entity_id}]
+    if ObjectId.is_valid(entity_id):
+        candidates.append({"_id": ObjectId(entity_id)})
+    result = None
+    for candidate in candidates:
+        result = db.entities.find_one_and_update(
+            {**candidate, "version": current_version},
+            {"$set": update_data},
+            return_document=True
+        )
+        if result:
+            break
     
     if not result:
         raise HTTPException(status_code=409, detail="Version conflict or not found")

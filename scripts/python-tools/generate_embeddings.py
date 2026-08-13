@@ -70,8 +70,9 @@ def curations_sem_embeddings(db):
             {"embeddings_metadata.backfill_needed": True},
         ],
         "status": {"$ne": "deleted"},
-        # mesmo guard do backfill: sem categorias não há nada a embutir
-        "categories": {"$exists": True, "$ne": {}},
+        # sem categorias (dict) não há NADA a embutir — $type object exclui
+        # null e [] (que passariam em $exists+$ne e crashariam o .items())
+        "categories": {"$type": "object", "$ne": {}},
     }
     return [
         {

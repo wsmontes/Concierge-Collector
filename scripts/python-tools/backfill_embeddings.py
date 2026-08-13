@@ -34,7 +34,7 @@ CURATIONS_FILTRO = {
     ],
     'status': {'$ne': 'deleted'},
     # sem categorias não há NADA a embutir — o doc nunca re-casa o filtro
-    'categories': {'$exists': True, '$ne': {}},
+    'categories': {'$type': 'object', '$ne': {}},  # $type object exclui null/[]
 }
 
 

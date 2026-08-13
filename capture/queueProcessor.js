@@ -45,7 +45,9 @@ export async function requeueItem(id) {
   }
   const updates = item.captureId
     ? { status: 'matched', confirmRetries: 0 }
-    : { status: 'queued', retries: 0, confirmRetries: 0 };
+    // re-upload limpa a seleção antiga — o novo capture pode não ter a
+    // mesma entity nos matches (422 em loop se ficasse)
+    : { status: 'queued', retries: 0, confirmRetries: 0, confirmedEntityId: null };
   await Store.updateItem(id, updates);
   processQueue();
 }
@@ -89,8 +91,10 @@ export async function processQueue() {
       // 'uploading'/'confirming' são estados absorventes: se o tab morreu no
       // meio da operação, o item ficaria preso para sempre — tratamos como
       // retry do respectivo leg
-      const precisaUpload = !item.captureId
-        && ['queued', 'failed', 'uploading'].includes(item.status);
+      const semConfirm = !item.captureId && !item.confirmedEntityId
+        && ['matched', 'confirming'].includes(item.status);
+      const precisaUpload = (!item.captureId
+        && ['queued', 'failed', 'uploading'].includes(item.status)) || semConfirm;
       if (precisaUpload) {
         try {
           // retries NÃO é zerado aqui: reprocessar um item 'failed' acumula
