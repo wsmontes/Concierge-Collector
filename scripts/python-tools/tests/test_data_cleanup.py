@@ -1,8 +1,11 @@
 """
 Testes do data_cleanup.py — a guarda do modo execute compara por IDS (não
 por contagens): um doc novo com a mesma contagem não pode ser deletado sem
-estar no backup.
+estar no backup. E compara com str() nos dois lados: o backup grava ObjectId
+como hex-string enquanto o plano re-coletado traz ObjectId.
 """
+from bson import ObjectId
+
 import data_cleanup
 
 
@@ -13,6 +16,16 @@ def test_validar_contra_backup_aceita_plano_coberto():
         "users": [],
     }
     plano = {"curations": [{"_id": "c1"}], "entities": [], "users": []}
+    ok, divergente = data_cleanup.validar_contra_backup(saved, plano)
+    assert ok and divergente is None
+
+
+def test_validar_contra_backup_aceita_objectid_no_plano_com_hex_no_backup():
+    """O backup serializa ObjectId como hex-string (json default=str); o
+    plano re-coletado traz ObjectId — sem str() a guarda sempre divergia."""
+    oid = ObjectId()
+    saved = {"curations": [], "entities": [], "users": [{"_id": str(oid)}]}
+    plano = {"curations": [], "entities": [], "users": [{"_id": oid}]}
     ok, divergente = data_cleanup.validar_contra_backup(saved, plano)
     assert ok and divergente is None
 

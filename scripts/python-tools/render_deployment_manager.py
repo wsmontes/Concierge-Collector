@@ -474,20 +474,37 @@ class RenderAPI:
     def update_env_var(self, service_id: str, key: str, value: str) -> Dict:
         """
         Atualiza/cria uma variável de ambiente
-        
+
         Args:
             service_id: ID do serviço
             key: Nome da variável
             value: Valor da variável
-            
+
         Returns:
             Variável atualizada
         """
         data = {"value": value}
-        response = self._request('PUT', 
+        response = self._request('PUT',
                                 f'/services/{service_id}/env-vars/{key}',
                                 json=data)
         logger.info(f"Variável {key} atualizada no serviço {service_id}")
+        return response
+
+    def delete_env_var(self, service_id: str, key: str) -> Dict:
+        """
+        Remove uma variável de ambiente — o Render exige DELETE (PUT com
+        valor vazio responde 400 'must provide a value').
+
+        Args:
+            service_id: ID do serviço
+            key: Nome da variável
+
+        Returns:
+            Resposta da API
+        """
+        response = self._request('DELETE',
+                                  f'/services/{service_id}/env-vars/{key}')
+        logger.info(f"Variável {key} removida do serviço {service_id}")
         return response
     
     # ==================== EVENTS ====================
@@ -995,8 +1012,7 @@ def main():
             print(json.dumps(result, indent=2))
 
         elif args.command == 'delete-env-var':
-            result = api._request('DELETE',
-                                  f'/services/{args.service_id}/env-vars/{args.key}')
+            result = api.delete_env_var(args.service_id, args.key)
             print(f"✓ Variável {args.key} removida do serviço {args.service_id}")
             print(json.dumps(result, indent=2))
 

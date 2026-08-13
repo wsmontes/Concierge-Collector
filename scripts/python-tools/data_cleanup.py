@@ -29,10 +29,13 @@ def validar_contra_backup(saved_docs, plan_atual):
     """Guarda do modo execute: todo _id do plano atual precisa estar no
     backup (deleção reversível). Por IDS, não por contagens — uma troca de
     docs com a mesma contagem era aprovada pela guarda antiga e deletava
-    docs ausentes do backup. Retorna (ok, coleção_divergente_ou_None)."""
-    for k in ('curations', 'entities', 'users'):
-        backup_ids = {d['_id'] for d in saved_docs.get(k, [])}
-        atuais_ids = {d['_id'] for d in plan_atual.get(k, [])}
+    docs ausentes do backup. str() nos DOIS lados: o backup grava ObjectId
+    como hex-string (json.dump default=str) enquanto o plano re-coletado
+    traz ObjectId — comparar tipos diferentes sempre divergia. Retorna
+    (ok, coleção_divergente_ou_None)."""
+    for k in ('curations', 'entities', 'users', 'categories_active_as_string'):
+        backup_ids = {str(d['_id']) for d in saved_docs.get(k, [])}
+        atuais_ids = {str(d['_id']) for d in plan_atual.get(k, [])}
         if not atuais_ids.issubset(backup_ids):
             return False, k
     return True, None
@@ -120,10 +123,14 @@ def main():
         # não estavam no backup). Guarda por IDS: todo id a deletar precisa
         # estar no backup (deleção reversível).
         plan_atual, _ = collect(db)
+        # Guarda ANTES da recoleta? Não: a recoleta é exatamente o que
+        # garante que o usuário aprova os MESMOS ids que serão deletados.
         ok_ids, divergente = validar_contra_backup(saved['docs'], plan_atual)
         if not ok_ids:
             print(f'ERRO: "{divergente}" tem ids não cobertos pelo backup — abortando.')
             return 1
+        # Sincroniza o plano exibido com o que será deletado (audit trail)
+        plan.update(plan_atual)
         r = db.curations.delete_many({'_id': {'$in': [d['_id'] for d in plan_atual['curations']]}})
         print(f'curadorias deletadas: {r.deleted_count}')
         r = db.entities.delete_many({'_id': {'$in': [d['_id'] for d in plan_atual['entities']]}})

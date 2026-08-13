@@ -312,8 +312,8 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
         }
 
         // Paginação na RENDERIZAÇÃO: milhares de cards no DOM travam a UI
-        // (scroll/render). Renderiza PAGE_SIZE por vez + botão "Mostrar mais".
-        const PAGE_SIZE = 50;
+        // (scroll/render). Renderiza pageSize por vez + botão "Mostrar mais".
+        // Constante em scripts/core/config.js (convenção do repo).
         this._allEntities = entities;
         this._displayedCount = 0;
         this.container.innerHTML = '';
@@ -321,14 +321,16 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
     }
 
     /**
-     * Renderiza o próximo lote de entidades (PAGE_SIZE por vez) e mantém o
-     * botão "Mostrar mais" quando ainda há itens.
+     * Renderiza o próximo lote de entidades e mantém o botão "Mostrar mais"
+     * quando ainda há itens. Idempotente: sem _allEntities, é no-op.
      */
     renderEntityPage() {
-        const PAGE_SIZE = 50;
-        const page = (this._allEntities || []).slice(
+        const all = this._allEntities || [];
+        if (!all.length) return;
+        const pageSize = (window.AppConfig?.app?.entityCardPageSize) || 50;
+        const page = all.slice(
             this._displayedCount,
-            this._displayedCount + PAGE_SIZE
+            this._displayedCount + pageSize
         );
 
         page.forEach(entity => {
@@ -352,11 +354,11 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
         const existing = this.container.querySelector('#entities-load-more');
         if (existing) existing.remove();
 
-        if (this._displayedCount < this._allEntities.length) {
+        if (this._displayedCount < all.length) {
             const btn = document.createElement('button');
             btn.id = 'entities-load-more';
             btn.className = 'col-span-full py-2 px-4 text-sm bg-gray-100 hover:bg-gray-200 rounded';
-            btn.textContent = `Mostrar mais (${this._allEntities.length - this._displayedCount} restantes)`;
+            btn.textContent = `Mostrar mais (${all.length - this._displayedCount} restantes)`;
             btn.addEventListener('click', () => this.renderEntityPage());
             this.container.appendChild(btn);
         }

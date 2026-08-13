@@ -27,11 +27,12 @@ function makeSyncManager(authUser = null) {
 afterEach(() => {
   delete window.AuthService;
   delete window.SourceUtils;
+  delete window.SyncManagerV3;  // não vaza a classe avaliada para outros testes
 });
 
 describe('buildCuratorPayload (módulo real)', () => {
   test('usa o usuário autenticado quando disponível', () => {
-    const sm = makeSyncManager({ email: 'ana@hotel.com', user_name: 'Ana Concierge' });
+    const sm = makeSyncManager({ email: 'ana@hotel.com', name: 'Ana Concierge' });
     const payload = sm.buildCuratorPayload({ curator_id: 'ana@hotel.com' });
     expect(payload).toEqual({ id: 'ana@hotel.com', name: 'Ana Concierge', email: 'ana@hotel.com' });
   });
@@ -52,7 +53,7 @@ describe('buildCuratorPayload (módulo real)', () => {
 
 describe('cleanCurationForSync (módulo real)', () => {
   test('curadoria local SEM curator ganha o objeto sintetizado', () => {
-    const sm = makeSyncManager({ email: 'ana@hotel.com', user_name: 'Ana' });
+    const sm = makeSyncManager({ email: 'ana@hotel.com', name: 'Ana' });
     const cleaned = sm.cleanCurationForSync({
       curation_id: 'c1',
       curator_id: 'ana@hotel.com',
@@ -62,5 +63,30 @@ describe('cleanCurationForSync (módulo real)', () => {
     });
     expect(cleaned.curator).toEqual({ id: 'ana@hotel.com', name: 'Ana', email: 'ana@hotel.com' });
     expect(cleaned.curator_id).toBe('ana@hotel.com');
+  });
+
+  test('curation SEM curator_id ganha fallback do usuário (senão o 422 volta)', () => {
+    const sm = makeSyncManager({ email: 'ana@hotel.com', name: 'Ana' });
+    const cleaned = sm.cleanCurationForSync({
+      curation_id: 'c1',
+      status: 'draft',
+      categories: {},
+      notes: {},
+    });
+    expect(cleaned.curator_id).toBe('ana@hotel.com');
+    expect(cleaned.curator.id).toBe('ana@hotel.com');
+  });
+
+  test('curator vazio ({}) não bypassa a síntese — 422 por id/name ausentes', () => {
+    const sm = makeSyncManager({ email: 'ana@hotel.com', name: 'Ana' });
+    const cleaned = sm.cleanCurationForSync({
+      curation_id: 'c1',
+      curator: {},
+      status: 'draft',
+      categories: {},
+      notes: {},
+    });
+    expect(cleaned.curator.id).toBe('ana@hotel.com');
+    expect(cleaned.curator.name).toBe('Ana');
   });
 });

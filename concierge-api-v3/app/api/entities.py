@@ -13,6 +13,7 @@ from app.models.schemas import (
     BulkEntityCreate, BulkOperationResponse, BulkItemError
 )
 from app.core.database import get_database
+from app.core.query_utils import to_cursor_id
 from app.models.user import has_role
 from app.core.security import api_key_header, bearer_scheme, get_api_secret_key, verify_auth
 
@@ -181,7 +182,10 @@ def list_entities(
 
     # count_documents is only needed for offset-based callers; skip it for cursor mode
     if after_id:
-        query["_id"] = {"$gt": after_id}
+        # to_cursor_id: hex → ObjectId — um $gt contra string NUNCA visita
+        # _ids ObjectId (ordenação por tipo no Mongo; 471 entities ficavam
+        # invisíveis para o sync por cursor)
+        query["_id"] = {"$gt": to_cursor_id(after_id)}
         total = -1  # unknown / not computed — saves a full collection scan
         cursor = db.entities.find(query).sort("_id", 1).limit(limit)
     else:

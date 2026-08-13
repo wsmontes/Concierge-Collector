@@ -238,6 +238,9 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         if (filters.since) params.append('since', filters.since);  // ✅ Incremental sync support
         if (filters.limit) params.append('limit', filters.limit);
         if (filters.offset) params.append('offset', filters.offset);
+        // CRÍTICO: sem repassar, o loop de cursor do pullLinkedEntities
+        // receberia as MESMAS 200 entities para sempre (loop infinito)
+        if (filters.after_id) params.append('after_id', filters.after_id);
 
         const queryString = params.toString();
         const endpoint = queryString ? `entities?${queryString}` : 'entities';

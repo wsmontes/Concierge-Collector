@@ -209,18 +209,27 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
     /**
      * Garante o objeto curator obrigatório (CuratorInfo com id+name) — o bulk
      * upsert dava 422 para curadorias criadas localmente sem curator, pois o
-     * JSON descarta undefined. Usa o usuário autenticado quando disponível.
+     * JSON descarta undefined. Usa o usuário autenticado quando disponível
+     * (o /auth/verify responde email/name — não user_name/id).
      */
     buildCuratorPayload(curation) {
         const user = window.AuthService?.getCurrentUser?.();
-        const curatorId = curation.curator_id
+        const existingCurator = curation.curator && typeof curation.curator === 'object'
+            && (curation.curator.id || curation.curator.name)
+            ? curation.curator
+            : null;
+        const curatorId = existingCurator?.id
+            || curation.curator_id
             || user?.email
-            || user?.id
             || 'unknown';
-        const name = user?.user_name || user?.name || curatorId;
-        return { id: curatorId, name, email: user?.email || null };
+        const name = existingCurator?.name || user?.name || curatorId;
+        return { id: curatorId, name, email: existingCurator?.email || user?.email || null };
     }
 
+    /**
+     * Clean curation object for backend sync — remove client-only fields e
+     * garante os campos obrigatórios do CurationCreate (curator_id + curator).
+     */
     cleanCurationForSync(curation) {
         const rawStatus = typeof curation.status === 'string' ? curation.status.toLowerCase() : '';
         const hasEntityLink = typeof curation.entity_id === 'string' && curation.entity_id.trim().length > 0;
@@ -261,10 +270,17 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             });
         })();
 
+        const synthesizedCurator = curation.curator && typeof curation.curator === 'object'
+            && (curation.curator.id || curation.curator.name)
+            ? curation.curator
+            : this.buildCuratorPayload(curation);
+
         const cleaned = {
             curation_id: curation.curation_id,
-            curator_id: curation.curator_id,  // Required by MongoDB schema
-            curator: curation.curator || this.buildCuratorPayload(curation),
+            // CurationCreate exige curator_id E curator: sem fallback aqui o
+            // JSON descartava o undefined e o bulk upsert dava 422
+            curator_id: curation.curator_id || synthesizedCurator.id,
+            curator: synthesizedCurator,
             createdBy: curation.createdBy,
             updatedBy: curation.updatedBy,
             restaurant_name: curation.restaurant_name || curation.name || null,

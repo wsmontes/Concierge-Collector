@@ -17,25 +17,14 @@ BASE = 'https://concierge-collector.onrender.com'
 UA = {'User-Agent': 'curl/8.7.1', 'Accept': 'application/json'}
 
 
-def load_env(paths=None):
-    """Carrega .env linha a linha (não usar `set -a; . .env` no shell — não
-    exporta). Caminhos derivados de __file__ — rodar de qualquer CWD funciona
-    (antes, rodar de scripts/python-tools/ deixava MONGODB_URL vazio e o
-    sample_ids morria com InvalidURI antes de testar qualquer rota)."""
-    if paths is None:
-        here = os.path.dirname(os.path.abspath(__file__))
-        repo_root = os.path.dirname(os.path.dirname(here))
-        paths = (os.path.join(repo_root, 'concierge-api-v3', '.env'), '.env')
-    for p in paths:
-        if not os.path.isfile(p):
-            continue
-        with open(p) as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith('#') or '=' not in line:
-                    continue
-                k, v = line.split('=', 1)
-                os.environ.setdefault(k, v.strip().strip('"'))
+def load_env():
+    """Carrega .env via mongo_tools.load_env (implementação única do repo —
+    com a política de precedência das chaves OPENAI_*). Caminhos derivados de
+    __file__: rodar de qualquer CWD funciona."""
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    import mongo_tools  # noqa: PLC0415 — mesmo diretório do script
+
+    mongo_tools.load_env()
 
 
 def hit(url, timeout=15):
@@ -83,11 +72,16 @@ def sample_ids():
         return {}
     db = client[os.environ.get('MONGODB_DB_NAME', 'concierge-collector')]
     out = {}
-    for coll, key in (('entities', 'entity_id'), ('curations', 'curation_id'),
-                      ('curators', 'curator_id'), ('ai_concepts', 'concept_id')):
-        doc = db[coll].find_one({}, {'_id': 1})
-        if doc:
-            out[key] = str(doc['_id'])
+    try:
+        # pymongo conecta LAZY: URL válida mas inalcançável levanta aqui, no
+        # find_one — sem o try, o smoke morria antes de testar qualquer rota
+        for coll, key in (('entities', 'entity_id'), ('curations', 'curation_id'),
+                          ('curators', 'curator_id'), ('ai_concepts', 'concept_id')):
+            doc = db[coll].find_one({}, {'_id': 1})
+            if doc:
+                out[key] = str(doc['_id'])
+    except Exception as e:
+        print(f'AVISO: leitura do Mongo falhou ({e}) — rotas parametrizadas serão puladas')
     return out
 
 
@@ -97,7 +91,7 @@ def main():
     spec = json.loads(urllib.request.urlopen(
         urllib.request.Request(f'{BASE}/api/v3/openapi.json', headers=UA), timeout=30).read())
     gets = sorted(p for p, ops in spec['paths'].items() if 'get' in ops)
-    ok = warn = fail = 0
+    ok = warn = fail = skipped = 0
     print(f'== PROD SMOKE — {len(gets)} rotas GET em {BASE} ==')
     for p in gets:
         if '{' in p:
@@ -106,6 +100,7 @@ def main():
                 p2 = p2.replace('{' + key + '}', val)
             p2 = p2.replace('{capture_id}', 'sessao-inexistente')
             if '{' in p2:
+                skipped += 1
                 print(f'skip   {p}')
                 continue
         else:
@@ -121,7 +116,11 @@ def main():
         flag = ' <-- ATENCAO' if (code == 'ERR' or str(code).startswith('5')) else ''
         extra = f' {hdrs}' if (code == 'ERR' or str(code).startswith('5')) else ''
         print(f'{code!s:6} {p:55} {body[:90]}{flag}{extra} {note}')
-    print(f'\nresumo: ok={ok} 4xx={warn} 5xx/ERR={fail}')
+    # skipped > 0 = cobertura incompleta — o resumo precisa dizer (um smoke
+    # "verde" sem testar nenhuma rota parametrizada é falso positivo)
+    print(f'\nresumo: ok={ok} 4xx={warn} 5xx/ERR={fail} skipped={skipped}')
+    if skipped and not samples:
+        print('AVISO: ids reais indisponíveis (Mongo) — baseline NÃO coberto por completo')
     return 1 if fail else 0
 
 

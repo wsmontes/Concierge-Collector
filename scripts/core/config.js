@@ -241,6 +241,7 @@ const AppConfig = {
         name: 'Concierge Collector',
         version: '3.0.0',         // V3 API
         dataFormat: 'v3',         // V3 entity-curation format
+        entityCardPageSize: 50,   // cards de entidade renderizados por lote (paginação da UI)
         
         // Feature Flags
         features: {

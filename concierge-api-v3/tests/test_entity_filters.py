@@ -69,6 +69,33 @@ def test_list_entities_without_status_keeps_old_behavior():
     assert chain.last_query == {}
 
 
+def test_list_entities_after_id_hex_converts_to_objectid():
+    """Cursor contra string NUNCA visita _ids ObjectId (ordenação por tipo) —
+    o hex válido vira ObjectId para visitar os dois tipos."""
+    from bson import ObjectId
+
+    docs = [_entity_doc("a")]
+    chain = FindChain(list(docs))
+    db = MagicMock()
+    db.entities = chain
+
+    hex_id = "0" * 24
+    list_entities(status=None, type=None, name=None, since=None,
+                  limit=50, offset=0, after_id=hex_id, db=db)
+    assert chain.last_query["_id"] == {"$gt": ObjectId(hex_id)}
+
+
+def test_list_entities_after_id_non_hex_keeps_string():
+    docs = [_entity_doc("a")]
+    chain = FindChain(list(docs))
+    db = MagicMock()
+    db.entities = chain
+
+    list_entities(status=None, type=None, name=None, since=None,
+                  limit=50, offset=0, after_id="rest_komah", db=db)
+    assert chain.last_query["_id"] == {"$gt": "rest_komah"}
+
+
 def test_curation_serializes_city_and_type():
     """Os filtros do UI liam c.type/c.city, mas o modelo descartava os campos
     na serialização — o dropdown nunca populava."""
