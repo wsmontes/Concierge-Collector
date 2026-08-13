@@ -256,7 +256,29 @@ class RenderAPI:
             service_details=service_data.get('serviceDetails', {})
         )
     
-    def trigger_deploy(self, service_id: str, 
+    def update_env_vars(self, service_id: str, updates: Dict[str, str],
+                        delete_keys: Optional[List[str]] = None) -> List[Dict]:
+        """
+        Atualiza env vars com MERGE seguro.
+
+        ⚠️ O `PUT /services/{id}/env-vars` da API do Render SUBSTITUI o
+        conjunto INTEIRO — um PUT com 1 chave apaga todas as demais
+        (incidente 2026-08-13: wipe de MONGODB_URL/API_SECRET_KEY/OAuth
+        quebrou 5 deploys com update_failed). Este método sempre lê o
+        conjunto atual, aplica as mudanças e devolve o conjunto completo.
+        """
+        current = self._request("GET", f"/services/{service_id}/env-vars")
+        merged: Dict[str, str] = {}
+        for item in current:
+            merged[item["envVar"]["key"]] = item["envVar"].get("value", "")
+        for key in delete_keys or []:
+            merged.pop(key, None)
+        for key, value in updates.items():
+            merged[key] = value
+        payload = [{"key": k, "value": v} for k, v in sorted(merged.items())]
+        return self._request("PUT", f"/services/{service_id}/env-vars", json=payload)
+
+    def trigger_deploy(self, service_id: str,
                       clear_cache: bool = False,
                       commit_id: Optional[str] = None) -> Deploy:
         """
