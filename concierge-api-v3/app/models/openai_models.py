@@ -10,15 +10,15 @@ Follows OpenAI API specification exactly.
 
 from pydantic import BaseModel, Field
 from typing import Optional, List, Dict, Any, Union, Literal
-from enum import Enum
-
 
 # ============================================================================
 # FUNCTION/TOOL DEFINITIONS
 # ============================================================================
 
+
 class FunctionParameters(BaseModel):
     """JSON Schema for function parameters"""
+
     type: Literal["object"] = "object"
     properties: Dict[str, Any]
     required: Optional[List[str]] = None
@@ -27,14 +27,18 @@ class FunctionParameters(BaseModel):
 
 class FunctionDefinition(BaseModel):
     """Function definition for tool calling"""
+
     name: str = Field(..., description="Function name")
     description: str = Field(..., description="Function description")
-    parameters: FunctionParameters = Field(..., description="Function parameters as JSON schema")
+    parameters: FunctionParameters = Field(
+        ..., description="Function parameters as JSON schema"
+    )
     strict: bool = Field(True, description="Whether to enforce strict mode")
 
 
 class Tool(BaseModel):
     """Tool definition (function)"""
+
     type: Literal["function"] = "function"
     function: FunctionDefinition
 
@@ -43,17 +47,19 @@ class Tool(BaseModel):
 # TOOL CHOICE
 # ============================================================================
 
+
 class ToolChoiceFunction(BaseModel):
     """Specific function to call"""
+
     type: Literal["function"] = "function"
     name: str
 
 
 ToolChoice = Union[
-    Literal["auto"],      # Let model decide
+    Literal["auto"],  # Let model decide
     Literal["required"],  # Force at least one tool call
-    Literal["none"],      # No tool calls
-    ToolChoiceFunction    # Force specific function
+    Literal["none"],  # No tool calls
+    ToolChoiceFunction,  # Force specific function
 ]
 
 
@@ -61,20 +67,24 @@ ToolChoice = Union[
 # MESSAGES
 # ============================================================================
 
+
 class FunctionCall(BaseModel):
     """Function call from assistant"""
+
     name: str
     arguments: str  # JSON-encoded string
 
 
 class ToolCallFunction(BaseModel):
     """Function details in tool call"""
+
     name: str
     arguments: str  # JSON-encoded string
 
 
 class ToolCall(BaseModel):
     """Tool call from assistant"""
+
     id: str
     type: Literal["function"] = "function"
     function: ToolCallFunction
@@ -82,6 +92,7 @@ class ToolCall(BaseModel):
 
 class ChatMessage(BaseModel):
     """Chat message"""
+
     role: Literal["system", "user", "assistant", "tool"]
     content: Optional[str] = None
     name: Optional[str] = None  # For tool messages
@@ -93,8 +104,10 @@ class ChatMessage(BaseModel):
 # REQUEST
 # ============================================================================
 
+
 class ChatCompletionRequest(BaseModel):
     """Chat completion request (OpenAI format)"""
+
     model: str
     messages: List[ChatMessage]
     tools: Optional[List[Tool]] = None
@@ -110,8 +123,10 @@ class ChatCompletionRequest(BaseModel):
 # RESPONSE
 # ============================================================================
 
+
 class ResponseMessage(BaseModel):
     """Message in response"""
+
     role: Literal["assistant", "tool"]
     content: Optional[str] = None
     tool_calls: Optional[List[ToolCall]] = None
@@ -120,6 +135,7 @@ class ResponseMessage(BaseModel):
 
 class Choice(BaseModel):
     """Choice in response"""
+
     index: int
     message: ResponseMessage
     finish_reason: Literal["stop", "tool_calls", "length", "content_filter"] = "stop"
@@ -128,6 +144,7 @@ class Choice(BaseModel):
 
 class Usage(BaseModel):
     """Token usage"""
+
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
@@ -135,6 +152,7 @@ class Usage(BaseModel):
 
 class ChatCompletionResponse(BaseModel):
     """Chat completion response (OpenAI format)"""
+
     id: str
     object: Literal["chat.completion"] = "chat.completion"
     created: int  # Unix timestamp
@@ -148,8 +166,10 @@ class ChatCompletionResponse(BaseModel):
 # MODELS LIST
 # ============================================================================
 
+
 class Model(BaseModel):
     """Model object"""
+
     id: str
     object: Literal["model"] = "model"
     created: int
@@ -158,5 +178,6 @@ class Model(BaseModel):
 
 class ModelsResponse(BaseModel):
     """List of available models"""
+
     object: Literal["list"] = "list"
     data: List[Model]

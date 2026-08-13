@@ -1,6 +1,5 @@
 """Tests for capture endpoints and helpers."""
 
-import pytest
 from unittest.mock import MagicMock, patch
 
 
@@ -29,7 +28,7 @@ def test_match_entities_escapes_regex_metacharacters():
 
 def test_capture_cache_includes_curator_id():
     """Cache entry must include curator_id for confirm fallback."""
-    from app.api.capture import _idempotency_cache, capture, CaptureRequest
+    from app.api.capture import _idempotency_cache
 
     _idempotency_cache._data.clear()
 
@@ -40,7 +39,6 @@ def test_capture_cache_includes_curator_id():
 
     # Build a minimal cache entry as capture() would after success
     from app.api.capture import CaptureResponse
-    from datetime import datetime, timezone
 
     result = CaptureResponse(
         capture_id="test-key-123",
@@ -56,15 +54,15 @@ def test_capture_cache_includes_curator_id():
     cached = _idempotency_cache.get("test-key-123")
     assert cached is not None
     # The cache entry must contain curator_id so confirm fallback has provenance
-    assert cached.get("curator_id") == "curator_abc", (
-        f"Expected curator_id='curator_abc', got {cached.get('curator_id')}"
-    )
+    assert (
+        cached.get("curator_id") == "curator_abc"
+    ), f"Expected curator_id='curator_abc', got {cached.get('curator_id')}"
     _idempotency_cache._data.clear()
 
 
 def test_confirm_falls_back_to_cache_when_mongo_down():
     """Confirm endpoint uses cache when MongoDB find_one raises."""
-    from app.api.capture import _idempotency_cache, _LRUDict
+    from app.api.capture import _idempotency_cache
 
     _idempotency_cache._data.clear()
 
@@ -124,7 +122,10 @@ def test_confirm_handles_entity_duplicate_key_race():
 
     mock_db = MagicMock()
     # find_one returns None first (entity not found), then existing doc
-    mock_db.entities.find_one.side_effect = [None, {"_id": "ent_001", "name": "Existing"}]
+    mock_db.entities.find_one.side_effect = [
+        None,
+        {"_id": "ent_001", "name": "Existing"},
+    ]
     # insert_one raises DuplicateKeyError (race)
     mock_db.entities.insert_one.side_effect = DuplicateKeyError("duplicate key")
 

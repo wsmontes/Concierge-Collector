@@ -5,7 +5,6 @@ Follows official MongoDB documentation exactly
 
 from pymongo import MongoClient
 from pymongo.database import Database
-from pymongo.read_preferences import ReadPreference
 import logging
 
 from app.core.config import settings
@@ -20,23 +19,22 @@ _client: MongoClient = None
 def connect_to_mongo():
     """Connect to MongoDB - called at startup"""
     global _client
-    
+
     logger.info("Connecting to MongoDB...")
-    
+
     # Per MongoDB docs: pass connection string only
     _client = MongoClient(settings.mongodb_url)
-    
+
     # Test connection
-    _client.admin.command('ping')
+    _client.admin.command("ping")
     logger.info(f"✅ MongoDB connected: {settings.mongodb_db_name}")
-    
+
     # Create indexes
     _ensure_indexes()
 
 
 def close_mongo_connection():
     """Close MongoDB connection - called at shutdown"""
-    global _client
     if _client:
         _client.close()
         logger.info("✅ MongoDB closed")
@@ -62,8 +60,14 @@ def _ensure_indexes():
     try:
         indexes = db.curations.index_information()
         for name, meta in indexes.items():
-            if "key" in meta and meta["key"] == [("entity_id", 1)] and meta.get("unique") is True:
-                logger.warning(f"Found legacy unique index '{name}' on entity_id - Dropping...")
+            if (
+                "key" in meta
+                and meta["key"] == [("entity_id", 1)]
+                and meta.get("unique") is True
+            ):
+                logger.warning(
+                    f"Found legacy unique index '{name}' on entity_id - Dropping..."
+                )
                 db.curations.drop_index(name)
                 logger.info("✅ Dropped legacy unique index")
                 break

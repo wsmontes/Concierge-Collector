@@ -21,11 +21,9 @@ def health_check(db: Database = Depends(get_database)):
         db_status = "connected"
     except Exception as e:
         db_status = f"error: {str(e)}"
-    
+
     return HealthResponse(
-        status="healthy",
-        timestamp=datetime.now(timezone.utc),
-        database=db_status
+        status="healthy", timestamp=datetime.now(timezone.utc), database=db_status
     )
 
 
@@ -35,5 +33,5 @@ def get_info():
     return APIInfo(
         name="Concierge Collector API",
         version=__version__,
-        description="Professional FastAPI implementation with MongoDB"
+        description="Professional FastAPI implementation with MongoDB",
     )

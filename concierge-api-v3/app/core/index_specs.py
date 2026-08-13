@@ -10,6 +10,7 @@ Purpose: FONTE ÚNICA das specs de índices do MongoDB. Usada por:
 Regra: NÃO adicionar dependências do resto do app aqui (os scripts importam
        este módulo sem o pacote completo, via mongo_tools.py).
 """
+
 # (coleção, chaves, kwargs extras)
 INDEX_SPECS = [
     # ── Entities ────────────────────────────────────────────────────────────

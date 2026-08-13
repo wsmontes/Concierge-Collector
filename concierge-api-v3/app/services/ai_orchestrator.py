@@ -7,8 +7,7 @@ in smart workflows with flexible output control.
 
 import time
 import uuid
-import json
-from typing import Dict, Any, Optional
+from typing import Dict, Any
 from datetime import datetime, timezone
 
 from app.services.category_service import CategoryService
@@ -17,15 +16,15 @@ from app.services.openai_config_service import OpenAIConfigService
 
 class OutputHandler:
     """Handles flexible output formatting and storage"""
-    
+
     @staticmethod
     def extract_categories(ai_result: Dict[str, Any]) -> Dict[str, Any]:
         """
         Extract category fields from AI result, excluding metadata.
-        
+
         Args:
             ai_result: Full AI result with categories and metadata
-            
+
         Returns:
             Dictionary with only category keys and their concept lists
         """
@@ -57,12 +56,12 @@ class OutputHandler:
             if isinstance(value, list) and all(isinstance(v, str) for v in value):
                 extracted[key] = value
         return extracted
-    
+
     @staticmethod
     def apply_defaults(request_data: Dict[str, Any]) -> Dict[str, Any]:
         """
         Apply smart defaults based on presence/absence of output object.
-        
+
         Logic:
         - No output object = return full results without saving
         - With output object but missing fields = apply defaults
@@ -76,7 +75,7 @@ class OutputHandler:
             request_data["output"] = {
                 "save_to_db": False,
                 "return_results": True,
-                "format": "full"
+                "format": "full",
             }
         else:
             # With output object, apply individual defaults
@@ -86,22 +85,24 @@ class OutputHandler:
                 request_data["output"]["return_results"] = False
             if "save_to_db" not in request_data["output"]:
                 request_data["output"]["save_to_db"] = True
-        
+
         # Entity type default
         if "entity_type" not in request_data:
             request_data["entity_type"] = "restaurant"
-        
+
         return request_data
-    
+
     @staticmethod
-    async def format_results(results: Dict[str, Any], format_type: str) -> Dict[str, Any]:
+    async def format_results(
+        results: Dict[str, Any], format_type: str
+    ) -> Dict[str, Any]:
         """
         Format results based on format type.
-        
+
         Args:
             results: Full results dictionary
             format_type: "full", "minimal", or "ids_only"
-            
+
         Returns:
             Formatted results
         """
@@ -113,16 +114,16 @@ class OutputHandler:
                 "entity_id": results.get("entity", {}).get("entity_id"),
                 "curation_id": results.get("curation", {}).get("curation_id"),
                 "categories": categories,
-                "restaurant_name": results.get("concepts", {}).get("restaurant_name")
+                "restaurant_name": results.get("concepts", {}).get("restaurant_name"),
             }
         elif format_type == "ids_only":
             return {
                 "entity_id": results.get("entity", {}).get("entity_id"),
-                "curation_id": results.get("curation", {}).get("curation_id")
+                "curation_id": results.get("curation", {}).get("curation_id"),
             }
         else:
             return results
-    
+
     @staticmethod
     def save_results(db, results: Dict[str, Any]) -> list:
         """
@@ -144,7 +145,7 @@ class OutputHandler:
             db.entities.update_one(
                 {"entity_id": results["entity"]["entity_id"]},
                 {"$set": results["entity"]},
-                upsert=True
+                upsert=True,
             )
             saved_items.append("entity")
 
@@ -158,11 +159,11 @@ class OutputHandler:
 
 class AIOrchestrator:
     """Main orchestration service combining all AI operations"""
-    
+
     def __init__(self, db, openai_service, places_service=None):
         """
         Initialize AIOrchestrator.
-        
+
         Args:
             db: MongoDB database
             openai_service: OpenAI service instance
@@ -174,11 +175,11 @@ class AIOrchestrator:
         self.output_handler = OutputHandler()
         self.category_service = CategoryService(db)
         self.config_service = OpenAIConfigService(db)
-    
+
     async def detect_workflow(self, request: Dict[str, Any]) -> str:
         """
         Auto-detect workflow type based on inputs.
-        
+
         Returns workflow string like:
         - audio_only
         - image_only
@@ -192,11 +193,11 @@ class AIOrchestrator:
         has_audio = "audio_file" in request or "audio_url" in request
         has_image = "image_file" in request or "image_url" in request
         has_text = "text" in request
-        
+
         # Manual workflow type takes precedence
         if request.get("workflow_type") != "auto":
             return request.get("workflow_type", "auto")
-        
+
         # Auto-detect based on combinations
         if has_place_id and has_audio and has_image:
             return "place_id_with_audio_and_image"
@@ -216,62 +217,67 @@ class AIOrchestrator:
             return "place_id_only"
         else:
             raise ValueError("Cannot detect workflow: insufficient inputs")
-    
+
     async def orchestrate(self, request: Dict[str, Any]) -> Dict[str, Any]:
         """
         Main orchestration method.
-        
+
         Args:
             request: Request dictionary with inputs and options
-            
+
         Returns:
             Response with workflow, results, and metadata
         """
         start_time = time.time()
-        
+
         # Apply defaults
         request = self.output_handler.apply_defaults(request)
-        
+
         # Detect workflow
         workflow = await self.detect_workflow(request)
-        
+
         # Execute workflow
         results = await self.execute_workflow(workflow, request)
-        
+
         # Handle output
         if request["output"]["save_to_db"]:
             self.output_handler.save_results(self.db, results)
-        
+
         # Format response
         if request["output"]["return_results"]:
             formatted = await self.output_handler.format_results(
-                results, 
-                request["output"]["format"]
+                results, request["output"]["format"]
             )
         else:
             formatted = {}
-        
+
         processing_time = int((time.time() - start_time) * 1000)
-        
+
         return {
             "workflow": workflow,
             "results": formatted,
             "saved_to_db": request["output"]["save_to_db"],
-            "processing_time_ms": processing_time
+            "processing_time_ms": processing_time,
         }
-    
-    async def execute_workflow(self, workflow: str, request: Dict[str, Any]) -> Dict[str, Any]:
+
+    async def execute_workflow(
+        self, workflow: str, request: Dict[str, Any]
+    ) -> Dict[str, Any]:
         """Execute the detected workflow"""
         results = {}
         entity_type = request.get("entity_type", "restaurant")
-        
+
         # Extract save_to_cache flag from output config
         save_to_cache = request.get("output", {}).get("save_to_db", False)
-        
+
         if workflow == "audio_only":
             # Transcribe audio
-            audio = request.get("audio_file") or request.get("audio_url") or request.get("text")
-            
+            audio = (
+                request.get("audio_file")
+                or request.get("audio_url")
+                or request.get("text")
+            )
+
             if request.get("text"):
                 # Skip transcription, use text directly
                 text = request["text"]
@@ -279,59 +285,49 @@ class AIOrchestrator:
             else:
                 # Transcribe audio
                 transcription = await self.openai.transcribe_audio(
-                    audio, 
-                    request.get("language", "pt-BR"),
-                    save_to_cache=save_to_cache
+                    audio, request.get("language", "pt-BR"), save_to_cache=save_to_cache
                 )
                 results["transcription"] = transcription
                 text = transcription["text"]
-            
+
             # Extract concepts
             concepts = await self.openai.extract_concepts_from_text(
-                text, 
-                entity_type,
-                save_to_cache=save_to_cache
+                text, entity_type, save_to_cache=save_to_cache
             )
             concepts["category_context"] = entity_type
             results["concepts"] = concepts
-        
+
         elif workflow == "image_only":
             # Analyze image
             image = request.get("image_file") or request.get("image_url")
             image_analysis = await self.openai.analyze_image(
-                image, 
-                entity_type,
-                save_to_cache=save_to_cache
+                image, entity_type, save_to_cache=save_to_cache
             )
             image_analysis["category_context"] = entity_type
             results["image_analysis"] = image_analysis
-        
+
         elif workflow == "place_id_with_audio":
             if not self.places:
                 raise ValueError("Places service not configured")
-            
+
             # 1. Fetch place details
             place_data = await self.places.get_place_details(request["place_id"])
             results["entity"] = self.transform_to_entity(place_data, entity_type)
-            
+
             # 2. Transcribe audio
             audio = request.get("audio_file") or request.get("audio_url")
             transcription = await self.openai.transcribe_audio(
-                audio, 
-                request.get("language", "pt-BR"),
-                save_to_cache=save_to_cache
+                audio, request.get("language", "pt-BR"), save_to_cache=save_to_cache
             )
             results["transcription"] = transcription
-            
+
             # 3. Extract concepts
             concepts = await self.openai.extract_concepts_from_text(
-                transcription["text"],
-                entity_type,
-                save_to_cache=save_to_cache
+                transcription["text"], entity_type, save_to_cache=save_to_cache
             )
             concepts["category_context"] = entity_type
             results["concepts"] = concepts
-            
+
             # 4. Create curation
             categories = OutputHandler.extract_categories(concepts)
             results["curation"] = {
@@ -340,38 +336,38 @@ class AIOrchestrator:
                 "curator_id": request.get("curator_id"),
                 "transcription_id": transcription.get("transcription_id"),
                 "sources": {
-                    "audio": [{
-                        "source_id": transcription.get("transcription_id"),
-                        "transcript": transcription.get("text"),
-                        "language": transcription.get("language"),
-                        "model": transcription.get("model"),
-                        "duration_seconds": transcription.get("duration")
-                    }]
+                    "audio": [
+                        {
+                            "source_id": transcription.get("transcription_id"),
+                            "transcript": transcription.get("text"),
+                            "language": transcription.get("language"),
+                            "model": transcription.get("model"),
+                            "duration_seconds": transcription.get("duration"),
+                        }
+                    ]
                 },
                 "categories": categories,
                 "source": "text_analysis",
                 "entity_type": entity_type,
-                "created_at": datetime.now(timezone.utc).isoformat()
+                "created_at": datetime.now(timezone.utc).isoformat(),
             }
-        
+
         elif workflow == "place_id_with_image":
             if not self.places:
                 raise ValueError("Places service not configured")
-            
+
             # 1. Fetch place details
             place_data = await self.places.get_place_details(request["place_id"])
             results["entity"] = self.transform_to_entity(place_data, entity_type)
-            
+
             # 2. Analyze image
             image = request.get("image_file") or request.get("image_url")
             image_analysis = await self.openai.analyze_image(
-                image, 
-                entity_type,
-                save_to_cache=save_to_cache
+                image, entity_type, save_to_cache=save_to_cache
             )
             image_analysis["category_context"] = entity_type
             results["image_analysis"] = image_analysis
-            
+
             # 3. Create curation
             categories = OutputHandler.extract_categories(image_analysis)
             results["curation"] = {
@@ -382,54 +378,52 @@ class AIOrchestrator:
                 "source": "image_analysis",
                 "visual_notes": image_analysis.get("visual_notes"),
                 "entity_type": entity_type,
-                "created_at": datetime.now(timezone.utc).isoformat()
+                "created_at": datetime.now(timezone.utc).isoformat(),
             }
-        
+
         elif workflow == "place_id_with_audio_and_image":
             if not self.places:
                 raise ValueError("Places service not configured")
-            
+
             # Complete workflow: place + audio + image
             place_data = await self.places.get_place_details(request["place_id"])
             results["entity"] = self.transform_to_entity(place_data, entity_type)
-            
+
             # Transcribe audio
             audio = request.get("audio_file") or request.get("audio_url")
             transcription = await self.openai.transcribe_audio(
-                audio, 
-                request.get("language", "pt-BR"),
-                save_to_cache=save_to_cache
+                audio, request.get("language", "pt-BR"), save_to_cache=save_to_cache
             )
             results["transcription"] = transcription
-            
+
             # Extract concepts from text
             text_concepts = await self.openai.extract_concepts_from_text(
-                transcription["text"],
-                entity_type,
-                save_to_cache=save_to_cache
+                transcription["text"], entity_type, save_to_cache=save_to_cache
             )
             results["text_concepts"] = text_concepts
-            
+
             # Analyze image
             image = request.get("image_file") or request.get("image_url")
             image_analysis = await self.openai.analyze_image(
-                image, 
-                entity_type,
-                save_to_cache=save_to_cache
+                image, entity_type, save_to_cache=save_to_cache
             )
             results["image_analysis"] = image_analysis
-            
+
             # Combine categories from both sources (merge and deduplicate per category)
             text_categories = OutputHandler.extract_categories(text_concepts)
             image_categories = OutputHandler.extract_categories(image_analysis)
-            
+
             combined_categories = {}
-            all_category_keys = set(text_categories.keys()) | set(image_categories.keys())
+            all_category_keys = set(text_categories.keys()) | set(
+                image_categories.keys()
+            )
             for key in all_category_keys:
                 text_vals = text_categories.get(key, [])
                 image_vals = image_categories.get(key, [])
-                combined_categories[key] = list(set(text_vals + image_vals))  # Deduplicate per category
-            
+                combined_categories[key] = list(
+                    set(text_vals + image_vals)
+                )  # Deduplicate per category
+
             # Create curation with combined categories
             results["curation"] = {
                 "curation_id": f"cur_{uuid.uuid4().hex[:12]}",
@@ -438,36 +432,42 @@ class AIOrchestrator:
                 "transcription_id": transcription.get("transcription_id"),
                 "categories": combined_categories,
                 "sources": {
-                    "audio": [{
-                        "source_id": transcription.get("transcription_id"),
-                        "transcript": transcription.get("text"),
-                        "language": transcription.get("language"),
-                        "model": transcription.get("model"),
-                        "duration_seconds": transcription.get("duration")
-                    }],
-                    "image": [{
-                        "source": "image_analysis",
-                        "visual_notes": image_analysis.get("visual_notes")
-                    }]
+                    "audio": [
+                        {
+                            "source_id": transcription.get("transcription_id"),
+                            "transcript": transcription.get("text"),
+                            "language": transcription.get("language"),
+                            "model": transcription.get("model"),
+                            "duration_seconds": transcription.get("duration"),
+                        }
+                    ],
+                    "image": [
+                        {
+                            "source": "image_analysis",
+                            "visual_notes": image_analysis.get("visual_notes"),
+                        }
+                    ],
                 },
                 "visual_notes": image_analysis.get("visual_notes"),
                 "entity_type": entity_type,
-                "created_at": datetime.now(timezone.utc).isoformat()
+                "created_at": datetime.now(timezone.utc).isoformat(),
             }
-        
+
         else:
             raise ValueError(f"Workflow '{workflow}' not implemented")
-        
+
         return results
-    
-    def transform_to_entity(self, place_data: Dict[str, Any], entity_type: str) -> Dict[str, Any]:
+
+    def transform_to_entity(
+        self, place_data: Dict[str, Any], entity_type: str
+    ) -> Dict[str, Any]:
         """
         Transform Google Place data to entity format.
-        
+
         Args:
             place_data: Place data from Google Places API
             entity_type: Type of entity
-            
+
         Returns:
             Entity dictionary
         """
@@ -480,5 +480,5 @@ class AIOrchestrator:
             "address": place_data.get("formatted_address"),
             "place_id": place_data.get("place_id"),
             "created_at": datetime.now(timezone.utc).isoformat(),
-            "source": "google_places"
+            "source": "google_places",
         }

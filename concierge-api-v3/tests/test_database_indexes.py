@@ -5,6 +5,7 @@ individual. Incidente 2026-08-12: o primeiro índice único que falhava
 em produção entities ficou com 4 de 10 índices e curations só com _id_.
 Sem MongoDB — get_database() é monkeypatched.
 """
+
 from app.core import database as dbmod
 
 

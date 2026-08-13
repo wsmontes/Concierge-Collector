@@ -22,15 +22,25 @@ def has_role(user_role: UserRole, required: UserRole) -> bool:
 
 class User(BaseModel):
     """User model for authenticated users"""
+
     email: EmailStr = Field(..., description="User's email address from Google OAuth")
     google_id: str = Field(..., description="Google account ID (sub claim from OAuth)")
     name: str = Field(..., description="User's full name from Google")
     picture: Optional[str] = Field(None, description="User's profile picture URL")
-    authorized: bool = Field(False, description="Whether user is authorized to use the application")
-    role: UserRole = Field(default="curator", description="User role: admin | curator | viewer")
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), description="Account creation timestamp")
+    authorized: bool = Field(
+        False, description="Whether user is authorized to use the application"
+    )
+    role: UserRole = Field(
+        default="curator", description="User role: admin | curator | viewer"
+    )
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        description="Account creation timestamp",
+    )
     last_login: Optional[datetime] = Field(None, description="Last login timestamp")
-    refresh_token: Optional[str] = Field(None, description="Encrypted Google refresh token for persistent login")
+    refresh_token: Optional[str] = Field(
+        None, description="Encrypted Google refresh token for persistent login"
+    )
 
     class Config:
         json_schema_extra = {
@@ -42,18 +52,20 @@ class User(BaseModel):
                 "authorized": True,
                 "role": "curator",
                 "created_at": "2025-01-15T10:30:00Z",
-                "last_login": "2025-01-15T10:30:00Z"
+                "last_login": "2025-01-15T10:30:00Z",
             }
         }
 
 
 class UserInDB(User):
     """User model with MongoDB document ID"""
+
     id: str = Field(..., alias="_id", description="MongoDB document ID")
 
 
 class OAuthTokens(BaseModel):
     """OAuth token response model"""
+
     access_token: str = Field(..., description="OAuth access token")
     refresh_token: Optional[str] = Field(None, description="OAuth refresh token")
     expires_in: int = Field(..., description="Token lifetime in seconds")
@@ -62,23 +74,27 @@ class OAuthTokens(BaseModel):
 
 class OAuthCallbackRequest(BaseModel):
     """OAuth callback request from frontend"""
+
     code: str = Field(..., description="Authorization code from Google")
     state: str = Field(..., description="State parameter for CSRF protection")
 
 
 class OAuthCallbackResponse(BaseModel):
     """OAuth callback response to frontend"""
+
     tokens: OAuthTokens
     user: UserInDB
 
 
 class TokenRefreshRequest(BaseModel):
     """Token refresh request"""
+
     refresh_token: str = Field(..., description="Refresh token")
 
 
 class UserAuthResponse(BaseModel):
     """Authenticated user response"""
+
     email: EmailStr
     name: str
     picture: Optional[str]

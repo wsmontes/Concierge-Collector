@@ -15,7 +15,7 @@ import time
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from pymongo.database import Database
 from pymongo.errors import DuplicateKeyError
@@ -30,6 +30,7 @@ router = APIRouter(prefix="/capture", tags=["Capture"])
 
 
 # ── Pydantic models ─────────────────────────────────────────────────────────
+
 
 class CaptureRequest(BaseModel):
     audio: str = Field(..., description="Base64-encoded audio (webm/mp3)")
@@ -68,6 +69,7 @@ class CaptureConfirmResponse(BaseModel):
 
 # ── In-memory idempotency cache (bounded LRU via dict, ~1000 entries) ───────
 
+
 class _LRUDict:
     """Simple LRU dict for idempotency cache — bounded at maxsize."""
 
@@ -90,12 +92,14 @@ _idempotency_cache = _LRUDict(maxsize=2000)
 
 # ── Capture state store (MongoDB) ────────────────────────────────────────────
 
+
 def _capture_collection(db: Database):
     """Get the capture_sessions collection."""
     return db["capture_sessions"]
 
 
 # ── AI helpers ───────────────────────────────────────────────────────────────
+
 
 def _transcribe(audio_base64: str, language: str = "pt-BR") -> str:
     """Transcribe audio using OpenAI Whisper. Returns text."""
@@ -116,7 +120,9 @@ def _transcribe(audio_base64: str, language: str = "pt-BR") -> str:
     try:
         with open(tmp_path, "rb") as audio_file:
             transcript = client.audio.transcriptions.create(
-                model="whisper-1", file=audio_file, language=language,
+                model="whisper-1",
+                file=audio_file,
+                language=language,
             )
         return transcript.text.strip()
     finally:
@@ -159,7 +165,9 @@ def _extract_restaurant_name(text: str) -> Optional[str]:
         return None
 
 
-def _match_entities(db: Database, restaurant_name: Optional[str]) -> List[Dict[str, Any]]:
+def _match_entities(
+    db: Database, restaurant_name: Optional[str]
+) -> List[Dict[str, Any]]:
     """Search for matching entities in MongoDB, fall back to Google Places if needed."""
     entities: List[Dict[str, Any]] = []
 
@@ -187,55 +195,79 @@ def _match_entities(db: Database, restaurant_name: Optional[str]) -> List[Dict[s
 
     # 3. If no matches found, try Google Places (only if name was extracted)
     if not entities and restaurant_name and os.getenv("GOOGLE_PLACES_API_KEY"):
-        logger.info(f"No entities found for '{restaurant_name}', searching Google Places...")
+        logger.info(
+            f"No entities found for '{restaurant_name}', searching Google Places..."
+        )
         try:
             import googlemaps
+
             gmaps = googlemaps.Client(key=os.getenv("GOOGLE_PLACES_API_KEY"))
             places = gmaps.places(
-                restaurant_name, language="pt-BR",
+                restaurant_name,
+                language="pt-BR",
             )
             for place in places.get("results", [])[:5]:
                 loc = place.get("geometry", {}).get("location", {})
-                entities.append({
-                    "entity_id": f"gp_{place.get('place_id')}",
-                    "name": place.get("name"),
-                    "type": _guess_entity_type(place.get("types", [])),
-                    "location": {
-                        "address": place.get("vicinity", ""),
-                        "city": _extract_city(place),
-                        "latitude": loc.get("lat"),
-                        "longitude": loc.get("lng"),
-                    },
-                    "score": 0.7,
-                    "source": "google_places",
-                    "place_id": place.get("place_id"),
-                })
+                entities.append(
+                    {
+                        "entity_id": f"gp_{place.get('place_id')}",
+                        "name": place.get("name"),
+                        "type": _guess_entity_type(place.get("types", [])),
+                        "location": {
+                            "address": place.get("vicinity", ""),
+                            "city": _extract_city(place),
+                            "latitude": loc.get("lat"),
+                            "longitude": loc.get("lng"),
+                        },
+                        "score": 0.7,
+                        "source": "google_places",
+                        "place_id": place.get("place_id"),
+                    }
+                )
         except Exception as e:
             logger.warning(f"Google Places search failed: {e}")
 
     # Format results
     results = []
     for i, ent in enumerate(entities):
-        score = 0.97 - (i * 0.1) if ent.get("source") != "google_places" else (ent.get("score", 0.7) - (i * 0.1))
+        score = (
+            0.97 - (i * 0.1)
+            if ent.get("source") != "google_places"
+            else (ent.get("score", 0.7) - (i * 0.1))
+        )
         score = max(0.2, round(score, 2))
 
-        loc_data = ent.get("data", {}).get("location", {}) if isinstance(ent.get("data"), dict) else ent.get("location", {})
+        loc_data = (
+            ent.get("data", {}).get("location", {})
+            if isinstance(ent.get("data"), dict)
+            else ent.get("location", {})
+        )
 
-        results.append({
-            "entity_id": ent.get("entity_id") or ent.get("_id"),
-            "name": ent.get("name"),
-            "type": ent.get("type"),
-            "location": {
-                "address": loc_data.get("address") or ent.get("location", {}).get("address", ""),
-                "city": loc_data.get("city") or ent.get("location", {}).get("city", ""),
-                "neighborhood": loc_data.get("neighborhood", ""),
-                "latitude": loc_data.get("latitude") or ent.get("location", {}).get("latitude"),
-                "longitude": loc_data.get("longitude") or ent.get("location", {}).get("longitude"),
-            },
-            "score": score,
-            "source": ent.get("source", "mongo"),
-            "place_id": ent.get("place_id") if ent.get("source") == "google_places" else None,
-        })
+        results.append(
+            {
+                "entity_id": ent.get("entity_id") or ent.get("_id"),
+                "name": ent.get("name"),
+                "type": ent.get("type"),
+                "location": {
+                    "address": loc_data.get("address")
+                    or ent.get("location", {}).get("address", ""),
+                    "city": loc_data.get("city")
+                    or ent.get("location", {}).get("city", ""),
+                    "neighborhood": loc_data.get("neighborhood", ""),
+                    "latitude": loc_data.get("latitude")
+                    or ent.get("location", {}).get("latitude"),
+                    "longitude": loc_data.get("longitude")
+                    or ent.get("location", {}).get("longitude"),
+                },
+                "score": score,
+                "source": ent.get("source", "mongo"),
+                "place_id": (
+                    ent.get("place_id")
+                    if ent.get("source") == "google_places"
+                    else None
+                ),
+            }
+        )
     return results
 
 
@@ -303,12 +335,15 @@ def _guess_entity_type(google_types: List[str]) -> str:
 
 def _extract_city(place: Dict[str, Any]) -> str:
     for comp in place.get("address_components", []):
-        if "locality" in comp.get("types", []) or "administrative_area_level_2" in comp.get("types", []):
+        if "locality" in comp.get(
+            "types", []
+        ) or "administrative_area_level_2" in comp.get("types", []):
             return comp.get("long_name", "")
     return ""
 
 
 # ── Endpoints ────────────────────────────────────────────────────────────────
+
 
 @router.post("", response_model=CaptureResponse)
 async def capture(
@@ -457,7 +492,9 @@ async def confirm_capture(
     entity_doc = db.entities.find_one({"_id": request.entity_id})
     if not entity_doc:
         # Create from Google Places match
-        if matched_entity.get("source") == "google_places" and matched_entity.get("place_id"):
+        if matched_entity.get("source") == "google_places" and matched_entity.get(
+            "place_id"
+        ):
             # Fetch full place details from Google
             new_entity = _create_entity_from_place(matched_entity, db)
             if new_entity:
@@ -487,7 +524,9 @@ async def confirm_capture(
             except DuplicateKeyError:
                 # Another parallel confirm already created this entity
                 entity_doc = db.entities.find_one({"_id": request.entity_id})
-                logger.info(f"Entity {request.entity_id} already exists (race), reusing")
+                logger.info(
+                    f"Entity {request.entity_id} already exists (race), reusing"
+                )
 
     # ── Create curation ──
     now = datetime.now(timezone.utc)
@@ -534,7 +573,13 @@ async def confirm_capture(
             # corrida real: outro confirm inseriu entre o check e o insert
             db.curations.update_one(
                 {"_id": curation_id},
-                {"$set": {k: v for k, v in curation_doc.items() if k not in ("_id", "createdAt")}},
+                {
+                    "$set": {
+                        k: v
+                        for k, v in curation_doc.items()
+                        if k not in ("_id", "createdAt")
+                    }
+                },
             )
 
     # ── Mark session as done ──
@@ -556,7 +601,9 @@ async def confirm_capture(
     return result
 
 
-def _create_entity_from_place(match: Dict[str, Any], db: Database) -> Optional[Dict[str, Any]]:
+def _create_entity_from_place(
+    match: Dict[str, Any], db: Database
+) -> Optional[Dict[str, Any]]:
     """Fetch full place details from Google and create an entity."""
     import googlemaps
 
@@ -580,8 +627,12 @@ def _create_entity_from_place(match: Dict[str, Any], db: Database) -> Optional[D
                 "location": {
                     "address": place.get("formatted_address", ""),
                     "city": _extract_city(place),
-                    "latitude": place.get("geometry", {}).get("location", {}).get("lat"),
-                    "longitude": place.get("geometry", {}).get("location", {}).get("lng"),
+                    "latitude": place.get("geometry", {})
+                    .get("location", {})
+                    .get("lat"),
+                    "longitude": place.get("geometry", {})
+                    .get("location", {})
+                    .get("lng"),
                 },
                 "contact": {
                     "phone": place.get("formatted_phone_number", ""),

@@ -6,6 +6,7 @@ Purpose: Conversão de after_id para cursor paginado. _id ObjectId (bulk
          Verificado ao vivo (2026-08-12): entities = 21.150 _id string + 471
          ObjectId.
 """
+
 from bson import ObjectId
 from bson.errors import InvalidId
 

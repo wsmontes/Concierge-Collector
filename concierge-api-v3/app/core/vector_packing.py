@@ -13,6 +13,7 @@ Nota: o Atlas Vector Search não indexa o Binary subtype 0 genérico usado aqui
 Regra: NÃO adicionar dependências do resto do app aqui — os scripts importam
        este módulo sem o pacote completo (veja mongo_tools.py).
 """
+
 import struct
 
 from bson import Binary

@@ -1,4 +1,5 @@
 """Denormaliza city/type da entity na curadoria para filtro/paginação server-side."""
+
 from typing import Any, Dict
 
 

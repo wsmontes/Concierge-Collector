@@ -5,6 +5,7 @@ Testes unitários de embeddings nas curadorias:
   vector do Atlas não está disponível (incidente da cota 2026-08-12).
 Sem MongoDB — db mockado (padrão do test_curations.py).
 """
+
 import struct
 from datetime import datetime, timezone
 from types import SimpleNamespace
@@ -20,7 +21,6 @@ from app.api.curations import (
 )
 from app.core.vector_packing import pack_vector
 from app.models.schemas import CurationUpdate, SemanticSearchRequest
-
 
 V1536 = [float(i % 7) / 7.0 for i in range(1536)]  # vetor de dim correta
 
@@ -84,6 +84,7 @@ def _patch_openai(monkeypatch):
 
 # ── Compactação na fronteira de escrita ────────────────────────────────
 
+
 def test_compact_embeddings_packs_list_vectors():
     embs = [
         {
@@ -97,7 +98,9 @@ def test_compact_embeddings_packs_list_vectors():
     assert not dropped
     v = out[0]["vector"]
     assert isinstance(v, Binary)
-    assert struct.unpack("<1536f", v)[:4] == tuple(struct.unpack("<f", struct.pack("<f", x))[0] for x in V1536[:4])
+    assert struct.unpack("<1536f", v)[:4] == tuple(
+        struct.unpack("<f", struct.pack("<f", x))[0] for x in V1536[:4]
+    )
 
 
 def test_compact_embeddings_keeps_text_only_entries_and_binary():
@@ -184,19 +187,20 @@ def test_update_curation_compacts_embeddings_on_write():
     db.curations.find_one.return_value = _curation_doc()
     db.curations.find_one_and_update.return_value = dict(_curation_doc())
     updates = CurationUpdate(
-        embeddings=[
-            {"text": "t", "category": "c", "concept": "x", "vector": V1536}
-        ]
+        embeddings=[{"text": "t", "category": "c", "concept": "x", "vector": V1536}]
     )
     update_curation("c1", updates, if_match=None, db=db, auth={})
-    stored = db.curations.find_one_and_update.call_args.args[1]["$set"][
-        "embeddings"
-    ][0]["vector"]
+    stored = db.curations.find_one_and_update.call_args.args[1]["$set"]["embeddings"][
+        0
+    ]["vector"]
     assert isinstance(stored, Binary)
-    assert struct.unpack("<1536f", stored)[:4] == tuple(struct.unpack("<f", struct.pack("<f", x))[0] for x in V1536[:4])
+    assert struct.unpack("<1536f", stored)[:4] == tuple(
+        struct.unpack("<f", struct.pack("<f", x))[0] for x in V1536[:4]
+    )
 
 
 # ── Fallback do vector search com log ──────────────────────────────────
+
 
 def test_semantic_search_falls_back_with_warning(caplog, monkeypatch):
     _patch_openai(monkeypatch)
@@ -242,9 +246,7 @@ def test_hybrid_search_falls_back_with_warning(caplog, monkeypatch):
 
     from app.models.schemas import HybridSearchRequest
 
-    response = mod.hybrid_search(
-        request=HybridSearchRequest(query="japonesa"), db=db
-    )
+    response = mod.hybrid_search(request=HybridSearchRequest(query="japonesa"), db=db)
     assert response.total_results >= 1
     assert any("vectorSearch" in r.getMessage() for r in caplog.records)
     assert curation_find.sorted_by == [("updatedAt", -1)]
@@ -252,13 +254,15 @@ def test_hybrid_search_falls_back_with_warning(caplog, monkeypatch):
 
 # ── Regra única da flag backfill_needed ─────────────────────────────────
 
+
 def test_compute_backfill_flag_stamps_when_pending_uncovered():
     from app.api.curations import _compute_backfill_flag
 
     meta = _compute_backfill_flag(
         {"cuisine": ["japonesa", "italiana"]},
         [{"text": "cuisine japonesa", "vector": b"x"}],
-        None, {"model": "m"},
+        None,
+        {"model": "m"},
     )
     assert meta["backfill_needed"] is True  # 'cuisine italiana' sem cobertura
     assert meta["model"] == "m"  # proveniência preservada
@@ -270,7 +274,8 @@ def test_compute_backfill_flag_clears_when_covered():
     meta = _compute_backfill_flag(
         {"cuisine": ["japonesa"]},
         [{"text": "cuisine japonesa", "vector": b"x"}],
-        None, {"backfill_needed": True},
+        None,
+        {"backfill_needed": True},
     )
     assert meta["backfill_needed"] is False
 
@@ -279,8 +284,10 @@ def test_compute_backfill_flag_client_cannot_force_flag():
     from app.api.curations import _compute_backfill_flag
 
     meta = _compute_backfill_flag(
-        {"cuisine": ["japonesa"]}, None,
-        {"backfill_needed": False}, {"backfill_needed": True},
+        {"cuisine": ["japonesa"]},
+        None,
+        {"backfill_needed": False},
+        {"backfill_needed": True},
     )
     # sem novos embeddings, pendência segue — cliente não controla
     assert meta["backfill_needed"] is True
@@ -300,7 +307,8 @@ def test_compute_backfill_flag_text_only_entry_is_not_coverage():
     meta = _compute_backfill_flag(
         {"cuisine": ["italiana"]},
         [{"text": "cuisine italiana"}],  # sem vector
-        None, {},
+        None,
+        {},
     )
     assert meta["backfill_needed"] is True
 

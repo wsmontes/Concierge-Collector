@@ -10,14 +10,16 @@ and other OpenAI-compatible clients for function calling / tool use.
 
 from fastapi import APIRouter, HTTPException, Depends
 from fastapi.responses import StreamingResponse
-from typing import List, Dict, Any, Optional
+from typing import List, Dict, Any
 import logging
 import time
 import json
 import uuid
 import asyncio
 
-from app.core.security import api_key_header, bearer_scheme, get_api_secret_key, verify_auth
+from app.core.security import (
+    verify_auth,
+)
 from app.models.openai_models import (
     ChatCompletionRequest,
     ChatCompletionResponse,
@@ -25,13 +27,11 @@ from app.models.openai_models import (
     Choice,
     ResponseMessage,
     Usage,
-    ToolCall,
-    ToolCallFunction,
     Tool,
     FunctionDefinition,
     FunctionParameters,
     ModelsResponse,
-    Model
+    Model,
 )
 from app.services.llm_place_service import LLMPlaceService
 from app.core.database import get_database
@@ -51,10 +51,11 @@ def get_llm_service() -> LLMPlaceService:
 # FUNCTION DEFINITIONS (Convert from LLM tools to OpenAI format)
 # ============================================================================
 
+
 def get_available_functions() -> List[Tool]:
     """
     Get list of available functions in OpenAI format.
-    
+
     These match the LLM Gateway tools but in OpenAI/LM Studio format.
     """
     return [
@@ -72,34 +73,34 @@ def get_available_functions() -> List[Tool]:
                     properties={
                         "query": {
                             "type": "string",
-                            "description": "Restaurant name or search term"
+                            "description": "Restaurant name or search term",
                         },
                         "max_results": {
                             "type": "integer",
                             "description": "Maximum number of results (1-20, default: 5)",
                             "default": 5,
                             "minimum": 1,
-                            "maximum": 20
+                            "maximum": 20,
                         },
                         "latitude": {
                             "type": ["number", "null"],
-                            "description": "Optional latitude for location-biased search"
+                            "description": "Optional latitude for location-biased search",
                         },
                         "longitude": {
                             "type": ["number", "null"],
-                            "description": "Optional longitude for location-biased search"
+                            "description": "Optional longitude for location-biased search",
                         },
                         "radius_m": {
                             "type": "integer",
                             "description": "Search radius in meters (100-50000)",
-                            "default": 5000
-                        }
+                            "default": 5000,
+                        },
                     },
                     required=["query"],
-                    additionalProperties=False
+                    additionalProperties=False,
                 ),
-                strict=True
-            )
+                strict=True,
+            ),
         ),
         Tool(
             type="function",
@@ -115,18 +116,18 @@ def get_available_functions() -> List[Tool]:
                     properties={
                         "place_id": {
                             "type": ["string", "null"],
-                            "description": "Google Place ID"
+                            "description": "Google Place ID",
                         },
                         "entity_id": {
                             "type": ["string", "null"],
-                            "description": "Internal entity ID"
-                        }
+                            "description": "Internal entity ID",
+                        },
                     },
                     required=[],  # At least one required, but not both
-                    additionalProperties=False
+                    additionalProperties=False,
                 ),
-                strict=True
-            )
+                strict=True,
+            ),
         ),
         Tool(
             type="function",
@@ -141,18 +142,18 @@ def get_available_functions() -> List[Tool]:
                     properties={
                         "place_id": {
                             "type": ["string", "null"],
-                            "description": "Google Place ID"
+                            "description": "Google Place ID",
                         },
                         "entity_id": {
                             "type": ["string", "null"],
-                            "description": "Internal entity ID"
-                        }
+                            "description": "Internal entity ID",
+                        },
                     },
                     required=[],
-                    additionalProperties=False
+                    additionalProperties=False,
                 ),
-                strict=True
-            )
+                strict=True,
+            ),
         ),
         Tool(
             type="function",
@@ -168,39 +169,39 @@ def get_available_functions() -> List[Tool]:
                     properties={
                         "place_id": {
                             "type": ["string", "null"],
-                            "description": "Google Place ID"
+                            "description": "Google Place ID",
                         },
                         "entity_id": {
                             "type": ["string", "null"],
-                            "description": "Internal entity ID"
+                            "description": "Internal entity ID",
                         },
                         "max_photos": {
                             "type": "integer",
                             "description": "Maximum number of photos (1-10, default: 10)",
                             "default": 10,
                             "minimum": 1,
-                            "maximum": 10
+                            "maximum": 10,
                         },
                         "max_width": {
                             "type": ["integer", "null"],
-                            "description": "Maximum width in pixels (400-4800)"
+                            "description": "Maximum width in pixels (400-4800)",
                         },
                         "max_height": {
                             "type": ["integer", "null"],
-                            "description": "Maximum height in pixels (400-4800)"
+                            "description": "Maximum height in pixels (400-4800)",
                         },
                         "include_metadata": {
                             "type": "boolean",
                             "description": "Include dimensions and attributions (default: true)",
-                            "default": True
-                        }
+                            "default": True,
+                        },
                     },
                     required=[],
-                    additionalProperties=False
+                    additionalProperties=False,
                 ),
-                strict=True
-            )
-        )
+                strict=True,
+            ),
+        ),
     ]
 
 
@@ -208,19 +209,18 @@ def get_available_functions() -> List[Tool]:
 # FUNCTION EXECUTION
 # ============================================================================
 
+
 def execute_function(
-    function_name: str,
-    arguments: Dict[str, Any],
-    service: LLMPlaceService
+    function_name: str, arguments: Dict[str, Any], service: LLMPlaceService
 ) -> str:
     """
     Execute a function and return result as JSON string.
-    
+
     Args:
         function_name: Name of function to execute
         arguments: Function arguments
         service: LLMPlaceService instance
-        
+
     Returns:
         JSON string with function result
     """
@@ -229,7 +229,7 @@ def execute_function(
             query = arguments.get("query")
             if not query:
                 return json.dumps({"error": "query parameter is required"})
-                
+
             items = service.search_restaurants(
                 query=query,
                 latitude=arguments.get("latitude"),
@@ -237,37 +237,35 @@ def execute_function(
                 radius_m=arguments.get("radius_m", 5000),
                 max_results=arguments.get("max_results", 5),
                 language=arguments.get("language", "pt-BR"),
-                region=arguments.get("region", "BR")
+                region=arguments.get("region", "BR"),
             )
-            
+
             # Convert to dict for JSON serialization
             result = {
                 "items": [item.dict() for item in items],
-                "total_results": len(items)
+                "total_results": len(items),
             }
             return json.dumps(result, ensure_ascii=False)
-            
+
         elif function_name == "get_restaurant_snapshot":
             snapshot, sources = service.get_restaurant_snapshot(
-                place_id=arguments.get("place_id"),
-                entity_id=arguments.get("entity_id")
+                place_id=arguments.get("place_id"), entity_id=arguments.get("entity_id")
             )
-            
+
             result = {
                 "snapshot": snapshot.dict() if snapshot else None,
-                "sources_used": sources
+                "sources_used": sources,
             }
             return json.dumps(result, ensure_ascii=False)
-            
+
         elif function_name == "get_restaurant_availability":
             availability = service.get_restaurant_availability(
-                place_id=arguments.get("place_id"),
-                entity_id=arguments.get("entity_id")
+                place_id=arguments.get("place_id"), entity_id=arguments.get("entity_id")
             )
-            
+
             # availability is already a dict
             return json.dumps(availability if availability else {}, ensure_ascii=False)
-            
+
         elif function_name == "get_restaurant_photos":
             photos = service.get_restaurant_photos(
                 place_id=arguments.get("place_id"),
@@ -276,14 +274,14 @@ def execute_function(
                 max_width=arguments.get("max_width"),
                 max_height=arguments.get("max_height"),
                 include_metadata=arguments.get("include_metadata", True),
-                language=arguments.get("language", "pt-BR")
+                language=arguments.get("language", "pt-BR"),
             )
-            
+
             return json.dumps(photos, ensure_ascii=False)
-            
+
         else:
             return json.dumps({"error": f"Unknown function: {function_name}"})
-            
+
     except Exception as e:
         logger.error(f"Error executing {function_name}: {e}")
         return json.dumps({"error": str(e)})
@@ -292,6 +290,7 @@ def execute_function(
 # ============================================================================
 # ENDPOINTS
 # ============================================================================
+
 
 @router.get("/v1/models", response_model=ModelsResponse)
 async def list_models(
@@ -309,9 +308,9 @@ async def list_models(
                 id="concierge-restaurant",
                 object="model",
                 created=int(time.time()),
-                owned_by="concierge"
+                owned_by="concierge",
             )
-        ]
+        ],
     )
 
 
@@ -326,32 +325,29 @@ async def list_functions(
     with the chat completions endpoint.
     """
     tools = get_available_functions()
-    return {
-        "functions": [tool.function.dict() for tool in tools],
-        "count": len(tools)
-    }
+    return {"functions": [tool.function.dict() for tool in tools], "count": len(tools)}
 
 
 @router.post("/v1/chat/completions")
 async def chat_completions(
     request: ChatCompletionRequest,
     auth: dict = Depends(verify_auth),
-    service: LLMPlaceService = Depends(get_llm_service)
+    service: LLMPlaceService = Depends(get_llm_service),
 ):
     """
     OpenAI-compatible chat completions with function calling.
-    
+
     This endpoint does NOT run an LLM - it only executes functions.
     The LLM runs locally in LM Studio (or other client) and calls this API
     when it needs to execute functions.
-    
+
     Features:
     - Tools array in response (LLM can see available functions)
     - Streaming support (stream=true)
     - tool_choice: auto, none, required, or specific function
     - parallel_tool_calls: execute multiple tools simultaneously
     - System message injection with tool descriptions
-    
+
     Flow:
     1. Client sends request (with or without tool_calls)
     2. We inject system message with available tools if needed
@@ -361,46 +357,52 @@ async def chat_completions(
     try:
         # Get available tools
         available_tools = get_available_functions()
-        
+
         # Validate messages
         if not request.messages:
             raise HTTPException(status_code=400, detail="No messages provided")
-        
+
         # Check if we should inject system message with tool descriptions
         messages = request.messages.copy()
         if not any(msg.role == "system" for msg in messages):
             # Inject system message describing available tools
-            tool_descriptions = "\n".join([
-                f"- {tool.function.name}: {tool.function.description}"
-                for tool in available_tools
-            ])
+            tool_descriptions = "\n".join(
+                [
+                    f"- {tool.function.name}: {tool.function.description}"
+                    for tool in available_tools
+                ]
+            )
             system_msg = ChatMessage(
                 role="system",
                 content=(
                     "You are a restaurant information assistant with access to these tools:\n"
                     f"{tool_descriptions}\n\n"
                     "Use these tools to help users find and get information about restaurants."
-                )
+                ),
             )
             messages.insert(0, system_msg)
             logger.info("Injected system message with tool descriptions")
-        
+
         # Get last message
         last_message = messages[-1]
-        
+
         # Handle tool_choice parameter
         should_execute_tools = True
         if request.tool_choice == "none":
             should_execute_tools = False
             logger.info("tool_choice=none: skipping tool execution")
-        
+
         # Check if last message has tool_calls to execute
-        if should_execute_tools and last_message.role == "assistant" and last_message.tool_calls:
+        if (
+            should_execute_tools
+            and last_message.role == "assistant"
+            and last_message.tool_calls
+        ):
             logger.info(f"Executing {len(last_message.tool_calls)} tool call(s)")
-            
+
             # Check if we should execute in parallel
-            execute_parallel = getattr(request, 'parallel_tool_calls', True)
-            
+            execute_parallel = getattr(request, "parallel_tool_calls", True)
+
             if execute_parallel and len(last_message.tool_calls) > 1:
                 logger.info("Executing tools in parallel")
                 # Execute all tools in parallel using asyncio
@@ -410,22 +412,21 @@ async def chat_completions(
                     arguments = json.loads(tool_call.function.arguments)
                     tasks.append(
                         asyncio.to_thread(
-                            execute_function,
-                            function_name,
-                            arguments,
-                            service
+                            execute_function, function_name, arguments, service
                         )
                     )
-                
+
                 results = await asyncio.gather(*tasks)
-                
+
                 executed_calls = []
                 for tool_call, result in zip(last_message.tool_calls, results):
-                    executed_calls.append({
-                        "call_id": tool_call.id,
-                        "function_name": tool_call.function.name,
-                        "result": result
-                    })
+                    executed_calls.append(
+                        {
+                            "call_id": tool_call.id,
+                            "function_name": tool_call.function.name,
+                            "result": result,
+                        }
+                    )
             else:
                 # Execute sequentially
                 logger.info("Executing tools sequentially")
@@ -433,32 +434,31 @@ async def chat_completions(
                 for tool_call in last_message.tool_calls:
                     function_name = tool_call.function.name
                     arguments = json.loads(tool_call.function.arguments)
-                    
+
                     logger.info(f"Executing {function_name} with args: {arguments}")
                     result = execute_function(function_name, arguments, service)
-                    
-                    executed_calls.append({
-                        "call_id": tool_call.id,
-                        "function_name": function_name,
-                        "result": result
-                    })
-            
+
+                    executed_calls.append(
+                        {
+                            "call_id": tool_call.id,
+                            "function_name": function_name,
+                            "result": result,
+                        }
+                    )
+
             # Build response
             response_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
-            
+
             # Check if streaming is requested
             if request.stream:
                 logger.info("Streaming response")
                 return StreamingResponse(
                     _stream_tool_results(
-                        response_id,
-                        request.model,
-                        executed_calls,
-                        available_tools
+                        response_id, request.model, executed_calls, available_tools
                     ),
-                    media_type="text/event-stream"
+                    media_type="text/event-stream",
                 )
-            
+
             # Return standard response with tools array
             return ChatCompletionResponse(
                 id=response_id,
@@ -470,26 +470,41 @@ async def chat_completions(
                         index=0,
                         message=ResponseMessage(
                             role="assistant",
-                            content=json.dumps(executed_calls, ensure_ascii=False)
+                            content=json.dumps(executed_calls, ensure_ascii=False),
                         ),
-                        finish_reason="tool_calls"
+                        finish_reason="tool_calls",
                     )
                 ],
                 usage=Usage(
-                    prompt_tokens=len(json.dumps([msg if isinstance(msg, dict) else msg.dict() for msg in messages])),
+                    prompt_tokens=len(
+                        json.dumps(
+                            [
+                                msg if isinstance(msg, dict) else msg.dict()
+                                for msg in messages
+                            ]
+                        )
+                    ),
                     completion_tokens=len(json.dumps(executed_calls)),
-                    total_tokens=len(json.dumps([msg if isinstance(msg, dict) else msg.dict() for msg in messages])) + len(json.dumps(executed_calls))
+                    total_tokens=len(
+                        json.dumps(
+                            [
+                                msg if isinstance(msg, dict) else msg.dict()
+                                for msg in messages
+                            ]
+                        )
+                    )
+                    + len(json.dumps(executed_calls)),
                 ),
-                system_fingerprint="concierge-restaurant"
+                system_fingerprint="concierge-restaurant",
             )
-        
+
         # If no tool calls, return informative message with tools array
         # This allows LLM to see what tools are available
         else:
             logger.info("No tool calls to execute - returning available tools")
-            
+
             response_id = f"chatcmpl-{uuid.uuid4().hex[:24]}"
-            
+
             # Check tool_choice to determine response
             if request.tool_choice == "required":
                 finish_reason = "tool_calls"
@@ -504,7 +519,7 @@ async def chat_completions(
                     "I have access to restaurant search and information tools. "
                     "I can search for restaurants, get detailed information, and check availability."
                 )
-            
+
             return ChatCompletionResponse(
                 id=response_id,
                 object="chat.completion",
@@ -513,24 +528,38 @@ async def chat_completions(
                 choices=[
                     Choice(
                         index=0,
-                        message=ResponseMessage(
-                            role="assistant",
-                            content=content
-                        ),
-                        finish_reason=finish_reason
+                        message=ResponseMessage(role="assistant", content=content),
+                        finish_reason=finish_reason,
                     )
                 ],
                 usage=Usage(
-                    prompt_tokens=len(json.dumps([msg if isinstance(msg, dict) else msg.dict() for msg in messages])),
+                    prompt_tokens=len(
+                        json.dumps(
+                            [
+                                msg if isinstance(msg, dict) else msg.dict()
+                                for msg in messages
+                            ]
+                        )
+                    ),
                     completion_tokens=len(content.split()),
-                    total_tokens=len(json.dumps([msg if isinstance(msg, dict) else msg.dict() for msg in messages])) + len(content.split())
+                    total_tokens=len(
+                        json.dumps(
+                            [
+                                msg if isinstance(msg, dict) else msg.dict()
+                                for msg in messages
+                            ]
+                        )
+                    )
+                    + len(content.split()),
                 ),
-                system_fingerprint="concierge-restaurant"
+                system_fingerprint="concierge-restaurant",
             )
-            
+
     except json.JSONDecodeError as e:
         logger.error(f"JSON decode error: {e}")
-        raise HTTPException(status_code=400, detail=f"Invalid JSON in arguments: {str(e)}")
+        raise HTTPException(
+            status_code=400, detail=f"Invalid JSON in arguments: {str(e)}"
+        )
     except Exception as e:
         logger.error(f"Error in chat_completions: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -540,11 +569,11 @@ async def _stream_tool_results(
     response_id: str,
     model: str,
     executed_calls: List[Dict[str, Any]],
-    tools: List[Tool]
+    tools: List[Tool],
 ):
     """
     Stream tool execution results in SSE format.
-    
+
     Args:
         response_id: Unique response ID
         model: Model name
@@ -557,14 +586,12 @@ async def _stream_tool_results(
         "object": "chat.completion.chunk",
         "created": int(time.time()),
         "model": model,
-        "choices": [{
-            "index": 0,
-            "delta": {"role": "assistant"},
-            "finish_reason": None
-        }]
+        "choices": [
+            {"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}
+        ],
     }
     yield f"data: {json.dumps(chunk)}\n\n"
-    
+
     # Stream each tool result
     for call in executed_calls:
         chunk = {
@@ -572,28 +599,24 @@ async def _stream_tool_results(
             "object": "chat.completion.chunk",
             "created": int(time.time()),
             "model": model,
-            "choices": [{
-                "index": 0,
-                "delta": {
-                    "content": json.dumps(call, ensure_ascii=False) + "\n"
-                },
-                "finish_reason": None
-            }]
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {"content": json.dumps(call, ensure_ascii=False) + "\n"},
+                    "finish_reason": None,
+                }
+            ],
         }
         yield f"data: {json.dumps(chunk)}\n\n"
         await asyncio.sleep(0.01)  # Small delay for streaming effect
-    
+
     # Send final chunk
     chunk = {
         "id": response_id,
         "object": "chat.completion.chunk",
         "created": int(time.time()),
         "model": model,
-        "choices": [{
-            "index": 0,
-            "delta": {},
-            "finish_reason": "tool_calls"
-        }]
+        "choices": [{"index": 0, "delta": {}, "finish_reason": "tool_calls"}],
     }
     yield f"data: {json.dumps(chunk)}\n\n"
     yield "data: [DONE]\n\n"

@@ -13,7 +13,6 @@ from jose import JWTError, jwt
 
 from app.core.config import settings
 
-
 # API Key header configuration
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
 
@@ -29,10 +28,10 @@ REFRESH_TOKEN_EXPIRE_DAYS = 30  # 30 days
 def get_api_secret_key() -> str:
     """
     Get API secret key from settings.
-    
+
     Returns:
         str: API secret key
-        
+
     Raises:
         RuntimeError: If API_SECRET_KEY is not configured
     """
@@ -48,20 +47,20 @@ def get_api_secret_key() -> str:
 async def verify_api_key(api_key: Optional[str] = Security(api_key_header)) -> str:
     """
     Verify API key from request header.
-    
+
     This function should be used as a dependency in protected endpoints:
-    
+
     Example:
         @router.post("/entities", dependencies=[Depends(verify_api_key)])
         async def create_entity(...):
             pass
-    
+
     Args:
         api_key: API key from X-API-Key header
-        
+
     Returns:
         str: Validated API key
-        
+
     Raises:
         HTTPException: 403 if API key is missing or invalid
     """
@@ -71,15 +70,14 @@ async def verify_api_key(api_key: Optional[str] = Security(api_key_header)) -> s
             detail="Missing API key. Include X-API-Key header in your request.",
             headers={"WWW-Authenticate": "ApiKey"},
         )
-    
+
     try:
         expected_key = get_api_secret_key()
     except RuntimeError as e:
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
-    
+
     # Use secrets.compare_digest to prevent timing attacks
     if not secrets.compare_digest(api_key, expected_key):
         raise HTTPException(
@@ -87,48 +85,50 @@ async def verify_api_key(api_key: Optional[str] = Security(api_key_header)) -> s
             detail="Invalid API key",
             headers={"WWW-Authenticate": "ApiKey"},
         )
-    
+
     return api_key
 
 
-async def optional_api_key(api_key: Optional[str] = Security(api_key_header)) -> Optional[str]:
+async def optional_api_key(
+    api_key: Optional[str] = Security(api_key_header),
+) -> Optional[str]:
     """
     Optional API key verification for endpoints that support both authenticated and public access.
-    
+
     Returns None if no key provided, validates if key is provided.
-    
+
     Args:
         api_key: API key from X-API-Key header
-        
+
     Returns:
         Optional[str]: Validated API key or None
-        
+
     Raises:
         HTTPException: 403 if API key is provided but invalid
     """
     if not api_key:
         return None
-    
+
     try:
         expected_key = get_api_secret_key()
     except RuntimeError:
         # If API_SECRET_KEY not configured, allow public access
         return None
-    
+
     if not secrets.compare_digest(api_key, expected_key):
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Invalid API key",
             headers={"WWW-Authenticate": "ApiKey"},
         )
-    
+
     return api_key
 
 
 def generate_api_key() -> str:
     """
     Generate a secure random API key.
-    
+
     Returns:
         str: URL-safe base64-encoded random key (256 bits)
     """
@@ -139,78 +139,84 @@ def generate_api_key() -> str:
 # JWT OAuth Token Functions
 # ============================================================================
 
+
 def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -> str:
     """
     Create JWT access token for OAuth authentication
-    
+
     Args:
         data: Payload data to encode (should include 'sub' for user email)
         expires_delta: Optional custom expiration time
-        
+
     Returns:
         str: Encoded JWT token
     """
     to_encode = data.copy()
-    
+
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
-    
+        expire = datetime.now(timezone.utc) + timedelta(
+            minutes=ACCESS_TOKEN_EXPIRE_MINUTES
+        )
+
     to_encode.update({"exp": expire, "iat": datetime.now(timezone.utc)})
-    
+
     # Use API secret key as JWT secret
     secret_key = get_api_secret_key()
     encoded_jwt = jwt.encode(to_encode, secret_key, algorithm=ALGORITHM)
-    
+
     return encoded_jwt
 
 
 def create_refresh_token(data: dict) -> str:
     """
     Create JWT refresh token for persistent authentication
-    
+
     Args:
         data: Payload data to encode (should include 'sub' for user email)
-        
+
     Returns:
         str: Encoded JWT refresh token
     """
     to_encode = data.copy()
     expire = datetime.now(timezone.utc) + timedelta(days=REFRESH_TOKEN_EXPIRE_DAYS)
-    to_encode.update({
-        "exp": expire,
-        "iat": datetime.now(timezone.utc),
-        "type": "refresh"  # Distinguish from access tokens
-    })
-    
+    to_encode.update(
+        {
+            "exp": expire,
+            "iat": datetime.now(timezone.utc),
+            "type": "refresh",  # Distinguish from access tokens
+        }
+    )
+
     # Use API secret key as JWT secret
     secret_key = get_api_secret_key()
     encoded_jwt = jwt.encode(to_encode, secret_key, algorithm=ALGORITHM)
-    
+
     return encoded_jwt
 
 
 async def verify_refresh_token(token: str) -> dict:
     """
     Verify JWT refresh token
-    
+
     Args:
         token: JWT refresh token
-        
+
     Returns:
         dict: Decoded token payload
-        
+
     Raises:
         HTTPException: 401 if token is invalid or expired
     """
     import logging
+
     logger = logging.getLogger(__name__)
-    
+
     try:
         secret_key = get_api_secret_key()
         payload = jwt.decode(token, secret_key, algorithms=[ALGORITHM])
-        
+
         # Verify it's a refresh token
         if payload.get("type") != "refresh":
             logger.warning("[Refresh Token] Not a refresh token")
@@ -219,13 +225,13 @@ async def verify_refresh_token(token: str) -> dict:
                 detail="Invalid token type",
                 headers={"WWW-Authenticate": "Bearer"},
             )
-        
+
         # Check expiration
         exp = payload.get("exp")
         if exp:
             exp_time = datetime.fromtimestamp(exp, tz=timezone.utc)
             now = datetime.now(timezone.utc)
-            
+
             if now > exp_time:
                 logger.warning("[Refresh Token] Token expired")
                 raise HTTPException(
@@ -233,10 +239,10 @@ async def verify_refresh_token(token: str) -> dict:
                     detail="Refresh token expired",
                     headers={"WWW-Authenticate": "Bearer"},
                 )
-        
+
         logger.info("[Refresh Token] ✓ Valid")
         return payload
-        
+
     except JWTError as e:
         logger.error(f"[Refresh Token] JWT Error: {str(e)}")
         raise HTTPException(
@@ -247,23 +253,24 @@ async def verify_refresh_token(token: str) -> dict:
 
 
 async def verify_access_token(
-    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme)
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(bearer_scheme),
 ) -> dict:
     """
     Verify JWT access token from Authorization: Bearer header
-    
+
     Args:
         credentials: Bearer token credentials from header
-        
+
     Returns:
         dict: Decoded token payload
-        
+
     Raises:
         HTTPException: 401 if token is missing or invalid
     """
     import logging
+
     logger = logging.getLogger(__name__)
-    
+
     # Test mode bypass — ONLY in development, NEVER in production.
     # Guards against accidentally leaving TESTING=true in deployed environments.
     if os.getenv("TESTING") == "true" and settings.environment == "development":
@@ -272,12 +279,12 @@ async def verify_access_token(
             "sub": "test@example.com",
             "email": "test@example.com",
             "name": "Test User",
-            "picture": "https://example.com/avatar.jpg"
+            "picture": "https://example.com/avatar.jpg",
         }
-    
+
     logger.info("[Token Verify] ========================================")
     logger.info(f"[Token Verify] Credentials present: {credentials is not None}")
-    
+
     if not credentials:
         logger.warning("[Token Verify] ✗ Missing authorization token")
         raise HTTPException(
@@ -285,19 +292,19 @@ async def verify_access_token(
             detail="Missing authorization token",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     token = credentials.credentials
     logger.info(f"[Token Verify] Token: {token[:20]}...")
-    
+
     try:
         secret_key = get_api_secret_key()
         logger.info("[Token Verify] Decoding token...")
         payload = jwt.decode(token, secret_key, algorithms=[ALGORITHM])
-        
-        logger.info(f"[Token Verify] ✓ Token decoded")
+
+        logger.info("[Token Verify] ✓ Token decoded")
         logger.info(f"[Token Verify]   sub: {payload.get('sub')}")
         logger.info(f"[Token Verify]   exp: {payload.get('exp')}")
-        
+
         # Check expiration
         exp = payload.get("exp")
         if exp:
@@ -305,7 +312,7 @@ async def verify_access_token(
             now = datetime.now(timezone.utc)
             logger.info(f"[Token Verify]   now: {now}")
             logger.info(f"[Token Verify]   exp_time: {exp_time}")
-            
+
             if now > exp_time:
                 logger.warning("[Token Verify] ✗ Token expired")
                 raise HTTPException(
@@ -313,10 +320,10 @@ async def verify_access_token(
                     detail="Token expired",
                     headers={"WWW-Authenticate": "Bearer"},
                 )
-        
+
         logger.info("[Token Verify] ✓ Token valid")
         return payload
-        
+
     except JWTError as e:
         logger.error(f"[Token Verify] ✗ JWT Error: {str(e)}")
         raise HTTPException(
@@ -327,8 +334,7 @@ async def verify_access_token(
     except RuntimeError as e:
         logger.error(f"[Token Verify] ✗ Runtime Error: {str(e)}")
         raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(e)
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
         )
 
 
@@ -345,6 +351,7 @@ def verify_auth(
     Raises HTTPException(500) if API_SECRET_KEY is not configured.
     """
     import logging
+
     logger = logging.getLogger(__name__)
 
     # Try API key first
@@ -366,7 +373,9 @@ def verify_auth(
     # Try JWT Bearer token
     if bearer:
         try:
-            payload = jwt.decode(bearer.credentials, get_api_secret_key(), algorithms=[ALGORITHM])
+            payload = jwt.decode(
+                bearer.credentials, get_api_secret_key(), algorithms=[ALGORITHM]
+            )
             return {
                 "authenticated": True,
                 "method": "jwt",

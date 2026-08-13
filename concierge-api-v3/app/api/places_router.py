@@ -28,24 +28,32 @@ def get_llm_service() -> LLMPlaceService:
 @router.get("/{place_id}/photos")
 async def get_place_photos(
     place_id: str,
-    max_photos: int = Query(10, ge=1, le=10, description="Maximum number of photos (1-10)"),
-    max_width: Optional[int] = Query(None, ge=400, le=4800, description="Maximum width in pixels (400-4800)"),
-    max_height: Optional[int] = Query(None, ge=400, le=4800, description="Maximum height in pixels (400-4800)"),
-    include_metadata: bool = Query(True, description="Include original dimensions and attributions"),
+    max_photos: int = Query(
+        10, ge=1, le=10, description="Maximum number of photos (1-10)"
+    ),
+    max_width: Optional[int] = Query(
+        None, ge=400, le=4800, description="Maximum width in pixels (400-4800)"
+    ),
+    max_height: Optional[int] = Query(
+        None, ge=400, le=4800, description="Maximum height in pixels (400-4800)"
+    ),
+    include_metadata: bool = Query(
+        True, description="Include original dimensions and attributions"
+    ),
     language: str = Query("pt-BR", description="Language code for attributions"),
-    service: LLMPlaceService = Depends(get_llm_service)
+    service: LLMPlaceService = Depends(get_llm_service),
 ):
     """
     Get restaurant photos from Google Places.
-    
+
     Returns photo URLs and optional metadata (dimensions, attributions).
     Photos are automatically resized if max_width or max_height specified.
-    
+
     **Example:**
     ```
     GET /api/v3/places/ChIJxxx/photos?max_photos=5&max_width=800
     ```
-    
+
     **Response:**
     ```json
     {
@@ -75,15 +83,15 @@ async def get_place_photos(
             max_width=max_width,
             max_height=max_height,
             include_metadata=include_metadata,
-            language=language
+            language=language,
         )
-        
+
         # Check for errors
         if "error" in result:
             raise HTTPException(status_code=400, detail=result["error"])
-        
+
         return result
-        
+
     except HTTPException:
         raise
     except Exception as e:

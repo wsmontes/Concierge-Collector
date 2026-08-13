@@ -8,7 +8,7 @@ Implements secure OAuth flow following best practices:
 """
 
 from fastapi import APIRouter, HTTPException, Depends, status, Request
-from fastapi.responses import RedirectResponse, HTMLResponse
+from fastapi.responses import RedirectResponse
 from pymongo.database import Database
 from datetime import datetime, timedelta, timezone
 import httpx
@@ -23,7 +23,10 @@ from app.core.config import settings
 from app.core.database import get_database
 from app.core.security import create_access_token, verify_access_token
 from app.models.user import (
-    User, UserInDB, OAuthTokens, UserAuthResponse, TokenRefreshRequest
+    User,
+    UserInDB,
+    UserAuthResponse,
+    TokenRefreshRequest,
 )
 
 # Setup logging
@@ -37,45 +40,50 @@ router = APIRouter(prefix="/auth", tags=["authentication"])
 def generate_pkce_pair() -> tuple[str, str]:
     """
     Generate PKCE code_verifier and code_challenge
-    
+
     Returns:
         tuple: (code_verifier, code_challenge)
     """
     # Generate random code_verifier (43-128 characters)
-    code_verifier = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode('utf-8').rstrip('=')
-    
+    code_verifier = (
+        base64.urlsafe_b64encode(secrets.token_bytes(32)).decode("utf-8").rstrip("=")
+    )
+
     # Create code_challenge (SHA256 hash of verifier)
-    challenge_bytes = hashlib.sha256(code_verifier.encode('utf-8')).digest()
-    code_challenge = base64.urlsafe_b64encode(challenge_bytes).decode('utf-8').rstrip('=')
-    
+    challenge_bytes = hashlib.sha256(code_verifier.encode("utf-8")).digest()
+    code_challenge = (
+        base64.urlsafe_b64encode(challenge_bytes).decode("utf-8").rstrip("=")
+    )
+
     return code_verifier, code_challenge
 
 
 def generate_state(state_data: str) -> str:
     """
     Generate signed state parameter for CSRF protection (Stateless)
-    
+
     Args:
         state_data: Data to sign (code_verifier|frontend_url)
-        
+
     Returns:
         str: JWT signed state
     """
     from app.core.security import ALGORITHM
-    
+
     expires = datetime.now(timezone.utc) + timedelta(minutes=10)
     payload = {
         "sd": state_data,
         "exp": expires,
         "iat": datetime.now(timezone.utc),
-        "type": "oauth_state"
+        "type": "oauth_state",
     }
-    
+
     # Use API secret key as JWT secret
     from app.core.security import get_api_secret_key
+
     secret_key = get_api_secret_key()
     state = jwt.encode(payload, secret_key, algorithm=ALGORITHM)
-    
+
     logger.info(f"[OAuth] Generated stateless state (expires: {expires})")
     return state
 
@@ -83,28 +91,28 @@ def generate_state(state_data: str) -> str:
 def verify_state(state: str) -> Optional[str]:
     """
     Verify signed state parameter
-    
+
     Args:
         state: JWT signed state from callback
-        
+
     Returns:
         str: code_verifier data if valid, None if invalid/expired
     """
     from app.core.security import ALGORITHM, get_api_secret_key, JWTError
-    
+
     try:
         secret_key = get_api_secret_key()
         payload = jwt.decode(state, secret_key, algorithms=[ALGORITHM])
-        
+
         # Verify it's an OAuth state token
         if payload.get("type") != "oauth_state":
             logger.warning("[OAuth] Invalid state token type")
             return None
-            
+
         state_data = payload.get("sd")
         logger.info("[OAuth] Stateless state verified")
         return state_data
-        
+
     except JWTError as e:
         logger.error(f"[OAuth] State validation failed: {str(e)}")
         return None
@@ -141,7 +149,7 @@ def create_or_update_user(db: Database, user_data: dict) -> UserInDB:
         update_data = {
             "name": user_data["name"],
             "picture": user_data.get("picture"),
-            "last_login": datetime.now(timezone.utc)
+            "last_login": datetime.now(timezone.utc),
         }
 
         # Auto-authorize Lotier users and promote to admin if not already
@@ -149,7 +157,9 @@ def create_or_update_user(db: Database, user_data: dict) -> UserInDB:
             if not existing_user.authorized:
                 update_data["authorized"] = True
                 existing_user.authorized = True
-                logger.info(f"[OAuth] Auto-authorized existing user from domain: {user_data['email']}")
+                logger.info(
+                    f"[OAuth] Auto-authorized existing user from domain: {user_data['email']}"
+                )
             if getattr(existing_user, "role", "curator") != "admin":
                 update_data["role"] = "admin"
                 logger.info(f"[OAuth] Promoted {user_data['email']} to admin")
@@ -158,8 +168,7 @@ def create_or_update_user(db: Database, user_data: dict) -> UserInDB:
             update_data["refresh_token"] = user_data["refresh_token"]
 
         db.users.update_one(
-            {"google_id": user_data["google_id"]},
-            {"$set": update_data}
+            {"google_id": user_data["google_id"]}, {"$set": update_data}
         )
 
         existing_user.name = user_data["name"]
@@ -167,7 +176,9 @@ def create_or_update_user(db: Database, user_data: dict) -> UserInDB:
         existing_user.last_login = datetime.now(timezone.utc)
         if user_data.get("refresh_token"):
             existing_user.refresh_token = user_data["refresh_token"]
-        logger.info(f"[OAuth] Updated existing user: {existing_user.email} (name, picture, last_login)")
+        logger.info(
+            f"[OAuth] Updated existing user: {existing_user.email} (name, picture, last_login)"
+        )
         return existing_user
     else:
         new_user = User(
@@ -179,35 +190,36 @@ def create_or_update_user(db: Database, user_data: dict) -> UserInDB:
             role="admin" if is_lotier else "curator",
             created_at=datetime.now(timezone.utc),
             last_login=datetime.now(timezone.utc),
-            refresh_token=user_data.get("refresh_token")
+            refresh_token=user_data.get("refresh_token"),
         )
         result = db.users.insert_one(new_user.dict())
         user_dict = new_user.dict()
         user_dict["_id"] = str(result.inserted_id)
 
-        auth_status = "True (Auto-authorized, admin)" if is_lotier else "False (curator)"
-        logger.info(f"[OAuth] Created new user: {new_user.email} (authorized={auth_status})")
+        auth_status = (
+            "True (Auto-authorized, admin)" if is_lotier else "False (curator)"
+        )
+        logger.info(
+            f"[OAuth] Created new user: {new_user.email} (authorized={auth_status})"
+        )
         return UserInDB(**user_dict)
 
 
 @router.get("/google")
-def google_oauth_init(
-    callback_url: Optional[str] = None,
-    request: Request = None
-):
+def google_oauth_init(callback_url: Optional[str] = None, request: Request = None):
     """
     Initiate Google OAuth 2.0 flow with PKCE
-    
+
     Flow:
     1. Determine frontend URL (from parameter, referer, or default)
     2. Generate PKCE code_verifier and code_challenge
     3. Generate state for CSRF protection (includes frontend URL)
     4. Redirect to Google OAuth consent screen
-    
+
     Args:
         callback_url: Optional frontend URL to redirect after OAuth
         request: FastAPI request object to extract referer
-    
+
     Returns:
         RedirectResponse: Redirect to Google OAuth URL
     """
@@ -215,23 +227,24 @@ def google_oauth_init(
     if not settings.google_oauth_client_id:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="OAuth not configured. Missing GOOGLE_OAUTH_CLIENT_ID"
+            detail="OAuth not configured. Missing GOOGLE_OAUTH_CLIENT_ID",
         )
-    
+
     if not settings.google_oauth_redirect_uri:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="OAuth not configured. Missing GOOGLE_OAUTH_REDIRECT_URI"
+            detail="OAuth not configured. Missing GOOGLE_OAUTH_REDIRECT_URI",
         )
-    
+
     # Determine frontend URL for final redirect
     frontend_redirect_url = callback_url
     if not frontend_redirect_url and request:
         # Extract origin from Referer header (works for any domain: Render, localhost, custom)
-        referer = request.headers.get('referer', '')
+        referer = request.headers.get("referer", "")
         if referer:
             try:
                 from urllib.parse import urlparse
+
                 parsed = urlparse(referer)
                 frontend_redirect_url = f"{parsed.scheme}://{parsed.netloc}"
             except Exception:
@@ -242,32 +255,36 @@ def google_oauth_init(
     # Validate frontend_redirect_url against config-driven trusted origins
     trusted_origins = set(settings.trusted_callback_origins_list)
     # Also accept localhost dev URLs (not stored in production config)
-    trusted_origins.update({
-        "http://localhost:3000",
-        "http://localhost:5500",
-        "http://127.0.0.1:5500",
-        "http://127.0.0.1:5501",
-        "http://localhost:8080",
-    })
+    trusted_origins.update(
+        {
+            "http://localhost:3000",
+            "http://localhost:5500",
+            "http://127.0.0.1:5500",
+            "http://127.0.0.1:5501",
+            "http://localhost:8080",
+        }
+    )
     if frontend_redirect_url not in trusted_origins:
-        logger.warning(f"[OAuth] Untrusted callback_url rejected: {frontend_redirect_url}")
+        logger.warning(
+            f"[OAuth] Untrusted callback_url rejected: {frontend_redirect_url}"
+        )
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail=f"Untrusted callback URL: {frontend_redirect_url}"
+            detail=f"Untrusted callback URL: {frontend_redirect_url}",
         )
 
     # Generate PKCE pair
     code_verifier, code_challenge = generate_pkce_pair()
-    
+
     # Generate state and store code_verifier + frontend URL
     state_data = f"{code_verifier}|{frontend_redirect_url}"
     state = generate_state(state_data)
-    
-    logger.info(f"[OAuth] Initiating flow")
+
+    logger.info("[OAuth] Initiating flow")
     logger.info(f"[OAuth] redirect_uri: {settings.google_oauth_redirect_uri}")
     logger.info(f"[OAuth] frontend_redirect_url: {frontend_redirect_url}")
-    logger.info(f"[OAuth] PKCE challenge generated")
-    
+    logger.info("[OAuth] PKCE challenge generated")
+
     # Build Google OAuth URL
     google_oauth_url = (
         "https://accounts.google.com/o/oauth2/v2/auth"
@@ -281,7 +298,7 @@ def google_oauth_init(
         f"&code_challenge={code_challenge}"
         "&code_challenge_method=S256"
     )
-    
+
     return RedirectResponse(url=google_oauth_url)
 
 
@@ -290,11 +307,11 @@ def google_oauth_callback(
     code: Optional[str] = None,
     state: Optional[str] = None,
     error: Optional[str] = None,
-    db: Database = Depends(get_database)
+    db: Database = Depends(get_database),
 ):
     """
     Handle OAuth callback from Google
-    
+
     Flow:
     1. Verify state (CSRF protection)
     2. Exchange authorization code for tokens
@@ -302,23 +319,23 @@ def google_oauth_callback(
     4. Create/update user in MongoDB
     5. Generate JWT for app session
     6. Redirect to frontend with tokens
-    
+
     Args:
         code: Authorization code from Google
         state: State parameter for CSRF validation
         error: Error from Google (if user cancelled)
-        
+
     Returns:
         RedirectResponse: Redirect to frontend with tokens or error
     """
     logger.info("=" * 60)
-    logger.info(f"[OAuth] ⚡ CALLBACK ENDPOINT HIT")
+    logger.info("[OAuth] ⚡ CALLBACK ENDPOINT HIT")
     logger.info("=" * 60)
-    logger.info(f"[OAuth] Callback received")
+    logger.info("[OAuth] Callback received")
     logger.info(f"[OAuth]   code: {'present' if code else 'MISSING'}")
     logger.info(f"[OAuth]   state: {'present' if state else 'MISSING'}")
     logger.info(f"[OAuth]   error: {error if error else 'none'}")
-    
+
     # Handle user cancellation or Google errors
     if error:
         error_msg = error
@@ -331,43 +348,43 @@ def google_oauth_callback(
             try:
                 state_data = verify_state(state)
                 if state_data:
-                    parts = state_data.split('|', 1)
+                    parts = state_data.split("|", 1)
                     if len(parts) > 1:
                         error_redirect_url = parts[1]
             except Exception:
                 pass
         return RedirectResponse(url=f"{error_redirect_url}/?auth_error={error_msg}")
-    
+
     # Validate required parameters
     if not code or not state:
         logger.error("[OAuth] Missing code or state parameter")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Missing code or state parameter"
+            detail="Missing code or state parameter",
         )
-    
+
     # Verify state and get code_verifier + frontend URL (CSRF protection)
     state_data = verify_state(state)
     if not state_data:
         logger.error("[OAuth] Invalid or expired state parameter")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid or expired state parameter (CSRF check failed)"
+            detail="Invalid or expired state parameter (CSRF check failed)",
         )
-    
+
     # Extract code_verifier and frontend_redirect_url from state
-    parts = state_data.split('|', 1)
+    parts = state_data.split("|", 1)
     code_verifier = parts[0]
     frontend_redirect_url = parts[1] if len(parts) > 1 else settings.frontend_url
-    
+
     logger.info(f"[OAuth] Frontend redirect URL from state: {frontend_redirect_url}")
-    
+
     # Exchange authorization code for tokens
     try:
         logger.info("[OAuth] Exchanging code for tokens...")
         logger.info(f"[OAuth]   redirect_uri: {settings.google_oauth_redirect_uri}")
-        logger.info(f"[OAuth]   using PKCE code_verifier")
-        
+        logger.info("[OAuth]   using PKCE code_verifier")
+
         with httpx.Client() as client:
             token_response = client.post(
                 "https://oauth2.googleapis.com/token",
@@ -377,65 +394,72 @@ def google_oauth_callback(
                     "client_secret": settings.google_oauth_client_secret,
                     "redirect_uri": settings.google_oauth_redirect_uri,
                     "grant_type": "authorization_code",
-                    "code_verifier": code_verifier
+                    "code_verifier": code_verifier,
                 },
-                headers={"Content-Type": "application/x-www-form-urlencoded"}
+                headers={"Content-Type": "application/x-www-form-urlencoded"},
             )
-            
+
             if token_response.status_code != 200:
                 error_data = token_response.json()
-                error_desc = error_data.get('error_description', error_data.get('error', 'Unknown error'))
+                error_desc = error_data.get(
+                    "error_description", error_data.get("error", "Unknown error")
+                )
                 logger.error(f"[OAuth] Token exchange failed: {error_desc}")
                 logger.error(f"[OAuth] Response: {error_data}")
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Failed to exchange authorization code: {error_desc}"
+                    detail=f"Failed to exchange authorization code: {error_desc}",
                 )
-            
+
             token_data = token_response.json()
             logger.info("[OAuth] ✓ Tokens received from Google")
-            
+
             # Get user info from Google
             logger.info("[OAuth] Fetching user info...")
             userinfo_response = client.get(
                 "https://www.googleapis.com/oauth2/v2/userinfo",
-                headers={"Authorization": f"Bearer {token_data['access_token']}"}
+                headers={"Authorization": f"Bearer {token_data['access_token']}"},
             )
-            
+
             if userinfo_response.status_code != 200:
-                logger.error(f"[OAuth] Failed to get user info: {userinfo_response.status_code}")
+                logger.error(
+                    f"[OAuth] Failed to get user info: {userinfo_response.status_code}"
+                )
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Failed to get user info from Google"
+                    detail="Failed to get user info from Google",
                 )
-            
+
             user_info = userinfo_response.json()
             logger.info(f"[OAuth] ✓ User info retrieved: {user_info.get('email')}")
-            
+
             # Store Google refresh token if available
-            google_refresh_token = token_data.get('refresh_token')
+            google_refresh_token = token_data.get("refresh_token")
             if google_refresh_token:
                 logger.info("[OAuth] ✓ Refresh token received from Google")
-            
+
     except httpx.RequestError as e:
         logger.error(f"[OAuth] HTTP request failed: {str(e)}")
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Failed to communicate with Google: {str(e)}"
+            detail=f"Failed to communicate with Google: {str(e)}",
         )
-    
+
     # Create or update user in database (include refresh token)
-    user = create_or_update_user(db, {
-        "email": user_info["email"],
-        "google_id": user_info["id"],
-        "name": user_info["name"],
-        "picture": user_info.get("picture"),
-        "refresh_token": google_refresh_token
-    })
-    
+    user = create_or_update_user(
+        db,
+        {
+            "email": user_info["email"],
+            "google_id": user_info["id"],
+            "name": user_info["name"],
+            "picture": user_info.get("picture"),
+            "refresh_token": google_refresh_token,
+        },
+    )
+
     logger.info(f"[OAuth] User: {user.email}")
     logger.info(f"[OAuth]   authorized: {user.authorized}")
-    
+
     # Create/update curator profile automatically
     if user.authorized:
         curator_data = {
@@ -444,17 +468,20 @@ def google_oauth_callback(
             "email": user.email,
             "picture": user.picture,
             "google_id": user.google_id,
-            "updatedAt": datetime.now(timezone.utc)
+            "updatedAt": datetime.now(timezone.utc),
         }
-        
+
         # Upsert curator in curators collection
         db.curators.update_one(
             {"curator_id": user.email},
-            {"$set": curator_data, "$setOnInsert": {"createdAt": datetime.now(timezone.utc)}},
-            upsert=True
+            {
+                "$set": curator_data,
+                "$setOnInsert": {"createdAt": datetime.now(timezone.utc)},
+            },
+            upsert=True,
         )
         logger.info(f"[OAuth] ✓ Curator profile created/updated for {user.email}")
-    
+
     # Check if user is authorized
     if not user.authorized:
         logger.warning(f"[OAuth] User {user.email} is NOT authorized")
@@ -462,20 +489,25 @@ def google_oauth_callback(
         redirect_url = f"{frontend_redirect_url}/?auth_error=not_authorized&user_email={user.email}"
         logger.info(f"[OAuth] Redirecting unauthorized user to: {redirect_url}")
         return RedirectResponse(url=redirect_url)
-    
+
     # User is authorized - create JWT tokens for app session
-    logger.info(f"[OAuth] Creating JWT tokens...")
+    logger.info("[OAuth] Creating JWT tokens...")
     access_token = create_access_token(
-        data={"sub": user.email, "google_id": user.google_id, "role": getattr(user, "role", "curator")},
-        expires_delta=timedelta(minutes=settings.access_token_expire_minutes)
+        data={
+            "sub": user.email,
+            "google_id": user.google_id,
+            "role": getattr(user, "role", "curator"),
+        },
+        expires_delta=timedelta(minutes=settings.access_token_expire_minutes),
     )
-    
+
     # Create refresh token for persistent login
     from app.core.security import create_refresh_token
+
     refresh_token = create_refresh_token(data={"sub": user.email})
-    
-    logger.info(f"[OAuth] ✓ JWT tokens created")
-    
+
+    logger.info("[OAuth] ✓ JWT tokens created")
+
     # Redirect to frontend with tokens in URL
     # Using query params because frontend may be on different port/domain
     redirect_url = (
@@ -486,22 +518,22 @@ def google_oauth_callback(
         f"&user_email={user.email}"
         f"&user_name={user.name}"
     )
-    
+
     logger.info(f"[OAuth] ✓ Redirecting to frontend: {frontend_redirect_url}")
-    
+
     return RedirectResponse(url=redirect_url)
 
 
 @router.get("/verify", response_model=UserAuthResponse)
 def verify_token(
     token_data: dict = Depends(verify_access_token),
-    db: Database = Depends(get_database)
+    db: Database = Depends(get_database),
 ):
     """
     Verify JWT access token and return user data
-    
+
     Requires: Authorization: Bearer <token> header
-    
+
     Returns:
         UserAuthResponse: User data if token is valid and user is authorized
     """
@@ -509,92 +541,95 @@ def verify_token(
     if not email:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid token: missing subject"
+            detail="Invalid token: missing subject",
         )
-    
+
     user = get_user_by_email(db, email)
     if not user:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
-    
+
     if not user.authorized:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="User not authorized"
+            status_code=status.HTTP_403_FORBIDDEN, detail="User not authorized"
         )
-    
+
     logger.info(f"[OAuth] Token verified for user: {user.email}")
-    
+
     return UserAuthResponse(
         email=user.email,
         name=user.name,
         picture=user.picture,
         authorized=user.authorized,
-        role=getattr(user, "role", "curator")
+        role=getattr(user, "role", "curator"),
     )
 
 
 @router.post("/refresh")
 async def refresh_access_token(
-    request: TokenRefreshRequest,
-    db: Database = Depends(get_database)
+    request: TokenRefreshRequest, db: Database = Depends(get_database)
 ):
     """
     Refresh access token using a valid refresh token
-    
+
     Request body:
         refresh_token: JWT refresh token
-    
+
     Returns:
         New access token and refresh token
     """
-    from app.core.security import verify_refresh_token, create_access_token, create_refresh_token
-    
+    from app.core.security import (
+        verify_refresh_token,
+        create_access_token,
+        create_refresh_token,
+    )
+
     # Verify refresh token
     token_data = await verify_refresh_token(request.refresh_token)
-    
+
     email = token_data.get("sub")
     if not email:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid refresh token: missing subject"
+            detail="Invalid refresh token: missing subject",
         )
-    
+
     # Get user from database
     user = get_user_by_email(db, email)
     if not user:
         raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail="User not found"
+            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
         )
-    
+
     if not user.authorized:
         raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="User not authorized"
+            status_code=status.HTTP_403_FORBIDDEN, detail="User not authorized"
         )
-    
+
     # Create new tokens
-    new_access_token = create_access_token(data={"sub": user.email, "role": getattr(user, "role", "curator")})
+    new_access_token = create_access_token(
+        data={"sub": user.email, "role": getattr(user, "role", "curator")}
+    )
     new_refresh_token = create_refresh_token(data={"sub": user.email})
-    
+
     logger.info(f"[OAuth] Token refreshed for user: {user.email}")
-    
+
     return {
         "access_token": new_access_token,
         "refresh_token": new_refresh_token,
-        "expires_in": settings.access_token_expire_minutes * 60,  # Return expiry time in seconds
+        "expires_in": settings.access_token_expire_minutes
+        * 60,  # Return expiry time in seconds
         "token_type": "bearer",
         "user": UserAuthResponse(
             email=user.email,
             name=user.name,
             picture=user.picture,
             authorized=user.authorized,
-            role=getattr(user, "role", "curator")
-        )
+            role=getattr(user, "role", "curator"),
+        ),
     }
+
 
 @router.post("/logout")
 def logout(token_data: dict = Depends(verify_access_token)):
@@ -625,10 +660,12 @@ def dev_login(db: Database = Depends(get_database)):
 
     # 🔒 CRITICAL: Only available in development
     if settings.environment != "development":
-        logger.warning(f"[DevLogin] ⛔ Blocked in production (ENVIRONMENT={settings.environment})")
+        logger.warning(
+            f"[DevLogin] ⛔ Blocked in production (ENVIRONMENT={settings.environment})"
+        )
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
-            detail="Dev login only available in development environment"
+            detail="Dev login only available in development environment",
         )
 
     logger.info("[DevLogin] 🔧 Development login requested")
@@ -642,6 +679,7 @@ def dev_login(db: Database = Depends(get_database)):
     if not user:
         # Create dev user directly in MongoDB (skip OAuth fields)
         import uuid
+
         dev_user = {
             "email": dev_email,
             "google_id": f"dev-{uuid.uuid4().hex[:16]}",
@@ -651,7 +689,7 @@ def dev_login(db: Database = Depends(get_database)):
             "role": "admin",
             "created_at": datetime.now(timezone.utc),
             "last_login": datetime.now(timezone.utc),
-            "refresh_token": None
+            "refresh_token": None,
         }
         result = db.users.insert_one(dev_user)
         dev_user["_id"] = str(result.inserted_id)
@@ -660,32 +698,35 @@ def dev_login(db: Database = Depends(get_database)):
         # Also create curator profile
         db.curators.update_one(
             {"curator_id": dev_email},
-            {"$set": {
-                "curator_id": dev_email,
-                "name": dev_name,
-                "email": dev_email,
-                "picture": None,
-                "updatedAt": datetime.now(timezone.utc),
-                "createdAt": datetime.now(timezone.utc)
-            }},
-            upsert=True
+            {
+                "$set": {
+                    "curator_id": dev_email,
+                    "name": dev_name,
+                    "email": dev_email,
+                    "picture": None,
+                    "updatedAt": datetime.now(timezone.utc),
+                    "createdAt": datetime.now(timezone.utc),
+                }
+            },
+            upsert=True,
         )
     else:
         # Update last_login
         db.users.update_one(
-            {"email": dev_email},
-            {"$set": {"last_login": datetime.now(timezone.utc)}}
+            {"email": dev_email}, {"$set": {"last_login": datetime.now(timezone.utc)}}
         )
         logger.info(f"[DevLogin] ✓ Using existing dev user: {dev_email}")
 
     # Generate real JWT tokens
     access_token = create_access_token(
         data={"sub": dev_email, "google_id": f"dev-{dev_email}", "role": "admin"},
-        expires_delta=timedelta(minutes=settings.access_token_expire_minutes)
+        expires_delta=timedelta(minutes=settings.access_token_expire_minutes),
     )
     refresh_token = create_refresh_token(data={"sub": dev_email})
 
-    logger.info(f"[DevLogin] ✓ Tokens generated (expires in {settings.access_token_expire_minutes}m)")
+    logger.info(
+        f"[DevLogin] ✓ Tokens generated (expires in {settings.access_token_expire_minutes}m)"
+    )
 
     return {
         "access_token": access_token,
@@ -693,5 +734,5 @@ def dev_login(db: Database = Depends(get_database)):
         "expires_in": settings.access_token_expire_minutes * 60,
         "token_type": "bearer",
         "user_email": dev_email,
-        "user_name": dev_name
+        "user_name": dev_name,
     }

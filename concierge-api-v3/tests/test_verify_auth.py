@@ -1,6 +1,7 @@
 """Tests for shared verify_auth dependency."""
+
 import pytest
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 from fastapi import HTTPException
 
 
@@ -38,6 +39,7 @@ class TestVerifyAuth:
 
         token = create_access_token(data={"sub": "test@example.com"})
         from fastapi.security import HTTPAuthorizationCredentials
+
         creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
 
         result = verify_auth(api_key=None, bearer=creds)
@@ -58,7 +60,10 @@ class TestVerifyAuth:
     def test_api_key_misconfigured_returns_500(self):
         """Missing API_SECRET_KEY returns 500 with diagnostic, not silent skip."""
         from app.core.security import verify_auth
-        with patch("app.core.security.get_api_secret_key", side_effect=RuntimeError("not set")):
+
+        with patch(
+            "app.core.security.get_api_secret_key", side_effect=RuntimeError("not set")
+        ):
             with pytest.raises(HTTPException) as exc:
                 verify_auth(api_key="anything", bearer=None)
             assert exc.value.status_code == 500
@@ -94,8 +99,12 @@ class TestVerifyAuth:
         from app.core.security import verify_auth
         from fastapi.security import HTTPAuthorizationCredentials
 
-        creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials="some.jwt.here")
-        with patch("app.core.security.get_api_secret_key", side_effect=RuntimeError("not set")):
+        creds = HTTPAuthorizationCredentials(
+            scheme="Bearer", credentials="some.jwt.here"
+        )
+        with patch(
+            "app.core.security.get_api_secret_key", side_effect=RuntimeError("not set")
+        ):
             with pytest.raises(HTTPException) as exc:
                 verify_auth(api_key=None, bearer=creds)
             assert exc.value.status_code == 500

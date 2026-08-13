@@ -1,11 +1,11 @@
 """
 Test configuration and fixtures
 """
+
 import pytest
 import pytest_asyncio
 from fastapi.testclient import TestClient
 from pymongo import MongoClient
-from datetime import datetime, timezone
 import os
 from pathlib import Path
 
@@ -16,13 +16,16 @@ from pathlib import Path
 # então a poluição conhecida precisa sair ANTES do load_dotenv carregar os
 # valores reais do .env; exportações reais (chave/base_url legítimas) são
 # preservadas.
-if ("localhost:1234" in os.environ.get("OPENAI_BASE_URL", "")
-        or os.environ.get("OPENAI_API_KEY", "").strip().lower() == "lm-studio"):
+if (
+    "localhost:1234" in os.environ.get("OPENAI_BASE_URL", "")
+    or os.environ.get("OPENAI_API_KEY", "").strip().lower() == "lm-studio"
+):
     for _var in ("OPENAI_BASE_URL", "OPENAI_API_KEY", "OPENAI_MODEL"):
         os.environ.pop(_var, None)
 
 # Load .env file before importing app
 from dotenv import load_dotenv
+
 env_path = Path(__file__).parent.parent / ".env"
 load_dotenv(env_path)
 
@@ -31,10 +34,12 @@ load_dotenv(env_path)
 # no import, e get_database/lifespan seguem o settings. Sem isso, mongo tests
 # inserem/apagam docs no banco real e asserts dependem do volume de produção
 # (o incidente do '0-' prefix no review 30).
-os.environ["MONGODB_DB_NAME"] = f"{os.environ.get('MONGODB_DB_NAME', 'concierge-collector')}-test"
+os.environ["MONGODB_DB_NAME"] = (
+    f"{os.environ.get('MONGODB_DB_NAME', 'concierge-collector')}-test"
+)
 
-from main import app
-from app.core.config import settings
+from main import app  # noqa: E402  (import DEPOIS do setup de env acima)
+from app.core.config import settings  # noqa: E402
 
 
 @pytest.fixture(scope="session")
@@ -88,7 +93,11 @@ def clean_test_curations(test_db):
 @pytest.fixture
 def test_google_api_key():
     """Get Google Places API key from settings for integration tests"""
-    return settings.google_places_api_key if hasattr(settings, 'google_places_api_key') else None
+    return (
+        settings.google_places_api_key
+        if hasattr(settings, "google_places_api_key")
+        else None
+    )
 
 
 @pytest.fixture
@@ -104,7 +113,7 @@ def pytest_addoption(parser):
         "--run-integration",
         action="store_true",
         default=False,
-        help="Run integration tests that hit external APIs"
+        help="Run integration tests that hit external APIs",
     )
 
 
@@ -115,10 +124,7 @@ def sample_entity():
         "entity_id": "test_restaurant_001",
         "type": "restaurant",
         "name": "Test Restaurant",
-        "data": {
-            "address": "123 Test St",
-            "cuisine": "Italian"
-        }
+        "data": {"address": "123 Test St", "cuisine": "Italian"},
     }
 
 
@@ -130,13 +136,8 @@ def sample_curation():
         "entity_id": "test_restaurant_001",
         "curator_id": "test_curator",
         "status": "draft",
-        "curator": {
-            "id": "test_curator",
-            "name": "Test Curator"
-        },
-        "data": {
-            "notes": "Test notes"
-        }
+        "curator": {"id": "test_curator", "name": "Test Curator"},
+        "data": {"notes": "Test notes"},
     }
 
 
@@ -149,15 +150,14 @@ async def async_client():
     """Async test client for testing async endpoints"""
     from httpx import ASGITransport, AsyncClient
     from app.core.database import connect_to_mongo, _client
-    
+
     # Ensure MongoDB is connected for async tests
     if _client is None:
         connect_to_mongo()
-    
+
     # Use ASGITransport to mount the FastAPI app
     async with AsyncClient(
-        transport=ASGITransport(app=app),
-        base_url="http://test"
+        transport=ASGITransport(app=app), base_url="http://test"
     ) as ac:
         yield ac
 

@@ -5,7 +5,7 @@ Entity endpoints - CRUD operations
 import re
 
 from fastapi import APIRouter, HTTPException, Header, Query, Depends, Request
-from typing import Optional, List
+from typing import Optional
 from datetime import datetime, timezone
 from bson import ObjectId
 import logging
@@ -14,13 +14,20 @@ from pymongo.errors import DuplicateKeyError
 from pymongo.database import Database
 
 from app.models.schemas import (
-    Entity, EntityCreate, EntityUpdate, PaginatedResponse, ErrorResponse,
-    BulkEntityCreate, BulkOperationResponse, BulkItemError
+    Entity,
+    EntityCreate,
+    EntityUpdate,
+    PaginatedResponse,
+    BulkEntityCreate,
+    BulkOperationResponse,
+    BulkItemError,
 )
 from app.core.database import get_database
 from app.core.query_utils import resolve_after_id
 from app.models.user import has_role
-from app.core.security import api_key_header, bearer_scheme, get_api_secret_key, verify_auth
+from app.core.security import (
+    verify_auth,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -31,34 +38,31 @@ router = APIRouter(prefix="/entities", tags=["entities"])
 def create_entity(
     entity: EntityCreate,
     db: Database = Depends(get_database),
-    auth: dict = Depends(verify_auth)
+    auth: dict = Depends(verify_auth),
 ):
     """Create new entity or update if exists"""
     # Check if exists
     existing = db.entities.find_one({"_id": entity.entity_id})
-    
+
     if existing:
         # Merge data
         doc = entity.model_dump(exclude_unset=True)
-        
+
         if "data" in doc and "data" in existing:
             existing_data = existing.get("data") or {}
             new_data = doc.get("data") or {}
             doc["data"] = {**existing_data, **new_data}
-        
+
         doc["updatedAt"] = datetime.now(timezone.utc)
         doc["version"] = existing.get("version", 1) + 1
         doc.pop("createdAt", None)
         doc.pop("createdBy", None)
-        
-        db.entities.update_one(
-            {"_id": entity.entity_id},
-            {"$set": doc}
-        )
-        
+
+        db.entities.update_one({"_id": entity.entity_id}, {"$set": doc})
+
         result = db.entities.find_one({"_id": entity.entity_id})
         return Entity(**result)
-    
+
     else:
         # Create new
         doc = entity.model_dump()
@@ -66,9 +70,9 @@ def create_entity(
         doc["createdAt"] = datetime.now(timezone.utc)
         doc["updatedAt"] = datetime.now(timezone.utc)
         doc["version"] = 1
-        
+
         db.entities.insert_one(doc)
-        
+
         result = db.entities.find_one({"_id": entity.entity_id})
         return Entity(**result)
 
@@ -77,6 +81,7 @@ def entity_query(entity_id: str) -> dict:
     """Resolve entidades por _id em ambos os formatos coexistentes no banco:
     ObjectId (bulk imports), string (criadas via API) ou campo entity_id (slug)."""
     from bson import ObjectId
+
     # ordem DETERMINÍSTICA: _id string exato → slug → ObjectId (hex válido)
     # resolve o doc certo quando um slug 24-hex coexiste com um ObjectId
     q = [{"_id": entity_id}, {"entity_id": entity_id}]
@@ -100,16 +105,13 @@ def find_entity(db: Database, entity_id: str):
 
 
 @router.get("/{entity_id}", response_model=Entity)
-def get_entity(
-    entity_id: str,
-    db: Database = Depends(get_database)
-):
+def get_entity(entity_id: str, db: Database = Depends(get_database)):
     """Get entity by ID"""
     result = find_entity(db, entity_id)
-    
+
     if not result:
         raise HTTPException(status_code=404, detail=f"Entity {entity_id} not found")
-    
+
     return Entity(**result)
 
 
@@ -119,24 +121,23 @@ def update_entity(
     updates: EntityUpdate,
     if_match: Optional[str] = Header(None, alias="If-Match"),
     db: Database = Depends(get_database),
-    auth: dict = Depends(verify_auth)
+    auth: dict = Depends(verify_auth),
 ):
     """Update entity with optimistic locking"""
     if not if_match:
-        raise HTTPException(
-            status_code=428,
-            detail="If-Match header required"
-        )
-    
+        raise HTTPException(status_code=428, detail="If-Match header required")
+
     try:
         current_version = int(if_match.strip('"'))
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid If-Match")
-    
-    update_data = {k: v for k, v in updates.model_dump(exclude_unset=True).items() if v is not None}
+
+    update_data = {
+        k: v for k, v in updates.model_dump(exclude_unset=True).items() if v is not None
+    }
     update_data["updatedAt"] = datetime.now(timezone.utc)
     update_data["version"] = current_version + 1
-    
+
     # CAS ordenado: string _id primeiro (determinístico), depois slug, depois
     # ObjectId — 1 round-trip no caso comum; o filtro de version garante o
     # doc certo mesmo com twins
@@ -148,14 +149,14 @@ def update_entity(
         result = db.entities.find_one_and_update(
             {**candidate, "version": current_version},
             {"$set": update_data},
-            return_document=True
+            return_document=True,
         )
         if result:
             break
-    
+
     if not result:
         raise HTTPException(status_code=409, detail="Version conflict or not found")
-    
+
     return Entity(**result)
 
 
@@ -163,17 +164,17 @@ def update_entity(
 def delete_entity(
     entity_id: str,
     db: Database = Depends(get_database),
-    auth: dict = Depends(verify_auth)
+    auth: dict = Depends(verify_auth),
 ):
     """Delete entity"""
     resolved = find_entity(db, entity_id)
     if not resolved:
         raise HTTPException(status_code=404, detail=f"Entity {entity_id} not found")
     result = db.entities.delete_one({"_id": resolved["_id"]})
-    
+
     if result.deleted_count == 0:
         raise HTTPException(status_code=404, detail=f"Entity {entity_id} not found")
-    
+
     return None
 
 
@@ -181,12 +182,22 @@ def delete_entity(
 def list_entities(
     type: Optional[str] = Query(None),
     name: Optional[str] = Query(None),
-    status: Optional[str] = Query(None, description="Filter by entity status (active/archived/...)"),
-    since: Optional[str] = Query(None, description="ISO timestamp - only return entities updated after this time"),
+    status: Optional[str] = Query(
+        None, description="Filter by entity status (active/archived/...)"
+    ),
+    since: Optional[str] = Query(
+        None, description="ISO timestamp - only return entities updated after this time"
+    ),
     limit: int = Query(50, ge=1, le=1000),
     offset: int = Query(0, ge=0),
-    after_id: Optional[str] = Query(None, description="Cursor-based pagination: return items with _id > after_id (O(log n), preferred over offset for large sets)"),
-    db: Database = Depends(get_database)
+    after_id: Optional[str] = Query(
+        None,
+        description=(
+            "Cursor-based pagination: return items with _id > after_id "
+            "(O(log n), preferred over offset for large sets)"
+        ),
+    ),
+    db: Database = Depends(get_database),
 ):
     """List entities with filters and pagination.
 
@@ -207,10 +218,12 @@ def list_entities(
 
     if since:
         try:
-            since_dt = datetime.fromisoformat(since.replace('Z', '+00:00'))
+            since_dt = datetime.fromisoformat(since.replace("Z", "+00:00"))
             query["updatedAt"] = {"$gte": since_dt}
         except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid since timestamp format. Use ISO 8601.")
+            raise HTTPException(
+                status_code=400, detail="Invalid since timestamp format. Use ISO 8601."
+            )
 
     # count_documents is only needed for offset-based callers; skip it for cursor mode
     if after_id:
@@ -245,12 +258,7 @@ def list_entities(
             logger.warning("entity malformada pulada na listagem: %s", e)
             continue
 
-    return PaginatedResponse(
-        items=items,
-        total=total,
-        limit=limit,
-        offset=offset
-    )
+    return PaginatedResponse(items=items, total=total, limit=limit, offset=offset)
 
 
 @router.post("/bulk", response_model=BulkOperationResponse, status_code=200)
@@ -258,7 +266,7 @@ def bulk_upsert_entities(
     request: Request,
     payload: BulkEntityCreate,
     db: Database = Depends(get_database),
-    auth: dict = Depends(verify_auth)
+    auth: dict = Depends(verify_auth),
 ):
     """Bulk upsert entities (create or update) — max 500 per call.
 
@@ -270,7 +278,10 @@ def bulk_upsert_entities(
     """
     caller_role = auth.get("role", "curator")
     if not has_role(caller_role, "curator"):
-        raise HTTPException(status_code=403, detail="Insufficient role: curator or admin required for bulk import")
+        raise HTTPException(
+            status_code=403,
+            detail="Insufficient role: curator or admin required for bulk import",
+        )
     created = 0
     updated = 0
     errors: list = []
@@ -278,7 +289,9 @@ def bulk_upsert_entities(
 
     for idx, entity in enumerate(payload.entities):
         try:
-            existing = db.entities.find_one({"_id": entity.entity_id}, {"_id": 1, "version": 1, "data": 1})
+            existing = db.entities.find_one(
+                {"_id": entity.entity_id}, {"_id": 1, "version": 1, "data": 1}
+            )
 
             if existing:
                 doc = entity.model_dump(exclude_unset=True)
@@ -311,16 +324,12 @@ def bulk_upsert_entities(
                 pass
             updated += 1
         except Exception as exc:
-            errors.append(BulkItemError(
-                index=idx,
-                id=entity.entity_id,
-                error=str(exc)
-            ))
+            errors.append(BulkItemError(index=idx, id=entity.entity_id, error=str(exc)))
 
     return BulkOperationResponse(
         created=created,
         updated=updated,
         skipped=0,
         errors=errors,
-        total_received=len(payload.entities)
+        total_received=len(payload.entities),
     )
