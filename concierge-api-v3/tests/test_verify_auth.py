@@ -109,3 +109,102 @@ class TestVerifyAuth:
                 verify_auth(api_key=None, bearer=creds)
             assert exc.value.status_code == 500
             assert "not configured" in str(exc.value.detail)
+
+
+class TestJwtHelpers:
+    """Round-trip dos helpers JWT (access/refresh) e caminhos de erro."""
+
+    def test_generate_api_key_unique_and_urlsafe(self):
+        from app.core.security import generate_api_key
+
+        key1 = generate_api_key()
+        key2 = generate_api_key()
+        assert key1 != key2
+        assert len(key1) >= 43  # 32 bytes urlsafe
+        assert "/" not in key1 and "+" not in key1
+
+    def test_create_access_token_with_custom_expiry(self):
+        from datetime import timedelta
+        from app.core.security import create_access_token
+
+        token = create_access_token(
+            data={"sub": "x@example.com"}, expires_delta=timedelta(minutes=5)
+        )
+        assert isinstance(token, str)
+        assert token.count(".") == 2
+
+    async def test_verify_access_token_roundtrip(self):
+        from app.core.security import create_access_token, verify_access_token
+        from fastapi.security import HTTPAuthorizationCredentials
+
+        token = create_access_token(data={"sub": "roundtrip@example.com"})
+        creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+
+        payload = await verify_access_token(credentials=creds)
+        assert payload["sub"] == "roundtrip@example.com"
+
+    async def test_verify_access_token_missing_credentials(self):
+        from app.core.security import verify_access_token
+
+        with pytest.raises(HTTPException) as exc:
+            await verify_access_token(credentials=None)
+        assert exc.value.status_code == 401
+
+    async def test_verify_access_token_invalid(self):
+        from app.core.security import verify_access_token
+        from fastapi.security import HTTPAuthorizationCredentials
+
+        creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials="lixo")
+        with pytest.raises(HTTPException) as exc:
+            await verify_access_token(credentials=creds)
+        assert exc.value.status_code == 401
+
+    async def test_verify_access_token_expired(self):
+        from datetime import timedelta
+        from app.core.security import create_access_token, verify_access_token
+        from fastapi.security import HTTPAuthorizationCredentials
+
+        token = create_access_token(
+            data={"sub": "expired@example.com"}, expires_delta=timedelta(seconds=-10)
+        )
+        creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+        with pytest.raises(HTTPException) as exc:
+            await verify_access_token(credentials=creds)
+        assert exc.value.status_code == 401
+
+    async def test_verify_access_token_testing_bypass_development_only(
+        self, monkeypatch
+    ):
+        from app.core.security import verify_access_token
+
+        monkeypatch.setenv("TESTING", "true")
+        from app.core.config import settings
+
+        if settings.environment != "development":
+            pytest.skip("bypass só existe em development")
+        payload = await verify_access_token(credentials=None)
+        assert payload["email"] == "test@example.com"
+
+    async def test_verify_refresh_token_roundtrip(self):
+        from app.core.security import create_refresh_token, verify_refresh_token
+
+        token = create_refresh_token(data={"sub": "refresh@example.com"})
+        payload = await verify_refresh_token(token)
+        assert payload["sub"] == "refresh@example.com"
+        assert payload["type"] == "refresh"
+
+    async def test_verify_refresh_token_rejects_access_token(self):
+        from app.core.security import create_access_token, verify_refresh_token
+
+        access = create_access_token(data={"sub": "x@example.com"})
+        with pytest.raises(HTTPException) as exc:
+            await verify_refresh_token(access)
+        assert exc.value.status_code == 401
+        assert "token type" in str(exc.value.detail).lower()
+
+    async def test_verify_refresh_token_rejects_garbage(self):
+        from app.core.security import verify_refresh_token
+
+        with pytest.raises(HTTPException) as exc:
+            await verify_refresh_token("not.a.token")
+        assert exc.value.status_code == 401
