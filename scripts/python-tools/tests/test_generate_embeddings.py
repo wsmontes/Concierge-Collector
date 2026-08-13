@@ -28,9 +28,10 @@ def test_curations_sem_embeddings_selects_only_missing_or_empty():
     fora da resposta, então o filtro precisa ir direto no Mongo)."""
     docs = [
         {"_id": "sem-embeddings", "status": "active", "categories": {"cuisine": ["x"]}},
-        {"_id": "vazia", "status": "active", "embeddings": [], "categories": {}},
-        {"_id": "ja-tem", "status": "active", "embeddings": [{"text": "x"}]},
-        {"_id": "deletada", "status": "deleted", "categories": {}},
+        {"_id": "vazia", "status": "active", "embeddings": [], "categories": {"cuisine": ["y"]}},
+        {"_id": "sem-categorias", "status": "active", "embeddings": [], "categories": {}},
+        {"_id": "ja-tem", "status": "active", "embeddings": [{"text": "x"}], "categories": {}},
+        {"_id": "deletada", "status": "deleted", "categories": {"cuisine": ["z"]}},
     ]
     db = FakeDB({"curations": FakeCollection(docs)})
     selecionadas = {c["curation_id"] for c in generate_embeddings.curations_sem_embeddings(db)}
