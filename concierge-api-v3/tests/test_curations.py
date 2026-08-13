@@ -183,6 +183,13 @@ def test_bulk_upsert_handles_duplicate_key_race():
     set_doc = call_kwargs["$set"] if "$set" in call_kwargs else call_args[1]["$set"]
     assert "createdAt" not in set_doc, "createdAt must not be in $set (preserve original)"
     assert "_id" not in set_doc, "_id must not be in $set"
+    # identidade/entidade do vencedor nunca são sobrescritas na corrida
+    for field in ("createdBy", "curator", "curator_id", "updatedBy",
+                  "entity_id", "city", "type", "version"):
+        assert field not in set_doc, f"{field} não pode ir no $set da corrida"
+    # versão avança por $inc atômico (monotônica mesmo sob corrida)
+    inc_doc = call_kwargs.get("$inc") or call_args[1].get("$inc")
+    assert inc_doc == {"version": 1}
     # Deve ter contabilizado como updated
     assert result.updated == 1
     # Não deve ter erros
@@ -227,8 +234,10 @@ def test_bulk_upsert_duplicate_key_preserves_created_at():
     assert "createdAt" not in set_doc, "createdAt must NOT be in $set"
     # Must contain the fields from the new document (status update etc.)
     assert set_doc.get("status") == "active"
-    # Must contain denormalized fields
-    assert set_doc.get("city") == "NYC"
+    # city/type do loser NÃO re-linkam o vencedor para outra entity
+    assert "city" not in set_doc, "city do loser não pode ir no $set da corrida"
+    assert "type" not in set_doc, "type do loser não pode ir no $set da corrida"
+    assert "entity_id" not in set_doc, "entity_id do loser não pode ir no $set da corrida"
     # Must NOT contain _id
     assert "_id" not in set_doc
     assert result.updated == 1
@@ -295,7 +304,7 @@ def test_bulk_upsert_update_preserves_stored_curator_when_payload_id_empty():
         curation_id="cur_test_010",
         entity_id="ent_010",
         curator_id="",
-        curator=CuratorInfo(id="", name="Novo Nome"),
+        curator=CuratorInfo(id="", name="Novo Nome", email=None),
         status="active",
     )
     payload = BulkCurationCreate(curations=[curation])
@@ -310,14 +319,168 @@ def test_bulk_upsert_update_preserves_stored_curator_when_payload_id_empty():
 
     assert set_doc["curator_id"] == "real-1", "curator_id armazenado deve prevalecer"
     assert set_doc["curator"]["id"] == "real-1", "curator.id armazenado deve prevalecer"
-    assert set_doc["curator"]["name"] == "Novo Nome", "name do payload atualiza"
-    assert set_doc["curator"]["email"] == "real@example.com", "email armazenado preservado"
+    assert set_doc["curator"]["name"] == "Novo Nome", "name real do payload atualiza"
+    assert set_doc["curator"]["email"] == "real@example.com", "email=None do payload não destrói o armazenado"
     assert set_doc["version"] == 4
+
+
+def test_bulk_upsert_update_offline_placeholder_preserves_stored_name_email():
+    """O payload REAL do sync offline sem usuário ({id:'unknown',
+    name:'unknown', email:null} — syncManagerV3.buildCuratorPayload) não pode
+    destruir name/email reais armazenados."""
+    from unittest.mock import MagicMock
+    from app.api.curations import bulk_upsert_curations
+    from app.models.schemas import BulkCurationCreate, CurationCreate, CuratorInfo
+
+    mock_db = MagicMock()
+    mock_auth = {"role": "admin", "user": "test@test.com"}
+
+    existing = {
+        "_id": "cur_test_011",
+        "version": 3,
+        "createdBy": "real-1",
+        "createdAt": "2026-01-01T00:00:00Z",
+        "curator_id": "real-1",
+        "curator": {"id": "real-1", "name": "Nome Real", "email": "real@example.com"},
+    }
+    mock_db.curations.find_one.return_value = existing
+    mock_db.entities.find.return_value = []
+
+    curation = CurationCreate(
+        curation_id="cur_test_011",
+        entity_id="ent_011",
+        curator_id="unknown",
+        curator=CuratorInfo(id="unknown", name="unknown", email=None),
+        status="active",
+    )
+    payload = BulkCurationCreate(curations=[curation])
+
+    result = bulk_upsert_curations(request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth)
+
+    assert result.updated == 1
+    assert len(result.errors) == 0
+    call_args, call_kwargs = mock_db.curations.update_one.call_args
+    set_doc = call_kwargs.get("$set") or call_args[1].get("$set")
+    assert set_doc["curator_id"] == "real-1"
+    assert set_doc["curator"]["id"] == "real-1"
+    assert set_doc["curator"]["name"] == "Nome Real", "name 'unknown' do payload não destrói o real"
+    assert set_doc["curator"]["email"] == "real@example.com", "email null do payload não destrói o real"
+
+
+def test_bulk_upsert_update_stored_unknown_top_level_does_not_shadow_embedded_real():
+    """Estado legado envenenado ({curator_id:'unknown'} com curator.id real)
+    NÃO pode desarmar o reparo: o id embutido real prevalece como identidade
+    armazenada."""
+    from unittest.mock import MagicMock
+    from app.api.curations import bulk_upsert_curations
+    from app.models.schemas import BulkCurationCreate, CurationCreate, CuratorInfo
+
+    mock_db = MagicMock()
+    mock_auth = {"role": "admin", "user": "test@test.com"}
+
+    existing = {
+        "_id": "cur_test_012",
+        "version": 2,
+        "curator_id": "unknown",
+        "curator": {"id": "real-1", "name": "Nome Real", "email": "real@example.com"},
+    }
+    mock_db.curations.find_one.return_value = existing
+    mock_db.entities.find.return_value = []
+
+    curation = CurationCreate(
+        curation_id="cur_test_012",
+        entity_id="ent_012",
+        curator_id="",
+        curator=CuratorInfo(id="", name="Novo"),
+        status="active",
+    )
+    payload = BulkCurationCreate(curations=[curation])
+
+    result = bulk_upsert_curations(request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth)
+
+    assert result.updated == 1
+    assert len(result.errors) == 0
+    call_args, call_kwargs = mock_db.curations.update_one.call_args
+    set_doc = call_kwargs.get("$set") or call_args[1].get("$set")
+    assert set_doc["curator_id"] == "real-1", "top-level 'unknown' não pode sombrear o id embutido real"
+    assert set_doc["curator"]["id"] == "real-1"
+    assert set_doc["curator"]["email"] == "real@example.com"
+
+
+def test_bulk_upsert_update_top_real_with_empty_embedded_keeps_payload_id():
+    """Payload com curator_id REAL e id embutido vazio não pode ter a
+    reatribuição revertida silenciosamente — o id embutido sincroniza com o
+    top-level (um id embutido '' some da busca por curator.id)."""
+    from unittest.mock import MagicMock
+    from app.api.curations import bulk_upsert_curations
+    from app.models.schemas import BulkCurationCreate, CurationCreate, CuratorInfo
+
+    mock_db = MagicMock()
+    mock_auth = {"role": "admin", "user": "test@test.com"}
+
+    existing = {
+        "_id": "cur_test_013",
+        "version": 1,
+        "curator_id": "joao-1",
+        "curator": {"id": "joao-1", "name": "Joao"},
+    }
+    mock_db.curations.find_one.return_value = existing
+    mock_db.entities.find.return_value = []
+
+    curation = CurationCreate(
+        curation_id="cur_test_013",
+        entity_id="ent_013",
+        curator_id="maria-2",
+        curator=CuratorInfo(id="", name="Maria"),
+        status="active",
+    )
+    payload = BulkCurationCreate(curations=[curation])
+
+    result = bulk_upsert_curations(request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth)
+
+    assert result.updated == 1
+    assert len(result.errors) == 0
+    call_args, call_kwargs = mock_db.curations.update_one.call_args
+    set_doc = call_kwargs.get("$set") or call_args[1].get("$set")
+    assert set_doc["curator_id"] == "maria-2", "reatribuição real do payload não pode ser revertida"
+    assert set_doc["curator"]["id"] == "maria-2", "id embutido placeholder sincroniza com o top-level"
+    assert set_doc["curator"]["name"] == "Maria"
+
+
+def test_repair_curator_identity_patch_poison_shape():
+    """O formato que o PATCH ainda aceitava e o bulk repara ({curator_id real,
+    curator.id vazio}) não pode envenenar o id embutido — o helper único
+    sincroniza o id embutido com o top-level real."""
+    from app.api.curations import _repair_curator_identity
+
+    update_data = {"curator_id": "real-9", "curator": {"id": "", "name": "x"}}
+    stored = {"curator_id": "real-9",
+              "curator": {"id": "real-9", "name": "Real", "email": "r@x.com"}}
+
+    _repair_curator_identity(update_data, stored)
+
+    assert update_data["curator_id"] == "real-9"
+    assert update_data["curator"]["id"] == "real-9", "id embutido vazio envenena a busca por curator.id"
+    assert update_data["curator"]["name"] == "x"
+
+
+def test_repair_curator_identity_untouched_without_identity_keys():
+    """PATCH que não menciona identidade (ex.: só status) não pode ganhar
+    campos de curator no $set."""
+    from app.api.curations import _repair_curator_identity
+
+    update_data = {"status": "active"}
+    stored = {"curator_id": "real-1", "curator": {"id": "real-1", "name": "Real"}}
+
+    _repair_curator_identity(update_data, stored)
+
+    assert update_data == {"status": "active"}
 
 
 def test_bulk_upsert_duplicate_key_preserves_winner_identity_and_version():
     """Na corrida do DuplicateKeyError, o vencedor é autoritativo: curator,
-    createdBy, updatedBy e version não podem ser sobrescritos pelo perdedor."""
+    createdBy, updatedBy, version e linkage de entity não podem ser
+    sobrescritos pelo perdedor; versão avança por $inc atômico."""
     from unittest.mock import MagicMock
     from app.api.curations import bulk_upsert_curations
     from app.models.schemas import BulkCurationCreate, CurationCreate, CuratorInfo
@@ -326,7 +489,8 @@ def test_bulk_upsert_duplicate_key_preserves_winner_identity_and_version():
     mock_db = MagicMock()
     mock_auth = {"role": "admin", "user": "test@test.com"}
 
-    winner = {"_id": "cur_test_004", "version": 5}
+    winner = {"_id": "cur_test_004", "version": 5,
+              "curator_id": "winner-1", "curator": {"id": "winner-1", "name": "Winner"}}
     # probes do loop principal (_id string, curation_id) → None;
     # probe do recovery do vencedor → winner
     mock_db.curations.find_one.side_effect = [None, None, winner]
@@ -349,11 +513,86 @@ def test_bulk_upsert_duplicate_key_preserves_winner_identity_and_version():
     mock_db.curations.update_one.assert_called_once()
     call_args, call_kwargs = mock_db.curations.update_one.call_args
     set_doc = call_kwargs.get("$set") or call_args[1].get("$set")
+    inc_doc = call_kwargs.get("$inc") or call_args[1].get("$inc")
 
-    for forbidden in ("_id", "createdAt", "createdBy", "curator", "curator_id", "updatedBy"):
+    for forbidden in ("_id", "createdAt", "createdBy", "curator", "curator_id",
+                      "updatedBy", "entity_id", "city", "type", "version"):
         assert forbidden not in set_doc, f"{forbidden} não pode ir no $set da corrida"
-    assert set_doc["version"] == winner["version"] + 1
+    assert inc_doc == {"version": 1}, "versão avança por $inc, não por leitura+escrita"
     assert set_doc["status"] == "draft"
+
+
+def test_bulk_upsert_race_winner_placeholder_adopts_loser_real_identity():
+    """Vencedor SEM identidade real (placeholder do sync offline) adota a
+    identidade REAL do perdedor — o doc não fica órfão de curator."""
+    from unittest.mock import MagicMock
+    from app.api.curations import bulk_upsert_curations
+    from app.models.schemas import BulkCurationCreate, CurationCreate, CuratorInfo
+    from pymongo.errors import DuplicateKeyError
+
+    mock_db = MagicMock()
+    mock_auth = {"role": "admin", "user": "test@test.com"}
+
+    winner = {"_id": "cur_test_005", "version": 2,
+              "curator_id": "unknown", "curator": {"id": "unknown", "name": "unknown"}}
+    mock_db.curations.find_one.side_effect = [None, None, winner]
+    mock_db.curations.insert_one.side_effect = DuplicateKeyError("dup")
+    mock_db.entities.find.return_value = []
+
+    curation = CurationCreate(
+        curation_id="cur_test_005",
+        entity_id="ent_005",
+        curator_id="maria-1",
+        curator=CuratorInfo(id="maria-1", name="Maria", email="maria@example.com"),
+        status="draft",
+    )
+    payload = BulkCurationCreate(curations=[curation])
+
+    result = bulk_upsert_curations(request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth)
+
+    assert result.updated == 1
+    assert len(result.errors) == 0
+    call_args, call_kwargs = mock_db.curations.update_one.call_args
+    set_doc = call_kwargs.get("$set") or call_args[1].get("$set")
+    assert set_doc["curator_id"] == "maria-1"
+    assert set_doc["curator"]["id"] == "maria-1"
+    assert set_doc["curator"]["email"] == "maria@example.com"
+    # identidade de entity continua intocada mesmo nesse caso
+    assert "entity_id" not in set_doc
+
+
+def test_bulk_upsert_race_missing_winner_reports_error():
+    """matched_count==0 (vencedor deletado no meio da corrida) é erro
+    explícito — nunca contabilizar como salvo: o cliente descartaria a cópia
+    local com base no contador de erros."""
+    from unittest.mock import MagicMock
+    from app.api.curations import bulk_upsert_curations
+    from app.models.schemas import BulkCurationCreate, CurationCreate, CuratorInfo
+    from pymongo.errors import DuplicateKeyError
+
+    mock_db = MagicMock()
+    mock_auth = {"role": "admin", "user": "test@test.com"}
+
+    mock_db.curations.find_one.return_value = None
+    mock_db.curations.insert_one.side_effect = DuplicateKeyError("dup")
+    mock_db.curations.update_one.return_value = MagicMock(matched_count=0)
+    mock_db.entities.find.return_value = []
+
+    curation = CurationCreate(
+        curation_id="cur_test_006",
+        entity_id="ent_006",
+        curator_id="curator_006",
+        curator=CuratorInfo(id="curator_006", name="Test"),
+        status="draft",
+    )
+    payload = BulkCurationCreate(curations=[curation])
+
+    result = bulk_upsert_curations(request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth)
+
+    assert result.updated == 0
+    assert len(result.errors) == 1
+    assert result.errors[0].id == "cur_test_006"
+    assert "vencedor não encontrado" in result.errors[0].error
 
 
 def test_bulk_upsert_create_denormalizes_city_and_type_from_entity():

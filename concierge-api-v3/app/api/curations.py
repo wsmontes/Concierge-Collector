@@ -178,12 +178,74 @@ def _compute_backfill_flag(stored_categories, new_embeddings, client_meta, store
 
 
 def _normalize_curator_id(doc):
-    """Regra ÚNICA server-side: curator.id é autoritativo e o placeholder
-    'unknown' (sync sem usuário) nunca persiste sobre um valor real."""
+    """Sincroniza top-level: curator.id embutido REAL é autoritativo e o
+    placeholder 'unknown'/'' (sync sem usuário) não fica no curator_id.
+    O reparo completo (contra o valor armazenado) é _repair_curator_identity."""
     curator = doc.get("curator") or {}
     cur_id = doc.get("curator_id")
     if (not cur_id or str(cur_id).lower() == "unknown") and curator.get("id"):
         doc["curator_id"] = curator["id"]
+    return doc
+
+
+def _is_placeholder_identity(value):
+    """Placeholder de identidade do sync offline: None, '' ou 'unknown'
+    (case-insensitive). Qualquer outro valor é identidade real."""
+    return value is None or str(value).strip().lower() in ("", "unknown")
+
+
+def _repair_curator_identity(doc, stored):
+    """Regra ÚNICA server-side de identidade do curator (bulk update + PATCH).
+
+    Identidade REAL prevalece sobre placeholder em TODOS os campos:
+    - payload sem identidade real (top-level e embutida placeholders) →
+      identidade ARMAZENADA prevalece; name/email reais nunca são destruídos
+      por placeholder do payload (payload {id:'unknown', name:'unknown',
+      email:null} do sync offline é o caso real — syncManagerV3.js);
+    - top-level real + embutida placeholder → embutida sincroniza com a
+      top-level (um id embutido '' some da busca por curator.id e re-infecta
+      o próximo push);
+    - top-level placeholder não sombreia embutida real (estado legado
+      'unknown' no curator_id não mata o reparo);
+    - nada real em lugar nenhum → placeholder não persiste no curator_id
+      (objeto embutido fica como o payload mandou — comportamento de create).
+    Sem menção a identidade no doc, nada muda.
+    """
+    if "curator_id" not in doc and "curator" not in doc:
+        return doc
+
+    stored_cur = stored.get("curator") if isinstance(stored.get("curator"), dict) else {}
+    stored_id = stored.get("curator_id")
+    if _is_placeholder_identity(stored_id):
+        stored_id = stored_cur.get("id")
+    if _is_placeholder_identity(stored_id):
+        stored_id = None
+
+    payload_cur = doc.get("curator") if isinstance(doc.get("curator"), dict) else {}
+    payload_top = doc.get("curator_id")
+    payload_emb = payload_cur.get("id")
+
+    if not _is_placeholder_identity(payload_top):
+        # top-level real é autoritativo — embutida placeholder não envenena
+        if _is_placeholder_identity(payload_emb):
+            doc["curator"] = {**payload_cur, "id": payload_top}
+        return doc
+    if not _is_placeholder_identity(payload_emb):
+        # embutida real é autoritativo (o normalize já sincronizou top-level)
+        doc["curator_id"] = payload_emb
+        return doc
+
+    # payload todo placeholder: armazenado prevalece
+    if stored_id:
+        merged = {**stored_cur}
+        for key, value in payload_cur.items():
+            if not _is_placeholder_identity(value):
+                merged[key] = value
+        merged["id"] = stored_id
+        doc["curator_id"] = stored_id
+        doc["curator"] = merged
+    else:
+        doc["curator_id"] = None
     return doc
 
 
@@ -483,14 +545,6 @@ def update_curation(
     else:
         update_data["createdBy"] = current.get("curator_id") or (current.get("curator") or {}).get("id")
 
-    # Last writer becomes the last updater
-    update_data["updatedBy"] = (
-        update_data.get("curator_id")
-        or (update_data.get("curator") or {}).get("id")
-        or auth.get("user")
-        or current.get("updatedBy")
-    )
-
     # Denormalize city/type if entity_id is changing
     if "entity_id" in update_data and update_data["entity_id"]:
         entity = find_entity(db, update_data["entity_id"])
@@ -535,18 +589,20 @@ def update_curation(
             stored_raw.get("embeddings_metadata"),
         )
     
-    # Mesma regra do bulk: curator.id é autoritativo e 'unknown' não
-    # persiste por cima do valor real armazenado
+    # Regra única de identidade (mesma do bulk): identidade REAL prevalece;
+    # placeholder ('unknown'/'') nunca persiste por cima do valor real
+    # armazenado e id embutido placeholder não envenena top-level real
     _normalize_curator_id(update_data)
-    real_curator_id = current.get("curator_id") or (current.get("curator") or {}).get("id")
-    if ((update_data.get("curator_id") or "").lower() == "unknown"
-            or (update_data.get("curator") or {}).get("id") == "unknown"):
-        if real_curator_id and real_curator_id != "unknown":
-            # corrige curator_id E o objeto embutido — o filtro da busca é
-            # query['curator.id']; um doc com id embutido 'unknown' some da
-            # lista do curator real e re-infecta o próximo push
-            update_data["curator_id"] = real_curator_id
-            update_data["curator"] = {**(update_data.get("curator") or {}), "id": real_curator_id}
+    _repair_curator_identity(update_data, current)
+
+    # Last writer becomes the last updater — DEPOIS do reparo: placeholder
+    # nunca persiste no updatedBy
+    update_data["updatedBy"] = (
+        update_data.get("curator_id")
+        or (update_data.get("curator") or {}).get("id")
+        or auth.get("user")
+        or current.get("updatedBy")
+    )
 
     # Cliente NUNCA controla a flag: PATCH só de embeddings_metadata tem a
     # chave removida (o servidor é a autoridade)
@@ -1102,10 +1158,20 @@ def bulk_upsert_curations(
 
     for idx, curation in enumerate(payload.curations):
         try:
+            # 'curator' inteiro só quando o payload NÃO traz identidade real
+            # (o reparo pode precisar do armazenado) — sync logado (id real)
+            # não paga a transferência do subdoc em todos os itens do lote
+            needs_stored_curator = (
+                _is_placeholder_identity(curation.curator_id)
+                and _is_placeholder_identity((curation.curator or {}).id)
+            )
+            existing_proj = {"_id": 1, "version": 1, "createdBy": 1,
+                             "createdAt": 1, "curator_id": 1}
+            if needs_stored_curator:
+                existing_proj["curator"] = 1
             existing = find_curation(
                 db, curation.curation_id,
-                projection={"_id": 1, "version": 1, "createdBy": 1,
-                            "createdAt": 1, "curator_id": 1, "curator": 1},
+                projection=existing_proj,
             )
 
             # Denormalize city/type from entity (pre-fetched batch) — _id
@@ -1121,18 +1187,10 @@ def bulk_upsert_curations(
                 doc.pop("createdBy", None)
                 doc["updatedAt"] = now
                 doc["version"] = existing.get("version", 1) + 1
-                _normalize_curator_id(doc)  # ANTES do updatedBy: 'unknown' não persiste
-                stored_cur = existing.get("curator") if isinstance(existing.get("curator"), dict) else {}
-                stored_id = existing.get("curator_id") or stored_cur.get("id")
-                payload_cur = doc.get("curator") if isinstance(doc.get("curator"), dict) else {}
-                payload_id = str(payload_cur.get("id") or "")
-                if not payload_id or payload_id.lower() == "unknown":
-                    # payload deslogado/placeholder: identidade ARMAZENADA
-                    # prevalece — name/email reais nunca são destruídos
-                    if stored_id and str(stored_id).lower() != "unknown":
-                        doc["curator_id"] = stored_id
-                        doc["curator"] = {**stored_cur, **payload_cur, "id": stored_id}
-                doc["updatedBy"] = doc.get("curator_id") or curation.curator_id
+                _normalize_curator_id(doc)  # embutida real sincroniza top-level ANTES do reparo
+                _repair_curator_identity(doc, existing)
+                # DEPOIS do reparo: placeholder nunca persiste no updatedBy
+                doc["updatedBy"] = doc.get("curator_id") or auth.get("user")
                 if entity_for_denorm:
                     doc.update(denormalize_curation_location(entity_for_denorm))
 
@@ -1143,32 +1201,53 @@ def bulk_upsert_curations(
             else:
                 doc = curation.model_dump()
                 _normalize_curator_id(doc)  # ANTES do createdBy/updatedBy
+                _repair_curator_identity(doc, {})  # create: placeholder não persiste no curator_id
                 doc["_id"] = curation.curation_id
                 doc["createdAt"] = now
                 doc["updatedAt"] = now
                 doc["version"] = 1
                 doc["createdBy"] = _clean_created_by(curation, doc)
-                doc["updatedBy"] = doc.get("curator_id")
+                doc["updatedBy"] = doc.get("curator_id") or auth.get("user")
                 if entity_for_denorm:
                     doc.update(denormalize_curation_location(entity_for_denorm))
                 db.curations.insert_one(doc)
                 created += 1
 
         except DuplicateKeyError:
-            # Race: another request inserted between our find_one and insert_one.
-            # Preserva identidade/versão do VENCEDOR (nunca sobrescreve curator
-            # nem reseta version — 409 em cascata era o sintoma do clobber).
+            # Race: outro request inseriu entre o find_one e o insert_one.
+            # Duplicate ⇒ colisão de _id (não existe outro índice único em
+            # curations). VENCEDOR é autoritativo em identidade, entidade e
+            # versão: $inc atômico mantém a versão monotônica sem TOCTOU de
+            # leitura+escrita, e entity_id/city/type do loser não re-linkam a
+            # curadoria para outra entity. matched_count==0 (vencedor deletado
+            # no meio da corrida) é erro explícito — nunca contabilizar como
+            # salvo: o cliente descarta a cópia local pelo contador de erros.
             try:
+                update_doc = {k: v for k, v in doc.items()
+                              if k not in ("_id", "createdAt", "createdBy",
+                                           "curator", "curator_id", "version",
+                                           "updatedBy", "entity_id", "city", "type")}
                 winner = find_curation(db, curation.curation_id,
-                                       projection={"_id": 1, "version": 1})
+                                       projection={"_id": 1, "curator": 1, "curator_id": 1})
                 if winner:
-                    update_doc = {k: v for k, v in doc.items()
-                                  if k not in ("_id", "createdAt", "createdBy",
-                                               "curator", "curator_id", "version", "updatedBy")}
-                    update_doc["version"] = winner.get("version", 1) + 1
-                else:
-                    update_doc = {k: v for k, v in doc.items() if k not in ("_id", "createdAt")}
-                db.curations.update_one({"_id": curation.curation_id}, {"$set": update_doc})
+                    winner_id = winner.get("curator_id")
+                    if _is_placeholder_identity(winner_id):
+                        winner_id = (winner.get("curator") or {}).get("id")
+                    if _is_placeholder_identity(winner_id) and (
+                            not _is_placeholder_identity(doc.get("curator_id"))
+                            or not _is_placeholder_identity((doc.get("curator") or {}).get("id"))):
+                        # vencedor sem identidade real: a do loser (real)
+                        # sobrevive — senão o doc fica órfão de curator
+                        update_doc["curator_id"] = doc.get("curator_id")
+                        update_doc["curator"] = doc.get("curator")
+                res = db.curations.update_one(
+                    {"_id": curation.curation_id},
+                    {"$set": update_doc, "$inc": {"version": 1}},
+                )
+                if res.matched_count == 0:
+                    raise RuntimeError(
+                        "vencedor não encontrado no recovery (deletado no meio da corrida)"
+                    )
                 updated += 1
             except Exception as update_exc:
                 errors.append(BulkItemError(
