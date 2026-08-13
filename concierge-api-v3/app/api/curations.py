@@ -20,7 +20,7 @@ from app.models.schemas import (
     BulkCurationCreate, BulkOperationResponse, BulkItemError
 )
 from app.core.database import get_database
-from app.core.query_utils import to_cursor_id
+from app.core.query_utils import resolve_after_id
 from app.core.security import verify_access_token, verify_auth
 from app.models.user import has_role
 from app.services.curation_denorm import denormalize_curation_location
@@ -237,7 +237,7 @@ def search_curations(
     if after_id:
         # to_cursor_id: hex → ObjectId (mesmo hazard de entities — cursor
         # contra string não visita _ids ObjectId)
-        query["_id"] = {"$gt": to_cursor_id(after_id)}
+        query["_id"] = {"$gt": resolve_after_id(db, "curations", after_id)}
         total = -1  # not computed in cursor mode
         cursor = db.curations.find(query, CURATION_RESPONSE_PROJECTION).sort("_id", 1).limit(limit)
     else:

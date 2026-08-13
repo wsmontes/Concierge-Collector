@@ -85,7 +85,15 @@ def collect(db):
 def main():
     mode = sys.argv[1] if len(sys.argv) > 1 else 'backup'
     client, db = mongo_tools.connect()
-    plan, skipped = collect(db)
+
+    if mode == 'execute':
+        # Executa SEM a coleta inicial: o modo execute re-coleta no momento da
+        # deleção (guarda por IDs) — a coleta dupla varria as ~21.6k entities
+        # duas vezes sem uso nenhum da primeira.
+        plan = {'curations': [], 'entities': [], 'users': [], 'categories_active_as_string': []}
+        skipped = []
+    else:
+        plan, skipped = collect(db)
 
     print(f'== PLANO DE LIMPEZA ({db.name}) ==')
     print(f"  curadorias a deletar: {len(plan['curations'])}")
@@ -129,8 +137,12 @@ def main():
         if not ok_ids:
             print(f'ERRO: "{divergente}" tem ids não cobertos pelo backup — abortando.')
             return 1
-        # Sincroniza o plano exibido com o que será deletado (audit trail)
-        plan.update(plan_atual)
+        # Plano APROVADO é o re-coletado — exibe as contagens reais que serão
+        # deletadas (o print acima rodou com o plano vazio do modo execute)
+        print('== PLANO APROVADO (re-coletado) ==')
+        print(f"  curadorias a deletar: {len(plan_atual['curations'])}")
+        print(f"  entities a deletar:   {len(plan_atual['entities'])}")
+        print(f"  users audit a deletar:{len(plan_atual['users'])}")
         r = db.curations.delete_many({'_id': {'$in': [d['_id'] for d in plan_atual['curations']]}})
         print(f'curadorias deletadas: {r.deleted_count}')
         r = db.entities.delete_many({'_id': {'$in': [d['_id'] for d in plan_atual['entities']]}})

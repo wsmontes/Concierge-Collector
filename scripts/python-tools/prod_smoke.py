@@ -18,13 +18,18 @@ UA = {'User-Agent': 'curl/8.7.1', 'Accept': 'application/json'}
 
 
 def load_env():
-    """Carrega .env via mongo_tools.load_env (implementação única do repo —
-    com a política de precedência das chaves OPENAI_*). Caminhos derivados de
-    __file__: rodar de qualquer CWD funciona."""
+    """Carrega .env via mongo_tools.load_env (implementação única do repo).
+    DEGRADA graciosamente: sem pymongo instalado ou sem o arquivo .env, o
+    smoke segue testando as rotas não-parametrizadas (a dependência era
+    opcional no design original)."""
     sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-    import mongo_tools  # noqa: PLC0415 — mesmo diretório do script
+    try:
+        import mongo_tools  # noqa: PLC0415 — mesmo diretório do script
 
-    mongo_tools.load_env()
+        if os.path.isfile(mongo_tools.ENV_PATH):
+            mongo_tools.load_env()
+    except (ImportError, OSError):
+        pass
 
 
 def hit(url, timeout=15):
@@ -59,18 +64,13 @@ def hit_retry(url, retries=1, delay=2):
 
 def sample_ids():
     try:
-        import pymongo
-    except ImportError:
-        return {}
-    if not os.environ.get('MONGODB_URL'):
-        print('AVISO: MONGODB_URL não configurada — usando ids sintéticos (algumas rotas darão 404)')
-        return {}
-    try:
-        client = pymongo.MongoClient(os.environ.get('MONGODB_URL', ''), serverSelectionTimeoutMS=8000)
+        import mongo_tools  # noqa: PLC0415 — garante sys.path do script
+
+        sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        client, db = mongo_tools.connect()
     except Exception as e:
-        print(f'AVISO: conexão ao Mongo falhou ({e}) — usando ids sintéticos')
+        print(f'AVISO: conexão ao Mongo falhou ({e}) — ids sintéticos, rotas parametrizadas serão puladas')
         return {}
-    db = client[os.environ.get('MONGODB_DB_NAME', 'concierge-collector')]
     out = {}
     try:
         # pymongo conecta LAZY: URL válida mas inalcançável levanta aqui, no
@@ -117,10 +117,11 @@ def main():
         extra = f' {hdrs}' if (code == 'ERR' or str(code).startswith('5')) else ''
         print(f'{code!s:6} {p:55} {body[:90]}{flag}{extra} {note}')
     # skipped > 0 = cobertura incompleta — o resumo precisa dizer (um smoke
-    # "verde" sem testar nenhuma rota parametrizada é falso positivo)
+    # "verde" sem testar rotas parametrizadas é falso positivo). Falha parcial
+    # dos ids (ex.: uma coleção vazia) também conta.
     print(f'\nresumo: ok={ok} 4xx={warn} 5xx/ERR={fail} skipped={skipped}')
-    if skipped and not samples:
-        print('AVISO: ids reais indisponíveis (Mongo) — baseline NÃO coberto por completo')
+    if skipped:
+        print('AVISO: rotas parametrizadas NÃO cobertas por completo (ids indisponíveis)')
     return 1 if fail else 0
 
 

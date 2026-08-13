@@ -2,6 +2,8 @@
 Entity endpoints - CRUD operations
 """
 
+import re
+
 from fastapi import APIRouter, HTTPException, Header, Query, Depends, Request
 from typing import Optional, List
 from datetime import datetime, timezone
@@ -13,7 +15,7 @@ from app.models.schemas import (
     BulkEntityCreate, BulkOperationResponse, BulkItemError
 )
 from app.core.database import get_database
-from app.core.query_utils import to_cursor_id
+from app.core.query_utils import resolve_after_id
 from app.models.user import has_role
 from app.core.security import api_key_header, bearer_scheme, get_api_secret_key, verify_auth
 
@@ -169,7 +171,7 @@ def list_entities(
     if type:
         query["type"] = type
     if name:
-        query["name"] = {"$regex": name, "$options": "i"}
+        query["name"] = {"$regex": re.escape(name), "$options": "i"}
     if status:
         query["status"] = status
 
@@ -185,7 +187,7 @@ def list_entities(
         # to_cursor_id: hex → ObjectId — um $gt contra string NUNCA visita
         # _ids ObjectId (ordenação por tipo no Mongo; 471 entities ficavam
         # invisíveis para o sync por cursor)
-        query["_id"] = {"$gt": to_cursor_id(after_id)}
+        query["_id"] = {"$gt": resolve_after_id(db, "entities", after_id)}
         total = -1  # unknown / not computed — saves a full collection scan
         cursor = db.entities.find(query).sort("_id", 1).limit(limit)
     else:

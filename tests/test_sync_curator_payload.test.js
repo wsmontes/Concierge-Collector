@@ -77,6 +77,35 @@ describe('cleanCurationForSync (módulo real)', () => {
     expect(cleaned.curator.id).toBe('ana@hotel.com');
   });
 
+  test('curator PARCIAL ({name} sem id) é completado — 422 sem os dois', () => {
+    const sm = makeSyncManager({ email: 'ana@hotel.com', name: 'Ana' });
+    const cleaned = sm.cleanCurationForSync({
+      curation_id: 'c1',
+      curator: { name: 'Ana' },
+      status: 'draft',
+      categories: {},
+      notes: {},
+    });
+    expect(cleaned.curator.id).toBe('ana@hotel.com');
+    expect(cleaned.curator.name).toBe('Ana');
+    expect(cleaned.curator_id).toBe('ana@hotel.com');
+  });
+
+  test('curator_id divergente do curator.id: o objeto é autoritativo', () => {
+    const sm = makeSyncManager(null);
+    const cleaned = sm.cleanCurationForSync({
+      curation_id: 'c1',
+      curator_id: 'Ana Concierge',
+      curator: { id: 'ana@hotmail.com', name: 'Ana' },
+      status: 'draft',
+      categories: {},
+      notes: {},
+    });
+    // busca por curator.id precisa achar — curator_id deriva do objeto
+    expect(cleaned.curator_id).toBe('ana@hotmail.com');
+    expect(cleaned.curator.id).toBe('ana@hotmail.com');
+  });
+
   test('curator vazio ({}) não bypassa a síntese — 422 por id/name ausentes', () => {
     const sm = makeSyncManager({ email: 'ana@hotel.com', name: 'Ana' });
     const cleaned = sm.cleanCurationForSync({

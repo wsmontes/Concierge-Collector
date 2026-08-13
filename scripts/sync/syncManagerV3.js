@@ -207,23 +207,17 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
      * Removes fields that are not in CurationCreate schema
      */
     /**
-     * Garante o objeto curator obrigatório (CuratorInfo com id+name) — o bulk
-     * upsert dava 422 para curadorias criadas localmente sem curator, pois o
-     * JSON descarta undefined. Usa o usuário autenticado quando disponível
-     * (o /auth/verify responde email/name — não user_name/id).
+     * Resolve o CuratorInfo obrigatório (id E name) — síntese ÚNICA usada em
+     * todo o sync: curator PARCIAL ({id} ou {name}) é COMPLETADO (o backend
+     * exige os dois; o bulk upsert dava 422). Usa o usuário autenticado
+     * quando disponível (o /auth/verify responde email/name).
      */
     buildCuratorPayload(curation) {
         const user = window.AuthService?.getCurrentUser?.();
-        const existingCurator = curation.curator && typeof curation.curator === 'object'
-            && (curation.curator.id || curation.curator.name)
-            ? curation.curator
-            : null;
-        const curatorId = existingCurator?.id
-            || curation.curator_id
-            || user?.email
-            || 'unknown';
-        const name = existingCurator?.name || user?.name || curatorId;
-        return { id: curatorId, name, email: existingCurator?.email || user?.email || null };
+        const raw = curation.curator && typeof curation.curator === 'object' ? curation.curator : {};
+        const id = raw.id || curation.curator_id || user?.email || 'unknown';
+        const name = raw.name || user?.name || id;
+        return { id, name, email: raw.email || user?.email || null };
     }
 
     /**
@@ -270,16 +264,23 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             });
         })();
 
-        const synthesizedCurator = curation.curator && typeof curation.curator === 'object'
-            && (curation.curator.id || curation.curator.name)
-            ? curation.curator
-            : this.buildCuratorPayload(curation);
+        const synthesizedCurator = this.buildCuratorPayload(curation);
+
+        // Consistência com o PATCH server-side: quando o objeto curator tem
+        // id, ele é autoritativo — curator_id deriva DELE (curator_id='slug'
+        // + curator.id=email criava docs que a busca por curator.id não acha)
+        const hasAuthoritativeCurator = curation.curator
+            && typeof curation.curator === 'object'
+            && curation.curator.id;
+        const curatorId = hasAuthoritativeCurator
+            ? synthesizedCurator.id
+            : (curation.curator_id || synthesizedCurator.id);
 
         const cleaned = {
             curation_id: curation.curation_id,
             // CurationCreate exige curator_id E curator: sem fallback aqui o
             // JSON descartava o undefined e o bulk upsert dava 422
-            curator_id: curation.curator_id || synthesizedCurator.id,
+            curator_id: curatorId,
             curator: synthesizedCurator,
             createdBy: curation.createdBy,
             updatedBy: curation.updatedBy,

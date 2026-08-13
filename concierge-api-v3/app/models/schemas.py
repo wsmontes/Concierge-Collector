@@ -186,6 +186,13 @@ class CurationUpdate(BaseModel):
 class Curation(CurationBase):
     """Complete Curation with system fields"""
     id: str = Field(..., alias="_id")
+
+    @field_validator("id", mode="before")
+    @classmethod
+    def _coerce_id_to_str(cls, v):
+        """Mongo _id pode ser ObjectId (bulk imports) ou str — a resposta
+        serializa como string (mesma regra do modelo Entity)."""
+        return str(v)
     curation_id: str
     entity_id: Optional[str] = None
     curator_id: Optional[str] = None

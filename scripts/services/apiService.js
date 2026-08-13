@@ -234,6 +234,7 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
     async listEntities(filters = {}) {
         const params = new URLSearchParams();
         if (filters.type) params.append('type', filters.type);
+        if (filters.name) params.append('name', filters.name);
         if (filters.status) params.append('status', filters.status);
         if (filters.since) params.append('since', filters.since);  // ✅ Incremental sync support
         if (filters.limit) params.append('limit', filters.limit);
