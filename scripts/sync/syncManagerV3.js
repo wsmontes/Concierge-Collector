@@ -1005,14 +1005,19 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
     }
 
     /**
-     * Process a server curation (compare version and update if needed)
-     * @returns {boolean} - true if curation was saved/updated
+     * Process a server curation (compare version and update if needed).
+     * CONTRATO TRI-STATE do retorno (o caller decide o watermark):
+     * - 'applied': doc local criado/atualizado/deletado — conta em totalPulled
+     * - 'noop':    nada a fazer (up-to-date, pending local, inválido) — o
+     *              watermark avança normalmente
+     * - 'failed':  falha REAL de aplicação local — o watermark NÃO avança
+     *              (senão o item nunca seria re-puxado pelo ?since)
      */
     async processServerCuration(serverCuration) {
         try {
             if (!serverCuration || !serverCuration.curation_id) {
                 this.log.warn('Invalid curation received (missing curation_id):', serverCuration);
-                return false;
+                return 'noop';
             }
 
             const localCuration = await window.DataStore.getCuration(serverCuration.curation_id);
@@ -1028,7 +1033,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                 // If the server says it's deleted but we don't have it, just skip
                 if (serverCuration.status === 'deleted') {
                     this.log.debug(`Skipping deleted curation from server: ${serverCuration.curation_id}`);
-                    return false;
+                    return 'noop';
                 }
 
                 // New curation from server
@@ -1041,13 +1046,13 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                     }
                 });
                 this.log.debug(`Created local curation: ${serverCuration.curation_id}`);
-                return true;
+                return 'applied';
             } else {
                 // If server says it's deleted, remove it locally
                 if (serverCuration.status === 'deleted') {
                     await window.DataStore.db.curations.delete(localCuration.id);
                     this.log.debug(`Deleted local curation (server mark as deleted): ${serverCuration.curation_id}`);
-                    return true;
+                    return 'applied';
                 }
 
                 const serverVersion = serverCuration.version || 0;
@@ -1098,8 +1103,10 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
         } catch (error) {
             this.log.error(`Failed to process curation ${serverCuration?.curation_id}:`, error);
             this.log.error('Error details:', error.message);
-            // Don't throw - continue processing other curations
-            return false;
+            // Don't throw - continue processing other curations.
+            // 'failed' (não false): o caller usa comparação ESTRITA — um
+            // booleano cairia entre os ramos e avançaria o watermark
+            return 'failed';
         }
     }
 

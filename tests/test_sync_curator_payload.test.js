@@ -138,3 +138,43 @@ describe('shouldContinuePull (módulo real) — walk por cursor com tipos mistos
     expect(sm.shouldContinuePull(new Array(200).fill({}), '')).toBe(false);
   });
 });
+
+describe('processServerCuration — contrato tri-state (módulo real)', () => {
+  function makeProcessManager(dataStore) {
+    window.DataStore = dataStore;
+    window.Logger = { module: () => ({ debug: () => {}, info: () => {}, warn: () => {}, error: () => {} }) };
+    window.AppConfig = { api: { backend: { batchSize: 50 } } };
+    // eslint-disable-next-line no-new-func
+    const fn = new Function('window', `${src}
+return window.SyncManagerV3;`);
+    const Klass = fn(window);
+    return new Klass();
+  }
+
+  test('curadoria inválida → noop (não é falha de aplicação)', async () => {
+    const sm = makeProcessManager({});
+    expect(await sm.processServerCuration(null)).toBe('noop');
+    expect(await sm.processServerCuration({})).toBe('noop');
+  });
+
+  test('falha REAL de aplicação local → failed (bloqueia o watermark)', async () => {
+    const sm = makeProcessManager({
+      getCuration: async () => { throw new Error('IndexedDB explodiu'); },
+    });
+    expect(await sm.processServerCuration({ curation_id: 'c1', version: 1 })).toBe('failed');
+  });
+
+  test('up-to-date → noop; não conta como applied', async () => {
+    const db = {
+      curations: {
+        where: () => ({ equals: () => ({ first: async () => null }) }),
+      },
+    };
+    const sm = makeProcessManager({
+      getCuration: async () => ({ id: 1, curator_id: 'u', version: 5, sync: { status: 'synced' } }),
+      db,
+    });
+    // serverVersion 5 == localVersion 5 → no-op
+    expect(await sm.processServerCuration({ curation_id: 'c1', version: 5 })).toBe('noop');
+  });
+});
