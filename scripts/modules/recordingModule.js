@@ -879,15 +879,28 @@ class RecordingModule {
             // Reset state on error
             this.resetRecordingState();
 
-            // Special handling for common mobile issues
-            if (error.name === 'NotAllowedError') {
-                alert('Microphone access denied. Please allow microphone access in your browser settings to record audio.');
-            } else if (error.name === 'NotFoundError') {
-                alert('No microphone found. Please connect a microphone and try again.');
+            // Mensagem clara para CADA falha conhecida de mic — e SEM
+            // re-throw: o re-throw virava unhandled rejection global
+            // (banner de erro assustador) mesmo com a UI já recuperada
+            const messages = {
+                NotAllowedError: 'Microphone access denied. Please allow microphone access in your browser settings to record audio.',
+                NotFoundError: 'No microphone found. Please connect a microphone and try again.',
+                NotSupportedError: 'Audio recording is not supported by this browser (secure context/HTTPS required). Try another browser.',
+            };
+            const message = messages[error.name]
+                || 'Could not start recording. Please check your microphone and try again.';
+
+            if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
+                window.uiUtils.showNotification(message, 'error');
+            } else {
+                alert(message);
             }
 
-            // Throw the error for handling upstream
-            throw error;
+            // Erros CONHECIDOS não sobem: a UI já resetou o estado —
+            // re-throw só para falhas inesperadas (debugabilidade)
+            if (!messages[error.name]) {
+                throw error;
+            }
         }
     }
 

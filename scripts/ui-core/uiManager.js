@@ -260,8 +260,28 @@ if (typeof window.UIManager === 'undefined') {
                     return;
                 }
 
-                // Keep list fresh without requiring tab switch
+                // Durante o sync, o pull escreve em RAJADA — re-renderizar a
+                // cada escrita causava a tempestade: fetch completo do
+                // servidor + rebuild da lista a cada ~2s (o "modal piscando"
+                // e a UI travada). Um único refresh local roda no
+                // concierge:sync-success.
+                if (window.SyncManager && window.SyncManager.isSyncing) {
+                    this._refreshAfterSync = true;
+                    return;
+                }
+
+                // Keep list fresh without requiring tab switch (cache LOCAL)
                 this.scheduleDataRefresh(`data-changed:${e?.detail?.table || 'unknown'}`, 150);
+            });
+
+            // Refresh ÚNICO pós-sync (local, sem fetch — o pull já gravou tudo)
+            window.addEventListener('concierge:sync-success', () => {
+                if (this.currentView !== 'list') return;
+                this._refreshAfterSync = false;
+                this.scheduleDataRefresh('sync-success', 100);
+            });
+            window.addEventListener('concierge:sync-error', () => {
+                this._refreshAfterSync = false;
             });
         }
 
@@ -274,10 +294,28 @@ if (typeof window.UIManager === 'undefined') {
 
             this.refreshDebounceTimer = setTimeout(() => {
                 this.refreshDebounceTimer = null;
-                this.refreshCurrentTabData().catch(err => {
+                this.refreshCurrentTabDataLocal().catch(err => {
                     console.warn("[uiManager] Data refresh failed:", err?.message || err);
                 });
             }, delayMs);
+        }
+
+        /**
+         * Re-renderiza a partir do CACHE LOCAL — eventos concierge:data-changed
+         * vêm de escrita local; buscar o servidor aqui criava um loop de
+         * fetch+render a cada rajada do sync (tempestade de re-render).
+         * Fetch de servidor só em ações explícitas (troca de tab, refresh).
+         */
+        async refreshCurrentTabDataLocal() {
+            if (this.currentTab === 'curations') {
+                const container = this.containers.curations;
+                if (container) {
+                    await this._loadCurationsFromLocal(container);
+                }
+            } else if (this.currentTab === 'entities' && typeof this.filterAndDisplayEntities === 'function') {
+                this.filterAndDisplayEntities();
+            }
+            this.updateViewSummaryVisibility();
         }
 
         async refreshCurrentTabData() {

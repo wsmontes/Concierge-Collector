@@ -157,6 +157,13 @@ window.uiUtils = {
      * @returns {Promise<boolean>} - Resolves to true if confirmed
      */
     confirmDialog: function (title, message, confirmLabel = 'Confirm', cancelLabel = 'Cancel') {
+        // UM dialog por vez: uma nova chamada resolve a anterior como
+        // cancelada (senão dois dialogs empilham e o clique no backdrop
+        // fecha um dialog que o usuário nem viu — "modal que some sozinho")
+        if (window.__activeConfirmCleanup) {
+            window.__activeConfirmCleanup(false);
+            window.__activeConfirmCleanup = null;
+        }
         return new Promise((resolve) => {
             const modal = document.createElement('div');
             modal.className = 'fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center p-4';
@@ -181,6 +188,7 @@ window.uiUtils = {
             `;
 
             const cleanup = (result) => {
+                window.__activeConfirmCleanup = null;
                 const element = document.getElementById('ui-confirm-dialog');
                 if (element) {
                     document.body.removeChild(element);
@@ -188,6 +196,7 @@ window.uiUtils = {
                 document.body.style.overflow = '';
                 resolve(result);
             };
+            window.__activeConfirmCleanup = cleanup;
 
             modal.querySelector('#confirm-cancel').onclick = (e) => {
                 e.preventDefault();
