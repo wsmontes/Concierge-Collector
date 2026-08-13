@@ -146,10 +146,11 @@ def compact_doc(doc):
         # ficariam perdidos para sempre
         doc["embeddings"] = novas
         if skipped > 0:
-            doc["embeddings_metadata"] = {
-                **(doc.get("embeddings_metadata") or {}),
-                "backfill_needed": True,
-            }
+            meta = doc.get("embeddings_metadata")
+            # metadata não-mapping (list/string de escrita crua) não pode
+            # quebrar o **splat no meio do restore
+            base = meta if isinstance(meta, dict) else {}
+            doc["embeddings_metadata"] = {**base, "backfill_needed": True}
     return doc, skipped
 
 

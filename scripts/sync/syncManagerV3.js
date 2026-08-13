@@ -966,8 +966,9 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         }
                     } catch (e) {
                         // 404 (deletada/inexistente) RESOLVE a quarentena —
-                        // getCuration lança em 404, não retorna null
-                        if (String(e?.message || '').includes('404')) {
+                        // getCuration lança em 404, mas o ApiService reescreve
+                        // a mensagem para 'Resource not found'
+                        if (String(e?.message || '').toLowerCase().includes('resource not found')) {
                             this.log.debug(`Quarentena: ${cid} 404 no servidor — resolvida`);
                             continue;
                         }

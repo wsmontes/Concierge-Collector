@@ -632,21 +632,27 @@ class CuratorModule {
             try {
                 // Fetch curators from server e PERSISTE no IndexedDB local
                 const response = await window.ApiService.listCurators();
-                const serverCurators = response?.items || [];
-                for (const c of serverCurators) {
+                // GET /curators retorna ARRAY puro (curators.py `return docs`)
+                const serverCurators = Array.isArray(response) ? response : (response?.items || []);
+                const ids = serverCurators.map(c => c.curator_id || c.id).filter(Boolean);
+                // 1 leitura em lote + 1 bulkPut (sem 2N round-trips sequenciais)
+                const existingRows = await window.DataStore.db.curators
+                    .where('curator_id').anyOf(ids).toArray();
+                const byCuratorId = new Map(existingRows.map(r => [r.curator_id, r]));
+                const rows = serverCurators.map(c => {
                     const id = c.curator_id || c.id;
-                    if (!id) continue;
-                    const existing = await window.DataStore.db.curators
-                        .where('curator_id').equals(id).first();
-                    if (existing) {
-                        await window.DataStore.db.curators.update(existing.id, {
-                            name: c.name, email: c.email || null, origin: 'remote',
-                        });
-                    } else {
-                        await window.DataStore.db.curators.add({
-                            curator_id: id, name: c.name, email: c.email || null, origin: 'remote',
-                        });
-                    }
+                    if (!id) return null;
+                    const existing = byCuratorId.get(id);
+                    return {
+                        ...(existing || {}),
+                        curator_id: id,
+                        name: c.name,
+                        email: c.email || null,
+                        origin: 'remote',
+                    };
+                }).filter(Boolean);
+                if (rows.length) {
+                    await window.DataStore.db.curators.bulkPut(rows);
                 }
             } catch (syncError) {
                 this.log.error('Error in sync service:', syncError);
@@ -662,8 +668,9 @@ class CuratorModule {
                 throw new Error(syncError.message || 'Error communicating with server');
             }
 
-            // Force refresh curators from database
-            await dataStorage.getAllCurators(true);
+            // Force refresh curators from database (helper local — o
+            // dataStorage.getAllCurators não existe em nenhum wrapper)
+            await this.getAllCuratorsLocal();
 
             // Refresh curator selector
             this.curatorSelectorInitialized = false;

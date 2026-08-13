@@ -28,7 +28,11 @@ export function authHeaders() {
 /** Migra o token legado do app principal (/app, mesma origin) para o
  * capture — usuário que só tinha auth_token não fica bloqueado no painel. */
 export function migrateLegacyToken() {
-  if (!localStorage?.getItem('capture_token') && localStorage?.getItem('auth_token')) {
+  // SÓ migra quando não há NENHUMA credencial — uma api_key digitada na UI
+  // não pode ser sombreada pelo token legado do app principal
+  if (!localStorage?.getItem('capture_token')
+      && !localStorage?.getItem('api_key')
+      && localStorage?.getItem('auth_token')) {
     localStorage.setItem('capture_token', localStorage.getItem('auth_token'));
     return true;
   }

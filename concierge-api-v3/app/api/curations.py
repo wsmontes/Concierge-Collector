@@ -13,6 +13,8 @@ import time
 import os
 import numpy as np
 
+from pydantic import ValidationError
+
 from app.models.schemas import (
     Curation, CurationCreate, CurationUpdate, PaginatedResponse, CurationStatus,
     SemanticSearchRequest, SemanticSearchResponse, SemanticSearchResult, ConceptMatch,
@@ -321,7 +323,7 @@ def search_curations(
     for doc in cursor:
         try:
             items.append(Curation(**doc))
-        except Exception as e:
+        except ValidationError as e:
             # doc de formato legado (curator/curation_id ausentes) não pode
             # derrubar a página inteira com 500 (modo offset)
             logger.warning("curadoria malformada pulada na listagem (offset): %s", e)
@@ -466,20 +468,17 @@ def update_curation(
     if "embeddings" in update_data:
         compacted, dropped = _compact_embeddings_for_storage(update_data["embeddings"])
         update_data["embeddings"] = compacted
-        if dropped:
-            update_data["embeddings_metadata"] = {
-                **(update_data.get("embeddings_metadata") or {}),
-                "backfill_needed": True,
-            }
-        else:
-            # embeddings totalmente válidos: LIMPA a flag (senão cada rodada
-            # do backfill re-embutiria docs já bons, pagando tokens à toa)
-            meta = dict(update_data.get("embeddings_metadata") or {})
-            meta.pop("backfill_needed", None)
-            if meta:
-                update_data["embeddings_metadata"] = meta
-            elif "embeddings_metadata" in update_data:
-                update_data["embeddings_metadata"] = meta
+        # metadados MERGE com o armazenado (preserva model/dimensions/created_at)
+        # e SEMPRE escreve a flag: True quando houve drop, False quando válido
+        stored_meta = db.curations.find_one(
+            {"_id": current["_id"]}, {"embeddings_metadata": 1}
+        ) or {}
+        meta = {
+            **(stored_meta.get("embeddings_metadata") or {}),
+            **(update_data.get("embeddings_metadata") or {}),
+            "backfill_needed": dropped,
+        }
+        update_data["embeddings_metadata"] = meta
     
     # Update — escreve no _id ESPECÍFICO do doc que a versão leu (nunca no
     # twin por decisão do planner). O filtro de version é CONDICIONAL: doc
