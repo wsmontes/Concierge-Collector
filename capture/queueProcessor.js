@@ -71,16 +71,18 @@ export async function processQueue() {
     const items = (await Store.getPendingItems()) || [];
 
     for (const item of items) {
-      // Itens que já esgotaram as tentativas não são reprocessados pelo
-      // heartbeat (senão um item permanentemente falho — ex.: 401 — seria
-      // reenviado a cada 30s para sempre). Voltam à fila via requeueItem().
-      if ((item.retries || 0) >= MAX_RETRIES) continue;
+      // Itens que já esgotaram as tentativas (upload OU confirmação) não são
+      // reprocessados pelo heartbeat — um item permanentemente falho não é
+      // reenviado a cada 30s para sempre. Voltam à fila via requeueItem().
+      if ((item.retries || 0) >= MAX_RETRIES || (item.confirmRetries || 0) >= MAX_RETRIES) {
+        continue;
+      }
 
       // ── Step 1: Upload audio (queued/failed → matched) ──
-      // 'failed' com retries < MAX_RETRIES é retentado pelo heartbeat; o
-      // contador acumula e o item para de ser retentado ao esgotar (a UI
-      // oferece Reenviar via requeueItem)
-      if (item.status === 'queued' || item.status === 'failed') {
+      // Só items SEM captureId re-uploadam — confirm-exhausted tem captureId
+      // e vai direto para a confirmação (re-upload re-transcreveria o áudio)
+      const precisaUpload = !item.captureId && (item.status === 'queued' || item.status === 'failed');
+      if (precisaUpload) {
         try {
           // retries NÃO é zerado aqui: reprocessar um item 'failed' acumula
           // tentativas até MAX_RETRIES (zerar só na criação/requeue)

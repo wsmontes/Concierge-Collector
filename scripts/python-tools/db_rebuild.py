@@ -141,8 +141,15 @@ def compact_doc(doc):
                 emb["vector"] = new
             novas.append(emb)
         # drop parcial preserva os vetores válidos (o restore não destrói o
-        # que está bom; os textos dropados ficam elegíveis para backfill)
+        # que está bom) e SINALIZA o backfill — sem a flag, o filtro do
+        # backfill não re-selecionaria a curadoria e os textos dropados
+        # ficariam perdidos para sempre
         doc["embeddings"] = novas
+        if skipped > 0:
+            doc["embeddings_metadata"] = {
+                **(doc.get("embeddings_metadata") or {}),
+                "backfill_needed": True,
+            }
     return doc, skipped
 
 
@@ -366,8 +373,11 @@ def _epoch(ts):
             ts = ts.replace(tzinfo=timezone.utc)
         return ts.timestamp()
     if isinstance(ts, (int, float)) and not isinstance(ts, bool):
+        f = float(ts)
+        if f != f or f in (float("inf"), float("-inf")):
+            return 0.0  # nan/inf não são instantes válidos
         # >1e11 = milissegundos (epoch ~1.7e9 em segundos)
-        return float(ts) / 1000.0 if ts > 1e11 else float(ts)
+        return f / 1000.0 if f > 1e11 else f
     if isinstance(ts, str) and ts:
         # '20240813' é data compacta (fromisoformat aceita), NÃO epoch —
         # tenta data compacta/ISO ANTES do número

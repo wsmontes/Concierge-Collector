@@ -552,7 +552,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                 lastEntityPullAt: this.stats.lastEntityPullAt,
                 lastCurationPullAt: this.stats.lastCurationPullAt,
                 failedCurationIds: this.stats.failedCurationIds || [],
-                syncVersion: this.syncVersion
+                syncVersion: this.syncVersion || CURRENT_SYNC_VERSION
             });
         } catch (error) {
             this.log.error('Failed to save sync metadata:', error);
@@ -965,6 +965,12 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                             stillFailed.push(cid);
                         }
                     } catch (e) {
+                        // 404 (deletada/inexistente) RESOLVE a quarentena —
+                        // getCuration lança em 404, não retorna null
+                        if (String(e?.message || '').includes('404')) {
+                            this.log.debug(`Quarentena: ${cid} 404 no servidor — resolvida`);
+                            continue;
+                        }
                         stillFailed.push(cid);
                     }
                     // pacing: sem estourar o rate limit 300/min

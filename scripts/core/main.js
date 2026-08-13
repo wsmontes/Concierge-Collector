@@ -455,8 +455,10 @@ function setupManualSyncButton() {
 
         try {
             let syncResults;
-            if (typeof syncManager.performComprehensiveSync === 'function') {
-                syncResults = await syncManager.performComprehensiveSync(true);
+            // SyncManagerV3 expõe fullSync/syncAll/quickSync —
+            // performComprehensiveSync nunca existiu nessa classe
+            if (typeof syncManager.fullSync === 'function') {
+                syncResults = await syncManager.fullSync();
             } else {
                 throw new Error('No compatible sync method available');
             }

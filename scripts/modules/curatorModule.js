@@ -381,6 +381,20 @@ class CuratorModule {
     /**
      * Initialize the curator selector dropdown with enhanced debugging and source tracking
      */
+    /**
+     * Lê TODOS os curadores do IndexedDB (DataStore.db.curators) — substitui
+     * dataStorage.getAllCurators(), que NÃO EXISTE em nenhum wrapper
+     * (TypeError em todos os call sites).
+     */
+    async getAllCuratorsLocal() {
+        try {
+            return await window.DataStore.db.curators.toArray();
+        } catch (e) {
+            this.log.error('Failed to read curators from IndexedDB:', e);
+            return [];
+        }
+    }
+
     async initializeCuratorSelector() {
         try {
             const curatorSelector = document.getElementById('curator-selector');
@@ -389,7 +403,7 @@ class CuratorModule {
             this.log.debug('Initializing curator selector...');
 
             // Get all curators from database with cleanup enabled
-            const curators = await dataStorage.getAllCurators(true);
+            const curators = await this.getAllCuratorsLocal();
             this.log.debug(`Retrieved ${curators.length} curators from database`);
 
             // Clear all existing options except first two default options ("New Curator" and "Fetch from Server")
@@ -616,11 +630,24 @@ class CuratorModule {
             SafetyUtils.showLoading('Fetching curators from server...');
 
             try {
-                // First, clean up any existing duplicate curators
-                await dataStorage.getAllCurators(true);
-
-                // Fetch curators from server with error handling
-                await window.ApiService.listCurators();
+                // Fetch curators from server e PERSISTE no IndexedDB local
+                const response = await window.ApiService.listCurators();
+                const serverCurators = response?.items || [];
+                for (const c of serverCurators) {
+                    const id = c.curator_id || c.id;
+                    if (!id) continue;
+                    const existing = await window.DataStore.db.curators
+                        .where('curator_id').equals(id).first();
+                    if (existing) {
+                        await window.DataStore.db.curators.update(existing.id, {
+                            name: c.name, email: c.email || null, origin: 'remote',
+                        });
+                    } else {
+                        await window.DataStore.db.curators.add({
+                            curator_id: id, name: c.name, email: c.email || null, origin: 'remote',
+                        });
+                    }
+                }
             } catch (syncError) {
                 this.log.error('Error in sync service:', syncError);
 
@@ -1229,7 +1256,7 @@ class CuratorModule {
             this.log.debug('Populating compact curator selector...');
 
             // Get all curators from database
-            const curators = await dataStorage.getAllCurators(true);
+            const curators = await this.getAllCuratorsLocal();
             this.log.debug(`Retrieved ${curators.length} curators for compact selector`);
 
             // Clear all existing options except the first one ("+ Create new curator")

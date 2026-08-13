@@ -107,6 +107,8 @@ function hideAuthPanel() {
 /** Garante credencial antes do processamento da fila: JWT salvo/API key na
  *  UI, ou dev-login automático em localhost. Sem credencial, mostra o painel. */
 async function ensureAuth() {
+  // migração do token legado do app principal (mesma origin via /app)
+  API.migrateLegacyToken();
   if (API.hasCredentials()) {
     hideAuthPanel();
     return;

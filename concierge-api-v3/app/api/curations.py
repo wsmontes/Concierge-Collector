@@ -319,10 +319,12 @@ def search_curations(
 
     items = []
     for doc in cursor:
-        if doc.get("_id") is None:
-            logger.warning("curadoria sem _id pulada na listagem")
-            continue
-        items.append(Curation(**doc))
+        try:
+            items.append(Curation(**doc))
+        except Exception as e:
+            # doc de formato legado (curator/curation_id ausentes) não pode
+            # derrubar a página inteira com 500 (modo offset)
+            logger.warning("curadoria malformada pulada na listagem (offset): %s", e)
 
     return PaginatedResponse(
         items=items,
@@ -469,6 +471,15 @@ def update_curation(
                 **(update_data.get("embeddings_metadata") or {}),
                 "backfill_needed": True,
             }
+        else:
+            # embeddings totalmente válidos: LIMPA a flag (senão cada rodada
+            # do backfill re-embutiria docs já bons, pagando tokens à toa)
+            meta = dict(update_data.get("embeddings_metadata") or {})
+            meta.pop("backfill_needed", None)
+            if meta:
+                update_data["embeddings_metadata"] = meta
+            elif "embeddings_metadata" in update_data:
+                update_data["embeddings_metadata"] = meta
     
     # Update — escreve no _id ESPECÍFICO do doc que a versão leu (nunca no
     # twin por decisão do planner). O filtro de version é CONDICIONAL: doc
