@@ -126,22 +126,26 @@ def _api_headers():
 
 @pytest.mark.mongo
 def test_search_filters_by_city_and_text(client, test_db, clean_test_curations):
+    # _ids com prefixo "0-" ordenam ANTES de todos os ids reais de produção
+    # (curation-research-*) na busca por _id ascendente — sem isso, o volume
+    # de curadorias reais (900+) empurra os docs de teste para fora da
+    # primeira página (limit=100) e o assert falha por dado externo.
     test_db.curations.insert_many([
-        {"_id": "test_c_sp", "curation_id": "test_c_sp", "entity_id": "test_e1",
+        {"_id": "0-test_c_sp", "curation_id": "0-test_c_sp", "entity_id": "test_e1",
          "restaurant_name": "Pizzaria Napoli", "status": "draft", "city": "São Paulo", "type": "restaurant",
          "curator": {"id": "test_curator", "name": "Test"}},
-        {"_id": "test_c_rio", "curation_id": "test_c_rio", "entity_id": "test_e2",
+        {"_id": "0-test_c_rio", "curation_id": "0-test_c_rio", "entity_id": "test_e2",
          "restaurant_name": "Bar do Rio", "status": "draft", "city": "Rio de Janeiro", "type": "bar",
          "curator": {"id": "test_curator", "name": "Test"}},
     ])
     r = client.get("/api/v3/curations/search?city=São Paulo&limit=100")
     ids = [i.get("curation_id") for i in r.json()["items"]]
-    assert "test_c_sp" in ids and "test_c_rio" not in ids
+    assert "0-test_c_sp" in ids and "0-test_c_rio" not in ids
 
     r2 = client.get("/api/v3/curations/search?q=napoli&limit=100")
     ids2 = [i.get("curation_id") for i in r2.json()["items"]]
-    assert "test_c_sp" in ids2 and "test_c_rio" not in ids2
-    test_db.curations.delete_many({"_id": {"$in": ["test_c_sp", "test_c_rio"]}})
+    assert "0-test_c_sp" in ids2 and "0-test_c_rio" not in ids2
+    test_db.curations.delete_many({"_id": {"$in": ["0-test_c_sp", "0-test_c_rio"]}})
 
 
 def test_bulk_upsert_handles_duplicate_key_race():
@@ -264,6 +268,92 @@ def test_bulk_upsert_duplicate_key_reports_recovery_failure():
     assert result.errors[0].id == "cur_test_003"
     assert "DuplicateKeyError" in result.errors[0].error
     assert result.updated == 0
+
+
+def test_bulk_upsert_update_preserves_stored_curator_when_payload_id_empty():
+    """Update com curator de payload sem id real não pode destruir a
+    identidade armazenada (curator_id + name/email reais)."""
+    from unittest.mock import MagicMock
+    from app.api.curations import bulk_upsert_curations
+    from app.models.schemas import BulkCurationCreate, CurationCreate, CuratorInfo
+
+    mock_db = MagicMock()
+    mock_auth = {"role": "admin", "user": "test@test.com"}
+
+    existing = {
+        "_id": "cur_test_010",
+        "version": 3,
+        "createdBy": "real-1",
+        "createdAt": "2026-01-01T00:00:00Z",
+        "curator_id": "real-1",
+        "curator": {"id": "real-1", "name": "Nome Real", "email": "real@example.com"},
+    }
+    mock_db.curations.find_one.return_value = existing
+    mock_db.entities.find.return_value = []
+
+    curation = CurationCreate(
+        curation_id="cur_test_010",
+        entity_id="ent_010",
+        curator_id="",
+        curator=CuratorInfo(id="", name="Novo Nome"),
+        status="active",
+    )
+    payload = BulkCurationCreate(curations=[curation])
+
+    result = bulk_upsert_curations(request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth)
+
+    assert result.updated == 1
+    assert len(result.errors) == 0
+    mock_db.curations.update_one.assert_called_once()
+    call_args, call_kwargs = mock_db.curations.update_one.call_args
+    set_doc = call_kwargs.get("$set") or call_args[1].get("$set")
+
+    assert set_doc["curator_id"] == "real-1", "curator_id armazenado deve prevalecer"
+    assert set_doc["curator"]["id"] == "real-1", "curator.id armazenado deve prevalecer"
+    assert set_doc["curator"]["name"] == "Novo Nome", "name do payload atualiza"
+    assert set_doc["curator"]["email"] == "real@example.com", "email armazenado preservado"
+    assert set_doc["version"] == 4
+
+
+def test_bulk_upsert_duplicate_key_preserves_winner_identity_and_version():
+    """Na corrida do DuplicateKeyError, o vencedor é autoritativo: curator,
+    createdBy, updatedBy e version não podem ser sobrescritos pelo perdedor."""
+    from unittest.mock import MagicMock
+    from app.api.curations import bulk_upsert_curations
+    from app.models.schemas import BulkCurationCreate, CurationCreate, CuratorInfo
+    from pymongo.errors import DuplicateKeyError
+
+    mock_db = MagicMock()
+    mock_auth = {"role": "admin", "user": "test@test.com"}
+
+    winner = {"_id": "cur_test_004", "version": 5}
+    # probes do loop principal (_id string, curation_id) → None;
+    # probe do recovery do vencedor → winner
+    mock_db.curations.find_one.side_effect = [None, None, winner]
+    mock_db.curations.insert_one.side_effect = DuplicateKeyError("dup")
+    mock_db.entities.find.return_value = []
+
+    curation = CurationCreate(
+        curation_id="cur_test_004",
+        entity_id="ent_004",
+        curator_id="loser-1",
+        curator=CuratorInfo(id="loser-1", name="Perdedor"),
+        status="draft",
+    )
+    payload = BulkCurationCreate(curations=[curation])
+
+    result = bulk_upsert_curations(request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth)
+
+    assert result.updated == 1
+    assert len(result.errors) == 0
+    mock_db.curations.update_one.assert_called_once()
+    call_args, call_kwargs = mock_db.curations.update_one.call_args
+    set_doc = call_kwargs.get("$set") or call_args[1].get("$set")
+
+    for forbidden in ("_id", "createdAt", "createdBy", "curator", "curator_id", "updatedBy"):
+        assert forbidden not in set_doc, f"{forbidden} não pode ir no $set da corrida"
+    assert set_doc["version"] == winner["version"] + 1
+    assert set_doc["status"] == "draft"
 
 
 @pytest.mark.parametrize("location", [

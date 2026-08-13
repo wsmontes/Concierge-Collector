@@ -1105,7 +1105,7 @@ def bulk_upsert_curations(
             existing = find_curation(
                 db, curation.curation_id,
                 projection={"_id": 1, "version": 1, "createdBy": 1,
-                            "createdAt": 1, "curator_id": 1},
+                            "createdAt": 1, "curator_id": 1, "curator": 1},
             )
 
             # Denormalize city/type from entity (pre-fetched batch) — _id
@@ -1122,18 +1122,16 @@ def bulk_upsert_curations(
                 doc["updatedAt"] = now
                 doc["version"] = existing.get("version", 1) + 1
                 _normalize_curator_id(doc)  # ANTES do updatedBy: 'unknown' não persiste
-                real_id = existing.get("curator_id") or (existing.get("curator") or {}).get("id")
-                if ((doc.get("curator_id") or "").lower() == "unknown"
-                        or str((doc.get("curator") or {}).get("id") or "").lower() == "unknown"):
-                    if real_id and str(real_id).lower() != "unknown":
-                        # mesmo reparo do PATCH: id embutido corrigido e
-                        # name/email armazenados preservados
-                        doc["curator_id"] = real_id
-                        doc["curator"] = {
-                            **(existing.get("curator") if isinstance(existing.get("curator"), dict) else {}),
-                            **(doc.get("curator") or {}),
-                            "id": real_id,
-                        }
+                stored_cur = existing.get("curator") if isinstance(existing.get("curator"), dict) else {}
+                stored_id = existing.get("curator_id") or stored_cur.get("id")
+                payload_cur = doc.get("curator") if isinstance(doc.get("curator"), dict) else {}
+                payload_id = str(payload_cur.get("id") or "")
+                if not payload_id or payload_id.lower() == "unknown":
+                    # payload deslogado/placeholder: identidade ARMAZENADA
+                    # prevalece — name/email reais nunca são destruídos
+                    if stored_id and str(stored_id).lower() != "unknown":
+                        doc["curator_id"] = stored_id
+                        doc["curator"] = {**stored_cur, **payload_cur, "id": stored_id}
                 doc["updatedBy"] = doc.get("curator_id") or curation.curator_id
                 if entity_for_denorm:
                     doc.update(denormalize_curation_location(entity_for_denorm))
@@ -1158,9 +1156,18 @@ def bulk_upsert_curations(
 
         except DuplicateKeyError:
             # Race: another request inserted between our find_one and insert_one.
-            # Update the existing document with our data (preserve createdAt).
+            # Preserva identidade/versão do VENCEDOR (nunca sobrescreve curator
+            # nem reseta version — 409 em cascata era o sintoma do clobber).
             try:
-                update_doc = {k: v for k, v in doc.items() if k not in ("_id", "createdAt")}
+                winner = find_curation(db, curation.curation_id,
+                                       projection={"_id": 1, "version": 1})
+                if winner:
+                    update_doc = {k: v for k, v in doc.items()
+                                  if k not in ("_id", "createdAt", "createdBy",
+                                               "curator", "curator_id", "version", "updatedBy")}
+                    update_doc["version"] = winner.get("version", 1) + 1
+                else:
+                    update_doc = {k: v for k, v in doc.items() if k not in ("_id", "createdAt")}
                 db.curations.update_one({"_id": curation.curation_id}, {"$set": update_doc})
                 updated += 1
             except Exception as update_exc:
