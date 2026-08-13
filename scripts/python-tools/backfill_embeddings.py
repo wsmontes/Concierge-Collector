@@ -119,6 +119,12 @@ def main():
         texts, meta = curation_texts(c)
         if not texts:
             sem_textos.append(str(c['_id']))
+            # terminator do ciclo: doc flagado sem textos deriváveis não pode
+            # re-casar o filtro para sempre (re-read + custo inflado a cada run)
+            db.curations.update_one(
+                {'_id': c['_id']},
+                {'$set': {'embeddings_metadata.backfill_needed': False}},
+            )
             continue
         trabalhos.append((c['_id'], texts, meta))  # valor real, não str()
         total_textos += len(texts)

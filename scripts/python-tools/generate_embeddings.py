@@ -64,7 +64,11 @@ def curations_sem_embeddings(db):
     dicts no formato consumido pela main ({curation_id, entity_id,
     categories})."""
     filtro = {
-        "$or": [{"embeddings": {"$exists": False}}, {"embeddings": []}],
+        "$or": [
+            {"embeddings": {"$exists": False}},
+            {"embeddings": []},
+            {"embeddings_metadata.backfill_needed": True},
+        ],
         "status": {"$ne": "deleted"},
     }
     return [
@@ -183,7 +187,11 @@ def create_embeddings_for_curation(curation: Dict) -> List[Dict]:
 
 
 def update_curation_embeddings(curation_id: str, embeddings: List[Dict]) -> bool:
-    """Update curation with embeddings via PATCH API"""
+    """Update curation with embeddings via PATCH API. Lista VAZIA (falha
+    total do batch) NÃO é enviada — o $set de [] destruiria os vetores bons
+    já armazenados e tiraria a curadoria da busca semântica."""
+    if not embeddings:
+        return False
     try:
         headers_api = {
             "X-API-Key": API_SECRET_KEY,

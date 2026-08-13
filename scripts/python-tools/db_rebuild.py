@@ -148,7 +148,9 @@ def compact_doc(doc):
         # backfill não re-selecionaria a curadoria e os textos dropados
         # ficariam perdidos para sempre
         doc["embeddings"] = novas
-        if skipped > 0:
+        if skipped > 0 and (doc.get("categories")):
+            # só estampa com pendência REAL: doc sem categories nunca seria
+            # embutível e viraria residente permanente do filtro do backfill
             meta = doc.get("embeddings_metadata")
             # metadata não-mapping (list/string de escrita crua) não pode
             # quebrar o **splat no meio do restore

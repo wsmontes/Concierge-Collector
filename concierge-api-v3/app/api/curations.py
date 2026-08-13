@@ -171,7 +171,7 @@ def _compute_backfill_flag(stored_categories, new_embeddings, client_meta, store
     pending = _pending_category_texts(stored_categories)
     covered = {
         e.get("text") for e in (new_embeddings or [])
-        if isinstance(e, dict) and e.get("text")
+        if isinstance(e, dict) and e.get("text") and e.get("vector") is not None
     }
     meta["backfill_needed"] = not pending.issubset(covered)
     return meta
@@ -502,24 +502,45 @@ def update_curation(
     # Fronteira de escrita: vetores entram no Mongo compactados (Binary float32)
     if "categories" in update_data or "embeddings" in update_data:
         # Fronteira de escrita: vetores compactados + flag de pendência
-        # computada a partir das CATEGORIES (não dos embeddings armazenados,
-        # que drops anteriores podem ter esvaziado)
+        # computada a partir das CATEGORIES.
         compacted = None
         if "embeddings" in update_data:
             compacted, _dropped = _compact_embeddings_for_storage(update_data["embeddings"])
             update_data["embeddings"] = compacted
+        # categories do PATCH prevalecem — INCLUSIVE {} (clear legítimo não é
+        # falsy: limpar conceitos não pode re-estampar pendência do snapshot)
+        if "categories" in update_data and update_data["categories"] is not None:
+            categorias_pendencia = update_data["categories"]
+        else:
+            # categories já veio no current (o projection não a exclui)
+            categorias_pendencia = current.get("categories") or {}
+        # embeddings armazenados (presença de vetor) cobrem a pendência quando
+        # o PATCH é só-categories — sem isso, qualquer edição de conceito
+        # re-estamparia True em docs já totalmente embutidos
         stored_raw = db.curations.find_one(
-            {"_id": current["_id"]}, {"embeddings_metadata": 1, "categories": 1}
+            {"_id": current["_id"]},
+            {"embeddings_metadata": 1, "embeddings.text": 1, "embeddings.vector": {"$slice": 1}},
         ) or {}
-        # categories do PATCH prevalecem para a pendência (novos conceitos
-        # precisam de backfill mesmo sem embeddings no PATCH)
-        categorias_pendencia = update_data.get("categories") or stored_raw.get("categories") or {}
+        stored_embeddings = [
+            {**e, "vector": None if "vector" not in e else e["vector"]}
+            for e in stored_raw.get("embeddings") or []
+        ] if "embeddings" in stored_raw else None
+        cobertura = compacted if compacted is not None else stored_embeddings
         update_data["embeddings_metadata"] = _compute_backfill_flag(
-            categorias_pendencia, compacted,
+            categorias_pendencia, cobertura,
             update_data.get("embeddings_metadata"),
             stored_raw.get("embeddings_metadata"),
         )
     
+    # Cliente NUNCA controla a flag: PATCH só de embeddings_metadata tem a
+    # chave removida (o servidor é a autoridade)
+    if ("embeddings_metadata" in update_data
+            and "categories" not in update_data
+            and "embeddings" not in update_data):
+        meta_client = dict(update_data.get("embeddings_metadata") or {})
+        meta_client.pop("backfill_needed", None)
+        update_data["embeddings_metadata"] = meta_client
+
     # Update — escreve no _id ESPECÍFICO do doc que a versão leu (nunca no
     # twin por decisão do planner). O filtro de version é CONDICIONAL: doc
     # sem campo version (legado/restore) nunca casaria com {"version": 1}
@@ -865,6 +886,8 @@ def hybrid_search(
         similarities = []
         
         for emb in embeddings:
+            if not isinstance(emb, dict):
+                continue  # entrada corrompida não pode derrubar a busca
             # Filter by category if specified
             if allowed_categories and emb.get("category") not in allowed_categories:
                 continue

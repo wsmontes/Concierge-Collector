@@ -291,3 +291,23 @@ def test_compute_backfill_flag_tolerates_non_dict_categories():
 
     meta = _compute_backfill_flag(["nao", "dict"], None, None, {})
     assert meta["backfill_needed"] is False  # sem categorias válidas = sem pendência
+
+
+def test_compute_backfill_flag_text_only_entry_is_not_coverage():
+    """Entrada com texto SEM vetor NÃO cobre a pendência (regressão do _dropped)."""
+    from app.api.curations import _compute_backfill_flag
+
+    meta = _compute_backfill_flag(
+        {"cuisine": ["italiana"]},
+        [{"text": "cuisine italiana"}],  # sem vector
+        None, {},
+    )
+    assert meta["backfill_needed"] is True
+
+
+def test_compute_backfill_flag_empty_categories_clears():
+    """categories {} (clear legítimo) não é falsy: sem pendência, flag False."""
+    from app.api.curations import _compute_backfill_flag
+
+    meta = _compute_backfill_flag({}, None, None, {"backfill_needed": True})
+    assert meta["backfill_needed"] is False
