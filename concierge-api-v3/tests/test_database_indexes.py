@@ -18,7 +18,10 @@ class FakeCol:
 
     def create_index(self, keys, **kwargs):
         hashable = tuple(keys) if isinstance(keys, list) else keys
-        if hashable in self.fail_keys and kwargs.get("unique"):
+        if hashable in self.fail_keys:
+            # qualquer falha conta (unique/duplicata, cota, rede...) —
+            # nenhuma spec é mais unique (dados reais têm duplicatas), mas a
+            # garantia de isolamento por índice continua obrigatória
             raise Exception("E11000 duplicate key error collection (simulado)")
         self.created.append((keys, kwargs))
         return "ok"
@@ -37,13 +40,13 @@ class FakeDb:
         self.capture_sessions = FakeCol("capture_sessions")
 
 
-def test_ensure_indexes_continues_after_unique_index_failure(monkeypatch, caplog):
+def test_ensure_indexes_continues_after_index_failure(monkeypatch, caplog):
     fake = FakeDb()
     monkeypatch.setattr(dbmod, "get_database", lambda: fake)
 
     dbmod._ensure_indexes()  # não pode levantar
 
-    # o índice único que falhou NÃO foi criado...
+    # o índice que falhou NÃO foi criado...
     assert "externalId" not in [k for k, _ in fake.entities.created]
     # ...mas todos os demais de entities e todos os de curations foram
     assert len(fake.entities.created) == 9

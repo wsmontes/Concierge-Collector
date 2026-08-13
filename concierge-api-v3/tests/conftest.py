@@ -9,6 +9,18 @@ from datetime import datetime, timezone
 import os
 from pathlib import Path
 
+# O zsh do dev exporta OPENAI_BASE_URL=http://localhost:1234/v1 (LM Studio) e
+# OPENAI_API_KEY=lm-studio — pydantic-settings congela essas env vars no
+# singleton `settings` no import, e qualquer teste que passe pelo OpenAI SDK
+# falha com 'No models loaded'/401. load_dotenv NÃO sobrescreve env existente,
+# então a poluição conhecida precisa sair ANTES do load_dotenv carregar os
+# valores reais do .env; exportações reais (chave/base_url legítimas) são
+# preservadas.
+if ("localhost:1234" in os.environ.get("OPENAI_BASE_URL", "")
+        or os.environ.get("OPENAI_API_KEY", "").strip().lower() == "lm-studio"):
+    for _var in ("OPENAI_BASE_URL", "OPENAI_API_KEY", "OPENAI_MODEL"):
+        os.environ.pop(_var, None)
+
 # Load .env file before importing app
 from dotenv import load_dotenv
 env_path = Path(__file__).parent.parent / ".env"

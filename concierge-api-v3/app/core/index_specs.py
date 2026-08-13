@@ -19,9 +19,17 @@ INDEX_SPECS = [
     ("entities", "createdAt", {}),
     ("entities", "entity_id", {}),
     ("entities", [("name", "text")], {}),
-    # Uniqueness guards
-    ("entities", "externalId", {"unique": True, "sparse": True}),
-    ("entities", "data.place_id", {"unique": True, "sparse": True}),
+    # REALIDADE DOS DADOS (ago/2026): ~21k entities com externalId EXPLÍCITO
+    # null (sparse não exclui null, só campo ausente), 16 pares de externalId
+    # string duplicados (mesma praça em importações diferentes) e place_ids
+    # duplicados x2. Com unique+sparse esses índices NUNCA construíam:
+    # startup falhava a cada deploy e os lookups do enriquecimento do Google
+    # Places (llm_place_service: find_one por externalId/place_id) rodavam
+    # sem índice. Unicidade nunca existiu na prática — manter unique é só
+    # ruído; índices simples devolvem o lookup indexado. Deduplicar os twins
+    # é decisão de dados (qual doc é autoritativo), não de índice.
+    ("entities", "externalId", {}),
+    ("entities", "data.place_id", {}),
     # Composite indexes for scale
     # Supports: list with status filter + incremental sync (?since)
     ("entities", [("status", 1), ("updatedAt", -1)], {}),
