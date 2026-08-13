@@ -107,11 +107,8 @@ def test_compact_embeddings_keeps_text_only_entries_and_binary():
         {"text": "vetor nulo", "vector": None},
     ]
     out = _compact_embeddings_for_storage(embs)
-    assert out[0] == {"text": "sem vetor"}
-    assert out[1]["vector"] is packed
-    # vetor nulo: ENTRADA removida — se ficasse só com texto, o filtro de
-    # backfill ($or: embeddings ausente ou []) nunca a re-selecionaria
-    assert len(out) == 2
+    # QUALQUER entrada dropada zera o array inteiro (backfill re-seleciona)
+    assert out == []
 
 
 def test_compact_embeddings_does_not_pack_empty_vector():

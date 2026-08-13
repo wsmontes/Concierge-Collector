@@ -849,6 +849,11 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                 // ou cursor ausente termina; o preço é 1 request extra vazio.
                 if (!this.shouldContinuePull(items, afterId)) {
                     hasMore = false;
+                } else {
+                    // pacing: ~108 páginas em rajada estouravam o rate limit
+                    // de 300/min (main.py Limiter) no primeiro full sync
+                    const delayMs = window.AppConfig?.api?.backend?.syncBatchDelayMs || 200;
+                    await new Promise(resolve => setTimeout(resolve, delayMs));
                 }
             }
 
@@ -936,6 +941,29 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             // para sempre (janela alargada pelo pacing de 200ms por página)
             const pullStartedAt = new Date().toISOString();
             const since = this.stats.lastCurationPullAt;
+
+            // Retry da QUARENTENA: itens que falharam no pull anterior são
+            // re-tentados por point-query (o ?since os excluiria para sempre)
+            const quarantined = this.stats.failedCurationIds || [];
+            if (quarantined.length) {
+                this.log.info(`Re-tentando ${quarantined.length} item(ns) em quarentena`);
+                const stillFailed = [];
+                for (const cid of quarantined) {
+                    try {
+                        const doc = await window.ApiService.getCuration(cid);
+                        if (doc && this.interpretPullResult(
+                            await this.processServerCuration(doc)
+                        ).failed) {
+                            stillFailed.push(cid);
+                        }
+                    } catch (e) {
+                        stillFailed.push(cid);
+                    }
+                }
+                this.stats.failedCurationIds = stillFailed;
+                await this.saveSyncMetadata();
+            }
+
             if (since) {
                 this.log.info(`⏱️ Incremental sync: fetching curations updated after ${since}`);
             } else {
@@ -1128,6 +1156,15 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                     }
                     return PULL_RESULT.NOOP;  // local vai para push — não é falha de aplicação
                 } else {
+                    // Versões iguais: repara SÓ o curator_id ausente (legado)
+                    // — sem clobber de conteúdo mais novo
+                    if (!localCuration.curator_id && normalizedCuration.curator_id) {
+                        await window.DataStore.db.curations.update(localCuration.id, {
+                            curator_id: normalizedCuration.curator_id,
+                        });
+                        this.log.debug(`Curation curator_id repaired: ${serverCuration.curation_id}`);
+                        return PULL_RESULT.APPLIED;
+                    }
                     // Same version, no action needed
                     this.log.debug(`Curation up to date: ${serverCuration.curation_id}`);
                     return PULL_RESULT.NOOP;  // já atualizado — não bloqueia o watermark

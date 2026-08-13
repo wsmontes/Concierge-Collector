@@ -130,9 +130,16 @@ export async function processQueue() {
 
         } catch (err) {
           console.error(`Queue confirm failed for ${item.id}:`, err);
-          // Keep as 'matched' so user can retry confirmation manually
-          await Store.updateItem(item.id, { status: 'matched' });
-          notify(item.id, 'matched', { confirmError: err.message });
+          // Confirmação permanentemente falha não pode re-tentar a cada 30s
+          // para sempre — conta as tentativas e exaure como o leg de upload
+          const retries = (item.retries || 0) + 1;
+          if (retries >= MAX_RETRIES) {
+            await Store.updateItem(item.id, { status: 'failed', retries });
+            notify(item.id, 'failed', { confirmError: err.message });
+          } else {
+            await Store.updateItem(item.id, { status: 'matched', retries });
+            notify(item.id, 'matched', { confirmError: err.message });
+          }
         }
       }
     }

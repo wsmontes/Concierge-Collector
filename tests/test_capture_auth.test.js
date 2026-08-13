@@ -21,10 +21,10 @@ describe('captureService — authHeaders', () => {
     expect(headers['X-API-Key']).toBeUndefined();
   });
 
-  test('Bearer também via auth_token (app principal)', async () => {
+  test('auth_token LEGADO não é usado (sombrearia a chave digitada na UI)', async () => {
     localStorage.setItem('auth_token', 'jwt-do-app');
     const { authHeaders } = await import('../capture/captureService.js');
-    expect(authHeaders().Authorization).toBe('Bearer jwt-do-app');
+    expect(authHeaders().Authorization).toBeUndefined();
   });
 
   test('X-API-Key quando só api_key existe', async () => {

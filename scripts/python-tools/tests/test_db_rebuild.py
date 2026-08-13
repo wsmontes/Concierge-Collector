@@ -103,9 +103,9 @@ def test_compact_doc_keeps_text_only_entry_without_crashing():
         "embeddings": [{"text": "x", "category": "y"}, {"text": "z", "vector": None}],
     }
     out, skipped = compact_doc(doc)
-    # entrada sem 'vector' fica; entrada com vector None é REMOVIDA (senão o
-    # backfill nunca re-selecionaria a curadoria)
-    assert out["embeddings"] == [{"text": "x", "category": "y"}]
+    # QUALQUER entrada dropada zera o array inteiro: o backfill re-seleciona
+    # a curadoria — um array parcial deixaria os textos dropados perdidos
+    assert out["embeddings"] == []
     assert skipped == 1
 
 
@@ -665,8 +665,7 @@ def test_compact_doc_drops_unpackable_entries_entirely():
         {"text": "lixo", "vector": {"0": 0.31}},
     ]}
     out, skipped = compact_doc(doc)
-    assert len(out["embeddings"]) == 1
-    assert out["embeddings"][0]["text"] == "valida"
+    assert out["embeddings"] == []  # drop parcial → array inteiro vazio
     assert skipped == 1
 
 

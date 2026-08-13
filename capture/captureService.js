@@ -13,7 +13,9 @@ const BASE = '/api/v3';
  */
 export function authHeaders() {
   const headers = { 'Content-Type': 'application/json' };
-  const token = localStorage?.getItem('capture_token') || localStorage?.getItem('auth_token');
+  // auth_token é chave LEGADA do app principal (não é credencial do capture)
+  // — usá-la como Bearer sombrearia a chave digitada na UI com identidade velha
+  const token = localStorage?.getItem('capture_token');
   if (token) {
     headers['Authorization'] = `Bearer ${token}`;
   } else {
@@ -39,7 +41,6 @@ export function clearCredentials() {
 export function hasCredentials() {
   return Boolean(
     localStorage?.getItem('capture_token')
-    || localStorage?.getItem('auth_token')
     || localStorage?.getItem('api_key')
   );
 }

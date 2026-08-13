@@ -56,6 +56,7 @@ def _compact_embeddings_for_storage(embeddings):
     if not isinstance(embeddings, list):
         return embeddings
     out = []
+    dropped = False
     for emb in embeddings:
         if not isinstance(emb, dict) or "vector" not in emb:
             out.append(emb)
@@ -71,9 +72,13 @@ def _compact_embeddings_for_storage(embeddings):
                 "(ausente/vazio/malformado/dimensão errada): %r",
                 emb.get("text"),
             )
+            dropped = True
             continue
         out.append({**emb, "vector": packed})
-    return out
+    # qualquer entrada dropada → array inteiro vazio: o filtro do backfill
+    # ($or: embeddings ausente ou []) re-seleciona a curadoria — um array
+    # parcialmente válido deixaria os textos dropados perdidos para sempre
+    return [] if dropped else out
 
 
 def _vector_search_or_fallback(db, projection, query_vector, candidate_limit, fallback_filter):
@@ -299,7 +304,12 @@ def search_curations(
             transition = dict(query)
             transition["_id"] = {"$gt": ObjectId("0" * 24)}
             docs = list(db.curations.find(transition, CURATION_RESPONSE_PROJECTION).sort("_id", 1).limit(limit))
-        items = [Curation(**doc) for doc in docs]
+        items = []
+        for doc in docs:
+            if doc.get("_id") is None:
+                logger.warning("curadoria sem _id pulada na listagem (cursor)")
+                continue
+            items.append(Curation(**doc))
         return PaginatedResponse(items=items, total=total, limit=limit, offset=offset)
 
     total = db.curations.count_documents(query)
