@@ -7,6 +7,7 @@ import re
 from fastapi import APIRouter, HTTPException, Header, Query, Depends, Request
 from typing import Optional, List
 from datetime import datetime, timezone
+from bson import ObjectId
 from pymongo.errors import DuplicateKeyError
 from pymongo.database import Database
 
@@ -184,15 +185,26 @@ def list_entities(
 
     # count_documents is only needed for offset-based callers; skip it for cursor mode
     if after_id:
-        # to_cursor_id: hex → ObjectId — um $gt contra string NUNCA visita
-        # _ids ObjectId (ordenação por tipo no Mongo; 471 entities ficavam
-        # invisíveis para o sync por cursor)
+        # Cursor por _id com TRANSIÇÃO DE SEGMENTO: strings ordenam antes de
+        # ObjectId no Mongo, então um $gt contra string nunca alcança os _ids
+        # ObjectId (471 entities ficavam invisíveis). resolve_after_id só
+        # desambigua hex-que-é-ObjectId (probe); página VAZIA no fim do
+        # segmento de strings tenta o segmento ObjectId.
         query["_id"] = {"$gt": resolve_after_id(db, "entities", after_id)}
         total = -1  # unknown / not computed — saves a full collection scan
-        cursor = db.entities.find(query).sort("_id", 1).limit(limit)
-    else:
-        total = db.entities.count_documents(query)
-        cursor = db.entities.find(query).sort("_id", 1).skip(offset).limit(limit)
+        docs = list(db.entities.find(query).sort("_id", 1).limit(limit))
+        if not docs and isinstance(query["_id"]["$gt"], str):
+            transition = dict(query)
+            transition["_id"] = {"$gt": ObjectId("0" * 24)}
+            docs = list(db.entities.find(transition).sort("_id", 1).limit(limit))
+        items = []
+        for doc in docs:
+            doc["_id"] = str(doc["_id"])
+            items.append(Entity(**doc))
+        return PaginatedResponse(items=items, total=total, limit=limit, offset=offset)
+
+    total = db.entities.count_documents(query)
+    cursor = db.entities.find(query).sort("_id", 1).skip(offset).limit(limit)
 
     items = []
     for doc in cursor:

@@ -95,12 +95,15 @@ def main():
     else:
         plan, skipped = collect(db)
 
-    print(f'== PLANO DE LIMPEZA ({db.name}) ==')
-    print(f"  curadorias a deletar: {len(plan['curations'])}")
-    print(f"  entities a deletar:   {len(plan['entities'])}")
-    print(f"  users audit a deletar:{len(plan['users'])}")
-    print(f"  categories 'active' string -> boolean: {len(plan['categories_active_as_string'])}")
-    if skipped:
+    if mode != 'execute':
+        # No execute o plano é re-coletado na hora da deleção (guarda por
+        # IDs) — exibir um plano vazio antes de deletar seria enganoso
+        print(f'== PLANO DE LIMPEZA ({db.name}) ==')
+        print(f"  curadorias a deletar: {len(plan['curations'])}")
+        print(f"  entities a deletar:   {len(plan['entities'])}")
+        print(f"  users audit a deletar:{len(plan['users'])}")
+        print(f"  categories 'active' string -> boolean: {len(plan['categories_active_as_string'])}")
+    if mode != 'execute' and skipped:
         print('  entidades PULADAS (referenciadas por curation viva):')
         for s in skipped:
             print('    -', s)
@@ -130,7 +133,7 @@ def main():
         # contagem (guarda antiga por contagem aprovava e deletava docs que
         # não estavam no backup). Guarda por IDS: todo id a deletar precisa
         # estar no backup (deleção reversível).
-        plan_atual, _ = collect(db)
+        plan_atual, skipped_atual = collect(db)
         # Guarda ANTES da recoleta? Não: a recoleta é exatamente o que
         # garante que o usuário aprova os MESMOS ids que serão deletados.
         ok_ids, divergente = validar_contra_backup(saved['docs'], plan_atual)
@@ -143,6 +146,11 @@ def main():
         print(f"  curadorias a deletar: {len(plan_atual['curations'])}")
         print(f"  entities a deletar:   {len(plan_atual['entities'])}")
         print(f"  users audit a deletar:{len(plan_atual['users'])}")
+        print(f"  categories 'active' string -> boolean: {len(plan_atual['categories_active_as_string'])}")
+        if skipped_atual:
+            print('  entidades PULADAS (referenciadas por curation viva):')
+            for s in skipped_atual:
+                print('    -', s)
         r = db.curations.delete_many({'_id': {'$in': [d['_id'] for d in plan_atual['curations']]}})
         print(f'curadorias deletadas: {r.deleted_count}')
         r = db.entities.delete_many({'_id': {'$in': [d['_id'] for d in plan_atual['entities']]}})

@@ -191,7 +191,10 @@ class Curation(CurationBase):
     @classmethod
     def _coerce_id_to_str(cls, v):
         """Mongo _id pode ser ObjectId (bulk imports) ou str — a resposta
-        serializa como string (mesma regra do modelo Entity)."""
+        serializa como string (mesma regra do modelo Entity). None NÃO vira
+        'None': um doc sem _id é erro de dados, não um id válido."""
+        if v is None:
+            raise ValueError("_id não pode ser None")
         return str(v)
     curation_id: str
     entity_id: Optional[str] = None

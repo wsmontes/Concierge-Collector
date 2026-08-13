@@ -67,6 +67,14 @@ def sample_ids():
         import mongo_tools  # noqa: PLC0415 — garante sys.path do script
 
         sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+        # connect() abre o .env incondicionalmente — só chama quando o
+        # arquivo existe ou o shell já exporta MONGODB_URL (workflow de CI
+        # sem .env local não pode morrer aqui)
+        if os.path.isfile(mongo_tools.ENV_PATH):
+            mongo_tools.load_env()
+        if not os.environ.get('MONGODB_URL'):
+            print('AVISO: MONGODB_URL não configurada (sem .env e sem shell) — ids sintéticos')
+            return {}
         client, db = mongo_tools.connect()
     except Exception as e:
         print(f'AVISO: conexão ao Mongo falhou ({e}) — ids sintéticos, rotas parametrizadas serão puladas')

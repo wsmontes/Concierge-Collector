@@ -215,7 +215,11 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
     buildCuratorPayload(curation) {
         const user = window.AuthService?.getCurrentUser?.();
         const raw = curation.curator && typeof curation.curator === 'object' ? curation.curator : {};
-        const id = raw.id || curation.curator_id || user?.email || 'unknown';
+        // o placeholder 'unknown' (sintetizado em sync anterior sem usuário)
+        // NUNCA sombreia um curator_id explícito — senão o bulk re-gravaria
+        // 'unknown' por cima do valor real a cada push
+        const rawId = raw.id && raw.id !== 'unknown' ? raw.id : null;
+        const id = rawId || curation.curator_id || user?.email || 'unknown';
         const name = raw.name || user?.name || id;
         return { id, name, email: raw.email || user?.email || null };
     }
@@ -266,21 +270,12 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
 
         const synthesizedCurator = this.buildCuratorPayload(curation);
 
-        // Consistência com o PATCH server-side: quando o objeto curator tem
-        // id, ele é autoritativo — curator_id deriva DELE (curator_id='slug'
-        // + curator.id=email criava docs que a busca por curator.id não acha)
-        const hasAuthoritativeCurator = curation.curator
-            && typeof curation.curator === 'object'
-            && curation.curator.id;
-        const curatorId = hasAuthoritativeCurator
-            ? synthesizedCurator.id
-            : (curation.curator_id || synthesizedCurator.id);
-
         const cleaned = {
             curation_id: curation.curation_id,
-            // CurationCreate exige curator_id E curator: sem fallback aqui o
-            // JSON descartava o undefined e o bulk upsert dava 422
-            curator_id: curatorId,
+            // CurationCreate exige curator_id E curator: synthesizedCurator.id
+            // já deriva de curator.id (autoritativo, regra do PATCH) ou cai
+            // para curator_id explícito — UMA fonte só, sem branch morta
+            curator_id: synthesizedCurator.id,
             curator: synthesizedCurator,
             createdBy: curation.createdBy,
             updatedBy: curation.updatedBy,

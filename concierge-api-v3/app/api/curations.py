@@ -20,6 +20,8 @@ from app.models.schemas import (
     BulkCurationCreate, BulkOperationResponse, BulkItemError
 )
 from app.core.database import get_database
+from bson import ObjectId
+
 from app.core.query_utils import resolve_after_id
 from app.core.security import verify_access_token, verify_auth
 from app.models.user import has_role
@@ -121,13 +123,25 @@ CURATION_RESPONSE_PROJECTION = {
 }
 
 
+def curation_query(curation_id: str) -> dict:
+    """Resolve curadorias por _id em ambos os formatos coexistentes: ObjectId
+    (bulk imports) ou string (criadas via API) — mesmo padrão de
+    entities.entity_query. Sem isso, um doc ObjectId listável pela busca não
+    poderia ser buscado/atualizado/deletado (type bracketing do Mongo)."""
+    q = [{"_id": curation_id}]
+    if ObjectId.is_valid(curation_id):
+        q.insert(0, {"_id": ObjectId(curation_id)})
+    return {"$or": q}
+
+
 def build_curation_response_payload(curation_doc: dict) -> dict:
     """Build lightweight curation payload without embeddings."""
     if not curation_doc:
         return {}
 
+    raw_id = curation_doc.get("curation_id", curation_doc.get("_id"))
     return {
-        "curation_id": curation_doc.get("curation_id", curation_doc.get("_id")),
+        "curation_id": str(raw_id) if raw_id is not None else None,
         "categories": curation_doc.get("categories", {}),
         "curator": curation_doc.get("curator", {}),
         "notes": curation_doc.get("notes", {}),
@@ -235,14 +249,21 @@ def search_curations(
         query["status"] = {"$ne": "deleted"}
 
     if after_id:
-        # to_cursor_id: hex → ObjectId (mesmo hazard de entities — cursor
-        # contra string não visita _ids ObjectId)
+        # Cursor por _id com TRANSIÇÃO DE SEGMENTO (mesmo hazard de entities:
+        # $gt contra string não alcança _ids ObjectId — página vazia no fim
+        # das strings entra no segmento ObjectId)
         query["_id"] = {"$gt": resolve_after_id(db, "curations", after_id)}
         total = -1  # not computed in cursor mode
-        cursor = db.curations.find(query, CURATION_RESPONSE_PROJECTION).sort("_id", 1).limit(limit)
-    else:
-        total = db.curations.count_documents(query)
-        cursor = db.curations.find(query, CURATION_RESPONSE_PROJECTION).sort("_id", 1).skip(offset).limit(limit)
+        docs = list(db.curations.find(query, CURATION_RESPONSE_PROJECTION).sort("_id", 1).limit(limit))
+        if not docs and isinstance(query["_id"]["$gt"], str):
+            transition = dict(query)
+            transition["_id"] = {"$gt": ObjectId("0" * 24)}
+            docs = list(db.curations.find(transition, CURATION_RESPONSE_PROJECTION).sort("_id", 1).limit(limit))
+        items = [Curation(**doc) for doc in docs]
+        return PaginatedResponse(items=items, total=total, limit=limit, offset=offset)
+
+    total = db.curations.count_documents(query)
+    cursor = db.curations.find(query, CURATION_RESPONSE_PROJECTION).sort("_id", 1).skip(offset).limit(limit)
 
     items = []
     for doc in cursor:
@@ -298,7 +319,7 @@ def get_curation(
     db: Database = Depends(get_database)
 ):
     """Get curation by ID"""
-    result = db.curations.find_one({"_id": curation_id}, CURATION_RESPONSE_PROJECTION)
+    result = db.curations.find_one(curation_query(curation_id), CURATION_RESPONSE_PROJECTION)
     
     if not result:
         raise HTTPException(
@@ -322,7 +343,7 @@ def update_curation(
     **Authentication Required:** Include `Authorization: Bearer <token>` OR `X-API-Key: <key>` header
     """
     # Get current curation for version
-    current = db.curations.find_one({"_id": curation_id}, CURATION_RESPONSE_PROJECTION)
+    current = db.curations.find_one(curation_query(curation_id), CURATION_RESPONSE_PROJECTION)
     if not current:
         raise HTTPException(status_code=404, detail="Curation not found")
     
@@ -389,7 +410,7 @@ def update_curation(
     
     # Update
     result = db.curations.find_one_and_update(
-        {"_id": curation_id},
+        curation_query(curation_id),
         {"$set": update_data},
         projection=CURATION_RESPONSE_PROJECTION,
         return_document=True
@@ -416,7 +437,7 @@ def delete_curation(
     **Authentication Required:** Include `Authorization: Bearer <token>` OR `X-API-Key: <key>` header
     """
     result = db.curations.update_one(
-        {"_id": curation_id},
+        curation_query(curation_id),
         {
             "$set": {
                 "status": "deleted",
@@ -914,10 +935,18 @@ def bulk_upsert_curations(
                 if entity_for_denorm:
                     doc.update(denormalize_curation_location(entity_for_denorm))
 
+                # normalização server-side (mesma regra do PATCH): curator.id é
+                # autoritativo — sem isso, payloads divergentes de outros
+                # clientes ficam infindáveis pelo filtro de curator.id
+                if not doc.get("curator_id") and doc.get("curator", {}).get("id"):
+                    doc["curator_id"] = doc["curator"]["id"]
                 db.curations.update_one({"_id": curation.curation_id}, {"$set": doc})
                 updated += 1
             else:
                 doc = curation.model_dump()
+                # normalização server-side também no INSERT do bulk
+                if not doc.get("curator_id") and doc.get("curator", {}).get("id"):
+                    doc["curator_id"] = doc["curator"]["id"]
                 doc["_id"] = curation.curation_id
                 doc["createdAt"] = now
                 doc["updatedAt"] = now

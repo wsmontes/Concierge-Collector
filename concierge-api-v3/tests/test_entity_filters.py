@@ -10,19 +10,41 @@ from app.models.schemas import Curation
 
 
 class FindChain:
-    """Cadeia find().sort().skip().limit() retornando docs reais."""
+    """Cadeia find().sort().skip().limit() com o BRACKETING DE TIPO do Mongo:
+    $gt contra string só casa _ids string; contra ObjectId só ObjectId. É o
+    comportamento que torna a transição de segmento necessária e testável."""
 
     def __init__(self, docs):
         self.docs = docs
+        self._found = docs
         self.last_query = None
+        self.last_find_one_query = None
+        self.queries = []  # histórico de find() — transição é verificável
         self.find_one_docs = []  # docs retornados por find_one (cursor resolve_after_id)
 
     def find(self, query, **kwargs):
         self.last_query = query
+        self.queries.append(query)
+        cond = (query or {}).get("_id", {}).get("$gt")
+        if cond is not None:
+            # type bracketing: só casa o MESMO tipo BSON do cursor
+            self._found = [
+                d for d in self.docs
+                if d.get("_id") is not None
+                and type(d["_id"]) is type(cond)
+                and d["_id"] > cond
+            ]
+        else:
+            self._found = list(self.docs)
         return self
 
     def find_one(self, query, projection=None):
-        return self.find_one_docs[0] if self.find_one_docs else None
+        self.last_find_one_query = query
+        wanted = query.get("_id")
+        for d in self.find_one_docs:
+            if d.get("_id") == wanted:
+                return d
+        return None
 
     def count_documents(self, query):
         self.last_query = query
@@ -32,15 +54,15 @@ class FindChain:
         return self
 
     def skip(self, n):
-        self.docs = self.docs[n:]
+        self._found = self._found[n:]
         return self
 
     def limit(self, n):
-        self.docs = self.docs[:n]
+        self._found = self._found[:n]
         return self
 
     def __iter__(self):
-        return iter(self.docs)
+        return iter(self._found)
 
 
 def _entity_doc(id_, status="active"):
@@ -100,16 +122,22 @@ def test_list_entities_after_id_hex_string_keeps_string_when_no_objectid_doc():
     """String 24-hex legítima (sem doc ObjectId correspondente) NÃO é
     convertida — converter truncaria o walk das strings."""
     hex_id = "a" * 24
-    db, chain = _db_with_chain([_entity_doc("a")])  # nenhum ObjectId existe
+    # doc string DEPOIS do cursor (sem transição) e nenhum ObjectId no probe
+    db, chain = _db_with_chain([_entity_doc("zzzz")])
     list_entities(status=None, type=None, name=None, since=None,
                   limit=50, offset=0, after_id=hex_id, db=db)
+    assert len(chain.queries) == 1  # sem transição: ainda havia strings
     assert chain.last_query["_id"] == {"$gt": hex_id}
+    # o probe consultou o ObjectId e não achou — cursor ficou string
+    from bson import ObjectId
+    assert chain.last_find_one_query == {"_id": ObjectId(hex_id)}
 
 
 def test_list_entities_after_id_non_hex_keeps_string():
-    db, chain = _db_with_chain([_entity_doc("a")])
+    db, chain = _db_with_chain([_entity_doc("rest_zzz")])
     list_entities(status=None, type=None, name=None, since=None,
                   limit=50, offset=0, after_id="rest_komah", db=db)
+    assert len(chain.queries) == 1  # havia strings depois do cursor
     assert chain.last_query["_id"] == {"$gt": "rest_komah"}
 
 
@@ -119,6 +147,45 @@ def test_list_entities_escapes_name_regex():
     list_entities(status=None, type=None, name="(", since=None,
                   limit=50, offset=0, after_id=None, db=db)
     assert chain.last_query["name"] == {"$regex": "\\(", "$options": "i"}
+
+
+def test_list_entities_string_cursor_transitions_to_objectid_segment():
+    """O segmento de strings termina em página vazia — a transição entra no
+    segmento ObjectId (471 entities reais ficavam invisíveis)."""
+    from bson import ObjectId
+
+    oid_doc = _entity_doc(str(ObjectId("ab" * 12)))
+    oid_doc["_id"] = ObjectId("ab" * 12)
+    db, chain = _db_with_chain([_entity_doc("rest_b"), oid_doc])
+
+    resp = list_entities(status=None, type=None, name=None, since=None,
+                         limit=50, offset=0, after_id="zzzz", db=db)
+    # 1ª query: $gt 'zzzz' → vazio (strings); 2ª: transição $gt ObjectId(0)
+    assert len(chain.queries) == 2
+    assert isinstance(chain.queries[1]["_id"]["$gt"], ObjectId)
+    ids = [i.id for i in resp.items]
+    assert ids == [str(ObjectId("ab" * 12))]
+
+
+def test_list_entities_string_cursor_with_more_strings_does_not_transition():
+    """Ainda há strings depois do cursor: NÃO transiciona (a transição só
+    dispara com página vazia)."""
+    db, chain = _db_with_chain([_entity_doc("rest_b")])
+
+    resp = list_entities(status=None, type=None, name=None, since=None,
+                         limit=50, offset=0, after_id="rest_a", db=db)
+    assert len(chain.queries) == 1
+    assert [i.id for i in resp.items] == ["rest_b"]
+
+
+def test_curation_id_coercion_rejects_none():
+    """_id None não pode virar a string 'None' (id de lixo na resposta)."""
+    import pytest
+    from pydantic import ValidationError
+
+    with pytest.raises(ValidationError):
+        Curation(id=None, curation_id="c1", curator={"id": "u1", "name": "T", "email": None},
+                 status="active")
 
 
 def test_curation_serializes_city_and_type():
