@@ -17,8 +17,15 @@ BASE = 'https://concierge-collector.onrender.com'
 UA = {'User-Agent': 'curl/8.7.1', 'Accept': 'application/json'}
 
 
-def load_env(paths=('concierge-api-v3/.env', '.env')):
-    """Carrega .env linha a linha (não usar `set -a; . .env` no shell — não exporta)."""
+def load_env(paths=None):
+    """Carrega .env linha a linha (não usar `set -a; . .env` no shell — não
+    exporta). Caminhos derivados de __file__ — rodar de qualquer CWD funciona
+    (antes, rodar de scripts/python-tools/ deixava MONGODB_URL vazio e o
+    sample_ids morria com InvalidURI antes de testar qualquer rota)."""
+    if paths is None:
+        here = os.path.dirname(os.path.abspath(__file__))
+        repo_root = os.path.dirname(os.path.dirname(here))
+        paths = (os.path.join(repo_root, 'concierge-api-v3', '.env'), '.env')
     for p in paths:
         if not os.path.isfile(p):
             continue
@@ -66,7 +73,14 @@ def sample_ids():
         import pymongo
     except ImportError:
         return {}
-    client = pymongo.MongoClient(os.environ.get('MONGODB_URL', ''), serverSelectionTimeoutMS=8000)
+    if not os.environ.get('MONGODB_URL'):
+        print('AVISO: MONGODB_URL não configurada — usando ids sintéticos (algumas rotas darão 404)')
+        return {}
+    try:
+        client = pymongo.MongoClient(os.environ.get('MONGODB_URL', ''), serverSelectionTimeoutMS=8000)
+    except Exception as e:
+        print(f'AVISO: conexão ao Mongo falhou ({e}) — usando ids sintéticos')
+        return {}
     db = client[os.environ.get('MONGODB_DB_NAME', 'concierge-collector')]
     out = {}
     for coll, key in (('entities', 'entity_id'), ('curations', 'curation_id'),

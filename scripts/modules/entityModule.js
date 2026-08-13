@@ -311,9 +311,27 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
             return;
         }
 
+        // Paginação na RENDERIZAÇÃO: milhares de cards no DOM travam a UI
+        // (scroll/render). Renderiza PAGE_SIZE por vez + botão "Mostrar mais".
+        const PAGE_SIZE = 50;
+        this._allEntities = entities;
+        this._displayedCount = 0;
         this.container.innerHTML = '';
+        this.renderEntityPage();
+    }
 
-        entities.forEach(entity => {
+    /**
+     * Renderiza o próximo lote de entidades (PAGE_SIZE por vez) e mantém o
+     * botão "Mostrar mais" quando ainda há itens.
+     */
+    renderEntityPage() {
+        const PAGE_SIZE = 50;
+        const page = (this._allEntities || []).slice(
+            this._displayedCount,
+            this._displayedCount + PAGE_SIZE
+        );
+
+        page.forEach(entity => {
             const card = window.CardFactory.createEntityCard(entity, {
                 showEntityActions: true,
                 onClick: (e) => this.showEntityDetails(e),
@@ -328,6 +346,20 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
             });
             this.container.appendChild(card);
         });
+        this._displayedCount += page.length;
+
+        // Remove botão anterior (evita duplicatas em re-render)
+        const existing = this.container.querySelector('#entities-load-more');
+        if (existing) existing.remove();
+
+        if (this._displayedCount < this._allEntities.length) {
+            const btn = document.createElement('button');
+            btn.id = 'entities-load-more';
+            btn.className = 'col-span-full py-2 px-4 text-sm bg-gray-100 hover:bg-gray-200 rounded';
+            btn.textContent = `Mostrar mais (${this._allEntities.length - this._displayedCount} restantes)`;
+            btn.addEventListener('click', () => this.renderEntityPage());
+            this.container.appendChild(btn);
+        }
     }
 
     /**

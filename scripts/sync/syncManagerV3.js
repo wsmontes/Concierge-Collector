@@ -206,6 +206,21 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
      * Clean curation object for backend sync
      * Removes fields that are not in CurationCreate schema
      */
+    /**
+     * Garante o objeto curator obrigatório (CuratorInfo com id+name) — o bulk
+     * upsert dava 422 para curadorias criadas localmente sem curator, pois o
+     * JSON descarta undefined. Usa o usuário autenticado quando disponível.
+     */
+    buildCuratorPayload(curation) {
+        const user = window.AuthService?.getCurrentUser?.();
+        const curatorId = curation.curator_id
+            || user?.email
+            || user?.id
+            || 'unknown';
+        const name = user?.user_name || user?.name || curatorId;
+        return { id: curatorId, name, email: user?.email || null };
+    }
+
     cleanCurationForSync(curation) {
         const rawStatus = typeof curation.status === 'string' ? curation.status.toLowerCase() : '';
         const hasEntityLink = typeof curation.entity_id === 'string' && curation.entity_id.trim().length > 0;
@@ -249,7 +264,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
         const cleaned = {
             curation_id: curation.curation_id,
             curator_id: curation.curator_id,  // Required by MongoDB schema
-            curator: curation.curator,
+            curator: curation.curator || this.buildCuratorPayload(curation),
             createdBy: curation.createdBy,
             updatedBy: curation.updatedBy,
             restaurant_name: curation.restaurant_name || curation.name || null,
@@ -734,18 +749,23 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             const linkedEntityIds = await this.collectLinkedEntityIdsFromCurations();
             this.log.debug(`⬇️ Pulling entidades vinculadas (${linkedEntityIds.size} ids locais)`);
 
-            // Paginação por lotes via GET /entities (1 request por lote,
-            // em vez de 1 GET por id — muito mais rápido para coleções grandes)
+            // Paginação por CURSOR (after_id) — o offset antigo varria as
+            // ~21.6k entidades do servidor em ~108 requests sequenciais por
+            // fullSync; o cursor usa o índice _id (O(log n), estável sob
+            // escritas concorrentes)
             const since = this.stats.lastEntityPullAt;
             const batchLimit = 200;
-            let offset = 0;
+            let afterId = null;
             let totalPulled = 0;
             let hasMore = true;
 
             while (hasMore) {
-                const params = { limit: batchLimit, offset };
+                const params = { limit: batchLimit };
                 if (since) {
                     params.since = since;
+                }
+                if (afterId) {
+                    params.after_id = afterId;
                 }
                 const response = await window.ApiService.listEntities(params);
                 const items = response.items || [];
@@ -767,8 +787,9 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         totalPulled++;
                     }
                 }
-                offset += items.length;
-                if (items.length < batchLimit) {
+                const last = items[items.length - 1];
+                afterId = String(last?._id ?? last?.id ?? '');
+                if (!afterId || items.length < batchLimit) {
                     hasMore = false;
                 }
             }

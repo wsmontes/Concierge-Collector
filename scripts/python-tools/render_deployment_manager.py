@@ -873,10 +873,22 @@ def main():
     # Logs
     logs_parser = subparsers.add_parser('logs', help='Obtém logs')
     logs_parser.add_argument('owner_id', help='ID do workspace')
-    logs_parser.add_argument('resource_ids', nargs='+', 
+    logs_parser.add_argument('resource_ids', nargs='+',
                             help='IDs dos recursos')
     logs_parser.add_argument('--hours', type=int, default=1,
                             help='Horas de histórico')
+
+    # Env vars
+    env_parser = subparsers.add_parser('update-env-var',
+                                       help='Atualiza/cria uma variável de ambiente do serviço')
+    env_parser.add_argument('service_id', help='ID do serviço')
+    env_parser.add_argument('key', help='Nome da variável')
+    env_parser.add_argument('value', help='Valor da variável')
+
+    del_env_parser = subparsers.add_parser('delete-env-var',
+                                           help='Remove uma variável de ambiente (Render exige DELETE — PUT com valor vazio dá 400)')
+    del_env_parser.add_argument('service_id', help='ID do serviço')
+    del_env_parser.add_argument('key', help='Nome da variável')
     
     args = parser.parse_args()
     
@@ -977,6 +989,17 @@ def main():
                 timestamp = datetime.fromtimestamp(log.get('timestamp', 0))
                 print(f"[{timestamp}] {log.get('text', '')}")
         
+        elif args.command == 'update-env-var':
+            result = api.update_env_var(args.service_id, args.key, args.value)
+            print(f"✓ Variável {args.key} atualizada no serviço {args.service_id}")
+            print(json.dumps(result, indent=2))
+
+        elif args.command == 'delete-env-var':
+            result = api._request('DELETE',
+                                  f'/services/{args.service_id}/env-vars/{args.key}')
+            print(f"✓ Variável {args.key} removida do serviço {args.service_id}")
+            print(json.dumps(result, indent=2))
+
         else:
             parser.print_help()
     

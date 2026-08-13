@@ -25,6 +25,19 @@ def to_json(docs):
     return json_util.loads(json_util.dumps(docs))
 
 
+def validar_contra_backup(saved_docs, plan_atual):
+    """Guarda do modo execute: todo _id do plano atual precisa estar no
+    backup (deleção reversível). Por IDS, não por contagens — uma troca de
+    docs com a mesma contagem era aprovada pela guarda antiga e deletava
+    docs ausentes do backup. Retorna (ok, coleção_divergente_ou_None)."""
+    for k in ('curations', 'entities', 'users'):
+        backup_ids = {d['_id'] for d in saved_docs.get(k, [])}
+        atuais_ids = {d['_id'] for d in plan_atual.get(k, [])}
+        if not atuais_ids.issubset(backup_ids):
+            return False, k
+    return True, None
+
+
 def collect(db):
     eids = set(str(x['_id']) for x in db.entities.find({}, {'_id': 1}))
     orphan_ids = [str(c['_id']) for c in db.curations.find({'entity_id': {'$exists': True, '$ne': None}}, {'_id': 1, 'entity_id': 1})
@@ -101,15 +114,21 @@ def main():
             return 1
         with open(BACKUP_FILE) as f:
             saved = json.load(f)
-        for k in ('curations', 'entities', 'users', 'categories_active_as_string'):
-            if len(saved['docs'][k]) != len(plan[k]):
-                print(f'ERRO: contagem divergente em "{k}" (backup {len(saved["docs"][k])} vs atual {len(plan[k])}). Abortando.')
-                return 1
-        r = db.curations.delete_many({'_id': {'$in': [d['_id'] for d in plan['curations']]}})
+        # Recoleta AGORA: o plano foi computado no início do main — entre o
+        # backup e o execute o banco pode ter mudado mantendo a MESMA
+        # contagem (guarda antiga por contagem aprovava e deletava docs que
+        # não estavam no backup). Guarda por IDS: todo id a deletar precisa
+        # estar no backup (deleção reversível).
+        plan_atual, _ = collect(db)
+        ok_ids, divergente = validar_contra_backup(saved['docs'], plan_atual)
+        if not ok_ids:
+            print(f'ERRO: "{divergente}" tem ids não cobertos pelo backup — abortando.')
+            return 1
+        r = db.curations.delete_many({'_id': {'$in': [d['_id'] for d in plan_atual['curations']]}})
         print(f'curadorias deletadas: {r.deleted_count}')
-        r = db.entities.delete_many({'_id': {'$in': [d['_id'] for d in plan['entities']]}})
+        r = db.entities.delete_many({'_id': {'$in': [d['_id'] for d in plan_atual['entities']]}})
         print(f'entities deletadas: {r.deleted_count}')
-        r = db.users.delete_many({'_id': {'$in': [d['_id'] for d in plan['users']]}})
+        r = db.users.delete_many({'_id': {'$in': [d['_id'] for d in plan_atual['users']]}})
         print(f'users audit deletados: {r.deleted_count}')
         n = 0
         for c in db.categories.find({'active': {'$type': 'string'}}, {'_id': 1}):
