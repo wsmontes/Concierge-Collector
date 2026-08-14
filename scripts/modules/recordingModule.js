@@ -20,6 +20,12 @@ class RecordingModule {
         this.recordingTimer = null;
         this.recordingStartTime = null;
 
+        // Gravação atual (id no IndexedDB + URL do preview) — usados pelo
+        // botão Discard do player para apagar a gravação de verdade
+        this.currentAudioId = null;
+        this.currentAudioUrl = null;
+        this.discardRequested = false;
+
         // Default settings for audio recording
         this.recordingSettings = {
             mimeType: null, // Will be determined at runtime based on browser support
@@ -1616,6 +1622,8 @@ class RecordingModule {
      */
     async processRecording(audioBlob, pendingAudioId = null) {
         let audioId = pendingAudioId;
+        this.currentAudioId = pendingAudioId || null;
+        this.discardRequested = false;
         const updateLoadingMessage = (message) => {
             if (this.uiManager && typeof this.uiManager.updateLoadingMessage === 'function') {
                 this.uiManager.updateLoadingMessage(message);
@@ -1652,6 +1660,7 @@ class RecordingModule {
                     restaurantId: this.uiManager?.editingRestaurantId || null,
                     draftId: draftId
                 });
+                this.currentAudioId = audioId;
 
                 // Update draft to indicate it has audio
                 if (draftId && window.DraftRestaurantManager) {
@@ -1680,6 +1689,16 @@ class RecordingModule {
 
             updateLoadingMessage('Transcribing audio...');
             const transcription = await this.transcribeAudio(preparedBlob);
+
+            // Gravação descartada enquanto processava — não aplica o resultado
+            // e garante que o áudio não fique órfão no IndexedDB
+            if (this.discardRequested) {
+                this.log.debug('Recording discarded during processing — skipping apply');
+                if (audioId && window.PendingAudioManager) {
+                    await window.PendingAudioManager.deleteAudio(audioId).catch(() => {});
+                }
+                return;
+            }
 
             // ✅ transcription is now an object: { text, transcription, concepts }
             await this.processTranscription(transcription);
@@ -2223,6 +2242,15 @@ class RecordingModule {
                     }
                 }
             }
+
+            // Handle discard recording button (player do preview — o botão
+            // estático do index.html nunca teve handler; a delegação cobre
+            // também o template dinâmico do ensureRecordingInterfaceExists)
+            if (event.target.id === 'discard-recording' ||
+                (event.target.parentElement && event.target.parentElement.id === 'discard-recording')) {
+                this.log.debug('Discard recording clicked via delegation');
+                await this.discardCurrentRecording();
+            }
         });
 
         this.log.debug('Event delegation for recording buttons completed');
@@ -2259,6 +2287,7 @@ class RecordingModule {
 
             // Set the audio source
             const audioUrl = URL.createObjectURL(audioBlob);
+            this.currentAudioUrl = audioUrl;
             audioElement.src = audioUrl;
 
             this.log.debug(`Audio preview created for ${isAdditional ? 'additional' : 'standard'} recording`);
@@ -2273,6 +2302,59 @@ class RecordingModule {
      */
     showAudioPreview(audioBlob) {
         this.displayAudioPreview(audioBlob);
+    }
+
+    /**
+     * Descarta a gravação atual a partir do botão Discard do player.
+     * Mesmo contrato do delete do modal de áudios pendentes: confirm,
+     * deleteAudio no IndexedDB, limpeza do player e notificação.
+     * Se o processamento estiver em voo, o flag discardRequested faz
+     * o processRecording abortar antes de aplicar o resultado.
+     */
+    async discardCurrentRecording() {
+        try {
+            if (!confirm('Discard this recording? This action cannot be undone.')) {
+                return;
+            }
+
+            this.discardRequested = true;
+
+            // Remove o áudio salvo no IndexedDB (id do processamento atual)
+            if (this.currentAudioId && window.PendingAudioManager) {
+                await window.PendingAudioManager.deleteAudio(this.currentAudioId)
+                    .catch((error) => this.log.warn('Error deleting audio from IndexedDB:', error));
+            }
+
+            // Para e limpa o player do preview
+            const audioElement = document.getElementById('recorded-audio');
+            if (audioElement) {
+                audioElement.pause();
+                audioElement.removeAttribute('src');
+                if (typeof audioElement.load === 'function') {
+                    audioElement.load();
+                }
+            }
+            if (this.currentAudioUrl) {
+                URL.revokeObjectURL(this.currentAudioUrl);
+                this.currentAudioUrl = null;
+            }
+
+            this.currentAudioId = null;
+
+            // Esconde o preview (inclui os passos de processamento)
+            const preview = document.getElementById('audio-preview');
+            if (preview) {
+                preview.classList.add('hidden');
+            }
+
+            if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
+                window.uiUtils.showNotification('Recording discarded', 'success');
+            }
+
+            this.log.debug('Recording discarded');
+        } catch (error) {
+            this.log.error('Error discarding recording:', error);
+        }
     }
 
     /**

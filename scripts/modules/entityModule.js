@@ -650,37 +650,79 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
         // Dados vindos do servidor/import — escapar antes de interpolar
         // (helper do próprio arquivo; evita XSS via nome/endereço/contato)
         const esc = (v) => this.escapeHtml(v);
+
+        // Extração tolerante: as entities coexistem em DOIS formatos no banco:
+        // (1) bulk/legado — data.contacts, data.attributes.*, location.address/lat/lng
+        // (2) v3 (criadas via Find Entity/API) — data.contact (singular),
+        //     rating/price_level na raiz de data, location GeoJSON
+        //     {type: 'Point', coordinates: [lng, lat]}
+        // Antes só o formato legado era lido e o modal abria vazio para
+        // entities do import ("página sem os dados").
+        const data = entity.data || {};
+        const address = data.address || {};
+        const contact = data.contact || data.contacts || {};
+        const attributes = data.attributes || {};
+        const location = data.location || {};
+
+        const street = data.formattedAddress || address.formattedAddress || address.street || location.address || '';
+        const city = address.city || location.city || '';
+        const country = address.country || location.country || '';
+        const phone = contact.phone || data.phone || '';
+        const website = contact.website || data.website || '';
+        const email = contact.email || '';
+        const rating = attributes.rating || data.rating || 0;
+        const reviews = attributes.user_ratings_total || data.user_ratings_total || 0;
+        const priceLevel = attributes.price_level || data.price_level || 0;
+        const cuisine = Array.isArray(attributes.cuisine)
+            ? attributes.cuisine.join(', ')
+            : (attributes.cuisine || '');
+
+        // Coordenadas: GeoJSON [lng, lat] ou lat/lng soltos (legado)
+        let lat = null;
+        let lng = null;
+        if (Array.isArray(location.coordinates) && location.coordinates.length === 2) {
+            lng = location.coordinates[0];
+            lat = location.coordinates[1];
+        } else {
+            lat = location.lat ?? location.latitude ?? null;
+            lng = location.lng ?? location.longitude ?? null;
+        }
+
+        const hasLocation = Boolean(street || city || country || (lat !== null && lng !== null));
+        const hasContact = Boolean(phone || website || email);
+        const hasAttributes = Boolean(rating || reviews || priceLevel || cuisine);
+
         content.innerHTML = `
-            ${entity.data?.location ? `
+            ${hasLocation ? `
                 <div>
                     <h3 class="font-semibold text-gray-700 mb-2">Location</h3>
-                    <p class="text-gray-600">${esc(entity.data.location.address) || 'N/A'}</p>
-                    <p class="text-sm text-gray-500">${esc(entity.data.location.city || '')}, ${esc(entity.data.location.country || '')}</p>
-                    ${entity.data.location.lat && entity.data.location.lng ? `
+                    ${street ? `<p class="text-gray-600">${esc(street)}</p>` : ''}
+                    ${(city || country) ? `<p class="text-sm text-gray-500">${esc([city, country].filter(Boolean).join(', '))}</p>` : ''}
+                    ${(lat !== null && lng !== null) ? `
                         <p class="text-xs text-gray-400 mt-1">
-                            ${entity.data.location.lat.toFixed(6)}, ${entity.data.location.lng.toFixed(6)}
+                            ${Number(lat).toFixed(6)}, ${Number(lng).toFixed(6)}
                         </p>
                     ` : ''}
                 </div>
             ` : ''}
 
-            ${entity.data?.contacts ? `
+            ${hasContact ? `
                 <div>
                     <h3 class="font-semibold text-gray-700 mb-2">Contact</h3>
-                    ${entity.data.contacts.phone ? `<p class="text-gray-600">📞 ${esc(entity.data.contacts.phone)}</p>` : ''}
-                    ${entity.data.contacts.website ? `<p class="text-gray-600">🌐 <a href="${esc(entity.data.contacts.website)}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">${esc(entity.data.contacts.website)}</a></p>` : ''}
-                    ${entity.data.contacts.email ? `<p class="text-gray-600">📧 ${esc(entity.data.contacts.email)}</p>` : ''}
+                    ${phone ? `<p class="text-gray-600">📞 ${esc(phone)}</p>` : ''}
+                    ${website ? `<p class="text-gray-600">🌐 <a href="${esc(website)}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">${esc(website)}</a></p>` : ''}
+                    ${email ? `<p class="text-gray-600">📧 ${esc(email)}</p>` : ''}
                 </div>
             ` : ''}
 
-            ${entity.data?.attributes ? `
+            ${hasAttributes ? `
                 <div>
                     <h3 class="font-semibold text-gray-700 mb-2">Attributes</h3>
                     <div class="grid grid-cols-2 gap-2 text-sm">
-                        ${entity.data.attributes.rating ? `<p><span class="font-medium">Rating:</span> ${entity.data.attributes.rating} ⭐</p>` : ''}
-                        ${entity.data.attributes.user_ratings_total ? `<p><span class="font-medium">Reviews:</span> ${entity.data.attributes.user_ratings_total}</p>` : ''}
-                        ${entity.data.attributes.price_level ? `<p><span class="font-medium">Price:</span> ${'$'.repeat(entity.data.attributes.price_level)}</p>` : ''}
-                        ${entity.data.attributes.cuisine ? `<p><span class="font-medium">Cuisine:</span> ${esc(entity.data.attributes.cuisine)}</p>` : ''}
+                        ${rating ? `<p><span class="font-medium">Rating:</span> ${Number(rating).toFixed(1)} ⭐</p>` : ''}
+                        ${reviews ? `<p><span class="font-medium">Reviews:</span> ${reviews}</p>` : ''}
+                        ${priceLevel ? `<p><span class="font-medium">Price:</span> ${'$'.repeat(Number(priceLevel))}</p>` : ''}
+                        ${cuisine ? `<p><span class="font-medium">Cuisine:</span> ${esc(cuisine)}</p>` : ''}
                     </div>
                 </div>
             ` : ''}

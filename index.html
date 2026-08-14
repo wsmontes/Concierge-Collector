@@ -171,14 +171,14 @@
                             </div>
                         </div>
 
-                        <div class="mt-4 flex justify-between">
+                        <!-- Transcribe manual removido: a transcrição roda
+                             automaticamente após parar a gravação
+                             (processRecording). Discard é ligado por delegação
+                             no recordingModule (discardCurrentRecording). -->
+                        <div class="mt-4 flex justify-start">
                             <button id="discard-recording" class="btn btn-outline btn-md">
                                 <span class="material-icons mr-1" aria-hidden="true">delete</span>
                                 Discard
-                            </button>
-                            <button id="transcribe-audio" class="btn btn-success btn-md hidden">
-                                <span class="material-icons mr-1" aria-hidden="true">description</span>
-                                Transcribe
                             </button>
                         </div>
                     </div>
@@ -650,13 +650,6 @@
             </button>
             <div id="sync-status-sidebar" class="text-xs text-center text-gray-500">Last sync: Never</div>
         </div>
-
-        <div class="px-4 mt-2">
-            <button id="open-sync-settings" class="btn btn-outline btn-sm w-full mb-2">
-                <span class="material-icons text-sm mr-1" aria-hidden="true">settings</span>
-                Sync Settings
-            </button>
-        </div>
     </div>
 
     </div>
@@ -707,10 +700,10 @@
         </div>
     </div>
 
-    <!-- Sync Settings modal removed: SyncSettingsManager está desabilitado
-         desde Phase 1.3 (BackgroundSync assume o sync automaticamente).
-         Se reabilitado, o próprio manager recria o modal dinamicamente
-         (createSyncSettingsModal em syncSettingsManager.js). -->
+    <!-- Sync Settings: REMOVIDO (ago/2026) — SyncSettingsManager está
+         desabilitado desde Phase 1.3 (BackgroundSync assume o sync
+         automaticamente). O botão #open-sync-settings ficou órfão no DOM
+         e foi removido junto com o cache dele no uiManager. -->
 
     <!-- Libraries -->
     <script src="https://cdn.jsdelivr.net/npm/dexie@3.2.2/dist/dexie.min.js"></script>
@@ -761,7 +754,7 @@
     <!-- Application modules - keeping essential ones -->
     <script src="scripts/services/promptTemplate.js"></script>
     <script src="scripts/services/conceptMatcher.js"></script>
-    <script src="scripts/ui-core/uiManager.js?v=20260813-12"></script>
+    <script src="scripts/ui-core/uiManager.js?v=20260814-1"></script>
 
     <!-- Module implementations - V3 Compatible -->
     <script src="scripts/modules/safetyUtils.js?v=20260813-1"></script>
@@ -773,11 +766,11 @@
     <script src="scripts/modules/pendingAudioModal.js?v=20260813-3"></script>
     <script src="scripts/modules/draftRestaurantManager.js"></script>
     <script src="scripts/modules/curatorModule.js"></script>
-    <script src="scripts/modules/recordingModule.js?v=20260211-1420"></script>
+    <script src="scripts/modules/recordingModule.js?v=20260814-1"></script>
     <script src="scripts/modules/transcriptionModule.js"></script>
     <script src="scripts/modules/conceptModule.js?v=20260813-1"></script>
     <script src="scripts/modules/restaurantModule.js?v=20260813-1"></script>
-    <script src="scripts/modules/entityModule.js?v=20260813-1"></script>
+    <script src="scripts/modules/entityModule.js?v=20260814-1"></script>
     <script src="scripts/modules/syncStatusModule.js?v=20260813-3"></script>
     <!-- DEPRECATED: <script src="scripts/modules/exportImportModule.js"></script> -->
     <script src="scripts/modules/quickActionModule.js?v=20260813-1"></script>
@@ -808,7 +801,7 @@
     <script src="scripts/auth/curatorProfile.js?v=20260813-2"></script>
 
     <!-- Find Entity Modal (Google Places search interface) -->
-    <script src="scripts/services/findEntityModal.js?v=20260813-1"></script>
+    <script src="scripts/services/findEntityModal.js?v=20260814-1"></script>
 
     <!-- Access Control (must load before main.js) -->
     <script src="scripts/auth/accessControl.js?v=20260813-1"></script>

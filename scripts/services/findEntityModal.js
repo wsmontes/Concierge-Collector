@@ -1163,6 +1163,31 @@ window.FindEntityModal = class FindEntityModal {
                     data: createdEntity.data || entity.data || {}
                 };
 
+                // Persiste LOCALMENTE também: sem isso a entity existe só no
+                // servidor e some da lista — o sync só baixa entities ligadas
+                // a curations (pullLinkedEntities) e a aba Entities filtra por
+                // vínculo. Entidade criada/importada pelo usuário fica visível
+                // pelo createdBy (ver filtro em uiManager.loadEntities).
+                if (window.DataStore?.db?.entities) {
+                    try {
+                        const localExisting = await window.DataStore.getEntity(selectedEntity.entity_id);
+                        const curator = await window.DataStore.getCurrentCurator().catch(() => null);
+                        const authUser = window.AuthService?.getCurrentUser?.();
+                        await window.DataStore.db.entities.put({
+                            ...selectedEntity,
+                            ...(localExisting ? { id: localExisting.id } : {}),
+                            createdBy: selectedEntity.createdBy || curator?.curator_id || authUser?.email || 'imported',
+                            sync: {
+                                serverId: selectedEntity._id || null,
+                                status: 'synced',
+                                lastSyncedAt: new Date().toISOString()
+                            }
+                        });
+                    } catch (localError) {
+                        console.warn('Failed to persist imported entity locally:', localError);
+                    }
+                }
+
                 // Success feedback
                 buttonElement.innerHTML = '<span class="material-icons">check_circle</span> Imported!';
                 buttonElement.classList.add('fem-btn-success');

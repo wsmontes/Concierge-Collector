@@ -46,7 +46,8 @@ if (typeof window.UIManager === 'undefined') {
             this.syncSidebarSection = document.getElementById('sync-sidebar-section');
             this.syncButton = document.getElementById('sync-button');
             this.syncStatus = document.getElementById('sync-status-sidebar');
-            this.openSyncSettings = document.getElementById('open-sync-settings');
+            // #open-sync-settings removido (ago/2026): o SyncSettingsManager
+            // foi desabilitado no Phase 1.3 e o botão ficou morto no DOM
 
             // Get restaurant list container
             this.restaurantsContainer = document.getElementById('restaurants-container');
@@ -1217,7 +1218,12 @@ if (typeof window.UIManager === 'undefined') {
                     };
                 }
 
-                // Get only entities linked by at least one non-deleted curation
+                // Entities visíveis: (a) ligadas a pelo menos uma curation
+                // não-deletada, OU (b) criadas/importadas pelo próprio usuário
+                // (createdBy setado). O filtro linked-only existe para não
+                // baixar as ~21k entities do bulk import — mas uma entity que
+                // o usuário importou via Find Entity deve aparecer na lista
+                // mesmo antes de ser ligada a uma curation (bug: sumia).
                 const [allEntities, allCurations] = await Promise.all([
                     window.DataStore.getEntities({ status: 'active' }),
                     window.DataStore.getCurations({ excludeDeleted: true })
@@ -1230,7 +1236,10 @@ if (typeof window.UIManager === 'undefined') {
                 );
 
                 const entities = allEntities.filter(entity =>
-                    entity?.entity_id && linkedEntityIds.has(entity.entity_id)
+                    entity?.entity_id && (
+                        linkedEntityIds.has(entity.entity_id) ||
+                        Boolean(entity.createdBy && String(entity.createdBy).trim())
+                    )
                 );
 
                 if (entities.length === 0) {

@@ -5,6 +5,25 @@
  */
 
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
+import { readFileSync } from 'fs';
+import path from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+// Fonte do módulo real, carregada via new Function (mesmo padrão do
+// test_cardFactory_xss) — permite testar o Discard do player contra a
+// implementação verdadeira em vez de mocks soltos.
+const recordingModuleSrc = readFileSync(
+  path.resolve(__dirname, '../scripts/modules/recordingModule.js'),
+  'utf8'
+);
+
+function loadRecordingModule() {
+  // eslint-disable-next-line no-new-func
+  const fn = new Function('window', `${recordingModuleSrc}\nreturn RecordingModule;`);
+  return fn(window);
+}
 
 describe('RecordingModule - Audio Recording Functionality', () => {
     let mockAudioRecorder;
@@ -498,4 +517,79 @@ describe('AudioRecorder - Core Functionality', () => {
 
         expect(tracks[0].stop).toHaveBeenCalled();
     });
+});
+
+describe('RecordingModule — Discard do player de áudio', () => {
+  let RecordingModuleClass;
+
+  beforeEach(() => {
+    document.body.innerHTML = `
+      <button id="discard-recording">
+        <span class="material-icons">delete</span>
+        Discard
+      </button>
+      <div id="audio-preview" class="hidden">
+        <audio id="recorded-audio"></audio>
+      </div>
+    `;
+
+    window.confirm = vi.fn(() => true);
+    window.MediaRecorder = { isTypeSupported: () => true };
+    window.PendingAudioManager = { deleteAudio: vi.fn().mockResolvedValue(undefined) };
+    window.uiUtils = { showNotification: vi.fn() };
+    window.URL.revokeObjectURL = vi.fn();
+
+    RecordingModuleClass = loadRecordingModule();
+  });
+
+  afterEach(() => {
+    window.confirm = undefined;
+    window.PendingAudioManager = undefined;
+    window.uiUtils = undefined;
+    vi.clearAllMocks();
+  });
+
+  it('deleta o áudio pendente e esconde o preview ao clicar em Discard', async () => {
+    const instance = new RecordingModuleClass({});
+    instance.currentAudioId = 'audio-123';
+    instance.setupEventDelegation();
+
+    document.getElementById('audio-preview').classList.remove('hidden');
+    document.getElementById('discard-recording').click();
+
+    // o handler de delegação é async — espera a promessa resolver
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    expect(window.confirm).toHaveBeenCalledTimes(1);
+    expect(window.PendingAudioManager.deleteAudio).toHaveBeenCalledWith('audio-123');
+    expect(document.getElementById('audio-preview').classList.contains('hidden')).toBe(true);
+    expect(window.uiUtils.showNotification).toHaveBeenCalled();
+    expect(instance.currentAudioId).toBeNull();
+  });
+
+  it('não descarta nada se o usuário cancelar o confirm', async () => {
+    window.confirm = vi.fn(() => false);
+    const instance = new RecordingModuleClass({});
+    instance.currentAudioId = 'audio-123';
+    instance.setupEventDelegation();
+
+    document.getElementById('audio-preview').classList.remove('hidden');
+    document.getElementById('discard-recording').click();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    expect(window.PendingAudioManager.deleteAudio).not.toHaveBeenCalled();
+    expect(document.getElementById('audio-preview').classList.contains('hidden')).toBe(false);
+  });
+
+  it('também captura clique no ícone dentro do botão (delegação via parentElement)', async () => {
+    const instance = new RecordingModuleClass({});
+    instance.currentAudioId = 'audio-456';
+    instance.setupEventDelegation();
+
+    document.getElementById('audio-preview').classList.remove('hidden');
+    document.querySelector('#discard-recording .material-icons').click();
+    await new Promise((resolve) => setTimeout(resolve, 100));
+
+    expect(window.PendingAudioManager.deleteAudio).toHaveBeenCalledWith('audio-456');
+  });
 });
