@@ -720,9 +720,9 @@ if (typeof window.UIManager === 'undefined') {
             } catch (error) {
                 console.error('Failed to load curations:', error);
                 container.innerHTML = `
-                    <div class="col-span-full text-center py-12 text-red-500">
-                        <span class="material-icons text-6xl mb-4">error</span>
-                        <p>Failed to load curations</p>
+                    <div class="empty-state">
+                        <span class="empty-state__icon material-icons" style="color: var(--color-error)">error</span>
+                        <p class="empty-state__title">Failed to load curations</p>
                     </div>
                 `;
             }
@@ -767,10 +767,10 @@ if (typeof window.UIManager === 'undefined') {
                     // Busca server-side com filtro ativo que não achou nada —
                     // copy específico + ação para limpar os filtros.
                     container.innerHTML = `
-                        <div class="col-span-full text-center py-12">
-                            <span class="material-icons text-6xl text-gray-300 mb-4">search_off</span>
-                            <p class="text-gray-500 mb-4">No curations match your filters</p>
-                            <button id="clear-curation-filters" class="btn btn-outline btn-sm">
+                        <div class="empty-state">
+                            <span class="empty-state__icon material-icons">search_off</span>
+                            <p class="empty-state__title">No curations match your filters</p>
+                            <button id="clear-curation-filters" class="btn btn-outline btn-sm mt-2">
                                 <span class="material-icons text-sm mr-1">clear_all</span>
                                 Clear filters
                             </button>
@@ -786,10 +786,10 @@ if (typeof window.UIManager === 'undefined') {
                     });
                 } else {
                     container.innerHTML = `
-                        <div class="col-span-full text-center py-12">
-                            <span class="material-icons text-6xl text-gray-300 mb-4">rate_review</span>
-                            <p class="text-gray-500 mb-2">No curations yet</p>
-                            <p class="text-sm text-gray-400">Start curating entities by clicking on them</p>
+                        <div class="empty-state">
+                            <span class="empty-state__icon material-icons">rate_review</span>
+                            <p class="empty-state__title">No curations yet</p>
+                            <p class="empty-state__description">Start curating entities by clicking on them</p>
                         </div>
                     `;
                 }
@@ -846,10 +846,10 @@ if (typeof window.UIManager === 'undefined') {
                 this.curationsCache = [];
                 this.updateCurationsCountSummary(0, 0);
                 container.innerHTML = `
-                    <div class="col-span-full text-center py-12">
-                        <span class="material-icons text-6xl text-gray-300 mb-4">rate_review</span>
-                        <p class="text-gray-500 mb-2">No curations yet</p>
-                        <p class="text-sm text-gray-400">Start curating entities by clicking on them</p>
+                    <div class="empty-state">
+                        <span class="empty-state__icon material-icons">rate_review</span>
+                        <p class="empty-state__title">No curations yet</p>
+                        <p class="empty-state__description">Start curating entities by clicking on them</p>
                     </div>
                 `;
                 return;
@@ -955,10 +955,10 @@ if (typeof window.UIManager === 'undefined') {
                 var container = this.containers.curations;
                 if (container) {
                     container.innerHTML = `
-                        <div class="col-span-full text-center py-12">
-                            <span class="material-icons text-6xl text-gray-300 mb-4">search_off</span>
-                            <p class="text-gray-500 mb-4">No curations match your filters</p>
-                            <button id="clear-curation-filters" class="btn btn-outline btn-sm">
+                        <div class="empty-state">
+                            <span class="empty-state__icon material-icons">search_off</span>
+                            <p class="empty-state__title">No curations match your filters</p>
+                            <button id="clear-curation-filters" class="btn btn-outline btn-sm mt-2">
                                 <span class="material-icons text-sm mr-1">clear_all</span>
                                 Clear filters
                             </button>
@@ -1141,9 +1141,9 @@ if (typeof window.UIManager === 'undefined') {
             } catch (error) {
                 console.error('Failed to load curations:', error);
                 container.innerHTML = `
-                    <div class="col-span-full text-center py-12 text-red-500">
-                        <span class="material-icons text-6xl mb-4">error</span>
-                        <p>Failed to load curations</p>
+                    <div class="empty-state">
+                        <span class="empty-state__icon material-icons" style="color: var(--color-error)">error</span>
+                        <p class="empty-state__title">Failed to load curations</p>
                     </div>
                 `;
             }
@@ -1195,10 +1195,10 @@ if (typeof window.UIManager === 'undefined') {
                     this.entitiesFiltered = [];
                     this.updateEntitiesCountSummary(0, 0);
                     container.innerHTML = `
-                            <div class="col-span-full text-center py-12">
-                                <span class="material-icons text-6xl text-gray-300 mb-4">restaurant</span>
-                                <p class="text-gray-500 mb-2">No linked entities yet</p>
-                                <p class="text-sm text-gray-400">Entities appear here after being linked to a curation</p>
+                            <div class="empty-state">
+                                <span class="empty-state__icon material-icons">restaurant</span>
+                                <p class="empty-state__title">No linked entities yet</p>
+                                <p class="empty-state__description">Entities appear here after being linked to a curation</p>
                             </div>
                         `;
                     return;
@@ -1371,10 +1371,10 @@ if (typeof window.UIManager === 'undefined') {
                 const container = this.containers.entities;
                 if (container) {
                     container.innerHTML = `
-                        <div class="col-span-full text-center py-12">
-                            <span class="material-icons text-6xl text-gray-300 mb-4">search_off</span>
-                            <p class="text-gray-500 mb-4">No entities match your filters</p>
-                            <button id="clear-entity-filters" class="btn btn-outline btn-sm">
+                        <div class="empty-state">
+                            <span class="empty-state__icon material-icons">search_off</span>
+                            <p class="empty-state__title">No entities match your filters</p>
+                            <button id="clear-entity-filters" class="btn btn-outline btn-sm mt-2">
                                 <span class="material-icons text-sm mr-1">clear_all</span>
                                 Clear filters
                             </button>
