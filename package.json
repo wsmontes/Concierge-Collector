@@ -7,13 +7,16 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
-    "test:ui": "vitest --ui"
+    "test:ui": "vitest --ui",
+    "lint": "eslint scripts/ tests/ eslint.config.js",
+    "lint:fix": "eslint scripts/ tests/ eslint.config.js --fix"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^1.6.1",
     "@vitest/ui": "^1.0.4",
     "dexie": "^3.2.2",
     "dotenv": "^17.2.3",
+    "eslint": "^10.8.1",
     "fake-indexeddb": "^5.0.2",
     "jsdom": "^23.2.0",
     "puppeteer-core": "^25.6.0",

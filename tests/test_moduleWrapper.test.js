@@ -76,13 +76,11 @@ describe('ModuleWrapper - Initialization', () => {
   });
 
   test('should return initialization status', () => {
+    // catch removido: o try sempre retornava — branch inalcançável
+    // (no-unreachable do ESLint, auditoria ago/2026)
     const initialize = () => {
-      try {
-        // Initialization logic
-        return { success: true };
-      } catch (error) {
-        return { success: false, error };
-      }
+      // Initialization logic
+      return { success: true };
     };
 
     const result = initialize();

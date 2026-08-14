@@ -128,7 +128,8 @@ openai_key.txt
 ############################
 node_modules/
 bower_components/
-package-lock.json
+# package-lock.json VERSIONADO (ago/2026, auditoria): testes e builds
+# reproduziveis — npm install hoje e em 6 meses sao o mesmo ambiente
 yarn.lock
 
 # Builds de frontend
