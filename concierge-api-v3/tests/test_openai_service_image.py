@@ -73,6 +73,36 @@ async def test_data_url_passa_direto(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_base64_cru_vira_data_url_com_sniff(monkeypatch):
+    """Regressão: o frontend antigo (e o contrato documentado do image_file)
+    mandava base64 CRU — a validação inicial rejeitava com 'Formato de imagem
+    não suportado'. Agora o mime é detectado pelos magic bytes."""
+    monkeypatch.setattr("app.services.openai_service.httpx.AsyncClient", _BaseClient)
+
+    b64 = base64.b64encode(IMG_BYTES).decode()  # começa com \xff\xd8\xff = jpeg
+    result = await resolve_image_input(b64)
+    assert result == f"data:image/jpeg;base64,{b64}"
+
+
+@pytest.mark.asyncio
+async def test_base64_invalido_vira_valueerror(monkeypatch):
+    monkeypatch.setattr("app.services.openai_service.httpx.AsyncClient", _BaseClient)
+
+    # casa o regex de base64 mas falha o decode (comprimento inválido)
+    with pytest.raises(ValueError, match="base64 inválido"):
+        await resolve_image_input("abc")
+
+
+@pytest.mark.asyncio
+async def test_base64_magic_desconhecido_vira_valueerror(monkeypatch):
+    monkeypatch.setattr("app.services.openai_service.httpx.AsyncClient", _BaseClient)
+
+    b64 = base64.b64encode(b"texto-plano-sem-magic").decode()
+    with pytest.raises(ValueError, match="não reconhecido"):
+        await resolve_image_input(b64)
+
+
+@pytest.mark.asyncio
 async def test_download_falha_vira_valueerror(monkeypatch):
     class _Fail(_BaseClient):
         async def get(self, url):

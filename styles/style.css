@@ -1535,12 +1535,6 @@ gmp-place-autocomplete input:focus {
     box-shadow: 0 4px 6px rgba(0,0,0,0.1);
 }
 
-#additional-recording-time {
-    font-family: monospace;
-    width: 60px;
-    text-align: center;
-}
-
 /* Animation for textarea update highlight */
 @keyframes highlight-fade {
     0% { background-color: rgba(147, 51, 234, 0.2); }

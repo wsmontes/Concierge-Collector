@@ -10,6 +10,7 @@ import base64
 import io
 import json
 import logging
+import re
 import uuid
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
@@ -27,6 +28,19 @@ logger = logging.getLogger(__name__)
 MAX_IMAGE_DOWNLOAD_BYTES = 20 * 1024 * 1024  # 20MB (max_file_size_mb do config)
 
 
+def _sniff_image_mime(raw: bytes) -> Optional[str]:
+    """Mime por magic bytes — base64 cru não informa o tipo do arquivo."""
+    if raw[:3] == b"\xff\xd8\xff":
+        return "image/jpeg"
+    if raw[:8] == b"\x89PNG\r\n\x1a\n":
+        return "image/png"
+    if raw[:6] in (b"GIF87a", b"GIF89a"):
+        return "image/gif"
+    if raw[:4] == b"RIFF" and raw[8:12] == b"WEBP":
+        return "image/webp"
+    return None
+
+
 async def resolve_image_input(image: str) -> str:
     """Normaliza a entrada de imagem para o formato que a OpenAI consegue
     consumir SEM download remoto: data URL (base64).
@@ -34,32 +48,52 @@ async def resolve_image_input(image: str) -> str:
     URLs http(s) — inclusive as do proxy /places/photo (302 → Google) — são
     baixadas AQUI (server-side); o downloader da OpenAI não segue o redirect
     do proxy e falhava com "Error while downloading https://...". Data URLs
-    passam direto. Qualquer outra entrada é recusada com erro claro."""
+    passam direto. Base64 cru (contrato documentado do image_file) é
+    convertido para data URL com o mime detectado pelos magic bytes."""
     if isinstance(image, str) and image.startswith("data:"):
         return image
 
-    if not isinstance(image, str) or not image.startswith(("http://", "https://")):
+    if not isinstance(image, str):
         raise ValueError(
-            "Formato de imagem não suportado — use URL http(s) ou data URL "
-            "(o download de imagens é feito pelo servidor)"
+            "Formato de imagem não suportado — use URL http(s), data URL ou "
+            "base64 (o download de imagens é feito pelo servidor)"
         )
 
-    try:
-        async with httpx.AsyncClient(follow_redirects=True, timeout=30) as client:
-            response = await client.get(image)
-            response.raise_for_status()
-    except Exception as exc:  # httpx.HTTPError + status != 2xx
-        raise ValueError(f"Não foi possível baixar a imagem: {exc}") from exc
+    if image.startswith(("http://", "https://")):
+        try:
+            async with httpx.AsyncClient(follow_redirects=True, timeout=30) as client:
+                response = await client.get(image)
+                response.raise_for_status()
+        except Exception as exc:  # httpx.HTTPError + status != 2xx
+            raise ValueError(f"Não foi possível baixar a imagem: {exc}") from exc
 
-    content_type = response.headers.get("content-type", "")
-    if not content_type.startswith("image/"):
-        raise ValueError(f"content-type inválido na imagem: {content_type!r}")
+        content_type = response.headers.get("content-type", "")
+        if not content_type.startswith("image/"):
+            raise ValueError(f"content-type inválido na imagem: {content_type!r}")
 
-    if len(response.content) > MAX_IMAGE_DOWNLOAD_BYTES:
-        raise ValueError(f"Imagem maior que {MAX_IMAGE_DOWNLOAD_BYTES // (1024 * 1024)}MB")
+        if len(response.content) > MAX_IMAGE_DOWNLOAD_BYTES:
+            raise ValueError(f"Imagem maior que {MAX_IMAGE_DOWNLOAD_BYTES // (1024 * 1024)}MB")
 
-    b64 = base64.b64encode(response.content).decode()
-    return f"data:{content_type};base64,{b64}"
+        b64 = base64.b64encode(response.content).decode()
+        return f"data:{content_type};base64,{b64}"
+
+    # base64 cru (ex.: image_file do frontend antigo / clientes externos)
+    if re.fullmatch(r"[A-Za-z0-9+/=\s]+", image):
+        try:
+            raw = base64.b64decode(image, validate=True)
+        except Exception as exc:
+            raise ValueError(f"image_file base64 inválido: {exc}") from exc
+        mime = _sniff_image_mime(raw)
+        if not mime:
+            raise ValueError(
+                "Formato de imagem não reconhecido (magic bytes desconhecidos) — " "use URL http(s) ou data URL"
+            )
+        return f"data:{mime};base64,{base64.b64encode(raw).decode()}"
+
+    raise ValueError(
+        "Formato de imagem não suportado — use URL http(s), data URL ou base64 "
+        "(o download de imagens é feito pelo servidor)"
+    )
 
 
 class OpenAIService:

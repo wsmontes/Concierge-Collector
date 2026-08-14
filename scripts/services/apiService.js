@@ -490,6 +490,16 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
      * Convert Blob to base64 string
      * @private
      */
+    async blobToDataUrl(blob) {
+        // Data URL COMPLETA (com prefixo e mime) — para imagens na Vision
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onloadend = () => resolve(reader.result);
+            reader.onerror = reject;
+            reader.readAsDataURL(blob);
+        });
+    }
+
     async blobToBase64(blob) {
         return new Promise((resolve, reject) => {
             const reader = new FileReader();
@@ -526,8 +536,9 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
     }
 
     async analyzeImage(imageBlob, prompt) {
-        // Convert image to base64 - API V3 expects JSON with base64 image_file
-        const base64Image = await this.blobToBase64(imageBlob);
+        // image_file precisa da data URL COMPLETA (prefixo + mime do blob):
+        // o backend só repassa data URLs à OpenAI (base64 cru não é aceito)
+        const base64Image = await this.blobToDataUrl(imageBlob);
 
         const requestBody = {
             image_file: base64Image,
