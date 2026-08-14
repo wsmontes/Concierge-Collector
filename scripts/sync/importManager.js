@@ -302,14 +302,106 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
         const extension = file.name.split('.').pop().toLowerCase();
 
         switch (extension) {
-            case 'json':
+            case 'json': {
+                // Round-trip: os exports do próprio app (v3_json e
+                // collector_json_package) precisam ser reimportáveis —
+                // antes o import só aceitava o formato Concierge antigo
+                // e rejeitava os próprios exports ("Invalid Concierge
+                // data format").
+                const content = await this.readFile(file);
+                let data;
+                try {
+                    data = JSON.parse(content);
+                } catch (parseError) {
+                    throw new Error(`Invalid JSON format: ${parseError.message}`);
+                }
+                if (data?.format === 'v3' && Array.isArray(data.entities) && Array.isArray(data.curations)) {
+                    return this.importV3Data(data.entities, data.curations);
+                }
+                if (data?.format === 'collector_json_package' && data?.files) {
+                    return this.importV3Data(
+                        data.files['entities.json'] || [],
+                        data.files['curations.json'] || []
+                    );
+                }
                 return this.importConciergeFile(file);
+            }
             case 'csv':
                 return this.importCSVFile(file);
             case 'zip':
                 throw new Error('ZIP import is not supported in the current build. Please import a JSON file.');
             default:
                 throw new Error(`Unsupported file format: ${extension}`);
+        }
+    }
+
+    /**
+     * Importa o formato v3 (entities + curations) — o mesmo formato do
+     * export do app. Upsert por id (bulkPut) com contagem de
+     * criados/pulados.
+     */
+    async importV3Data(entities = [], curations = []) {
+        try {
+            this.log.debug(`🔄 Importando v3: ${entities.length} entities, ${curations.length} curations`);
+            SafetyUtils.showLoading('📥 Importando dados V3...');
+
+            const db = window.DataStore?.db;
+            if (!db) throw new Error('DataStore indisponível');
+
+            // Sanitiza: o `id` do export é o autoincremento do Dexie de
+            // origem — mantê-lo faria o bulkPut SOBRESCREVER linhas
+            // locais erradas (o PK local é ++id, não entity_id).
+            const stripLocalId = (obj) => {
+                const copy = { ...obj };
+                delete copy.id;
+                delete copy._id;
+                if (copy.sync) copy.sync = { status: 'pending', lastModified: new Date().toISOString() };
+                return copy;
+            };
+
+            // upsert entities (pulando as sem entity_id)
+            const validEntities = entities.filter(e => e && e.entity_id).map(stripLocalId);
+            const skippedEntities = entities.length - validEntities.length;
+
+            // dedupe por entity_id (índice real) — reimport é idempotente
+            const existingEntityIds = new Set(
+                (await db.entities.toCollection().toArray()).map(e => e.entity_id).filter(Boolean)
+            );
+            const newEntities = validEntities.filter(e => !existingEntityIds.has(e.entity_id));
+            const createdEntities = newEntities.length;
+
+            if (newEntities.length) {
+                await db.entities.bulkPut(newEntities);
+            }
+
+            const validCurations = curations.filter(c => c && c.curation_id).map(stripLocalId);
+            const skippedCurations = curations.length - validCurations.length;
+
+            const existingCurationIds = new Set(
+                (await db.curations.toCollection().toArray()).map(c => c.curation_id).filter(Boolean)
+            );
+            const newCurations = validCurations.filter(c => !existingCurationIds.has(c.curation_id));
+            const createdCurations = newCurations.length;
+
+            if (newCurations.length) {
+                await db.curations.bulkPut(newCurations);
+            }
+
+            SafetyUtils.hideLoading();
+            const message =
+                `✅ Import V3 concluído!\n` +
+                `• ${createdEntities} entities novas (${validEntities.length - createdEntities} já existiam, ${skippedEntities} inválidas)\n` +
+                `• ${createdCurations} curations novas (${validCurations.length - createdCurations} já existiam, ${skippedCurations} inválidas)`;
+            SafetyUtils.showNotification(message, 'success');
+
+            if (window.uiManager?.refreshCurrentView) {
+                window.uiManager.refreshCurrentView();
+            }
+            return { entities: { created: createdEntities, skipped: validEntities.length - createdEntities }, curations: { created: createdCurations, skipped: validCurations.length - createdCurations } };
+        } catch (error) {
+            SafetyUtils.hideLoading();
+            this.log.error('❌ Import V3 failed:', error);
+            throw error;
         }
     }
 
@@ -675,9 +767,15 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
         const rows = [headers.map(value => this.toCSVCell(value)).join(',')];
 
         const curationsByEntity = {};
+        const orphanCurations = [];
         curations.forEach((curation) => {
             const entityId = curation?.entity_id;
-            if (!entityId) return;
+            if (!entityId) {
+                // Órfãs (sem entidade vinculada) também entram no CSV —
+                // antes eram descartadas silenciosamente do export
+                orphanCurations.push(curation);
+                return;
+            }
             if (!curationsByEntity[entityId]) curationsByEntity[entityId] = [];
             curationsByEntity[entityId].push(curation);
         });
@@ -697,6 +795,18 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
                 const categoryConcepts = this.extractCategoryConcepts(curation, categoryColumns, separator);
                 rows.push(this.buildCSVRow(entity, curation, categoryConcepts, categoryColumns));
             });
+        });
+
+        // Curations órfãs com colunas de entity vazias
+        orphanCurations.forEach((curation) => {
+            const emptyCategories = categoryColumns.reduce((acc, category) => {
+                acc[category] = '';
+                return acc;
+            }, {});
+            const categoryConcepts = this.extractCategoryConcepts(curation, categoryColumns, separator);
+            const merged = { ...emptyCategories };
+            Object.keys(categoryConcepts).forEach(k => { if (categoryConcepts[k]) merged[k] = categoryConcepts[k]; });
+            rows.push(this.buildCSVRow({}, curation, merged, categoryColumns));
         });
 
         return rows.join('\n');
