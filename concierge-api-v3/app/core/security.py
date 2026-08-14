@@ -332,6 +332,29 @@ def is_admin_auth(auth: dict) -> bool:
     return auth.get("method") == "api_key" or auth.get("role") == "admin"
 
 
+def require_role(required: str):
+    """FastAPI dependency factory: exige role >= required no JWT.
+
+    API key passa (scripts administrativos = admin). Viewer nunca escreve —
+    auditoria ago/2026: os writes verificavam ownership mas não exigiam
+    role mínima, então um viewer owner podia escrever.
+    Uso: `auth: dict = Depends(require_role("curator"))`
+    """
+    from app.models.user import has_role
+
+    def dependency(auth: dict = Depends(verify_auth)) -> dict:
+        if auth.get("method") == "api_key":
+            return auth
+        if not has_role(auth.get("role", "viewer"), required):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail=f"Requires {required} role",
+            )
+        return auth
+
+    return dependency
+
+
 # Export main dependencies
 __all__ = [
     "generate_api_key",

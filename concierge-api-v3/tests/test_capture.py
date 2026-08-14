@@ -1,6 +1,7 @@
 """Tests for capture endpoints and helpers."""
 
 from unittest.mock import MagicMock, patch
+import pytest
 
 
 def _make_cursor(records: list):
@@ -170,3 +171,35 @@ def test_confirm_handles_entity_duplicate_key_race():
     # Verify find_one was called twice (first returns None, second recovers existing)
     assert mock_db.entities.find_one.call_count == 2
     _idempotency_cache._data.clear()
+
+
+@pytest.mark.mongo
+def test_confirm_capture_rejects_foreign_owner(client, test_db):
+    """Só o dono da sessão (ou admin) confirma — curator B não confirma a
+    captura de A (auditoria ago/2026: o confirm não verificava ownership)."""
+    from datetime import datetime, timezone
+    from app.core.security import create_access_token
+
+    # sessão do dono A
+    test_db["capture_sessions"].insert_one(
+        {
+            "_id": "test_cap_own",
+            "curator_id": "alice@x.com",
+            "curator": {"id": "alice@x.com", "name": "alice@x.com"},
+            "transcription": "",
+            "entities": [],
+            "concepts": {},
+            "createdAt": datetime.now(timezone.utc),
+        }
+    )
+
+    token_b = create_access_token(data={"sub": "bob@x.com", "role": "curator"})
+    r = client.post(
+        "/api/v3/capture/test_cap_own/confirm",
+        json={"entity_id": "ent_x", "idempotency_key": "k_own_test"},
+        headers={"Authorization": f"Bearer {token_b}"},
+    )
+    assert r.status_code == 403
+    assert "does not belong" in r.json()["detail"]
+
+    test_db["capture_sessions"].delete_one({"_id": "test_cap_own"})

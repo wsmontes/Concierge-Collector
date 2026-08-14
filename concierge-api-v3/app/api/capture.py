@@ -471,6 +471,15 @@ async def confirm_capture(
         else:
             raise HTTPException(status_code=404, detail="Capture session not found")
 
+    # ── IDOR (auditoria ago/2026): só o dono da sessão (ou admin) confirma.
+    # A criação já valida curator_id == auth.user; o confirm NÃO fazia.
+    if not is_admin_auth(auth):
+        from app.services.curation_service import _is_placeholder_identity
+
+        session_owner = session.get("curator_id") or (session.get("curator") or {}).get("id")
+        if not _is_placeholder_identity(session_owner) and session_owner != auth.get("user"):
+            raise HTTPException(status_code=403, detail="capture session does not belong to the authenticated user")
+
     transcription = session.get("transcription", "")
     entities = session.get("entities", [])
     concepts = session.get("concepts", {})

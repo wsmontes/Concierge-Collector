@@ -37,7 +37,7 @@ from bson import ObjectId
 
 from app.core.query_utils import resolve_after_id
 from app.core.rate_limit import limiter
-from app.core.security import verify_auth, is_admin_auth
+from app.core.security import is_admin_auth, require_role
 from app.models.user import has_role
 from app.services.curation_denorm import denormalize_curation_location
 from app.services.curation_service import (
@@ -251,7 +251,7 @@ def build_curation_response_payload(curation_doc: dict) -> dict:
 def create_curation(
     curation: CurationCreate,
     db: Database = Depends(get_database),
-    auth: dict = Depends(verify_auth),  # Support both API key and JWT
+    auth: dict = Depends(require_role("curator")),  # Support both API key and JWT
 ):
     """Create a new curation
 
@@ -409,7 +409,7 @@ def update_curation(
     updates: CurationUpdate,
     if_match: Optional[str] = Header(None, alias="If-Match"),
     db: Database = Depends(get_database),
-    auth: dict = Depends(verify_auth),  # Support both API key and JWT
+    auth: dict = Depends(require_role("curator")),  # Support both API key and JWT
 ):
     """Update curation with optimistic locking
 
@@ -588,7 +588,7 @@ def update_curation(
 def delete_curation(
     curation_id: str,
     db: Database = Depends(get_database),
-    auth: dict = Depends(verify_auth),  # Support both API key and JWT
+    auth: dict = Depends(require_role("curator")),  # Support both API key and JWT
 ):
     """Delete curation (Soft Delete)
 
@@ -1056,7 +1056,7 @@ def bulk_upsert_curations(
     request: Request,
     payload: BulkCurationCreate,
     db: Database = Depends(get_database),
-    auth: dict = Depends(verify_auth),
+    auth: dict = Depends(require_role("curator")),
 ):
     """Bulk upsert curations (create or update) — max 500 per call.
 
@@ -1134,6 +1134,9 @@ def bulk_upsert_curations(
         "createdBy": 1,
         "createdAt": 1,
         "curator_id": 1,
+        # ownership por item (auditoria ago/2026): curator.id embutido é
+        # necessário quando o curator_id top-level é placeholder
+        "curator": 1,
     }
 
     def _load_existing_group(ids, extra_proj):
@@ -1165,6 +1168,20 @@ def bulk_upsert_curations(
                 entity_for_denorm = by_id.get(curation.entity_id) or by_slug.get(curation.entity_id)
 
             if existing:
+                # ── OWNERSHIP (auditoria ago/2026): curator comum só atualiza
+                # a PRÓPRIA curation; admin (API key/role) age em qualquer uma
+                if not is_admin_auth(auth):
+                    stored_owner = existing.get("curator_id") or (existing.get("curator") or {}).get("id")
+                    if not _is_placeholder_identity(stored_owner) and stored_owner != auth.get("user"):
+                        errors.append(
+                            BulkItemError(
+                                index=idx,
+                                id=curation.curation_id,
+                                error="ownership violation: curator_id does not match authenticated user",
+                            )
+                        )
+                        continue
+
                 doc = curation.model_dump(exclude_unset=True)
                 doc.pop("curation_id", None)
                 doc.pop("createdAt", None)
@@ -1185,6 +1202,18 @@ def bulk_upsert_curations(
             else:
                 doc = curation.model_dump()
                 _normalize_curator_id(doc)  # ANTES do createdBy/updatedBy
+                # IDOR de create: curator comum não cria em nome de terceiro
+                # (mesma regra do POST /curations individual)
+                owner = doc.get("curator_id") or (doc.get("curator") or {}).get("id")
+                if not is_admin_auth(auth) and not _is_placeholder_identity(owner) and owner != auth.get("user"):
+                    errors.append(
+                        BulkItemError(
+                            index=idx,
+                            id=curation.curation_id,
+                            error="ownership violation: curator_id must match the authenticated user",
+                        )
+                    )
+                    continue
                 _repair_curator_identity(doc, {})  # create: placeholder não persiste no curator_id
                 doc["_id"] = curation.curation_id
                 doc["createdAt"] = now

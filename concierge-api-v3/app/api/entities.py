@@ -27,6 +27,7 @@ from app.core.query_utils import resolve_after_id
 from app.models.user import has_role
 from app.core.security import (
     verify_auth,
+    require_role,
 )
 from app.services.entity_service import upsert_entity
 
@@ -70,7 +71,7 @@ router = APIRouter(prefix="/entities", tags=["entities"])
 def create_entity(
     entity: EntityCreate,
     db: Database = Depends(get_database),
-    auth: dict = Depends(verify_auth),
+    auth: dict = Depends(require_role("curator")),
 ):
     """Create new entity or update if exists.
     Delega para o entity_service (fronteira única de escrita — o AI
@@ -122,7 +123,7 @@ def update_entity(
     updates: EntityUpdate,
     if_match: Optional[str] = Header(None, alias="If-Match"),
     db: Database = Depends(get_database),
-    auth: dict = Depends(verify_auth),
+    auth: dict = Depends(require_role("curator")),
 ):
     """Update entity with optimistic locking"""
     if not if_match:
@@ -163,7 +164,7 @@ def update_entity(
 def delete_entity(
     entity_id: str,
     db: Database = Depends(get_database),
-    auth: dict = Depends(verify_auth),
+    auth: dict = Depends(require_role("curator")),
 ):
     """Delete entity"""
     resolved = find_entity(db, entity_id)

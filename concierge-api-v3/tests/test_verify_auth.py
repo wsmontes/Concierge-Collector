@@ -257,3 +257,34 @@ class TestJwtHelpers:
         creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
         auth = verify_auth(api_key=None, bearer=creds)
         assert auth["role"] == "viewer"
+
+
+class TestRequireRole:
+    """Dependency de role mínima (auditoria ago/2026): viewer não escreve."""
+
+    def test_viewer_rejected(self):
+        from app.core.security import require_role
+
+        dep = require_role("curator")
+        with pytest.raises(HTTPException) as exc:
+            dep(auth={"method": "jwt", "user": "v@x.com", "role": "viewer", "authenticated": True})
+        assert exc.value.status_code == 403
+
+    def test_curator_admin_apikey_pass(self):
+        from app.core.security import require_role
+
+        dep = require_role("curator")
+        for auth in (
+            {"method": "jwt", "role": "curator"},
+            {"method": "jwt", "role": "admin"},
+            {"method": "api_key"},
+        ):
+            result = dep(auth=auth)
+            assert result is auth
+
+    def test_role_ausente_tratado_como_viewer(self):
+        from app.core.security import require_role
+
+        dep = require_role("curator")
+        with pytest.raises(HTTPException):
+            dep(auth={"method": "jwt", "user": "x@x.com"})

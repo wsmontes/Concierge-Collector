@@ -1334,3 +1334,58 @@ def test_create_curation_denormalizes_city_type(client, test_db, clean_test_enti
     assert doc["city"] == "São Paulo"
     assert doc["type"] == "bar"
     test_db.curations.delete_one({"_id": "test_cur_denorm"})
+
+
+@pytest.mark.mongo
+def test_bulk_upsert_rejects_foreign_ownership(client, clean_test_curations, test_db):
+    """Curator comum NÃO atualiza curation de outro curator via bulk
+    (auditoria ago/2026: o bulk validava role mas não ownership por item)."""
+    from datetime import datetime, timezone
+    from app.core.security import create_access_token
+
+    # seed: curation do dono B
+    test_db.curations.insert_one(
+        {
+            "_id": "test_own_b",
+            "curation_id": "test_own_b",
+            "entity_id": None,
+            "curator_id": "bob@x.com",
+            "curator": {"id": "bob@x.com", "name": "bob@x.com"},
+            "restaurant_name": "Do Bob",
+            "status": "draft",
+            "categories": {},
+            "sources": {},
+            "createdAt": datetime.now(timezone.utc),
+            "updatedAt": datetime.now(timezone.utc),
+            "version": 3,
+        }
+    )
+
+    # token do curator A (curator comum, NÃO admin)
+    token_a = create_access_token(data={"sub": "alice@x.com", "role": "curator"})
+
+    payload = {
+        "curations": [
+            {
+                "curation_id": "test_own_b",
+                "entity_id": None,
+                "curator_id": "bob@x.com",
+                "curator": {"id": "bob@x.com", "name": "bob@x.com"},
+                "restaurant_name": "Roubado pela Alice",
+            }
+        ]
+    }
+    r = client.post(
+        "/api/v3/curations/bulk",
+        json=payload,
+        headers={"Authorization": f"Bearer {token_a}"},
+    )
+    assert r.status_code == 200
+    data = r.json()
+    assert data["updated"] == 0
+    assert len(data["errors"]) == 1
+    assert "ownership violation" in data["errors"][0]["error"]
+
+    stored = test_db.curations.find_one({"_id": "test_own_b"})
+    assert stored["restaurant_name"] == "Do Bob"  # nada foi sobrescrito
+    assert stored["version"] == 3
