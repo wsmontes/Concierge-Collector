@@ -188,35 +188,37 @@ const ConflictResolutionModal = ModuleWrapper.defineClass('ConflictResolutionMod
      * @returns {string} - HTML string
      */
     renderItemData(item, type) {
+        // Dados locais/servidor entram direto em innerHTML — escapar tudo
+        const esc = (v) => this.escapeHtml(v);
         if (type === 'entity') {
             return `
                 <div class="space-y-2">
                     <div>
                         <label class="font-medium text-gray-700">Name:</label>
-                        <div class="text-gray-900">${item.name || 'N/A'}</div>
+                        <div class="text-gray-900">${esc(item.name) || 'N/A'}</div>
                     </div>
                     <div>
                         <label class="font-medium text-gray-700">Type:</label>
-                        <div class="text-gray-900">${item.type || 'N/A'}</div>
+                        <div class="text-gray-900">${esc(item.type) || 'N/A'}</div>
                     </div>
                     <div>
                         <label class="font-medium text-gray-700">Status:</label>
-                        <div class="text-gray-900">${item.status || 'N/A'}</div>
+                        <div class="text-gray-900">${esc(item.status) || 'N/A'}</div>
                     </div>
                     ${item.data ? `
                         <div>
                             <label class="font-medium text-gray-700">Location:</label>
                             <div class="text-gray-900 text-xs">
-                                ${item.data.location?.address || 'N/A'}<br>
-                                ${item.data.location?.city || ''}
+                                ${esc(item.data.location?.address) || 'N/A'}<br>
+                                ${esc(item.data.location?.city || '')}
                             </div>
                         </div>
                         ${item.data.contacts ? `
                             <div>
                                 <label class="font-medium text-gray-700">Contacts:</label>
                                 <div class="text-gray-900 text-xs">
-                                    ${item.data.contacts.phone || ''}<br>
-                                    ${item.data.contacts.website || ''}
+                                    ${esc(item.data.contacts.phone || '')}<br>
+                                    ${esc(item.data.contacts.website || '')}
                                 </div>
                             </div>
                         ` : ''}
@@ -227,7 +229,7 @@ const ConflictResolutionModal = ModuleWrapper.defineClass('ConflictResolutionMod
                             <div class="text-xs space-y-1">
                                 ${item.metadata.map(m => `
                                     <div class="bg-gray-100 px-2 py-1 rounded">
-                                        ${m.type} - ${m.source}
+                                        ${esc(m.type)} - ${esc(m.source)}
                                     </div>
                                 `).join('')}
                             </div>
@@ -241,19 +243,19 @@ const ConflictResolutionModal = ModuleWrapper.defineClass('ConflictResolutionMod
                 <div class="space-y-2">
                     <div>
                         <label class="font-medium text-gray-700">Entity ID:</label>
-                        <div class="text-gray-900 text-xs">${item.entity_id || 'N/A'}</div>
+                        <div class="text-gray-900 text-xs">${esc(item.entity_id) || 'N/A'}</div>
                     </div>
                     ${item.curator ? `
                         <div>
                             <label class="font-medium text-gray-700">Curator:</label>
-                            <div class="text-gray-900">${item.curator.name || 'N/A'}</div>
+                            <div class="text-gray-900">${esc(item.curator.name) || 'N/A'}</div>
                         </div>
                     ` : ''}
                     ${item.content ? `
                         <div>
                             <label class="font-medium text-gray-700">Transcription:</label>
                             <div class="text-gray-900 text-xs max-h-32 overflow-y-auto">
-                                ${item.content.transcription?.substring(0, 200) || 'N/A'}...
+                                ${esc(item.content.transcription?.substring(0, 200)) || 'N/A'}...
                             </div>
                         </div>
                     ` : ''}
@@ -263,7 +265,7 @@ const ConflictResolutionModal = ModuleWrapper.defineClass('ConflictResolutionMod
                             <div class="flex flex-wrap gap-1 mt-1">
                                 ${item.concepts.map(c => `
                                     <span class="bg-purple-100 text-purple-700 text-xs px-2 py-1 rounded">
-                                        ${c.category}: ${c.value}
+                                        ${esc(c.category)}: ${esc(c.value)}
                                     </span>
                                 `).join('')}
                             </div>
@@ -271,7 +273,7 @@ const ConflictResolutionModal = ModuleWrapper.defineClass('ConflictResolutionMod
                     ` : ''}
                     <div>
                         <label class="font-medium text-gray-700">Status:</label>
-                        <div class="text-gray-900">${item.status || 'N/A'}</div>
+                        <div class="text-gray-900">${esc(item.status) || 'N/A'}</div>
                     </div>
                 </div>
             `;
@@ -329,7 +331,7 @@ const ConflictResolutionModal = ModuleWrapper.defineClass('ConflictResolutionMod
                     <li class="flex items-start">
                         <span class="material-icons text-xs text-yellow-600 mr-2 mt-0.5">edit</span>
                         <div>
-                            <span class="font-medium">${diff.field}:</span>
+                            <span class="font-medium">${this.escapeHtml(diff.field)}:</span>
                             <div class="text-xs mt-1 grid grid-cols-2 gap-2">
                                 <div class="bg-blue-50 p-2 rounded">
                                     <span class="text-blue-600">Your version:</span><br>
@@ -357,9 +359,21 @@ const ConflictResolutionModal = ModuleWrapper.defineClass('ConflictResolutionMod
             return '<em class="text-gray-400">empty</em>';
         }
         if (typeof value === 'object') {
-            return `<code class="text-xs">${JSON.stringify(value, null, 2).substring(0, 100)}</code>`;
+            return `<code class="text-xs">${this.escapeHtml(JSON.stringify(value, null, 2).substring(0, 100))}</code>`;
         }
-        return String(value);
+        return this.escapeHtml(String(value));
+    }
+
+    /**
+     * Escape HTML entities to prevent XSS — dados locais/servidor entram
+     * em innerHTML nos renders de item e diferenças
+     * @param {*} value - Input value
+     * @returns {string} Escaped text
+     */
+    escapeHtml(value) {
+        const div = document.createElement('div');
+        div.textContent = value == null ? '' : String(value);
+        return div.innerHTML;
     }
 
     /**

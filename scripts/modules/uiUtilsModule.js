@@ -39,10 +39,13 @@ class UIUtilsModule {
         loadingOverlay.innerHTML = `
             <div class="bg-white p-4 rounded-lg shadow-lg flex flex-col items-center">
                 <div class="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-2"></div>
-                <p class="text-gray-800 loading-message">${message}</p>
+                <p class="text-gray-800 loading-message"></p>
             </div>
         `;
-        
+        // textContent, não interpolação — a mensagem entra como texto
+        // (interpolar em innerHTML permitia injeção de HTML)
+        loadingOverlay.querySelector('.loading-message').textContent = message;
+
         document.body.appendChild(loadingOverlay);
         document.body.style.overflow = 'hidden';
         this.isLoadingVisible = true;
@@ -80,55 +83,17 @@ class UIUtilsModule {
      * @param {string} type - The notification type ('success', 'error', 'warning', 'info')
      */
     showNotification(message, type = 'success') {
-        const now = Date.now();
-        const isDuplicate =
-            this.lastNotification.message === message &&
-            this.lastNotification.type === type &&
-            (now - this.lastNotification.timestamp) < 1800;
-
-        if (isDuplicate) {
+        // Delegar ao uiUtils global (scripts/ui-core/uiUtils.js): visual
+        // canônico com tokens do design system, ícone via node e dedupe.
+        // Este método era o caminho ativo dos toasts do app (uiManager
+        // chama o uiUtilsModule primeiro) e usava gradientes hardcoded.
+        if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
+            window.uiUtils.showNotification(message, type);
             return;
         }
-
-        this.lastNotification = { message, type, timestamp: now };
-
-        let backgroundColor;
-        
-        switch (type) {
-            case 'success':
-                backgroundColor = 'linear-gradient(to right, #00b09b, #96c93d)';
-                break;
-            case 'error':
-                backgroundColor = 'linear-gradient(to right, #ff5f6d, #ffc371)';
-                break;
-            case 'warning':
-                backgroundColor = 'linear-gradient(to right, #f7b733, #fc4a1a)';
-                break;
-            case 'info':
-                backgroundColor = 'linear-gradient(to right, #2193b0, #6dd5ed)';
-                break;
-            default:
-                backgroundColor = 'linear-gradient(to right, #00b09b, #96c93d)';
-        }
-            
-        if (typeof Toastify === 'function') {
-            this.clearNotifications();
-
-            Toastify({
-                text: message,
-                duration: 3000,
-                gravity: "top",
-                position: "right",
-                offset: {
-                    y: '5rem'
-                },
-                style: { background: backgroundColor }
-            }).showToast();
-        } else {
-            // Fallback if Toastify isn't available
-            this.log.debug(`Notification (${type}): ${message}`);
-            alert(message);
-        }
+        // Fallback mínimo se o global não carregou
+        this.log.debug(`Notification (${type}): ${message}`);
+        alert(message);
     }
 
     /**
@@ -222,12 +187,17 @@ class UIUtilsModule {
             innerContent = `
                 <div class="bg-white p-4 rounded-lg shadow-lg flex flex-col items-center">
                     ${showSpinner ? '<div class="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mb-2"></div>' : ''}
-                    <p class="text-gray-800" id="${id}-message">${message}</p>
+                    <p class="text-gray-800" id="${id}-message"></p>
                 </div>
             `;
         }
-        
+
         overlayElement.innerHTML = innerContent;
+        // textContent para a mensagem (sem interpolação em innerHTML)
+        const msgEl = overlayElement.querySelector(`#${id}-message`);
+        if (msgEl) {
+            msgEl.textContent = message;
+        }
         document.body.appendChild(overlayElement);
         document.body.style.overflow = 'hidden';
         
@@ -259,8 +229,7 @@ class UIUtilsModule {
     }
 }
 
-// Initialize as global utility when the script loads
-if (!window.uiUtils) {
-    this.log.debug('Initializing global UI utilities');
-    window.uiUtils = new UIUtilsModule();
-}
+// O global window.uiUtils já vem de scripts/ui-core/uiUtils.js (carregado
+// antes). O init antigo aqui quebrava com TypeError — this.log é
+// undefined em escopo top-level de <script> — e nunca era alcançado
+// porque o uiUtils global já existia.

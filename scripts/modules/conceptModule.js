@@ -903,6 +903,7 @@ class ConceptModule {
                 conceptsGrid.className = 'grid grid-cols-1 md:grid-cols-2 gap-2';
 
                 // Add each concept
+                const esc = (v) => { const d = document.createElement('div'); d.textContent = v == null ? '' : String(v); return d.innerHTML; };
                 for (const concept of conceptsByCategory[category]) {
                     const cssClass = category.toLowerCase().replace(' ', '-');
 
@@ -910,8 +911,8 @@ class ConceptModule {
                     conceptCard.className = `concept-card ${cssClass} p-3 bg-white border rounded flex justify-between items-center`;
 
                     conceptCard.innerHTML = `
-                        <span>${concept.value}</span>
-                        <button class="remove-concept text-red-500" data-category="${concept.category}" data-value="${concept.value}">&times;</button>
+                        <span>${esc(concept.value)}</span>
+                        <button class="remove-concept text-red-500" data-category="${esc(concept.category)}" data-value="${esc(concept.value)}">&times;</button>
                     `;
 
                     // Add event listener to remove button
@@ -1129,14 +1130,15 @@ class ConceptModule {
         modalContainer.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
 
         // HTML for the modal content
+        const esc = (v) => { const d = document.createElement('div'); d.textContent = v == null ? '' : String(v); return d.innerHTML; };
         let modalHTML = `
             <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
                 <h2 class="text-xl font-bold mb-4 flex items-center">
                     <span class="material-icons text-yellow-500 mr-2">warning</span>
                     Similar Concepts Found
                 </h2>
-                
-                <p class="mb-4">Your new concept <strong>"${newConcept.value}"</strong> is similar to existing concepts:</p>
+
+                <p class="mb-4">Your new concept <strong>"${esc(newConcept.value)}"</strong> is similar to existing concepts:</p>
                 
                 <div class="mb-6 max-h-60 overflow-y-auto border rounded p-2">
         `;
@@ -1812,30 +1814,30 @@ class ConceptModule {
             const isLastImage = state.currentIndex === state.totalImages - 1;
 
             modalContainer.innerHTML = `
-                <div class="bg-white rounded-lg p-6 max-w-md w-full">
+                <div class="bg-white rounded-lg p-6 max-w-md w-full" role="dialog" aria-modal="true" aria-label="Image preview" tabindex="-1">
                     <div class="flex justify-between items-center mb-4">
                         <h2 class="text-xl font-bold flex items-center">
                             <span class="material-icons mr-2 text-green-500">photo</span>
                             Image Preview (${state.currentIndex + 1}/${state.totalImages})
                         </h2>
-                        <button id="close-preview-modal" class="text-gray-500 hover:text-gray-800 text-xl">&times;</button>
+                        <button id="close-preview-modal" aria-label="Close preview" class="text-gray-500 hover:text-gray-800 text-xl">&times;</button>
                     </div>
-                    
+
                     <div class="mb-4 relative">
                         <img src="${current.photoData}" alt="Preview" class="w-full h-64 object-contain rounded border border-gray-300">
-                        
-                        <div class="absolute bottom-2 left-0 right-0 flex justify-center space-x-1">
+
+                        <div class="absolute bottom-2 left-0 right-0 flex justify-center space-x-1" aria-hidden="true">
                             ${photoDataArray.map((_, idx) =>
                 `<div class="h-2 w-2 rounded-full ${idx === state.currentIndex ? 'bg-blue-500' : 'bg-gray-300'}"></div>`
             ).join('')}
                         </div>
-                        
+
                         ${state.totalImages > 1 ? `
-                            <button id="prev-image" class="absolute left-2 top-1/2 transform -translate-y-1/2 bg-white rounded-full p-1 shadow ${state.currentIndex === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'}" ${state.currentIndex === 0 ? 'disabled' : ''}>
-                                <span class="material-icons">chevron_left</span>
+                            <button id="prev-image" aria-label="Previous image" class="absolute left-2 top-1/2 transform -translate-y-1/2 bg-white rounded-full p-1 shadow ${state.currentIndex === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'}" ${state.currentIndex === 0 ? 'disabled' : ''}>
+                                <span class="material-icons" aria-hidden="true">chevron_left</span>
                             </button>
-                            <button id="next-image" class="absolute right-2 top-1/2 transform -translate-y-1/2 bg-white rounded-full p-1 shadow ${isLastImage ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'}" ${isLastImage ? 'disabled' : ''}>
-                                <span class="material-icons">chevron_right</span>
+                            <button id="next-image" aria-label="Next image" class="absolute right-2 top-1/2 transform -translate-y-1/2 bg-white rounded-full p-1 shadow ${isLastImage ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'}" ${isLastImage ? 'disabled' : ''}>
+                                <span class="material-icons" aria-hidden="true">chevron_right</span>
                             </button>
                         ` : ''}
                     </div>
@@ -1955,7 +1957,19 @@ class ConceptModule {
         // Initial render of the modal content
         document.body.appendChild(modalContainer);
         document.body.style.overflow = 'hidden';
+
+        // A11y: Escape fecha o preview (handler no container sobrevive aos
+        // re-renders do innerHTML e morre junto quando o modal é removido)
+        modalContainer.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape' && document.body.contains(modalContainer)) {
+                document.body.removeChild(modalContainer);
+                document.body.style.overflow = '';
+            }
+        });
+
         updateModalContent();
+        // A11y: foco entra no diálogo ao abrir
+        modalContainer.querySelector('[role="dialog"]')?.focus();
 
         // Close when clicking outside
         modalContainer.addEventListener('click', event => {
@@ -2114,7 +2128,8 @@ class ConceptModule {
 
         const deleteBtn = document.createElement('button');
         deleteBtn.className = 'photo-delete-btn';
-        deleteBtn.innerHTML = '<span class="material-icons">close</span>';
+        deleteBtn.setAttribute('aria-label', 'Remove photo');
+        deleteBtn.innerHTML = '<span class="material-icons" aria-hidden="true">close</span>';
         deleteBtn.addEventListener('click', () => this.removePhoto(photoData, photoContainer));
 
         photoContainer.appendChild(img);
@@ -2449,8 +2464,7 @@ class ConceptModule {
                 <!-- Circular Timer Section -->
                 <div class="timer-circle">
                      <!-- ID 'additional-recording-time' is required by RecordingModule.js to find and update the text -->
-                     <!-- Added inline style to force centering and prevent any padding interference -->
-                     <div id="additional-recording-time" class="timer-display" style="width: 100%; text-align: center; display: flex; justify-content: center;">00:00</div>
+                     <div id="additional-recording-time" class="timer-display">00:00</div>
                      <svg class="timer-ring" viewBox="0 0 100 100">
                          <circle class="timer-ring-bg" cx="50" cy="50" r="46" />
                          <circle class="timer-ring-progress" cx="50" cy="50" r="46" />
@@ -2458,13 +2472,12 @@ class ConceptModule {
                 </div>
 
                 <!-- Controls -->
-                <div class="additional-recording-controls flex items-center justify-center gap-4 relative z-10" style="display: flex !important;">
-                    <button id="additional-record-start" class="bg-purple-600 hover:bg-purple-700 text-white w-20 h-20 rounded-full shadow-lg flex items-center justify-center transform transition-transform hover:scale-105 active:scale-95 transition-colors">
-                        <!-- Added mr-0 to override global button icon styles that add margin-right -->
-                        <span class="material-icons text-4xl mr-0" style="margin-right: 0 !important;">mic</span>
+                <div class="additional-recording-controls flex items-center justify-center gap-4 relative z-10">
+                    <button id="additional-record-start" aria-label="Start additional recording" class="bg-purple-600 hover:bg-purple-700 text-white w-20 h-20 rounded-full shadow-lg flex items-center justify-center transform transition-transform hover:scale-105 active:scale-95 transition-colors">
+                        <span class="material-icons text-4xl" aria-hidden="true">mic</span>
                     </button>
-                    <button id="additional-record-stop" class="bg-gray-800 hover:bg-gray-900 text-white w-20 h-20 rounded-full shadow-lg flex items-center justify-center transform transition-transform hover:scale-105 active:scale-95 transition-colors hidden">
-                         <span class="material-icons text-4xl mr-0" style="margin-right: 0 !important;">stop</span>
+                    <button id="additional-record-stop" aria-label="Stop additional recording" class="bg-gray-800 hover:bg-gray-900 text-white w-20 h-20 rounded-full shadow-lg flex items-center justify-center transform transition-transform hover:scale-105 active:scale-95 transition-colors hidden">
+                         <span class="material-icons text-4xl" aria-hidden="true">stop</span>
                     </button>
                 </div>
                 

@@ -337,7 +337,7 @@ function renderMatchCard(entity, allEntities) {
       const btn = document.createElement('button');
       btn.className = `match-card__alt${i === selectedEntityIndex ? ' match-card__alt--selected' : ''}`;
       btn.innerHTML = `
-        <span>${e.name || e.entity_name}</span>
+        <span>${escapeHTML(e.name || e.entity_name || '')}</span>
         <span class="match-card__alt-score">${e.score != null ? Math.round(e.score * 100) + '%' : ''}</span>
       `;
       btn.addEventListener('click', () => {
@@ -472,7 +472,8 @@ function formatDuration(seconds) {
   if (!seconds) return '';
   const m = Math.floor(seconds / 60);
   const s = seconds % 60;
-  return `${m}:${String(s).padStart(2, '0')}`;
+  // Padding nos dois lados, consistente com o status de gravação
+  return `${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}`;
 }
 
 // ── Bootstrap ───────────────────────────────────────────────────────────────

@@ -1083,7 +1083,6 @@ if (typeof window.PlacesModule === 'undefined') {
                         if (window.google && window.google.maps && window.google.maps.places) {
                             this.apiLoaded = true;
                             this.initializeModalPlacesAutocomplete();
-                            this.injectDropdownFixStyles();
                         } else {
                             // Otherwise, initialize the API normally
                             await this.initializePlacesApiWithRetry();
@@ -1261,7 +1260,6 @@ if (typeof window.PlacesModule === 'undefined') {
                         this.debugLog('Google Maps API already available, initializing Places features');
                         this.apiLoaded = true;
                         this.initializeModalPlacesAutocomplete();
-                        this.injectDropdownFixStyles();
                         this.showNotification('Google Places API ready', 'success');
                         resolve();
                         return;
@@ -1307,9 +1305,6 @@ if (typeof window.PlacesModule === 'undefined') {
                             
                             // Initialize modal autocomplete
                             this.initializeModalPlacesAutocomplete();
-                            
-                            // Inject CSS to fix dropdown positioning issues
-                            this.injectDropdownFixStyles();
                             
                             // Update performance metrics
                             this.performanceMetrics.apiCalls++;
@@ -1902,8 +1897,8 @@ if (typeof window.PlacesModule === 'undefined') {
             
             // Format the details HTML
             let detailsHTML = `
-                <div class="font-medium">${place.name || 'Unknown Place'}</div>
-                <div class="mt-1 text-gray-600">${place.formatted_address || 'No address available'}</div>
+                <div class="font-medium">${this.escapeHtml(place.name) || 'Unknown Place'}</div>
+                <div class="mt-1 text-gray-600">${this.escapeHtml(place.formatted_address) || 'No address available'}</div>
             `;
             
             // Add rating if available
@@ -2048,7 +2043,7 @@ if (typeof window.PlacesModule === 'undefined') {
                         if (resultsContainer) {
                             resultsContainer.innerHTML = `
                                 <div class="p-4 text-center">
-                                    <p class="text-red-600">Search failed: ${apiError.message}</p>
+                                    <p class="text-red-600">Search failed: ${this.escapeHtml(apiError.message)}</p>
                                     <p class="text-sm text-gray-500 mt-2">Please try again later.</p>
                                 </div>
                             `;
@@ -2145,12 +2140,12 @@ if (typeof window.PlacesModule === 'undefined') {
                         <div class="flex">
                             ${photoUrl ? `
                                 <div class="w-24 h-24 flex-shrink-0">
-                                    <img src="${photoUrl}" alt="${place.name}" class="w-full h-full object-cover rounded-l-lg">
+                                    <img src="${this.escapeHtml(photoUrl)}" alt="${this.escapeHtml(place.name)}" class="w-full h-full object-cover rounded-l-lg">
                                 </div>
                             ` : ''}
                             <div class="flex-grow p-4 ${photoUrl ? '' : 'pl-4'}">
                                 <div class="flex justify-between items-start mb-2">
-                                    <h3 class="font-semibold text-gray-900 line-clamp-1">${place.name}</h3>
+                                    <h3 class="font-semibold text-gray-900 line-clamp-1">${this.escapeHtml(place.name)}</h3>
                                     ${place.rating ? `
                                         <div class="flex items-center ml-2 flex-shrink-0">
                                             <span class="text-yellow-500 mr-1">★</span>
@@ -2306,9 +2301,21 @@ if (typeof window.PlacesModule === 'undefined') {
          */
         getPriceLevelDisplay(priceLevel) {
             if (priceLevel === undefined || priceLevel === null) return null;
-            
+
             const priceLevels = ['Free', '$', '$$', '$$$', '$$$$'];
             return priceLevels[priceLevel] || null;
+        }
+
+        /**
+         * Escape HTML entities — nomes/endereços do Google Places entram
+         * em innerHTML e atributos; escapar evita XSS via dados externos
+         * @param {*} value - Input value
+         * @returns {string} Escaped text
+         */
+        escapeHtml(value) {
+            const div = document.createElement('div');
+            div.textContent = value == null ? '' : String(value);
+            return div.innerHTML;
         }
         
         /**
@@ -3047,24 +3054,9 @@ if (typeof window.PlacesModule === 'undefined') {
             }
         }
         
-        /**
-         * Inject CSS fixes for autocomplete dropdown positioning
-         */
-        injectDropdownFixStyles() {
-            // Add CSS to fix dropdown positioning issues
-            const style = document.createElement('style');
-            style.textContent = `
-                .pac-container {
-                    z-index: 10000 !important;
-                    width: auto !important;
-                    min-width: 300px !important;
-                    max-width: 100% !important;
-                    box-shadow: 0 2px 10px rgba(0,0,0,0.2) !important;
-                    border-radius: 0.25rem !important;
-                }
-            `;
-            document.head.appendChild(style);
-        }
+        // injectDropdownFixStyles removido: os mesmos estilos (e mais
+        // completos, com z-index maior) já vivem em style.css — a injeção
+        // dinâmica duplicava regras .pac-container a cada load da API.
         
         /**
          * Show a notification message

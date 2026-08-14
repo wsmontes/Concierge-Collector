@@ -1296,7 +1296,7 @@ window.FindEntityModal = class FindEntityModal {
                     <p style="color: var(--color-success)">Location from Google Places:</p>
                     <p>Latitude: ${entity.data.location.coordinates[1].toFixed(6)}</p>
                     <p>Longitude: ${entity.data.location.coordinates[0].toFixed(6)}</p>
-                    <p style="font-size:var(--text-sm);color:var(--color-neutral-500);margin-top:4px">${entity.data.address.street}</p>
+                    <p style="font-size:var(--text-sm);color:var(--color-neutral-500);margin-top:4px">${this.escapeHtml(entity.data.address.street)}</p>
                 `;
             }
         }

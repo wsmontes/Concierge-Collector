@@ -413,6 +413,13 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
 
         // Show linked status with details
         if (linkedIndicator) {
+            // Dados da entity vêm do servidor/import — escapar antes de
+            // interpolar em innerHTML (XSS via nome/endereço/contato)
+            const esc = (v) => {
+                const d = document.createElement('div');
+                d.textContent = v == null ? '' : String(v);
+                return d.innerHTML;
+            };
             let detailsHtml = '';
 
             // Phone
@@ -420,7 +427,7 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
                 detailsHtml += `
                     <div class="flex items-center gap-2 mt-1 text-blue-800">
                         <span class="material-icons text-sm w-4">phone</span>
-                        <a href="tel:${phone}" class="hover:underline">${phone}</a>
+                        <a href="tel:${esc(phone)}" class="hover:underline">${esc(phone)}</a>
                     </div>`;
             }
 
@@ -433,7 +440,7 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
                 detailsHtml += `
                     <div class="flex items-center gap-2 mt-1 text-blue-800">
                         <span class="material-icons text-sm w-4">language</span>
-                        <a href="${website}" target="_blank" class="hover:underline text-blue-700 font-medium">${displayUrl}</a>
+                        <a href="${esc(website)}" target="_blank" rel="noopener noreferrer" class="hover:underline text-blue-700 font-medium">${esc(displayUrl)}</a>
                     </div>`;
             }
 
@@ -442,8 +449,8 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
                 detailsHtml += `
                     <div class="flex items-center gap-1 mt-1 text-amber-700">
                         <span class="material-icons text-sm w-4 text-amber-500">star</span>
-                        <span class="font-bold">${rating}</span>
-                        <span class="text-xs text-amber-600">(${userRatingsTotal} reviews)</span>
+                        <span class="font-bold">${esc(rating)}</span>
+                        <span class="text-xs text-amber-600">(${esc(userRatingsTotal)} reviews)</span>
                     </div>`;
             }
 
@@ -452,7 +459,7 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
                 detailsHtml += `
                     <div class="flex items-center gap-2 mt-1 text-gray-600">
                         <span class="material-icons text-sm w-4">place</span>
-                        <span class="line-clamp-1" title="${address}">${address}</span>
+                        <span class="line-clamp-1" title="${esc(address)}">${esc(address)}</span>
                     </div>`;
             }
 
@@ -460,8 +467,8 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
                 <div class="flex flex-col gap-1">
                     <div class="flex items-center gap-2 border-b border-blue-200 pb-2 mb-1">
                         <span class="material-icons text-blue-600">link</span>
-                        <span class="font-bold text-lg text-blue-800">${name}</span>
-                        ${entity.type ? `<span class="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full uppercase tracking-wider font-semibold">${entity.type}</span>` : ''}
+                        <span class="font-bold text-lg text-blue-800">${esc(name)}</span>
+                        ${entity.type ? `<span class="bg-blue-100 text-blue-800 text-xs px-2 py-0.5 rounded-full uppercase tracking-wider font-semibold">${esc(entity.type)}</span>` : ''}
                     </div>
                     <div class="pl-1 space-y-1">
                         ${detailsHtml}

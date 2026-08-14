@@ -647,12 +647,15 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
 
         const content = document.createElement('div');
         content.className = 'space-y-4';
+        // Dados vindos do servidor/import — escapar antes de interpolar
+        // (helper do próprio arquivo; evita XSS via nome/endereço/contato)
+        const esc = (v) => this.escapeHtml(v);
         content.innerHTML = `
             ${entity.data?.location ? `
                 <div>
                     <h3 class="font-semibold text-gray-700 mb-2">Location</h3>
-                    <p class="text-gray-600">${entity.data.location.address || 'N/A'}</p>
-                    <p class="text-sm text-gray-500">${entity.data.location.city || ''}, ${entity.data.location.country || ''}</p>
+                    <p class="text-gray-600">${esc(entity.data.location.address) || 'N/A'}</p>
+                    <p class="text-sm text-gray-500">${esc(entity.data.location.city || '')}, ${esc(entity.data.location.country || '')}</p>
                     ${entity.data.location.lat && entity.data.location.lng ? `
                         <p class="text-xs text-gray-400 mt-1">
                             ${entity.data.location.lat.toFixed(6)}, ${entity.data.location.lng.toFixed(6)}
@@ -664,9 +667,9 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
             ${entity.data?.contacts ? `
                 <div>
                     <h3 class="font-semibold text-gray-700 mb-2">Contact</h3>
-                    ${entity.data.contacts.phone ? `<p class="text-gray-600">📞 ${entity.data.contacts.phone}</p>` : ''}
-                    ${entity.data.contacts.website ? `<p class="text-gray-600">🌐 <a href="${entity.data.contacts.website}" target="_blank" class="text-blue-600 hover:underline">${entity.data.contacts.website}</a></p>` : ''}
-                    ${entity.data.contacts.email ? `<p class="text-gray-600">📧 ${entity.data.contacts.email}</p>` : ''}
+                    ${entity.data.contacts.phone ? `<p class="text-gray-600">📞 ${esc(entity.data.contacts.phone)}</p>` : ''}
+                    ${entity.data.contacts.website ? `<p class="text-gray-600">🌐 <a href="${esc(entity.data.contacts.website)}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">${esc(entity.data.contacts.website)}</a></p>` : ''}
+                    ${entity.data.contacts.email ? `<p class="text-gray-600">📧 ${esc(entity.data.contacts.email)}</p>` : ''}
                 </div>
             ` : ''}
 
@@ -677,7 +680,7 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
                         ${entity.data.attributes.rating ? `<p><span class="font-medium">Rating:</span> ${entity.data.attributes.rating} ⭐</p>` : ''}
                         ${entity.data.attributes.user_ratings_total ? `<p><span class="font-medium">Reviews:</span> ${entity.data.attributes.user_ratings_total}</p>` : ''}
                         ${entity.data.attributes.price_level ? `<p><span class="font-medium">Price:</span> ${'$'.repeat(entity.data.attributes.price_level)}</p>` : ''}
-                        ${entity.data.attributes.cuisine ? `<p><span class="font-medium">Cuisine:</span> ${entity.data.attributes.cuisine}</p>` : ''}
+                        ${entity.data.attributes.cuisine ? `<p><span class="font-medium">Cuisine:</span> ${esc(entity.data.attributes.cuisine)}</p>` : ''}
                     </div>
                 </div>
             ` : ''}
@@ -895,81 +898,6 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
         const div = document.createElement('div');
         div.textContent = value || '';
         return div.innerHTML;
-    }
-
-    /**
-     * Handle conflict resolution for entity
-     * @param {Object} entity - Entity with conflict
-     */
-    async handleConflictResolution(entity) {
-        return new Promise((resolve, reject) => {
-            const modal = document.createElement('div');
-            modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4';
-            modal.innerHTML = `
-                <div class="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
-                    <div class="flex items-center mb-4">
-                        <span class="material-icons text-red-600 text-3xl mr-3">sync_problem</span>
-                        <h2 class="text-xl font-bold text-gray-900">Sync Conflict</h2>
-                    </div>
-                    
-                    <p class="text-gray-600 mb-4">
-                        This entity has conflicting versions between local and server. 
-                        Choose which version to keep:
-                    </p>
-                    
-                    <div class="space-y-2">
-                        <button class="btn-resolve-local w-full py-3 px-4 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center justify-center gap-2">
-                            <span class="material-icons">phonelink</span>
-                            Keep Local Version (v${entity.version})
-                        </button>
-                        <button class="btn-resolve-server w-full py-3 px-4 bg-green-600 text-white rounded hover:bg-green-700 flex items-center justify-center gap-2">
-                            <span class="material-icons">cloud</span>
-                            Use Server Version
-                        </button>
-                        <button class="btn-resolve-cancel w-full py-3 px-4 bg-gray-300 text-gray-700 rounded hover:bg-gray-400">
-                            Cancel
-                        </button>
-                    </div>
-                </div>
-            `;
-
-            document.body.appendChild(modal);
-
-            modal.querySelector('.btn-resolve-local').addEventListener('click', async () => {
-                try {
-                    if (window.SyncManager && typeof window.SyncManager.resolveConflict === 'function') {
-                        await window.SyncManager.resolveConflict('entity', entity.entity_id, 'local');
-                    } else {
-                        this.log.warn('⚠️ Cannot resolve conflict - SyncManager not available');
-                    }
-                    modal.remove();
-                    resolve();
-                } catch (error) {
-                    modal.remove();
-                    reject(error);
-                }
-            });
-
-            modal.querySelector('.btn-resolve-server').addEventListener('click', async () => {
-                try {
-                    if (window.SyncManager && typeof window.SyncManager.resolveConflict === 'function') {
-                        await window.SyncManager.resolveConflict('entity', entity.entity_id, 'server');
-                    } else {
-                        this.log.warn('⚠️ Cannot resolve conflict - SyncManager not available');
-                    }
-                    modal.remove();
-                    resolve();
-                } catch (error) {
-                    modal.remove();
-                    reject(error);
-                }
-            });
-
-            modal.querySelector('.btn-resolve-cancel').addEventListener('click', () => {
-                modal.remove();
-                reject(new Error('Conflict resolution cancelled'));
-            });
-        });
     }
 
     /**

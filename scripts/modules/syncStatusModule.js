@@ -18,6 +18,18 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
     }
 
     /**
+     * Escape HTML entities — error.message entra em atributo title
+     * de innerHTML; escapar evita XSS por atributo
+     * @param {*} value - Input value
+     * @returns {string} Escaped text
+     */
+    _escapeHtml(value) {
+        const div = document.createElement('div');
+        div.textContent = value == null ? '' : String(value);
+        return div.innerHTML;
+    }
+
+    /**
      * Initialize the module
      */
     async init() {
@@ -194,7 +206,7 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
             this.log.error('Failed to update sync status:', error);
             // Show error indicator
             this.container.innerHTML = `
-                <span class="flex items-center gap-1 text-xs sm:text-sm text-red-400" title="Error: ${error.message}">
+                <span class="flex items-center gap-1 text-xs sm:text-sm text-red-400" title="Error: ${this._escapeHtml(error.message)}">
                     <span class="material-icons text-xl">error</span>
                     <span class="hidden sm:inline">Error</span>
                 </span>
@@ -213,10 +225,10 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
         const lastPushTime = status.lastSync.push ? this.getTimeAgo(new Date(status.lastSync.push)) : 'Never';
 
         modal.innerHTML = `
-            <div class="bg-white rounded-lg shadow-xl max-w-md w-full p-6">
+            <div class="bg-white rounded-lg shadow-xl max-w-md w-full p-6" role="dialog" aria-modal="true" aria-labelledby="sync-details-title" tabindex="-1">
                 <div class="flex justify-between items-start mb-4">
-                    <h2 class="text-xl font-bold text-gray-900">Sync Status</h2>
-                    <button class="btn-close-modal text-gray-500 hover:text-gray-700">
+                    <h2 class="text-xl font-bold text-gray-900" id="sync-details-title">Sync Status</h2>
+                    <button class="btn-close-modal text-gray-500 hover:text-gray-700" aria-label="Close">
                         <span class="material-icons">close</span>
                     </button>
                 </div>
@@ -311,9 +323,25 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
 
         document.body.appendChild(modal);
 
+        // A11y: foco entra no diálogo ao abrir e volta ao sair; Escape fecha
+        const prevFocus = document.activeElement;
+        const dialog = modal.querySelector('[role="dialog"]');
+        const onKeydown = (e) => { if (e.key === 'Escape') closeModal(); };
+        const closeModal = () => {
+            document.removeEventListener('keydown', onKeydown);
+            modal.remove();
+            if (prevFocus && typeof prevFocus.focus === 'function') {
+                prevFocus.focus();
+            }
+        };
+        document.addEventListener('keydown', onKeydown);
+        if (dialog) {
+            dialog.focus();
+        }
+
         // Close button
         modal.querySelectorAll('.btn-close-modal').forEach(btn => {
-            btn.addEventListener('click', () => modal.remove());
+            btn.addEventListener('click', () => closeModal());
         });
 
         // Manual sync button
@@ -323,7 +351,7 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
                 syncButton.disabled = true;
                 syncButton.innerHTML = '<span class="material-icons text-xl animate-spin">sync</span> Syncing...';
                 await this.handleManualSync();
-                modal.remove();
+                closeModal();
             });
         }
 
@@ -331,7 +359,7 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
         const conflictsButton = modal.querySelector('.btn-view-conflicts-modal');
         if (conflictsButton) {
             conflictsButton.addEventListener('click', () => {
-                modal.remove();
+                closeModal();
                 this.showConflicts();
             });
         }
@@ -339,7 +367,7 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
         // Click outside to close
         modal.addEventListener('click', (e) => {
             if (e.target === modal) {
-                modal.remove();
+                closeModal();
             }
         });
     }
