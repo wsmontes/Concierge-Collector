@@ -559,11 +559,18 @@ if (typeof window.UIManager === 'undefined') {
         }
 
         _getCurrentFilterScope() {
+            // 'all' vira null: enviar status=all&type=all&curator_id=all
+            // verbatim fazia a API responder 422 (Validation error) e o
+            // clear de filtros caía no fallback local ("Page 1 of N(local)")
+            const pick = (id) => {
+                const val = document.getElementById(id)?.value || '';
+                return val && val !== 'all' ? val : null;
+            };
             return {
-                curatorId: (document.getElementById('curation-curator-filter')?.value || null),
-                status: (document.getElementById('curation-status-filter')?.value || null),
-                city: (document.getElementById('curation-city-filter')?.value || null),
-                type: (document.getElementById('curation-type-filter')?.value || null),
+                curatorId: pick('curation-curator-filter'),
+                status: pick('curation-status-filter'),
+                city: pick('curation-city-filter'),
+                type: pick('curation-type-filter'),
                 q: (document.getElementById('curation-search')?.value?.trim() || null),
             };
         }
@@ -778,6 +785,18 @@ if (typeof window.UIManager === 'undefined') {
                 // reset, o fallback local mostraria o total velho do servidor
                 browser.total = -1;
                 await this._loadCurationsFromLocal(container);
+                // Auto-recuperação: erro transiente não deve prender o
+                // usuário no modo local — uma tentativa de voltar ao
+                // servidor em 5s (sem loop infinito se a API seguir fora)
+                if (!this._serverRetryPending) {
+                    this._serverRetryPending = true;
+                    setTimeout(() => {
+                        this._serverRetryPending = false;
+                        if (this._curationsLocalMode && typeof this._reloadOrFilterCurations === 'function') {
+                            this._reloadOrFilterCurations();
+                        }
+                    }, 5000);
+                }
                 return;
             }
 
