@@ -306,7 +306,7 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
             <!-- Action -->
             ${status.isOnline && !status.isSyncing ? `
                 <div class="border-t pt-4">
-                    <button class="btn-manual-sync-modal w-full py-2 px-4 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center justify-center gap-2">
+                    <button class="btn-manual-sync-modal btn btn-primary btn-sm w-full">
                         <span class="material-icons text-xl">sync</span>
                         Sync Now
                     </button>

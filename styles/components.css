@@ -190,6 +190,18 @@
   transform: translateY(-1px);
 }
 
+/* Muted (cinza sólido) — ações secundárias como Close */
+.btn-muted {
+  background-color: var(--color-neutral-200);
+  color: var(--color-neutral-700);
+  border-color: var(--color-neutral-200);
+}
+
+.btn-muted:hover:not(:disabled) {
+  background-color: var(--color-neutral-300);
+  border-color: var(--color-neutral-300);
+}
+
 /* Outline Variants */
 .btn-outline {
   background-color: transparent;

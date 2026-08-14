@@ -1875,13 +1875,13 @@ if (typeof window.UIManager === 'undefined') {
             footer.className = 'w-full flex items-center justify-end gap-2 flex-wrap';
 
             const closeBtn = document.createElement('button');
-            closeBtn.className = 'px-4 py-2 bg-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-300 transition-colors';
+            closeBtn.className = 'btn btn-muted btn-sm';
             closeBtn.textContent = 'Close';
             footer.appendChild(closeBtn);
 
             if (!isLinked) {
                 const linkBtn = document.createElement('button');
-                linkBtn.className = 'px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1.5';
+                linkBtn.className = 'btn btn-primary btn-sm';
                 linkBtn.innerHTML = '<span class="material-icons text-base" aria-hidden="true">link</span>Link Entity';
                 footer.insertBefore(linkBtn, closeBtn);
                 linkBtn.addEventListener('click', () => {
@@ -1891,7 +1891,7 @@ if (typeof window.UIManager === 'undefined') {
             }
 
             const editBtn = document.createElement('button');
-            editBtn.className = 'px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-1.5';
+            editBtn.className = 'btn btn-outline btn-sm';
             editBtn.innerHTML = '<span class="material-icons text-base" aria-hidden="true">edit</span>Edit';
             footer.insertBefore(editBtn, closeBtn);
             editBtn.addEventListener('click', () => {
