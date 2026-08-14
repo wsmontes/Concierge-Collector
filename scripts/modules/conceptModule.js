@@ -967,49 +967,54 @@ class ConceptModule {
     }
 
     showAddConceptDialog(category) {
-        // Create a simple modal for adding a concept
-        const modalContainer = document.createElement('div');
-        modalContainer.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+        // Modal canônico via ModalManager (focus trap, Escape, overlay)
+        if (!window.modalManager || typeof window.modalManager.open !== 'function') {
+            this.log?.warn('ModalManager not available');
+            return;
+        }
 
-        modalContainer.innerHTML = `
-            <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-                <h2 class="text-xl font-bold mb-4">Add ${category} Concept</h2>
-                
-                <div class="mb-4 relative">
-                    <label class="block mb-2">Concept:</label>
-                    <input type="text" id="new-concept-value" class="border p-3 w-full rounded" autocomplete="off">
-                    <div id="concept-suggestions" class="absolute z-10 bg-white w-full border border-gray-300 rounded-b max-h-60 overflow-y-auto hidden"></div>
-                </div>
-                
-                <div class="flex justify-end space-x-2">
-                    <button class="cancel-add-concept bg-gray-500 text-white px-4 py-3 rounded">Cancel</button>
-                    <button class="confirm-add-concept bg-blue-500 text-white px-4 py-3 rounded">Add</button>
-                </div>
+        const body = document.createElement('div');
+        body.className = 'space-y-4';
+        body.innerHTML = `
+            <div class="relative">
+                <label class="block mb-2">Concept:</label>
+                <input type="text" id="new-concept-value" class="border p-3 w-full rounded" autocomplete="off">
+                <div id="concept-suggestions" class="absolute z-10 bg-white w-full border border-gray-300 rounded-b max-h-60 overflow-y-auto hidden"></div>
+            </div>
+
+            <div class="flex justify-end space-x-2">
+                <button class="cancel-add-concept bg-gray-500 text-white px-4 py-3 rounded">Cancel</button>
+                <button class="confirm-add-concept bg-blue-500 text-white px-4 py-3 rounded">Add</button>
             </div>
         `;
 
-        document.body.appendChild(modalContainer);
-        document.body.style.overflow = 'hidden';
+        const modalId = window.modalManager.open({
+            title: `Add ${category} Concept`,
+            content: body,
+            size: 'md'
+        });
 
-        const inputField = modalContainer.querySelector('#new-concept-value');
-        const suggestionsContainer = modalContainer.querySelector('#concept-suggestions');
+        const overlay = document.getElementById(modalId);
+        if (!overlay) return;
+        const closeModal = () => window.modalManager.close(modalId);
+
+        const inputField = overlay.querySelector('#new-concept-value');
+        const suggestionsContainer = overlay.querySelector('#concept-suggestions');
 
         // Load the suggestions from the initial concepts for the current category
         this.loadConceptSuggestions(category, inputField, suggestionsContainer);
 
-        // Focus the input after a short delay to ensure the input is rendered
-        setTimeout(() => {
-            inputField.focus();
-        }, 100);
+        // Focus the input (ModalManager já foca o primeiro elemento do
+        // trap; garantir o input mesmo assim)
+        inputField.focus();
 
         // Cancel button
-        modalContainer.querySelector('.cancel-add-concept').addEventListener('click', () => {
-            document.body.removeChild(modalContainer);
-            document.body.style.overflow = '';
+        overlay.querySelector('.cancel-add-concept').addEventListener('click', () => {
+            closeModal();
         });
 
         // Add button
-        modalContainer.querySelector('.confirm-add-concept').addEventListener('click', async () => {
+        overlay.querySelector('.confirm-add-concept').addEventListener('click', async () => {
             const value = inputField.value.trim();
 
             if (!value) {
@@ -1023,8 +1028,7 @@ class ConceptModule {
                 this.uiManager.currentConcepts.push({ category, value });
                 this.renderConcepts();
                 this.autoSaveDraft(); // Auto-save when concept added
-                document.body.removeChild(modalContainer);
-                document.body.style.overflow = '';
+                closeModal();
                 SafetyUtils.showNotification(`Concept added: ${category} - ${value}`, 'success');
 
                 /* DISABLED: Requires old dataStorage API
@@ -1038,16 +1042,7 @@ class ConceptModule {
                 this.uiManager.currentConcepts.push({ category, value });
                 this.renderConcepts();
                 this.autoSaveDraft(); // Auto-save when concept added
-                document.body.removeChild(modalContainer);
-                document.body.style.overflow = '';
-            }
-        });
-
-        // Close when clicking outside
-        modalContainer.addEventListener('click', event => {
-            if (event.target === modalContainer) {
-                document.body.removeChild(modalContainer);
-                document.body.style.overflow = '';
+                closeModal();
             }
         });
     }
@@ -1125,64 +1120,63 @@ class ConceptModule {
      * @param {Array} similarConcepts - Array of similar concepts
      */
     showConceptDisambiguationDialog(newConcept, similarConcepts) {
-        // Create disambiguation modal
-        const modalContainer = document.createElement('div');
-        modalContainer.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+        // Modal canônico: ModalManager provê focus trap, Escape, overlay
+        // e pilha. Antes era um modal manual que duplicava isso tudo.
+        if (!window.modalManager || typeof window.modalManager.open !== 'function') {
+            this.log?.warn('ModalManager not available');
+            return;
+        }
 
-        // HTML for the modal content
         const esc = (v) => { const d = document.createElement('div'); d.textContent = v == null ? '' : String(v); return d.innerHTML; };
-        let modalHTML = `
-            <div class="bg-white rounded-lg p-6 max-w-md w-full mx-4">
-                <h2 class="text-xl font-bold mb-4 flex items-center">
-                    <span class="material-icons text-yellow-500 mr-2">warning</span>
-                    Similar Concepts Found
-                </h2>
 
-                <p class="mb-4">Your new concept <strong>"${esc(newConcept.value)}"</strong> is similar to existing concepts:</p>
-                
-                <div class="mb-6 max-h-60 overflow-y-auto border rounded p-2">
-        `;
+        const body = document.createElement('div');
+        body.className = 'space-y-4';
+        body.innerHTML = `
+            <p>Your new concept <strong>"${esc(newConcept.value)}"</strong> is similar to existing concepts:</p>
 
-        // Add similar concepts
-        similarConcepts.forEach(concept => {
-            const similarity = (concept.similarity * 100).toFixed(0);
-            modalHTML += `
-                <div class="p-2 border-b last:border-b-0">
-                    <div class="flex justify-between items-center">
-                        <span class="font-medium">"${concept.value}"</span>
-                        <span class="text-sm text-gray-500">${similarity}% match</span>
-                    </div>
-                    <div class="text-xs text-gray-500">${concept.category}</div>
-                </div>
-            `;
-        });
+            <div class="max-h-60 overflow-y-auto border rounded p-2">
+                ${similarConcepts.map(concept => {
+                    const similarity = (concept.similarity * 100).toFixed(0);
+                    return `
+                        <div class="p-2 border-b last:border-b-0">
+                            <div class="flex justify-between items-center">
+                                <span class="font-medium">"${esc(concept.value)}"</span>
+                                <span class="text-sm text-gray-500">${similarity}% match</span>
+                            </div>
+                            <div class="text-xs text-gray-500">${esc(concept.category)}</div>
+                        </div>
+                    `;
+                }).join('')}
+            </div>
 
-        modalHTML += `
-                </div>
-                
-                <div class="space-y-2">
-                    <button id="use-existing" class="w-full p-2 bg-blue-500 text-white rounded flex items-center justify-center">
-                        <span class="material-icons mr-1">check_circle</span>
-                        Use existing: "${similarConcepts[0].value}"
-                    </button>
-                    <button id="use-new" class="w-full p-2 bg-green-500 text-white rounded flex items-center justify-center">
-                        <span class="material-icons mr-1">add_circle</span>
-                        Add new: "${newConcept.value}"
-                    </button>
-                    <button id="cancel-concept" class="w-full p-2 bg-gray-300 text-gray-700 rounded flex items-center justify-center">
-                        <span class="material-icons mr-1">cancel</span>
-                        Cancel
-                    </button>
-                </div>
+            <div class="space-y-2">
+                <button id="use-existing" class="w-full p-2 bg-blue-500 text-white rounded flex items-center justify-center">
+                    <span class="material-icons mr-1">check_circle</span>
+                    Use existing: "${esc(similarConcepts[0].value)}"
+                </button>
+                <button id="use-new" class="w-full p-2 bg-green-500 text-white rounded flex items-center justify-center">
+                    <span class="material-icons mr-1">add_circle</span>
+                    Add new: "${esc(newConcept.value)}"
+                </button>
+                <button id="cancel-concept" class="w-full p-2 bg-gray-300 text-gray-700 rounded flex items-center justify-center">
+                    <span class="material-icons mr-1">cancel</span>
+                    Cancel
+                </button>
             </div>
         `;
 
-        modalContainer.innerHTML = modalHTML;
-        document.body.appendChild(modalContainer);
-        document.body.style.overflow = 'hidden';
+        const modalId = window.modalManager.open({
+            title: 'Similar Concepts Found',
+            content: body,
+            size: 'md'
+        });
+
+        const overlay = document.getElementById(modalId);
+        if (!overlay) return;
+        const closeModal = () => window.modalManager.close(modalId);
 
         // Set up event handlers
-        modalContainer.querySelector('#use-existing').addEventListener('click', () => {
+        overlay.querySelector('#use-existing').addEventListener('click', () => {
             // Use the most similar concept (first one in the array)
             const mostSimilar = similarConcepts[0];
 
@@ -1218,35 +1212,23 @@ class ConceptModule {
                 }
             }
 
-            // Always remove the modal
-            document.body.removeChild(modalContainer);
-            document.body.style.overflow = '';
+            closeModal();
 
             // Update concepts display
             this.updateConceptsDisplay();
         });
 
-        modalContainer.querySelector('#use-new').addEventListener('click', () => {
+        overlay.querySelector('#use-new').addEventListener('click', () => {
             // Add the new concept anyway
             this.uiManager.currentConcepts.push(newConcept);
             this.uiManager.formIsDirty = true;
             this.renderConcepts();
 
-            document.body.removeChild(modalContainer);
-            document.body.style.overflow = '';
+            closeModal();
         });
 
-        modalContainer.querySelector('#cancel-concept').addEventListener('click', () => {
-            document.body.removeChild(modalContainer);
-            document.body.style.overflow = '';
-        });
-
-        // Close when clicking outside
-        modalContainer.addEventListener('click', event => {
-            if (event.target === modalContainer) {
-                document.body.removeChild(modalContainer);
-                document.body.style.overflow = '';
-            }
+        overlay.querySelector('#cancel-concept').addEventListener('click', () => {
+            closeModal();
         });
     }
 
