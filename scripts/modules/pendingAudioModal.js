@@ -33,14 +33,13 @@ window.PendingAudioModal = class PendingAudioModal {
         style.id = 'pending-audio-modal-styles';
         style.textContent = `
             /* ===== Pending Audio Modal ===== */
-            #pending-audio-modal,
-            #pending-audio-modal *,
-            #pending-audio-modal *::before,
-            #pending-audio-modal *::after {
+            .pam-overlay *,
+            .pam-overlay *::before,
+            .pam-overlay *::after {
                 box-sizing: border-box;
             }
 
-            #pending-audio-modal {
+            .pam-overlay {
                 position: fixed;
                 inset: 0;
                 z-index: var(--z-modal-backdrop, 1040);
@@ -65,7 +64,7 @@ window.PendingAudioModal = class PendingAudioModal {
                 to   { transform: translateY(0); opacity: 1; }
             }
 
-            #pending-audio-modal .pam-dialog {
+            .modal-overlay .pam-dialog {
                 background: var(--color-surface, #fff);
                 border-radius: var(--radius-xl, 16px);
                 box-shadow: var(--shadow-xl, 0 20px 60px rgba(0,0,0,.25));
@@ -79,7 +78,7 @@ window.PendingAudioModal = class PendingAudioModal {
             }
 
             /* ── Header ───────────────────── */
-            #pending-audio-modal .pam-header {
+            .modal-overlay .pam-header {
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
@@ -90,7 +89,7 @@ window.PendingAudioModal = class PendingAudioModal {
                 border-radius: var(--radius-xl, 16px) var(--radius-xl, 16px) 0 0;
             }
 
-            #pending-audio-modal .pam-header h2 {
+            .modal-overlay .pam-header h2 {
                 margin: 0;
                 font-size: 1.125rem;
                 font-weight: 700;
@@ -99,7 +98,7 @@ window.PendingAudioModal = class PendingAudioModal {
                 gap: 0.5rem;
             }
 
-            #pending-audio-modal .pam-close-btn {
+            .modal-overlay .pam-close-btn {
                 background: rgba(255,255,255,.2);
                 border: none;
                 border-radius: 50%;
@@ -112,12 +111,12 @@ window.PendingAudioModal = class PendingAudioModal {
                 color: white;
                 transition: background 200ms;
             }
-            #pending-audio-modal .pam-close-btn:hover {
+            .modal-overlay .pam-close-btn:hover {
                 background: rgba(255,255,255,.35);
             }
 
             /* ── Summary bar ──────────────── */
-            #pending-audio-modal .pam-summary {
+            .modal-overlay .pam-summary {
                 display: flex;
                 gap: 0.75rem;
                 padding: 0.75rem 1.5rem;
@@ -126,7 +125,7 @@ window.PendingAudioModal = class PendingAudioModal {
                 flex-wrap: wrap;
             }
 
-            #pending-audio-modal .pam-stat {
+            .modal-overlay .pam-stat {
                 display: flex;
                 align-items: center;
                 gap: 0.35rem;
@@ -135,31 +134,31 @@ window.PendingAudioModal = class PendingAudioModal {
                 padding: 0.25rem 0.6rem;
                 border-radius: 9999px;
             }
-            #pending-audio-modal .pam-stat.pending  { background: #fef3c7; color: #92400e; }
-            #pending-audio-modal .pam-stat.failed    { background: #fee2e2; color: #991b1b; }
-            #pending-audio-modal .pam-stat.retrying   { background: #dbeafe; color: #1e40af; }
-            #pending-audio-modal .pam-stat.processing { background: #e0e7ff; color: #3730a3; }
-            #pending-audio-modal .pam-stat.transcribed{ background: #d1fae5; color: #065f46; }
+            .modal-overlay .pam-stat.pending  { background: #fef3c7; color: #92400e; }
+            .modal-overlay .pam-stat.failed    { background: #fee2e2; color: #991b1b; }
+            .modal-overlay .pam-stat.retrying   { background: #dbeafe; color: #1e40af; }
+            .modal-overlay .pam-stat.processing { background: #e0e7ff; color: #3730a3; }
+            .modal-overlay .pam-stat.transcribed{ background: #d1fae5; color: #065f46; }
 
             /* ── List ─────────────────────── */
-            #pending-audio-modal .pam-list {
+            .modal-overlay .pam-list {
                 flex: 1;
                 overflow-y: auto;
                 padding: 1rem 1.5rem;
             }
 
-            #pending-audio-modal .pam-empty {
+            .modal-overlay .pam-empty {
                 text-align: center;
                 padding: 3rem 1rem;
-                color: #9ca3af;
+                color: #6b7280;
             }
-            #pending-audio-modal .pam-empty .material-icons {
+            .modal-overlay .pam-empty .material-icons {
                 font-size: 3rem;
                 margin-bottom: 0.75rem;
                 display: block;
             }
 
-            #pending-audio-modal .pam-card {
+            .modal-overlay .pam-card {
                 background: var(--color-surface, #fff);
                 border: 1px solid var(--color-border, #e5e7eb);
                 border-radius: var(--radius-lg, 12px);
@@ -167,20 +166,20 @@ window.PendingAudioModal = class PendingAudioModal {
                 margin-bottom: 0.75rem;
                 transition: box-shadow 200ms, border-color 200ms;
             }
-            #pending-audio-modal .pam-card:hover {
+            .modal-overlay .pam-card:hover {
                 box-shadow: 0 4px 12px rgba(0,0,0,.08);
                 border-color: #d1d5db;
             }
-            #pending-audio-modal .pam-card:last-child { margin-bottom: 0; }
+            .modal-overlay .pam-card:last-child { margin-bottom: 0; }
 
-            #pending-audio-modal .pam-card-header {
+            .modal-overlay .pam-card-header {
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
                 margin-bottom: 0.5rem;
             }
 
-            #pending-audio-modal .pam-card-status {
+            .modal-overlay .pam-card-status {
                 display: inline-flex;
                 align-items: center;
                 gap: 0.25rem;
@@ -189,13 +188,13 @@ window.PendingAudioModal = class PendingAudioModal {
                 padding: 0.2rem 0.5rem;
                 border-radius: 9999px;
             }
-            #pending-audio-modal .pam-card-status.pending    { background: #fef3c7; color: #92400e; }
-            #pending-audio-modal .pam-card-status.failed     { background: #fee2e2; color: #991b1b; }
-            #pending-audio-modal .pam-card-status.retrying    { background: #dbeafe; color: #1e40af; }
-            #pending-audio-modal .pam-card-status.processing  { background: #e0e7ff; color: #3730a3; }
-            #pending-audio-modal .pam-card-status.transcribed { background: #d1fae5; color: #065f46; }
+            .modal-overlay .pam-card-status.pending    { background: #fef3c7; color: #92400e; }
+            .modal-overlay .pam-card-status.failed     { background: #fee2e2; color: #991b1b; }
+            .modal-overlay .pam-card-status.retrying    { background: #dbeafe; color: #1e40af; }
+            .modal-overlay .pam-card-status.processing  { background: #e0e7ff; color: #3730a3; }
+            .modal-overlay .pam-card-status.transcribed { background: #d1fae5; color: #065f46; }
 
-            #pending-audio-modal .pam-card-meta {
+            .modal-overlay .pam-card-meta {
                 font-size: 0.8rem;
                 color: #6b7280;
                 margin-bottom: 0.5rem;
@@ -203,16 +202,16 @@ window.PendingAudioModal = class PendingAudioModal {
                 flex-wrap: wrap;
                 gap: 0.75rem;
             }
-            #pending-audio-modal .pam-card-meta span {
+            .modal-overlay .pam-card-meta span {
                 display: flex;
                 align-items: center;
                 gap: 0.2rem;
             }
-            #pending-audio-modal .pam-card-meta .material-icons {
+            .modal-overlay .pam-card-meta .material-icons {
                 font-size: 0.9rem;
             }
 
-            #pending-audio-modal .pam-card-error {
+            .modal-overlay .pam-card-error {
                 font-size: 0.75rem;
                 color: #dc2626;
                 background: #fef2f2;
@@ -223,29 +222,29 @@ window.PendingAudioModal = class PendingAudioModal {
                 align-items: flex-start;
                 gap: 0.3rem;
             }
-            #pending-audio-modal .pam-card-error .material-icons {
+            .modal-overlay .pam-card-error .material-icons {
                 font-size: 0.85rem;
                 flex-shrink: 0;
                 margin-top: 1px;
             }
 
             /* ── Audio player ─────────────── */
-            #pending-audio-modal .pam-card-player {
+            .modal-overlay .pam-card-player {
                 margin-bottom: 0.5rem;
             }
-            #pending-audio-modal .pam-card-player audio {
+            .modal-overlay .pam-card-player audio {
                 width: 100%;
                 height: 36px;
                 border-radius: 8px;
             }
 
-            #pending-audio-modal .pam-card-actions {
+            .modal-overlay .pam-card-actions {
                 display: flex;
                 gap: 0.5rem;
                 flex-wrap: wrap;
             }
 
-            #pending-audio-modal .pam-btn {
+            .modal-overlay .pam-btn {
                 display: inline-flex;
                 align-items: center;
                 gap: 0.3rem;
@@ -257,38 +256,38 @@ window.PendingAudioModal = class PendingAudioModal {
                 cursor: pointer;
                 transition: all 200ms;
             }
-            #pending-audio-modal .pam-btn .material-icons { font-size: 1rem; }
+            .modal-overlay .pam-btn .material-icons { font-size: 1rem; }
 
-            #pending-audio-modal .pam-btn-retry {
+            .modal-overlay .pam-btn-retry {
                 background: #dbeafe;
                 color: #1e40af;
             }
-            #pending-audio-modal .pam-btn-retry:hover {
+            .modal-overlay .pam-btn-retry:hover {
                 background: #bfdbfe;
             }
-            #pending-audio-modal .pam-btn-retry:disabled {
+            .modal-overlay .pam-btn-retry:disabled {
                 opacity: 0.5;
                 cursor: not-allowed;
             }
 
-            #pending-audio-modal .pam-btn-delete {
+            .modal-overlay .pam-btn-delete {
                 background: #fee2e2;
                 color: #991b1b;
             }
-            #pending-audio-modal .pam-btn-delete:hover {
+            .modal-overlay .pam-btn-delete:hover {
                 background: #fecaca;
             }
 
-            #pending-audio-modal .pam-btn-download {
+            .modal-overlay .pam-btn-download {
                 background: #e0e7ff;
                 color: #3730a3;
             }
-            #pending-audio-modal .pam-btn-download:hover {
+            .modal-overlay .pam-btn-download:hover {
                 background: #c7d2fe;
             }
 
             /* ── Footer ──────────────────── */
-            #pending-audio-modal .pam-footer {
+            .modal-overlay .pam-footer {
                 display: flex;
                 align-items: center;
                 justify-content: space-between;
@@ -299,10 +298,12 @@ window.PendingAudioModal = class PendingAudioModal {
                 flex-wrap: wrap;
             }
 
-            #pending-audio-modal .pam-btn-footer {
+            .modal-overlay .pam-btn-footer {
                 display: inline-flex;
                 align-items: center;
                 gap: 0.3rem;
+                /* 24px era pouco pra toque — alvo mínimo 36px */
+                min-height: 36px;
                 padding: 0.5rem 1rem;
                 border-radius: 8px;
                 font-size: 0.8rem;
@@ -311,37 +312,37 @@ window.PendingAudioModal = class PendingAudioModal {
                 cursor: pointer;
                 transition: all 200ms;
             }
-            #pending-audio-modal .pam-btn-footer .material-icons { font-size: 1rem; }
+            .modal-overlay .pam-btn-footer .material-icons { font-size: 1rem; }
 
-            #pending-audio-modal .pam-btn-clear-all {
+            .modal-overlay .pam-btn-clear-all {
                 background: #fee2e2;
                 color: #991b1b;
             }
-            #pending-audio-modal .pam-btn-clear-all:hover { background: #fecaca; }
+            .modal-overlay .pam-btn-clear-all:hover { background: #fecaca; }
 
-            #pending-audio-modal .pam-btn-retry-all {
+            .modal-overlay .pam-btn-retry-all {
                 background: #dbeafe;
                 color: #1e40af;
             }
-            #pending-audio-modal .pam-btn-retry-all:hover { background: #bfdbfe; }
+            .modal-overlay .pam-btn-retry-all:hover { background: #bfdbfe; }
 
-            #pending-audio-modal .pam-btn-close {
+            .modal-overlay .pam-btn-close {
                 background: var(--color-surface, #fff);
                 color: #374151;
                 border: 1px solid #d1d5db;
             }
-            #pending-audio-modal .pam-btn-close:hover { background: #f3f4f6; }
+            .modal-overlay .pam-btn-close:hover { background: #f3f4f6; }
 
             /* ── Animations ──────────────── */
             @keyframes pamSpin {
                 from { transform: rotate(0deg); }
                 to   { transform: rotate(360deg); }
             }
-            #pending-audio-modal .pam-spin {
+            .modal-overlay .pam-spin {
                 animation: pamSpin 1s linear infinite;
             }
 
-            #pending-audio-modal .pam-card-removing {
+            .modal-overlay .pam-card-removing {
                 animation: pamCardRemove 300ms ease-in forwards;
             }
             @keyframes pamCardRemove {
@@ -396,6 +397,9 @@ window.PendingAudioModal = class PendingAudioModal {
             this.isOpen = false;
             return;
         }
+        // marca o overlay para o CSS injetado do pam (escopo próprio,
+        // sem afetar os outros modais do ModalManager)
+        this.modal.classList.add('pam-overlay');
         this.listContainer = this.modal.querySelector('#pam-list');
 
         // Load data
@@ -470,7 +474,7 @@ window.PendingAudioModal = class PendingAudioModal {
         if (counts.failed) stats.push(`<span class="pam-stat failed"><span class="material-icons" style="font-size:.85rem">error_outline</span> ${counts.failed} failed</span>`);
         if (counts.transcribed) stats.push(`<span class="pam-stat transcribed"><span class="material-icons" style="font-size:.85rem">check_circle</span> ${counts.transcribed} done</span>`);
 
-        summaryEl.innerHTML = stats.length > 0 ? stats.join('') : '<span style="color:#9ca3af;font-size:.85rem">No recordings</span>';
+        summaryEl.innerHTML = stats.length > 0 ? stats.join('') : '<span style="color:#6b7280;font-size:.85rem">No recordings</span>';
     }
 
     renderList() {
@@ -547,7 +551,7 @@ window.PendingAudioModal = class PendingAudioModal {
                         <span class="material-icons" style="font-size:.85rem">${statusIcon}</span>
                         ${audio.status}
                     </span>
-                    <span style="font-size:.75rem;color:#9ca3af">#${audio.id}</span>
+                    <span style="font-size:.75rem;color:#6b7280">#${audio.id}</span>
                 </div>
 
                 <div class="pam-card-meta">

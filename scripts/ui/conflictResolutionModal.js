@@ -70,10 +70,10 @@ const ConflictResolutionModal = ModuleWrapper.defineClass('ConflictResolutionMod
                             Your Version
                         </h3>
                         <div class="text-right">
-                            <span class="text-[10px] font-mono text-blue-600 bg-blue-100 px-2 py-0.5 rounded-full">
+                            <span class="text-[10px] font-mono text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
                                 v${local.version || 0}
                             </span>
-                            <div class="text-[10px] text-blue-400 mt-0.5">${this.formatDate(local.updatedAt)}</div>
+                            <div class="text-[10px] text-blue-600 mt-0.5">${this.formatDate(local.updatedAt)}</div>
                         </div>
                     </div>
                     <div id="conflict-local-content" class="p-4 text-sm flex-grow">
@@ -89,10 +89,10 @@ const ConflictResolutionModal = ModuleWrapper.defineClass('ConflictResolutionMod
                             Server Version
                         </h3>
                         <div class="text-right">
-                            <span class="text-[10px] font-mono text-green-600 bg-green-100 px-2 py-0.5 rounded-full">
+                            <span class="text-[10px] font-mono text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
                                 v${server.version || 0}
                             </span>
-                            <div class="text-[10px] text-green-400 mt-0.5">${this.formatDate(server.updatedAt)}</div>
+                            <div class="text-[10px] text-green-700 mt-0.5">${this.formatDate(server.updatedAt)}</div>
                         </div>
                     </div>
                     <div id="conflict-server-content" class="p-4 text-sm flex-grow">
