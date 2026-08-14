@@ -102,6 +102,20 @@
     animation: pulse 1s infinite;
 }
 
+/* Wordmark centralizado no header em telas pequenas (ago/2026):
+   logo à esquerda, controles à direita, "Collector" flutua centrado.
+   O header é position:sticky, que já vira containing block para o
+   absolute — por isso só transform/left são necessários. Em >=640px
+   (sm) o fluxo normal é restaurado. */
+@media (max-width: 639px) {
+  header .brand-wordmark {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+  }
+}
+
 /* ========================================================================
    MOBILE OPTIMIZATIONS - PHASE 3
    Added: October 19, 2025
