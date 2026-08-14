@@ -131,9 +131,7 @@ async def resolve_image_input(image: str) -> str:
                     async for chunk in response.aiter_bytes():
                         total += len(chunk)
                         if total > MAX_IMAGE_DOWNLOAD_BYTES:
-                            raise ValueError(
-                                f"Imagem maior que {MAX_IMAGE_DOWNLOAD_BYTES // (1024 * 1024)}MB"
-                            )
+                            raise ValueError(f"Imagem maior que {MAX_IMAGE_DOWNLOAD_BYTES // (1024 * 1024)}MB")
                         chunks.append(chunk)
                     raw = b"".join(chunks)
         except ValueError:

@@ -305,6 +305,7 @@ async def test_resposta_sem_json_vira_valueerror(monkeypatch):
 
 # ── SSRF / limites de download (auditoria ago/2026) ──────────────────────
 
+
 async def test_image_url_loopback_bloqueado(monkeypatch):
     """127.0.0.1/localhost são rede interna — o download NÃO pode nem começar."""
     from app.services.openai_service import resolve_image_input

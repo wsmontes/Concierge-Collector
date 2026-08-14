@@ -9,8 +9,6 @@ from app.services.ai_orchestrator import OutputHandler
 import base64
 
 
-@pytest.mark.openai
-@pytest.mark.openai
 @pytest.fixture(autouse=True)
 def _reset_limiter():
     """O rate limit por usuário (10/min) estoura quando os testes rodam em
@@ -24,6 +22,7 @@ def _reset_limiter():
         limiter.reset()
 
 
+@pytest.mark.openai
 class TestAIOrchestrate:
     """Comprehensive tests for /api/v3/ai/orchestrate endpoint"""
 
@@ -139,6 +138,7 @@ class TestAIOrchestrate:
         assert response.status_code != 500, f"Sync client got 500 error: {response.text}"
 
 
+@pytest.mark.openai
 class TestAIEndpointErrorHandling:
     """Test error handling in AI endpoints"""
 
