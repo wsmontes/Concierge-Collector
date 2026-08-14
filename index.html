@@ -46,7 +46,7 @@
     <link rel="stylesheet" href="styles/mobile-enhancements.css?v=20260813-1">
 
     <!-- 5. Legacy Support (will be deprecated after migration) -->
-    <link rel="stylesheet" href="styles/style.css?v=20260813-1">
+    <link rel="stylesheet" href="styles/style.css?v=20260813-2">
 
     <!-- Centralized Configuration (MUST load first) -->
     <script src="scripts/core/config.js"></script>
@@ -117,7 +117,7 @@
             <div class="flex items-center justify-between gap-2 sm:gap-4">
                 <!-- Left: Logo and Title -->
                 <div class="flex items-center gap-2 sm:gap-3">
-                    <img src="images/Lotier_Concierge_logo_v3.png" alt="Lotier Logo" class="h-12 sm:h-14 w-auto" style="transform: scale(1.3); transform-origin: left center;">
+                    <img src="images/Lotier_Concierge_logo_v3.png" alt="Lotier Logo" class="h-12 sm:h-14 w-auto">
                     <h1 class="text-2xl sm:text-3xl font-bold text-gray-800">Collector</h1>
                 </div>
 
@@ -623,7 +623,7 @@
             <div class="flex items-center mb-6">
                 <span class="material-icons mr-2 text-blue-500">add_circle</span>
                 <h3 class="text-xl font-semibold">Quick Actions</h3>
-                <button id="close-quick-modal" aria-label="Close quick actions" class="ml-auto text-gray-500 hover:text-gray-800 text-xl">&times;</button>
+                <button id="close-quick-modal" aria-label="Close quick actions" class="ml-auto text-gray-500 hover:text-gray-800 text-xl leading-none h-8 w-8 flex items-center justify-center rounded hover:bg-gray-100 transition-colors">&times;</button>
             </div>
             <div class="grid grid-cols-1 gap-4">
                 <button id="quick-record" class="btn btn-danger btn-lg">
@@ -742,7 +742,7 @@
     <script src="scripts/storage/databaseManager.js"></script>
 
     <!-- NEW: Architectural Managers (load early - other modules depend on these) -->
-    <script src="scripts/ui-core/modalManager.js?v=20260813-1"></script>
+    <script src="scripts/ui-core/modalManager.js?v=20260813-2"></script>
     <script src="scripts/managers/stateStore.js"></script>
     <script src="scripts/managers/progressManager.js"></script>
     <script src="scripts/ui-core/navigationManager.js"></script>

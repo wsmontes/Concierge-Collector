@@ -297,7 +297,11 @@ input[type="file"] {
 }
 
 /* ===== Buttons ===== */
-button {
+/* Escopo :not([class]): o padding/fonte globais empurravam TODOS os
+   botões (X de modal fora de centro, ícones desalinhados). Botões com
+   classes (Tailwind/.btn/componentes) definem o próprio estilo; só os
+   sem classe nenhuma herdam o default. */
+button:not([class]) {
   position: relative;
   display: inline-flex;
   align-items: center;
@@ -389,7 +393,9 @@ button.bg-purple-500:hover {
 
 /* Button with Icon */
 button svg, 
-button .material-icons {
+/* Escopo :not([class]) — o margin global empurrava TODO ícone de botão
+   8px pra fora do centro (X dos modais, ícones de cards, .btn) */
+button:not([class]) .material-icons {
   margin-right: 0.5rem;
 }
 
@@ -887,11 +893,18 @@ audio {
   background: linear-gradient(135deg, var(--color-primary), var(--color-primary-700));
   color: white;
   border-radius: 50%;
-  font-size: 1.875rem;
   box-shadow: var(--shadow-lg);
   cursor: pointer;
   transition: transform var(--ease-bounce) var(--transition-base), box-shadow var(--transition-base);
   z-index: 40;
+}
+
+/* Ícone do FAB centrado de verdade: display block + line-height 1
+   eliminam o espaço de linha que empurrava o "+" pra fora do centro */
+#fab .material-icons {
+  display: block;
+  font-size: 1.75rem;
+  line-height: 1;
 }
 
 #fab:hover {
@@ -1066,7 +1079,7 @@ section h2 .material-icons {
   font-size: 1.25rem;
 }
 
-button .material-icons {
+button:not([class]) .material-icons {
   font-size: 1.25rem;
 }
 

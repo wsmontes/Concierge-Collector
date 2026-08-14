@@ -149,7 +149,12 @@ window.ModalManager = (function() {
             .modal-close {
                 background: none;
                 border: none;
-                padding: 0.5rem;
+                padding: 0;
+                /* caixa fixa de 2rem SEM padding: com padding o ícone de
+                   20px não cabia na área de conteúdo e o X saía do centro */
+                width: 2rem;
+                height: 2rem;
+                flex-shrink: 0;
                 cursor: pointer;
                 color: var(--color-text-secondary, #6b7280);
                 border-radius: var(--radius-md, 0.375rem);
@@ -157,6 +162,11 @@ window.ModalManager = (function() {
                 display: flex;
                 align-items: center;
                 justify-content: center;
+            }
+
+            .modal-close .material-icons {
+                font-size: 1.25rem;
+                line-height: 1;
             }
 
             .modal-close:hover {
