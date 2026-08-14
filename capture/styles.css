@@ -388,23 +388,59 @@ button {
   }
 }
 
-/* ── Auth panel ─────────────────────────────────────────────────────────── */
+/* ── Auth panel ───────────────────────────────────────────────────────────
+   Cores movidas para os tokens próprios do capture (--ink/--surface/
+   --danger) — antes hex cru (#1f2937/#b91c1c) fora do sistema. */
 .auth-panel {
   margin: 0 1.25rem;
   padding: 1rem;
   border: 1px solid rgba(0,0,0,0.12);
   border-radius: 12px;
-  background: rgba(255,255,255,0.85);
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
   align-items: center;
 }
 .auth-panel__title { width: 100%; margin: 0 0 0.25rem; font-size: 0.9rem; }
-.auth-panel__label { width: 100%; margin: 0; font-size: 0.75rem; color: rgba(0,0,0,0.6); }
-.auth-panel__input { flex: 1; min-width: 12rem; padding: 0.55rem 0.75rem; border: 1px solid rgba(0,0,0,0.2); border-radius: 8px; }
-.auth-panel__btn { padding: 0.55rem 1rem; border: none; border-radius: 8px; background: #1f2937; color: #fff; }
-.auth-panel__clear { padding: 0.55rem 0.75rem; border: none; border-radius: 8px; background: transparent; color: #b91c1c; }
+.auth-panel__label { width: 100%; margin: 0; font-size: 0.75rem; color: var(--muted); }
+.auth-panel__input {
+  flex: 1;
+  min-width: 12rem;
+  padding: 0.55rem 0.75rem;
+  border: 1px solid var(--stone);
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--ink);
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+.auth-panel__input:focus {
+  outline: 2px solid var(--olive);
+  outline-offset: 1px;
+  border-color: var(--olive);
+}
+.auth-panel__btn {
+  padding: 0.55rem 1rem;
+  border: none;
+  border-radius: 8px;
+  background: var(--ink);
+  color: var(--surface);
+  font-family: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.auth-panel__btn:hover { background: var(--olive-dim); }
+.auth-panel__clear {
+  padding: 0.55rem 0.75rem;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--danger);
+  font-family: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
 
 /* ── Session items com falha ────────────────────────────────────────────── */
 .session-item--failed { border-left: 3px solid var(--danger); }
