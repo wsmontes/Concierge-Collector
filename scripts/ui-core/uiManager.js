@@ -1731,11 +1731,11 @@ if (typeof window.UIManager === 'undefined') {
             card.innerHTML = `
                 <!-- Ícone decorativo (não é botão) — mesmo estilo quieto do
                      card de entities: círculo branco translúcido + ícone
-                     cinza. Antes era uma pílula âmbar com borda/sombra que
-                     parecia clicável sem ter função. -->
+                     cinza. edit_note (glifo limpo) no lugar do rate_review
+                     (assimétrico, parecia botão torto). -->
                 <div class="absolute top-3 right-3 flex items-center gap-2 z-10">
                     <div class="bg-white/90 backdrop-blur-sm rounded-full p-2 shadow-sm">
-                        <span class="material-icons text-lg text-gray-600">rate_review</span>
+                        <span class="material-icons text-lg text-gray-600">edit_note</span>
                     </div>
                 </div>
 
@@ -1808,7 +1808,7 @@ if (typeof window.UIManager === 'undefined') {
                 </div>
                 
                 <!-- Hover overlay effect -->
-                <div class="absolute inset-0 bg-gradient-to-t from-blue-50/0 to-blue-50/0 group-hover:from-blue-50/30 group-hover:to-transparent transition-all duration-200 pointer-events-none z-0"></div>
+                <div class="card-veil"></div>
             `;
 
             // Add event listeners
