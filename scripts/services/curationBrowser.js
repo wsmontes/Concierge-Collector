@@ -73,6 +73,36 @@ class CurationBrowser {
       this.loading = false;
     }
   }
+
+  /**
+   * Fetch a specific page via offset (prev/next navigation — the cursor
+   * mode can only go forward). Replaces this.items with that single page.
+   * @param {number} pageNumber - Zero-based page index
+   */
+  async openPage(pageNumber) {
+    if (this.loading) return { items: [], done: true };
+    this.loading = true;
+    try {
+      const params = { ...this._params(null), offset: pageNumber * this.pageSize };
+      delete params.after_id;
+      const resp = await this.apiService.listCurations(params);
+      const items = resp.items || [];
+
+      // Offset mode always returns the real total
+      if (resp.total > 0) {
+        this.total = resp.total;
+      }
+
+      this.cursor = items.length
+        ? (items[items.length - 1]._id || items[items.length - 1].curation_id)
+        : null;
+      this.items = items;
+      this.done = items.length < this.pageSize;
+      return { items, done: this.done, total: this.total };
+    } finally {
+      this.loading = false;
+    }
+  }
 }
 
 if (typeof window !== 'undefined') { window.CurationBrowser = CurationBrowser; }

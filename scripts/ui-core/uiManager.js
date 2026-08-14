@@ -45,7 +45,7 @@ if (typeof window.UIManager === 'undefined') {
             // Sidebar elements (should be managed for visibility)
             this.syncSidebarSection = document.getElementById('sync-sidebar-section');
             this.syncButton = document.getElementById('sync-button');
-            this.syncStatus = document.getElementById('sync-status');
+            this.syncStatus = document.getElementById('sync-status-sidebar');
             this.openSyncSettings = document.getElementById('open-sync-settings');
 
             // Get restaurant list container
@@ -95,7 +95,9 @@ if (typeof window.UIManager === 'undefined') {
             this.refreshDebounceTimer = null;
             this.pendingRefreshReason = null;
             this.curationsCache = [];
-            this.curationPagination = { currentPage: 0, pageSize: 20 };
+            // pageSize = página do servidor (CurationBrowser.pageSize) —
+            // a navegação prev/next usa offset = page * pageSize na API
+            this.curationPagination = { currentPage: 0, pageSize: 25 };
             this._curationsSeeded = false;
             this.currentFilterScope = null;
             this._filterGeneration = 0;
@@ -195,7 +197,8 @@ if (typeof window.UIManager === 'undefined') {
             if (this.curatorModule) this.curatorModule.loadCuratorInfo();
 
             // Set initial view state - show restaurant list, hide form
-            this.showRestaurantListSection();
+            // (sem refresh local: initTabSystem abaixo já dispara o load do servidor)
+            this.showRestaurantListSection({ refresh: false });
 
             // Initialize tab system
             this.initTabSystem();
@@ -372,11 +375,23 @@ if (typeof window.UIManager === 'undefined') {
             // Server-driven mode: always use browser.total as the canonical count
             const serverTotal = window.CurationBrowser?.total;
             const displayTotal = serverTotal > 0 ? serverTotal : total;
+            if (displayTotal === 0 && filtered === 0) {
+                // Honest text while the first server page is still loading,
+                // instead of a misleading "Showing 0 of 0"
+                const browser = window.CurationBrowser;
+                this.curationsCountSummary.textContent = (browser && !browser.done) ? 'Loading curations...' : 'No curations yet';
+                return;
+            }
             this.curationsCountSummary.textContent = `Showing ${filtered} of ${displayTotal} curations`;
         }
 
         updateEntitiesCountSummary(total, filtered) {
             if (!this.entitiesCountSummary) return;
+            if (total === 0 && filtered === 0) {
+                // Avoid the misleading "Showing 0 of 0" while loading
+                this.entitiesCountSummary.textContent = 'No entities yet';
+                return;
+            }
             this.entitiesCountSummary.textContent = `Showing ${filtered} of ${total} entities`;
         }
 
@@ -577,42 +592,6 @@ if (typeof window.UIManager === 'undefined') {
         }
 
         /**
-         * Build filter scope from UI controls and trigger a server-side re-scope.
-         * Reads all filter inputs, constructs a scope object, stores it,
-         * clears the cache, and reloads from the first page.
-         */
-        async _applyFilterScope() {
-            // Generation counter prevents async races: if two filter changes
-            // happen in rapid succession, only the latest one's results are applied.
-            const gen = ++this._filterGeneration;
-            const getVal = (id) => document.getElementById(id)?.value || '';
-
-            const scope = {};
-
-            const status = getVal('curation-status-filter');
-            if (status && status !== 'all') scope.status = status;
-
-            const curator = getVal('curation-curator-filter');
-            if (curator && curator !== 'all') scope.curatorId = curator;
-
-            const city = getVal('curation-city-filter');
-            if (city) scope.city = city;
-
-            const type = getVal('curation-type-filter');
-            if (type && type !== 'all') scope.type = type;
-
-            const q = getVal('curation-search');
-            if (q) scope.q = q;
-
-            this.currentFilterScope = scope;
-            this.curationsCache = [];
-            await this.loadCurations();
-
-            // Discard stale results if a newer filter was applied while loading
-            if (this._filterGeneration !== gen) return;
-        }
-
-        /**
          * Populate curator filter dropdown from two sources:
          *   1. Server's canonical curators collection (/curators API)
          *   2. Curator data found in locally cached curations
@@ -711,7 +690,7 @@ if (typeof window.UIManager === 'undefined') {
                 // Server-driven: use CurationBrowser when available (scalable to 100k+ items).
                 // Falls back to local DataStore when CurationBrowser is not loaded.
                 if (window.CurationBrowser && window.CurationBrowser.nextPage) {
-                    await this._loadCurationsFromServer(container);
+                    await this._loadCurationsFromServer(container, { resetScope: true });
                     return;
                 }
 
@@ -753,13 +732,24 @@ if (typeof window.UIManager === 'undefined') {
          *  Offline: cai para o cache local do Dexie (a cópia completa do
          *  último pull) — sem isso, o campo sem sinal vê "Failed to load
          *  curations" com os dados TODOS no IndexedDB. */
-        async _loadCurationsFromServer(container) {
+        async _loadCurationsFromServer(container, { resetScope = false, page = 0 } = {}) {
             const browser = window.CurationBrowser;
             try {
-                browser.openScope({});
-                const { items } = await browser.nextPage();
+                // resetScope=true só no load inicial: o openScope({}) incondicional
+                // que havia aqui apagava o escopo definido por _reloadOrFilterCurations
+                // e a busca/filtro server-side nunca recebia os filtros.
+                if (resetScope) browser.openScope({});
+                // Sempre via offset: voltar da página 2 para a 1 com o
+                // cursor-mode acumulava (nextPage() continuava do cursor
+                // que o openPage anterior deixou e PUSHAVA a página nova
+                // sobre a antiga — página 1 com 50 cards). openPage
+                // SUBSTITUI items e não depende de cursor.
+                const { items } = await browser.openPage(page);
             } catch (error) {
                 console.warn('Server curations unavailable — usando cache local:', error);
+                // Header de paginação usa browser.total quando > 0 — sem o
+                // reset, o fallback local mostraria o total velho do servidor
+                browser.total = -1;
                 await this._loadCurationsFromLocal(container);
                 return;
             }
@@ -767,37 +757,72 @@ if (typeof window.UIManager === 'undefined') {
             if (!browser.items.length) {
                 this.curationsCache = [];
                 this.updateCurationsCountSummary(0, 0);
-                container.innerHTML = `
-                    <div class="col-span-full text-center py-12">
-                        <span class="material-icons text-6xl text-gray-300 mb-4">rate_review</span>
-                        <p class="text-gray-500 mb-2">No curations yet</p>
-                        <p class="text-sm text-gray-400">Start curating entities by clicking on them</p>
-                    </div>
-                `;
+                const scope = browser.scope || {};
+                // Selects ficam com valor 'all' mesmo intocados — só conta
+                // como filtro ativo um valor real, diferente de 'all'.
+                const active = (v) => v && v !== 'all';
+                const hasActiveFilters = !!(active(scope.q) || active(scope.status) || active(scope.city) || active(scope.type) || active(scope.curatorId));
+                if (hasActiveFilters) {
+                    // Busca server-side com filtro ativo que não achou nada —
+                    // copy específico + ação para limpar os filtros.
+                    container.innerHTML = `
+                        <div class="col-span-full text-center py-12">
+                            <span class="material-icons text-6xl text-gray-300 mb-4">search_off</span>
+                            <p class="text-gray-500 mb-4">No curations match your filters</p>
+                            <button id="clear-curation-filters" class="btn btn-outline btn-sm">
+                                <span class="material-icons text-sm mr-1">clear_all</span>
+                                Clear filters
+                            </button>
+                        </div>
+                    `;
+                    var self = this;
+                    container.querySelector('#clear-curation-filters')?.addEventListener('click', function() {
+                        ['curation-search', 'curation-status-filter', 'curation-curator-filter', 'curation-city-filter', 'curation-type-filter'].forEach(function(id) {
+                            var el = document.getElementById(id);
+                            if (el) el.value = el.tagName === 'SELECT' ? 'all' : '';
+                        });
+                        self._reloadOrFilterCurations();
+                    });
+                } else {
+                    container.innerHTML = `
+                        <div class="col-span-full text-center py-12">
+                            <span class="material-icons text-6xl text-gray-300 mb-4">rate_review</span>
+                            <p class="text-gray-500 mb-2">No curations yet</p>
+                            <p class="text-sm text-gray-400">Start curating entities by clicking on them</p>
+                        </div>
+                    `;
+                }
                 return;
             }
 
             // Pendências locais (salvas e ainda não sincronizadas) não estão
             // no servidor — e mesmo sincronizadas, a paginação por _id pode
             // deixar o save novo fora da página 1. Mescla no topo para o
-            // usuário SEMPRE ver o próprio save imediatamente.
-            const serverIds = new Set(browser.items.map(c => c.curation_id));
-            let localPending = [];
-            try {
-                if (window.DataStore?.db) {
-                    localPending = (await window.DataStore.db.curations
-                        .where('sync.status').equals('pending').toArray())
-                        .filter(c => !serverIds.has(c.curation_id));
+            // usuário SEMPRE ver o próprio save imediatamente (só na
+            // página 1 — nas páginas seguintes a lista é só do servidor).
+            if (page === 0) {
+                const serverIds = new Set(browser.items.map(c => c.curation_id));
+                let localPending = [];
+                try {
+                    if (window.DataStore?.db) {
+                        localPending = (await window.DataStore.db.curations
+                            .where('sync.status').equals('pending').toArray())
+                            .filter(c => !serverIds.has(c.curation_id));
+                    }
+                } catch (error) {
+                    console.warn('Falha ao mesclar pendências locais:', error);
                 }
-            } catch (error) {
-                console.warn('Falha ao mesclar pendências locais:', error);
+                this.curationsCache = [...localPending, ...browser.items];
+                this._populateCuratorFilter();
+                this.populateCurationFilters(this.curationsCache);
+                // filtro client-side + reset de página (mudança de filtro)
+                this.filterAndDisplayCurations();
+            } else {
+                this.curationsCache = browser.items;
+                // Página N: render direto com currentPage preservado — passar
+                // por filterAndDisplayCurations resetaria a página para 0.
+                this.renderCurationsPage(this.curationsCache);
             }
-
-            this.curationsCache = [...localPending, ...browser.items];
-            this._populateCuratorFilter();
-            this.populateCurationFilters(this.curationsCache);
-            this.filterAndDisplayCurations();
-            this._renderLoadMoreButton(container);
         }
 
         /** Renderiza a lista a partir do cache local (offline/fallback). */
@@ -823,38 +848,6 @@ if (typeof window.UIManager === 'undefined') {
             this._populateCuratorFilter();
             this.populateCurationFilters(allCurations);
             this.filterAndDisplayCurations();
-        }
-
-        /** "Load more" button at the bottom of the curation list. */
-        _renderLoadMoreButton(container) {
-            // Remove existing button if any
-            const existing = container.querySelector('.load-more-curations');
-            if (existing) existing.remove();
-
-            const browser = window.CurationBrowser;
-            if (!browser || browser.done) return;
-
-            const btn = document.createElement('button');
-            btn.className = 'load-more-curations w-full py-3 mt-4 text-sm text-blue-600 hover:text-blue-700 hover:bg-blue-50 rounded-lg border border-dashed border-blue-300 transition-colors';
-            btn.textContent = 'Load more curations...';
-            btn.addEventListener('click', async () => {
-                btn.textContent = 'Loading...';
-                btn.disabled = true;
-                try {
-                    const { done } = await browser.nextPage();
-                    this.curationsCache = browser.items;
-                    this.filterAndDisplayCurations();
-                    if (!done) {
-                        this._renderLoadMoreButton(container);
-                    } else {
-                        btn.remove();
-                    }
-                } catch (err) {
-                    btn.textContent = 'Failed — try again';
-                    btn.disabled = false;
-                }
-            });
-            container.appendChild(btn);
         }
 
         populateCurationFilters(curations) {
@@ -953,9 +946,21 @@ if (typeof window.UIManager === 'undefined') {
                     container.innerHTML = `
                         <div class="col-span-full text-center py-12">
                             <span class="material-icons text-6xl text-gray-300 mb-4">search_off</span>
-                            <p class="text-gray-500">No curations match your filters</p>
+                            <p class="text-gray-500 mb-4">No curations match your filters</p>
+                            <button id="clear-curation-filters" class="btn btn-outline btn-sm">
+                                <span class="material-icons text-sm mr-1">clear_all</span>
+                                Clear filters
+                            </button>
                         </div>
                     `;
+                    var self = this;
+                    container.querySelector('#clear-curation-filters')?.addEventListener('click', function() {
+                        ['curation-search', 'curation-status-filter', 'curation-curator-filter', 'curation-city-filter', 'curation-type-filter'].forEach(function(id) {
+                            var el = document.getElementById(id);
+                            if (el) el.value = el.tagName === 'SELECT' ? 'all' : '';
+                        });
+                        self.filterAndDisplayCurations();
+                    });
                 }
                 this.updateCurationsCountSummary(this.curationsCache.length, 0);
                 return;
@@ -968,21 +973,27 @@ if (typeof window.UIManager === 'undefined') {
             var container = this.containers.curations;
             if (!container) return;
 
-            // Server-driven mode: no client-side pagination — items accumulate via Load More
             var isServerDriven = !!(window.CurationBrowser && window.CurationBrowser.nextPage);
             var cp = this.curationPagination;
-            var start, end, pageCurations;
+            var browser = isServerDriven ? window.CurationBrowser : null;
 
+            // Server-driven: cada página é UMA página do servidor (offset).
+            // total real vem do browser; a página 1 pode trazer pendências
+            // locais mescladas no topo (por isso end usa o comprimento real).
+            var serverTotal = browser && browser.total > 0 ? browser.total : allCurations.length;
+            var totalPages = Math.ceil(serverTotal / cp.pageSize);
+
+            var start, end, pageCurations;
             if (isServerDriven) {
-                // Show all loaded items (server handles pagination via Load More)
-                start = 0;
-                end = allCurations.length;
+                start = cp.currentPage * cp.pageSize;
+                end = Math.min(start + allCurations.length, serverTotal);
                 pageCurations = allCurations;
             } else {
                 // Client-side pagination for DataStore fallback
                 start = cp.currentPage * cp.pageSize;
                 end = Math.min(start + cp.pageSize, allCurations.length);
                 pageCurations = allCurations.slice(start, end);
+                totalPages = Math.ceil(allCurations.length / cp.pageSize);
             }
 
             this.updateCurationsCountSummary(allCurations.length, allCurations.length);
@@ -990,15 +1001,17 @@ if (typeof window.UIManager === 'undefined') {
             container.innerHTML = '';
 
             var self = this;
-            var totalPages = Math.ceil(allCurations.length / cp.pageSize);
 
-            // Only show page navigation in fallback mode (not server-driven)
-            if (!isServerDriven && totalPages > 1) {
+            // Header de paginação sempre visível (mesmo padrão da aba
+            // Entities): "Showing X–Y of N" + prev/next + "Page X of Y".
+            // No modo server-driven o prev/next busca a página no servidor;
+            // no fallback pagina o cache local.
+            {
                 var header = document.createElement('div');
                 header.className = 'col-span-full mb-4 p-4 bg-blue-50 border border-blue-100 rounded-lg flex items-center justify-between';
                 header.innerHTML = `
                     <div class="text-sm text-gray-600">
-                        Showing <span class="font-semibold">${start + 1}</span>&ndash;<span class="font-semibold">${end}</span> of <span class="font-semibold">${allCurations.length}</span> curations
+                        Showing <span class="font-semibold">${start + 1}</span>&ndash;<span class="font-semibold">${end}</span> of <span class="font-semibold">${serverTotal}</span> curations
                     </div>
                     <div class="flex gap-2">
                         <button id="curation-prev-page" class="px-3 py-1 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" ${cp.currentPage === 0 ? 'disabled' : ''}>
@@ -1014,11 +1027,22 @@ if (typeof window.UIManager === 'undefined') {
 
                 header.querySelector('#curation-prev-page')?.addEventListener('click', function() {
                     self.curationPagination.currentPage--;
-                    self.renderCurationsPage(allCurations);
+                    if (isServerDriven) {
+                        // Busca a página no servidor (offset)
+                        self.curationsCache = [];
+                        self._loadCurationsFromServer(container, { page: self.curationPagination.currentPage });
+                    } else {
+                        self.renderCurationsPage(allCurations);
+                    }
                 });
                 header.querySelector('#curation-next-page')?.addEventListener('click', function() {
                     self.curationPagination.currentPage++;
-                    self.renderCurationsPage(allCurations);
+                    if (isServerDriven) {
+                        self.curationsCache = [];
+                        self._loadCurationsFromServer(container, { page: self.curationPagination.currentPage });
+                    } else {
+                        self.renderCurationsPage(allCurations);
+                    }
                 });
             }
 
@@ -1157,7 +1181,7 @@ if (typeof window.UIManager === 'undefined') {
                     this.updateEntitiesCountSummary(0, 0);
                     container.innerHTML = `
                             <div class="col-span-full text-center py-12">
-                                <span class="material-icons text-6xl text-gray-300 mb-4">store</span>
+                                <span class="material-icons text-6xl text-gray-300 mb-4">restaurant</span>
                                 <p class="text-gray-500 mb-2">No linked entities yet</p>
                                 <p class="text-sm text-gray-400">Entities appear here after being linked to a curation</p>
                             </div>
@@ -1334,9 +1358,20 @@ if (typeof window.UIManager === 'undefined') {
                     container.innerHTML = `
                         <div class="col-span-full text-center py-12">
                             <span class="material-icons text-6xl text-gray-300 mb-4">search_off</span>
-                            <p class="text-gray-500">No entities match your filters</p>
+                            <p class="text-gray-500 mb-4">No entities match your filters</p>
+                            <button id="clear-entity-filters" class="btn btn-outline btn-sm">
+                                <span class="material-icons text-sm mr-1">clear_all</span>
+                                Clear filters
+                            </button>
                         </div>
                     `;
+                    container.querySelector('#clear-entity-filters')?.addEventListener('click', () => {
+                        ['entity-search', 'entity-type-filter', 'entity-city-filter'].forEach(id => {
+                            const el = document.getElementById(id);
+                            if (el) el.value = el.tagName === 'SELECT' ? 'all' : '';
+                        });
+                        this.filterAndDisplayEntities();
+                    });
                 }
                 this.updateEntitiesCountSummary(this.entitiesCache.length, 0);
                 return;
@@ -1419,6 +1454,18 @@ if (typeof window.UIManager === 'undefined') {
                 badgeText = 'Draft';
                 badgeClass = 'bg-amber-100 text-amber-800';
             }
+
+            // Accent de status na borda esquerda — segue a linguagem de cor
+            // dos badges DESTE card (linked/active = verde "Linked",
+            // done = azul, published = roxo, draft = âmbar)
+            const accentByStatus = {
+                linked: 'card-accent-active',
+                active: 'card-accent-active',
+                done: 'card-accent-linked',
+                published: 'card-accent-published',
+                draft: 'card-accent-draft'
+            };
+            card.classList.add(accentByStatus[rawStatus] || 'card-accent-draft');
 
             card.innerHTML = `
                 <!-- Header with type icon -->
@@ -1865,10 +1912,19 @@ if (typeof window.UIManager === 'undefined') {
             }, 100);
         }
 
-        showRestaurantListSection() {
+        showRestaurantListSection({ refresh = true } = {}) {
             this.switchView('list');
             this.updateViewSummaryVisibility();
-            this.scheduleDataRefresh('view:list', 0);
+
+            // No startup o refresh é pulado: o switchTab logo em seguida já
+            // carrega do servidor, e o refresh local com delay 0 corria
+            // contra esse fetch — quem terminava por último re-renderizava
+            // a lista com o cache Dexie INTEIRO, anulando a paginação
+            // server-driven (25 por página). Ao voltar do editor, mantém:
+            // mostra as edições locais imediatamente.
+            if (refresh) {
+                this.scheduleDataRefresh('view:list', 0);
+            }
 
             if (this.shouldRestoreListScroll) {
                 const restoreY = this.listScrollRestoreY || 0;
@@ -2168,10 +2224,10 @@ if (typeof window.UIManager === 'undefined') {
                 }
             }
 
-            // Update any sync status indicators (both header and sidebar)
+            // Update any sync status indicators (header and sidebar)
             const syncStatusElements = [
                 document.getElementById('sync-status-header'),
-                document.getElementById('sync-status')
+                document.getElementById('sync-status-sidebar')
             ].filter(Boolean);
 
             if (syncStatusElements.length > 0) {
