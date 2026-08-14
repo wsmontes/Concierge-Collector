@@ -122,37 +122,10 @@ class OutputHandler:
         else:
             return results
 
-    @staticmethod
-    def save_results(db, results: Dict[str, Any]) -> list:
-        """
-        Save entity and curation to MongoDB.
-
-        Uses synchronous PyMongo operations — do NOT await.
-
-        Args:
-            db: PyMongo synchronous Database
-            results: Results dictionary
-
-        Returns:
-            List of saved item types
-        """
-        saved_items = []
-
-        # Save entity if present
-        if "entity" in results:
-            db.entities.update_one(
-                {"entity_id": results["entity"]["entity_id"]},
-                {"$set": results["entity"]},
-                upsert=True,
-            )
-            saved_items.append("entity")
-
-        # Save curation if present
-        if "curation" in results:
-            db.curations.insert_one(results["curation"])
-            saved_items.append("curation")
-
-        return saved_items
+    # save_results REMOVIDO (ago/2026, auditoria): gravava direto no Mongo
+    # (update_one upsert + insert_one) pulando TODAS as regras de domínio.
+    # A persistência agora passa pelos services (entity_service.upsert_entity
+    # e curation_service.create_curation_doc) — mesma fronteira dos routers.
 
 
 class AIOrchestrator:
@@ -216,12 +189,15 @@ class AIOrchestrator:
         else:
             raise ValueError("Cannot detect workflow: insufficient inputs")
 
-    async def orchestrate(self, request: Dict[str, Any]) -> Dict[str, Any]:
+    async def orchestrate(self, request: Dict[str, Any], auth: dict | None = None) -> Dict[str, Any]:
         """
         Main orchestration method.
 
         Args:
             request: Request dictionary with inputs and options
+            auth: Auth dict do endpoint (para derivar o curator e rodar as
+                regras de ownership da persistência — a escrita NUNCA usa
+                curator_id vindo do corpo do request)
 
         Returns:
             Response with workflow, results, and metadata
@@ -237,9 +213,12 @@ class AIOrchestrator:
         # Execute workflow
         results = await self.execute_workflow(workflow, request)
 
-        # Handle output
+        # Handle output — persistência via fronteira de domínio (mesmos
+        # services dos routers; sem escrita direta no Mongo)
         if request["output"]["save_to_db"]:
-            self.output_handler.save_results(self.db, results)
+            if auth is None:
+                raise ValueError("auth is required to save orchestrator results")
+            await self._save_results_via_domain(auth, results)
 
         # Format response
         if request["output"]["return_results"]:
@@ -255,6 +234,54 @@ class AIOrchestrator:
             "saved_to_db": request["output"]["save_to_db"],
             "processing_time_ms": processing_time,
         }
+
+    async def _save_results_via_domain(self, auth: dict, results: Dict[str, Any]) -> None:
+        """Persiste entity/curation do workflow pelas MESMAS funções de
+        domínio dos routers (fronteira única de escrita por agregado).
+
+        - entity → entity_service.upsert_entity (merge + version + timestamps)
+        - curation → curation_service.create_curation_doc (entity check,
+          denormalização, IDOR de ownership, twin guard)
+        - curator_id da curation vem do AUTH (sub do JWT), nunca do request
+        """
+        from app.models.schemas import CurationCreate, EntityCreate
+        from app.services.curation_service import create_curation_doc
+        from app.services.entity_service import upsert_entity
+
+        if "entity" in results:
+            entity_dict = results["entity"]
+            entity = EntityCreate(
+                entity_id=entity_dict["entity_id"],
+                type=entity_dict.get("entity_type") or entity_dict.get("type") or "restaurant",
+                name=entity_dict.get("name") or "",
+                status="active",
+                externalId=entity_dict.get("externalId"),
+                data={
+                    k: v
+                    for k, v in entity_dict.items()
+                    if k not in ("entity_id", "entity_type", "type", "name", "externalId", "status")
+                },
+            )
+            upsert_entity(self.db, entity)
+
+        if "curation" in results:
+            cur_dict = results["curation"]
+            # derivado do auth — o curator_id do request é ignorado
+            curator_id = auth.get("user") or cur_dict.get("curator_id")
+            curation = CurationCreate(
+                curation_id=cur_dict.get("curation_id"),
+                entity_id=cur_dict.get("entity_id"),
+                curator_id=curator_id,
+                curator={"id": curator_id, "name": curator_id, "email": curator_id},
+                restaurant_name=cur_dict.get("restaurant_name"),
+                status=cur_dict.get("status", "draft"),
+                categories=cur_dict.get("categories") or {},
+                transcript=cur_dict.get("transcript") or cur_dict.get("unstructured_text"),
+                sources=cur_dict.get("sources") or {},
+                items=cur_dict.get("items"),
+                notes=cur_dict.get("notes"),
+            )
+            create_curation_doc(self.db, curation, auth)
 
     async def execute_workflow(self, workflow: str, request: Dict[str, Any]) -> Dict[str, Any]:
         """Execute the detected workflow"""

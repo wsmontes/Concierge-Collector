@@ -10,7 +10,8 @@ from typing import Optional, Dict, Any
 import os
 
 from app.core.database import get_database
-from app.core.security import verify_auth
+from app.core.security import verify_auth, is_admin_auth
+from app.models.user import has_role
 from app.services.openai_service import OpenAIService
 from app.services.ai_orchestrator import AIOrchestrator
 
@@ -159,9 +160,23 @@ async def orchestrate(
         # Convert Pydantic model to dict
         request_dict = request.model_dump(exclude_none=True)
 
+        # ── RBAC (P0, auditoria ago/2026): salvar é ESCRITA — viewer não
+        # escreve. O gate é ANTES do orchestrate (que custa OpenAI), não depois.
+        wants_save = bool(request_dict.get("output", {}).get("save_to_db"))
+        if wants_save and not is_admin_auth(auth) and not has_role(auth.get("role", "viewer"), "curator"):
+            raise HTTPException(
+                status_code=status.HTTP_403_FORBIDDEN,
+                detail="Viewer role cannot save orchestrator results",
+            )
+
+        # Curator derivado do AUTH (sub do JWT) — o curator_id do corpo é
+        # IGNORADO na escrita (o domínio exige ownership do usuário logado)
+        if auth.get("method") == "jwt":
+            request_dict["curator_id"] = auth.get("user")
+
         # Orchestrate (MUST await async method)
         logger.info("[AI Orchestrate] Starting orchestration...")
-        result = await orchestrator.orchestrate(request_dict)
+        result = await orchestrator.orchestrate(request_dict, auth=auth)
 
         logger.info("[AI Orchestrate] ✓ Orchestration successful")
         logger.info("=" * 60)
@@ -169,6 +184,10 @@ async def orchestrate(
 
     except ValueError as e:
         logger.error(f"[AI Orchestrate] ✗ ValueError: {str(e)}")
+        # Workflow que depende de Places SEM o serviço injetado é capability
+        # estruturalmente indisponível — o contrato não pode anunciá-la
+        if "Places service not configured" in str(e):
+            raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=str(e))
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
         logger.error(f"[AI Orchestrate] ✗ Exception: {str(e)}", exc_info=True)

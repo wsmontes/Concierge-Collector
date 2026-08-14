@@ -195,23 +195,46 @@ class TestAsyncAwaitPatterns:
 class TestOutputHandler:
     """Tests for OutputHandler methods"""
 
-    def test_save_results_writes_to_mongo(self):
-        """save_results deve usar operações síncronas do PyMongo (sem await)."""
-        mock_db = MagicMock()
-        mock_db.entities.update_one = MagicMock(return_value=MagicMock(modified_count=1))
-        mock_db.curations.insert_one = MagicMock(return_value=MagicMock(inserted_id="abc123"))
+    def test_save_results_removed_from_output_handler(self):
+        """save_results (escrita direta no Mongo) NÃO existe mais — a
+        persistência é do AIOrchestrator._save_results_via_domain, via os
+        services de domínio (fronteira única de escrita por agregado)."""
+        assert not hasattr(OutputHandler, "save_results")
 
+    @pytest.mark.asyncio
+    async def test_save_via_domain_derives_curator_from_auth(self, test_db):
+        """_save_results_via_domain persiste via entity/curation services e
+        usa o curator do AUTH (o curator_id do results é ignorado)."""
+        from app.services.ai_orchestrator import AIOrchestrator
+
+        orchestrator = AIOrchestrator(db=test_db, openai_service=MagicMock())
         results = {
-            "entity": {"entity_id": "ent_001"},
-            "curation": {"curation_id": "cur_001", "entity_id": "ent_001"},
+            "entity": {
+                "entity_id": "test_ai_ent", "name": "Casa AI", "entity_type": "restaurant",
+                "location": {"type": "Point", "coordinates": [0, 0]},
+            },
+            "curation": {
+                "curation_id": "test_ai_cur", "entity_id": "test_ai_ent",
+                "curator_id": "hacker@evil.com", "categories": {"cuisine": ["brasileira"]},
+            },
         }
+        auth = {"method": "jwt", "user": "concierge@demo.com", "role": "curator", "authenticated": True}
 
-        saved = OutputHandler.save_results(mock_db, results)
+        await orchestrator._save_results_via_domain(auth, results)
 
-        assert "entity" in saved
-        assert "curation" in saved
-        mock_db.entities.update_one.assert_called_once()
-        mock_db.curations.insert_one.assert_called_once()
+        entity = test_db.entities.find_one({"_id": "test_ai_ent"})
+        assert entity is not None
+        assert entity["version"] == 1
+        assert "createdAt" in entity
+
+        curation = test_db.curations.find_one({"_id": "test_ai_cur"})
+        assert curation is not None
+        assert curation["curator_id"] == "concierge@demo.com"  # do auth, não do results
+        assert curation["version"] == 1
+        assert "updatedAt" in curation
+
+        test_db.entities.delete_many({"_id": "test_ai_ent"})
+        test_db.curations.delete_many({"_id": "test_ai_cur"})
 
 
 # Fixtures removed - using global fixtures from conftest.py

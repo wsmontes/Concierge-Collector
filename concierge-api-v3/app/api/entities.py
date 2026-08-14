@@ -28,6 +28,7 @@ from app.models.user import has_role
 from app.core.security import (
     verify_auth,
 )
+from app.services.entity_service import upsert_entity
 
 logger = logging.getLogger(__name__)
 
@@ -71,41 +72,10 @@ def create_entity(
     db: Database = Depends(get_database),
     auth: dict = Depends(verify_auth),
 ):
-    """Create new entity or update if exists"""
-    # Check if exists
-    existing = db.entities.find_one({"_id": entity.entity_id})
-
-    if existing:
-        # Merge data
-        doc = entity.model_dump(exclude_unset=True)
-
-        if "data" in doc and "data" in existing:
-            existing_data = existing.get("data") or {}
-            new_data = doc.get("data") or {}
-            doc["data"] = {**existing_data, **new_data}
-
-        doc["updatedAt"] = datetime.now(timezone.utc)
-        doc["version"] = existing.get("version", 1) + 1
-        doc.pop("createdAt", None)
-        doc.pop("createdBy", None)
-
-        db.entities.update_one({"_id": entity.entity_id}, {"$set": doc})
-
-        result = db.entities.find_one({"_id": entity.entity_id})
-        return Entity(**result)
-
-    else:
-        # Create new
-        doc = entity.model_dump()
-        doc["_id"] = entity.entity_id
-        doc["createdAt"] = datetime.now(timezone.utc)
-        doc["updatedAt"] = datetime.now(timezone.utc)
-        doc["version"] = 1
-
-        db.entities.insert_one(doc)
-
-        result = db.entities.find_one({"_id": entity.entity_id})
-        return Entity(**result)
+    """Create new entity or update if exists.
+    Delega para o entity_service (fronteira única de escrita — o AI
+    Orchestrator usa o mesmo caminho)."""
+    return upsert_entity(db, entity)
 
 
 def entity_query(entity_id: str) -> dict:

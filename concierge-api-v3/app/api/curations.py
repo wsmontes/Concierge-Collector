@@ -3,7 +3,7 @@ Curation endpoints - CRUD operations for curations
 Professional FastAPI implementation with async MongoDB
 """
 
-from fastapi import APIRouter, HTTPException, Header, Query, Depends, Request, status
+from fastapi import APIRouter, HTTPException, Header, Query, Depends, Request
 from typing import Optional, List
 import re
 import logging
@@ -40,6 +40,14 @@ from app.core.rate_limit import limiter
 from app.core.security import verify_auth, is_admin_auth
 from app.models.user import has_role
 from app.services.curation_denorm import denormalize_curation_location
+from app.services.curation_service import (
+    CURATION_RESPONSE_PROJECTION,
+    create_curation_doc,
+    find_curation,
+    _normalize_curator_id,
+    _is_placeholder_identity,
+    _clean_created_by,
+)
 from app.api.entities import find_entity
 from app.core.vector_packing import DEFAULT_EMBEDDING_DIMENSIONS, try_pack_vector
 from pymongo.database import Database
@@ -136,24 +144,6 @@ def _vector_search_or_fallback(db, projection, query_vector, candidate_limit, fa
 router = APIRouter(prefix="/curations", tags=["curations"])
 
 
-CURATION_RESPONSE_PROJECTION = {
-    "embeddings": 0,
-    "embeddings_metadata": 0,
-}
-
-
-def _clean_created_by(curation, doc):
-    """createdBy sem o placeholder 'unknown' (case-insensitive) — cai para o
-    curator_id normalizado; sem nada, None."""
-    raw = curation.createdBy
-    if raw and str(raw).lower() != "unknown":
-        return raw
-    cur_id = doc.get("curator_id")
-    if cur_id and str(cur_id).lower() != "unknown":
-        return cur_id
-    return None
-
-
 def _pending_category_texts(categories):
     """Textos 'category concept' derivados de categories (mesmo formato dos
     geradores de embeddings) — a ÚNICA fonte de pendência. Guarda contra
@@ -184,23 +174,6 @@ def _compute_backfill_flag(stored_categories, new_embeddings, client_meta, store
     }
     meta["backfill_needed"] = not pending.issubset(covered)
     return meta
-
-
-def _normalize_curator_id(doc):
-    """Sincroniza top-level: curator.id embutido REAL é autoritativo e o
-    placeholder 'unknown'/'' (sync sem usuário) não fica no curator_id.
-    O reparo completo (contra o valor armazenado) é _repair_curator_identity."""
-    curator = doc.get("curator") or {}
-    cur_id = doc.get("curator_id")
-    if (not cur_id or str(cur_id).lower() == "unknown") and curator.get("id"):
-        doc["curator_id"] = curator["id"]
-    return doc
-
-
-def _is_placeholder_identity(value):
-    """Placeholder de identidade do sync offline: None, '' ou 'unknown'
-    (case-insensitive). Qualquer outro valor é identidade real."""
-    return value is None or str(value).strip().lower() in ("", "unknown")
 
 
 def _repair_curator_identity(doc, stored):
@@ -258,22 +231,6 @@ def _repair_curator_identity(doc, stored):
     return doc
 
 
-def find_curation(db, curation_id, projection=None):
-    """Resolução DETERMINÍSTICA por probes sequenciais: _id string exato →
-    _id ObjectId → campo curation_id. O $or do Mongo NÃO garante ordem entre
-    branches — twins resolviam por plano de query, não por prioridade.
-    projection evita transferir embeddings inteiros (~6KB/vetor) em buscas
-    de existência."""
-    doc = db.curations.find_one({"_id": curation_id}, projection)
-    if doc:
-        return doc
-    if ObjectId.is_valid(curation_id):
-        doc = db.curations.find_one({"_id": ObjectId(curation_id)}, projection)
-        if doc:
-            return doc
-    return db.curations.find_one({"curation_id": curation_id}, projection)
-
-
 def build_curation_response_payload(curation_doc: dict) -> dict:
     """Build lightweight curation payload without embeddings."""
     if not curation_doc:
@@ -299,62 +256,11 @@ def create_curation(
     """Create a new curation
 
     **Authentication Required:** Include `Authorization: Bearer <token>` OR `X-API-Key: <key>` header
+
+    Delega para o curation_service (fronteira única de escrita — o AI
+    Orchestrator usa o mesmo caminho).
     """
-    # Verify entity exists (skip for orphaned curations) — find_entity
-    # resolve ObjectId/string/slug (os 471 ObjectId não-linkáveis)
-    if curation.entity_id:
-        entity = find_entity(db, curation.entity_id)
-        if not entity:
-            raise HTTPException(status_code=404, detail=f"Entity {curation.entity_id} not found")
-
-    # Prepare document
-    doc = curation.model_dump()
-    if curation.entity_id and entity:
-        doc.update(denormalize_curation_location(entity))
-    doc["_id"] = curation.curation_id
-    doc["createdAt"] = datetime.now(timezone.utc)
-    doc["updatedAt"] = datetime.now(timezone.utc)
-    doc["version"] = 1
-    _normalize_curator_id(doc)
-
-    # ── IDOR: a curadoria é atribuída ao curator_id do corpo — só o próprio
-    # usuário autenticado (ou admin via API key/role) pode criar em seu nome.
-    # Placeholder de identidade (sync offline, 'unknown'/'') passa: curadoria
-    # sem dono, nunca atribuída a terceiro.
-    owner = doc.get("curator_id") or (doc.get("curator") or {}).get("id")
-    if not is_admin_auth(auth) and not _is_placeholder_identity(owner):
-        if owner != auth.get("user"):
-            raise HTTPException(
-                status_code=403,
-                detail="curator_id must match the authenticated user",
-            )
-
-    doc["createdBy"] = _clean_created_by(curation, doc)
-    doc["updatedBy"] = doc.get("curator_id")
-
-    # Twin guard: um doc ObjectId com o mesmo id pode existir (índice único
-    # é type-aware) — insert às cegas criaria um duplicado silencioso
-    if find_curation(db, curation.curation_id):
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail=f"Curation {curation.curation_id} already exists",
-        )
-    # Insert
-    try:
-        db.curations.insert_one(doc)
-    except DuplicateKeyError:
-        # twin criado por corrida entre o guard e o insert: re-checa e
-        # devolve 409 consistente (o índice unique é type-aware)
-        if find_curation(db, curation.curation_id, projection={"_id": 1}):
-            raise HTTPException(
-                status_code=status.HTTP_409_CONFLICT,
-                detail=f"Curation {curation.curation_id} already exists",
-            )
-        raise
-
-    # Return created curation
-    result = db.curations.find_one({"_id": curation.curation_id}, CURATION_RESPONSE_PROJECTION)
-    return Curation(**result)
+    return create_curation_doc(db, curation, auth)
 
 
 @router.get("/search", response_model=PaginatedResponse)
