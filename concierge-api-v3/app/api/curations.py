@@ -1182,10 +1182,30 @@ def bulk_upsert_curations(
                         )
                         continue
 
+                # ── CAS (auditoria ago/2026): com expected_version, o update
+                # só aplica se a versão do servidor bate — stale client vira
+                # conflito POR ITEM (nunca sobrescreve em silêncio). Sem o
+                # campo, mantém o upsert legado (recuperação do sync quando
+                # o serverId se perdeu e o cliente não tem versão conhecida).
+                expected_version = getattr(curation, "expected_version", None)
+                if expected_version is not None and existing.get("version", 1) != expected_version:
+                    errors.append(
+                        BulkItemError(
+                            index=idx,
+                            id=curation.curation_id,
+                            error=(
+                                f"version conflict: server has v{existing.get('version', 1)}, "
+                                f"payload expects v{expected_version}"
+                            ),
+                        )
+                    )
+                    continue
+
                 doc = curation.model_dump(exclude_unset=True)
                 doc.pop("curation_id", None)
                 doc.pop("createdAt", None)
                 doc.pop("createdBy", None)
+                doc.pop("expected_version", None)
                 doc["updatedAt"] = now
                 doc["version"] = existing.get("version", 1) + 1
                 _normalize_curator_id(doc)  # embutida real sincroniza top-level ANTES do reparo

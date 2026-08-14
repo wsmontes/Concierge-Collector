@@ -191,6 +191,14 @@ class CurationCreate(CurationBase):
     curator_id: str = Field(..., description="Curator ID for filtering")
     curator: CuratorInfo
     createdBy: Optional[str] = Field(None, description="Curator ID who originally created this curation")
+    expected_version: Optional[int] = Field(
+        None,
+        description=(
+            "Optimistic locking no bulk: se a curation JÁ existe no servidor, "
+            "o update só aplica quando a versão bate — stale client recebe "
+            "conflito por item, nunca sobrescreve silenciosamente."
+        ),
+    )
 
 
 class CurationUpdate(BaseModel):

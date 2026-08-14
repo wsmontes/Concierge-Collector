@@ -1389,3 +1389,80 @@ def test_bulk_upsert_rejects_foreign_ownership(client, clean_test_curations, tes
     stored = test_db.curations.find_one({"_id": "test_own_b"})
     assert stored["restaurant_name"] == "Do Bob"  # nada foi sobrescrito
     assert stored["version"] == 3
+
+
+def test_bulk_upsert_expected_version_conflict_reports_error():
+    """CAS no bulk: payload com expected_version desatualizado NÃO sobrescreve
+    (auditoria ago/2026: o update incrementava a versão sem exigir que a
+    versão conhecida pelo cliente fosse a atual)."""
+    from unittest.mock import MagicMock
+    from app.api.curations import bulk_upsert_curations
+    from app.models.schemas import BulkCurationCreate, CurationCreate, CuratorInfo
+
+    mock_db = MagicMock()
+    mock_auth = {"role": "admin", "user": "test@test.com"}
+
+    existing = {
+        "_id": "cur_cas_1",
+        "version": 5,
+        "createdBy": "owner",
+        "createdAt": "2026-01-01T00:00:00Z",
+        "curator_id": "owner",
+        "curator": {"id": "owner", "name": "owner"},
+    }
+    mock_db.curations.find.return_value = [existing]
+    mock_db.entities.find.return_value = []
+
+    curation = CurationCreate(
+        curation_id="cur_cas_1",
+        entity_id=None,
+        curator_id="owner",
+        curator=CuratorInfo(id="owner", name="owner"),
+        restaurant_name="Sobrescrita por cliente velho",
+        expected_version=3,  # cliente viu v3; servidor está em v5
+    )
+    payload = BulkCurationCreate(curations=[curation])
+
+    result = bulk_upsert_curations(request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth)
+
+    assert result.updated == 0
+    assert len(result.errors) == 1
+    assert "version conflict" in result.errors[0].error
+    mock_db.curations.update_one.assert_not_called()
+
+
+def test_bulk_upsert_expected_version_match_updates():
+    """CAS no bulk: versão batendo aplica o update normalmente."""
+    from unittest.mock import MagicMock
+    from app.api.curations import bulk_upsert_curations
+    from app.models.schemas import BulkCurationCreate, CurationCreate, CuratorInfo
+
+    mock_db = MagicMock()
+    mock_auth = {"role": "admin", "user": "test@test.com"}
+
+    existing = {
+        "_id": "cur_cas_2",
+        "version": 5,
+        "createdBy": "owner",
+        "createdAt": "2026-01-01T00:00:00Z",
+        "curator_id": "owner",
+        "curator": {"id": "owner", "name": "owner"},
+    }
+    mock_db.curations.find.return_value = [existing]
+    mock_db.entities.find.return_value = []
+
+    curation = CurationCreate(
+        curation_id="cur_cas_2",
+        entity_id=None,
+        curator_id="owner",
+        curator=CuratorInfo(id="owner", name="owner"),
+        restaurant_name="Atualização legítima",
+        expected_version=5,
+    )
+    payload = BulkCurationCreate(curations=[curation])
+
+    result = bulk_upsert_curations(request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth)
+
+    assert result.updated == 1
+    assert len(result.errors) == 0
+    mock_db.curations.update_one.assert_called_once()
