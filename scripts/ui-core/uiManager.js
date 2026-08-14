@@ -687,21 +687,71 @@ if (typeof window.UIManager === 'undefined') {
          * Setup event listeners for entity search and filters
          */
         setupEntityEvents() {
+            var self = this;
+            // Busca com debounce (300ms) — vai ao servidor via EntityBrowser
             const searchInput = document.getElementById('entity-search');
-            const typeFilter = document.getElementById('entity-type-filter');
-            const cityFilter = document.getElementById('entity-city-filter');
-
             if (searchInput) {
-                searchInput.addEventListener('input', () => this.filterAndDisplayEntities());
+                searchInput.addEventListener('input', function() {
+                    if (self.entitySearchDebounceTimer) clearTimeout(self.entitySearchDebounceTimer);
+                    self.entitySearchDebounceTimer = setTimeout(function() {
+                        self._reloadOrFilterEntities();
+                    }, 300);
+                });
             }
 
+            // Tipo (imediato)
+            const typeFilter = document.getElementById('entity-type-filter');
             if (typeFilter) {
-                typeFilter.addEventListener('change', () => this.filterAndDisplayEntities());
+                typeFilter.addEventListener('change', function() {
+                    self._reloadOrFilterEntities();
+                });
             }
 
+            // Cidade (texto livre, debounce 300ms)
+            const cityFilter = document.getElementById('entity-city-filter');
             if (cityFilter) {
-                cityFilter.addEventListener('change', () => this.filterAndDisplayEntities());
+                cityFilter.addEventListener('input', function() {
+                    if (self.entityCityDebounceTimer) clearTimeout(self.entityCityDebounceTimer);
+                    self.entityCityDebounceTimer = setTimeout(function() {
+                        self._reloadOrFilterEntities();
+                    }, 300);
+                });
             }
+        }
+
+        /** Filtros da view Entities → scope do EntityBrowser (server-side).
+         *  Espelha _reloadOrFilterCurations: chama _loadEntitiesFromServer
+         *  DIRETO (sem resetScope — o loadEntities({resetScope:true}) só
+         *  existe para o load inicial; reaplicar aqui APAGAVA o scope
+         *  recém-setado e a busca server-side nunca recebia os filtros). */
+        async _reloadOrFilterEntities() {
+            const browser = window.EntityBrowser;
+            if (browser && browser.openPage) {
+                const scope = this._getCurrentEntityFilterScope();
+                browser.openScope(scope);
+                this.entitiesCache = [];
+                if (this.entityPagination) {
+                    this.entityPagination.currentPage = 0;
+                }
+                await this._loadEntitiesFromServer(this.containers.entities);
+            } else {
+                // Fallback: client-side filtering on cached data
+                this.filterAndDisplayEntities();
+            }
+        }
+
+        _getCurrentEntityFilterScope() {
+            // 'all' vira null (mesmo padrão das curations — enviar type=all
+            // verbatim faz o backend zerar a busca server-side)
+            const pick = (id) => {
+                const val = document.getElementById(id)?.value || '';
+                return val && val !== 'all' ? val : null;
+            };
+            return {
+                type: pick('entity-type-filter'),
+                city: pick('entity-city-filter'),
+                q: (document.getElementById('entity-search')?.value?.trim() || null)
+            };
         }
 
         /**
@@ -1208,67 +1258,189 @@ if (typeof window.UIManager === 'undefined') {
                 return;
             }
 
+            // Initialize pagination state if not exists
+            if (!this.entityPagination) {
+                this.entityPagination = {
+                    currentPage: 0,
+                    pageSize: 25,
+                    hasMore: true
+                };
+            }
+
             try {
-                // Initialize pagination state if not exists
-                if (!this.entityPagination) {
-                    this.entityPagination = {
-                        currentPage: 0,
-                        pageSize: 20,
-                        hasMore: true
-                    };
-                }
-
-                // Entities visíveis: (a) ligadas a pelo menos uma curation
-                // não-deletada, OU (b) criadas/importadas pelo próprio usuário
-                // (createdBy setado). O filtro linked-only existe para não
-                // baixar as ~21k entities do bulk import — mas uma entity que
-                // o usuário importou via Find Entity deve aparecer na lista
-                // mesmo antes de ser ligada a uma curation (bug: sumia).
-                const [allEntities, allCurations] = await Promise.all([
-                    window.DataStore.getEntities({ status: 'active' }),
-                    window.DataStore.getCurations({ excludeDeleted: true })
-                ]);
-
-                const linkedEntityIds = new Set(
-                    allCurations
-                        .map(curation => curation?.entity_id)
-                        .filter(entityId => typeof entityId === 'string' && entityId.trim())
-                );
-
-                const entities = allEntities.filter(entity =>
-                    entity?.entity_id && (
-                        linkedEntityIds.has(entity.entity_id) ||
-                        Boolean(entity.createdBy && String(entity.createdBy).trim())
-                    )
-                );
-
-                if (entities.length === 0) {
-                    this.entitiesCache = [];
-                    this.entitiesFiltered = [];
-                    this.updateEntitiesCountSummary(0, 0);
-                    container.innerHTML = `
-                            <div class="empty-state">
-                                <span class="empty-state__icon material-icons">restaurant</span>
-                                <p class="empty-state__title">No linked entities yet</p>
-                                <p class="empty-state__description">Entities appear here after being linked to a curation</p>
-                            </div>
-                        `;
+                // Server-driven: EntityBrowser quando disponível — o acervo
+                // completo (~21k) navega sem baixar tudo. Fallback local
+                // (linked + createdBy) quando offline ou sem o browser.
+                if (window.EntityBrowser && window.EntityBrowser.openPage) {
+                    await this._loadEntitiesFromServer(container, { resetScope: true });
                     return;
                 }
-
-                this.entitiesCache = entities;
-                this.populateEntityFilters(entities);
-                this.filterAndDisplayEntities();
-
+                await this._loadEntitiesFromLocal(container);
             } catch (error) {
                 console.error('Failed to load entities:', error);
-                container.innerHTML = `
-                        <div class="col-span-full text-center py-12 text-red-500">
-                            <span class="material-icons text-6xl mb-4">error</span>
-                            <p>Failed to load entities</p>
+                await this._loadEntitiesFromLocal(container);
+            }
+        }
+
+        /** Primeira página do servidor (offset) — mesmas regras das
+         *  curations: openPage SUBSTITUI items; erro → fallback local com
+         *  auto-retry em 5s; página 1 mescla pendências locais no topo. */
+        async _loadEntitiesFromServer(container, { resetScope = false, page = 0 } = {}) {
+            const browser = window.EntityBrowser;
+            this._entitiesLocalMode = false;
+            try {
+                // resetScope=true só no load inicial: o openScope({})
+                // incondicional apagaria o escopo definido por
+                // _reloadOrFilterEntities (mesma regra das curations)
+                if (resetScope) browser.openScope({});
+                const { items } = await browser.openPage(page);
+            } catch (error) {
+                console.warn('Server entities unavailable — usando cache local:', error);
+                browser.total = -1;
+                await this._loadEntitiesFromLocal(container);
+                // Auto-recuperação: erro transiente não prende o usuário no
+                // modo local — uma tentativa de voltar ao servidor em 5s
+                if (!this._entitiesServerRetryPending) {
+                    this._entitiesServerRetryPending = true;
+                    setTimeout(() => {
+                        this._entitiesServerRetryPending = false;
+                        if (this._entitiesLocalMode && typeof this._reloadOrFilterEntities === 'function') {
+                            this._reloadOrFilterEntities();
+                        }
+                    }, 5000);
+                }
+                return;
+            }
+
+            if (!browser.items.length) {
+                this.entitiesCache = [];
+                this.entitiesFiltered = [];
+                this.updateEntitiesCountSummary(0, 0);
+                const scope = browser.scope || {};
+                const active = (v) => v && v !== 'all';
+                const hasActiveFilters = !!(active(scope.q) || active(scope.city) || active(scope.type));
+                if (hasActiveFilters) {
+                    // Busca server-side com filtro ativo que não achou nada
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <span class="empty-state__icon material-icons">search_off</span>
+                            <p class="empty-state__title">No entities match your filters</p>
+                            <button id="clear-entity-filters" class="btn btn-outline btn-sm mt-2">
+                                <span class="material-icons text-sm mr-1">clear_all</span>
+                                Clear filters
+                            </button>
                         </div>
                     `;
+                    var self = this;
+                    container.querySelector('#clear-entity-filters')?.addEventListener('click', function() {
+                        ['entity-search', 'entity-type-filter', 'entity-city-filter'].forEach(function(id) {
+                            var el = document.getElementById(id);
+                            if (el) el.value = el.tagName === 'SELECT' ? 'all' : '';
+                        });
+                        self._reloadOrFilterEntities();
+                    });
+                } else {
+                    container.innerHTML = `
+                        <div class="empty-state">
+                            <span class="empty-state__icon material-icons">restaurant</span>
+                            <p class="empty-state__title">No entities yet</p>
+                            <p class="empty-state__description">Use Find Entity to import your first restaurant</p>
+                        </div>
+                    `;
+                }
+                return;
             }
+
+            if (page === 0) {
+                // Pendências locais (criadas/importadas e ainda não sincronizadas)
+                // não estão no servidor — mescla no topo da página 1 para o
+                // usuário SEMPRE ver o próprio save imediatamente. Ficam sem
+                // filtro de propósito: o próprio save é prioridade.
+                const serverIds = new Set(browser.items.map(e => e.entity_id));
+                let localPending = [];
+                try {
+                    if (window.DataStore?.db) {
+                        localPending = (await window.DataStore.db.entities
+                            .where('sync.status').equals('pending').toArray())
+                            .filter(e => !serverIds.has(e.entity_id));
+                    }
+                } catch (error) {
+                    console.warn('Falha ao mesclar pendências locais de entities:', error);
+                }
+                this.entitiesCache = [...localPending, ...browser.items];
+                this.entitiesFiltered = this.entitiesCache;
+                if (this.entityPagination) {
+                    this.entityPagination.currentPage = 0;
+                }
+                // Render direto — o SERVIDOR já aplicou os filtros (busca
+                // acento-insensível inclusa). Passar por
+                // filterAndDisplayEntities re-filtraria client-side e
+                // zeraria matches sem acento ("sao paulo" vs "São Paulo").
+                // O filtro client-side fica só para o modo local (offline).
+                this.renderEntitiesPage(this.entitiesCache);
+            } else {
+                this.entitiesCache = browser.items;
+                // Página N: render direto com currentPage preservado — passar
+                // por filterAndDisplayEntities resetaria a página para 0
+                this.renderEntitiesPage(this.entitiesCache);
+            }
+        }
+
+        /** Fallback offline: entities locais (linked + createdBy) com aviso.
+         *  O fluxo de curations (criação/edição/fila de sync) não é tocado —
+         *  este fallback só afeta a LISTAGEM da aba Entities. */
+        async _loadEntitiesFromLocal(container) {
+            this._entitiesLocalMode = true;
+            if (window.EntityBrowser) {
+                window.EntityBrowser.total = -1;
+            }
+
+            let allEntities = [];
+            try {
+                if (window.DataStore) {
+                    const [entities, curations] = await Promise.all([
+                        window.DataStore.getEntities({ status: 'active' }),
+                        window.DataStore.getCurations({ excludeDeleted: true })
+                    ]);
+                    const linkedIds = new Set(
+                        curations
+                            .map(c => c?.entity_id)
+                            .filter(id => typeof id === 'string' && id.trim())
+                    );
+                    allEntities = entities.filter(e =>
+                        e?.entity_id && (
+                            linkedIds.has(e.entity_id) ||
+                            Boolean(e.createdBy && String(e.createdBy).trim())
+                        )
+                    );
+                }
+            } catch (error) {
+                console.error('Failed to load local entities:', error);
+            }
+
+            this.entitiesCache = allEntities;
+            this.entitiesFiltered = [];
+
+            if (!allEntities.length) {
+                this.updateEntitiesCountSummary(0, 0);
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <span class="empty-state__icon material-icons">cloud_off</span>
+                        <p class="empty-state__title">Offline — no local entities</p>
+                        <p class="empty-state__description">Connect to browse the full catalog</p>
+                    </div>
+                `;
+                return;
+            }
+
+            // Aviso discreto de modo offline acima da lista
+            const offlineNotice = document.createElement('div');
+            offlineNotice.className = 'col-span-full mb-2 px-3 py-2 text-xs rounded-lg bg-gray-50 border border-gray-200 text-gray-600 flex items-center gap-2';
+            offlineNotice.innerHTML = '<span class="material-icons text-sm">cloud_off</span> Offline — showing local entities only';
+            container.innerHTML = '';
+            container.appendChild(offlineNotice);
+
+            this.filterAndDisplayEntities();
         }
 
         /**
@@ -1276,14 +1448,33 @@ if (typeof window.UIManager === 'undefined') {
          */
         renderEntitiesPage(allEntities) {
             const container = this.containers.entities;
-            const { currentPage, pageSize } = this.entityPagination;
+            // Server-driven de verdade (offset na API). Se o cache veio do
+            // fallback local (offline), o modo local paginando client-side
+            // assume — senão o dump inteiro do Dexie renderiza numa página só.
+            const isServerDriven = !!(window.EntityBrowser && window.EntityBrowser.openPage) && !this._entitiesLocalMode;
+            const browser = isServerDriven ? window.EntityBrowser : null;
+            const ep = this.entityPagination;
 
-            const start = currentPage * pageSize;
-            const end = start + pageSize;
-            const pageEntities = allEntities.slice(start, end);
-            const totalPages = Math.ceil(allEntities.length / pageSize);
+            // Server-driven: cada página é UMA página do servidor (offset).
+            // total real vem do browser; a página 1 pode trazer pendências
+            // locais mescladas no topo (por isso end usa o comprimento real).
+            const serverTotal = browser && browser.total > 0 ? browser.total : allEntities.length;
+            let totalPages = Math.ceil(serverTotal / ep.pageSize);
 
-            this.updateEntitiesCountSummary(this.entitiesCache.length || allEntities.length, allEntities.length);
+            let start, end, pageEntities;
+            if (isServerDriven) {
+                start = ep.currentPage * ep.pageSize;
+                end = Math.min(start + allEntities.length, serverTotal);
+                pageEntities = allEntities;
+            } else {
+                // Client-side pagination for DataStore fallback
+                start = ep.currentPage * ep.pageSize;
+                end = Math.min(start + ep.pageSize, allEntities.length);
+                pageEntities = allEntities.slice(start, end);
+                totalPages = Math.ceil(allEntities.length / ep.pageSize);
+            }
+
+            this.updateEntitiesCountSummary(allEntities.length, allEntities.length);
 
             // Clear container
             container.innerHTML = '';
@@ -1293,16 +1484,16 @@ if (typeof window.UIManager === 'undefined') {
             header.className = 'col-span-full mb-4 p-4 bg-blue-50 border border-blue-100 rounded-lg flex items-center justify-between';
             header.innerHTML = `
                 <div class="text-sm text-gray-600">
-                    Showing <span class="font-semibold">${start + 1}</span>-<span class="font-semibold">${Math.min(end, allEntities.length)}</span> of <span class="font-semibold">${allEntities.length}</span> entities
+                    Showing <span class="font-semibold">${start + 1}</span>&ndash;<span class="font-semibold">${end}</span> of <span class="font-semibold">${serverTotal}</span> entities
                 </div>
                 <div class="flex gap-2">
-                    <button id="prev-page" class="px-3 py-1 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" ${currentPage === 0 ? 'disabled' : ''}>
+                    <button id="entity-prev-page" class="px-3 py-1 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" ${ep.currentPage === 0 ? 'disabled' : ''}>
                         <span class="material-icons text-sm">chevron_left</span>
                     </button>
                     <div class="px-3 py-1 text-sm font-medium">
-                        Page ${currentPage + 1} of ${totalPages}
+                        Page ${ep.currentPage + 1} of ${totalPages}
                     </div>
-                    <button id="next-page" class="px-3 py-1 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" ${currentPage >= totalPages - 1 ? 'disabled' : ''}>
+                    <button id="entity-next-page" class="px-3 py-1 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" ${ep.currentPage >= totalPages - 1 ? 'disabled' : ''}>
                         <span class="material-icons text-sm">chevron_right</span>
                     </button>
                 </div>
@@ -1310,14 +1501,25 @@ if (typeof window.UIManager === 'undefined') {
             container.appendChild(header);
 
             // Add pagination controls
-            header.querySelector('#prev-page')?.addEventListener('click', () => {
-                this.entityPagination.currentPage--;
-                this.renderEntitiesPage(allEntities);
+            const self = this;
+            header.querySelector('#entity-prev-page')?.addEventListener('click', function() {
+                self.entityPagination.currentPage--;
+                if (isServerDriven) {
+                    self.entitiesCache = [];
+                    self._loadEntitiesFromServer(container, { page: self.entityPagination.currentPage });
+                } else {
+                    self.renderEntitiesPage(allEntities);
+                }
             });
 
-            header.querySelector('#next-page')?.addEventListener('click', () => {
-                this.entityPagination.currentPage++;
-                this.renderEntitiesPage(allEntities);
+            header.querySelector('#entity-next-page')?.addEventListener('click', function() {
+                self.entityPagination.currentPage++;
+                if (isServerDriven) {
+                    self.entitiesCache = [];
+                    self._loadEntitiesFromServer(container, { page: self.entityPagination.currentPage });
+                } else {
+                    self.renderEntitiesPage(allEntities);
+                }
             });
 
             // Display entities for this page
@@ -1359,28 +1561,11 @@ if (typeof window.UIManager === 'undefined') {
         }
 
         populateEntityFilters(entities) {
-            const cityFilter = document.getElementById('entity-city-filter');
-            if (!cityFilter) return;
-
-            const currentValue = cityFilter.value;
-            const cities = new Set();
-
-            entities.forEach(entity => {
-                const city = window.CardFactory.extractCity(entity);
-                if (city && city !== 'Unknown') {
-                    cities.add(city);
-                }
-            });
-
-            cityFilter.innerHTML = '<option value="all">All Cities</option>';
-            Array.from(cities).sort().forEach(city => {
-                const option = document.createElement('option');
-                option.value = city;
-                option.textContent = city;
-                cityFilter.appendChild(option);
-            });
-
-            cityFilter.value = currentValue || 'all';
+            // Cidade agora é texto livre server-side (regex no street do
+            // bulk) — o select de cidades antigo não existe mais e nada é
+            // populado client-side. Método mantido como no-op para os
+            // chamadores existentes (fallback local).
+            return;
         }
 
         filterAndDisplayEntities() {
@@ -1391,7 +1576,8 @@ if (typeof window.UIManager === 'undefined') {
 
             const query = (document.getElementById('entity-search')?.value || '').toLowerCase().trim();
             const typeFilter = document.getElementById('entity-type-filter')?.value || 'all';
-            const cityFilter = document.getElementById('entity-city-filter')?.value || 'all';
+            // Cidade é texto livre (input) — filtro client-side do modo local
+            const cityFilter = (document.getElementById('entity-city-filter')?.value || '').trim().toLowerCase();
 
             let filtered = [...this.entitiesCache];
 
@@ -1408,8 +1594,10 @@ if (typeof window.UIManager === 'undefined') {
                 filtered = filtered.filter(entity => entity.type === typeFilter);
             }
 
-            if (cityFilter !== 'all') {
-                filtered = filtered.filter(entity => window.CardFactory.extractCity(entity) === cityFilter);
+            if (cityFilter) {
+                filtered = filtered.filter(entity =>
+                    (window.CardFactory.extractCity(entity) || '').toLowerCase().includes(cityFilter)
+                );
             }
 
             this.entitiesFiltered = filtered;
@@ -1437,7 +1625,12 @@ if (typeof window.UIManager === 'undefined') {
                             const el = document.getElementById(id);
                             if (el) el.value = el.tagName === 'SELECT' ? 'all' : '';
                         });
-                        this.filterAndDisplayEntities();
+                        // server-driven quando disponível; client-side no modo local
+                        if (window.EntityBrowser && window.EntityBrowser.openPage && !this._entitiesLocalMode) {
+                            this._reloadOrFilterEntities();
+                        } else {
+                            this.filterAndDisplayEntities();
+                        }
                     });
                 }
                 this.updateEntitiesCountSummary(this.entitiesCache.length, 0);

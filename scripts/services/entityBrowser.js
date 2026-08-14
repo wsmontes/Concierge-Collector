@@ -41,7 +41,9 @@ class EntityBrowser {
   _params(afterId) {
     const p = { limit: this.pageSize };
     if (afterId != null) p.after_id = afterId;
-    if (this.scope.type) p.type = this.scope.type;
+    // 'all' é o placeholder do select intocado — NUNCA vira filtro
+    // (query {"type": "all"} não casa nada no backend)
+    if (this.scope.type && this.scope.type !== 'all') p.type = this.scope.type;
     if (this.scope.city) p.city = this.scope.city;
     if (this.scope.q) p.q = this.scope.q;
     return p;

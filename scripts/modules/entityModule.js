@@ -31,12 +31,19 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
     /**
      * Initialize the entity module
      * @param {Object} dependencies - Required dependencies
+     *   options.listView=false desliga a renderização de lista deste módulo
+     *   legado (o uiManager é dono da view Entities, server-driven desde
+     *   ago/2026) — o módulo segue vivo para showEntityDetails/startEntityEdit
+     *   usados pelos cards do CardFactory.
      */
     async init(dependencies = {}) {
         try {
             this.log.debug('Initializing EntityModule...');
 
             this.dataStore = dependencies.dataStore || window.dataStore;
+            // listView: false = sem listeners nos inputs compartilhados e sem
+            // renderizar no #entities-container (brigava com o uiManager)
+            this.listViewEnabled = dependencies.listView !== false;
 
             if (!this.dataStore) {
                 throw new Error('dataStore dependency is required');
@@ -46,6 +53,11 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
             this.container = document.getElementById('entities-container');
             if (!this.container) {
                 throw new Error('entities-container element not found');
+            }
+
+            if (!this.listViewEnabled) {
+                this.log.debug('EntityModule initialized sem list-view (uiManager é o dono da aba Entities)');
+                return true;
             }
 
             // Setup event listeners
@@ -946,6 +958,14 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
      * Refresh entity list
      */
     async refresh() {
+        // listView desligado: o refresh pós-sync vai pelo uiManager
+        // (view server-driven) — este módulo não renderiza mais a lista
+        if (this.listViewEnabled === false) {
+            if (window.uiManager && typeof window.uiManager.loadEntities === 'function') {
+                await window.uiManager.loadEntities();
+            }
+            return;
+        }
         await this.loadEntities();
     }
 });

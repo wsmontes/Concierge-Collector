@@ -42,9 +42,12 @@ class CurationBrowser {
     const p = { limit: this.pageSize };
     if (afterId != null) p.after_id = afterId;
     if (this.scope.curatorId) p.curator_id = this.scope.curatorId;
-    if (this.scope.status) p.status = this.scope.status;
+    // 'all' é o placeholder dos selects intocados — NUNCA vira filtro
+    // (mesmo guard do entityBrowser; latente: mudar outro filtro com o
+    // select em 'all' enviava type=all e zerava a busca server-side)
+    if (this.scope.status && this.scope.status !== 'all') p.status = this.scope.status;
     if (this.scope.city) p.city = this.scope.city;
-    if (this.scope.type) p.type = this.scope.type;
+    if (this.scope.type && this.scope.type !== 'all') p.type = this.scope.type;
     if (this.scope.q) p.q = this.scope.q;
     return p;
   }

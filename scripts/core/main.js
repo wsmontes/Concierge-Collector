@@ -339,12 +339,16 @@ async function initializeApp() {
         }
 
         // Initialize Entity Module (NEW - V3 Architecture)
+        // listView:false — a view da aba Entities é do uiManager (server-driven
+        // via EntityBrowser desde ago/2026); o módulo legado só fornece
+        // showEntityDetails/startEntityEdit para os cards do CardFactory
         if (window.EntityModule) {
             console.log('🔄 Initializing Entity Module...');
             try {
                 window.entityModule = new window.EntityModule();
                 const initialized = await window.entityModule.init({
-                    dataStore: window.DataStore
+                    dataStore: window.DataStore,
+                    listView: false
                 });
 
                 if (initialized) {

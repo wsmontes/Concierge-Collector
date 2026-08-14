@@ -516,11 +516,11 @@
                     </select>
                 </div>
 
-                <!-- City Filter -->
+                <!-- City Filter (texto livre — regex server-side no street;
+                     o bulk import guarda a cidade dentro do endereço) -->
                 <div>
-                    <select id="entity-city-filter" class="select input-md">
-                        <option value="all">All Cities</option>
-                    </select>
+                    <input type="text" id="entity-city-filter" placeholder="Filter by city..."
+                        class="input input-md" />
                 </div>
             </div>
 
@@ -739,7 +739,7 @@
     <!-- migrationManager.js REMOVED: Clean break strategy, no migration needed -->
     <script src="scripts/storage/databaseDiagnostics.js"></script>
     <script src="scripts/storage/dataStore.js"></script>
-    <script src="scripts/services/apiService.js"></script>
+    <script src="scripts/services/apiService.js?v=20260814-2"></script>
     <script src="scripts/services/curationBrowser.js?v=20260813-1"></script>
     <script src="scripts/services/entityBrowser.js?v=20260814-2"></script>
     <script src="scripts/sync/syncManagerV3.js"></script>
@@ -755,7 +755,7 @@
     <!-- Application modules - keeping essential ones -->
     <script src="scripts/services/promptTemplate.js"></script>
     <script src="scripts/services/conceptMatcher.js"></script>
-    <script src="scripts/ui-core/uiManager.js?v=20260814-1"></script>
+    <script src="scripts/ui-core/uiManager.js?v=20260814-2"></script>
 
     <!-- Module implementations - V3 Compatible -->
     <script src="scripts/modules/safetyUtils.js?v=20260813-1"></script>
@@ -771,7 +771,7 @@
     <script src="scripts/modules/transcriptionModule.js"></script>
     <script src="scripts/modules/conceptModule.js?v=20260813-1"></script>
     <script src="scripts/modules/restaurantModule.js?v=20260813-1"></script>
-    <script src="scripts/modules/entityModule.js?v=20260814-1"></script>
+    <script src="scripts/modules/entityModule.js?v=20260814-2"></script>
     <script src="scripts/modules/syncStatusModule.js?v=20260813-3"></script>
     <!-- DEPRECATED: <script src="scripts/modules/exportImportModule.js"></script> -->
     <script src="scripts/modules/quickActionModule.js?v=20260813-1"></script>
