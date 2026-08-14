@@ -92,6 +92,15 @@
                 this.setupDragHandling(header);
             }
 
+            // A11y: semântica de diálogo + Escape fecha o sheet
+            this.sheet.setAttribute('role', 'dialog');
+            this.sheet.setAttribute('aria-modal', 'true');
+            document.addEventListener('keydown', this._onKeydown = (e) => {
+                if (e.key === 'Escape' && this.sheet.classList.contains('active')) {
+                    this.close();
+                }
+            });
+
             // Apply height mode
             this.applyHeightMode();
 
@@ -184,13 +193,22 @@
 
             // Add active class
             this.sheet.classList.add('active');
-            
+
             if (this.overlay) {
                 this.overlay.classList.add('active');
             }
 
             // Prevent body scroll
             document.body.style.overflow = 'hidden';
+
+            // A11y: foco entra no sheet ao abrir (e volta ao sair)
+            this._previouslyFocused = document.activeElement;
+            const firstFocusable = this.sheet.querySelector(
+                'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+            );
+            if (firstFocusable) {
+                firstFocusable.focus();
+            }
 
             // Call onOpen callback
             if (typeof this.options.onOpen === 'function') {
@@ -218,6 +236,12 @@
 
             // Restore body scroll
             document.body.style.overflow = '';
+
+            // A11y: devolve o foco para onde estava antes do open
+            if (this._previouslyFocused && typeof this._previouslyFocused.focus === 'function') {
+                this._previouslyFocused.focus();
+            }
+            this._previouslyFocused = null;
 
             // Call onClose callback
             if (typeof this.options.onClose === 'function') {

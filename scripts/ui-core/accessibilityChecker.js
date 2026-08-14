@@ -50,7 +50,9 @@
                         issues: withoutAlt.map(img => ({
                             element: img,
                             message: `Image missing alt text: ${img.src}`,
-                            fix: () => img.alt = 'Decorative image'
+                            // alt vazio = imagem decorativa; texto falso seria
+                            // lido por screen readers como conteúdo
+                            fix: () => { img.alt = ''; }
                         }))
                     };
                 }
@@ -62,10 +64,17 @@
                 test() {
                     const buttons = document.querySelectorAll('button');
                     const iconOnly = Array.from(buttons).filter(btn => {
-                        const hasIconOnly = btn.querySelector('.material-icons') && 
-                                          !btn.textContent.trim().replace(/[^\w]/g, '');
+                        const hasIcon = !!btn.querySelector('.material-icons');
+                        // Texto real do botão = nós de texto, ignorando o
+                        // nome do ícone (textContent do material-icons é
+                        // "close"/"edit" — o regex antigo nunca flagava nada)
+                        const labelText = Array.from(btn.childNodes)
+                            .filter(node => node.nodeType === Node.TEXT_NODE)
+                            .map(node => node.textContent)
+                            .join('')
+                            .trim();
                         const hasLabel = btn.getAttribute('aria-label') || btn.getAttribute('title');
-                        return hasIconOnly && !hasLabel;
+                        return hasIcon && !labelText && !hasLabel;
                     });
                     return {
                         pass: iconOnly.length === 0,
@@ -169,8 +178,9 @@
                     const withoutLabels = Array.from(inputs).filter(input => {
                         const hasLabel = input.labels && input.labels.length > 0;
                         const hasAriaLabel = input.getAttribute('aria-label') || input.getAttribute('aria-labelledby');
-                        const hasPlaceholder = input.getAttribute('placeholder');
-                        return !hasLabel && !hasAriaLabel && !hasPlaceholder;
+                        // Placeholder NÃO conta como label (WCAG 3.3.2) —
+                        // antes o check isentava inputs só com placeholder
+                        return !hasLabel && !hasAriaLabel;
                     });
                     
                     return {

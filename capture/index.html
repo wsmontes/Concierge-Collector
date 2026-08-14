@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Concierge Capture</title>
 
   <!-- Typography: Cormorant Garamond (display) + DM Sans (body) -->
@@ -70,15 +70,18 @@
   <!-- Auth: credencial da API (JWT ou X-API-Key) — escondido quando autenticado -->
   <section id="auth-panel" class="auth-panel" hidden aria-label="Credenciais da API">
     <p class="auth-panel__title">Conecte-se para enviar capturas</p>
+    <label for="auth-input" class="auth-panel__label">Token JWT ou X-API-Key</label>
     <input id="auth-input" class="auth-panel__input" type="password"
-           placeholder="Cole o token JWT ou a X-API-Key">
+           placeholder="Cole o token JWT ou a X-API-Key" autocomplete="off">
     <button id="auth-save" class="auth-panel__btn">Salvar</button>
     <button id="auth-clear" class="auth-panel__clear" hidden>Sair</button>
   </section>
 
   <!-- Navigation: subtle link to legacy Collector -->
   <nav class="bottom-nav">
-    <a href="/" class="bottom-nav__link">Browse</a>
+    <!-- O Collector legado é montado em /app/ no servidor da API; o "/"
+         absoluto caía no root da API, que redireciona de volta pro capture -->
+    <a href="../app/" class="bottom-nav__link">Browse</a>
     <span class="bottom-nav__current">Capture</span>
   </nav>
 

@@ -245,6 +245,10 @@
                 actions = []
             } = config;
 
+            // Só renderiza ações com handler — botão sem onClick ficaria
+            // inerte na tela (os templates padrão trazem onClick: null)
+            const actionable = actions.filter(action => typeof action.onClick === 'function');
+
             return `
                 <div class="empty-state">
                     ${image ? `
@@ -258,9 +262,9 @@
                     ${description ? `
                         <p class="empty-state-description">${description}</p>
                     ` : ''}
-                    ${actions.length > 0 ? `
+                    ${actionable.length > 0 ? `
                         <div class="empty-state-actions">
-                            ${actions.map(action => this.buildActionButton(action)).join('')}
+                            ${actionable.map(action => this.buildActionButton(action)).join('')}
                         </div>
                     ` : ''}
                 </div>

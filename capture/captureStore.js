@@ -28,19 +28,30 @@ async function withStore(mode, fn) {
   const db = await openDB();
   const tx = db.transaction(STORE_NAME, mode);
   const store = tx.objectStore(STORE_NAME);
-  const result = await fn(store);
+  const result = fn(store);
+  // IDBRequest não é uma promise: `await` não espera a resposta do
+  // IndexedDB. Resolve manualmente via onsuccess/onerror para que o
+  // valor retornado seja o RESULTADO (ex.: o array do getAll), não o
+  // objeto request.
+  const value = (result && typeof result.then === 'function')
+    ? await result
+    : await new Promise((resolve, reject) => {
+        result.onsuccess = () => resolve(result.result);
+        result.onerror = () => reject(result.error);
+      });
   await new Promise((resolve, reject) => {
     tx.oncomplete = resolve;
     tx.onerror = () => reject(tx.error);
   });
-  return result;
+  return value;
 }
 
 // ── Public API ──────────────────────────────────────────────────────────────
 
 /** Add a capture item to the queue. Returns the stored item. */
 export async function addToQueue(item) {
-  return withStore('readwrite', store => store.put(item).then(() => item));
+  await withStore('readwrite', store => store.put(item));
+  return item;
 }
 
 /** Get all pending items, ordered by creation time (oldest first). */

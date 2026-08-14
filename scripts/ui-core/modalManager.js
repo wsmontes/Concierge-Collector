@@ -460,8 +460,14 @@ window.ModalManager = (function() {
         // Focus first element
         firstElement.focus();
 
-        // Trap focus
-        modal.element.addEventListener('keydown', (e) => {
+        // Trap focus — remove o handler anterior antes de registrar:
+        // cada open/close-com-stack adicionava um listener novo e os
+        // keydown acumulavam (foco preso por handlers fantasmas)
+        if (modal._keydownHandler) {
+            modal.element.removeEventListener('keydown', modal._keydownHandler);
+        }
+
+        modal._keydownHandler = (e) => {
             if (e.key !== 'Tab') return;
 
             if (e.shiftKey) {
@@ -475,7 +481,8 @@ window.ModalManager = (function() {
                     firstElement.focus();
                 }
             }
-        });
+        };
+        modal.element.addEventListener('keydown', modal._keydownHandler);
     }
 
     /**

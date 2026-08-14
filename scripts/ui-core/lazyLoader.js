@@ -221,7 +221,11 @@
             tempImg.onerror = () => {
                 img.classList.remove('loading');
                 img.classList.add('error');
-                img.alt = 'Failed to load image';
+                // Só define o alt de erro se não havia alt significativo —
+                // sobrescrever apagava a descrição real para leitores de tela
+                if (!img.alt) {
+                    img.alt = 'Failed to load image';
+                }
                 this.imageObserver.unobserve(img);
 
                 // Call onError callback

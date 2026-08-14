@@ -20,6 +20,19 @@ const AccessControl = (function() {
     let appInitialized = false;
 
     /**
+     * Ícone do Google usado no botão de sign-in — definido uma vez;
+     * antes o SVG inteiro era duplicado no template e no estado de erro
+     */
+    const GOOGLE_SVG = `
+        <svg width="18" height="18" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" aria-hidden="true">
+            <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
+            <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
+            <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
+            <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
+            <path fill="none" d="M0 0h48v48H0z"></path>
+        </svg>`;
+
+    /**
      * Detect Live Server (VS Code extension) for dev mode
      */
     const isLiveServer = window.location.port === '5500' || window.location.port === '5501';
@@ -76,61 +89,37 @@ const AccessControl = (function() {
             existing.remove();
         }
 
-        // Get debug info
-        const hasToken = !!localStorage.getItem('oauth_access_token');
-        const tokenExpiry = localStorage.getItem('oauth_token_expiry');
-        const expiryDate = tokenExpiry ? new Date(parseInt(tokenExpiry)).toLocaleString() : 'N/A';
-
         const overlay = document.createElement('div');
         overlay.id = 'access-control-overlay';
+        overlay.setAttribute('role', 'dialog');
+        overlay.setAttribute('aria-modal', 'true');
+        overlay.setAttribute('aria-label', 'Sign in to Collector');
         overlay.innerHTML = `
             <div class="access-control-container">
                 <div class="access-control-card">
                     <img src="images/Lotier_Concierge_logo_v3.png" alt="Lotier Logo" class="access-control-logo">
                     <h1>Collector</h1>
                     <p>Sign in with your authorized Google account</p>
-                    
+
                     <button id="google-signin-button" class="google-signin-btn">
-                        <svg width="18" height="18" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
-                            <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
-                            <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
-                            <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
-                            <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
-                            <path fill="none" d="M0 0h48v48H0z"></path>
-                        </svg>
+                        ${GOOGLE_SVG}
                         Sign in with Google
                     </button>
-                    
+
                     ${safeErrorMessage ? `<div class="access-error">${safeErrorMessage}</div>` : ''}
-                    
+
                     <p class="access-note">Only authorized users can access this application.</p>
-                    
-                    <!-- Debug Info -->
-                    <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #eee;">
-                        <details style="text-align: left; font-size: 11px; color: #666;">
-                            <summary style="cursor: pointer; font-weight: 600; margin-bottom: 8px;">🔍 Debug Info</summary>
-                            <div style="font-family: monospace; font-size: 10px; line-height: 1.6;">
-                                <strong>Environment:</strong><br>
-                                Origin: ${window.location.origin}<br>
-                                Port: ${window.location.port}<br>
-                                <br>
-                                <strong>Token Status:</strong><br>
-                                Has Token: ${hasToken ? '✓ Yes' : '✗ No'}<br>
-                                ${hasToken ? `Expires: ${expiryDate}<br>` : ''}
-                                <br>
-                                <strong>Last Error:</strong><br>
-                                ${safeErrorMessage || 'None'}
-                            </div>
-                        </details>
-                    </div>
                 </div>
             </div>
         `;
-        
+
         document.body.appendChild(overlay);
 
         // Attach event listener to sign-in button
         const signinButton = document.getElementById('google-signin-button');
+        if (signinButton) {
+            signinButton.focus();
+        }
         signinButton.addEventListener('click', async () => {
             try {
                 console.log('[AccessControl] Sign-in button clicked');
@@ -143,16 +132,7 @@ const AccessControl = (function() {
             } catch (error) {
                 console.error('[AccessControl] Login failed:', error);
                 signinButton.disabled = false;
-                signinButton.innerHTML = `
-                    <svg width="18" height="18" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48">
-                        <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"></path>
-                        <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"></path>
-                        <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"></path>
-                        <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.30-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"></path>
-                        <path fill="none" d="M0 0h48v48H0z"></path>
-                    </svg>
-                    Sign in with Google
-                `;
+                signinButton.innerHTML = `${GOOGLE_SVG} Sign in with Google`;
                 
                 showLoginPrompt(error.message || 'Login failed. Please try again.');
             }

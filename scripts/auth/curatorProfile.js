@@ -17,6 +17,7 @@ const CuratorProfile = (function() {
 
     let _currentCurator = null;
     let _initialized = false;
+    let docListenersBound = false;
 
     /**
      * Initialize curator profile from authenticated user
@@ -182,29 +183,61 @@ const CuratorProfile = (function() {
                             <p class="text-sm font-semibold text-gray-900">${safeName}</p>
                             <p class="text-xs text-gray-500">${safeEmail}</p>
                             <p class="text-xs text-green-600 mt-1 flex items-center gap-1">
-                                <span class="material-icons" style="font-size: 14px;">check_circle</span>
+                                <span class="material-icons text-sm">check_circle</span>
                                 Authenticated via Google
                             </p>
                         </div>
-                        
+
                         <!-- Menu Items -->
-                        <button 
-                            onclick="AccessControl.logout()"
+                        <button
+                            id="user-logout-btn"
                             class="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors"
                             role="menuitem"
                         >
-                            <span class="material-icons text-gray-400" style="font-size: 18px;">logout</span>
+                            <span class="material-icons text-gray-400 text-lg">logout</span>
                             Logout
                         </button>
                     </div>
                 </div>
             `;
             
+            // Document-level handlers registrados UMA única vez: o header é
+            // re-renderizado a cada updateHeaderProfile, e registrar aqui
+            // acumulava um par click/keydown novo por render (closures
+            // órfãs apontando para elementos removidos do DOM)
+            if (!docListenersBound) {
+                docListenersBound = true;
+
+                document.addEventListener('click', (e) => {
+                    const button = document.getElementById('user-profile-button');
+                    const dropdown = document.getElementById('user-profile-dropdown');
+                    if (!button || !dropdown) return;
+                    if (!dropdown.classList.contains('hidden') &&
+                        !dropdown.contains(e.target) &&
+                        !button.contains(e.target)) {
+                        dropdown.classList.add('hidden');
+                        button.setAttribute('aria-expanded', 'false');
+                    }
+                });
+
+                document.addEventListener('keydown', (e) => {
+                    if (e.key !== 'Escape') return;
+                    const button = document.getElementById('user-profile-button');
+                    const dropdown = document.getElementById('user-profile-dropdown');
+                    if (!button || !dropdown) return;
+                    if (!dropdown.classList.contains('hidden')) {
+                        dropdown.classList.add('hidden');
+                        button.setAttribute('aria-expanded', 'false');
+                    }
+                });
+            }
+
             // Add event listeners after creating the HTML
             setTimeout(() => {
                 const button = document.getElementById('user-profile-button');
                 const dropdown = document.getElementById('user-profile-dropdown');
-                
+                const logoutBtn = document.getElementById('user-logout-btn');
+
                 if (button && dropdown) {
                     // Toggle dropdown
                     button.addEventListener('click', (e) => {
@@ -213,24 +246,10 @@ const CuratorProfile = (function() {
                         dropdown.classList.toggle('hidden');
                         button.setAttribute('aria-expanded', !isHidden);
                     });
-                    
-                    // Close dropdown when clicking outside
-                    document.addEventListener('click', (e) => {
-                        if (!dropdown.classList.contains('hidden') && 
-                            !dropdown.contains(e.target) && 
-                            !button.contains(e.target)) {
-                            dropdown.classList.add('hidden');
-                            button.setAttribute('aria-expanded', 'false');
-                        }
-                    });
-                    
-                    // Close on Escape key
-                    document.addEventListener('keydown', (e) => {
-                        if (e.key === 'Escape' && !dropdown.classList.contains('hidden')) {
-                            dropdown.classList.add('hidden');
-                            button.setAttribute('aria-expanded', 'false');
-                        }
-                    });
+                }
+
+                if (logoutBtn && window.AccessControl && typeof window.AccessControl.logout === 'function') {
+                    logoutBtn.addEventListener('click', () => window.AccessControl.logout());
                 }
             }, 100);
         }

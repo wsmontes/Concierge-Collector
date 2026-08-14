@@ -8,6 +8,7 @@
   --stone:     #D4CFC7;
   --muted:     #8B8680;
   --warn:      #C77D3A;
+  --danger:    #C75B5B;  /* failed states (botão/sessões) */
   --radius-sm: 8px;
   --radius-md: 16px;
   --radius-full: 50%;
@@ -275,6 +276,13 @@ button {
     0 4px 12px rgba(0,0,0,0.06);
 }
 
+/* Foco visível por teclado (o botão de gravação é o controle central) */
+.match-card__confirm:focus-visible,
+.record-btn:focus-visible {
+  outline: 3px solid var(--olive);
+  outline-offset: 2px;
+}
+
 /* Recording state */
 .record-btn--recording {
   border-color: var(--olive);
@@ -315,8 +323,8 @@ button {
 
 /* Failed state */
 .record-btn--failed {
-  border-color: #C75B5B;
-  color: #C75B5B;
+  border-color: var(--danger);
+  color: var(--danger);
 }
 
 .record-label {
@@ -387,12 +395,13 @@ button {
   align-items: center;
 }
 .auth-panel__title { width: 100%; margin: 0 0 0.25rem; font-size: 0.9rem; }
+.auth-panel__label { width: 100%; margin: 0; font-size: 0.75rem; color: rgba(0,0,0,0.6); }
 .auth-panel__input { flex: 1; min-width: 12rem; padding: 0.55rem 0.75rem; border: 1px solid rgba(0,0,0,0.2); border-radius: 8px; }
 .auth-panel__btn { padding: 0.55rem 1rem; border: none; border-radius: 8px; background: #1f2937; color: #fff; }
 .auth-panel__clear { padding: 0.55rem 0.75rem; border: none; border-radius: 8px; background: transparent; color: #b91c1c; }
 
 /* ── Session items com falha ────────────────────────────────────────────── */
-.session-item--failed { border-left: 3px solid #b91c1c; }
+.session-item--failed { border-left: 3px solid var(--danger); }
 .session-item__retry {
   padding: 0.3rem 0.7rem;
   border: 1px solid rgba(0,0,0,0.2);
