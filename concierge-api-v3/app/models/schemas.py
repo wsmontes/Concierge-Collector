@@ -372,6 +372,15 @@ class SemanticSearchResponse(BaseModel):
     query_embedding_time: float
     search_time: float
     total_results: int
+    search_mode: str = Field(
+        default="fallback",
+        description="'atlas_vector' (índice nativo) ou 'fallback' (varredura bounded por recência)",
+    )
+    partial: bool = Field(
+        default=True,
+        description="True quando o resultado pode estar INCOMPLETO (fallback só pontua candidatos recentes)",
+    )
+    candidate_count: int = Field(default=0, description="Número de curadorias candidatas pontuadas")
 
 
 class HybridSearchRequest(BaseModel):

@@ -1466,3 +1466,47 @@ def test_bulk_upsert_expected_version_match_updates():
     assert result.updated == 1
     assert len(result.errors) == 0
     mock_db.curations.update_one.assert_called_once()
+
+
+def test_filter_by_entity_types_aplica_o_filtro():
+    """entity_types era aceito mas NUNCA aplicado (auditoria ago/2026)."""
+    from unittest.mock import MagicMock
+    from app.api.curations import _filter_by_entity_types
+
+    mock_db = MagicMock()
+    mock_db.entities.find.return_value = [
+        {"_id": "e1", "type": "restaurant"},
+        {"_id": "e2", "type": "bar"},
+        {"_id": "e3", "entity_id": "e3", "type": "restaurant"},
+    ]
+
+    curations = [
+        {"entity_id": "e1"},
+        {"entity_id": "e2"},
+        {"entity_id": "e3"},
+        {"entity_id": None},
+    ]
+    filtered = _filter_by_entity_types(mock_db, curations, ["restaurant"])
+    assert [c.get("entity_id") for c in filtered] == ["e1", "e3"]
+
+
+def test_semantic_response_expõe_modo_e_parcialidade():
+    """A resposta informa search_mode/partial/candidate_count (contrato novo)."""
+    from app.models.schemas import SemanticSearchResponse
+
+    r = SemanticSearchResponse(results=[], query="x", query_embedding_time=0.1, search_time=0.2, total_results=0)
+    assert r.search_mode == "fallback"
+    assert r.partial is True
+    assert r.candidate_count == 0
+
+    r2 = SemanticSearchResponse(
+        results=[],
+        query="x",
+        query_embedding_time=0.1,
+        search_time=0.2,
+        total_results=0,
+        search_mode="atlas_vector",
+        partial=False,
+        candidate_count=2000,
+    )
+    assert r2.partial is False

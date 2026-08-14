@@ -107,6 +107,37 @@ def _compact_embeddings_for_storage(embeddings):
     return out, dropped
 
 
+def _filter_by_entity_types(db, curations, entity_types):
+    """Filtra candidatos cujo tipo de entity não está em entity_types.
+    Resolve os DOIS formatos (type v3 e entity_type legado) e o hazard de
+    ObjectId: entity_id 24-hex que referencia entity ObjectId sem campo
+    entity_id precisa do variant ObjectId no $in (auditoria ago/2026: o
+    campo entity_types era aceito mas NUNCA aplicado)."""
+    from bson import ObjectId as _OID
+
+    allowed = set(entity_types)
+    eids = [c.get("entity_id") for c in curations if c.get("entity_id")]
+    if not eids:
+        return [c for c in curations if not c.get("entity_id")]
+
+    variants = list(eids)
+    for eid in eids:
+        if _OID.is_valid(eid):
+            variants.append(_OID(eid))
+    docs = db.entities.find(
+        {"$or": [{"_id": {"$in": variants}}, {"entity_id": {"$in": eids}}]},
+        {"type": 1, "entity_type": 1, "entity_id": 1},
+    )
+    type_by_key = {}
+    for d in docs:
+        etype = d.get("type") or d.get("entity_type")
+        type_by_key[str(d["_id"])] = etype
+        if d.get("entity_id"):
+            type_by_key[str(d["entity_id"])] = etype
+
+    return [c for c in curations if type_by_key.get(str(c.get("entity_id"))) in allowed]
+
+
 def _vector_search_or_fallback(db, projection, query_vector, candidate_limit, fallback_filter):
     """Tenta o $vectorSearch (índice Atlas) e cai para a varredura bounded por
     recência. RECALL conhecido: o Atlas não indexa o Binary subtype 0 do
@@ -131,14 +162,14 @@ def _vector_search_or_fallback(db, projection, query_vector, candidate_limit, fa
             ]
             resultados = list(db.curations.aggregate(vector_pipeline))
             if resultados:
-                return resultados
+                return resultados, True
         except Exception as e:
             logger.warning(
                 f"$vectorSearch falhou (índice '{vector_index_name}' indisponível "
                 f"ou vetores em formato não indexável — Binary float32): {e}. "
                 "Usando fallback por varredura + score em Python."
             )
-    return list(db.curations.find(fallback_filter, projection).sort("updatedAt", -1).limit(candidate_limit))
+    return list(db.curations.find(fallback_filter, projection).sort("updatedAt", -1).limit(candidate_limit)), False
 
 
 router = APIRouter(prefix="/curations", tags=["curations"])
@@ -680,13 +711,17 @@ def semantic_search_curations(
     }
 
     candidate_limit = min(max(body.limit * 20, 200), 2000)
-    curations = _vector_search_or_fallback(
+    curations, used_atlas = _vector_search_or_fallback(
         db,
         projection,
         query_vector,
         candidate_limit,
         {"embeddings": {"$exists": True, "$ne": []}},
     )
+    candidate_count = len(curations)
+
+    if body.entity_types:
+        curations = _filter_by_entity_types(db, curations, body.entity_types)
 
     # 3. Calculate similarities for each curation
     results = []
@@ -798,6 +833,12 @@ def semantic_search_curations(
         query_embedding_time=round(query_embed_time, 3),
         search_time=round(search_time, 3),
         total_results=len(results),
+        # honestidade epistemológica (auditoria ago/2026): o fallback só
+        # pontua as candidate_limit curadorias mais recentes — o consumidor
+        # precisa SABER que o top-k pode estar parcial
+        search_mode="atlas_vector" if used_atlas else "fallback",
+        partial=not used_atlas,
+        candidate_count=candidate_count,
     )
 
 
@@ -890,7 +931,7 @@ def hybrid_search(request: Request, body: HybridSearchRequest, db: Database = De
     }
 
     candidate_limit = min(max(body.limit * 20, 200), 2000)
-    curations = _vector_search_or_fallback(
+    curations, _used_atlas = _vector_search_or_fallback(
         db,
         projection,
         query_vector,
