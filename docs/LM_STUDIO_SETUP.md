@@ -668,7 +668,7 @@ curl https://concierge-collector.onrender.com/api/v3/openai/v1/functions
 
 - [OpenAI Function Calling Docs](https://platform.openai.com/docs/guides/function-calling)
 - [LM Studio Documentation](https://lmstudio.ai/docs)
-- [API V3 Specification](../API-REF/API_DOCUMENTATION_V3.md)
+- [API V3 Specification](API/API_DOCUMENTATION_V3.md)
 - [Concierge API GitHub](https://github.com/wsmontes/Concierge-Collector)
 
 ---

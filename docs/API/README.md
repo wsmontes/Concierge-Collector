@@ -200,7 +200,7 @@ See [API_QUICK_REFERENCE.md](./API_QUICK_REFERENCE.md) for complete examples.
 - **Interactive Docs:** https://concierge-collector.onrender.com/api/v3/docs
 - **Health Check:** https://concierge-collector.onrender.com/api/v3/health
 - **GitHub:** wsmontes/Concierge-Collector (branch: V3)
-- **Backend README:** [../concierge-api-v3/README.md](../concierge-api-v3/README.md)
+- **Backend README:** [../../concierge-api-v3/README.md](../../concierge-api-v3/README.md)
 
 ---
 

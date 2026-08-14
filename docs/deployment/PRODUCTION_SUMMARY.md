@@ -77,7 +77,7 @@ http://localhost:8000/api/v3/auth/callback
 https://concierge-collector.onrender.com/api/v3/auth/callback
 ```
 
-**Client ID:** `1020272767566-8aljuvk9oval5isriv512nber3a88pvi.apps.googleusercontent.com`
+**Client ID:** *(redigido — valores reais vivem no Render Dashboard e no Google Cloud Console; nunca commitar)*
 
 ---
 

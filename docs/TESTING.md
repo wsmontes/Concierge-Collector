@@ -300,41 +300,44 @@ const entity = await createTestEntity({
 
 ## CI/CD Integration
 
-### GitHub Actions Workflow
-Location: `.github/workflows/test-frontend.yml`
+GitHub Actions runs **tests only** (no deployment). Two workflows live in `.github/workflows/`:
+
+- **`test-frontend.yml`** — Frontend Tests (Vitest, Node 18)
+- **`test-backend.yml`** — Backend Tests (pytest + flake8/black, Python 3.13)
+
+### Frontend Workflow (`test-frontend.yml`)
 
 **Triggers:**
 - Push to `main`, `Front-End-V3`, `develop` branches
-- Pull requests to these branches
+- Pull requests targeting `main`, `Front-End-V3`
 
-**Steps:**
-1. Checkout code
-2. Setup Node.js 20.x
-3. Install dependencies
-4. Run tests
-5. Upload coverage reports
+**Jobs:**
 
-```yaml
-name: Frontend Tests
+1. **`test`** (Run Frontend Tests, `ubuntu-latest`):
+   - `actions/checkout@v4`
+   - `actions/setup-node@v4` with `node-version: '18'` and `cache: 'npm'`
+   - `npm ci`
+   - A single `npm run test:coverage` run (coverage thresholds 70/60/70/70 are enforced by `vitest.config.js`)
+   - `actions/upload-artifact@v4` uploads `coverage/` (retention 30 days)
+   - On pull requests, `actions/github-script@v7` posts a coverage comment reading `coverage/coverage-summary.json` (written because `vitest.config.js` includes the `json-summary` coverage reporter)
+2. **`lint`** (Code Quality Check): syntax-check of all JS files in `scripts/` **and** `capture/` via `node -c`
 
-on:
-  push:
-    branches: [main, Front-End-V3, develop]
-  pull_request:
-    branches: [main, Front-End-V3, develop]
+### Backend Workflow (`test-backend.yml`)
 
-jobs:
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v3
-      - uses: actions/setup-node@v3
-        with:
-          node-version: '20'
-      - run: npm ci
-      - run: npm test
-      - run: npm run test:coverage
-```
+**Triggers:**
+- Push to `main`, `develop` branches
+- Pull requests targeting `main`
+
+**Jobs:**
+
+1. **`test`** (Run Backend Tests, `ubuntu-latest`):
+   - `actions/checkout@v4`
+   - `actions/setup-python@v5` with `python-version: '3.13'` (matches `runtime.txt` / production) and `cache: 'pip'`
+   - `pip install -r requirements.txt` (working dir `concierge-api-v3`)
+   - `pytest` with unit tests only: `-m "not integration and not external_api and not mongo and not openai"`
+   - Coverage run with `pytest-cov` (`--cov=app --cov-report=xml --cov-report=term`), artifact `backend-coverage-report` uploaded
+   - Step summary of the run
+2. **`lint`** (Code Quality Check): pinned `flake8==7.3.0` and `black==26.5.1`; `black --check app/ tests/` and `flake8 app/ tests/ --max-line-length=120 --ignore=E203,W503` (working dir `concierge-api-v3`)
 
 ## Test Types
 

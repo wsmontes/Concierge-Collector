@@ -116,7 +116,7 @@ The application supports bidirectional sync with a remote MySQL database:
 - **Conflict Resolution**: Automatic handling of sync conflicts based on timestamps
 - **Status Tracking**: Visual indicators for sync status (local only, synced, remote only)
 
-See [COLLECTOR_SYNC_INTEGRATION_GUIDE.md](COLLECTOR_SYNC_INTEGRATION_GUIDE.md) for detailed sync documentation.
+See [COLLECTOR_SYNC_INTEGRATION_GUIDE_PRE_V3.md](../archive/old-sync-guides/COLLECTOR_SYNC_INTEGRATION_GUIDE_PRE_V3.md) (archived) for detailed sync documentation.
 
 ### API Integration
 
@@ -126,7 +126,7 @@ The Concierge Parser API provides:
 - Data synchronization
 - Bulk operations
 
-See [CONCIERGE_PARSER_API_DOCUMENTATION.md](CONCIERGE_PARSER_API_DOCUMENTATION.md) for full API reference.
+See [CONCIERGE_PARSER_API_DOCUMENTATION.md](../API/CONCIERGE_PARSER_API_DOCUMENTATION.md) for full API reference.
 
 ## Architecture
 
@@ -157,7 +157,7 @@ The application follows **Clean Architecture** and **SOLID principles**:
 - No mock/fake data in production code
 - Clear, meaningful comments only
 
-See [.github/copilot-instructions.md](.github/copilot-instructions.md) for complete standards.
+See [.github/copilot-instructions.md](../../.github/copilot-instructions.md) for complete standards.
 
 ### File Headers
 
@@ -174,12 +174,12 @@ Every file must begin with a header comment:
 
 ## Documentation
 
-- [UI Specification](docs/ui_specification.md) - UI design and component specifications
-- [Restaurant Editor Requirements](docs/restaurant_editor_requirements.md) - Editor feature requirements
-- [Access Control Guide](docs/access_control_guide.md) - User access and permissions
-- [MySQL API Testing Guide](docs/mysql_api_testing_guide.md) - API testing procedures
-- [Sync Integration Guide](COLLECTOR_SYNC_INTEGRATION_GUIDE.md) - Sync implementation details
-- [API Documentation](CONCIERGE_PARSER_API_DOCUMENTATION.md) - Complete API reference
+- [UI Specification](../ui_specification.md) - UI design and component specifications
+- [Restaurant Editor Requirements](../restaurant_editor_requirements.md) - Editor feature requirements
+- [Access Control Guide](../access_control_guide.md) - User access and permissions
+- MySQL API Testing Guide — no longer available (superseded by the [API documentation](../API/CONCIERGE_PARSER_API_DOCUMENTATION.md))
+- [Sync Integration Guide](../archive/old-sync-guides/COLLECTOR_SYNC_INTEGRATION_GUIDE_PRE_V3.md) (archived) - Sync implementation details
+- [API Documentation](../API/CONCIERGE_PARSER_API_DOCUMENTATION.md) - Complete API reference
 
 ## Browser Compatibility
 

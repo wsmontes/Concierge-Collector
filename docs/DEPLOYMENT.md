@@ -9,8 +9,17 @@
 - **Health Check:** https://concierge-collector.onrender.com/api/v3/health
 
 **Platform:** Render.com  
-**Branch:** `Front-End-V3` (auto-deploy enabled)  
+**Branch:** `main` (auto-deploy enabled, but unreliable — verify and trigger manually after each push)  
 **Python Version:** 3.13.4
+
+### Render Services
+
+Both services are configured manually in the Render dashboard — there is no `render.yaml`/Dockerfile/Procfile (infra is not versioned).
+
+| Service | Render ID | Type | Root | Build / Start | URL |
+|---|---|---|---|---|---|
+| **Concierge-Collector** (API) | `srv-d4fngpjuibrs73bo70vg` | Web Service | `concierge-api-v3` | `pip install -r requirements.txt` / `uvicorn main:app --host 0.0.0.0 --port $PORT` | https://concierge-collector.onrender.com (API `/api/v3`; health `GET /api/v3/health`) |
+| **Concierge-Collector-Web** (Frontend) | `srv-d4fnrlje5dus7397lii0` | Static Site | `/` | no build / publish `.` | https://concierge-collector-web.onrender.com |
 
 ---
 
@@ -20,7 +29,7 @@
 ┌─────────────────────────────────────────────────────────────┐
 │                     GitHub Repository                        │
 │              wsmontes/Concierge-Collector                   │
-│                   Branch: Front-End-V3                       │
+│                       Branch: main                           │
 └─────────────────┬───────────────────────────────────────────┘
                   │ (push triggers auto-deploy)
                   │
@@ -59,7 +68,7 @@
 
 ### Frontend (Static Site)
 - **Platform:** Render.com Static Site
-- **Branch:** `Front-End-V3`
+- **Branch:** `main`
 - **Root Directory:** `/` (repository root)
 - **Build Command:** _(empty - no build needed)_
 - **Publish Directory:** `.`
@@ -112,7 +121,7 @@ pytest tests/ -v
 - [ ] Manual test of transcription workflow locally
 - [ ] Environment variables verified on Render
 
-See `concierge-api-v3/TESTING_GUIDE.md` for detailed testing instructions.
+See [`../concierge-api-v3/TESTING_GUIDE.md`](../concierge-api-v3/TESTING_GUIDE.md) for detailed testing instructions.
 
 ---
 
@@ -263,8 +272,8 @@ The application automatically detects the environment and configures:
 - Debug/reload settings
 
 ### Branch Strategy
-- **Main Branch:** `Front-End-V3` (production)
-- All commits to this branch trigger automatic deployment on Render.com
+- **Production Branch:** `main` (verified against the live Render API on 2026-08-14)
+- Pushes to `main` trigger automatic deployment on Render.com, but auto-deploy is **unreliable** — after each push, verify the deployment in the Render dashboard and trigger it manually if needed (see `scripts/python-tools/render_deployment_manager.py`)
 
 ### Python Version
 Specified in `runtime.txt` at repository root:
@@ -276,12 +285,14 @@ Specified in `runtime.txt` at repository root:
 
 ## 🔄 CI/CD Pipeline
 
-Render.com automatically:
-1. Detects push to `Front-End-V3` branch
+Render.com auto-deploy (may not trigger reliably — verify deployments manually after each push):
+1. Detects push to `main` branch
 2. Builds backend (installs requirements)
 3. Deploys backend with `uvicorn`
 4. Deploys frontend static files
 5. Both services are live within 2-3 minutes
+
+GitHub Actions runs **tests only** (no deployment) — see `docs/TESTING.md` for the CI workflows.
 
 ---
 
@@ -305,6 +316,6 @@ Render.com automatically:
 ---
 
 ## 📚 Additional Documentation
-- **API Reference:** [API-REF/README.md](API-REF/README.md)
-- **API Documentation:** [docs/](docs/)
-- **Archive (old deployment docs):** [archive/deployment-docs/](archive/deployment-docs/)
+- **API Reference:** [API/README.md](API/README.md)
+- **Documentation Index:** [docs/README.md](README.md)
+- **Archive (old sync guides):** [archive/old-sync-guides/](archive/old-sync-guides/)

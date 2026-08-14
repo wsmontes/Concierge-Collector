@@ -29,7 +29,8 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
+          # Aligned with production: runtime.txt (Python 3.13.4)
+          python-version: '3.13'
           cache: 'pip'
       
       - name: Install dependencies
@@ -62,7 +63,7 @@ jobs:
         run: |
           echo "## ✅ Backend Tests Complete" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- Python version: 3.12" >> $GITHUB_STEP_SUMMARY
+          echo "- Python version: 3.13" >> $GITHUB_STEP_SUMMARY
           echo "- Tests location: concierge-api-v3/tests/" >> $GITHUB_STEP_SUMMARY
           echo "- Framework: pytest + FastAPI TestClient" >> $GITHUB_STEP_SUMMARY
 
@@ -77,11 +78,12 @@ jobs:
       - name: Setup Python
         uses: actions/setup-python@v5
         with:
-          python-version: '3.12'
-      
+          python-version: '3.13'
+
+      # Pinned to the versions verified clean locally on 2026-08-14
       - name: Install linting tools
         run: |
-          pip install flake8 black
+          pip install flake8==7.3.0 black==26.5.1
       
       - name: Run Black formatter check
         working-directory: ./concierge-api-v3

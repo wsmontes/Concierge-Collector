@@ -126,7 +126,7 @@ Once everything works:
 
 - [ ] Read [LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md) for development workflow
 - [ ] Review [ENVIRONMENT_DETECTION.md](ENVIRONMENT_DETECTION.md) to understand auto-detection
-- [ ] Check [API-REF/API_DOCUMENTATION_V3.md](API-REF/API_DOCUMENTATION_V3.md) for API reference
+- [ ] Check [API/API_DOCUMENTATION_V3.md](API/API_DOCUMENTATION_V3.md) for API reference
 - [ ] Start building features!
 
 ## 🆘 Need Help?

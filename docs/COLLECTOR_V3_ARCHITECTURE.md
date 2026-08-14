@@ -491,6 +491,6 @@ archive/
 ## 🔗 Related Documentation
 
 - [API V3 README](../concierge-api-v3/README.md)
-- [V3 Data Transformer](./V3DataTransformer.md)
+- [V3 Data Transformer](../scripts/services/V3DataTransformer.js)
 - [Collector Modernization Plan](./COLLECTOR_MODERNIZATION_PLAN.md)
-- [Project Status](../PROJECT_STATUS.md)
+- [Project Status (archived)](../archive/deployment-docs/PROJECT_STATUS.md)

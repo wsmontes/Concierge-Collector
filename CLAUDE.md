@@ -28,6 +28,7 @@ Estas regras se aplicam ao frontend (`scripts/`, `capture/`):
 - Todo arquivo começa com header comentando propósito, responsabilidades e dependências. Código e comentários devem ser compreensíveis por IA/dev sem contexto do projeto; não assumir nada.
 - Nada de mock/fake/sample data. Não criar arquivos novos de diagnóstico — analisar e corrigir o código existente. Nunca quebrar código que funciona; preferir refatorar.
 - Em caso de ambiguidade, perguntar ao usuário antes de decidir. Não criar documentação sem pedido explícito.
+- ⚠️ Exceção documentada: `capture/` usa ES modules (`import`/`export`, `<script type="module">`, app.js auto-inicializável) — estrutura load-bearing para os testes vitest; NÃO converter para ModuleWrapper/script-tags sem converter os testes junto (ver `.github/copilot-instructions.md`).
 
 ## Hospedagem e deploy (Render)
 
@@ -38,9 +39,9 @@ Produção tem **2 serviços no Render**, configurados **manualmente no dashboar
 | **API** — web service "Concierge-Collector" (`srv-d4fngpjuibrs73bo70vg`) | root `concierge-api-v3`, build `pip install -r requirements.txt`, start `uvicorn main:app --host 0.0.0.0 --port $PORT`, URL `https://concierge-collector.onrender.com` (API em `/api/v3`), health check `GET /api/v3/health` (ping no Mongo) |
 | **Web** — static site "Concierge-Collector-Web" (`srv-d4fnrlje5dus7397lii0`) | root `/`, sem build, publish `.`, URL `https://concierge-collector-web.onrender.com` |
 
-- ⚠️ **O auto-deploy vem da branch `Front-End-V3`, NÃO de `main`.** Para publicar, merge/push na `Front-End-V3`. Deploy leva ~2-3 min.
+- ⚠️ **Ambos os serviços auto-deployam da branch `main`** (verificado contra a API do Render em 2026-08-14). O auto-deploy **existe mas não é confiável** — após push em `main`, verificar o deploy de cada serviço e disparar manualmente se necessário (via dashboard ou `scripts/python-tools/render_deployment_manager.py`). Deploy leva ~2-3 min.
 - Sem preDeployCommand/migrações/seeds. Única migração: índice TTL de `capture_sessions` (48h) criado no startup (`concierge-api-v3/app/core/lifespan.py`).
-- Env vars vivem no dashboard do Render (só nomes): `MONGODB_URL`, `MONGODB_DB_NAME`, `API_SECRET_KEY`, `OPENAI_API_KEY`, `GOOGLE_PLACES_API_KEY`, `GOOGLE_OAUTH_CLIENT_ID/SECRET`, `CORS_ORIGINS` (**precisa incluir o domínio do static site**), `ENVIRONMENT`, `LOG_LEVEL`, `TRUSTED_CALLBACK_ORIGINS`. Render injeta `PORT` e `RENDER_SERVICE_NAME` (usadas para detecção de prod em `app/core/config.py`).
+- Env vars vivem no dashboard do Render (só nomes): `MONGODB_URL`, `MONGODB_DB_NAME`, `API_SECRET_KEY`, `OPENAI_API_KEY`, `GOOGLE_PLACES_API_KEY`, `GOOGLE_OAUTH_CLIENT_ID/SECRET`, `CORS_ORIGINS` (**precisa incluir o domínio do static site**), `ENVIRONMENT`, `LOG_LEVEL`, `TRUSTED_CALLBACK_ORIGINS`. Render injeta `PORT` e `RENDER_SERVICE_NAME` (usadas para detecção de prod em `app/core/config.py`). `MONGODB_CURATIONS_VECTOR_INDEX` (lido em `app/api/curations.py`) deve normalmente ficar **unset** — quando setado, tenta `$vectorSearch`; sem ele, roda a varredura fallback, que é o caminho que realmente executa (o índice vector consome cota do Atlas).
 - Gotcha: `runtime.txt` (Python 3.13.4) fica na **raiz**, mas o root do web service é `concierge-api-v3` — a versão efetiva do Python pode vir do dashboard.
 - GitHub Actions roda **apenas testes** (não faz deploy): backend unit tests + flake8/black; frontend vitest.
 - Legado: GitHub Pages (`wsmontes.github.io/Concierge-Collector`) + PythonAnywhere ainda aparecem como fallback em `config.js`/`config.py`.
@@ -51,6 +52,7 @@ Produção tem **2 serviços no Render**, configurados **manualmente no dashboar
 - Credenciais locais em **`concierge-api-v3/.env`** (git-ignored; valores de produção ficam no dashboard do Render). **Nunca** commitar valores secretos — usar apenas nomes de variáveis.
 - `RENDER_API_KEY` do `.env` **funciona**: workspace "My Workspace", ownerId **`tea-d09cc5je5dus73bbc5m0`** (o ownerId de `render_deployment.log` está desatualizado — o log lista 7 serviços do workspace, incluindo projetos alheios).
 - `MONGODB_URL` do `.env` **conecta direto do IP local** ao Atlas (cluster `concierge-collector.7bwiisy.mongodb.net`, banco `concierge-collector`). Contagens de referência (ago/2026): entities ~21,6k, curations ~1.078, embeddings ~1.198, embedding_links ~7.942.
+- **Cota de storage do Atlas**: incidente de 2026-08-12 (512MB estourados, escritas bloqueadas) RESOLVIDO via backup BSON + wipe + restore com embeddings compactados (Binary float32, ~6KB/vetor — `app/core/vector_packing.py`); índice vector `curations_embeddings_vector` removido pelo usuário na UI do Atlas (não funciona com o formato Binary de qualquer forma — o fallback scan é o que roda). Manter `MONGODB_CURATIONS_VECTOR_INDEX` **unset** no dashboard; novos embeddings devem SEMPRE ser gravados float32 (backfill já faz). Backup em `data/backups/full-dump-2026-08-12/` (gitignored).
 - Gotcha de shell: `set -a; . .env` **não exporta** as variáveis neste ambiente — carregar linha a linha com `export "$key=$val"` (ver memória `render-mongo-access`).
 - Gerenciamento do Render via script: `scripts/python-tools/render_deployment_manager.py` (usa `RENDER_API_KEY`).
 
@@ -65,12 +67,12 @@ Produção tem **2 serviços no Render**, configurados **manualmente no dashboar
 - Subir local: `./run_local.sh` (cria venv, instala deps, sobe uvicorn em background; logs em `uvicorn.log`) ou `venv/bin/python -m uvicorn main:app --reload` — API em `http://localhost:8000/api/v3`, docs em `/api/v3/docs`
 - Testes: `venv/bin/pytest` — unit apenas: `venv/bin/pytest -m "not integration and not external_api and not mongo and not openai"` (comando exato do CI); teste único: `venv/bin/pytest tests/test_x.py::test_y`
 - Marcadores pytest: `integration`, `external_api`, `mongo`, `openai`, `slow` (`pytest.ini` usa `--timeout=60`; `pytest-timeout` já está no venv)
-- Lint: `flake8` + `black` (como no CI)
+- Lint: `flake8` + `black` (como no CI; `pyproject.toml` define line-length 120 para o black, igual ao flake8)
 
 **Auth local (dev):** `/auth/dev-login` gera JWT válido; o frontend auto-loga em localhost. Frontend local: servir a raiz em `127.0.0.1` (ex.: Live Server porta 5500) — o `config.js` detecta o ambiente pelo hostname e aponta para a API local.
 
 **Saúde de produção:** `curl https://concierge-collector.onrender.com/api/v3/health` → esperado `{"status":"healthy","database":"connected"}`.
 
-**Smoke test de produção (read-only):** `concierge-api-v3/.venv/bin/python scripts/python-tools/prod_smoke.py` — varre todas as rotas GET via OpenAPI com ids reais do Mongo e retry. Baseline 2026-08-12: 16 rotas OK, 8 4xx esperados (auth/validação), 0 erros 5xx. ⚠️ Gotcha: os paths do `openapi.json` **já incluem** o prefixo `/api/v3` — nunca prefixar de novo ao montar URLs (causa 404 total e falso diagnóstico de incidente).
+**Smoke test de produção (read-only):** `concierge-api-v3/venv/bin/python scripts/python-tools/prod_smoke.py` — varre todas as rotas GET via OpenAPI com ids reais do Mongo e retry. Baseline 2026-08-14: 18 rotas OK, 6 4xx esperados (auth/validação), 0 erros 5xx, 3 skip. ⚠️ Gotcha: os paths do `openapi.json` **já incluem** o prefixo `/api/v3` — nunca prefixar de novo ao montar URLs (causa 404 total e falso diagnóstico de incidente).
 
-**CI:** GitHub Actions estava desabilitado no repo (últimos runs fev/2026, todos vermelhos); reabilitado em 2026-08-12. O workflow de backend não roda na branch `Front-End-V3` (excluída em jan/2026) — validar no próximo push. Backend local: fix `pythonpath = .` em `concierge-api-v3/pytest.ini` destravou o pytest (64 testes unit passando).
+**CI:** GitHub Actions estava desabilitado no repo (últimos runs fev/2026, todos vermelhos); reabilitado em 2026-08-12 e corrigido em 2026-08-14: `pytest-timeout`/`pytest-cov` agora estão em `requirements.txt` (o `--timeout=60` do pytest.ini quebrava o CI com env limpo); `vitest.config.js` usa `all: false` + include `scripts/**`/`capture/**` (com all:true, ~99% dos arquivos nunca carregados zeravam os thresholds 70/60/70/70); workflow frontend roda a suíte 1x (era 3x). Baseline de testes (2026-08-14): backend 143 unit (62 deselected), frontend 533 passed/10 skipped, python-tools 128 passed. O workflow de backend não roda na branch `Front-End-V3` (excluída em jan/2026).

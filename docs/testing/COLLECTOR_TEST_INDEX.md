@@ -9,7 +9,7 @@
 ## 📁 Files Overview
 
 ### 1. 🧪 Test Suite (HTML)
-**File:** [`test_collector_v3.html`](test_collector_v3.html)  
+**File:** [`test_collector_v3.html`](../../archive/old-html-tools/test_collector_v3.html) *(archived)*  
 **Size:** 32KB (~1000 lines)  
 **Type:** Complete test suite UI + JavaScript logic
 
@@ -106,7 +106,7 @@
 ---
 
 ### 6. 🚀 Launch Script
-**File:** [`run_collector_tests.sh`](run_collector_tests.sh)  
+**File:** [`run_collector_tests.sh`](../../archive/old-tests/run_collector_tests.sh) *(archived)*  
 **Size:** 1.4KB (~40 lines)  
 **Type:** Executable shell script
 
@@ -131,15 +131,15 @@ chmod +x run_collector_tests.sh  # Make executable (already done)
 #### 👨‍💻 **I'm a Developer**
 Start here:
 1. [`COLLECTOR_TEST_SUITE_README.md`](COLLECTOR_TEST_SUITE_README.md) - Quick start
-2. [`run_collector_tests.sh`](run_collector_tests.sh) - Launch tests
-3. [`test_collector_v3.html`](test_collector_v3.html) - Run tests in browser
+2. [`run_collector_tests.sh`](../../archive/old-tests/run_collector_tests.sh) *(archived)* - Launch tests
+3. [`test_collector_v3.html`](../../archive/old-html-tools/test_collector_v3.html) *(archived)* - Run tests in browser
 4. [`COLLECTOR_V3_TEST_GUIDE.md`](COLLECTOR_V3_TEST_GUIDE.md) - When you need details
 
 #### 🧪 **I'm a QA Engineer**
 Start here:
 1. [`COLLECTOR_V3_TEST_GUIDE.md`](COLLECTOR_V3_TEST_GUIDE.md) - Full test documentation
-2. [`run_collector_tests.sh`](run_collector_tests.sh) - Launch tests
-3. [`test_collector_v3.html`](test_collector_v3.html) - Execute tests
+2. [`run_collector_tests.sh`](../../archive/old-tests/run_collector_tests.sh) *(archived)* - Launch tests
+3. [`test_collector_v3.html`](../../archive/old-html-tools/test_collector_v3.html) *(archived)* - Execute tests
 4. [`COLLECTOR_TEST_SUITE_README.md`](COLLECTOR_TEST_SUITE_README.md) - Quick reference
 
 #### 👨‍💼 **I'm a Technical Lead**
@@ -152,7 +152,7 @@ Start here:
 Start here:
 1. [`COLLECTOR_TEST_EXECUTIVE_SUMMARY.md`](COLLECTOR_TEST_EXECUTIVE_SUMMARY.md) - Business value
 2. [`COLLECTOR_TEST_SUITE_README.md`](COLLECTOR_TEST_SUITE_README.md) - What gets tested
-3. Demo: [`test_collector_v3.html`](test_collector_v3.html) - See it in action
+3. Demo: [`test_collector_v3.html`](../../archive/old-html-tools/test_collector_v3.html) *(archived)* - See it in action
 
 ---
 
@@ -221,19 +221,19 @@ Click: **"🚀 Run All Tests"**
 ## 📚 Additional Resources
 
 ### API V3 Documentation
-- [`API-REF/API_DOCUMENTATION_V3.md`](API-REF/API_DOCUMENTATION_V3.md) - Complete API docs
-- [`API-REF/API_QUICK_REFERENCE.md`](API-REF/API_QUICK_REFERENCE.md) - Quick reference
-- [`API-REF/openapi.yaml`](API-REF/openapi.yaml) - OpenAPI spec
+- [`API-REF/API_DOCUMENTATION_V3.md`](../API/API_DOCUMENTATION_V3.md) - Complete API docs
+- [`API-REF/API_QUICK_REFERENCE.md`](../API/API_QUICK_REFERENCE.md) - Quick reference
+- [`API-REF/openapi.yaml`](../API/openapi.yaml) - OpenAPI spec
 
 ### API V3 Setup
-- [`concierge-api-v3/SETUP_SEM_DOCKER.md`](concierge-api-v3/SETUP_SEM_DOCKER.md) - Setup guide
-- [`concierge-api-v3/TESTING_GUIDE.md`](concierge-api-v3/TESTING_GUIDE.md) - pytest guide
-- [`concierge-api-v3/README.md`](concierge-api-v3/README.md) - API overview
+- `concierge-api-v3/SETUP_SEM_DOCKER.md` - no longer available (see [LOCAL_DEVELOPMENT.md](../LOCAL_DEVELOPMENT.md) for local setup)
+- [`concierge-api-v3/TESTING_GUIDE.md`](../../concierge-api-v3/TESTING_GUIDE.md) - pytest guide
+- [`concierge-api-v3/README.md`](../../concierge-api-v3/README.md) - API overview
 
 ### Collector Integration
-- [`scripts/apiService.js`](scripts/apiService.js) - API client
-- [`scripts/syncManager.js`](scripts/syncManager.js) - Sync operations
-- [`scripts/config.js`](scripts/config.js) - Configuration
+- [`scripts/services/apiService.js`](../../scripts/services/apiService.js) - API client
+- [`scripts/sync/syncManagerV3.js`](../../scripts/sync/syncManagerV3.js) - Sync operations
+- [`scripts/core/config.js`](../../scripts/core/config.js) - Configuration
 
 ---
 
@@ -291,7 +291,7 @@ lsof -i :8001
 ### Quick Links
 - **Test Guide:** [`COLLECTOR_V3_TEST_GUIDE.md`](COLLECTOR_V3_TEST_GUIDE.md) - Section: Troubleshooting
 - **README:** [`COLLECTOR_TEST_SUITE_README.md`](COLLECTOR_TEST_SUITE_README.md) - Section: Troubleshooting
-- **API Docs:** [`API-REF/API_DOCUMENTATION_V3.md`](API-REF/API_DOCUMENTATION_V3.md)
+- **API Docs:** [`API-REF/API_DOCUMENTATION_V3.md`](../API/API_DOCUMENTATION_V3.md)
 
 ### Debug Checklist
 - [ ] API is running (port 8001)

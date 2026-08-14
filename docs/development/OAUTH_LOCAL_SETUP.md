@@ -127,15 +127,15 @@ does not match the ones authorized for the OAuth client.
 
 ### Local (.env file)
 ```bash
-GOOGLE_OAUTH_CLIENT_ID=1020272767566-8aljuvk9oval5isriv512nber3a88pvi.apps.googleusercontent.com
-GOOGLE_OAUTH_CLIENT_SECRET=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
+GOOGLE_OAUTH_CLIENT_ID=<valor no Google Cloud Console>
+GOOGLE_OAUTH_CLIENT_SECRET=<valor no Google Cloud Console>
 GOOGLE_OAUTH_REDIRECT_URI=  # Leave empty for auto-detection
 ```
 
 ### Production (Render Dashboard)
 ```bash
-GOOGLE_OAUTH_CLIENT_ID=1020272767566-8aljuvk9oval5isriv512nber3a88pvi.apps.googleusercontent.com
-GOOGLE_OAUTH_CLIENT_SECRET=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
+GOOGLE_OAUTH_CLIENT_ID=<valor no Render Dashboard>
+GOOGLE_OAUTH_CLIENT_SECRET=<valor no Render Dashboard>
 GOOGLE_OAUTH_REDIRECT_URI=https://concierge-collector.onrender.com/api/v3/auth/callback
 ```
 
@@ -161,6 +161,6 @@ GOOGLE_OAUTH_REDIRECT_URI=https://concierge-collector.onrender.com/api/v3/auth/c
 
 ## 📚 Related Documentation
 
-- [LOCAL_DEVELOPMENT.md](LOCAL_DEVELOPMENT.md) - Local setup guide
-- [ENVIRONMENT_DETECTION.md](ENVIRONMENT_DETECTION.md) - How auto-detection works
-- [docs/OAUTH_SETUP_GUIDE.md](docs/OAUTH_SETUP_GUIDE.md) - Detailed OAuth setup
+- [LOCAL_DEVELOPMENT.md](../LOCAL_DEVELOPMENT.md) - Local setup guide
+- [ENVIRONMENT_DETECTION.md](../ENVIRONMENT_DETECTION.md) - How auto-detection works
+- [docs/OAUTH_SETUP_GUIDE.md](../OAUTH_SETUP_GUIDE.md) - Detailed OAuth setup

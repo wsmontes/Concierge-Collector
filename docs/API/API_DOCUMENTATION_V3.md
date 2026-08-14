@@ -1079,7 +1079,7 @@ Currently, no rate limits are enforced, but this may change in future versions.
 - **Interactive Docs**: https://concierge-collector.onrender.com/api/v3/docs (Swagger UI)
 - **ReDoc**: https://concierge-collector.onrender.com/api/v3/redoc
 - **Quick Reference**: [API_QUICK_REFERENCE.md](./API_QUICK_REFERENCE.md)
-- **Backend README**: [concierge-api-v3/README.md](../concierge-api-v3/README.md)
+- **Backend README**: [concierge-api-v3/README.md](../../concierge-api-v3/README.md)
 
 ### Health & Status
 - **Health Check**: https://concierge-collector.onrender.com/api/v3/health

@@ -197,14 +197,14 @@ Before committing:
 **📋 Access Control:**
 - Limit Render.com team members
 - Use GitHub branch protection rules
-- Require PR reviews for `Front-End-V3` branch
+- Require PR reviews for `main` branch
 
 ### CI/CD Security
 
-**Current:** Automatic deployment from `Front-End-V3` branch
+**Current:** Automatic deployment from `main` branch (auto-deploy is unreliable — deployments are verified and triggered manually after each push)
 
 **Rules:**
-- Only authorized contributors can merge to `Front-End-V3`
+- Only authorized contributors can merge to `main`
 - All PRs require review
 - No direct commits to production branch
 - Build logs are private
@@ -234,7 +234,7 @@ Before committing:
 - [ ] Google OAuth origins/redirects configured
 - [ ] CORS policy restrictive (no wildcards)
 - [ ] API_SECRET_KEY is 32+ characters
-- [ ] Branch protection enabled on `Front-End-V3`
+- [ ] Branch protection enabled on `main`
 
 ### Maintenance
 - [ ] Regular credential rotation (90-180 days)

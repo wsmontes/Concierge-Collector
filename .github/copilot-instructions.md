@@ -30,6 +30,10 @@ All initialization (modules, services, app state) must be managed from the main 
 
 Do NOT use ES6 imports/exports or require(). Only use the ModuleWrapper pattern and include scripts via <script> tags. ES6 modules are not allowed.
 
+### ⚠️ EXCEPTION — `capture/` app (load-bearing structure, do not convert)
+
+The `capture/` offline-capture app intentionally uses ES modules: `import`/`export` syntax, `<script type="module">` includes, and a self-initializing `capture/app.js`. Its vitest suite depends on that module graph. Do NOT convert `capture/` to the ModuleWrapper pattern / `<script>` tags without converting its tests in the same change — the ES-module structure is load-bearing for both. This exception applies only to `capture/`; the main app in `scripts/` keeps all ModuleWrapper rules above.
+
 Declare all dependencies at the top of every module.
 
 Do not alter the script load order. main.js must always serve as the app entry point.
