@@ -1485,6 +1485,30 @@
   color: var(--color-primary-600);
 }
 
+/* Badge do tipo no topo dos cards — círculo PERFEITO com o ícone
+   centrado de verdade. Antes era um div com p-2 + span inline-block:
+   o line-height 1.5 herdado do body criava um strut de baseline de 6px
+   embaixo do ícone — círculo oval (34×40) e glifo fora do centro.
+   Flex + width/height explícitos eliminam o strut. */
+.card-type-badge {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;   /* 36px */
+  height: 2.25rem;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.9);
+  -webkit-backdrop-filter: blur(4px);
+  backdrop-filter: blur(4px);
+  box-shadow: var(--shadow-sm);
+}
+
+.card-type-badge .material-icons {
+  display: block;
+  font-size: 1.125rem;
+  line-height: 1;
+}
+
 /* Véu de hover dos cards — antes um gradiente Tailwind de blue-50/30
    (grupo hover). Agora um tom de oliva a 8%, sutil como o do capture. */
 .card-veil {

@@ -102,10 +102,12 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
         const priceIndicator = priceLevel > 0 ? '€'.repeat(priceLevel) : '';
 
         card.innerHTML = `
-            <!-- Header with type icon -->
-            <div class="absolute top-3 right-3 flex items-center gap-2 z-10">
-                <div class="bg-white/90 backdrop-blur-sm rounded-full p-2 shadow-sm">
-                    <span class="material-icons text-lg text-gray-600">${this.getTypeIcon(type)}</span>
+            <!-- Header with type icon (badge circular perfeito via
+                 .card-type-badge — o div com p-2 + inline-block criava
+                 círculo oval e glifo descentralizado) -->
+            <div class="absolute top-3 right-3 z-10">
+                <div class="card-type-badge">
+                    <span class="material-icons text-gray-600">${this.getTypeIcon(type)}</span>
                 </div>
             </div>
             

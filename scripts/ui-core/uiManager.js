@@ -1729,13 +1729,11 @@ if (typeof window.UIManager === 'undefined') {
             card.classList.add(accentByStatus[rawStatus] || 'card-accent-draft');
 
             card.innerHTML = `
-                <!-- Ícone decorativo (não é botão) — mesmo estilo quieto do
-                     card de entities: círculo branco translúcido + ícone
-                     cinza. edit_note (glifo limpo) no lugar do rate_review
-                     (assimétrico, parecia botão torto). -->
-                <div class="absolute top-3 right-3 flex items-center gap-2 z-10">
-                    <div class="bg-white/90 backdrop-blur-sm rounded-full p-2 shadow-sm">
-                        <span class="material-icons text-lg text-gray-600">edit_note</span>
+                <!-- Ícone decorativo (não é botão) — .card-type-badge
+                     (círculo perfeito, glifo centrado). -->
+                <div class="absolute top-3 right-3 z-10">
+                    <div class="card-type-badge">
+                        <span class="material-icons text-gray-600">edit_note</span>
                     </div>
                 </div>
 
