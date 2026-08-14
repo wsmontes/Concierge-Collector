@@ -123,8 +123,10 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
             this.log.warn('QuickActionModule: showRecordingSection not available');
         }
         
-        // Auto-click the start recording button if available
-        const startRecordingBtn = SafetyUtils.getElementByIdSafely('start-recording', 'QuickActionModule');
+        // Auto-click the start recording button if available.
+        // O id REAL é start-record (start-recording não existe — o clique
+        // nunca achava o botão e a ação parecia morta)
+        const startRecordingBtn = SafetyUtils.getElementByIdSafely('start-record', 'QuickActionModule');
         if (startRecordingBtn) {
             startRecordingBtn.click();
         }

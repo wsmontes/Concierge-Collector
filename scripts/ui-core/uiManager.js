@@ -187,11 +187,12 @@ if (typeof window.UIManager === 'undefined') {
             if (this.restaurantModule) this.restaurantModule.setupEvents();
             if (this.exportImportModule) this.exportImportModule.setupEvents();
 
-            // Only set up quick action events if all required elements exist
-            if (this.quickActionModule && this.fab && this.quickActionModal && this.closeQuickModal) {
+            // Setup SEMPRE tenta (o gate antigo era all-or-nothing: se UM
+            // dos 4 elementos faltasse, NENHUM evento do FAB/modal era
+            // ligado — botão flutuante morto sem diagnóstico). Cada binding
+            // interno já tem guard próprio por elemento.
+            if (this.quickActionModule) {
                 this.quickActionModule.setupEvents();
-            } else {
-                console.warn('Some quick action elements not found, skipping initialization');
             }
 
             // Load curator info
