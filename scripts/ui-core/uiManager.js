@@ -1729,10 +1729,13 @@ if (typeof window.UIManager === 'undefined') {
             card.classList.add(accentByStatus[rawStatus] || 'card-accent-draft');
 
             card.innerHTML = `
-                <!-- Header with type icon -->
+                <!-- Ícone decorativo (não é botão) — mesmo estilo quieto do
+                     card de entities: círculo branco translúcido + ícone
+                     cinza. Antes era uma pílula âmbar com borda/sombra que
+                     parecia clicável sem ter função. -->
                 <div class="absolute top-3 right-3 flex items-center gap-2 z-10">
-                    <div class="bg-amber-50 rounded-full p-2 shadow-sm border border-amber-100">
-                        <span class="material-icons text-lg text-amber-600">rate_review</span>
+                    <div class="bg-white/90 backdrop-blur-sm rounded-full p-2 shadow-sm">
+                        <span class="material-icons text-lg text-gray-600">rate_review</span>
                     </div>
                 </div>
 
@@ -1740,7 +1743,7 @@ if (typeof window.UIManager === 'undefined') {
                 <div class="p-5 flex-grow">
                     <!-- Name -->
                     <div class="mb-3">
-                        <h3 class="font-bold text-lg text-gray-900 mb-1 pr-12 line-clamp-2 group-hover:text-blue-600 transition-colors">
+                        <h3 class="card-restaurant-name mb-1 pr-12 line-clamp-2">
                             ${restaurantName}
                         </h3>
                         <div class="flex items-center gap-2 text-xs text-gray-500 mb-2">
