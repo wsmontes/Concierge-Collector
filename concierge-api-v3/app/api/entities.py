@@ -31,6 +31,37 @@ from app.core.security import (
 
 logger = logging.getLogger(__name__)
 
+# ============================================================================
+# BUSCA ACENTO-INSENSÍVEL
+# ============================================================================
+# O acervo é PT-BR/EN ("São Paulo", "Café", "Maní") e o usuário digita sem
+# acento no celular ("sao paulo"). Regex simples não faz folding de acento —
+# cada letra é expandida para uma classe com suas variantes acentuadas.
+_ACCENT_VARIANTS = {
+    "a": "[aàáâãä]",
+    "e": "[eèéêë]",
+    "i": "[iìíîï]",
+    "o": "[oòóôõö]",
+    "u": "[uùúûü]",
+    "c": "[cç]",
+    "n": "[nñ]",
+    "A": "[AÀÁÂÃÄ]",
+    "E": "[EÈÉÊË]",
+    "I": "[IÌÍÎÏ]",
+    "O": "[OÒÓÔÕÖ]",
+    "U": "[UÙÚÛÜ]",
+    "C": "[CÇ]",
+    "N": "[NÑ]",
+}
+_ACCENT_TRANS = str.maketrans(_ACCENT_VARIANTS)
+
+
+def _accent_insensitive_pattern(text: str) -> str:
+    """Escapa o texto e expande letras acentuáveis em classes de caracteres,
+    para regex Mongo case/accent-insensitive ('sao paulo' casa 'São Paulo')."""
+    return re.escape(text).translate(_ACCENT_TRANS)
+
+
 router = APIRouter(prefix="/entities", tags=["entities"])
 
 
@@ -181,6 +212,19 @@ def list_entities(
     type: Optional[str] = Query(None),
     name: Optional[str] = Query(None),
     status: Optional[str] = Query(None, description="Filter by entity status (active/archived/...)"),
+    city: Optional[str] = Query(
+        None,
+        description=(
+            "Regex case-insensitive em data.address.street e data.address.city "
+            "(o bulk import guarda a cidade dentro do street; o campo city só "
+            "existe nas entities v3). Sem índice — scan de ~21k docs, ~100ms, "
+            "para não custar storage do Atlas."
+        ),
+    ),
+    q: Optional[str] = Query(
+        None,
+        description="Alias de name — regex case-insensitive no nome (paridade com /curations/search).",
+    ),
     since: Optional[str] = Query(None, description="ISO timestamp - only return entities updated after this time"),
     ids: Optional[str] = Query(
         None,
@@ -214,10 +258,19 @@ def list_entities(
     query = {}
     if type:
         query["type"] = type
-    if name:
-        query["name"] = {"$regex": re.escape(name), "$options": "i"}
+    # isinstance: nos unit tests a função é chamada direto e os defaults
+    # são objetos Query (truthy) — só strings viram filtro
+    search_name = q if isinstance(q, str) and q else name
+    if search_name:
+        query["name"] = {"$regex": _accent_insensitive_pattern(search_name), "$options": "i"}
     if status:
         query["status"] = status
+    if isinstance(city, str) and city.strip():
+        pattern = _accent_insensitive_pattern(city.strip()[:100])
+        query["$or"] = [
+            {"data.address.street": {"$regex": pattern, "$options": "i"}},
+            {"data.address.city": {"$regex": pattern, "$options": "i"}},
+        ]
 
     if since:
         try:

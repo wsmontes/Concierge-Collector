@@ -241,3 +241,112 @@ def test_list_entities_ids_filter(client, test_db, clean_test_entities):
     assert r2.status_code == 200
     r2_ids = [i.get("entity_id") or i.get("_id") for i in r2.json()["items"]]
     assert any(str(i) == "507f1f77bcf86cd799439011" for i in r2_ids) or "hex-oid-slug" in r2_ids
+
+
+@pytest.mark.mongo
+def test_list_entities_filter_by_city_street_regex(client, clean_test_entities, test_db):
+    """city filtra via regex no address.street (bulk) e address.city (v3)"""
+    from datetime import datetime, timezone
+
+    test_db.entities.insert_many(
+        [
+            {
+                "_id": "test_city_v3",
+                "entity_id": "test_city_v3",
+                "type": "restaurant",
+                "name": "Cafe Alpha",
+                "status": "active",
+                "data": {
+                    "address": {"city": "Victoria", "street": "944 Fort St"},
+                    "location": {"type": "Point", "coordinates": [0, 0]},
+                },
+                "createdAt": datetime.now(timezone.utc),
+                "updatedAt": datetime.now(timezone.utc),
+                "version": 1,
+            },
+            {
+                "_id": "test_city_bulk",
+                "entity_id": "test_city_bulk",
+                "type": "restaurant",
+                "name": "Cafe Beta",
+                "status": "active",
+                "data": {
+                    "address": {"city": "", "street": "Rua X, 10 - Pinheiros, São Paulo - SP, Brazil"},
+                    "location": {"type": "Point", "coordinates": [0, 0]},
+                },
+                "createdAt": datetime.now(timezone.utc),
+                "updatedAt": datetime.now(timezone.utc),
+                "version": 1,
+            },
+            {
+                "_id": "test_city_other",
+                "entity_id": "test_city_other",
+                "type": "restaurant",
+                "name": "Cafe Gamma",
+                "status": "active",
+                "data": {
+                    "address": {"city": "Paris", "street": "1 Rue X"},
+                    "location": {"type": "Point", "coordinates": [0, 0]},
+                },
+                "createdAt": datetime.now(timezone.utc),
+                "updatedAt": datetime.now(timezone.utc),
+                "version": 1,
+            },
+        ]
+    )
+    # cidade no street do bulk (case-insensitive)
+    response = client.get("/api/v3/entities?city=sao+paulo")
+    assert response.status_code == 200
+    names = {i["name"] for i in response.json()["items"] if i["name"].startswith("Cafe")}
+    assert names == {"Cafe Beta"}
+
+    # cidade no campo city do formato v3
+    response = client.get("/api/v3/entities?city=victoria")
+    names = {i["name"] for i in response.json()["items"] if i["name"].startswith("Cafe")}
+    assert "Cafe Alpha" in names
+
+    # regex escapado: caracteres especiais não podem derrubar nem vazar
+    response = client.get("/api/v3/entities?city=%28")
+    assert response.status_code == 200
+    assert response.json()["items"] == []
+
+
+@pytest.mark.mongo
+def test_list_entities_q_alias_of_name(client, clean_test_entities, test_db):
+    """q funciona como o name (regex no nome), e name continua funcionando"""
+    from datetime import datetime, timezone
+
+    test_db.entities.insert_many(
+        [
+            {
+                "_id": "test_q_alpha",
+                "entity_id": "test_q_alpha",
+                "type": "cafe",
+                "name": "Quesadilla House",
+                "status": "active",
+                "createdAt": datetime.now(timezone.utc),
+                "updatedAt": datetime.now(timezone.utc),
+                "version": 1,
+            },
+            {
+                "_id": "test_q_other",
+                "entity_id": "test_q_other",
+                "type": "cafe",
+                "name": "Other Place",
+                "status": "active",
+                "createdAt": datetime.now(timezone.utc),
+                "updatedAt": datetime.now(timezone.utc),
+                "version": 1,
+            },
+        ]
+    )
+    response = client.get("/api/v3/entities?q=quesadilla")
+    assert response.status_code == 200
+    names = [i["name"] for i in response.json()["items"]]
+    assert "Quesadilla House" in names
+    assert "Other Place" not in names
+
+    response = client.get("/api/v3/entities?name=quesadilla")
+    names = [i["name"] for i in response.json()["items"]]
+    assert "Quesadilla House" in names
+    assert "Other Place" not in names
