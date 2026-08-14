@@ -130,7 +130,13 @@ const AuthService = (function() {
         });
         
         if (!tokenData || !tokenData.access_token) {
-            console.error('[AuthService] ✗ Invalid token data:', tokenData);
+            // NUNCA logar o tokenData em si (carrega access/refresh token) —
+            // console.error pode ser coletado por ferramentas de monitoramento
+            // (auditoria ago/2026: removia o conteúdo da credencial)
+            console.error('[AuthService] ✗ Invalid token data:', {
+                hasAccessToken: !!tokenData?.access_token,
+                type: typeof tokenData
+            });
             throw new Error('Invalid token data: missing access_token');
         }
 
