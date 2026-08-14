@@ -388,7 +388,10 @@ window.ModalManager = (function() {
         modal.element.classList.remove(CSS_CLASSES.active);
 
         // Notify caller (fechamento por X/Escape/overlay precisa resolver
-        // promises de modais de confirmação, ex.: conflito → cancel)
+        // promises de modais de confirmação, ex.: conflito → cancel).
+        // Ponto ÚNICO de notificação: onClose dispara exatamente uma vez
+        // (antes era chamado de novo no setTimeout de cleanup — efeitos
+        // colaterais duplicados, ex.: promises resolvidas duas vezes).
         if (modal.options && typeof modal.options.onClose === 'function') {
             modal.options.onClose(modalId);
         }
@@ -425,10 +428,8 @@ window.ModalManager = (function() {
                 this.setFocusTrap(topModalId);
             }
 
-            // Call onClose callback
-            if (modal.options.onClose) {
-                modal.options.onClose(modalId);
-            }
+            // onClose já foi notificado sincronamente acima — não chamar
+            // de novo aqui (double-fire quebrava promises de confirmação).
 
             console.log(`[ModalManager] Closed modal: ${modalId}`);
         }, 300); // Match CSS transition

@@ -418,7 +418,9 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
             const esc = (v) => {
                 const d = document.createElement('div');
                 d.textContent = v == null ? '' : String(v);
-                return d.innerHTML;
+                // aspas também — valores entram em title=/href= (serializer de
+                // innerHTML não escapa `"` em texto)
+                return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
             };
             let detailsHtml = '';
 

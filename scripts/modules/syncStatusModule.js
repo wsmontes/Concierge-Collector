@@ -390,6 +390,16 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
 
             const modal = document.createElement('div');
             modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4';
+
+            // Nomes/IDs vêm do servidor — escapar antes de interpolar em innerHTML.
+            // Aspas também: o serializer não escapa `"` em texto e os valores
+            // entram em data-* attributes.
+            const esc = (v) => {
+                const d = document.createElement('div');
+                d.textContent = v == null ? '' : String(v);
+                return d.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+            };
+
             modal.innerHTML = `
                 <div class="bg-white rounded-lg shadow-xl max-w-2xl w-full max-h-[80vh] overflow-y-auto">
                     <div class="p-6">
@@ -406,14 +416,14 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
                                 <div class="space-y-2">
                                     ${conflicts.entities.map(entity => `
                                         <div class="border rounded p-3 bg-red-50 border-red-100 mb-2">
-                                            <div class="font-medium text-red-900">${entity.name}</div>
-                                            <div class="text-xs text-red-700 mb-2">ID: ${entity.entity_id}</div>
+                                            <div class="font-medium text-red-900">${esc(entity.name)}</div>
+                                            <div class="text-xs text-red-700 mb-2">ID: ${esc(entity.entity_id)}</div>
                                             <div class="flex gap-2">
-                                                <button class="btn-resolve-conflict text-xs bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700" 
-                                                    data-type="entity" data-id="${entity.entity_id}">
+                                                <button class="btn-resolve-conflict text-xs bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700"
+                                                    data-type="entity" data-id="${esc(entity.entity_id)}">
                                                     Resolve
                                                 </button>
-                                                <button class="text-xs text-blue-600 hover:underline" onclick="window.EntityModule?.showEntityDetails(${JSON.stringify(entity).replace(/"/g, '&quot;')})">
+                                                <button class="btn-view-conflict text-xs text-blue-600 hover:underline" data-view-entity="${esc(entity.entity_id)}">
                                                     View Details
                                                 </button>
                                             </div>
@@ -429,10 +439,10 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
                                 <div class="space-y-2">
                                     ${conflicts.curations.map(curation => `
                                         <div class="border rounded p-3 bg-red-50 border-red-100">
-                                            <div class="font-medium text-red-900">Curation ${curation.curation_id}</div>
-                                            <div class="text-xs text-red-700 mb-2">Entity: ${curation.entity_id || 'N/A'}</div>
-                                            <button class="btn-resolve-conflict text-xs bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700" 
-                                                data-type="curation" data-id="${curation.curation_id}">
+                                            <div class="font-medium text-red-900">Curation ${esc(curation.curation_id)}</div>
+                                            <div class="text-xs text-red-700 mb-2">Entity: ${esc(curation.entity_id || 'N/A')}</div>
+                                            <button class="btn-resolve-conflict text-xs bg-red-600 text-white px-3 py-1 rounded hover:bg-red-700"
+                                                data-type="curation" data-id="${esc(curation.curation_id)}">
                                                 Resolve Conflict
                                             </button>
                                         </div>
@@ -453,6 +463,19 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
                     modal.remove(); // Close list modal
                     if (window.uiManager && window.uiManager.resolveConflict) {
                         window.uiManager.resolveConflict(type, id);
+                    }
+                });
+            });
+
+            // View Details via listener (nunca inline onclick com JSON.stringify —
+            // aspas simples no nome quebravam o atributo)
+            modal.querySelectorAll('.btn-view-conflict').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const entity = conflicts.entities.find(
+                        e => e.entity_id === btn.dataset.viewEntity
+                    );
+                    if (entity && window.EntityModule?.showEntityDetails) {
+                        window.EntityModule.showEntityDetails(entity);
                     }
                 });
             });

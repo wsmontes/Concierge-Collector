@@ -629,7 +629,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             this.isSyncing = true;
             this.isPushing = true;  // trava de mutação SÓ durante o push
             this.emitSyncEvent('sync-start');
-            this.log.info('�� Starting full sync...');
+            this.log.info('🔄 Starting full sync...');
 
             // 1. Push to server (client → server)
             this.emitSyncEvent('sync-progress', { stage: 'push-entities', message: 'Uploading local entity updates...' });
@@ -1561,6 +1561,14 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                     sync: { ...(curation.sync || {}), status: 'conflict' }
                 });
                 this.log.warn(`Conflict detected for curation: ${curation.curation_id}`);
+                // Emitir o mesmo evento do branch de entity — o badge de
+                // conflito do header só reage a 'sync-conflict'; sem isso o
+                // conflito de curation fica invisível para o usuário
+                this.emitSyncEvent('sync-conflict', {
+                    type: 'curation',
+                    id: curation.curation_id,
+                    name: curation.restaurant_name || curation.name || curation.curation_id
+                });
                 return 'conflict';
             }
 
@@ -1801,11 +1809,20 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                         this.log.warn(`Entity ${id} not found locally after resolution`);
                     }
                 } else if (type === 'curation') {
-                    const updated = await window.ApiService.updateCuration(
-                        id,
-                        local,
-                        null
-                    );
+                    // "Keep Mine": o servidor EXIGE If-Match (sem versão
+                    // retorna 428) — mesmo contrato do branch de entity
+                    let updated;
+                    if (server?.version != null) {
+                        updated = await window.ApiService.updateCuration(
+                            id,
+                            local,
+                            server.version
+                        );
+                    } else {
+                        // Ainda não existe no servidor — criar via bulk
+                        await window.ApiService.bulkUpsertCurations([this.cleanCurationForSync(local)]);
+                        updated = { ...local, version: 1 };
+                    }
 
                     await this.storeItemState('curation', id, updated);
 

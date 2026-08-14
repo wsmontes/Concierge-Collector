@@ -572,7 +572,11 @@ function cleanupBrowserData() {
             'concierge_db_recovery_needed',  // CRITICAL: lido por ensureHealthyIndexedDB DEPOIS do cleanup
             'needsInitialSync',  // CRITICAL: sync inicial pós-import (importManager.js)
             'api_key',  // credencial do app de capture (mesma origin via /capture)
-            'capture_token'  // JWT do app de capture (dev-login local / UI)
+            'capture_token',  // JWT do app de capture (dev-login local / UI)
+            'concierge_db_backup',  // backup do IndexedDB (databaseManager)
+            'concierge_db_schema_version',  // versão do schema local
+            'dbSchemaVersion',  // versão legada do schema
+            'migration_v3_complete'  // flag de migração V2→V3 (importManager)
         ];
 
         // Clean localStorage (preserve only essential keys)
@@ -855,7 +859,11 @@ async function handleQuickImportNearby() {
             max_results: maxResults.toString()
         });
 
-        const response = await fetch(`${backendUrl}?${params.toString()}`);
+        const response = await fetch(`${backendUrl}?${params.toString()}`, {
+            // /places/nearby exige OAuth Bearer (config.js documenta o
+            // contrato) — antes ia SEM header e 401/403 em produção
+            headers: window.ApiService?.getAuthHeaders?.() || {}
+        });
 
         if (!response.ok) {
             throw new Error(`Backend API error: ${response.status} ${response.statusText}`);

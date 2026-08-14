@@ -325,8 +325,9 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         if (filters.type) params.append('type', filters.type);
         if (filters.q) params.append('q', filters.q);
 
-        // Use /search endpoint for curations list
-        const endpoint = `/curations/search?${params.toString()}`;
+        // Use /search endpoint for curations list (rota vem do config — sem
+        // hardcode; evita drift quando o endpoint mudar)
+        const endpoint = `${AppConfig.api.backend.endpoints.curationsSearch}?${params.toString()}`;
         const response = await this.request('GET', endpoint);
         return await response.json();
     }

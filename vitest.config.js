@@ -21,11 +21,21 @@ export default defineConfig({
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html', 'json-summary'],
+      // Measure only real app code: vanilla frontend + capture app.
+      // `all: false` conta apenas arquivos realmente executados: a suíte é
+      // baseada em mocks e carrega módulos via new Function (não
+      // instrumentável pelo v8) — com all:true, ~99% dos arquivos nunca
+      // carregados zeram as métricas e os thresholds ficam inatingíveis.
+      all: false,
+      include: ['scripts/**', 'capture/**'],
       exclude: [
         'tests/**',
         'node_modules/**',
         'archive/**',
         'concierge-api-v3/**',
+        '.venv/**',
+        'venv/**',
+        'docs/**',
         '*.config.js'
       ],
       // Minimum thresholds

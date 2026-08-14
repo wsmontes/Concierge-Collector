@@ -114,10 +114,10 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                 <!-- Name and cuisine -->
                 <div class="entity-card-header mb-3">
                     <h3 class="entity-card-name font-bold text-lg text-gray-900 mb-1 pr-12 line-clamp-2 group-hover:text-blue-600 transition-colors">
-                        ${name}
+                        ${this.escapeHtml(name)}
                     </h3>
                     ${(subtitleHtml || cuisineType) ? `
-                        <div class="entity-card-subtitle text-sm text-gray-500 font-medium">${subtitleHtml || cuisineType}</div>
+                        <div class="entity-card-subtitle text-sm text-gray-500 font-medium">${this.escapeHtml(subtitleHtml || cuisineType)}</div>
                     ` : ''}
                 </div>
 
@@ -126,7 +126,7 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                 <!-- Location -->
                 <div class="entity-card-location flex items-start gap-2 mb-3 text-sm text-gray-600">
                     <span class="material-icons text-base mt-0.5 flex-shrink-0">place</span>
-                    <span class="line-clamp-2">${locationStr}</span>
+                    <span class="line-clamp-2">${this.escapeHtml(locationStr)}</span>
                 </div>
                 
                 <!-- Rating and Price -->
@@ -148,9 +148,9 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                 ${phone || website ? `
                     <div class="entity-card-contact flex items-center gap-3 pt-3 border-t border-gray-100">
                         ${phone ? `
-                            <div class="flex items-center gap-1.5 text-xs text-gray-500" title="${phone}">
+                            <div class="flex items-center gap-1.5 text-xs text-gray-500" title="${this.escapeHtml(phone)}">
                                 <span class="material-icons text-sm">phone</span>
-                                <span class="truncate max-w-[150px]">${phone}</span>
+                                <span class="truncate max-w-[150px]">${this.escapeHtml(phone)}</span>
                             </div>
                         ` : ''}
                         ${website ? `
@@ -467,15 +467,15 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                         </div>
                     ` : ''}
                     ${phone ? `
-                        <div class="flex items-center gap-1.5 text-xs text-gray-600" title="${phone}">
+                        <div class="flex items-center gap-1.5 text-xs text-gray-600" title="${this.escapeHtml(phone)}">
                             <span class="material-icons text-[14px]">phone</span>
-                            <a href="tel:${phone}" class="linked-contact-link hover:underline">${phone}</a>
+                            <a href="tel:${this.escapeHtml(phone)}" class="linked-contact-link hover:underline">${this.escapeHtml(phone)}</a>
                         </div>
                     ` : ''}
                     ${websiteHref ? `
-                        <div class="flex items-center gap-1.5 text-xs text-blue-700" title="${websiteRaw}">
+                        <div class="flex items-center gap-1.5 text-xs text-blue-700" title="${this.escapeHtml(websiteRaw)}">
                             <span class="material-icons text-[14px]">language</span>
-                            <a href="${websiteHref}" target="_blank" rel="noopener noreferrer" class="linked-contact-link hover:underline line-clamp-1">${websiteLabel}</a>
+                            <a href="${websiteHref}" target="_blank" rel="noopener noreferrer" class="linked-contact-link hover:underline line-clamp-1">${this.escapeHtml(websiteLabel)}</a>
                         </div>
                     ` : ''}
                 </div>
@@ -545,17 +545,16 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                 <div class="space-y-2">
                     <div class="flex flex-wrap items-center gap-1.5">
                         <span class="${badgeClass} uppercase tracking-wider">
-                            ${status}
+                            ${this.escapeHtml(status)}
                         </span>
                         <div class="${sourceInfo.className}">
-                            <span class="material-icons">${sourceInfo.icon}</span>
-                            ${sourceInfo.label}
+                            <span class="material-icons">${this.escapeHtml(sourceInfo.icon)}</span>
+                            ${this.escapeHtml(sourceInfo.label)}
                         </div>
-                        <div class="inline-flex items-center gap-1 text-[11px] font-medium ${syncColor} ${syncStatus === 'conflict' ? 'conflict-badge' : ''} bg-white border border-gray-100 rounded-full px-2 py-1"
-                             title="${syncStatus === 'conflict' ? 'Click to resolve conflict' : `Sync Status: ${syncLabel}` }"
-                             ${syncStatus === 'conflict' ? `onclick="event.stopPropagation(); window.uiManager.resolveConflict('${curation.entity_id ? 'curation' : 'entity'}', '${curation.curation_id}')"` : ''}>
+                        <div class="inline-flex items-center gap-1 text-[11px] font-medium ${syncColor} ${syncStatus === 'conflict' ? 'sync-conflict-chip' : ''} bg-white border border-gray-100 rounded-full px-2 py-1"
+                             title="${syncStatus === 'conflict' ? 'Click to resolve conflict' : `Sync Status: ${this.escapeHtml(syncLabel)}` }">
                             <span class="material-icons text-[14px]">${syncIcon}</span>
-                            <span class="capitalize">${syncLabel}</span>
+                            <span class="capitalize">${this.escapeHtml(syncLabel)}</span>
                         </div>
                     </div>
                 </div>
@@ -571,6 +570,19 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                     </button>
                 </div>
             `;
+
+            // Chip de conflito: listener real (nunca inline onclick — o
+            // curation_id vem do servidor e não pode ser interpolado em
+            // string JS dentro de atributo HTML)
+            const conflictChip = actionsRow.querySelector('.sync-conflict-chip');
+            if (conflictChip) {
+                conflictChip.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    if (window.uiManager && typeof window.uiManager.resolveConflict === 'function') {
+                        window.uiManager.resolveConflict(curation.entity_id ? 'curation' : 'entity', curation.curation_id);
+                    }
+                });
+            }
 
             // Add event listeners to buttons
             const editBtn = actionsRow.querySelector('.btn-edit-curation');
@@ -672,7 +684,11 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
     escapeHtml(value) {
         const div = document.createElement('div');
         div.textContent = value || '';
-        return div.innerHTML;
+        // O serializer de innerHTML NÃO escapa aspas em texto — sem o replace,
+        // um valor com `"` quebra atributos (title=, data-*, href=) quando o
+        // resultado é interpolado neles. Escapar aspas torna o helper seguro
+        // para texto E atributo (&quot;/&#39; renderizam idênticos no texto).
+        return div.innerHTML.replace(/"/g, '&quot;').replace(/'/g, '&#39;');
     }
 
     /**
@@ -692,12 +708,12 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
         container.className = 'col-span-full text-center py-12';
 
         container.innerHTML = `
-            <span class="material-icons text-6xl text-gray-300 mb-4">${icon}</span>
-            <p class="text-gray-500 mb-2 font-medium">${title}</p>
-            <p class="text-sm text-gray-400">${message}</p>
+            <span class="material-icons text-6xl text-gray-300 mb-4">${this.escapeHtml(icon)}</span>
+            <p class="text-gray-500 mb-2 font-medium">${this.escapeHtml(title)}</p>
+            <p class="text-sm text-gray-400">${this.escapeHtml(message)}</p>
             ${action ? `
                 <button class="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
-                    ${action.label}
+                    ${this.escapeHtml(action.label)}
                 </button>
             ` : ''}
         `;

@@ -94,9 +94,6 @@
     <!-- Restaurant validator utility -->
     <script src="scripts/utils/restaurantValidator.js" defer></script>
 
-    <!-- Michelin module removed - data will be imported via batch script -->
-    <script src="https://cdn.jsdelivr.net/npm/lamejs@1.2.0/lame.min.js"></script>
-
     <!-- Add iOS detection script -->
     <script>
         // Detect iOS for special handling
@@ -831,20 +828,6 @@
 
     <!-- Core application scripts -->
     <script src="scripts/core/main.js?v=20260813-1"></script>
-    <script src="scripts/sync/syncSettingsManager.js"></script>
-
-    <!-- Ensure this appears after all other scripts -->
-    <script>
-        // Initialize Places Search Module if needed
-        document.addEventListener('DOMContentLoaded', function () {
-            console.log('DOM fully loaded, initializing modules if needed');
-            // Check if module is already initialized
-            if (!window.placesSearchModule && typeof PlacesSearchModule === 'function') {
-                console.log('Initializing Places Search Module from inline script');
-                window.placesSearchModule = new PlacesSearchModule(window.uiManager);
-            }
-        });
-    </script>
 </body>
 
 </html>

@@ -31,42 +31,8 @@
     }
 }
 
-/* Data origin badges - BASE COMPONENT */
-.data-badge {
-    display: inline-flex;
-    align-items: center;
-    font-size: 0.65rem; /* Smaller, metadata text */
-    padding: 0.125rem 0.6rem;
-    border-radius: 9999px; /* Pill shape */
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.025em;
-    line-height: 1;
-}
-
-.data-badge .material-icons {
-    font-size: 0.75rem; /* 12px */
-    margin-right: 0.25rem;
-}
-
-/* Variantes badge-purple/pink/blue/green/amber/gray removidas — dead CSS:
-   o SourceUtils agora emite o padrão único .chip chip--{tone}
-   (components.css + tokens do design-system). Ago/2026. */
-
-.data-badge.syncing {
-    background-color: #DBEAFE;
-    color: #1E40AF;
-    animation: pulse 1.5s ease-in-out infinite;
-}
-
-@keyframes pulse {
-    0%, 100% {
-        opacity: 1;
-    }
-    50% {
-        opacity: 0.6;
-    }
-}
+/* Data origin badges removidos — dead CSS: o SourceUtils emite o padrão
+   único .chip chip--{tone} (components.css + tokens do design-system). Ago/2026. */
 
 /* Restaurant cards with sync status */
 .restaurant-card {

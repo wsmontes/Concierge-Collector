@@ -240,6 +240,7 @@ if (typeof window.UIManager === 'undefined') {
             window.addEventListener('concierge:sync-error', (e) => {
                 console.log('UI: Sync error...', e.detail);
                 this.isSyncInProgress = false;
+                this._refreshAfterSync = false;
                 this.updateSyncActivityIndicator('Sync failed. Working with local data.', 'error');
                 this.scheduleDataRefresh('sync-error', 100);
             });
@@ -282,9 +283,6 @@ if (typeof window.UIManager === 'undefined') {
                 if (this.currentView !== 'list') return;
                 this._refreshAfterSync = false;
                 this.scheduleDataRefresh('sync-success', 100);
-            });
-            window.addEventListener('concierge:sync-error', () => {
-                this._refreshAfterSync = false;
             });
         }
 
@@ -1481,13 +1479,13 @@ if (typeof window.UIManager === 'undefined') {
             });
             const conceptDisplay = conceptNames.slice(0, 3).join(', ');
             const totalConcepts = Object.values(categories).flat().length;
-            const restaurantName = curation.restaurant_name ||
+            const _escC = (v) => { const d = document.createElement('div'); d.textContent = v == null ? '' : String(v); return d.innerHTML; };
+            const restaurantName = _escC(curation.restaurant_name ||
                 curation.name ||
                 (curation.categories?.restaurant_name && curation.categories.restaurant_name[0]) ||
                 curation.restaurantName ||
-                'Unmatched Review';
+                'Unmatched Review');
 
-            const _escC = (v) => { const d = document.createElement('div'); d.textContent = v == null ? '' : String(v); return d.innerHTML; };
             const curatorName = _escC(curation.curator?.name || curation.curatorName || 'Unknown');
 
             // Transcription snippet
@@ -1554,7 +1552,7 @@ if (typeof window.UIManager === 'undefined') {
                     ${conceptDisplay ? `
                         <div class="flex flex-wrap gap-1 mb-3">
                             ${conceptNames.slice(0, 3).map(c => `
-                                <span class="chip chip--neutral">${c}</span>
+                                <span class="chip chip--neutral">${_escC(c)}</span>
                             `).join('')}
                             ${totalConcepts > 3 ? `<span class="px-2 py-0.5 bg-gray-50 text-gray-600 text-xs rounded-md border border-gray-100">+${totalConcepts - 3}</span>` : ''}
                         </div>
@@ -1563,7 +1561,7 @@ if (typeof window.UIManager === 'undefined') {
                     <!-- Transcription Preview -->
                     ${transcriptionSnippet ? `
                         <div class="text-sm text-gray-600 italic border-l-2 border-gray-100 pl-3 py-1 mb-3 line-clamp-3">
-                            "${transcriptionSnippet}"
+                            "${_escC(transcriptionSnippet)}"
                         </div>
                     ` : ''}
 
@@ -1580,7 +1578,7 @@ if (typeof window.UIManager === 'undefined') {
                         ${isLinked ? `
                             <div class="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 px-2.5 py-1.5 rounded-lg border border-green-200">
                                 <span class="material-icons text-[14px]">link</span>
-                                <span class="font-medium">${linkedEntityName || 'Linked'}</span>
+                                <span class="font-medium">${_escC(linkedEntityName) || 'Linked'}</span>
                             </div>
                         ` : `
                             <button class="btn-link-entity px-3 py-1.5 text-xs h-8 flex items-center bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1.5 shadow-sm">

@@ -1,4 +1,12 @@
-// scripts/services/curationBrowser.js
+/**
+ * File: curationBrowser.js
+ * Purpose: Navegação paginada (cursor) sobre curations do servidor
+ * Dependencies: ApiService (injetado), AppConfig (endpoints)
+ *
+ * Main Responsibilities:
+ * - Manter scope (filtros), cursor e página atual da listagem de curations
+ * - Pageamento por cursor com fallback de total desconhecido
+ */
 class CurationBrowser {
   constructor({ apiService, pageSize = 25 } = {}) {
     this.apiService = apiService;

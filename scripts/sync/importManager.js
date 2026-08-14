@@ -419,7 +419,10 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
     async importCSVFile(file) {
         try {
             const content = await this.readFile(file);
-            const lines = content.split('\\n').filter(line => line.trim());
+            // Split em quebras de linha REAIS (um literal '\\n' de dois
+            // caracteres nunca casava — o array não dividia e o import
+            // "funcionava" importando 0 linhas)
+            const lines = content.split(/\r\n|\n|\r/).filter(line => line.trim());
 
             if (lines.length === 0) {
                 throw new Error('CSV file is empty');
@@ -735,12 +738,15 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
             if (!overlay) { resolve(null); return; }
             overlay.querySelector('#export-confirm').addEventListener('click', () => {
                 const selectedFormat = overlay.querySelector('input[name="format"]:checked')?.value || 'v3_json';
-                window.modalManager.close(modalId);
+                // resolve ANTES de fechar: close() dispara onClose de forma
+                // síncrona e o resolve(null) do onClose já teria ganhado a
+                // corrida, fazendo o export silenciosamente não exportar nada
                 resolve(selectedFormat);
+                window.modalManager.close(modalId);
             });
             overlay.querySelector('#export-cancel').addEventListener('click', () => {
-                window.modalManager.close(modalId);
                 resolve(null);
+                window.modalManager.close(modalId);
             });
         });
     }

@@ -626,8 +626,25 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
                 throw new Error(`Entity not found: ${entityId}`);
             }
 
-            // Delete related curations first
-            await this.db.curations.where('entity_id').equals(entityId).delete();
+            // Soft-delete das curations vinculadas (espelha deleteCuration).
+            // Hard-delete local + watermark pull ressuscitaria as curations
+            // do servidor no próximo sync — o delete nunca seria durável.
+            const linkedCurations = await this.db.curations
+                .where('entity_id').equals(entityId)
+                .toArray();
+            for (const curation of linkedCurations) {
+                await this.db.curations
+                    .where('curation_id').equals(curation.curation_id)
+                    .modify(c => {
+                        c.status = 'deleted';
+                        c.sync = {
+                            ...(c.sync || {}),
+                            status: 'pending'
+                        };
+                    });
+                // Se já estava no servidor, enfileira o update p/ status=deleted
+                await this.addToSyncQueue('curation', 'update', curation.id, curation.curation_id, { status: 'deleted' });
+            }
 
             // Delete entity
             await this.db.entities.where('entity_id').equals(entityId).delete();

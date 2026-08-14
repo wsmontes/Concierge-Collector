@@ -61,8 +61,8 @@ const AppConfig = {
                 partialUpdates: true,        // PATCH for partial updates
                 flexibleQuery: true,         // Filter-based queries
                 documentOriented: true,      // document-oriented (MongoDB)
-                requiresAuth: true,          // X-API-Key required for write operations
-                authType: 'api-key'          // API key authentication (not JWT)
+                requiresAuth: true,          // Bearer required for write operations
+                authType: 'oauth-bearer'     // OAuth Bearer (JWT) via AuthService — não X-API-Key
             },
             endpoints: {
                 // System endpoints
@@ -412,10 +412,6 @@ const AppConfig = {
     needsV2Migration() {
         const migrationStatus = localStorage.getItem(this.storage.keys.v2MigrationStatus);
 
-// Log configuration on load
-console.log('✅ AppConfig loaded successfully');
-console.log('Environment:', AppConfig.environment);
-console.log('API Version:', AppConfig.getApiVersion());
         return !migrationStatus || migrationStatus !== 'completed';
     },
 
@@ -442,7 +438,3 @@ Object.freeze(AppConfig.apiVersion);
 Object.freeze(AppConfig.storage);
 Object.freeze(AppConfig.database);
 Object.freeze(AppConfig.app);
-
-console.log('✅ AppConfig loaded successfully');
-console.log('Environment:', AppConfig.getEnvironment());
-console.log('API Version:', AppConfig.getApiVersion());

@@ -64,6 +64,7 @@ global.AppConfig = {
       endpoints: {
         entities: '/entities',
         curations: '/curations',
+        curationsSearch: '/curations/search',
         info: '/info',
         entityById: '/entities/{id}',
         curationById: '/curations/{id}',

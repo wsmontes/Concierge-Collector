@@ -22,9 +22,23 @@ const API_BASE = TEST_API_BASE;
 const API_KEY = TEST_API_KEY;
 
 let apiAvailable = false;
+let devToken = null;
+
+async function getDevToken() {
+  try {
+    // /auth/dev-login só existe em ENVIRONMENT=development (403 em prod)
+    const response = await fetch(`${API_BASE}/auth/dev-login`);
+    if (!response.ok) return null;
+    const data = await response.json();
+    return data.access_token || null;
+  } catch {
+    return null;
+  }
+}
 
 beforeAll(async () => {
   apiAvailable = await isApiAvailable();
+  devToken = await getDevToken();
   if (!apiAvailable) {
     console.warn('⚠️  API not available - skipping ApiService tests');
   }
@@ -1355,10 +1369,21 @@ describe('ApiService - Optimistic Locking', () => {
 // ============================================================================
 
 describe('ApiService - Google Places Integration', () => {
+  // /places/* exige auth (OAuth Bearer) desde ago/2026 — sem dev-token local
+  // os testes pulam. (No CI não há backend: apiAvailable já cobre o skip.)
+  const placesFetch = (url, options = {}) =>
+    fetch(url, {
+      ...options,
+      headers: {
+        ...(options.headers || {}),
+        ...(devToken ? { Authorization: `Bearer ${devToken}` } : {})
+      }
+    });
+
   describe('Nearby Search with Restaurant Filter', () => {
     test('should return only restaurants when type=restaurant', async () => {
-      if (!apiAvailable) {
-        console.warn('⚠️  Skipping - API not available');
+      if (!apiAvailable || !devToken) {
+        console.warn('⚠️  Skipping - API/auth not available');
         return;
       }
 
@@ -1371,13 +1396,13 @@ describe('ApiService - Google Places Integration', () => {
         max_results: 5
       });
 
-      const response = await fetch(`${API_BASE}/places/nearby?${params.toString()}`);
+      const response = await placesFetch(`${API_BASE}/places/nearby?${params.toString()}`);
       expect(response.ok).toBe(true);
 
       const data = await response.json();
       expect(data).toHaveProperty('results');
       expect(Array.isArray(data.results)).toBe(true);
-      
+
       if (data.results.length > 0) {
         // Verify results have essential fields
         const place = data.results[0];
@@ -1388,8 +1413,8 @@ describe('ApiService - Google Places Integration', () => {
     });
 
     test('should accept custom place type (cafe)', async () => {
-      if (!apiAvailable) {
-        console.warn('⚠️  Skipping - API not available');
+      if (!apiAvailable || !devToken) {
+        console.warn('⚠️  Skipping - API/auth not available');
         return;
       }
 
@@ -1401,7 +1426,7 @@ describe('ApiService - Google Places Integration', () => {
         max_results: 3
       });
 
-      const response = await fetch(`${API_BASE}/places/nearby?${params.toString()}`);
+      const response = await placesFetch(`${API_BASE}/places/nearby?${params.toString()}`);
       expect(response.ok).toBe(true);
 
       const data = await response.json();
@@ -1410,8 +1435,8 @@ describe('ApiService - Google Places Integration', () => {
     });
 
     test('should handle all query parameters', async () => {
-      if (!apiAvailable) {
-        console.warn('⚠️  Skipping - API not available');
+      if (!apiAvailable || !devToken) {
+        console.warn('⚠️  Skipping - API/auth not available');
         return;
       }
 
@@ -1424,7 +1449,7 @@ describe('ApiService - Google Places Integration', () => {
         max_results: 10
       });
 
-      const response = await fetch(`${API_BASE}/places/nearby?${params.toString()}`);
+      const response = await placesFetch(`${API_BASE}/places/nearby?${params.toString()}`);
       expect(response.ok).toBe(true);
 
       const data = await response.json();
@@ -1433,8 +1458,8 @@ describe('ApiService - Google Places Integration', () => {
     });
 
     test('should return error for invalid coordinates', async () => {
-      if (!apiAvailable) {
-        console.warn('⚠️  Skipping - API not available');
+      if (!apiAvailable || !devToken) {
+        console.warn('⚠️  Skipping - API/auth not available');
         return;
       }
 
@@ -1445,19 +1470,19 @@ describe('ApiService - Google Places Integration', () => {
         type: 'restaurant'
       });
 
-      const response = await fetch(`${API_BASE}/places/nearby?${params.toString()}`);
+      const response = await placesFetch(`${API_BASE}/places/nearby?${params.toString()}`);
       expect(response.ok).toBe(false);
       expect([400, 422, 502]).toContain(response.status);
     });
 
     test('should return error for missing required parameters', async () => {
-      if (!apiAvailable) {
-        console.warn('⚠️  Skipping - API not available');
+      if (!apiAvailable || !devToken) {
+        console.warn('⚠️  Skipping - API/auth not available');
         return;
       }
 
       // Missing latitude
-      const response = await fetch(`${API_BASE}/places/nearby?longitude=-46.6333&radius=1000`);
+      const response = await placesFetch(`${API_BASE}/places/nearby?longitude=-46.6333&radius=1000`);
       expect(response.ok).toBe(false);
       expect([400, 422]).toContain(response.status);
     });
@@ -1465,8 +1490,8 @@ describe('ApiService - Google Places Integration', () => {
 
   describe('Place Details', () => {
     test('should return place details for valid place_id', async () => {
-      if (!apiAvailable) {
-        console.warn('⚠️  Skipping - API not available');
+      if (!apiAvailable || !devToken) {
+        console.warn('⚠️  Skipping - API/auth not available');
         return;
       }
 
@@ -1479,14 +1504,14 @@ describe('ApiService - Google Places Integration', () => {
         max_results: 1
       });
 
-      const searchResponse = await fetch(`${API_BASE}/places/nearby?${searchParams.toString()}`);
+      const searchResponse = await placesFetch(`${API_BASE}/places/nearby?${searchParams.toString()}`);
       const searchData = await searchResponse.json();
 
       if (searchData.results && searchData.results.length > 0) {
         const placeId = searchData.results[0].place_id;
 
         // Now get place details
-        const detailsResponse = await fetch(`${API_BASE}/places/details/${placeId}`);
+        const detailsResponse = await placesFetch(`${API_BASE}/places/details/${placeId}`);
         expect(detailsResponse.ok).toBe(true);
 
         const detailsData = await detailsResponse.json();
@@ -1496,12 +1521,12 @@ describe('ApiService - Google Places Integration', () => {
     });
 
     test('should return error for invalid place_id', async () => {
-      if (!apiAvailable) {
-        console.warn('⚠️  Skipping - API not available');
+      if (!apiAvailable || !devToken) {
+        console.warn('⚠️  Skipping - API/auth not available');
         return;
       }
 
-      const response = await fetch(`${API_BASE}/places/details/invalid_place_id_12345`);
+      const response = await placesFetch(`${API_BASE}/places/details/invalid_place_id_12345`);
       expect(response.ok).toBe(false);
       expect([400, 404, 502]).toContain(response.status);
     });
@@ -1509,8 +1534,8 @@ describe('ApiService - Google Places Integration', () => {
 
   describe('Response Structure Validation', () => {
     test('should return results array (not places)', async () => {
-      if (!apiAvailable) {
-        console.warn('⚠️  Skipping - API not available');
+      if (!apiAvailable || !devToken) {
+        console.warn('⚠️  Skipping - API/auth not available');
         return;
       }
 
@@ -1522,7 +1547,7 @@ describe('ApiService - Google Places Integration', () => {
         max_results: 1
       });
 
-      const response = await fetch(`${API_BASE}/places/nearby?${params.toString()}`);
+      const response = await placesFetch(`${API_BASE}/places/nearby?${params.toString()}`);
       const data = await response.json();
 
       // API should return 'results' not 'places'
@@ -1532,8 +1557,8 @@ describe('ApiService - Google Places Integration', () => {
     });
 
     test('should include place_id field (not id)', async () => {
-      if (!apiAvailable) {
-        console.warn('⚠️  Skipping - API not available');
+      if (!apiAvailable || !devToken) {
+        console.warn('⚠️  Skipping - API/auth not available');
         return;
       }
 
@@ -1545,7 +1570,7 @@ describe('ApiService - Google Places Integration', () => {
         max_results: 1
       });
 
-      const response = await fetch(`${API_BASE}/places/nearby?${params.toString()}`);
+      const response = await placesFetch(`${API_BASE}/places/nearby?${params.toString()}`);
       const data = await response.json();
 
       if (data.results && data.results.length > 0) {
