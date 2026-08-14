@@ -212,93 +212,47 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
             this.log.warn('QuickActionModule: showRestaurantFormSection not available');
         }
         
-        // Create the options dialog
-        const options = SafetyUtils.createElementSafely('div', {
-            className: 'fixed bg-white shadow-lg rounded-lg z-50 p-2',
-            role: 'dialog',
-            'aria-label': 'Photo options',
-            tabindex: -1,
-            style: {
-                top: '50%',
-                left: '50%',
-                transform: 'translate(-50%, -50%)'
-            }
-        }, [], 'QuickActionModule');
-        
-        if (!options) {
+        // Diálogo de opções de foto — canônico via ModalManager (foco,
+        // Escape, overlay e X vêm do manager; antes era um div manual)
+        if (!window.modalManager || typeof window.modalManager.open !== 'function') {
             SafetyUtils.showNotification('Failed to create photo options dialog', 'error');
             return;
         }
-        
-        // Set the dialog content
-        SafetyUtils.setInnerHTMLSafely(options, `
-            <div class="p-2 text-center font-medium">Choose option:</div>
-            <div class="flex flex-col">
-                <button id="quick-camera-btn" class="py-2 px-4 flex items-center hover:bg-gray-100 rounded">
-                    <span class="material-icons mr-2">photo_camera</span> Camera
-                </button>
-                <button id="quick-gallery-btn" class="py-2 px-4 flex items-center hover:bg-gray-100 rounded">
-                    <span class="material-icons mr-2">photo_library</span> Gallery
-                </button>
-            </div>
+
+        const body = document.createElement('div');
+        body.className = 'flex flex-col';
+        SafetyUtils.setInnerHTMLSafely(body, `
+            <button id="quick-camera-btn" class="py-2 px-4 flex items-center hover:bg-gray-100 rounded">
+                <span class="material-icons mr-2">photo_camera</span> Camera
+            </button>
+            <button id="quick-gallery-btn" class="py-2 px-4 flex items-center hover:bg-gray-100 rounded">
+                <span class="material-icons mr-2">photo_library</span> Gallery
+            </button>
         `, true, 'QuickActionModule');
-        
-        document.body.appendChild(options);
 
-        // A11y: foco entra no diálogo ao abrir
-        options.focus();
+        const modalId = window.modalManager.open({
+            title: 'Choose option',
+            content: body,
+            size: 'sm'
+        });
 
-        // Function to safely remove the options dialog
-        const removeOptionsDialog = () => {
-            if (options && document.body.contains(options)) {
-                document.body.removeChild(options);
-            }
-            document.removeEventListener('keydown', escHandler);
-        };
+        const overlay = document.getElementById(modalId);
+        if (!overlay) return;
+        const closeDialog = () => window.modalManager.close(modalId);
 
-        // A11y: Escape fecha o diálogo
-        const escHandler = (e) => {
-            if (e.key === 'Escape') {
-                removeOptionsDialog();
-            }
-        };
-        document.addEventListener('keydown', escHandler);
-        
-        // Outside click handler
-        const outsideClickHandler = (e) => {
-            if (e.target !== options && !options.contains(e.target) && 
-                e.target !== this.uiManager.quickPhoto) {
-                removeOptionsDialog();
-                document.removeEventListener('click', outsideClickHandler);
-            }
-        };
-        
         // Add event listeners for camera button
-        const cameraBtnEl = SafetyUtils.getElementByIdSafely('quick-camera-btn', 'QuickActionModule');
         const cameraInputEl = SafetyUtils.getElementByIdSafely('camera-input', 'QuickActionModule');
-        
-        if (cameraBtnEl && cameraInputEl) {
-            SafetyUtils.addEventListenerSafely(cameraBtnEl, 'click', () => {
-                cameraInputEl.click();
-                removeOptionsDialog();
-                document.removeEventListener('click', outsideClickHandler);
-            }, {}, 'QuickActionModule');
-        }
-        
+        overlay.querySelector('#quick-camera-btn')?.addEventListener('click', () => {
+            cameraInputEl?.click();
+            closeDialog();
+        });
+
         // Add event listeners for gallery button
-        const galleryBtnEl = SafetyUtils.getElementByIdSafely('quick-gallery-btn', 'QuickActionModule');
         const galleryInputEl = SafetyUtils.getElementByIdSafely('gallery-input', 'QuickActionModule');
-        
-        if (galleryBtnEl && galleryInputEl) {
-            SafetyUtils.addEventListenerSafely(galleryBtnEl, 'click', () => {
-                galleryInputEl.click();
-                removeOptionsDialog();
-                document.removeEventListener('click', outsideClickHandler);
-            }, {}, 'QuickActionModule');
-        }
-        
-        // Close when clicking outside
-        document.addEventListener('click', outsideClickHandler);
+        overlay.querySelector('#quick-gallery-btn')?.addEventListener('click', () => {
+            galleryInputEl?.click();
+            closeDialog();
+        });
     }
 
     /**
