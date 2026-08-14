@@ -263,6 +263,8 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         // CRÍTICO: sem repassar, o loop de cursor do pullLinkedEntities
         // receberia as MESMAS 200 entities para sempre (loop infinito)
         if (filters.after_id) params.append('after_id', filters.after_id);
+        if (filters.city) params.append('city', filters.city);
+        if (filters.q) params.append('q', filters.q);
 
         const queryString = params.toString();
         const endpoint = queryString ? `entities?${queryString}` : 'entities';
