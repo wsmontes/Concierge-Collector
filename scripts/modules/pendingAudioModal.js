@@ -609,13 +609,12 @@ window.PendingAudioModal = class PendingAudioModal {
                     </button>
                 ` : ''}
             </div>
-            <button class="pam-btn-footer pam-btn-close" id="pam-close-footer">
-                Close
-            </button>
         `;
+        // O botão Close do footer foi removido: era redundante com o X
+        // do ModalManager e seu hit-area deslocado BLOQUEAVA os cliques
+        // no X (o modal não fechava). Fechar = X + Escape + overlay.
 
         // Attach footer listeners
-        footerEl.querySelector('#pam-close-footer')?.addEventListener('click', () => this.close());
         footerEl.querySelector('#pam-retry-all')?.addEventListener('click', () => this.retryAll());
         footerEl.querySelector('#pam-clear-all')?.addEventListener('click', () => this.clearAll());
     }

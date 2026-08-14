@@ -1546,14 +1546,14 @@ if (typeof window.UIManager === 'undefined') {
                     </div>
                     <div class="flex items-center gap-2">
                         ${isLinked ? `
-                            <button class="btn-unlink-entity p-2 bg-amber-50 text-amber-600 hover:bg-amber-100 hover:text-amber-700 rounded-lg transition-all border border-amber-100 shadow-sm" title="Unlink from entity">
+                            <button class="btn-unlink-entity p-2 flex items-center justify-center bg-amber-50 text-amber-600 hover:bg-amber-100 hover:text-amber-700 rounded-lg transition-all border border-amber-100 shadow-sm" title="Unlink from entity">
                                 <span class="material-icons text-[18px]">link_off</span>
                             </button>
                         ` : ''}
-                        <button class="btn-edit-curation p-2 bg-gray-50 text-gray-600 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-all border border-gray-100 hover:border-blue-100 shadow-sm" title="Edit Curation">
+                        <button class="btn-edit-curation p-2 flex items-center justify-center bg-gray-50 text-gray-600 hover:bg-blue-50 hover:text-blue-600 rounded-lg transition-all border border-gray-100 hover:border-blue-100 shadow-sm" title="Edit Curation">
                             <span class="material-icons text-[20px]">edit</span>
                         </button>
-                        <button class="btn-delete-curation p-2 bg-gray-50 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-lg transition-all border border-gray-100 hover:border-red-100 shadow-sm" title="Delete Draft">
+                        <button class="btn-delete-curation p-2 flex items-center justify-center bg-gray-50 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-lg transition-all border border-gray-100 hover:border-red-100 shadow-sm" title="Delete Draft">
                             <span class="material-icons text-[20px]">delete_outline</span>
                         </button>
                     </div>
