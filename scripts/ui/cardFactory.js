@@ -118,7 +118,7 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                     <!-- card-restaurant-name: serif de exibição (Cormorant
                          Garamond) — o nome é o verbete do card, como em
                          um caderno de curadoria. Hover via .group em CSS. -->
-                    <h3 class="entity-card-name card-restaurant-name mb-1 pr-12 line-clamp-2">
+                    <h3 class="entity-card-name card-restaurant-name mb-2 pr-12 line-clamp-2">
                         ${this.escapeHtml(name)}
                     </h3>
                     ${(subtitleHtml || cuisineType) ? `
@@ -273,7 +273,7 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                     <button class="btn-entity-sync h-10 w-full flex items-center justify-center bg-gray-50 text-amber-700 hover:bg-amber-50 rounded-lg transition-all border border-gray-100 shadow-sm" title="Sync Entity">
                         <span class="material-icons text-[18px]">sync</span>
                     </button>
-                    <button class="btn-entity-edit h-10 w-full flex items-center justify-center bg-blue-600 text-white hover:bg-blue-700 rounded-lg transition-all border border-blue-600 shadow-sm" title="Edit Entity">
+                    <button class="btn-entity-edit card-edit-btn" title="Edit Entity">
                         <span class="material-icons text-[18px]">edit</span>
                     </button>
                 </div>
@@ -462,8 +462,7 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
             const websiteLabel = websiteRaw ? websiteRaw.replace(/^https?:\/\//i, '').replace(/^www\./i, '') : '';
             const safeCuratorName = this.escapeHtml(curatorName);
 
-            const bodyDetails = isLinkedCuration && (fullAddress || phone || websiteHref) ? `
-                <div class="entity-curation-details pt-1 space-y-2">
+            const bodyDetails = isLinkedCuration && (fullAddress || phone || websiteHref) ? `                <div class="entity-curation-details pt-1 space-y-2">
                     ${fullAddress ? `
                         <div class="flex items-start gap-1.5 text-xs text-gray-600" title="${this.escapeHtml(fullAddress)}">
                             <span class="material-icons text-[14px] mt-[1px] flex-shrink-0">place</span>
@@ -548,11 +547,13 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
             const syncLabel = syncStatus === 'pending' ? 'Syncing...' : syncStatus;
 
             actionsRow.innerHTML = `
-                <div class="space-y-2">
+                <div class="space-y-3">
                     <div class="flex flex-wrap items-center gap-1.5">
+                        ${status !== 'linked' ? `
                         <span class="${badgeClass} uppercase tracking-wider">
                             ${this.escapeHtml(status)}
                         </span>
+                        ` : ''}
                         <div class="${sourceInfo.className}">
                             <span class="material-icons">${this.escapeHtml(sourceInfo.icon)}</span>
                             ${this.escapeHtml(sourceInfo.label)}
@@ -568,10 +569,23 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                     <button class="btn-delete-curation icon-btn w-full text-red-500 hover:bg-red-50 hover:text-red-700 hover:border-red-200" title="Delete Curation">
                         <span class="material-icons text-[18px]">delete_outline</span>
                     </button>
-                    <button class="btn-unlink-curation icon-btn w-full ${isLinkedCuration ? 'text-amber-700 hover:bg-amber-50 hover:text-amber-800 hover:border-amber-200' : 'text-gray-300 cursor-not-allowed'}" title="Unlink Curation" ${isLinkedCuration ? '' : 'disabled'}>
-                        <span class="material-icons text-[18px]">link_off</span>
+                    ${isLinkedCuration ? `
+                    <!-- vínculo ativo: o botão ABRE a página de detalhes da
+                         entity linkada (a tag "Linked" foi removida — este
+                         botão é quem comunica o vínculo agora) -->
+                    <button class="btn-view-entity card-link-btn" title="View linked entity details">
+                        <span class="material-icons text-[16px]">visibility</span>
+                        View Entity
                     </button>
-                    <button class="btn-edit-curation icon-btn w-full bg-blue-600 text-white hover:bg-blue-700 border-blue-600" title="Edit Curation">
+                    ` : `
+                    <!-- sem vínculo: aqui mora o Link Entity (mesmo espaço,
+                         mesma linguagem quieta — nada de azul sólido) -->
+                    <button class="btn-link-entity card-link-btn" title="Link this curation to an entity">
+                        <span class="material-icons text-[16px]">link</span>
+                        Link Entity
+                    </button>
+                    `}
+                    <button class="btn-edit-curation card-edit-btn" title="Edit Curation">
                         <span class="material-icons text-[18px]">edit</span>
                     </button>
                 </div>
@@ -593,7 +607,8 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
             // Add event listeners to buttons
             const editBtn = actionsRow.querySelector('.btn-edit-curation');
             const deleteBtn = actionsRow.querySelector('.btn-delete-curation');
-            const unlinkBtn = actionsRow.querySelector('.btn-unlink-curation');
+            const viewEntityBtn = actionsRow.querySelector('.btn-view-entity');
+            const linkEntityBtn = actionsRow.querySelector('.btn-link-entity');
 
             if (editBtn) {
                 editBtn.onclick = (e) => {
@@ -610,12 +625,26 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                 link.addEventListener('click', (e) => e.stopPropagation());
             });
 
-            if (unlinkBtn) {
-                unlinkBtn.onclick = (e) => {
+            // Vínculo ativo: abre os detalhes da entity linkada (o botão
+            // substitui a antiga tag "Linked" + o unlink icônico)
+            if (viewEntityBtn) {
+                viewEntityBtn.onclick = (e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    if (window.uiManager && typeof window.uiManager.confirmUnlinkCuration === 'function') {
-                        window.uiManager.confirmUnlinkCuration(curation);
+                    if (window.entityModule && typeof window.entityModule.showEntityDetails === 'function') {
+                        window.entityModule.showEntityDetails(entity);
+                    }
+                };
+            }
+
+            // Sem vínculo: abre o seletor de entity (mesmo fluxo do Link
+            // Review do uiManager) — o modal retorna a entity e vincula
+            if (linkEntityBtn) {
+                linkEntityBtn.onclick = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (window.uiManager && typeof window.uiManager.handleLinkReviewToEntity === 'function') {
+                        window.uiManager.handleLinkReviewToEntity(curation);
                     }
                 };
             }

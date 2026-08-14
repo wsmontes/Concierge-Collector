@@ -1509,6 +1509,57 @@
   line-height: 1;
 }
 
+/* Botão de editar dos cards (entity/curation) — era bg-blue-600 sólido
+   ("azul berrante"). Oliva-tintado, quieto, no padrão dos icon-btns. */
+.card-edit-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 2.5rem;
+  width: 100%;
+  gap: 0.375rem;
+  border-radius: var(--radius-lg);
+  background: var(--color-primary-100);
+  color: var(--color-primary-800);
+  border: 1px solid var(--color-primary-200);
+  cursor: pointer;
+  transition: background-color var(--transition-fast) var(--ease-out),
+    color var(--transition-fast) var(--ease-out),
+    border-color var(--transition-fast) var(--ease-out);
+}
+
+.card-edit-btn:hover {
+  background: var(--color-primary-200);
+  border-color: var(--color-primary-300);
+}
+
+/* Botão de vínculo do card de curation — View Entity (linkado) ou
+   Link Entity (solto), no MESMO espaço e linguagem quieta. */
+.card-link-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 2.5rem;
+  width: 100%;
+  gap: 0.375rem;
+  border-radius: var(--radius-lg);
+  background: var(--color-neutral-100);
+  color: var(--color-neutral-700);
+  border: 1px solid var(--color-neutral-200);
+  font-size: 0.75rem;
+  font-weight: var(--font-medium);
+  cursor: pointer;
+  transition: background-color var(--transition-fast) var(--ease-out),
+    color var(--transition-fast) var(--ease-out),
+    border-color var(--transition-fast) var(--ease-out);
+}
+
+.card-link-btn:hover {
+  background: var(--color-primary-50);
+  border-color: var(--color-primary-200);
+  color: var(--color-primary-700);
+}
+
 /* Véu de hover dos cards — antes um gradiente Tailwind de blue-50/30
    (grupo hover). Agora um tom de oliva a 8%, sutil como o do capture. */
 .card-veil {

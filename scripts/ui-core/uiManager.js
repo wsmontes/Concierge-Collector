@@ -1742,7 +1742,7 @@ if (typeof window.UIManager === 'undefined') {
                 <div class="p-5 flex-grow">
                     <!-- Name -->
                     <div class="mb-3">
-                        <h3 class="card-restaurant-name mb-1 pr-12 line-clamp-2">
+                        <h3 class="card-restaurant-name mb-2 pr-12 line-clamp-2">
                             ${restaurantName}
                         </h3>
                         <div class="flex items-center gap-2 text-xs text-gray-500 mb-2">
