@@ -228,17 +228,21 @@ section h3 {
 }
 
 /* ===== Forms & Inputs ===== */
+/* Padding/radius alinhados ao padrão Tailwind dos inputs do app
+   (px-4 py-2 + rounded-lg): a regra antiga (12px/16px + radius 4px)
+   sobrescrevia as classes e criava inputs com proporções diferentes
+   do resto da UI. */
 input[type="text"],
 input[type="password"],
 input[type="file"],
 textarea,
 select {
   width: 100%;
-  padding: 0.75rem 1rem;
+  padding: 0.5rem 1rem;
   font-size: 0.875rem;
   line-height: 1.5;
   border: 1px solid var(--color-neutral-300);
-  border-radius: var(--radius);
+  border-radius: var(--radius-lg);
   background-color: white;
   transition: border-color var(--transition-base), box-shadow var(--transition-base);
 }

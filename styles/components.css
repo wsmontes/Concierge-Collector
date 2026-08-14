@@ -1242,7 +1242,8 @@
   display: inline-flex;
   align-items: center;
   gap: var(--spacing-1);
-  padding: var(--spacing-4) var(--spacing-1);
+  padding: var(--spacing-3) var(--spacing-1);
+  font-size: var(--text-sm);
   border-bottom: 2px solid transparent;
   font-weight: var(--font-medium);
   color: var(--color-neutral-600);
