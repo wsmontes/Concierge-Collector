@@ -110,3 +110,17 @@ class TestPhotoProxy:
         assert location.startswith("https://places.googleapis.com/v1/places/ChIJ-test/photos/AU-c0ffe/media?")
         assert "key=" in location
         assert "maxWidthPx=800" in location
+
+    def test_photo_proxy_adds_default_max_width(self, client):
+        """Regressão: a API moderna do Google REJEITA a URL de foto sem
+        maxWidthPx/maxHeightPx ('At least one of max_height_px or max_width_px
+        must be specified') — sem o default, o alvo do 302 sempre dava 400,
+        quebrando <img> no browser E o download server-side do analyze_image."""
+        response = client.get(
+            "/api/v3/places/photo",
+            params={"reference": "places/ChIJ-test/photos/AU-c0ffe"},
+            follow_redirects=False,
+        )
+        assert response.status_code == 302
+        location = response.headers["location"]
+        assert "maxWidthPx=1200" in location

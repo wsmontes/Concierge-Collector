@@ -73,6 +73,11 @@ async def proxy_place_photo(
         )
 
     params = [("key", settings.google_places_api_key)]
+    # A API moderna do Google REJEITA a URL sem dimensão ('At least one of
+    # max_height_px or max_width_px must be specified') — sem default o alvo
+    # do 302 sempre 400, quebrando <img> no browser e downloads server-side.
+    if not max_width and not max_height:
+        max_width = 1200
     if max_width:
         params.append(("maxWidthPx", max_width))
     if max_height:
