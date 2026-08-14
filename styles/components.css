@@ -600,6 +600,74 @@
   box-shadow: var(--shadow-lg);
 }
 
+/* Status Accent (borda esquerda)
+   O estado do workflow (draft/linked/active) é o primeiro sinal que o
+   concierge precisa escanear — uma borda esquerda de 4px carrega isso
+   sem adicionar ruído ao rodapé do card. A regra :hover gêmea mantém o
+   accent quando a utility Tailwind hover:border-blue-300 repinta todas
+   as bordas no hover (este arquivo carrega depois do Tailwind). */
+.card-accent-draft { border-left: 4px solid var(--color-warning); }
+.card-accent-draft:hover { border-left-color: var(--color-warning); }
+
+.card-accent-linked { border-left: 4px solid var(--color-primary); }
+.card-accent-linked:hover { border-left-color: var(--color-primary); }
+
+.card-accent-active { border-left: 4px solid var(--color-success); }
+.card-accent-active:hover { border-left-color: var(--color-success); }
+
+.card-accent-archived { border-left: 4px solid var(--color-neutral-400); }
+.card-accent-archived:hover { border-left-color: var(--color-neutral-400); }
+
+.card-accent-deleted { border-left: 4px solid var(--color-error); }
+.card-accent-deleted:hover { border-left-color: var(--color-error); }
+
+.card-accent-pending { border-left: 4px solid var(--color-primary-400); }
+.card-accent-pending:hover { border-left-color: var(--color-primary-400); }
+
+.card-accent-published { border-left: 4px solid #9333ea; }
+.card-accent-published:hover { border-left-color: #9333ea; }
+
+/* ========================================================================
+   TOASTS (Toastify)
+   Card branco com accent de cor por tipo — mesma linguagem visual dos
+   cards de curadoria. Substitui o fundo escuro padrão do Toastify.
+   ======================================================================== */
+
+.toastify {
+  background: #fff;
+  color: var(--color-neutral-800);
+  box-shadow: var(--shadow-lg);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-lg);
+  padding: var(--spacing-3) var(--spacing-4);
+  font-family: var(--font-sans);
+  font-size: var(--text-sm);
+  font-weight: var(--font-medium);
+  max-width: 360px;
+}
+
+.toastify .toast-content {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+}
+
+.toastify .toast-content .material-icons {
+  font-size: 18px;
+  flex-shrink: 0;
+}
+
+.toastify.toast-success { border-left: 4px solid var(--color-success); }
+.toastify.toast-success .material-icons { color: var(--color-success); }
+
+.toastify.toast-error { border-left: 4px solid var(--color-error); }
+.toastify.toast-error .material-icons { color: var(--color-error); }
+
+.toastify.toast-info,
+.toastify.toast-warning { border-left: 4px solid var(--color-warning); }
+.toastify.toast-info .material-icons,
+.toastify.toast-warning .material-icons { color: var(--color-warning); }
+
 /* ========================================================================
    MODAL/DIALOG COMPONENTS
    ======================================================================== */
@@ -1177,7 +1245,7 @@
   padding: var(--spacing-4) var(--spacing-1);
   border-bottom: 2px solid transparent;
   font-weight: var(--font-medium);
-  color: var(--color-text-secondary);
+  color: var(--color-neutral-600);
   background: transparent;
   cursor: pointer;
   transition: all var(--transition-fast) var(--ease-out);
@@ -1186,8 +1254,8 @@
 }
 
 .view-tab:hover:not(.active) {
-  color: var(--color-text-primary);
-  border-bottom-color: var(--color-border);
+  color: var(--color-neutral-900);
+  border-bottom-color: var(--color-neutral-300);
 }
 
 .view-tab.active {
@@ -1208,7 +1276,7 @@
 
 /* Tab content areas */
 .view-content {
-  animation: fadeIn var(--transition-medium) var(--ease-out);
+  animation: fadeIn var(--transition-base) var(--ease-out);
 }
 
 @keyframes fadeIn {

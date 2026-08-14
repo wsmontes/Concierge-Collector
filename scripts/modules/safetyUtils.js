@@ -109,18 +109,12 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
                 // Try Toastify if available
                 if (typeof Toastify === 'function') {
                     SafetyUtils.log.debug(`${moduleName}: Using Toastify for notification`);
-                    const backgroundColor = this.getNotificationColor(type);
                     Toastify({
                         text: message,
                         duration: type === 'error' ? 5000 : 3000,
                         gravity: "top",
                         position: "right",
-                        style: {
-                            background: backgroundColor,
-                            color: "white",
-                            borderRadius: "8px",
-                            padding: "12px 16px"
-                        }
+                        className: 'toast-' + (type === 'warning' ? 'info' : type)
                     }).showToast();
                     return;
                 }
@@ -135,21 +129,6 @@ const SafetyUtils = ModuleWrapper.defineClass('SafetyUtils', class {
                 // Final fallback
                 alert(message);
             }
-        }
-
-        /**
-         * Get notification background color based on type
-         * @param {string} type - Notification type
-         * @returns {string} Background color
-         */
-        static getNotificationColor(type) {
-            const colors = {
-                success: "#10b981", // Green
-                error: "#ef4444",   // Red
-                warning: "#f59e0b", // Yellow
-                info: "#3b82f6"     // Blue
-            };
-            return colors[type] || colors.info;
         }
 
         /**

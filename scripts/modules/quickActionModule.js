@@ -215,6 +215,9 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
         // Create the options dialog
         const options = SafetyUtils.createElementSafely('div', {
             className: 'fixed bg-white shadow-lg rounded-lg z-50 p-2',
+            role: 'dialog',
+            'aria-label': 'Photo options',
+            tabindex: -1,
             style: {
                 top: '50%',
                 left: '50%',
@@ -241,13 +244,25 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
         `, true, 'QuickActionModule');
         
         document.body.appendChild(options);
-        
+
+        // A11y: foco entra no diálogo ao abrir
+        options.focus();
+
         // Function to safely remove the options dialog
         const removeOptionsDialog = () => {
             if (options && document.body.contains(options)) {
                 document.body.removeChild(options);
             }
+            document.removeEventListener('keydown', escHandler);
         };
+
+        // A11y: Escape fecha o diálogo
+        const escHandler = (e) => {
+            if (e.key === 'Escape') {
+                removeOptionsDialog();
+            }
+        };
+        document.addEventListener('keydown', escHandler);
         
         // Outside click handler
         const outsideClickHandler = (e) => {

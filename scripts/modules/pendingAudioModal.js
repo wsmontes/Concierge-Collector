@@ -362,6 +362,12 @@ window.PendingAudioModal = class PendingAudioModal {
         document.body.appendChild(this.modal);
         document.body.style.overflow = 'hidden';
 
+        // A11y: foco entra no diálogo ao abrir
+        const dialog = this.modal.querySelector('.pam-dialog');
+        if (dialog) {
+            dialog.focus();
+        }
+
         // Load data
         await this.refresh();
     }
@@ -380,6 +386,13 @@ window.PendingAudioModal = class PendingAudioModal {
         }
         document.body.style.overflow = '';
 
+        // Remove o handler de Escape — sem isso um Escape com o modal
+        // fechado por clique ainda era consumido pelo listener órfão
+        if (this._escHandler) {
+            document.removeEventListener('keydown', this._escHandler);
+            this._escHandler = null;
+        }
+
         // Refresh the badge on the recording section
         if (window.uiManager?.recordingModule?.showPendingAudioBadge) {
             window.uiManager.recordingModule.showPendingAudioBadge();
@@ -392,7 +405,7 @@ window.PendingAudioModal = class PendingAudioModal {
         const el = document.createElement('div');
         el.id = 'pending-audio-modal';
         el.innerHTML = `
-            <div class="pam-dialog" role="dialog" aria-labelledby="pam-title">
+            <div class="pam-dialog" role="dialog" aria-labelledby="pam-title" aria-modal="true" tabindex="-1">
                 <!-- Header -->
                 <div class="pam-header">
                     <h2 id="pam-title">
@@ -430,7 +443,7 @@ window.PendingAudioModal = class PendingAudioModal {
         });
         document.addEventListener('keydown', this._escHandler = (e) => {
             if (e.key === 'Escape') this.close();
-        }, { once: true });
+        });
     }
 
     // ─── Data Loading ──────────────────────────────────────────
@@ -826,15 +839,12 @@ window.PendingAudioModal = class PendingAudioModal {
     }
 
     showToast(message, type = 'info') {
-        if (typeof Toastify !== 'undefined') {
-            const bg = type === 'success'
-                ? 'linear-gradient(to right, #00b09b, #96c93d)'
-                : type === 'error'
-                    ? 'linear-gradient(to right, #ff5f6d, #ffc371)'
-                    : 'linear-gradient(to right, #667eea, #764ba2)';
-            Toastify({ text: message, duration: 3500, gravity: 'top', position: 'center', style: { background: bg } }).showToast();
-        } else if (window.uiUtils?.showNotification) {
-            window.uiUtils.showNotification(message, type);
+        // Delegado ao uiUtils: visual canônico (card branco + accent por
+        // tipo) e dedupe de notificações repetidas
+        if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
+            window.uiUtils.showNotification(message, type, 3500);
+        } else if (typeof Toastify !== 'undefined') {
+            Toastify({ text: message, duration: 3500, gravity: 'top', position: 'center', className: 'toast-' + type }).showToast();
         }
     }
 };

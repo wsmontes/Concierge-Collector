@@ -16,6 +16,30 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
     }
 
     /**
+     * Aplica (ou troca) a classe de accent de status na borda esquerda do card.
+     * O estado do workflow (draft/linked/active/...) vira uma borda colorida
+     * de 4px, escaneável sem ler o rodapé. Classes definidas em components.css.
+     * @param {HTMLElement} card - Card já montado
+     * @param {string} status - Estado atual (draft, linked, active, ...)
+     */
+    _applyStatusAccent(card, status) {
+        const accents = {
+            draft: 'card-accent-draft',
+            linked: 'card-accent-linked',
+            active: 'card-accent-active',
+            archived: 'card-accent-archived',
+            deleted: 'card-accent-deleted',
+            done: 'card-accent-active',
+            pending: 'card-accent-pending'
+        };
+        // Remove qualquer accent anterior antes de aplicar o novo
+        card.classList.forEach(cls => {
+            if (cls.startsWith('card-accent-')) card.classList.remove(cls);
+        });
+        card.classList.add(accents[status] || 'card-accent-archived');
+    }
+
+    /**
      * Create standardized entity card
      * @param {Object} entity - Entity data
      * @param {Object} options - Card options (size, variant, etc.)
@@ -47,6 +71,7 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
         // Added h-full, flex, flex-col for equal height cards
         card.className = 'bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-lg hover:border-blue-300 transition-all duration-200 cursor-pointer group h-full flex flex-col justify-between relative';
         card.dataset.entityId = entity.entity_id;
+        this._applyStatusAccent(card, entity.status || 'active');
 
         const name = entity.name || 'Unknown';
         const type = entity.type || 'restaurant';
@@ -220,7 +245,7 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
 
             actionsRow.innerHTML = `
                 <div class="space-y-2">
-                    <div class="flex items-center gap-1.5 overflow-x-auto whitespace-nowrap">
+                    <div class="flex flex-wrap items-center gap-1.5">
                         <span class="${statusColors[status] || statusColors.active} rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider shadow-sm">
                             ${this.escapeHtml(status)}
                         </span>
@@ -397,6 +422,9 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                 status = curation.entity_id ? 'linked' : 'draft';
             }
 
+            // O accent do card reflete o status da CURATION (não o da entity)
+            this._applyStatusAccent(card, status);
+
             const statusColors = {
                 draft: 'bg-yellow-100 text-yellow-800',
                 linked: 'bg-blue-100 text-blue-800',
@@ -514,7 +542,7 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
 
             actionsRow.innerHTML = `
                 <div class="space-y-2">
-                    <div class="flex items-center gap-1.5 overflow-x-auto whitespace-nowrap">
+                    <div class="flex flex-wrap items-center gap-1.5">
                         <span class="${badgeClass} rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider shadow-sm">
                             ${status}
                         </span>

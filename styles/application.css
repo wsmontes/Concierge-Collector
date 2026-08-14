@@ -11,45 +11,9 @@
  * - App-specific layout patterns
  */
 
-/* ===================================================================
-   DATA BADGES (migrated from inline styles)
-   =================================================================== */
-
-.data-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: var(--spacing-1);
-    font-size: var(--text-xs);
-    font-weight: var(--font-medium);
-    padding: var(--spacing-1) var(--spacing-3);
-    border-radius: var(--radius-full);
-    transition: all var(--transition-fast);
-}
-
-.data-badge-local {
-    background-color: var(--color-warning-light);
-    color: var(--color-warning-dark);
-    border: 1px solid var(--color-warning-400);
-}
-
-.data-badge-remote {
-    background-color: var(--color-success-light);
-    color: var(--color-success-dark);
-    border: 1px solid var(--color-success-400);
-}
-
-/* Maintain backwards compatibility with old class names */
-.data-badge.local {
-    background-color: var(--color-warning-light);
-    color: var(--color-warning-dark);
-    border: 1px solid var(--color-warning-400);
-}
-
-.data-badge.remote {
-    background-color: var(--color-success-light);
-    color: var(--color-success-dark);
-    border: 1px solid var(--color-success-400);
-}
+/* .data-badge movido para sync-badges.css (definição única — antes
+   duplicado aqui com valores conflitantes; as variantes .local/.remote
+   e -local/-remote eram dead CSS sem uso no JS). Ago/2026. */
 
 /* ===================================================================
    CURATOR SELECTOR CONTAINER
@@ -321,63 +285,10 @@ body:has(.toolbar-fixed-bottom:not(.hidden)) #app {
     }
 }
 
-/* ===================================================================
-   DARK MODE SUPPORT
-   =================================================================== */
-
-@media (prefers-color-scheme: dark) {
-    #app {
-        background-color: var(--color-neutral-900);
-    }
-
-    .section {
-        background: var(--color-neutral-800);
-        border: 1px solid var(--color-neutral-700);
-    }
-
-    .section-title {
-        color: var(--color-neutral-100);
-    }
-
-    .restaurant-card {
-        background: var(--color-neutral-800);
-        border-color: var(--color-neutral-700);
-    }
-
-    .restaurant-card:hover {
-        border-color: var(--color-primary-600);
-    }
-
-    .restaurant-card-title {
-        color: var(--color-neutral-100);
-    }
-
-    .restaurant-card-cuisine {
-        color: var(--color-neutral-400);
-    }
-
-    .audio-item {
-        background: var(--color-neutral-800);
-        border-color: var(--color-neutral-700);
-    }
-
-    .audio-item:hover {
-        border-color: var(--color-primary-600);
-    }
-
-    .audio-item-title {
-        color: var(--color-neutral-100);
-    }
-
-    .audio-item-meta {
-        color: var(--color-neutral-400);
-    }
-
-    .recording-status {
-        background: var(--color-neutral-800);
-        color: var(--color-neutral-100);
-    }
-}
+/* Dark mode desabilitado — ver comentário em design-system.css.
+   Este bloco estilizava classes mortas (.restaurant-card/.audio-item
+   não existem mais no markup) e o .section/.section-title, que na
+   prática não são usados pelo index.html atual. Removido em ago/2026. */
 
 /* ===================================================================
    HEADER SYNC BUTTON

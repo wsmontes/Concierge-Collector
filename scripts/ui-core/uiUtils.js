@@ -88,9 +88,10 @@ window.uiUtils = {
     /**
      * Show notification message
      * @param {string} message - Message to display
-     * @param {string} type - Notification type (success, error)
+     * @param {string} type - Notification type (success, error, info, warning)
+     * @param {number} duration - Toast duration in ms (default 3000)
      */
-    showNotification: function (message, type = 'success') {
+    showNotification: function (message, type = 'success', duration = 3000) {
         console.log(`uiUtils.showNotification: ${message} (${type})`);
 
         const now = Date.now();
@@ -110,18 +111,29 @@ window.uiUtils = {
 
         // Try using Toastify if available
         if (typeof Toastify === 'function') {
-            const backgroundColor = type === 'success'
-                ? 'linear-gradient(to right, #00b09b, #96c93d)'
-                : type === 'error'
-                    ? 'linear-gradient(to right, #ff5f6d, #ffc371)'
-                    : 'linear-gradient(to right, #F09819, #EDDE5D)';
+            // Ícone + texto montados via node com textContent (sem XSS).
+            // O visual (card branco + accent por tipo) vem de components.css.
+            const icons = { success: 'check_circle', error: 'error', info: 'info', warning: 'warning' };
+
+            const node = document.createElement('div');
+            node.className = 'toast-content';
+
+            const iconEl = document.createElement('span');
+            iconEl.className = 'material-icons';
+            iconEl.setAttribute('aria-hidden', 'true');
+            iconEl.textContent = icons[type] || 'info';
+
+            const textEl = document.createElement('span');
+            textEl.textContent = message;
+
+            node.append(iconEl, textEl);
 
             Toastify({
-                text: message,
-                duration: 3000,
+                node,
+                duration,
                 gravity: "top",
                 position: "right",
-                style: { background: backgroundColor }
+                className: 'toast-' + (type === 'warning' ? 'info' : type)
             }).showToast();
         } else {
             // Fallback - alert with type indicator

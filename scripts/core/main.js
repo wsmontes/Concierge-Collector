@@ -881,14 +881,8 @@ async function handleQuickImportNearby() {
         logger.info(`✅ Import complete: ${imported.count} imported, ${imported.duplicates} duplicates`);
 
         // 4. Show success notification
-        if (typeof Toastify !== 'undefined') {
-            Toastify({
-                text: `✅ Imported ${imported.count} restaurants. Skipped ${imported.duplicates} duplicates.`,
-                duration: 5000,
-                gravity: "top",
-                position: "center",
-                style: { background: "linear-gradient(to right, #00b09b, #96c93d)" }
-            }).showToast();
+        if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
+            window.uiUtils.showNotification(`Imported ${imported.count} restaurants. Skipped ${imported.duplicates} duplicates.`, 'success', 5000);
         }
 
         // 5. Refresh UI (if entity list exists)
@@ -900,14 +894,8 @@ async function handleQuickImportNearby() {
         logger.error('❌ Import failed:', error);
 
         // Show error notification
-        if (typeof Toastify !== 'undefined') {
-            Toastify({
-                text: `❌ Import failed: ${error.message}`,
-                duration: 5000,
-                gravity: "top",
-                position: "center",
-                style: { background: "linear-gradient(to right, #ff5f6d, #ffc371)" }
-            }).showToast();
+        if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
+            window.uiUtils.showNotification('Import failed: ' + error.message, 'error', 5000);
         }
 
     } finally {

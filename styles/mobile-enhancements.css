@@ -700,28 +700,10 @@
     padding-bottom: var(--spacing-4) !important; /* Reduce from 80px to 16px */
 }
 
-/* Fix button overlap in Restaurant section on mobile */
-@media (max-width: 768px), (hover: none) and (pointer: coarse) {
-    /* Make restaurant section header stack vertically on mobile */
-    #restaurant-list-section .flex.justify-between.items-center.mb-4 {
-        flex-direction: column !important;
-        align-items: flex-start !important;
-        gap: 0.75rem !important;
-    }
-    
-    /* Ensure buttons container takes full width */
-    #restaurant-list-section .flex.gap-2 {
-        width: 100% !important;
-        justify-content: flex-end !important;
-    }
-    
-    /* Make "Add Restaurant" button full width on very small screens */
-    @media (max-width: 400px) {
-        #add-restaurant {
-            flex: 1 !important;
-        }
-    }
-}
+/* Bloco antigo de #restaurant-list-section removido — o id não existe
+   no HTML atual (a seção é #entities-section; o próprio uiManager
+   corrige isso em runtime). Era CSS morto com seletores acoplados ao
+   markup. Ago/2026. */
 
 /* Previous mobile-only version removed - now applies globally */
 
@@ -736,15 +718,8 @@
     z-index: 9999 !important; /* Just below loading overlay */
 }
 
-/* Position toastify below header */
-.toastify {
-    top: 5rem !important;
-    margin-top: 0.5rem !important;
-}
-
-.toastify.on {
-    top: 5rem !important;
-}
+/* Posição do toast (top: 5rem abaixo do header) vem de style.css —
+   regras duplicadas removidas daqui. Ago/2026. */
 
 /* Modals should be above content */
 .modal,
