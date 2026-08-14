@@ -218,158 +218,130 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
      * Show sync details modal
      */
     showSyncDetails(status) {
-        const modal = document.createElement('div');
-        modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4';
+        // Modal canônico: ModalManager provê focus trap, Escape, overlay
+        // click, pilha e restauração de foco — o modal manual anterior
+        // duplicava isso tudo.
+        if (!window.modalManager || typeof window.modalManager.open !== 'function') {
+            this.log.warn('ModalManager not available');
+            return;
+        }
 
         const lastPullTime = status.lastSync.pull ? this.getTimeAgo(new Date(status.lastSync.pull)) : 'Never';
         const lastPushTime = status.lastSync.push ? this.getTimeAgo(new Date(status.lastSync.push)) : 'Never';
 
-        modal.innerHTML = `
-            <div class="bg-white rounded-lg shadow-xl max-w-md w-full p-6" role="dialog" aria-modal="true" aria-labelledby="sync-details-title" tabindex="-1">
-                <div class="flex justify-between items-start mb-4">
-                    <h2 class="text-xl font-bold text-gray-900" id="sync-details-title">Sync Status</h2>
-                    <button class="btn-close-modal text-gray-500 hover:text-gray-700" aria-label="Close">
-                        <span class="material-icons">close</span>
-                    </button>
+        const body = document.createElement('div');
+        body.className = 'space-y-4';
+        body.innerHTML = `
+            <!-- Connection Status -->
+            <div class="flex items-center gap-3 p-3 rounded-lg ${status.isOnline ? 'bg-green-50' : 'bg-gray-50'}">
+                <span class="material-icons text-2xl ${status.isOnline ? 'text-green-600' : 'text-gray-400'}">
+                    ${status.isOnline ? 'wifi' : 'wifi_off'}
+                </span>
+                <div>
+                    <p class="font-medium text-gray-900">${status.isOnline ? 'Online' : 'Offline'}</p>
+                    <p class="text-sm text-gray-500">${status.isOnline ? 'Connected to server' : 'No internet connection'}</p>
                 </div>
-                
-                <div class="space-y-4">
-                    <!-- Connection Status -->
-                    <div class="flex items-center gap-3 p-3 rounded-lg ${status.isOnline ? 'bg-green-50' : 'bg-gray-50'}">
-                        <span class="material-icons text-2xl ${status.isOnline ? 'text-green-600' : 'text-gray-400'}">
-                            ${status.isOnline ? 'wifi' : 'wifi_off'}
-                        </span>
-                        <div>
-                            <p class="font-medium text-gray-900">${status.isOnline ? 'Online' : 'Offline'}</p>
-                            <p class="text-sm text-gray-500">${status.isOnline ? 'Connected to server' : 'No internet connection'}</p>
-                        </div>
+            </div>
+
+            <!-- Last Sync -->
+            <div class="border-t pt-4">
+                <h3 class="font-semibold text-gray-700 mb-3">Last Sync</h3>
+                <div class="space-y-2 text-sm">
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">From Server:</span>
+                        <span class="font-medium">${lastPullTime}</span>
                     </div>
-                    
-                    <!-- Last Sync -->
-                    <div class="border-t pt-4">
-                        <h3 class="font-semibold text-gray-700 mb-3">Last Sync</h3>
-                        <div class="space-y-2 text-sm">
-                            <div class="flex justify-between">
-                                <span class="text-gray-600">From Server:</span>
-                                <span class="font-medium">${lastPullTime}</span>
-                            </div>
-                            <div class="flex justify-between">
-                                <span class="text-gray-600">To Server:</span>
-                                <span class="font-medium">${lastPushTime}</span>
-                            </div>
-                        </div>
-                    </div>
-                    
-                    <!-- Pending Changes -->
-                    ${status.pending.total > 0 ? `
-                        <div class="border-t pt-4">
-                            <h3 class="font-semibold text-gray-700 mb-3">Pending Changes</h3>
-                            <div class="space-y-2 text-sm">
-                                ${status.pending.entities > 0 ? `
-                                    <div class="flex justify-between">
-                                        <span class="text-gray-600">Entities:</span>
-                                        <span class="font-medium text-yellow-600">${status.pending.entities}</span>
-                                    </div>
-                                ` : ''}
-                                ${status.pending.curations > 0 ? `
-                                    <div class="flex justify-between">
-                                        <span class="text-gray-600">Curations:</span>
-                                        <span class="font-medium text-yellow-600">${status.pending.curations}</span>
-                                    </div>
-                                ` : ''}
-                            </div>
-                        </div>
-                    ` : ''}
-                    
-                    <!-- Conflicts -->
-                    ${status.conflicts.total > 0 ? `
-                        <div class="border-t pt-4">
-                            <h3 class="font-semibold text-red-700 mb-3">Conflicts</h3>
-                            <div class="space-y-2 text-sm">
-                                ${status.conflicts.entities > 0 ? `
-                                    <div class="flex justify-between">
-                                        <span class="text-gray-600">Entities:</span>
-                                        <span class="font-medium text-red-600">${status.conflicts.entities}</span>
-                                    </div>
-                                ` : ''}
-                                ${status.conflicts.curations > 0 ? `
-                                    <div class="flex justify-between">
-                                        <span class="text-gray-600">Curations:</span>
-                                        <span class="font-medium text-red-600">${status.conflicts.curations}</span>
-                                    </div>
-                                ` : ''}
-                            </div>
-                            <button class="btn-view-conflicts-modal mt-3 w-full text-sm py-2 px-4 bg-red-600 text-white rounded hover:bg-red-700">
-                                View Conflicts
-                            </button>
-                        </div>
-                    ` : ''}
-                    
-                    <!-- Actions -->
-                    <div class="border-t pt-4 flex gap-2">
-                        ${status.isOnline && !status.isSyncing ? `
-                            <button class="btn-manual-sync-modal flex-1 py-2 px-4 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center justify-center gap-2">
-                                <span class="material-icons text-xl">sync</span>
-                                Sync Now
-                            </button>
-                        ` : ''}
-                        <button class="btn-close-modal flex-1 py-2 px-4 bg-gray-200 text-gray-700 rounded hover:bg-gray-300">
-                            Close
-                        </button>
+                    <div class="flex justify-between">
+                        <span class="text-gray-600">To Server:</span>
+                        <span class="font-medium">${lastPushTime}</span>
                     </div>
                 </div>
             </div>
+
+            <!-- Pending Changes -->
+            ${status.pending.total > 0 ? `
+                <div class="border-t pt-4">
+                    <h3 class="font-semibold text-gray-700 mb-3">Pending Changes</h3>
+                    <div class="space-y-2 text-sm">
+                        ${status.pending.entities > 0 ? `
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Entities:</span>
+                                <span class="font-medium text-yellow-600">${status.pending.entities}</span>
+                            </div>
+                        ` : ''}
+                        ${status.pending.curations > 0 ? `
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Curations:</span>
+                                <span class="font-medium text-yellow-600">${status.pending.curations}</span>
+                            </div>
+                        ` : ''}
+                    </div>
+                </div>
+            ` : ''}
+
+            <!-- Conflicts -->
+            ${status.conflicts.total > 0 ? `
+                <div class="border-t pt-4">
+                    <h3 class="font-semibold text-red-700 mb-3">Conflicts</h3>
+                    <div class="space-y-2 text-sm">
+                        ${status.conflicts.entities > 0 ? `
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Entities:</span>
+                                <span class="font-medium text-red-600">${status.conflicts.entities}</span>
+                            </div>
+                        ` : ''}
+                        ${status.conflicts.curations > 0 ? `
+                            <div class="flex justify-between">
+                                <span class="text-gray-600">Curations:</span>
+                                <span class="font-medium text-red-600">${status.conflicts.curations}</span>
+                            </div>
+                        ` : ''}
+                    </div>
+                    <button class="btn-view-conflicts-modal mt-3 w-full text-sm py-2 px-4 bg-red-600 text-white rounded hover:bg-red-700">
+                        View Conflicts
+                    </button>
+                </div>
+            ` : ''}
+
+            <!-- Action -->
+            ${status.isOnline && !status.isSyncing ? `
+                <div class="border-t pt-4">
+                    <button class="btn-manual-sync-modal w-full py-2 px-4 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center justify-center gap-2">
+                        <span class="material-icons text-xl">sync</span>
+                        Sync Now
+                    </button>
+                </div>
+            ` : ''}
         `;
 
-        document.body.appendChild(modal);
-
-        // A11y: foco entra no diálogo ao abrir e volta ao sair; Escape fecha
-        const prevFocus = document.activeElement;
-        const dialog = modal.querySelector('[role="dialog"]');
-        const onKeydown = (e) => { if (e.key === 'Escape') closeModal(); };
-        const closeModal = () => {
-            document.removeEventListener('keydown', onKeydown);
-            modal.remove();
-            if (prevFocus && typeof prevFocus.focus === 'function') {
-                prevFocus.focus();
-            }
-        };
-        document.addEventListener('keydown', onKeydown);
-        if (dialog) {
-            dialog.focus();
-        }
-
-        // Close button
-        modal.querySelectorAll('.btn-close-modal').forEach(btn => {
-            btn.addEventListener('click', () => closeModal());
+        const modalId = window.modalManager.open({
+            title: 'Sync Status',
+            content: body,
+            size: 'md'
         });
 
+        const overlay = document.getElementById(modalId);
+        if (!overlay) return;
+
         // Manual sync button
-        const syncButton = modal.querySelector('.btn-manual-sync-modal');
+        const syncButton = overlay.querySelector('.btn-manual-sync-modal');
         if (syncButton) {
             syncButton.addEventListener('click', async () => {
                 syncButton.disabled = true;
                 syncButton.innerHTML = '<span class="material-icons text-xl animate-spin">sync</span> Syncing...';
                 await this.handleManualSync();
-                closeModal();
+                window.modalManager.close(modalId);
             });
         }
 
         // View conflicts button
-        const conflictsButton = modal.querySelector('.btn-view-conflicts-modal');
+        const conflictsButton = overlay.querySelector('.btn-view-conflicts-modal');
         if (conflictsButton) {
             conflictsButton.addEventListener('click', () => {
-                closeModal();
+                window.modalManager.close(modalId);
                 this.showConflicts();
             });
         }
-
-        // Click outside to close
-        modal.addEventListener('click', (e) => {
-            if (e.target === modal) {
-                closeModal();
-            }
-        });
     }
 
     /**

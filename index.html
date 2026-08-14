@@ -31,22 +31,22 @@
 
     <!-- Custom CSS - New Architecture -->
     <!-- 1. Design System Foundation (FIRST - design tokens, base styles) -->
-    <link rel="stylesheet" href="styles/design-system.css">
+    <link rel="stylesheet" href="styles/design-system.css?v=20260813-1">
 
     <!-- 2. Component Library (reusable components) -->
-    <link rel="stylesheet" href="styles/components.css">
+    <link rel="stylesheet" href="styles/components.css?v=20260813-1">
 
     <!-- 3. Application-specific Styles -->
-    <link rel="stylesheet" href="styles/application.css">
+    <link rel="stylesheet" href="styles/application.css?v=20260813-1">
 
     <!-- 4. Feature-specific Styles -->
     <link rel="stylesheet" href="styles/places-section.css">
-    <link rel="stylesheet" href="styles/access-control.css">
-    <link rel="stylesheet" href="styles/sync-badges.css">
-    <link rel="stylesheet" href="styles/mobile-enhancements.css">
+    <link rel="stylesheet" href="styles/access-control.css?v=20260813-1">
+    <link rel="stylesheet" href="styles/sync-badges.css?v=20260813-1">
+    <link rel="stylesheet" href="styles/mobile-enhancements.css?v=20260813-1">
 
     <!-- 5. Legacy Support (will be deprecated after migration) -->
-    <link rel="stylesheet" href="styles/style.css">
+    <link rel="stylesheet" href="styles/style.css?v=20260813-1">
 
     <!-- Centralized Configuration (MUST load first) -->
     <script src="scripts/core/config.js"></script>
@@ -735,14 +735,14 @@
     <script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
 
     <!-- Core utilities - load before any other scripts -->
-    <script src="scripts/ui-core/uiUtils.js"></script>
+    <script src="scripts/ui-core/uiUtils.js?v=20260813-1"></script>
     <script src="scripts/core/moduleWrapper.js"></script>
 
     <!-- Database Management - Robust IndexedDB with migrations -->
     <script src="scripts/storage/databaseManager.js"></script>
 
     <!-- NEW: Architectural Managers (load early - other modules depend on these) -->
-    <script src="scripts/ui-core/modalManager.js"></script>
+    <script src="scripts/ui-core/modalManager.js?v=20260813-1"></script>
     <script src="scripts/managers/stateStore.js"></script>
     <script src="scripts/managers/progressManager.js"></script>
     <script src="scripts/ui-core/navigationManager.js"></script>
@@ -750,26 +750,26 @@
     <script src="scripts/managers/formManager.js"></script>
 
     <!-- Phase 3-4: Mobile, Performance & UX Enhancements -->
-    <script src="scripts/ui-core/bottomSheet.js"></script>
+    <script src="scripts/ui-core/bottomSheet.js?v=20260813-1"></script>
     <script src="scripts/ui-core/gestureManager.js"></script>
     <script src="scripts/ui-core/skeletonLoader.js"></script>
-    <script src="scripts/ui-core/lazyLoader.js"></script>
+    <script src="scripts/ui-core/lazyLoader.js?v=20260813-1"></script>
     <script src="scripts/ui-core/optimisticUI.js"></script>
-    <script src="scripts/ui-core/emptyStateManager.js"></script>
-    <script src="scripts/ui-core/accessibilityChecker.js"></script>
+    <script src="scripts/ui-core/emptyStateManager.js?v=20260813-1"></script>
+    <script src="scripts/ui-core/accessibilityChecker.js?v=20260813-1"></script>
 
     <!-- Entity-Curation Backend - Core Data Layer -->
     <!-- migrationManager.js REMOVED: Clean break strategy, no migration needed -->
     <script src="scripts/storage/databaseDiagnostics.js"></script>
     <script src="scripts/storage/dataStore.js"></script>
     <script src="scripts/services/apiService.js"></script>
-    <script src="scripts/services/curationBrowser.js"></script>
+    <script src="scripts/services/curationBrowser.js?v=20260813-1"></script>
     <script src="scripts/sync/syncManagerV3.js"></script>
     <script src="scripts/sync/importManager.js"></script>
 
     <!-- UI Components -->
-    <script src="scripts/ui/cardFactory.js"></script>
-    <script src="scripts/ui/conflictResolutionModal.js"></script>
+    <script src="scripts/ui/cardFactory.js?v=20260813-1"></script>
+    <script src="scripts/ui/conflictResolutionModal.js?v=20260813-1"></script>
 
     <!-- Compatibility Layer for Legacy UI Modules -->
     <script src="scripts/storage/dataStorageWrapper.js"></script>
@@ -777,26 +777,26 @@
     <!-- Application modules - keeping essential ones -->
     <script src="scripts/services/promptTemplate.js"></script>
     <script src="scripts/services/conceptMatcher.js"></script>
-    <script src="scripts/ui-core/uiManager.js"></script>
+    <script src="scripts/ui-core/uiManager.js?v=20260813-1"></script>
 
     <!-- Module implementations - V3 Compatible -->
-    <script src="scripts/modules/safetyUtils.js"></script>
-    <script src="scripts/modules/uiUtilsModule.js"></script>
+    <script src="scripts/modules/safetyUtils.js?v=20260813-1"></script>
+    <script src="scripts/modules/uiUtilsModule.js?v=20260813-1"></script>
     <!-- Core Utilities (Sprint 2, Day 5 - Standardization) -->
     <script src="scripts/utils/sourceUtils.js"></script>
 
     <script src="scripts/modules/pendingAudioManager.js"></script>
-    <script src="scripts/modules/pendingAudioModal.js"></script>
+    <script src="scripts/modules/pendingAudioModal.js?v=20260813-1"></script>
     <script src="scripts/modules/draftRestaurantManager.js"></script>
     <script src="scripts/modules/curatorModule.js"></script>
     <script src="scripts/modules/recordingModule.js?v=20260211-1420"></script>
     <script src="scripts/modules/transcriptionModule.js"></script>
-    <script src="scripts/modules/conceptModule.js?v=20260211-1420"></script>
-    <script src="scripts/modules/restaurantModule.js?v=20260211-1427"></script>
-    <script src="scripts/modules/entityModule.js"></script>
-    <script src="scripts/modules/syncStatusModule.js"></script>
+    <script src="scripts/modules/conceptModule.js?v=20260813-1"></script>
+    <script src="scripts/modules/restaurantModule.js?v=20260813-1"></script>
+    <script src="scripts/modules/entityModule.js?v=20260813-1"></script>
+    <script src="scripts/modules/syncStatusModule.js?v=20260813-1"></script>
     <!-- DEPRECATED: <script src="scripts/modules/exportImportModule.js"></script> -->
-    <script src="scripts/modules/quickActionModule.js"></script>
+    <script src="scripts/modules/quickActionModule.js?v=20260813-1"></script>
     <!-- REMOVED: michelinStagingModule.js and michelin CSS - Michelin data will be batch imported -->
 
     <!-- V3 Data Services (Sprint 1, Day 3 - MongoDB ↔ IndexedDB compatibility) -->
@@ -814,23 +814,23 @@
     <script src="scripts/services/PlacesAutomation.js"></script>
 
     <!-- Google Places Module (refactored to use services) -->
-    <script src="scripts/modules/placesModule.js"></script>
+    <script src="scripts/modules/placesModule.js?v=20260813-1"></script>
     <script src="scripts/modules/audioUtils.js"></script>
 
     <!-- Authentication Module (must load before accessControl.js) -->
     <script src="scripts/auth/auth.js"></script>
 
     <!-- Curator Profile Module (must load after auth.js) -->
-    <script src="scripts/auth/curatorProfile.js"></script>
+    <script src="scripts/auth/curatorProfile.js?v=20260813-1"></script>
 
     <!-- Find Entity Modal (Google Places search interface) -->
-    <script src="scripts/services/findEntityModal.js"></script>
+    <script src="scripts/services/findEntityModal.js?v=20260813-1"></script>
 
     <!-- Access Control (must load before main.js) -->
-    <script src="scripts/auth/accessControl.js"></script>
+    <script src="scripts/auth/accessControl.js?v=20260813-1"></script>
 
     <!-- Core application scripts -->
-    <script src="scripts/core/main.js"></script>
+    <script src="scripts/core/main.js?v=20260813-1"></script>
     <script src="scripts/sync/syncSettingsManager.js"></script>
 
     <!-- Ensure this appears after all other scripts -->

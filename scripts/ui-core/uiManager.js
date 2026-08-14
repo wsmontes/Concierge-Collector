@@ -1687,17 +1687,24 @@ if (typeof window.UIManager === 'undefined') {
 
             const content = document.createElement('div');
             content.className = 'space-y-4';
+            // Transcrição/categorias vêm do áudio do usuário — escapar antes
+            // de interpolar em innerHTML (XSS via conteúdo gravado)
+            const esc = (v) => {
+                const d = document.createElement('div');
+                d.textContent = v == null ? '' : String(v);
+                return d.innerHTML;
+            };
             content.innerHTML = `
                 <div class="bg-gray-50 p-3 rounded-lg border border-gray-200">
                     <p class="text-sm text-gray-500 mb-1">Created</p>
-                    <p class="font-medium text-gray-900">${date}</p>
+                    <p class="font-medium text-gray-900">${esc(date)}</p>
                 </div>
 
         ${transcription ? `
                     <div>
                         <h3 class="font-semibold text-gray-700 mb-2">Transcription</h3>
                         <div class="bg-white p-3 rounded border border-gray-200 text-gray-600 text-sm max-h-40 overflow-y-auto">
-                            ${transcription}
+                            ${esc(transcription)}
                         </div>
                     </div>
                 ` : ''
@@ -1714,11 +1721,11 @@ if (typeof window.UIManager === 'undefined') {
                     '<div class="space-y-3">' +
                     Object.entries(categories).map(([category, items]) => `
                             <div>
-                                <h4 class="text-xs font-bold uppercase text-gray-500 mb-1">${category}</h4>
+                                <h4 class="text-xs font-bold uppercase text-gray-500 mb-1">${esc(category)}</h4>
                                 <div class="flex flex-wrap gap-2">
                                     ${items.map(item => `
                                         <span class="px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded border border-blue-100">
-                                            ${item}
+                                            ${esc(item)}
                                         </span>
                                     `).join('')}
                                 </div>
