@@ -449,7 +449,8 @@
 }
 
 .helper-text.error {
-  color: var(--color-error);
+  /* error-dark: o red-500 puro ficava em 3.76:1 sobre branco */
+  color: var(--color-error-dark);
 }
 
 .helper-text.success {

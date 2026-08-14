@@ -6,9 +6,11 @@
   --olive:     #5C6B4A;
   --olive-dim: #4A573C;
   --stone:     #D4CFC7;
-  --muted:     #8B8680;
+  --muted:     #6F6A64;
   --warn:      #C77D3A;
   --danger:    #C75B5B;  /* failed states (botão/sessões) */
+  /* --muted escurecido: #8B8680 sobre limestone ficava em 3.23:1
+     (abaixo de AA para texto de 14px) */
   --radius-sm: 8px;
   --radius-md: 16px;
   --radius-full: 50%;
@@ -357,6 +359,10 @@ button {
   padding: 6px 14px;
   border-radius: var(--radius-sm);
   transition: background 0.15s, color 0.15s;
+  /* alvo de toque mínimo (o link tinha 29px de altura) */
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
 }
 .bottom-nav__link {
   color: var(--muted);
