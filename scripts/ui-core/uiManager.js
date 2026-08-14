@@ -313,7 +313,33 @@ if (typeof window.UIManager === 'undefined') {
             if (this.currentTab === 'curations') {
                 const container = this.containers.curations;
                 if (container) {
-                    await this._loadCurationsFromLocal(container);
+                    if (!this._curationsLocalMode && this.curationsCache && this.curationsCache.length > 0) {
+                        // Server-driven ativo: MANTÉM a página do servidor e
+                        // re-mescla as pendências locais no topo (só página 1).
+                        // O dump local aqui virava o header em "Page 1 of
+                        // N(local)" ao voltar do editor (bug: Edit → Cancel
+                        // → Page 1 of 1 até algum clique re-buscar do servidor).
+                        if (this.curationPagination.currentPage === 0) {
+                            const serverIds = new Set(this.curationsCache.map(c => c.curation_id));
+                            const baseItems = this.curationsCache.filter(c => c.sync?.status !== 'pending');
+                            let pending = [];
+                            try {
+                                if (window.DataStore?.db) {
+                                    pending = (await window.DataStore.db.curations
+                                        .where('sync.status').equals('pending').toArray())
+                                        .filter(c => !serverIds.has(c.curation_id));
+                                }
+                            } catch (error) {
+                                console.warn('Falha ao mesclar pendências locais:', error);
+                            }
+                            this.curationsCache = [...pending, ...baseItems];
+                        }
+                        // renderCurationsPage preserva currentPage — o
+                        // filterAndDisplayCurations resetaria para 0
+                        this.renderCurationsPage(this.curationsCache);
+                    } else {
+                        await this._loadCurationsFromLocal(container);
+                    }
                 }
             } else if (this.currentTab === 'entities' && typeof this.filterAndDisplayEntities === 'function') {
                 this.filterAndDisplayEntities();
