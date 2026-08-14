@@ -1682,14 +1682,23 @@ if (typeof window.UIManager === 'undefined') {
          * Handle viewing review details
          */
         handleViewReviewDetails(curation) {
-            console.log('View review details:', curation);
-
-            if (!window.modalManager) {
+            // Modal completo de detalhes da review: meta, vínculo com
+            // entidade, fotos, transcrição (expansível), notas e conceitos
+            // — tudo no padrão de componentes (chips, cards, icon-btn).
+            if (!window.modalManager || typeof window.modalManager.open !== 'function') {
                 console.warn('ModalManager not available');
-                alert(`Review ID: ${curation.curation_id} `);
                 return;
             }
 
+            // Transcrição/categorias/notas vêm do áudio/import — escapar
+            // antes de interpolar em innerHTML (XSS via conteúdo gravado)
+            const esc = (v) => {
+                const d = document.createElement('div');
+                d.textContent = v == null ? '' : String(v);
+                return d.innerHTML;
+            };
+
+            const displayName = this.getCurationDisplayName(curation) || 'Review Details';
             const categories = curation.categories || {};
             const totalConcepts = Object.values(categories).flat().length;
             const createdAtValue = curation.createdAt || curation.created_at;
@@ -1700,79 +1709,152 @@ if (typeof window.UIManager === 'undefined') {
                 curation.unstructured_text ||
                 curation.transcription ||
                 '';
+            const notes = curation.notes || '';
+            const city = curation.city || '';
+            const type = curation.type || '';
+            const isLinked = !!curation.entity_id;
+            const linkedName = curation.entity_name || '';
 
-            // Transcrição/categorias vêm do áudio do usuário — escapar antes
-            // de interpolar em innerHTML (XSS via conteúdo gravado)
-            const esc = (v) => {
-                const d = document.createElement('div');
-                d.textContent = v == null ? '' : String(v);
-                return d.innerHTML;
-            };
-
-            // Título = nome do restaurante (não um "Review Details" genérico)
-            const displayName = this.getCurationDisplayName(curation) || 'Review Details';
-            const curatorName = esc(curation.curator?.name || curation.curatorName || 'Unknown');
+            // Fotos da curation (sources.image) — só URLs/data válidos
+            const photos = (curation.sources?.image || [])
+                .map(img => img?.url || img?.photoData || img?.data || '')
+                .filter(Boolean)
+                .slice(0, 4);
 
             const content = document.createElement('div');
             content.className = 'space-y-5';
-            content.innerHTML = `
-                <!-- Meta em chips (padrão único) -->
-                <div class="flex flex-wrap gap-1.5">
-                    <span class="chip chip--neutral">
-                        <span class="material-icons" aria-hidden="true">schedule</span>
-                        ${esc(date)}
-                    </span>
-                    <span class="chip chip--neutral">
-                        <span class="material-icons" aria-hidden="true">person</span>
-                        ${curatorName}
-                    </span>
-                    ${totalConcepts > 0 ? `
-                        <span class="chip chip--info">${totalConcepts} concepts</span>
-                    ` : ''}
-                </div>
 
-                ${transcription ? `
+            // ── Meta (chips) ──
+            const metaChips = [
+                `<span class="chip chip--neutral"><span class="material-icons" aria-hidden="true">schedule</span>${esc(date)}</span>`,
+                `<span class="chip chip--neutral"><span class="material-icons" aria-hidden="true">person</span>${esc(curation.curator?.name || curation.curatorName || 'Unknown')}</span>`
+            ];
+            if (type) metaChips.push(`<span class="chip chip--info">${esc(type)}</span>`);
+            if (city) metaChips.push(`<span class="chip chip--info"><span class="material-icons" aria-hidden="true">place</span>${esc(city)}</span>`);
+            if (totalConcepts > 0) metaChips.push(`<span class="chip chip--info">${totalConcepts} concepts</span>`);
+            if (isLinked) metaChips.push(`<span class="chip chip--success"><span class="material-icons" aria-hidden="true">link</span>Linked</span>`);
+
+            const sections = [];
+
+            sections.push(`
+                <div class="flex flex-wrap gap-1.5">${metaChips.join('')}</div>
+            `);
+
+            // ── Fotos ──
+            if (photos.length > 0) {
+                sections.push(`
+                    <section>
+                        <div class="grid grid-cols-4 gap-2">
+                            ${photos.map(p => `
+                                <img src="${esc(p)}" alt="" class="w-full h-20 object-cover rounded-lg border border-gray-200">
+                            `).join('')}
+                        </div>
+                    </section>
+                `);
+            }
+
+            // ── Transcrição (expansível) ──
+            if (transcription) {
+                const short = transcription.length > 320;
+                sections.push(`
                     <section>
                         <h3 class="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
                             <span class="material-icons text-base text-gray-500" aria-hidden="true">record_voice_over</span>
                             Transcription
                         </h3>
-                        <div class="bg-gray-50 p-4 rounded-lg border border-gray-200 text-sm text-gray-600 leading-relaxed max-h-48 overflow-y-auto whitespace-pre-wrap">
-                            ${esc(transcription)}
+                        <div class="bg-gray-50 p-4 rounded-lg border border-gray-200 text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">
+                            <span class="review-transcript-text">${esc(transcription)}</span>
+                        </div>
+                        ${short ? `
+                            <button class="review-transcript-toggle text-xs font-medium text-blue-600 hover:text-blue-700 mt-1.5">
+                                Show less
+                            </button>
+                        ` : ''}
+                    </section>
+                `);
+            }
+
+            // ── Notas ──
+            if (notes) {
+                sections.push(`
+                    <section>
+                        <h3 class="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
+                            <span class="material-icons text-base text-gray-500" aria-hidden="true">edit_note</span>
+                            Notes
+                        </h3>
+                        <div class="bg-amber-50/60 p-4 rounded-lg border border-amber-100 text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+                            ${esc(notes)}
                         </div>
                     </section>
-                ` : ''}
+                `);
+            }
 
+            // ── Conceitos ──
+            // Categorias grandes ganham cap de 8 chips + "show all" por categoria
+            const CAP = 8;
+            sections.push(`
                 <section>
                     <h3 class="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
                         <span class="material-icons text-base text-gray-500" aria-hidden="true">category</span>
                         Extracted Concepts
                     </h3>
-
                     ${Object.keys(categories).length === 0
-                    ? '<p class="text-sm text-gray-400 italic">No concepts extracted</p>'
-                    : '<div class="space-y-3">' +
-                      Object.entries(categories).map(([category, items]) => `
-                            <div>
-                                <h4 class="text-xs font-bold uppercase tracking-wider text-gray-500 mb-1.5">${esc(category)}</h4>
-                                <div class="flex flex-wrap gap-1.5">
-                                    ${items.map(item => `
-                                        <span class="chip chip--info">${esc(item)}</span>
-                                    `).join('')}
+                        ? '<p class="text-sm text-gray-400 italic">No concepts extracted</p>'
+                        : '<div class="space-y-3">' +
+                          Object.entries(categories).map(([category, items]) => {
+                            const list = Array.isArray(items) ? items : [items];
+                            const overflow = list.length > CAP;
+                            return `
+                                <div class="review-concept-group">
+                                    <h4 class="text-xs font-bold uppercase tracking-wider text-gray-500 mb-1.5">${esc(category)}</h4>
+                                    <div class="flex flex-wrap gap-1.5">
+                                        ${list.slice(0, CAP).map(item => `<span class="chip chip--info">${esc(item)}</span>`).join('')}
+                                        ${overflow ? `
+                                            <button class="review-concept-toggle chip chip--neutral hover:opacity-80" data-extra="${esc(list.slice(CAP).map(i => esc(i)).join('\u0001'))}">
+                                                +${list.length - CAP} more
+                                            </button>
+                                        ` : ''}
+                                    </div>
                                 </div>
-                            </div>
-                        `).join('') +
-                      '</div>'
+                            `;
+                          }).join('') +
+                          '</div>'
                     }
                 </section>
-            `;
+            `);
 
+            content.innerHTML = sections.join('');
+
+            // ── Footer: ações reais + Close ──
             const footer = document.createElement('div');
-            footer.className = 'w-full flex justify-end';
+            footer.className = 'w-full flex items-center justify-end gap-2 flex-wrap';
+
             const closeBtn = document.createElement('button');
             closeBtn.className = 'px-4 py-2 bg-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-300 transition-colors';
             closeBtn.textContent = 'Close';
             footer.appendChild(closeBtn);
+
+            if (!isLinked) {
+                const linkBtn = document.createElement('button');
+                linkBtn.className = 'px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1.5';
+                linkBtn.innerHTML = '<span class="material-icons text-base" aria-hidden="true">link</span>Link Entity';
+                footer.insertBefore(linkBtn, closeBtn);
+                linkBtn.addEventListener('click', () => {
+                    window.modalManager.close(modalId);
+                    this.handleLinkReviewToEntity(curation);
+                });
+            }
+
+            const editBtn = document.createElement('button');
+            editBtn.className = 'px-4 py-2 bg-white border border-gray-300 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-50 transition-colors flex items-center gap-1.5';
+            editBtn.innerHTML = '<span class="material-icons text-base" aria-hidden="true">edit</span>Edit';
+            footer.insertBefore(editBtn, closeBtn);
+            editBtn.addEventListener('click', () => {
+                window.modalManager.close(modalId);
+                if (typeof this.editCuration === 'function') {
+                    this.editCuration(curation);
+                }
+            });
 
             const modalId = window.modalManager.open({
                 title: displayName,
@@ -1781,8 +1863,36 @@ if (typeof window.UIManager === 'undefined') {
                 size: 'md'
             });
 
-            // Listener direto (nada de onclick inline — mais robusto e sem CSP frágil)
             closeBtn.addEventListener('click', () => window.modalManager.close(modalId));
+
+            // Toggles "show all" por categoria de conceito
+            content.querySelectorAll('.review-concept-toggle').forEach(btn => {
+                btn.addEventListener('click', () => {
+                    const extras = (btn.dataset.extra || '').split('\u0001');
+                    btn.replaceWith(...extras.map(e => {
+                        const span = document.createElement('span');
+                        span.className = 'chip chip--info';
+                        span.textContent = e;
+                        return span;
+                    }));
+                });
+            });
+
+            // Transcrição expansível: colapsa para 4 linhas com toggle
+            const toggle = content.querySelector('.review-transcript-toggle');
+            const textEl = content.querySelector('.review-transcript-text');
+            if (toggle && textEl) {
+                const fullText = textEl.textContent;
+                let expanded = false;
+                const collapsed = fullText.slice(0, 320) + '…';
+                textEl.textContent = collapsed;
+                toggle.textContent = 'Show more';
+                toggle.addEventListener('click', () => {
+                    expanded = !expanded;
+                    textEl.textContent = expanded ? fullText : collapsed;
+                    toggle.textContent = expanded ? 'Show less' : 'Show more';
+                });
+            }
         }
 
         /**

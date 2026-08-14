@@ -34,7 +34,7 @@
     <link rel="stylesheet" href="styles/design-system.css?v=20260813-2">
 
     <!-- 2. Component Library (reusable components) -->
-    <link rel="stylesheet" href="styles/components.css?v=20260813-8">
+    <link rel="stylesheet" href="styles/components.css?v=20260813-9">
 
     <!-- 3. Application-specific Styles -->
     <link rel="stylesheet" href="styles/application.css?v=20260813-1">
@@ -46,7 +46,7 @@
     <link rel="stylesheet" href="styles/mobile-enhancements.css?v=20260813-1">
 
     <!-- 5. Legacy Support (will be deprecated after migration) -->
-    <link rel="stylesheet" href="styles/style.css?v=20260813-4">
+    <link rel="stylesheet" href="styles/style.css?v=20260813-5">
 
     <!-- Centralized Configuration (MUST load first) -->
     <script src="scripts/core/config.js"></script>
@@ -136,8 +136,8 @@
         <!-- Audio Recording Section -->
         <section id="recording-section"
             class="mb-8 p-6 bg-white rounded-xl shadow-md border border-gray-100 hover:shadow-lg transition-all duration-300 hidden">
-            <h2 class="text-xl font-semibold mb-4 pb-3 border-b border-gray-100">
-                <span class="material-icons align-middle text-red-600">mic</span>
+            <h2 class="section-heading">
+                <span class="material-icons" style="color: var(--color-error)">mic</span>
                 Record Your Restaurant Review
                 <span id="pending-audio-badge"
                     class="ml-2 bg-yellow-500 text-white text-xs px-2 py-1 rounded-full cursor-pointer hover:bg-yellow-600 hidden"
@@ -191,8 +191,8 @@
         <!-- Transcription Section -->
         <section id="transcription-section"
             class="mb-8 p-6 bg-white rounded-xl shadow-md border border-gray-100 hover:shadow-lg transition-all duration-300 hidden">
-            <h2 class="text-xl font-semibold mb-4 pb-3 border-b border-gray-100">
-                <span class="material-icons align-middle">description</span>
+            <h2 class="section-heading">
+                <span class="material-icons">description</span>
                 Transcription
             </h2>
             <div id="transcription-text" class="border p-4 rounded h-40 overflow-y-auto mb-4"></div>
@@ -211,8 +211,8 @@
         <!-- Concepts Section -->
         <section id="concepts-section"
             class="mb-8 p-6 bg-white rounded-xl shadow-md border border-gray-100 hover:shadow-lg transition-all duration-300 hidden">
-            <h2 class="text-xl font-semibold mb-4 pb-3 border-b border-gray-100">
-                <span class="material-icons align-middle">category</span>
+            <h2 class="section-heading">
+                <span class="material-icons">category</span>
                 Restaurant Concepts
             </h2>
             <div class="mb-6">
@@ -417,8 +417,8 @@
         class="mb-8 p-6 bg-white rounded-xl shadow-md border border-gray-100 hover:shadow-lg transition-all duration-300 hidden">
         <!-- Header -->
         <div class="flex justify-between items-center mb-4">
-            <h2 class="text-2xl font-bold flex items-center">
-                <span class="material-icons mr-2 text-green-500 align-middle">restaurant</span>
+            <h2 class="section-heading section-heading--plain">
+                <span class="material-icons" style="color: var(--color-success)">restaurant</span>
                 My Collection
             </h2>
             <div id="view-sync-activity" class="hidden text-sm px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 border border-blue-100 items-center gap-2">
@@ -548,8 +548,8 @@
     <!-- Export/Import Section -->
     <section id="export-import-section"
         class="mb-8 p-6 bg-white rounded-xl shadow-md border border-gray-100 hover:shadow-lg transition-all duration-300 hidden">
-        <h2 class="text-xl font-semibold mb-4 pb-3 border-b border-gray-100">
-            <span class="material-icons align-middle">settings</span>
+        <h2 class="section-heading">
+            <span class="material-icons">settings</span>
             Data Management
         </h2>
 
@@ -777,7 +777,7 @@
     <!-- Application modules - keeping essential ones -->
     <script src="scripts/services/promptTemplate.js"></script>
     <script src="scripts/services/conceptMatcher.js"></script>
-    <script src="scripts/ui-core/uiManager.js?v=20260813-7"></script>
+    <script src="scripts/ui-core/uiManager.js?v=20260813-8"></script>
 
     <!-- Module implementations - V3 Compatible -->
     <script src="scripts/modules/safetyUtils.js?v=20260813-1"></script>

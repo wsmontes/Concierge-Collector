@@ -324,7 +324,11 @@ button:not([class]) {
   overflow: hidden;
 }
 
-button::after {
+/* Escopo :not([class]) CRÍTICO: o ::after absoluto de botões COM classe
+   (sem position:relative próprio) cobria o containing block INTEIRO —
+   um overlay transparente que roubava cliques dentro dos modais
+   (X que "não fechava", toggles que não respondiam). */
+button:not([class])::after {
   content: '';
   position: absolute;
   top: 0;
@@ -334,13 +338,14 @@ button::after {
   background-color: transparent;
   border-radius: inherit;
   transition: background-color var(--transition-base);
+  pointer-events: none;
 }
 
-button:active {
+button:not([class]):active {
   transform: translateY(1px);
 }
 
-button:hover::after {
+button:not([class]):hover::after {
   background-color: rgba(255, 255, 255, 0.1);
 }
 

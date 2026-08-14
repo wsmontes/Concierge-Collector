@@ -660,6 +660,34 @@
 .chip--accent  { background-color: var(--chip-accent-bg);  color: var(--chip-accent-fg); }
 
 /* ========================================================================
+   SECTION HEADING (padrão único de título de seção)
+   As seções do app usavam duas convenções (text-xl+border vs text-2xl
+   sem border) com ícones em cores variadas. Um componente.
+   ======================================================================== */
+
+.section-heading {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  font-size: var(--text-xl);
+  font-weight: var(--font-semibold);
+  color: var(--color-neutral-900);
+  margin-bottom: var(--spacing-4);
+  padding-bottom: var(--spacing-3);
+  border-bottom: 1px solid var(--color-neutral-100);
+}
+
+.section-heading .material-icons {
+  font-size: 20px;
+  color: var(--color-primary);
+}
+
+.section-heading--plain {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+/* ========================================================================
    EMPTY STATE (padrão único de estado vazio)
    Antes cada view tinha seu bloco inline py-12 quase idêntico com
    variações. Um componente: ícone grande, título, descrição, ação.
