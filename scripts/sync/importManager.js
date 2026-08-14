@@ -614,9 +614,20 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
         const items = [];
         const skippedOffsets = [];
 
+        // O fetch do apiService não aplica timeout — página travada
+        // travava o export inteiro (observado no dev saturado).
+        const PAGE_TIMEOUT_MS = 20000;
+        const withTimeout = (promise) => Promise.race([
+            promise,
+            new Promise((_, reject) => setTimeout(
+                () => reject(new Error(`${label} page timeout após ${PAGE_TIMEOUT_MS}ms`)),
+                PAGE_TIMEOUT_MS
+            ))
+        ]);
+
         while (total === null || offset < total) {
             try {
-                const response = await fetchPage({ limit, offset });
+                const response = await withTimeout(fetchPage({ limit, offset }));
                 const batchItems = this.extractPaginatedItems(response);
                 const batchTotal = Number.isFinite(response?.total) ? response.total : null;
                 if (batchTotal !== null) total = batchTotal;
@@ -646,7 +657,7 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
         for (let index = 0; index < count; index++) {
             const singleOffset = batchOffset + index;
             try {
-                const singleResponse = await fetchPage({ limit: 1, offset: singleOffset });
+                const singleResponse = await withTimeout(fetchPage({ limit: 1, offset: singleOffset }));
                 const singleItems = this.extractPaginatedItems(singleResponse);
                 if (singleItems.length > 0) recovered.push(...singleItems);
             } catch (singleError) {
