@@ -140,9 +140,7 @@ def test_full_capture_journey_with_auth(client, auth_headers, test_db):
         # Mock the three AI-dependent helper functions so the test is hermetic
         with patch("app.api.capture._transcribe") as mock_transcribe, patch(
             "app.api.capture._extract_restaurant_name"
-        ) as mock_extract_name, patch(
-            "app.api.capture._extract_concepts"
-        ) as mock_extract_concepts:
+        ) as mock_extract_name, patch("app.api.capture._extract_concepts") as mock_extract_concepts:
 
             mock_transcribe.return_value = "Great food at Test Italian Restaurant"
             mock_extract_name.return_value = "Test Italian Restaurant"
@@ -174,9 +172,7 @@ def test_full_capture_journey_with_auth(client, auth_headers, test_db):
 
         # Confirm the target entity appears in the matches
         entity_ids_in_response = [e["entity_id"] for e in data["entities"]]
-        assert (
-            entity_id in entity_ids_in_response
-        ), f"Expected {entity_id} in matches, got {entity_ids_in_response}"
+        assert entity_id in entity_ids_in_response, f"Expected {entity_id} in matches, got {entity_ids_in_response}"
 
         # ── Step 2: Confirm capture ──
         confirm_key = f"confirm:{idempotency_key}"
@@ -202,9 +198,7 @@ def test_full_capture_journey_with_auth(client, auth_headers, test_db):
 
         # ── Step 3: Verify curation exists ──
         resp = client.get(f"/api/v3/curations/{curation_id}")
-        assert (
-            resp.status_code == 200
-        ), f"GET curation returned {resp.status_code}: {resp.text}"
+        assert resp.status_code == 200, f"GET curation returned {resp.status_code}: {resp.text}"
         curation = resp.json()
         assert curation["curation_id"] == curation_id
         assert curation["entity_id"] == entity_id

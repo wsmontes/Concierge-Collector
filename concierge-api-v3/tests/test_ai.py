@@ -26,9 +26,7 @@ class TestAIEndpoints:
         response = client.post("/api/v3/ai/orchestrate", json={})
 
         # Should return validation error, NOT 500 (internal error)
-        assert (
-            response.status_code != 500
-        ), f"Empty request should not cause 500 error: {response.text}"
+        assert response.status_code != 500, f"Empty request should not cause 500 error: {response.text}"
 
         # API now enforces authentication before payload validation
         assert response.status_code in [
@@ -44,14 +42,10 @@ class TestAIEndpoints:
             "entity_type": "restaurant",
         }
 
-        response = client.post(
-            "/api/v3/ai/orchestrate", json=request_data, headers=auth_headers
-        )
+        response = client.post("/api/v3/ai/orchestrate", json=request_data, headers=auth_headers)
 
         # CRITICAL: Should NEVER return 500 (indicates async/await bug)
-        assert (
-            response.status_code != 500
-        ), f"❌ 500 error indicates code bug (async/await?): {response.text}"
+        assert response.status_code != 500, f"❌ 500 error indicates code bug (async/await?): {response.text}"
 
         # With auth, may still fail due unavailable external model/provider
         assert response.status_code in [
@@ -65,9 +59,7 @@ class TestAIEndpoints:
         response = client.get("/api/v3/ai/usage-stats")
 
         # Should work or require auth, but not crash with 500
-        assert (
-            response.status_code != 500
-        ), f"Usage stats should not return 500: {response.text}"
+        assert response.status_code != 500, f"Usage stats should not return 500: {response.text}"
 
         # Expected: 200 (success)
         assert response.status_code == 200
@@ -80,14 +72,10 @@ class TestAIValidation:
         """Test with invalid workflow type"""
         request_data = {"workflow_type": "invalid_type", "text": "Test"}
 
-        response = client.post(
-            "/api/v3/ai/orchestrate", json=request_data, headers=auth_headers
-        )
+        response = client.post("/api/v3/ai/orchestrate", json=request_data, headers=auth_headers)
 
         # Should validate, but NEVER crash with 500
-        assert (
-            response.status_code != 500
-        ), f"Invalid workflow should not cause 500: {response.text}"
+        assert response.status_code != 500, f"Invalid workflow should not cause 500: {response.text}"
 
         # Authentication may be evaluated first in some environments
         assert response.status_code in [400, 401]
@@ -105,9 +93,7 @@ class TestAsyncAwaitIssues:
         """
         request_data = {"text": "Test restaurant", "entity_type": "restaurant"}
 
-        response = client.post(
-            "/api/v3/ai/orchestrate", json=request_data, headers=auth_headers
-        )
+        response = client.post("/api/v3/ai/orchestrate", json=request_data, headers=auth_headers)
 
         # If endpoint returns a coroutine instead of awaiting it,
         # FastAPI will throw a 500 error

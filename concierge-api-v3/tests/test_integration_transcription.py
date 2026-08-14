@@ -54,9 +54,7 @@ async def test_complete_transcription_workflow(async_client, auth_token):
     # - 401: Unauthorized (if token is invalid)
     # - 503: Service unavailable (if OpenAI API is down)
     valid_codes = [200, 400, 401, 503]
-    assert (
-        response.status_code in valid_codes
-    ), f"Unexpected status code: {response.status_code}\n{response.text}"
+    assert response.status_code in valid_codes, f"Unexpected status code: {response.status_code}\n{response.text}"
 
     # If successful, verify response structure
     if response.status_code == 200:
@@ -66,14 +64,10 @@ async def test_complete_transcription_workflow(async_client, auth_token):
         assert "workflow" in data, "Response missing 'workflow' field"
         assert "results" in data, "Response missing 'results' field"
         assert "saved_to_db" in data, "Response missing 'saved_to_db' field"
-        assert (
-            "processing_time_ms" in data
-        ), "Response missing 'processing_time_ms' field"
+        assert "processing_time_ms" in data, "Response missing 'processing_time_ms' field"
 
         # Verify workflow was detected correctly
-        assert (
-            data["workflow"] == "audio_only"
-        ), f"Expected 'audio_only' workflow, got '{data['workflow']}'"
+        assert data["workflow"] == "audio_only", f"Expected 'audio_only' workflow, got '{data['workflow']}'"
 
         # Verify results structure
         results = data["results"]
@@ -98,9 +92,7 @@ async def test_transcription_without_authentication(async_client):
     response = await async_client.post("/api/v3/ai/orchestrate", json=request_body)
 
     # Must require authentication
-    assert (
-        response.status_code == 401
-    ), f"Expected 401 Unauthorized, got {response.status_code}"
+    assert response.status_code == 401, f"Expected 401 Unauthorized, got {response.status_code}"
 
 
 @pytest.mark.asyncio
@@ -120,9 +112,7 @@ async def test_transcription_with_invalid_token(async_client):
     )
 
     # Should reject invalid token
-    assert (
-        response.status_code == 401
-    ), f"Expected 401 Unauthorized for invalid token, got {response.status_code}"
+    assert response.status_code == 401, f"Expected 401 Unauthorized for invalid token, got {response.status_code}"
 
 
 @pytest.mark.asyncio
@@ -179,9 +169,7 @@ async def test_multiple_concurrent_transcription_requests(async_client, auth_tok
 
     # All should complete without 500 errors
     for i, response in enumerate(responses):
-        assert (
-            response.status_code != 500
-        ), f"Request {i + 1} returned 500 error (async/await issue?)"
+        assert response.status_code != 500, f"Request {i + 1} returned 500 error (async/await issue?)"
 
 
 # Test fixtures removed - now using global fixtures from conftest.py

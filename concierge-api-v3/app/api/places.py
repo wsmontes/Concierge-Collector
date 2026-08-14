@@ -9,13 +9,15 @@ API keys are stored server-side, never exposed to frontend.
 Uses the modern Places API (New) with HTTP requests.
 """
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Request, Depends
 from typing import List, Dict, Any, Optional
 from pydantic import BaseModel
 import httpx
 import logging
 
 from app.core.config import settings
+from app.core.rate_limit import limiter
+from app.core.security import verify_auth
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -145,15 +147,7 @@ def get_enhanced_field_mask(
         photos = ["photos"]
 
     if detail_level == "standard":
-        all_fields = (
-            essential
-            + contact
-            + hours
-            + address
-            + basic_attributes
-            + editorial
-            + photos
-        )
+        all_fields = essential + contact + hours + address + basic_attributes + editorial + photos
         # Apply prefix if needed
         if use_prefix:
             all_fields = [f"places.{field}" for field in all_fields]
@@ -231,7 +225,9 @@ def get_enhanced_field_mask(
 
 
 @router.get("/nearby", response_model=NearbySearchResponse)
+@limiter.limit("20/minute")
 async def search_nearby(
+    request: Request,
     latitude: float = Query(..., description="Latitude for search center"),
     longitude: float = Query(..., description="Longitude for search center"),
     radius: Optional[int] = Query(
@@ -240,48 +236,33 @@ async def search_nearby(
         le=50000,
         description="Search radius in meters (omit for worldwide with keyword)",
     ),
-    place_type: Optional[str] = Query(
-        None, description="Place type filter (restaurant, cafe, bar, bakery, food)"
-    ),
-    keyword: Optional[str] = Query(
-        None, description="Keyword search (enables Text Search if no radius)"
-    ),
+    place_type: Optional[str] = Query(None, description="Place type filter (restaurant, cafe, bar, bakery, food)"),
+    keyword: Optional[str] = Query(None, description="Keyword search (enables Text Search if no radius)"),
     max_results: int = Query(20, ge=1, le=20, description="Maximum results to return"),
-    language: Optional[str] = Query(
-        "pt-BR", description="Language code (e.g., pt-BR, en, es)"
-    ),
+    language: Optional[str] = Query("pt-BR", description="Language code (e.g., pt-BR, en, es)"),
     region: Optional[str] = Query("BR", description="Region code (e.g., BR, US, ES)"),
-    min_rating: Optional[float] = Query(
-        None, ge=1.0, le=5.0, description="Minimum rating filter"
-    ),
-    open_now: Optional[bool] = Query(
-        None, description="Only return places that are open now"
-    ),
-    price_levels: Optional[str] = Query(
-        None, description="Comma-separated price levels (e.g., 'MODERATE,EXPENSIVE')"
-    ),
+    min_rating: Optional[float] = Query(None, ge=1.0, le=5.0, description="Minimum rating filter"),
+    open_now: Optional[bool] = Query(None, description="Only return places that are open now"),
+    price_levels: Optional[str] = Query(None, description="Comma-separated price levels (e.g., 'MODERATE,EXPENSIVE')"),
+    auth: dict = Depends(verify_auth),  # Support both API key and JWT
 ):
     """
     Hybrid search endpoint: Nearby Search or Text Search
+
+    **Authentication Required:** `Authorization: Bearer <token>` OR `X-API-Key: <key>`
+    (o frontend anexa o Bearer; scripts usam X-API-Key)
     ...
     """
     try:
         # Validate API key
-        if (
-            not settings.google_places_api_key
-            or settings.google_places_api_key.strip() == ""
-        ):
-            raise HTTPException(
-                status_code=500, detail="Google Places API key not configured on server"
-            )
+        if not settings.google_places_api_key or settings.google_places_api_key.strip() == "":
+            raise HTTPException(status_code=500, detail="Google Places API key not configured on server")
 
         # Determine search mode: Text Search (worldwide) or Nearby Search
         use_text_search = keyword and not radius
 
         if use_text_search:
-            logger.info(
-                f"Text Search: keyword='{keyword}', type={place_type}, language={language}"
-            )
+            logger.info(f"Text Search: keyword='{keyword}', type={place_type}, language={language}")
             return await _text_search(
                 keyword=keyword,
                 latitude=latitude,
@@ -298,9 +279,7 @@ async def search_nearby(
             # Default to nearby search
             if not radius:
                 radius = 5000  # Default 5km
-            logger.info(
-                f"Nearby Search: lat={latitude}, lng={longitude}, radius={radius}, type={place_type}"
-            )
+            logger.info(f"Nearby Search: lat={latitude}, lng={longitude}, radius={radius}, type={place_type}")
             return await _nearby_search(
                 latitude=latitude,
                 longitude=longitude,
@@ -358,18 +337,14 @@ async def _nearby_search(
         # Default to food-related types to avoid returning hotels, tourist attractions, etc.
         default_food_types = ["restaurant", "cafe", "bar", "bakery"]
         payload["includedTypes"] = default_food_types
-        logger.info(
-            f"🍽️ No type filter provided - defaulting to food types: {default_food_types}"
-        )
+        logger.info(f"🍽️ No type filter provided - defaulting to food types: {default_food_types}")
 
     # Add filters
     if min_rating:
         payload["minRating"] = min_rating
 
     if price_levels:
-        levels = [
-            f"PRICE_LEVEL_{level.strip().upper()}" for level in price_levels.split(",")
-        ]
+        levels = [f"PRICE_LEVEL_{level.strip().upper()}" for level in price_levels.split(",")]
         payload["priceLevels"] = levels
 
     logger.info(f"📤 Places API Payload: {payload}")
@@ -382,9 +357,7 @@ async def _nearby_search(
         detail_level="standard",
         use_prefix=True,
     )
-    logger.info(
-        f"Field mask for nearby search: {field_mask[:200]}..."
-    )  # Log first 200 chars
+    logger.info(f"Field mask for nearby search: {field_mask[:200]}...")  # Log first 200 chars
 
     headers = {
         "Content-Type": "application/json",
@@ -394,16 +367,12 @@ async def _nearby_search(
 
     # Make request
     async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.post(
-            PLACES_API_NEARBY_URL, json=payload, headers=headers
-        )
+        response = await client.post(PLACES_API_NEARBY_URL, json=payload, headers=headers)
 
         if response.status_code != 200:
             error_text = response.text
             logger.error(f"Places API error: {response.status_code} - {error_text}")
-            raise HTTPException(
-                status_code=502, detail=f"Google Places API error: {error_text}"
-            )
+            raise HTTPException(status_code=502, detail=f"Google Places API error: {error_text}")
 
         data = response.json()
 
@@ -443,9 +412,7 @@ async def _nearby_search(
 
         # Debug: Log if place_id is missing
         if not place.get("id"):
-            logger.warning(
-                f"⚠️ Place missing 'id' field: {place.get('displayName', {}).get('text', 'Unknown')}"
-            )
+            logger.warning(f"⚠️ Place missing 'id' field: {place.get('displayName', {}).get('text', 'Unknown')}")
 
     logger.info(f"Nearby Search found {len(formatted_results)} places")
 
@@ -493,9 +460,7 @@ async def _text_search(
         payload["includedType"] = place_type
     else:
         payload["includedType"] = "restaurant"
-        logger.info(
-            "🍽️ No type filter provided for text search - defaulting to 'restaurant'"
-        )
+        logger.info("🍽️ No type filter provided for text search - defaulting to 'restaurant'")
 
     # Add filters
     if min_rating:
@@ -505,9 +470,7 @@ async def _text_search(
         payload["openNow"] = True
 
     if price_levels:
-        levels = [
-            f"PRICE_LEVEL_{level.strip().upper()}" for level in price_levels.split(",")
-        ]
+        levels = [f"PRICE_LEVEL_{level.strip().upper()}" for level in price_levels.split(",")]
         payload["priceLevels"] = levels
 
     # Headers with comprehensive field mask (100 most important fields)
@@ -525,18 +488,12 @@ async def _text_search(
 
     # Make request
     async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.post(
-            PLACES_API_TEXT_SEARCH_URL, json=payload, headers=headers
-        )
+        response = await client.post(PLACES_API_TEXT_SEARCH_URL, json=payload, headers=headers)
 
         if response.status_code != 200:
             error_text = response.text
-            logger.error(
-                f"Text Search API error: {response.status_code} - {error_text}"
-            )
-            raise HTTPException(
-                status_code=502, detail=f"Google Places API error: {error_text}"
-            )
+            logger.error(f"Text Search API error: {response.status_code} - {error_text}")
+            raise HTTPException(status_code=502, detail=f"Google Places API error: {error_text}")
 
         data = response.json()
 
@@ -547,9 +504,7 @@ async def _text_search(
     # Debug: Log first place to check id field
     if places:
         logger.info(f"First place from Google API (text search): {places[0]}")
-        logger.info(
-            f"First place 'id' field (text search): {places[0].get('id', 'NOT FOUND')}"
-        )
+        logger.info(f"First place 'id' field (text search): {places[0].get('id', 'NOT FOUND')}")
 
     for place in places:
         formatted_results.append(
@@ -603,17 +558,20 @@ def _convert_price_level(price_level_str: Optional[str]) -> Optional[int]:
 
 
 @router.get("/details/{place_id}", response_model=PlaceDetailsResponse)
+@limiter.limit("20/minute")
 async def get_place_details(
+    request: Request,
     place_id: str,
-    fields: Optional[str] = Query(
-        None, description="Comma-separated list of fields to return"
-    ),
+    fields: Optional[str] = Query(None, description="Comma-separated list of fields to return"),
+    auth: dict = Depends(verify_auth),  # Support both API key and JWT
 ):
     """
     Get detailed information about a place using Google Places API (New)
 
     This endpoint proxies requests to Google Places Details API.
     Uses the new Places API with Place ID format.
+
+    **Authentication Required:** `Authorization: Bearer <token>` OR `X-API-Key: <key>`
 
     Args:
         place_id: Google Place ID (will be converted to places/{place_id} format)
@@ -629,18 +587,11 @@ async def get_place_details(
         logger.info(f"Place details: place_id={place_id}")
 
         # Validate API key
-        if (
-            not settings.google_places_api_key
-            or settings.google_places_api_key.strip() == ""
-        ):
-            raise HTTPException(
-                status_code=500, detail="Google Places API key not configured on server"
-            )
+        if not settings.google_places_api_key or settings.google_places_api_key.strip() == "":
+            raise HTTPException(status_code=500, detail="Google Places API key not configured on server")
 
         # Format place ID for new API (needs places/ prefix)
-        formatted_place_id = (
-            place_id if place_id.startswith("places/") else f"places/{place_id}"
-        )
+        formatted_place_id = place_id if place_id.startswith("places/") else f"places/{place_id}"
 
         # New Places API endpoint for place details
         url = f"https://places.googleapis.com/v1/{formatted_place_id}"
@@ -664,9 +615,7 @@ async def get_place_details(
             if response.status_code != 200:
                 error_text = response.text
                 logger.error(f"Places API error: {response.status_code} - {error_text}")
-                raise HTTPException(
-                    status_code=502, detail=f"Google Places API error: {error_text}"
-                )
+                raise HTTPException(status_code=502, detail=f"Google Places API error: {error_text}")
 
             data = response.json()
 
@@ -687,9 +636,7 @@ async def health_check():
     Returns:
         Status of Google Places API configuration
     """
-    has_key = bool(
-        settings.google_places_api_key and settings.google_places_api_key.strip() != ""
-    )
+    has_key = bool(settings.google_places_api_key and settings.google_places_api_key.strip() != "")
 
     return {
         "status": "ok" if has_key else "not_configured",

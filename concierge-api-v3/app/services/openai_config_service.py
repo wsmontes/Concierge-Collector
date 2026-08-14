@@ -86,9 +86,7 @@ class OpenAIConfigService:
 
         return prompt_template
 
-    def update_config(
-        self, service: str, updates: Dict[str, Any], updated_by: str = "api"
-    ) -> Dict[str, Any]:
+    def update_config(self, service: str, updates: Dict[str, Any], updated_by: str = "api") -> Dict[str, Any]:
         """
         Update OpenAI service configuration.
 
@@ -104,9 +102,7 @@ class OpenAIConfigService:
         updates["updated_at"] = datetime.now(timezone.utc).isoformat()
         updates["updated_by"] = updated_by
 
-        self.db.openai_configs.update_one(
-            {"service": service}, {"$set": updates, "$inc": {"version": 1}}, upsert=True
-        )
+        self.db.openai_configs.update_one({"service": service}, {"$set": updates, "$inc": {"version": 1}}, upsert=True)
 
         # Invalidate cache
         cache_key = f"openai_config:{service}"

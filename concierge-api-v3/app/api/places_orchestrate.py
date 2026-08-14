@@ -8,13 +8,15 @@ This module provides a unified orchestration endpoint for Google Places API (New
 Intelligently routes requests to the appropriate Places API based on input parameters.
 """
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request, Depends
 from typing import List, Dict, Any, Optional, Literal
 from pydantic import BaseModel, Field
 import httpx
 import logging
 
 from app.core.config import settings
+from app.core.rate_limit import limiter
+from app.core.security import verify_auth
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -40,57 +42,35 @@ class PlacesOrchestrationRequest(BaseModel):
     # Search parameters
     query: Optional[str] = Field(None, description="Text query for search")
     place_id: Optional[str] = Field(None, description="Place ID for details lookup")
-    place_ids: Optional[List[str]] = Field(
-        None, description="List of Place IDs for bulk details lookup"
-    )
+    place_ids: Optional[List[str]] = Field(None, description="List of Place IDs for bulk details lookup")
 
     # Location parameters
-    latitude: Optional[float] = Field(
-        None, description="Latitude for location-based search"
-    )
-    longitude: Optional[float] = Field(
-        None, description="Longitude for location-based search"
-    )
-    radius: Optional[float] = Field(
-        500.0, description="Search radius in meters (max 50000)"
-    )
+    latitude: Optional[float] = Field(None, description="Latitude for location-based search")
+    longitude: Optional[float] = Field(None, description="Longitude for location-based search")
+    radius: Optional[float] = Field(500.0, description="Search radius in meters (max 50000)")
 
     # Filtering parameters
-    included_types: Optional[List[str]] = Field(
-        None, description="Filter by place types"
-    )
+    included_types: Optional[List[str]] = Field(None, description="Filter by place types")
     excluded_types: Optional[List[str]] = Field(None, description="Exclude place types")
     min_rating: Optional[float] = Field(None, description="Minimum rating (0-5)")
-    price_levels: Optional[List[str]] = Field(
-        None, description="Filter by price levels"
-    )
+    price_levels: Optional[List[str]] = Field(None, description="Filter by price levels")
     open_now: Optional[bool] = Field(None, description="Only return open places")
 
     # Response parameters
-    max_results: Optional[int] = Field(
-        20, description="Maximum results to return (1-20)"
-    )
+    max_results: Optional[int] = Field(20, description="Maximum results to return (1-20)")
     language: Optional[str] = Field("en", description="Language code for results")
     region_code: Optional[str] = Field(None, description="Region code for formatting")
 
     # Advanced parameters
-    rank_preference: Optional[Literal["DISTANCE", "POPULARITY"]] = Field(
-        None, description="Result ranking"
-    )
-    include_pure_service_area: Optional[bool] = Field(
-        False, description="Include service-area-only businesses"
-    )
+    rank_preference: Optional[Literal["DISTANCE", "POPULARITY"]] = Field(None, description="Result ranking")
+    include_pure_service_area: Optional[bool] = Field(False, description="Include service-area-only businesses")
 
     # Bulk operations
     bulk: Optional[bool] = Field(False, description="Enable bulk processing mode")
-    combine_results: Optional[bool] = Field(
-        True, description="Combine results from multiple operations"
-    )
+    combine_results: Optional[bool] = Field(True, description="Combine results from multiple operations")
 
     # Multi-operation parameters
-    operations: Optional[List[Dict[str, Any]]] = Field(
-        None, description="List of operations to execute in bulk"
-    )
+    operations: Optional[List[Dict[str, Any]]] = Field(None, description="List of operations to execute in bulk")
 
 
 class PlacesOrchestrationResponse(BaseModel):
@@ -103,12 +83,8 @@ class PlacesOrchestrationResponse(BaseModel):
     results: List[Dict[str, Any]] = Field(..., description="Search results")
     total_results: int = Field(..., description="Number of results returned")
     next_page_token: Optional[str] = Field(None, description="Token for next page")
-    operations_executed: Optional[List[str]] = Field(
-        None, description="List of operations executed in bulk mode"
-    )
-    errors: Optional[List[Dict[str, Any]]] = Field(
-        None, description="Errors encountered during bulk operations"
-    )
+    operations_executed: Optional[List[str]] = Field(None, description="List of operations executed in bulk mode")
+    errors: Optional[List[Dict[str, Any]]] = Field(None, description="Errors encountered during bulk operations")
 
 
 # ============================================================================
@@ -244,9 +220,7 @@ async def call_text_search(request: PlacesOrchestrationRequest) -> Dict[str, Any
         body["regionCode"] = request.region_code
 
     async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.post(
-            PLACES_API_TEXT_SEARCH_URL, headers=headers, json=body
-        )
+        response = await client.post(PLACES_API_TEXT_SEARCH_URL, headers=headers, json=body)
 
         if response.status_code != 200:
             raise HTTPException(
@@ -291,9 +265,7 @@ async def call_place_details(request: PlacesOrchestrationRequest) -> Dict[str, A
         return response.json()
 
 
-async def call_bulk_details(
-    place_ids: List[str], request: PlacesOrchestrationRequest
-) -> Dict[str, Any]:
+async def call_bulk_details(place_ids: List[str], request: PlacesOrchestrationRequest) -> Dict[str, Any]:
     """
     Call Place Details API for multiple place IDs in parallel.
     Returns combined results and tracks errors.
@@ -321,9 +293,7 @@ async def call_bulk_details(
         # Create tasks for parallel execution
         tasks = []
         for place_id in place_ids:
-            task = client.get(
-                f"{PLACES_API_DETAILS_URL}/{place_id}", headers=headers, params=params
-            )
+            task = client.get(f"{PLACES_API_DETAILS_URL}/{place_id}", headers=headers, params=params)
             tasks.append((place_id, task))
 
         # Execute all requests in parallel
@@ -381,9 +351,7 @@ async def call_bulk_multi_operations(
             op_request = PlacesOrchestrationRequest(**{**base_dict, **op_config})
 
             # Determine operation type for this specific request
-            operation_type = op_config.get("operation") or determine_operation(
-                op_request
-            )
+            operation_type = op_config.get("operation") or determine_operation(op_request)
             operations_executed.append(operation_type)
 
             # Execute the operation
@@ -418,7 +386,12 @@ async def call_bulk_multi_operations(
 
 
 @router.post("/orchestrate", response_model=PlacesOrchestrationResponse)
-async def orchestrate_places_request(request: PlacesOrchestrationRequest):
+@limiter.limit("20/minute")
+async def orchestrate_places_request(
+    request: Request,
+    body: PlacesOrchestrationRequest,
+    auth: dict = Depends(verify_auth),  # Support both API key and JWT
+):
     """
     Unified orchestration endpoint for Google Places API.
 
@@ -428,6 +401,8 @@ async def orchestrate_places_request(request: PlacesOrchestrationRequest):
     - Place ID -> Details API
     - Text query -> Text Search API
     - Location + types -> Nearby Search API
+
+    **Authentication Required:** `Authorization: Bearer <token>` OR `X-API-Key: <key>`
 
     Examples:
     - Search by name: `{"query": "pizza restaurants"}`
@@ -439,7 +414,7 @@ async def orchestrate_places_request(request: PlacesOrchestrationRequest):
 
     try:
         # Determine which operation to perform
-        operation = determine_operation(request)
+        operation = determine_operation(body)
         logger.info(f"Orchestrating Places API request: operation={operation}")
 
         errors = None
@@ -448,12 +423,12 @@ async def orchestrate_places_request(request: PlacesOrchestrationRequest):
         # Call appropriate API
         if operation == "bulk_multi":
             # Execute multiple different operations
-            if not request.operations:
+            if not body.operations:
                 raise HTTPException(
                     status_code=400,
                     detail="operations list is required for bulk_multi mode",
                 )
-            data = await call_bulk_multi_operations(request.operations, request)
+            data = await call_bulk_multi_operations(body.operations, body)
             results = data.get("places", [])
             errors = data.get("errors") if data.get("errors") else None
             operations_executed = data.get("operations_executed")
@@ -461,27 +436,27 @@ async def orchestrate_places_request(request: PlacesOrchestrationRequest):
 
         elif operation == "bulk_details":
             # Bulk details lookup for multiple place IDs
-            if not request.place_ids:
+            if not body.place_ids:
                 raise HTTPException(
                     status_code=400,
                     detail="place_ids list is required for bulk_details mode",
                 )
-            data = await call_bulk_details(request.place_ids, request)
+            data = await call_bulk_details(body.place_ids, body)
             results = data.get("places", [])
             errors = data.get("errors") if data.get("errors") else None
             operations_executed = ["details"] * data.get("total_requested", 0)
             operation = "bulk"
 
         elif operation == "details":
-            data = await call_place_details(request)
+            data = await call_place_details(body)
             results = [data]  # Wrap single result in array
 
         elif operation == "text_search":
-            data = await call_text_search(request)
+            data = await call_text_search(body)
             results = data.get("places", [])
 
         elif operation == "nearby":
-            data = await call_nearby_search(request)
+            data = await call_nearby_search(body)
             results = data.get("places", [])
 
         else:
@@ -496,9 +471,7 @@ async def orchestrate_places_request(request: PlacesOrchestrationRequest):
             results=results,
             total_results=len(results),
             next_page_token=(
-                data.get("nextPageToken")
-                if operation not in ["bulk", "bulk_details", "bulk_multi"]
-                else None
+                data.get("nextPageToken") if operation not in ["bulk", "bulk_details", "bulk_multi"] else None
             ),
             operations_executed=operations_executed,
             errors=errors,

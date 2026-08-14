@@ -4,7 +4,7 @@ AI Router: Endpoints for AI services and orchestration.
 Handles transcription, concept extraction, image analysis, and intelligent orchestration.
 """
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
 import os
@@ -79,24 +79,23 @@ class RestaurantNameExtractionResponse(BaseModel):
 
 
 # Dependency to get OpenAI service
-def get_openai_service():
-    """Get OpenAI service instance"""
-    from app.core.config import settings
+def get_openai_service(request: Request):
+    """Get the OpenAIService singleton criado no startup (lifespan).
 
-    api_key = os.getenv("OPENAI_API_KEY")
-    if not api_key:
+    Uma instância por processo — os clients OpenAI/Motor/PyMongo são caros de
+    criar e vazam conexões se recriados por request.
+    """
+    service = getattr(request.app.state, "openai_service", None)
+    if service is None:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="OPENAI_API_KEY not configured",
         )
-
-    return OpenAIService(api_key, settings.mongodb_url, settings.mongodb_db_name)
+    return service
 
 
 # Dependency to get AI orchestrator
-def get_ai_orchestrator(
-    db=Depends(get_database), openai_service=Depends(get_openai_service)
-):
+def get_ai_orchestrator(db=Depends(get_database), openai_service=Depends(get_openai_service)):
     """Get AI orchestrator instance"""
     # TODO: Add places_service when available
     return AIOrchestrator(db, openai_service, places_service=None)
@@ -192,9 +191,7 @@ async def orchestrate(
 
 
 @router.get("/usage-stats")
-async def get_usage_stats(
-    days: int = 7, openai_service: OpenAIService = Depends(get_openai_service)
-):
+async def get_usage_stats(days: int = 7, openai_service: OpenAIService = Depends(get_openai_service)):
     """
     Get AI usage statistics.
 
@@ -211,9 +208,7 @@ async def get_usage_stats(
         )
 
 
-@router.post(
-    "/extract-restaurant-name", response_model=RestaurantNameExtractionResponse
-)
+@router.post("/extract-restaurant-name", response_model=RestaurantNameExtractionResponse)
 async def extract_restaurant_name(
     request: RestaurantNameExtractionRequest,
     openai_service: OpenAIService = Depends(get_openai_service),
@@ -225,9 +220,7 @@ async def extract_restaurant_name(
     **Authentication Required:** Include `Authorization: Bearer <token>` OR `X-API-Key: <key>` header
     """
     try:
-        result = await openai_service.extract_restaurant_name_from_text(
-            request.text, save_to_cache=False
-        )
+        result = await openai_service.extract_restaurant_name_from_text(request.text, save_to_cache=False)
         return result
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -257,13 +250,10 @@ def health_check(db=Depends(get_database)):
     try:
         health_status = {"service": "AI Services", "status": "healthy", "checks": {}}
 
-        # Check OpenAI API key
+        # Check OpenAI API key (endpoint público — nunca expor prefixo da chave)
         api_key = os.getenv("OPENAI_API_KEY")
         if api_key:
-            health_status["checks"]["openai_api_key"] = {
-                "status": "configured",
-                "key_prefix": api_key[:10] + "...",
-            }
+            health_status["checks"]["openai_api_key"] = {"status": "configured"}
         else:
             health_status["status"] = "unhealthy"
             health_status["checks"]["openai_api_key"] = {
@@ -285,9 +275,7 @@ def health_check(db=Depends(get_database)):
 
             if not has_categories:
                 logger.warning("[AI Health] ⚠ Categories collection not found")
-                health_status["checks"]["mongodb"][
-                    "warning"
-                ] = "Categories collection missing"
+                health_status["checks"]["mongodb"]["warning"] = "Categories collection missing"
 
         except Exception as db_error:
             health_status["status"] = "degraded"
@@ -316,12 +304,8 @@ def health_check_original(db=Depends(get_database)):
         has_configs = "openai_configs" in collections
 
         # Count documents
-        category_count = (
-            db.categories.count_documents({"active": True}) if has_categories else 0
-        )
-        config_count = (
-            db.openai_configs.count_documents({"enabled": True}) if has_configs else 0
-        )
+        category_count = db.categories.count_documents({"active": True}) if has_categories else 0
+        config_count = db.openai_configs.count_documents({"enabled": True}) if has_configs else 0
 
         return {
             "status": "healthy",

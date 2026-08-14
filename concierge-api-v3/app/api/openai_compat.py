@@ -8,9 +8,9 @@ This router provides OpenAI-compatible endpoints that work with LM Studio
 and other OpenAI-compatible clients for function calling / tool use.
 """
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 from fastapi.responses import StreamingResponse
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 import logging
 import time
 import json
@@ -211,7 +211,10 @@ def get_available_functions() -> List[Tool]:
 
 
 def execute_function(
-    function_name: str, arguments: Dict[str, Any], service: LLMPlaceService
+    function_name: str,
+    arguments: Dict[str, Any],
+    service: LLMPlaceService,
+    base_url: Optional[str] = None,
 ) -> str:
     """
     Execute a function and return result as JSON string.
@@ -220,6 +223,7 @@ def execute_function(
         function_name: Name of function to execute
         arguments: Function arguments
         service: LLMPlaceService instance
+        base_url: Origem absoluta da API (para URLs de foto absolutas)
 
     Returns:
         JSON string with function result
@@ -275,6 +279,7 @@ def execute_function(
                 max_height=arguments.get("max_height"),
                 include_metadata=arguments.get("include_metadata", True),
                 language=arguments.get("language", "pt-BR"),
+                base_url=base_url,
             )
 
             return json.dumps(photos, ensure_ascii=False)
@@ -330,6 +335,7 @@ async def list_functions(
 
 @router.post("/v1/chat/completions")
 async def chat_completions(
+    http_request: Request,
     request: ChatCompletionRequest,
     auth: dict = Depends(verify_auth),
     service: LLMPlaceService = Depends(get_llm_service),
@@ -367,10 +373,7 @@ async def chat_completions(
         if not any(msg.role == "system" for msg in messages):
             # Inject system message describing available tools
             tool_descriptions = "\n".join(
-                [
-                    f"- {tool.function.name}: {tool.function.description}"
-                    for tool in available_tools
-                ]
+                [f"- {tool.function.name}: {tool.function.description}" for tool in available_tools]
             )
             system_msg = ChatMessage(
                 role="system",
@@ -393,15 +396,14 @@ async def chat_completions(
             logger.info("tool_choice=none: skipping tool execution")
 
         # Check if last message has tool_calls to execute
-        if (
-            should_execute_tools
-            and last_message.role == "assistant"
-            and last_message.tool_calls
-        ):
+        if should_execute_tools and last_message.role == "assistant" and last_message.tool_calls:
             logger.info(f"Executing {len(last_message.tool_calls)} tool call(s)")
 
             # Check if we should execute in parallel
             execute_parallel = getattr(request, "parallel_tool_calls", True)
+
+            # URLs absolutas de foto para o LLM (o LM Studio roda fora da API)
+            base_url = str(http_request.base_url)
 
             if execute_parallel and len(last_message.tool_calls) > 1:
                 logger.info("Executing tools in parallel")
@@ -410,11 +412,7 @@ async def chat_completions(
                 for tool_call in last_message.tool_calls:
                     function_name = tool_call.function.name
                     arguments = json.loads(tool_call.function.arguments)
-                    tasks.append(
-                        asyncio.to_thread(
-                            execute_function, function_name, arguments, service
-                        )
-                    )
+                    tasks.append(asyncio.to_thread(execute_function, function_name, arguments, service, base_url))
 
                 results = await asyncio.gather(*tasks)
 
@@ -428,7 +426,8 @@ async def chat_completions(
                         }
                     )
             else:
-                # Execute sequentially
+                # Execute sequentially — execute_function é síncrono (I/O de
+                # rede p/ Google Places); em thread para não travar o event loop.
                 logger.info("Executing tools sequentially")
                 executed_calls = []
                 for tool_call in last_message.tool_calls:
@@ -436,7 +435,7 @@ async def chat_completions(
                     arguments = json.loads(tool_call.function.arguments)
 
                     logger.info(f"Executing {function_name} with args: {arguments}")
-                    result = execute_function(function_name, arguments, service)
+                    result = await asyncio.to_thread(execute_function, function_name, arguments, service, base_url)
 
                     executed_calls.append(
                         {
@@ -453,9 +452,7 @@ async def chat_completions(
             if request.stream:
                 logger.info("Streaming response")
                 return StreamingResponse(
-                    _stream_tool_results(
-                        response_id, request.model, executed_calls, available_tools
-                    ),
+                    _stream_tool_results(response_id, request.model, executed_calls, available_tools),
                     media_type="text/event-stream",
                 )
 
@@ -476,23 +473,9 @@ async def chat_completions(
                     )
                 ],
                 usage=Usage(
-                    prompt_tokens=len(
-                        json.dumps(
-                            [
-                                msg if isinstance(msg, dict) else msg.dict()
-                                for msg in messages
-                            ]
-                        )
-                    ),
+                    prompt_tokens=len(json.dumps([msg if isinstance(msg, dict) else msg.dict() for msg in messages])),
                     completion_tokens=len(json.dumps(executed_calls)),
-                    total_tokens=len(
-                        json.dumps(
-                            [
-                                msg if isinstance(msg, dict) else msg.dict()
-                                for msg in messages
-                            ]
-                        )
-                    )
+                    total_tokens=len(json.dumps([msg if isinstance(msg, dict) else msg.dict() for msg in messages]))
                     + len(json.dumps(executed_calls)),
                 ),
                 system_fingerprint="concierge-restaurant",
@@ -533,23 +516,9 @@ async def chat_completions(
                     )
                 ],
                 usage=Usage(
-                    prompt_tokens=len(
-                        json.dumps(
-                            [
-                                msg if isinstance(msg, dict) else msg.dict()
-                                for msg in messages
-                            ]
-                        )
-                    ),
+                    prompt_tokens=len(json.dumps([msg if isinstance(msg, dict) else msg.dict() for msg in messages])),
                     completion_tokens=len(content.split()),
-                    total_tokens=len(
-                        json.dumps(
-                            [
-                                msg if isinstance(msg, dict) else msg.dict()
-                                for msg in messages
-                            ]
-                        )
-                    )
+                    total_tokens=len(json.dumps([msg if isinstance(msg, dict) else msg.dict() for msg in messages]))
                     + len(content.split()),
                 ),
                 system_fingerprint="concierge-restaurant",
@@ -557,9 +526,7 @@ async def chat_completions(
 
     except json.JSONDecodeError as e:
         logger.error(f"JSON decode error: {e}")
-        raise HTTPException(
-            status_code=400, detail=f"Invalid JSON in arguments: {str(e)}"
-        )
+        raise HTTPException(status_code=400, detail=f"Invalid JSON in arguments: {str(e)}")
     except Exception as e:
         logger.error(f"Error in chat_completions: {e}", exc_info=True)
         raise HTTPException(status_code=500, detail=str(e))
@@ -586,9 +553,7 @@ async def _stream_tool_results(
         "object": "chat.completion.chunk",
         "created": int(time.time()),
         "model": model,
-        "choices": [
-            {"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}
-        ],
+        "choices": [{"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}],
     }
     yield f"data: {json.dumps(chunk)}\n\n"
 

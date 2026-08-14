@@ -5,6 +5,7 @@ POST /capture           Upload audio, get back transcription + entity matches.
 POST /capture/{id}/confirm  Confirm the match, create the curation.
 """
 
+import asyncio
 import base64
 import json
 import logging
@@ -21,7 +22,7 @@ from pymongo.database import Database
 from pymongo.errors import DuplicateKeyError
 
 from app.core.database import get_database
-from app.core.security import verify_auth
+from app.core.security import verify_auth, is_admin_auth
 from app.services.curation_denorm import denormalize_curation_location
 
 logger = logging.getLogger(__name__)
@@ -33,7 +34,13 @@ router = APIRouter(prefix="/capture", tags=["Capture"])
 
 
 class CaptureRequest(BaseModel):
-    audio: str = Field(..., description="Base64-encoded audio (webm/mp3)")
+    # max_length: 25 MiB de áudio ≈ 35M chars de base64 — acima disso é
+    # rejeitado pelo schema (sem tentar decodificar/transcrever payload gigante)
+    audio: str = Field(
+        ...,
+        max_length=35_000_000,
+        description="Base64-encoded audio (webm/mp3), up to ~25 MiB",
+    )
     idempotency_key: str = Field(..., description="Client-generated UUID for dedup")
     curator_id: str = Field(..., description="Curator ID")
     language: str = Field("pt-BR", description="Language for transcription")
@@ -165,9 +172,7 @@ def _extract_restaurant_name(text: str) -> Optional[str]:
         return None
 
 
-def _match_entities(
-    db: Database, restaurant_name: Optional[str]
-) -> List[Dict[str, Any]]:
+def _match_entities(db: Database, restaurant_name: Optional[str]) -> List[Dict[str, Any]]:
     """Search for matching entities in MongoDB, fall back to Google Places if needed."""
     entities: List[Dict[str, Any]] = []
 
@@ -195,9 +200,7 @@ def _match_entities(
 
     # 3. If no matches found, try Google Places (only if name was extracted)
     if not entities and restaurant_name and os.getenv("GOOGLE_PLACES_API_KEY"):
-        logger.info(
-            f"No entities found for '{restaurant_name}', searching Google Places..."
-        )
+        logger.info(f"No entities found for '{restaurant_name}', searching Google Places...")
         try:
             import googlemaps
 
@@ -230,17 +233,11 @@ def _match_entities(
     # Format results
     results = []
     for i, ent in enumerate(entities):
-        score = (
-            0.97 - (i * 0.1)
-            if ent.get("source") != "google_places"
-            else (ent.get("score", 0.7) - (i * 0.1))
-        )
+        score = 0.97 - (i * 0.1) if ent.get("source") != "google_places" else (ent.get("score", 0.7) - (i * 0.1))
         score = max(0.2, round(score, 2))
 
         loc_data = (
-            ent.get("data", {}).get("location", {})
-            if isinstance(ent.get("data"), dict)
-            else ent.get("location", {})
+            ent.get("data", {}).get("location", {}) if isinstance(ent.get("data"), dict) else ent.get("location", {})
         )
 
         results.append(
@@ -249,23 +246,15 @@ def _match_entities(
                 "name": ent.get("name"),
                 "type": ent.get("type"),
                 "location": {
-                    "address": loc_data.get("address")
-                    or ent.get("location", {}).get("address", ""),
-                    "city": loc_data.get("city")
-                    or ent.get("location", {}).get("city", ""),
+                    "address": loc_data.get("address") or ent.get("location", {}).get("address", ""),
+                    "city": loc_data.get("city") or ent.get("location", {}).get("city", ""),
                     "neighborhood": loc_data.get("neighborhood", ""),
-                    "latitude": loc_data.get("latitude")
-                    or ent.get("location", {}).get("latitude"),
-                    "longitude": loc_data.get("longitude")
-                    or ent.get("location", {}).get("longitude"),
+                    "latitude": loc_data.get("latitude") or ent.get("location", {}).get("latitude"),
+                    "longitude": loc_data.get("longitude") or ent.get("location", {}).get("longitude"),
                 },
                 "score": score,
                 "source": ent.get("source", "mongo"),
-                "place_id": (
-                    ent.get("place_id")
-                    if ent.get("source") == "google_places"
-                    else None
-                ),
+                "place_id": (ent.get("place_id") if ent.get("source") == "google_places" else None),
             }
         )
     return results
@@ -335,9 +324,7 @@ def _guess_entity_type(google_types: List[str]) -> str:
 
 def _extract_city(place: Dict[str, Any]) -> str:
     for comp in place.get("address_components", []):
-        if "locality" in comp.get(
-            "types", []
-        ) or "administrative_area_level_2" in comp.get("types", []):
+        if "locality" in comp.get("types", []) or "administrative_area_level_2" in comp.get("types", []):
             return comp.get("long_name", "")
     return ""
 
@@ -363,6 +350,15 @@ async def capture(
     """
     t0 = time.time()
 
+    # ── IDOR: o curator_id do corpo vira o dono da curadoria criada no
+    # confirm — só o próprio usuário autenticado (ou admin via API key/role)
+    # pode capturar em seu nome.
+    if not is_admin_auth(auth) and request.curator_id != auth.get("user"):
+        raise HTTPException(
+            status_code=403,
+            detail="curator_id must match the authenticated user",
+        )
+
     # ── Idempotency check ──
     cached = _idempotency_cache.get(request.idempotency_key)
     if cached:
@@ -372,7 +368,9 @@ async def capture(
     # ── 1. Transcribe ──
     logger.info(f"Transcribing audio ({len(request.audio)} chars base64)...")
     try:
-        transcription = _transcribe(request.audio, request.language)
+        # _transcribe é síncrono (SDK OpenAI bloqueante) — thread para não
+        # travar o event loop (1 worker no Render atende todos os requests).
+        transcription = await asyncio.to_thread(_transcribe, request.audio, request.language)
         if not transcription:
             raise HTTPException(status_code=422, detail="Could not transcribe audio")
     except HTTPException:
@@ -383,16 +381,16 @@ async def capture(
 
     logger.info(f"Transcription: {transcription[:200]}...")
 
-    # ── 2. Extract restaurant name ──
-    restaurant_name = _extract_restaurant_name(transcription)
+    # ── 2. Extract restaurant name (OpenAI síncrono → thread) ──
+    restaurant_name = await asyncio.to_thread(_extract_restaurant_name, transcription)
     logger.info(f"Extracted name: {restaurant_name}")
 
     # ── 3. Match entities ──
     entities = _match_entities(db, restaurant_name)
     logger.info(f"Found {len(entities)} entity matches")
 
-    # ── 4. Extract concepts ──
-    concepts = _extract_concepts(transcription, restaurant_name)
+    # ── 4. Extract concepts (OpenAI síncrono → thread) ──
+    concepts = await asyncio.to_thread(_extract_concepts, transcription, restaurant_name)
     logger.info(f"Extracted concepts: {list(concepts.keys())}")
 
     # ── 5. Store capture session ──
@@ -492,9 +490,7 @@ async def confirm_capture(
     entity_doc = db.entities.find_one({"_id": request.entity_id})
     if not entity_doc:
         # Create from Google Places match
-        if matched_entity.get("source") == "google_places" and matched_entity.get(
-            "place_id"
-        ):
+        if matched_entity.get("source") == "google_places" and matched_entity.get("place_id"):
             # Fetch full place details from Google
             new_entity = _create_entity_from_place(matched_entity, db)
             if new_entity:
@@ -524,9 +520,7 @@ async def confirm_capture(
             except DuplicateKeyError:
                 # Another parallel confirm already created this entity
                 entity_doc = db.entities.find_one({"_id": request.entity_id})
-                logger.info(
-                    f"Entity {request.entity_id} already exists (race), reusing"
-                )
+                logger.info(f"Entity {request.entity_id} already exists (race), reusing")
 
     # ── Create curation ──
     now = datetime.now(timezone.utc)
@@ -573,13 +567,7 @@ async def confirm_capture(
             # corrida real: outro confirm inseriu entre o check e o insert
             db.curations.update_one(
                 {"_id": curation_id},
-                {
-                    "$set": {
-                        k: v
-                        for k, v in curation_doc.items()
-                        if k not in ("_id", "createdAt")
-                    }
-                },
+                {"$set": {k: v for k, v in curation_doc.items() if k not in ("_id", "createdAt")}},
             )
 
     # ── Mark session as done ──
@@ -601,9 +589,7 @@ async def confirm_capture(
     return result
 
 
-def _create_entity_from_place(
-    match: Dict[str, Any], db: Database
-) -> Optional[Dict[str, Any]]:
+def _create_entity_from_place(match: Dict[str, Any], db: Database) -> Optional[Dict[str, Any]]:
     """Fetch full place details from Google and create an entity."""
     import googlemaps
 
@@ -627,12 +613,8 @@ def _create_entity_from_place(
                 "location": {
                     "address": place.get("formatted_address", ""),
                     "city": _extract_city(place),
-                    "latitude": place.get("geometry", {})
-                    .get("location", {})
-                    .get("lat"),
-                    "longitude": place.get("geometry", {})
-                    .get("location", {})
-                    .get("lng"),
+                    "latitude": place.get("geometry", {}).get("location", {}).get("lat"),
+                    "longitude": place.get("geometry", {}).get("location", {}).get("lng"),
                 },
                 "contact": {
                     "phone": place.get("formatted_phone_number", ""),

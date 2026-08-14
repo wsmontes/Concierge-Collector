@@ -13,11 +13,10 @@ class TestSystemEndpoints:
         assert response.status_code == 200
         data = response.json()
         assert data["status"] == "healthy"
-        # Database may be connected or have errors
+        # Database may be connected or have errors — o valor de erro é GENÉRICO
+        # (nunca vaza detalhes internos do Mongo)
         assert "database" in data
-        assert data["database"] in ["connected"] or data["database"].startswith(
-            "error:"
-        )
+        assert data["database"] in ["connected", "error"]
         assert "timestamp" in data
 
     def test_api_info(self, client):
@@ -91,9 +90,7 @@ class TestSystemEndpoints:
             with TestClient(app, raise_server_exceptions=False) as tc:
                 response = tc.get("/api/v3/curations/test_id_that_will_crash")
 
-        assert (
-            response.status_code == 500
-        ), f"Expected 500, got {response.status_code}: {response.text[:200]}"
+        assert response.status_code == 500, f"Expected 500, got {response.status_code}: {response.text[:200]}"
         data = response.json()
         assert "Internal server error" in data.get("detail", "")
         # Ensure no Python stack trace, exception type, or variable leaked

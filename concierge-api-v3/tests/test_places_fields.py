@@ -193,9 +193,7 @@ class TestPlacesFieldValidation:
             )
 
             # Should succeed or fail with specific errors (not field validation error)
-            assert (
-                response.status_code != 400
-            ), f"Field validation error: {response.text}"
+            assert response.status_code != 400, f"Field validation error: {response.text}"
 
     @pytest.mark.integration
     @pytest.mark.asyncio
@@ -235,9 +233,7 @@ class TestPlacesFieldValidation:
             )
 
             # Should succeed or fail with specific errors (not field validation error)
-            assert (
-                response.status_code != 400
-            ), f"Field validation error: {response.text}"
+            assert response.status_code != 400, f"Field validation error: {response.text}"
 
             if response.status_code == 200:
                 data = response.json()
@@ -245,9 +241,7 @@ class TestPlacesFieldValidation:
 
     @pytest.mark.integration
     @pytest.mark.asyncio
-    async def test_full_fields_place_details(
-        self, test_google_api_key, test_place_id, request
-    ):
+    async def test_full_fields_place_details(self, test_google_api_key, test_place_id, request):
         """Test full field mask with Place Details API"""
         if not test_google_api_key or not test_place_id:
             pytest.skip("No Google API key or test place ID configured")
@@ -272,9 +266,7 @@ class TestPlacesFieldValidation:
             )
 
             # Should succeed or fail with specific errors (not field validation error)
-            assert (
-                response.status_code != 400
-            ), f"Field validation error: {response.text}"
+            assert response.status_code != 400, f"Field validation error: {response.text}"
 
 
 class TestDeprecatedFields:
@@ -302,9 +294,7 @@ class TestDeprecatedFields:
 
                 for deprecated in deprecated_fields:
                     # Check both with and without prefix
-                    assert (
-                        deprecated not in mask
-                    ), f"Deprecated field '{deprecated}' found in {detail_level} mask"
+                    assert deprecated not in mask, f"Deprecated field '{deprecated}' found in {detail_level} mask"
                     assert (
                         f"places.{deprecated}" not in mask
                     ), f"Deprecated field 'places.{deprecated}' found in {detail_level} mask"
@@ -332,9 +322,7 @@ class TestFieldMaskCoverage:
             )
 
             for field in essential_fields:
-                assert (
-                    field in mask
-                ), f"Essential field '{field}' missing from {detail_level} mask"
+                assert field in mask, f"Essential field '{field}' missing from {detail_level} mask"
 
     def test_restaurant_specific_fields_in_full(self):
         """Test that restaurant-specific fields are in full detail level"""
@@ -375,9 +363,7 @@ class TestFieldMaskCoverage:
             )
 
             for field in contact_fields:
-                assert (
-                    field in mask
-                ), f"Contact field '{field}' missing from {detail_level} mask"
+                assert field in mask, f"Contact field '{field}' missing from {detail_level} mask"
 
     def test_reviews_only_when_requested(self):
         """Test that reviews field is only present when explicitly requested"""

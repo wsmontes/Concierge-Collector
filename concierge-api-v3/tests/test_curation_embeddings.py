@@ -25,6 +25,24 @@ from app.models.schemas import CurationUpdate, SemanticSearchRequest
 V1536 = [float(i % 7) / 7.0 for i in range(1536)]  # vetor de dim correta
 
 
+def _http_request(ip="127.0.0.1"):
+    """Request real do starlette — o decorator do slowapi exige uma instância
+    de starlette.requests.Request (não MagicMock) e lê o client para o rate
+    limit key. IP distinto por chamada: o limite de 10/min é por identificador."""
+    from starlette.requests import Request
+
+    return Request(
+        {
+            "type": "http",
+            "path": "/api/v3/curations/semantic-search",
+            "method": "POST",
+            "query_string": b"",
+            "headers": [],
+            "client": (ip, 12345),
+        }
+    )
+
+
 class IterList:
     """Iterável simples para resultados de find() — list(), .limit() e .sort()
     usáveis. sort() REGISTRA a chamada (os testes pregam a ordenação por
@@ -75,9 +93,7 @@ def _patch_openai(monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "test-key")
     monkeypatch.setenv("MONGODB_CURATIONS_VECTOR_INDEX", "curations_embeddings_vector")
     fake_client = MagicMock()
-    fake_client.embeddings.create.return_value = SimpleNamespace(
-        data=[SimpleNamespace(embedding=V1536)]
-    )
+    fake_client.embeddings.create.return_value = SimpleNamespace(data=[SimpleNamespace(embedding=V1536)])
     monkeypatch.setattr(mod, "OpenAI", lambda **kw: fake_client)
     return fake_client
 
@@ -98,9 +114,7 @@ def test_compact_embeddings_packs_list_vectors():
     assert not dropped
     v = out[0]["vector"]
     assert isinstance(v, Binary)
-    assert struct.unpack("<1536f", v)[:4] == tuple(
-        struct.unpack("<f", struct.pack("<f", x))[0] for x in V1536[:4]
-    )
+    assert struct.unpack("<1536f", v)[:4] == tuple(struct.unpack("<f", struct.pack("<f", x))[0] for x in V1536[:4])
 
 
 def test_compact_embeddings_keeps_text_only_entries_and_binary():
@@ -186,17 +200,13 @@ def test_update_curation_compacts_embeddings_on_write():
     db = MagicMock()
     db.curations.find_one.return_value = _curation_doc()
     db.curations.find_one_and_update.return_value = dict(_curation_doc())
-    updates = CurationUpdate(
-        embeddings=[{"text": "t", "category": "c", "concept": "x", "vector": V1536}]
-    )
-    update_curation("c1", updates, if_match=None, db=db, auth={})
-    stored = db.curations.find_one_and_update.call_args.args[1]["$set"]["embeddings"][
-        0
-    ]["vector"]
+    updates = CurationUpdate(embeddings=[{"text": "t", "category": "c", "concept": "x", "vector": V1536}])
+    # admin: o stored doc pertence a "u1" (IDOR ownership) e o foco do teste
+    # é a compactação na escrita, não o controle de acesso
+    update_curation("c1", updates, if_match=None, db=db, auth={"role": "admin", "user": "t"})
+    stored = db.curations.find_one_and_update.call_args.args[1]["$set"]["embeddings"][0]["vector"]
     assert isinstance(stored, Binary)
-    assert struct.unpack("<1536f", stored)[:4] == tuple(
-        struct.unpack("<f", struct.pack("<f", x))[0] for x in V1536[:4]
-    )
+    assert struct.unpack("<1536f", stored)[:4] == tuple(struct.unpack("<f", struct.pack("<f", x))[0] for x in V1536[:4])
 
 
 # ── Fallback do vector search com log ──────────────────────────────────
@@ -205,16 +215,16 @@ def test_update_curation_compacts_embeddings_on_write():
 def test_semantic_search_falls_back_with_warning(caplog, monkeypatch):
     _patch_openai(monkeypatch)
     db = MagicMock()
-    db.curations.aggregate.side_effect = Exception(
-        "index not found: curations_embeddings_vector"
-    )
+    db.curations.aggregate.side_effect = Exception("index not found: curations_embeddings_vector")
     # fallback faz list(find(...).sort().limit()) — IterList registra o sort
     curation_find = IterList([_curation_doc()])
     db.curations.find.return_value = curation_find
     db.entities.find.return_value = IterList([])
 
     response = semantic_search_curations(
-        request=SemanticSearchRequest(query="japonesa"), db=db
+        request=_http_request("127.0.0.1"),
+        body=SemanticSearchRequest(query="japonesa"),
+        db=db,
     )
     assert response.total_results >= 1
     assert any("vectorSearch" in r.getMessage() for r in caplog.records)
@@ -226,9 +236,7 @@ def test_semantic_search_falls_back_with_warning(caplog, monkeypatch):
 def test_hybrid_search_falls_back_with_warning(caplog, monkeypatch):
     _patch_openai(monkeypatch)
     db = MagicMock()
-    db.curations.aggregate.side_effect = Exception(
-        "index not found: curations_embeddings_vector"
-    )
+    db.curations.aggregate.side_effect = Exception("index not found: curations_embeddings_vector")
     curation_find = IterList([_curation_doc()])
     db.curations.find.return_value = curation_find
     entity_doc = {"_id": "e1", "name": "Restaurante Teste"}
@@ -246,7 +254,11 @@ def test_hybrid_search_falls_back_with_warning(caplog, monkeypatch):
 
     from app.models.schemas import HybridSearchRequest
 
-    response = mod.hybrid_search(request=HybridSearchRequest(query="japonesa"), db=db)
+    response = mod.hybrid_search(
+        request=_http_request("127.0.0.2"),
+        body=HybridSearchRequest(query="japonesa"),
+        db=db,
+    )
     assert response.total_results >= 1
     assert any("vectorSearch" in r.getMessage() for r in caplog.records)
     assert curation_find.sorted_by == [("updatedAt", -1)]

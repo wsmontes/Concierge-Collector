@@ -19,12 +19,12 @@ def health_check(db: Database = Depends(get_database)):
     try:
         db.command("ping")
         db_status = "connected"
-    except Exception as e:
-        db_status = f"error: {str(e)}"
+    except Exception:
+        # Não vazar detalhes internos do Mongo (strings de conexão, erros de
+        # auth) em um endpoint público — status genérico é suficiente.
+        db_status = "error"
 
-    return HealthResponse(
-        status="healthy", timestamp=datetime.now(timezone.utc), database=db_status
-    )
+    return HealthResponse(status="healthy", timestamp=datetime.now(timezone.utc), database=db_status)
 
 
 @router.get("/info", response_model=APIInfo)

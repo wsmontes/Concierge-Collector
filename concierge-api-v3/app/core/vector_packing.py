@@ -32,9 +32,7 @@ def pack_vector(values, expected_dim=None):
     if isinstance(values, bytes):
         return values
     if not isinstance(values, (list, tuple)):
-        raise TypeError(
-            f"vetor deve ser lista/tupla de floats, recebeu {type(values).__name__}"
-        )
+        raise TypeError(f"vetor deve ser lista/tupla de floats, recebeu {type(values).__name__}")
     arr = [float(x) for x in values]
     if expected_dim is not None and len(arr) != expected_dim:
         raise ValueError(f"vetor de {len(arr)} dims, esperado {expected_dim}")

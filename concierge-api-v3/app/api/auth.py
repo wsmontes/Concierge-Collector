@@ -45,15 +45,11 @@ def generate_pkce_pair() -> tuple[str, str]:
         tuple: (code_verifier, code_challenge)
     """
     # Generate random code_verifier (43-128 characters)
-    code_verifier = (
-        base64.urlsafe_b64encode(secrets.token_bytes(32)).decode("utf-8").rstrip("=")
-    )
+    code_verifier = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode("utf-8").rstrip("=")
 
     # Create code_challenge (SHA256 hash of verifier)
     challenge_bytes = hashlib.sha256(code_verifier.encode("utf-8")).digest()
-    code_challenge = (
-        base64.urlsafe_b64encode(challenge_bytes).decode("utf-8").rstrip("=")
-    )
+    code_challenge = base64.urlsafe_b64encode(challenge_bytes).decode("utf-8").rstrip("=")
 
     return code_verifier, code_challenge
 
@@ -157,9 +153,7 @@ def create_or_update_user(db: Database, user_data: dict) -> UserInDB:
             if not existing_user.authorized:
                 update_data["authorized"] = True
                 existing_user.authorized = True
-                logger.info(
-                    f"[OAuth] Auto-authorized existing user from domain: {user_data['email']}"
-                )
+                logger.info(f"[OAuth] Auto-authorized existing user from domain: {user_data['email']}")
             if getattr(existing_user, "role", "curator") != "admin":
                 update_data["role"] = "admin"
                 logger.info(f"[OAuth] Promoted {user_data['email']} to admin")
@@ -167,18 +161,14 @@ def create_or_update_user(db: Database, user_data: dict) -> UserInDB:
         if user_data.get("refresh_token"):
             update_data["refresh_token"] = user_data["refresh_token"]
 
-        db.users.update_one(
-            {"google_id": user_data["google_id"]}, {"$set": update_data}
-        )
+        db.users.update_one({"google_id": user_data["google_id"]}, {"$set": update_data})
 
         existing_user.name = user_data["name"]
         existing_user.picture = user_data.get("picture")
         existing_user.last_login = datetime.now(timezone.utc)
         if user_data.get("refresh_token"):
             existing_user.refresh_token = user_data["refresh_token"]
-        logger.info(
-            f"[OAuth] Updated existing user: {existing_user.email} (name, picture, last_login)"
-        )
+        logger.info(f"[OAuth] Updated existing user: {existing_user.email} (name, picture, last_login)")
         return existing_user
     else:
         new_user = User(
@@ -196,12 +186,8 @@ def create_or_update_user(db: Database, user_data: dict) -> UserInDB:
         user_dict = new_user.dict()
         user_dict["_id"] = str(result.inserted_id)
 
-        auth_status = (
-            "True (Auto-authorized, admin)" if is_lotier else "False (curator)"
-        )
-        logger.info(
-            f"[OAuth] Created new user: {new_user.email} (authorized={auth_status})"
-        )
+        auth_status = "True (Auto-authorized, admin)" if is_lotier else "False (curator)"
+        logger.info(f"[OAuth] Created new user: {new_user.email} (authorized={auth_status})")
         return UserInDB(**user_dict)
 
 
@@ -265,9 +251,7 @@ def google_oauth_init(callback_url: Optional[str] = None, request: Request = Non
         }
     )
     if frontend_redirect_url not in trusted_origins:
-        logger.warning(
-            f"[OAuth] Untrusted callback_url rejected: {frontend_redirect_url}"
-        )
+        logger.warning(f"[OAuth] Untrusted callback_url rejected: {frontend_redirect_url}")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Untrusted callback URL: {frontend_redirect_url}",
@@ -341,9 +325,7 @@ def google_oauth_callback(
         # SÓ erros conhecidos do Google viram mensagem — o valor volta ao
         # frontend via redirect e é renderizado na tela de login: ecoar o
         # query param cru permitiria XSS no origin do collector (anti-XSS).
-        error_msg = (
-            "Login cancelled by user" if error == "access_denied" else "Login failed"
-        )
+        error_msg = "Login cancelled by user" if error == "access_denied" else "Login failed"
         logger.warning(f"[OAuth] Error in callback: {error}")
         # Try to extract frontend URL from state, fall back to default
         error_redirect_url = settings.frontend_url
@@ -358,9 +340,7 @@ def google_oauth_callback(
                 pass
         from urllib.parse import quote
 
-        return RedirectResponse(
-            url=f"{error_redirect_url}/?auth_error={quote(error_msg)}"
-        )
+        return RedirectResponse(url=f"{error_redirect_url}/?auth_error={quote(error_msg)}")
 
     # Validate required parameters
     if not code or not state:
@@ -408,9 +388,7 @@ def google_oauth_callback(
 
             if token_response.status_code != 200:
                 error_data = token_response.json()
-                error_desc = error_data.get(
-                    "error_description", error_data.get("error", "Unknown error")
-                )
+                error_desc = error_data.get("error_description", error_data.get("error", "Unknown error"))
                 logger.error(f"[OAuth] Token exchange failed: {error_desc}")
                 logger.error(f"[OAuth] Response: {error_data}")
                 raise HTTPException(
@@ -429,9 +407,7 @@ def google_oauth_callback(
             )
 
             if userinfo_response.status_code != 200:
-                logger.error(
-                    f"[OAuth] Failed to get user info: {userinfo_response.status_code}"
-                )
+                logger.error(f"[OAuth] Failed to get user info: {userinfo_response.status_code}")
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Failed to get user info from Google",
@@ -553,14 +529,10 @@ def verify_token(
 
     user = get_user_by_email(db, email)
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
     if not user.authorized:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="User not authorized"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User not authorized")
 
     logger.info(f"[OAuth] Token verified for user: {user.email}")
 
@@ -574,9 +546,7 @@ def verify_token(
 
 
 @router.post("/refresh")
-async def refresh_access_token(
-    request: TokenRefreshRequest, db: Database = Depends(get_database)
-):
+async def refresh_access_token(request: TokenRefreshRequest, db: Database = Depends(get_database)):
     """
     Refresh access token using a valid refresh token
 
@@ -605,19 +575,13 @@ async def refresh_access_token(
     # Get user from database
     user = get_user_by_email(db, email)
     if not user:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND, detail="User not found"
-        )
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
 
     if not user.authorized:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN, detail="User not authorized"
-        )
+        raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User not authorized")
 
     # Create new tokens
-    new_access_token = create_access_token(
-        data={"sub": user.email, "role": getattr(user, "role", "curator")}
-    )
+    new_access_token = create_access_token(data={"sub": user.email, "role": getattr(user, "role", "curator")})
     new_refresh_token = create_refresh_token(data={"sub": user.email})
 
     logger.info(f"[OAuth] Token refreshed for user: {user.email}")
@@ -625,8 +589,7 @@ async def refresh_access_token(
     return {
         "access_token": new_access_token,
         "refresh_token": new_refresh_token,
-        "expires_in": settings.access_token_expire_minutes
-        * 60,  # Return expiry time in seconds
+        "expires_in": settings.access_token_expire_minutes * 60,  # Return expiry time in seconds
         "token_type": "bearer",
         "user": UserAuthResponse(
             email=user.email,
@@ -667,9 +630,7 @@ def dev_login(db: Database = Depends(get_database)):
 
     # 🔒 CRITICAL: Only available in development
     if settings.environment != "development":
-        logger.warning(
-            f"[DevLogin] ⛔ Blocked in production (ENVIRONMENT={settings.environment})"
-        )
+        logger.warning(f"[DevLogin] ⛔ Blocked in production (ENVIRONMENT={settings.environment})")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Dev login only available in development environment",
@@ -719,9 +680,7 @@ def dev_login(db: Database = Depends(get_database)):
         )
     else:
         # Update last_login
-        db.users.update_one(
-            {"email": dev_email}, {"$set": {"last_login": datetime.now(timezone.utc)}}
-        )
+        db.users.update_one({"email": dev_email}, {"$set": {"last_login": datetime.now(timezone.utc)}})
         logger.info(f"[DevLogin] ✓ Using existing dev user: {dev_email}")
 
     # Generate real JWT tokens
@@ -731,9 +690,7 @@ def dev_login(db: Database = Depends(get_database)):
     )
     refresh_token = create_refresh_token(data={"sub": dev_email})
 
-    logger.info(
-        f"[DevLogin] ✓ Tokens generated (expires in {settings.access_token_expire_minutes}m)"
-    )
+    logger.info(f"[DevLogin] ✓ Tokens generated (expires in {settings.access_token_expire_minutes}m)")
 
     return {
         "access_token": access_token,

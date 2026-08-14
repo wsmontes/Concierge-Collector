@@ -5,9 +5,11 @@ Provides transcription (Whisper), concept extraction (GPT-4), and image analysis
 using configurations and prompts stored in MongoDB.
 """
 
+import asyncio
 import base64
 import io
 import json
+import logging
 import uuid
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
@@ -18,6 +20,8 @@ from pymongo import MongoClient
 
 from app.services.category_service import CategoryService
 from app.services.openai_config_service import OpenAIConfigService
+
+logger = logging.getLogger(__name__)
 
 
 class OpenAIService:
@@ -76,34 +80,29 @@ class OpenAIService:
         # Handle base64 audio data conversion
         try:
             if isinstance(audio_data, str):
-                print(f"[DEBUG] Received base64 string, length: {len(audio_data)}")
+                logger.debug(f"Received base64 string, length: {len(audio_data)}")
                 # Decode base64 string to bytes
                 audio_bytes = base64.b64decode(audio_data)
-                print(f"[DEBUG] Decoded to {len(audio_bytes)} bytes")
+                logger.debug(f"Decoded to {len(audio_bytes)} bytes")
                 # Create file-like object
                 audio_file = io.BytesIO(audio_bytes)
-                audio_file.name = (
-                    "audio.mp3"  # OpenAI needs filename for format detection
-                )
-                print(f"[DEBUG] Created BytesIO object with name: {audio_file.name}")
+                audio_file.name = "audio.mp3"  # OpenAI needs filename for format detection
             else:
-                print(f"[DEBUG] Received file object type: {type(audio_data)}")
                 # Already a file object
                 audio_file = audio_data
 
-            # Call OpenAI
-            print(f"[DEBUG] Calling OpenAI Whisper API with model: {model}")
-            response = self.client.audio.transcriptions.create(
-                model=model, file=audio_file, **params
+            # Call OpenAI — SDK é síncrono; roda em thread para não travar o
+            # event loop (1 worker no Render atende TODOS os requests).
+            logger.debug(f"Calling OpenAI Whisper API with model: {model}")
+            response = await asyncio.to_thread(
+                self.client.audio.transcriptions.create,
+                model=model,
+                file=audio_file,
+                **params,
             )
-            print(
-                f"[DEBUG] OpenAI response received, text length: {len(response.text)}"
-            )
+            logger.debug(f"OpenAI response received, text length: {len(response.text)}")
         except Exception as e:
-            print(f"[ERROR] Audio transcription failed: {type(e).__name__}: {str(e)}")
-            import traceback
-
-            traceback.print_exc()
+            logger.error(f"Audio transcription failed: {type(e).__name__}: {e}", exc_info=True)
             raise
 
         transcription_id = f"trans_{uuid.uuid4().hex[:12]}"
@@ -150,12 +149,11 @@ class OpenAIService:
         config = self.config_service.get_config("concept_extraction_text")
 
         # Render prompt with variables
-        prompt = self.config_service.render_prompt(
-            "concept_extraction_text", {"text": text, "categories": categories}
-        )
+        prompt = self.config_service.render_prompt("concept_extraction_text", {"text": text, "categories": categories})
 
-        # Call OpenAI
-        response = self.client.chat.completions.create(
+        # Call OpenAI — SDK síncrono em thread (ver transcribe_audio)
+        response = await asyncio.to_thread(
+            self.client.chat.completions.create,
             model=config["model"],
             messages=[{"role": "user", "content": prompt}],
             **config["config"],
@@ -192,14 +190,9 @@ class OpenAIService:
                     value = concept.get("value")
                     if not category_key or not value:
                         continue
-                    if (
-                        allowed_category_keys
-                        and category_key not in allowed_category_keys
-                    ):
+                    if allowed_category_keys and category_key not in allowed_category_keys:
                         continue
-                    normalized_categories.setdefault(category_key, []).append(
-                        str(value).strip()
-                    )
+                    normalized_categories.setdefault(category_key, []).append(str(value).strip())
 
         normalized_concepts = [
             {"category": category_key, "value": value}
@@ -235,9 +228,7 @@ class OpenAIService:
 
         return result
 
-    async def extract_restaurant_name_from_text(
-        self, text: str, save_to_cache: bool = False
-    ) -> Dict[str, Any]:
+    async def extract_restaurant_name_from_text(self, text: str, save_to_cache: bool = False) -> Dict[str, Any]:
         """
         Extract restaurant name from text using a dedicated OpenAI config object from MongoDB.
 
@@ -253,7 +244,8 @@ class OpenAIService:
 
         prompt = self.config_service.render_prompt(config_service_name, {"text": text})
 
-        response = self.client.chat.completions.create(
+        response = await asyncio.to_thread(
+            self.client.chat.completions.create,
             model=config["model"],
             messages=[{"role": "user", "content": prompt}],
             **config["config"],
@@ -267,11 +259,7 @@ class OpenAIService:
         try:
             parsed = json.loads(raw_content)
             if isinstance(parsed, dict):
-                restaurant_name = (
-                    parsed.get("restaurant_name")
-                    or parsed.get("name")
-                    or parsed.get("result")
-                )
+                restaurant_name = parsed.get("restaurant_name") or parsed.get("name") or parsed.get("result")
                 confidence_score = parsed.get("confidence_score")
         except Exception:
             restaurant_name = raw_content
@@ -334,12 +322,11 @@ class OpenAIService:
         config = self.config_service.get_config("image_analysis")
 
         # Render prompt with variables
-        prompt = self.config_service.render_prompt(
-            "image_analysis", {"categories": categories}
-        )
+        prompt = self.config_service.render_prompt("image_analysis", {"categories": categories})
 
-        # Call OpenAI Vision
-        response = self.client.chat.completions.create(
+        # Call OpenAI Vision — SDK síncrono em thread (ver transcribe_audio)
+        response = await asyncio.to_thread(
+            self.client.chat.completions.create,
             model=config["model"],
             messages=[
                 {

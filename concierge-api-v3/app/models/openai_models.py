@@ -30,9 +30,7 @@ class FunctionDefinition(BaseModel):
 
     name: str = Field(..., description="Function name")
     description: str = Field(..., description="Function description")
-    parameters: FunctionParameters = Field(
-        ..., description="Function parameters as JSON schema"
-    )
+    parameters: FunctionParameters = Field(..., description="Function parameters as JSON schema")
     strict: bool = Field(True, description="Whether to enforce strict mode")
 
 

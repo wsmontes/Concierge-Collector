@@ -22,14 +22,10 @@ from pydantic import (
 class Metadata(BaseModel):
     """Extensible metadata from multiple sources"""
 
-    type: str = Field(
-        ..., description="Metadata type (e.g., 'google_places', 'michelin')"
-    )
+    type: str = Field(..., description="Metadata type (e.g., 'google_places', 'michelin')")
     source: str = Field(..., description="Data source identifier")
     importedAt: Optional[datetime] = Field(None, description="Import timestamp")
-    data: Dict[str, Any] = Field(
-        default_factory=dict, description="Flexible data storage"
-    )
+    data: Dict[str, Any] = Field(default_factory=dict, description="Flexible data storage")
 
 
 class SyncInfo(BaseModel):
@@ -141,16 +137,10 @@ class CurationBase(BaseModel):
     restaurant_name: Optional[str] = Field(
         default=None, description="Display name of the curation before/after linking"
     )
-    status: CurationStatus = Field(
-        default="draft", description="Curation lifecycle status"
-    )
+    status: CurationStatus = Field(default="draft", description="Curation lifecycle status")
     notes: Optional[CurationNotes] = None
-    city: Optional[str] = Field(
-        default=None, description="City (denormalized from entity)"
-    )
-    type: Optional[str] = Field(
-        default=None, description="Entity type (denormalized from entity)"
-    )
+    city: Optional[str] = Field(default=None, description="City (denormalized from entity)")
+    type: Optional[str] = Field(default=None, description="Entity type (denormalized from entity)")
     categories: CurationCategories = Field(default_factory=CurationCategories)
     transcript: Optional[str] = Field(
         default=None,
@@ -161,9 +151,7 @@ class CurationBase(BaseModel):
         default_factory=dict,
         description="Structured sources grouped by source type (audio, image, google_places, etc.)",
     )
-    items: Optional[List[Dict[str, Any]]] = Field(
-        default=None, description="Detailed items/concepts list"
-    )
+    items: Optional[List[Dict[str, Any]]] = Field(default=None, description="Detailed items/concepts list")
 
     @field_validator("sources", mode="before")
     @classmethod
@@ -199,14 +187,10 @@ class CurationCreate(CurationBase):
     """Curation creation request"""
 
     curation_id: str = Field(..., description="Unique curation ID")
-    entity_id: Optional[str] = Field(
-        None, description="Entity this curation is about (null for orphaned curations)"
-    )
+    entity_id: Optional[str] = Field(None, description="Entity this curation is about (null for orphaned curations)")
     curator_id: str = Field(..., description="Curator ID for filtering")
     curator: CuratorInfo
-    createdBy: Optional[str] = Field(
-        None, description="Curator ID who originally created this curation"
-    )
+    createdBy: Optional[str] = Field(None, description="Curator ID who originally created this curation")
 
 
 class CurationUpdate(BaseModel):
@@ -219,9 +203,7 @@ class CurationUpdate(BaseModel):
     status: Optional[CurationStatus] = None
     notes: Optional[CurationNotes] = None
     categories: Optional[CurationCategories] = None
-    transcript: Optional[str] = Field(
-        default=None, validation_alias=AliasChoices("transcript", "unstructured_text")
-    )
+    transcript: Optional[str] = Field(default=None, validation_alias=AliasChoices("transcript", "unstructured_text"))
     sources: Optional[Dict[str, Any]] = None
     embeddings: Optional[List[Dict]] = None
     embeddings_metadata: Optional[Dict] = None
@@ -328,9 +310,7 @@ class BulkOperationResponse(BaseModel):
     created: int = Field(default=0, description="Items newly inserted")
     updated: int = Field(default=0, description="Items updated (upsert)")
     skipped: int = Field(default=0, description="Items skipped (duplicate, no change)")
-    errors: List[BulkItemError] = Field(
-        default_factory=list, description="Per-item errors"
-    )
+    errors: List[BulkItemError] = Field(default_factory=list, description="Per-item errors")
     total_received: int = Field(..., description="Total items received in this request")
 
 
@@ -342,35 +322,23 @@ class BulkOperationResponse(BaseModel):
 class SemanticSearchRequest(BaseModel):
     """Request para busca semântica por embeddings"""
 
-    query: str = Field(
-        ..., min_length=1, max_length=500, description="Query text for semantic search"
-    )
-    limit: int = Field(
-        default=10, ge=1, le=100, description="Maximum number of results"
-    )
+    query: str = Field(..., min_length=1, max_length=500, description="Query text for semantic search")
+    limit: int = Field(default=10, ge=1, le=100, description="Maximum number of results")
     min_similarity: float = Field(
         default=0.0,
         ge=0.0,
         le=1.0,
         description="Minimum cosine similarity threshold (0.0 returns all results ranked)",
     )
-    entity_types: Optional[List[str]] = Field(
-        None, description="Filter by entity types (e.g., ['restaurant'])"
-    )
-    categories: Optional[List[str]] = Field(
-        None, description="Filter by specific categories"
-    )
-    include_entity: bool = Field(
-        default=True, description="Include entity data in response"
-    )
+    entity_types: Optional[List[str]] = Field(None, description="Filter by entity types (e.g., ['restaurant'])")
+    categories: Optional[List[str]] = Field(None, description="Filter by specific categories")
+    include_entity: bool = Field(default=True, description="Include entity data in response")
 
 
 class ConceptMatch(BaseModel):
     """Individual concept match with similarity score"""
 
-    text: str = Field(
-        ..., description="Full text of the match (e.g., 'cuisine japanese')"
-    )
+    text: str = Field(..., description="Full text of the match (e.g., 'cuisine japanese')")
     category: str = Field(..., description="Category of the concept")
     concept: str = Field(..., description="Concept value")
     similarity: float = Field(..., description="Cosine similarity score (0-1)")
@@ -401,27 +369,17 @@ class SemanticSearchResponse(BaseModel):
 class HybridSearchRequest(BaseModel):
     """Request para busca híbrida (entities + semantic curations)"""
 
-    query: str = Field(
-        ..., min_length=1, max_length=500, description="Search query text"
-    )
-    location: Optional[str] = Field(
-        None, description="Location filter (city, neighborhood)"
-    )
-    limit: int = Field(
-        default=10, ge=1, le=100, description="Maximum number of results"
-    )
+    query: str = Field(..., min_length=1, max_length=500, description="Search query text")
+    location: Optional[str] = Field(None, description="Location filter (city, neighborhood)")
+    limit: int = Field(default=10, ge=1, le=100, description="Maximum number of results")
     min_similarity: float = Field(
         default=0.5,
         ge=0.0,
         le=1.0,
         description="Minimum cosine similarity for semantic matches",
     )
-    categories: Optional[List[str]] = Field(
-        None, description="Filter by specific categories"
-    )
-    boost_semantic: float = Field(
-        default=0.7, ge=0.0, le=1.0, description="Weight for semantic score (0-1)"
-    )
+    categories: Optional[List[str]] = Field(None, description="Filter by specific categories")
+    boost_semantic: float = Field(default=0.7, ge=0.0, le=1.0, description="Weight for semantic score (0-1)")
 
 
 class HybridSearchResult(BaseModel):
@@ -431,14 +389,10 @@ class HybridSearchResult(BaseModel):
     entity: dict = Field(..., description="Entity data")
     curation: Optional[dict] = Field(None, description="Curation data if available")
     score: float = Field(..., description="Combined score (0-1)")
-    match_type: str = Field(
-        ..., description="Type of match: 'entity', 'semantic', 'hybrid'"
-    )
+    match_type: str = Field(..., description="Type of match: 'entity', 'semantic', 'hybrid'")
     entity_score: float = Field(default=0.0, description="Entity match score")
     semantic_score: float = Field(default=0.0, description="Semantic match score")
-    semantic_matches: Optional[List[ConceptMatch]] = Field(
-        None, description="Top semantic matches"
-    )
+    semantic_matches: Optional[List[ConceptMatch]] = Field(None, description="Top semantic matches")
 
 
 class HybridSearchResponse(BaseModel):
@@ -446,11 +400,7 @@ class HybridSearchResponse(BaseModel):
 
     results: List[HybridSearchResult] = Field(..., description="Ranked results")
     query: str = Field(..., description="Original query")
-    entity_search_time: float = Field(
-        ..., description="Time for entity search (seconds)"
-    )
-    semantic_search_time: float = Field(
-        ..., description="Time for semantic search (seconds)"
-    )
+    entity_search_time: float = Field(..., description="Time for entity search (seconds)")
+    semantic_search_time: float = Field(..., description="Time for semantic search (seconds)")
     total_time: float = Field(..., description="Total search time (seconds)")
     total_results: int = Field(..., description="Total number of results")

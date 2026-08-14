@@ -16,9 +16,7 @@ router = APIRouter(prefix="/concepts", tags=["concepts"])
 
 
 @router.get("/{entity_type}")
-def get_concepts(
-    entity_type: str, db: Database = Depends(get_database)
-) -> Dict[str, Any]:
+def get_concepts(entity_type: str, db: Database = Depends(get_database)) -> Dict[str, Any]:
     """
     Get concept categories for entity type.
 

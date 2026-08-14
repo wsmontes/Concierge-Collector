@@ -27,20 +27,14 @@ class User(BaseModel):
     google_id: str = Field(..., description="Google account ID (sub claim from OAuth)")
     name: str = Field(..., description="User's full name from Google")
     picture: Optional[str] = Field(None, description="User's profile picture URL")
-    authorized: bool = Field(
-        False, description="Whether user is authorized to use the application"
-    )
-    role: UserRole = Field(
-        default="curator", description="User role: admin | curator | viewer"
-    )
+    authorized: bool = Field(False, description="Whether user is authorized to use the application")
+    role: UserRole = Field(default="curator", description="User role: admin | curator | viewer")
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
         description="Account creation timestamp",
     )
     last_login: Optional[datetime] = Field(None, description="Last login timestamp")
-    refresh_token: Optional[str] = Field(
-        None, description="Encrypted Google refresh token for persistent login"
-    )
+    refresh_token: Optional[str] = Field(None, description="Encrypted Google refresh token for persistent login")
 
     class Config:
         json_schema_extra = {

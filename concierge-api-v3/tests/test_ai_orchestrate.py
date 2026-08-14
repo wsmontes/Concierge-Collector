@@ -27,14 +27,10 @@ class TestAIOrchestrate:
             "entity_type": "restaurant",
         }
 
-        response = await async_client.post(
-            "/api/v3/ai/orchestrate", json=request_data, headers=auth_headers
-        )
+        response = await async_client.post("/api/v3/ai/orchestrate", json=request_data, headers=auth_headers)
 
         # Should NOT return 500 - that indicates async/await issues
-        assert (
-            response.status_code != 500
-        ), f"500 error indicates async/await bug: {response.text}"
+        assert response.status_code != 500, f"500 error indicates async/await bug: {response.text}"
 
         # With auth headers, external model/provider may return 400/503 depending on environment
         assert response.status_code in [
@@ -60,23 +56,17 @@ class TestAIOrchestrate:
             "entity_type": "restaurant",
         }
 
-        response = await async_client.post(
-            "/api/v3/ai/orchestrate", json=request_data, headers=auth_headers
-        )
+        response = await async_client.post("/api/v3/ai/orchestrate", json=request_data, headers=auth_headers)
 
         # Audio providers may return 500 depending on upstream error mapping
         assert response.status_code in [200, 400, 500, 503]
 
     @pytest.mark.asyncio
-    async def test_orchestrate_returns_proper_response_structure(
-        self, async_client, auth_headers
-    ):
+    async def test_orchestrate_returns_proper_response_structure(self, async_client, auth_headers):
         """Test that successful responses have proper structure"""
         request_data = {"text": "Test restaurant", "entity_type": "restaurant"}
 
-        response = await async_client.post(
-            "/api/v3/ai/orchestrate", json=request_data, headers=auth_headers
-        )
+        response = await async_client.post("/api/v3/ai/orchestrate", json=request_data, headers=auth_headers)
 
         if response.status_code == 200:
             data = response.json()
@@ -84,9 +74,7 @@ class TestAIOrchestrate:
             assert "workflow" in data, "Response missing 'workflow' field"
             assert "results" in data, "Response missing 'results' field"
             assert "saved_to_db" in data, "Response missing 'saved_to_db' field"
-            assert (
-                "processing_time_ms" in data
-            ), "Response missing 'processing_time_ms' field"
+            assert "processing_time_ms" in data, "Response missing 'processing_time_ms' field"
 
     @pytest.mark.asyncio
     async def test_orchestrate_requires_authentication(self, async_client):
@@ -97,16 +85,11 @@ class TestAIOrchestrate:
         response = await async_client.post("/api/v3/ai/orchestrate", json=request_data)
 
         # Without auth, should return 401 Unauthorized (no test mode bypass)
-        assert (
-            response.status_code == 401
-        ), f"Expected 401 without auth, got {response.status_code}"
+        assert response.status_code == 401, f"Expected 401 without auth, got {response.status_code}"
 
         data = response.json()
         assert "detail" in data
-        assert (
-            "authorization" in data["detail"].lower()
-            or "token" in data["detail"].lower()
-        )
+        assert "authorization" in data["detail"].lower() or "token" in data["detail"].lower()
 
     @pytest.mark.asyncio
     async def test_orchestrate_workflow_detection(self, async_client, auth_headers):
@@ -118,9 +101,7 @@ class TestAIOrchestrate:
         ]
 
         for case in test_cases:
-            response = await async_client.post(
-                "/api/v3/ai/orchestrate", json=case["input"], headers=auth_headers
-            )
+            response = await async_client.post("/api/v3/ai/orchestrate", json=case["input"], headers=auth_headers)
 
             # If successful, verify workflow detection
             if response.status_code == 200:
@@ -138,31 +119,23 @@ class TestAIOrchestrate:
         """
         request_data = {"text": "Test restaurant", "entity_type": "restaurant"}
 
-        response = client.post(
-            "/api/v3/ai/orchestrate", json=request_data, headers=auth_headers
-        )
+        response = client.post("/api/v3/ai/orchestrate", json=request_data, headers=auth_headers)
 
         # Should work or return auth/service errors, but NOT 500
-        assert (
-            response.status_code != 500
-        ), f"Sync client got 500 error: {response.text}"
+        assert response.status_code != 500, f"Sync client got 500 error: {response.text}"
 
 
 class TestAIEndpointErrorHandling:
     """Test error handling in AI endpoints"""
 
     @pytest.mark.asyncio
-    async def test_orchestrate_handles_missing_openai_key(
-        self, async_client, auth_headers, monkeypatch
-    ):
+    async def test_orchestrate_handles_missing_openai_key(self, async_client, auth_headers, monkeypatch):
         """Test proper error when OpenAI key is missing"""
         # This would require mocking the environment
         # For now, just verify we get a meaningful error, not 500
 
     @pytest.mark.asyncio
-    async def test_orchestrate_handles_invalid_audio_data(
-        self, async_client, auth_headers
-    ):
+    async def test_orchestrate_handles_invalid_audio_data(self, async_client, auth_headers):
         """Test handling of corrupted audio data"""
         request_data = {
             "audio_file": "this_is_not_valid_base64_!@#$",
@@ -170,9 +143,7 @@ class TestAIEndpointErrorHandling:
             "entity_type": "restaurant",
         }
 
-        response = await async_client.post(
-            "/api/v3/ai/orchestrate", json=request_data, headers=auth_headers
-        )
+        response = await async_client.post("/api/v3/ai/orchestrate", json=request_data, headers=auth_headers)
 
         # Invalid/corrupted audio may surface as provider/transcription errors
         assert response.status_code in [400, 500, 503]
@@ -189,9 +160,7 @@ class TestAIEndpointErrorHandling:
             "entity_type": "restaurant",
         }
 
-        response = await async_client.post(
-            "/api/v3/ai/orchestrate", json=request_data, headers=auth_headers
-        )
+        response = await async_client.post("/api/v3/ai/orchestrate", json=request_data, headers=auth_headers)
 
         # Very large/invalid payloads may be rejected by provider/runtime
         assert response.status_code in [200, 400, 413, 500, 503]
@@ -220,9 +189,7 @@ class TestAsyncAwaitPatterns:
                 response = await async_client.post(endpoint, json=data or {})
 
             # None should return 500 from async/await issues
-            assert (
-                response.status_code != 500
-            ), f"{endpoint} returned 500 - possible async/await bug"
+            assert response.status_code != 500, f"{endpoint} returned 500 - possible async/await bug"
 
 
 class TestOutputHandler:
@@ -231,12 +198,8 @@ class TestOutputHandler:
     def test_save_results_writes_to_mongo(self):
         """save_results deve usar operações síncronas do PyMongo (sem await)."""
         mock_db = MagicMock()
-        mock_db.entities.update_one = MagicMock(
-            return_value=MagicMock(modified_count=1)
-        )
-        mock_db.curations.insert_one = MagicMock(
-            return_value=MagicMock(inserted_id="abc123")
-        )
+        mock_db.entities.update_one = MagicMock(return_value=MagicMock(modified_count=1))
+        mock_db.curations.insert_one = MagicMock(return_value=MagicMock(inserted_id="abc123"))
 
         results = {
             "entity": {"entity_id": "ent_001"},

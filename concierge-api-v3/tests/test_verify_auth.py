@@ -61,9 +61,7 @@ class TestVerifyAuth:
         """Missing API_SECRET_KEY returns 500 with diagnostic, not silent skip."""
         from app.core.security import verify_auth
 
-        with patch(
-            "app.core.security.get_api_secret_key", side_effect=RuntimeError("not set")
-        ):
+        with patch("app.core.security.get_api_secret_key", side_effect=RuntimeError("not set")):
             with pytest.raises(HTTPException) as exc:
                 verify_auth(api_key="anything", bearer=None)
             assert exc.value.status_code == 500
@@ -99,12 +97,8 @@ class TestVerifyAuth:
         from app.core.security import verify_auth
         from fastapi.security import HTTPAuthorizationCredentials
 
-        creds = HTTPAuthorizationCredentials(
-            scheme="Bearer", credentials="some.jwt.here"
-        )
-        with patch(
-            "app.core.security.get_api_secret_key", side_effect=RuntimeError("not set")
-        ):
+        creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials="some.jwt.here")
+        with patch("app.core.security.get_api_secret_key", side_effect=RuntimeError("not set")):
             with pytest.raises(HTTPException) as exc:
                 verify_auth(api_key=None, bearer=creds)
             assert exc.value.status_code == 500
@@ -127,9 +121,7 @@ class TestJwtHelpers:
         from datetime import timedelta
         from app.core.security import create_access_token
 
-        token = create_access_token(
-            data={"sub": "x@example.com"}, expires_delta=timedelta(minutes=5)
-        )
+        token = create_access_token(data={"sub": "x@example.com"}, expires_delta=timedelta(minutes=5))
         assert isinstance(token, str)
         assert token.count(".") == 2
 
@@ -164,17 +156,13 @@ class TestJwtHelpers:
         from app.core.security import create_access_token, verify_access_token
         from fastapi.security import HTTPAuthorizationCredentials
 
-        token = create_access_token(
-            data={"sub": "expired@example.com"}, expires_delta=timedelta(seconds=-10)
-        )
+        token = create_access_token(data={"sub": "expired@example.com"}, expires_delta=timedelta(seconds=-10))
         creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
         with pytest.raises(HTTPException) as exc:
             await verify_access_token(credentials=creds)
         assert exc.value.status_code == 401
 
-    async def test_verify_access_token_testing_bypass_development_only(
-        self, monkeypatch
-    ):
+    async def test_verify_access_token_testing_bypass_development_only(self, monkeypatch):
         from app.core.security import verify_access_token
 
         monkeypatch.setenv("TESTING", "true")

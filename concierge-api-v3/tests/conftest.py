@@ -34,9 +34,7 @@ load_dotenv(env_path)
 # no import, e get_database/lifespan seguem o settings. Sem isso, mongo tests
 # inserem/apagam docs no banco real e asserts dependem do volume de produção
 # (o incidente do '0-' prefix no review 30).
-os.environ["MONGODB_DB_NAME"] = (
-    f"{os.environ.get('MONGODB_DB_NAME', 'concierge-collector')}-test"
-)
+os.environ["MONGODB_DB_NAME"] = f"{os.environ.get('MONGODB_DB_NAME', 'concierge-collector')}-test"
 
 from main import app  # noqa: E402  (import DEPOIS do setup de env acima)
 from app.core.config import settings  # noqa: E402
@@ -93,11 +91,7 @@ def clean_test_curations(test_db):
 @pytest.fixture
 def test_google_api_key():
     """Get Google Places API key from settings for integration tests"""
-    return (
-        settings.google_places_api_key
-        if hasattr(settings, "google_places_api_key")
-        else None
-    )
+    return settings.google_places_api_key if hasattr(settings, "google_places_api_key") else None
 
 
 @pytest.fixture
@@ -156,9 +150,7 @@ async def async_client():
         connect_to_mongo()
 
     # Use ASGITransport to mount the FastAPI app
-    async with AsyncClient(
-        transport=ASGITransport(app=app), base_url="http://test"
-    ) as ac:
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://test") as ac:
         yield ac
 
 

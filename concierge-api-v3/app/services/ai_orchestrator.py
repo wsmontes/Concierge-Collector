@@ -93,9 +93,7 @@ class OutputHandler:
         return request_data
 
     @staticmethod
-    async def format_results(
-        results: Dict[str, Any], format_type: str
-    ) -> Dict[str, Any]:
+    async def format_results(results: Dict[str, Any], format_type: str) -> Dict[str, Any]:
         """
         Format results based on format type.
 
@@ -245,9 +243,7 @@ class AIOrchestrator:
 
         # Format response
         if request["output"]["return_results"]:
-            formatted = await self.output_handler.format_results(
-                results, request["output"]["format"]
-            )
+            formatted = await self.output_handler.format_results(results, request["output"]["format"])
         else:
             formatted = {}
 
@@ -260,9 +256,7 @@ class AIOrchestrator:
             "processing_time_ms": processing_time,
         }
 
-    async def execute_workflow(
-        self, workflow: str, request: Dict[str, Any]
-    ) -> Dict[str, Any]:
+    async def execute_workflow(self, workflow: str, request: Dict[str, Any]) -> Dict[str, Any]:
         """Execute the detected workflow"""
         results = {}
         entity_type = request.get("entity_type", "restaurant")
@@ -272,11 +266,7 @@ class AIOrchestrator:
 
         if workflow == "audio_only":
             # Transcribe audio
-            audio = (
-                request.get("audio_file")
-                or request.get("audio_url")
-                or request.get("text")
-            )
+            audio = request.get("audio_file") or request.get("audio_url") or request.get("text")
 
             if request.get("text"):
                 # Skip transcription, use text directly
@@ -291,18 +281,14 @@ class AIOrchestrator:
                 text = transcription["text"]
 
             # Extract concepts
-            concepts = await self.openai.extract_concepts_from_text(
-                text, entity_type, save_to_cache=save_to_cache
-            )
+            concepts = await self.openai.extract_concepts_from_text(text, entity_type, save_to_cache=save_to_cache)
             concepts["category_context"] = entity_type
             results["concepts"] = concepts
 
         elif workflow == "image_only":
             # Analyze image
             image = request.get("image_file") or request.get("image_url")
-            image_analysis = await self.openai.analyze_image(
-                image, entity_type, save_to_cache=save_to_cache
-            )
+            image_analysis = await self.openai.analyze_image(image, entity_type, save_to_cache=save_to_cache)
             image_analysis["category_context"] = entity_type
             results["image_analysis"] = image_analysis
 
@@ -362,9 +348,7 @@ class AIOrchestrator:
 
             # 2. Analyze image
             image = request.get("image_file") or request.get("image_url")
-            image_analysis = await self.openai.analyze_image(
-                image, entity_type, save_to_cache=save_to_cache
-            )
+            image_analysis = await self.openai.analyze_image(image, entity_type, save_to_cache=save_to_cache)
             image_analysis["category_context"] = entity_type
             results["image_analysis"] = image_analysis
 
@@ -404,9 +388,7 @@ class AIOrchestrator:
 
             # Analyze image
             image = request.get("image_file") or request.get("image_url")
-            image_analysis = await self.openai.analyze_image(
-                image, entity_type, save_to_cache=save_to_cache
-            )
+            image_analysis = await self.openai.analyze_image(image, entity_type, save_to_cache=save_to_cache)
             results["image_analysis"] = image_analysis
 
             # Combine categories from both sources (merge and deduplicate per category)
@@ -414,15 +396,11 @@ class AIOrchestrator:
             image_categories = OutputHandler.extract_categories(image_analysis)
 
             combined_categories = {}
-            all_category_keys = set(text_categories.keys()) | set(
-                image_categories.keys()
-            )
+            all_category_keys = set(text_categories.keys()) | set(image_categories.keys())
             for key in all_category_keys:
                 text_vals = text_categories.get(key, [])
                 image_vals = image_categories.get(key, [])
-                combined_categories[key] = list(
-                    set(text_vals + image_vals)
-                )  # Deduplicate per category
+                combined_categories[key] = list(set(text_vals + image_vals))  # Deduplicate per category
 
             # Create curation with combined categories
             results["curation"] = {
@@ -458,9 +436,7 @@ class AIOrchestrator:
 
         return results
 
-    def transform_to_entity(
-        self, place_data: Dict[str, Any], entity_type: str
-    ) -> Dict[str, Any]:
+    def transform_to_entity(self, place_data: Dict[str, Any], entity_type: str) -> Dict[str, Any]:
         """
         Transform Google Place data to entity format.
 

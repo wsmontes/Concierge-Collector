@@ -21,9 +21,7 @@ class FindChain:
         self.last_query = None
         self.last_find_one_query = None
         self.queries = []  # histórico de find() — transição é verificável
-        self.find_one_docs = (
-            []
-        )  # docs retornados por find_one (cursor resolve_after_id)
+        self.find_one_docs = []  # docs retornados por find_one (cursor resolve_after_id)
 
     def find(self, query, **kwargs):
         self.last_query = query
@@ -32,11 +30,7 @@ class FindChain:
         if cond is not None:
             # type bracketing: só casa o MESMO tipo BSON do cursor
             self._found = [
-                d
-                for d in self.docs
-                if d.get("_id") is not None
-                and type(d["_id"]) is type(cond)
-                and d["_id"] > cond
+                d for d in self.docs if d.get("_id") is not None and type(d["_id"]) is type(cond) and d["_id"] > cond
             ]
         else:
             self._found = list(self.docs)

@@ -48,9 +48,7 @@ class CategoryService:
                 return cached_data
 
         # Fetch from MongoDB
-        doc = await self.db.categories.find_one(
-            {"entity_type": entity_type, "active": True}
-        )
+        doc = await self.db.categories.find_one({"entity_type": entity_type, "active": True})
 
         if not doc:
             # Fallback to restaurant categories

@@ -79,9 +79,7 @@ class TestCurationEndpoints:
 
     def test_update_curation_without_auth(self, client):
         """Test updating curation without authentication"""
-        response = client.patch(
-            "/api/v3/curations/test_id", json={"status": "approved"}
-        )
+        response = client.patch("/api/v3/curations/test_id", json={"status": "approved"})
 
         assert response.status_code == 401
 
@@ -192,18 +190,14 @@ def test_bulk_upsert_handles_duplicate_key_race():
         "app.api.curations.denormalize_curation_location",
         return_value={"city": None, "type": None},
     ):
-        result = bulk_upsert_curations(
-            request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth
-        )
+        result = bulk_upsert_curations(request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth)
 
     # Deve ter chamado update_one (não só incrementar counter)
     mock_db.curations.update_one.assert_called()
     # $set não deve conter createdAt (preservar o original)
     call_args, call_kwargs = mock_db.curations.update_one.call_args
     set_doc = call_kwargs["$set"] if "$set" in call_kwargs else call_args[1]["$set"]
-    assert (
-        "createdAt" not in set_doc
-    ), "createdAt must not be in $set (preserve original)"
+    assert "createdAt" not in set_doc, "createdAt must not be in $set (preserve original)"
     assert "_id" not in set_doc, "_id must not be in $set"
     # identidade/entidade do vencedor nunca são sobrescritas na corrida
     for field in (
@@ -257,9 +251,7 @@ def test_bulk_upsert_duplicate_key_preserves_created_at():
         "app.api.curations.denormalize_curation_location",
         return_value={"city": "NYC", "type": "restaurant"},
     ) as mock_denorm:
-        result = bulk_upsert_curations(
-            request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth
-        )
+        result = bulk_upsert_curations(request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth)
 
     mock_denorm.assert_called_once()
     mock_db.curations.update_one.assert_called_once()
@@ -273,9 +265,7 @@ def test_bulk_upsert_duplicate_key_preserves_created_at():
     # city/type do loser NÃO re-linkam o vencedor para outra entity
     assert "city" not in set_doc, "city do loser não pode ir no $set da corrida"
     assert "type" not in set_doc, "type do loser não pode ir no $set da corrida"
-    assert (
-        "entity_id" not in set_doc
-    ), "entity_id do loser não pode ir no $set da corrida"
+    assert "entity_id" not in set_doc, "entity_id do loser não pode ir no $set da corrida"
     # Must NOT contain _id
     assert "_id" not in set_doc
     assert result.updated == 1
@@ -311,9 +301,7 @@ def test_bulk_upsert_duplicate_key_reports_recovery_failure():
         "app.api.curations.denormalize_curation_location",
         return_value={"city": None, "type": None},
     ):
-        result = bulk_upsert_curations(
-            request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth
-        )
+        result = bulk_upsert_curations(request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth)
 
     # Must report the error instead of silently passing
     assert len(result.errors) == 1
@@ -353,9 +341,7 @@ def test_bulk_upsert_update_preserves_stored_curator_when_payload_id_empty():
     )
     payload = BulkCurationCreate(curations=[curation])
 
-    result = bulk_upsert_curations(
-        request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth
-    )
+    result = bulk_upsert_curations(request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth)
 
     assert result.updated == 1
     assert len(result.errors) == 0
@@ -366,9 +352,7 @@ def test_bulk_upsert_update_preserves_stored_curator_when_payload_id_empty():
     assert set_doc["curator_id"] == "real-1", "curator_id armazenado deve prevalecer"
     assert set_doc["curator"]["id"] == "real-1", "curator.id armazenado deve prevalecer"
     assert set_doc["curator"]["name"] == "Novo Nome", "name real do payload atualiza"
-    assert (
-        set_doc["curator"]["email"] == "real@example.com"
-    ), "email=None do payload não destrói o armazenado"
+    assert set_doc["curator"]["email"] == "real@example.com", "email=None do payload não destrói o armazenado"
     assert set_doc["version"] == 4
 
 
@@ -403,9 +387,7 @@ def test_bulk_upsert_update_offline_placeholder_preserves_stored_name_email():
     )
     payload = BulkCurationCreate(curations=[curation])
 
-    result = bulk_upsert_curations(
-        request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth
-    )
+    result = bulk_upsert_curations(request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth)
 
     assert result.updated == 1
     assert len(result.errors) == 0
@@ -413,12 +395,8 @@ def test_bulk_upsert_update_offline_placeholder_preserves_stored_name_email():
     set_doc = call_kwargs.get("$set") or call_args[1].get("$set")
     assert set_doc["curator_id"] == "real-1"
     assert set_doc["curator"]["id"] == "real-1"
-    assert (
-        set_doc["curator"]["name"] == "Nome Real"
-    ), "name 'unknown' do payload não destrói o real"
-    assert (
-        set_doc["curator"]["email"] == "real@example.com"
-    ), "email null do payload não destrói o real"
+    assert set_doc["curator"]["name"] == "Nome Real", "name 'unknown' do payload não destrói o real"
+    assert set_doc["curator"]["email"] == "real@example.com", "email null do payload não destrói o real"
 
 
 def test_bulk_upsert_update_stored_unknown_top_level_does_not_shadow_embedded_real():
@@ -450,17 +428,13 @@ def test_bulk_upsert_update_stored_unknown_top_level_does_not_shadow_embedded_re
     )
     payload = BulkCurationCreate(curations=[curation])
 
-    result = bulk_upsert_curations(
-        request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth
-    )
+    result = bulk_upsert_curations(request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth)
 
     assert result.updated == 1
     assert len(result.errors) == 0
     call_args, call_kwargs = mock_db.curations.update_one.call_args
     set_doc = call_kwargs.get("$set") or call_args[1].get("$set")
-    assert (
-        set_doc["curator_id"] == "real-1"
-    ), "top-level 'unknown' não pode sombrear o id embutido real"
+    assert set_doc["curator_id"] == "real-1", "top-level 'unknown' não pode sombrear o id embutido real"
     assert set_doc["curator"]["id"] == "real-1"
     assert set_doc["curator"]["email"] == "real@example.com"
 
@@ -494,20 +468,14 @@ def test_bulk_upsert_update_top_real_with_empty_embedded_keeps_payload_id():
     )
     payload = BulkCurationCreate(curations=[curation])
 
-    result = bulk_upsert_curations(
-        request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth
-    )
+    result = bulk_upsert_curations(request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth)
 
     assert result.updated == 1
     assert len(result.errors) == 0
     call_args, call_kwargs = mock_db.curations.update_one.call_args
     set_doc = call_kwargs.get("$set") or call_args[1].get("$set")
-    assert (
-        set_doc["curator_id"] == "maria-2"
-    ), "reatribuição real do payload não pode ser revertida"
-    assert (
-        set_doc["curator"]["id"] == "maria-2"
-    ), "id embutido placeholder sincroniza com o top-level"
+    assert set_doc["curator_id"] == "maria-2", "reatribuição real do payload não pode ser revertida"
+    assert set_doc["curator"]["id"] == "maria-2", "id embutido placeholder sincroniza com o top-level"
     assert set_doc["curator"]["name"] == "Maria"
 
 
@@ -526,9 +494,7 @@ def test_repair_curator_identity_patch_poison_shape():
     _repair_curator_identity(update_data, stored)
 
     assert update_data["curator_id"] == "real-9"
-    assert (
-        update_data["curator"]["id"] == "real-9"
-    ), "id embutido vazio envenena a busca por curator.id"
+    assert update_data["curator"]["id"] == "real-9", "id embutido vazio envenena a busca por curator.id"
     assert update_data["curator"]["name"] == "x"
 
 
@@ -566,9 +532,7 @@ def test_bulk_upsert_batches_existence_lookup_constant_query_count():
         )
     payload = BulkCurationCreate(curations=curations)
 
-    result = bulk_upsert_curations(
-        request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth
-    )
+    result = bulk_upsert_curations(request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth)
 
     assert result.updated + result.created == 3
     assert len(result.errors) == 0
@@ -594,7 +558,7 @@ def _patch_current():
     }
 
 
-def _call_patch(mock_db, updates_dict, current=None, if_match=None):
+def _call_patch(mock_db, updates_dict, current=None, if_match=None, auth=None):
     from app.api.curations import update_curation
     from app.models.schemas import CurationUpdate
 
@@ -609,7 +573,10 @@ def _call_patch(mock_db, updates_dict, current=None, if_match=None):
         updates=CurationUpdate(**updates_dict),
         if_match=if_match,
         db=mock_db,
-        auth={"role": "curator", "user": "test@test.com"},
+        # admin por padrão: o stored doc pertence a "real-1" e os testes de
+        # PATCH focam no write/versão, não no ownership (os testes de IDOR
+        # passam auth de curator explicitamente)
+        auth=auth if auth is not None else {"role": "admin", "user": "test@test.com"},
     )
     set_doc = mock_db.curations.find_one_and_update.call_args[0][1]["$set"]
     return result, set_doc
@@ -672,9 +639,7 @@ def test_patch_success_bumps_version_and_writes_with_optimistic_lock():
         "version": 3,
     }, "optimistic lock pelo _id ESPECÍFICO + versão"
     assert set_doc["version"] == 4
-    assert (
-        set_doc["updatedBy"] == "test@test.com"
-    ), "sem identidade no PATCH, updatedBy cai no usuário autenticado"
+    assert set_doc["updatedBy"] == "test@test.com", "sem identidade no PATCH, updatedBy cai no usuário autenticado"
 
 
 def test_patch_placeholder_payload_preserves_stored_identity():
@@ -693,15 +658,9 @@ def test_patch_placeholder_payload_preserves_stored_identity():
 
     assert set_doc["curator_id"] == "real-1"
     assert set_doc["curator"]["id"] == "real-1"
-    assert (
-        set_doc["curator"]["name"] == "Nome Real"
-    ), "name 'unknown' do payload não destrói o real"
-    assert (
-        set_doc["curator"]["email"] == "real@example.com"
-    ), "email None do payload não destrói o real"
-    assert (
-        set_doc["updatedBy"] == "real-1"
-    ), "updatedBy DEPOIS do reparo, nunca placeholder"
+    assert set_doc["curator"]["name"] == "Nome Real", "name 'unknown' do payload não destrói o real"
+    assert set_doc["curator"]["email"] == "real@example.com", "email None do payload não destrói o real"
+    assert set_doc["updatedBy"] == "real-1", "updatedBy DEPOIS do reparo, nunca placeholder"
 
 
 def test_patch_top_real_with_empty_embedded_syncs_embedded_id():
@@ -741,9 +700,182 @@ def test_patch_conflict_when_doc_disappears_mid_update():
             updates=CurationUpdate(status="active"),
             if_match=None,  # chamada direta: default Header(None) não serve
             db=mock_db,
-            auth={"role": "curator", "user": "test@test.com"},
+            auth={"role": "admin", "user": "test@test.com"},
         )
     assert exc_info.value.status_code == 409
+
+
+# ── IDOR: ownership (só o dono ou admin edita/deleta) ────────────────────
+
+
+def test_patch_non_owner_returns_403():
+    """IDOR: curator comum NÃO edita curadoria cujo dono armazenado é outro."""
+    from fastapi import HTTPException
+    from unittest.mock import MagicMock
+    import pytest as _pytest
+
+    mock_db = MagicMock()
+    with _pytest.raises(HTTPException) as exc_info:
+        _call_patch(
+            mock_db,
+            {"status": "active"},
+            auth={"role": "curator", "user": "outro@test.com"},
+        )
+    assert exc_info.value.status_code == 403
+    mock_db.curations.find_one_and_update.assert_not_called()
+
+
+def test_patch_owner_matches_stored_identity():
+    """IDOR: o DONO (JWT user == curator_id armazenado) edita sem bloqueio."""
+    from unittest.mock import MagicMock
+
+    mock_db = MagicMock()
+    result, _set_doc = _call_patch(
+        mock_db,
+        {"status": "active"},
+        auth={"role": "curator", "user": "real-1"},
+    )
+    assert result.status == "active"
+
+
+def test_patch_placeholder_stored_owner_allows_any_curator():
+    """Curadoria legada SEM dono (placeholder 'unknown'/'') é editável por
+    qualquer curator logado — o sync offline de registros antigos não trava."""
+    from unittest.mock import MagicMock
+
+    mock_db = MagicMock()
+    _result, _set_doc = _call_patch(
+        mock_db,
+        {"status": "active"},
+        current={
+            "_id": "cur_patch_001",
+            "curation_id": "cur_patch_001",
+            "version": 3,
+            "status": "draft",
+            "curator_id": "unknown",
+            "curator": {"id": "", "name": "unknown", "email": None},
+        },
+        auth={"role": "curator", "user": "test@test.com"},
+    )
+
+
+def test_patch_cannot_reattribute_curation_to_another_curator():
+    """IDOR (atribuição): o dono não pode re-atribuir a curadoria a um
+    TERCEIRO via payload — o check roda sobre a identidade final do $set."""
+    from fastapi import HTTPException
+    from unittest.mock import MagicMock
+    import pytest as _pytest
+
+    mock_db = MagicMock()
+    with _pytest.raises(HTTPException) as exc_info:
+        _call_patch(
+            mock_db,
+            {"curator_id": "maria-2", "curator": {"id": "maria-2", "name": "Maria"}},
+            auth={"role": "curator", "user": "real-1"},  # dono do stored doc
+        )
+    assert exc_info.value.status_code == 403
+    mock_db.curations.find_one_and_update.assert_not_called()
+
+
+def test_patch_admin_can_edit_any_curation():
+    """Admin (API key / role admin) atua em nome de qualquer curator."""
+    from unittest.mock import MagicMock
+
+    mock_db = MagicMock()
+    result, _set_doc = _call_patch(
+        mock_db,
+        {"status": "active"},
+        auth={"method": "api_key"},  # caminho dos scripts de bulk
+    )
+    assert result.status == "active"
+
+
+def test_delete_non_owner_returns_403():
+    """IDOR: curator comum não deleta curadoria de outro curator."""
+    from fastapi import HTTPException
+    from unittest.mock import MagicMock
+    import pytest as _pytest
+    from app.api.curations import delete_curation
+
+    mock_db = MagicMock()
+    mock_db.curations.find_one.return_value = {
+        "_id": "cur_del_002",
+        "curator_id": "real-1",
+        "curator": {"id": "real-1"},
+    }
+    with _pytest.raises(HTTPException) as exc_info:
+        delete_curation(
+            curation_id="cur_del_002",
+            db=mock_db,
+            auth={"role": "curator", "user": "test@test.com"},
+        )
+    assert exc_info.value.status_code == 403
+    mock_db.curations.update_one.assert_not_called()
+
+
+def test_create_curation_mismatched_curator_returns_403():
+    """IDOR: curator comum não cria curadoria em nome de outro curator."""
+    from fastapi import HTTPException
+    from unittest.mock import MagicMock
+    import pytest as _pytest
+    from app.api.curations import create_curation
+    from app.models.schemas import CurationCreate
+
+    mock_db = MagicMock()
+    curation = CurationCreate(
+        curation_id="cur_idor_001",
+        entity_id=None,
+        curator_id="outro-user",
+        curator={"id": "outro-user", "name": "Outro"},
+        status="active",
+    )
+    with _pytest.raises(HTTPException) as exc_info:
+        create_curation(
+            curation=curation,
+            db=mock_db,
+            auth={"role": "curator", "user": "test@test.com"},
+        )
+    assert exc_info.value.status_code == 403
+    mock_db.curations.insert_one.assert_not_called()
+
+
+def test_create_curation_placeholder_identity_allows_curator():
+    """IDOR: identidade placeholder (sync offline) é permitida para curator
+    comum — a curadoria fica sem dono, nunca atribuída a terceiro."""
+    from unittest.mock import MagicMock
+    from app.api.curations import create_curation
+    from app.models.schemas import CurationCreate
+
+    mock_db = MagicMock()
+    # find_curation probeia: _id string (None → livre) e, como o id não é
+    # ObjectId válido, pula o probe ObjectId e tenta curation_id (None).
+    # A 3ª chamada (pós-insert) é o doc de response.
+    mock_db.curations.find_one.side_effect = [
+        None,
+        None,
+        {
+            "_id": "cur_idor_002",
+            "curation_id": "cur_idor_002",
+            "curator_id": "",
+            "curator": {"id": "unknown", "name": "unknown", "email": None},
+            "categories": {},
+            "status": "active",
+            "version": 1,
+        },
+    ]
+    curation = CurationCreate(
+        curation_id="cur_idor_002",
+        entity_id=None,
+        curator_id="",
+        curator={"id": "unknown", "name": "unknown", "email": None},
+        status="active",
+    )
+    result = create_curation(
+        curation=curation,
+        db=mock_db,
+        auth={"role": "curator", "user": "test@test.com"},
+    )
+    assert result.curation_id == "cur_idor_002"
 
 
 def test_delete_curation_soft_deletes_and_bumps_version():
@@ -843,9 +975,7 @@ def test_bulk_upsert_duplicate_key_preserves_winner_identity_and_version():
     )
     payload = BulkCurationCreate(curations=[curation])
 
-    result = bulk_upsert_curations(
-        request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth
-    )
+    result = bulk_upsert_curations(request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth)
 
     assert result.updated == 1
     assert len(result.errors) == 0
@@ -902,9 +1032,7 @@ def test_bulk_upsert_race_winner_placeholder_adopts_loser_real_identity():
     )
     payload = BulkCurationCreate(curations=[curation])
 
-    result = bulk_upsert_curations(
-        request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth
-    )
+    result = bulk_upsert_curations(request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth)
 
     assert result.updated == 1
     assert len(result.errors) == 0
@@ -944,9 +1072,7 @@ def test_bulk_upsert_race_missing_winner_reports_error():
     )
     payload = BulkCurationCreate(curations=[curation])
 
-    result = bulk_upsert_curations(
-        request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth
-    )
+    result = bulk_upsert_curations(request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth)
 
     assert result.updated == 0
     assert len(result.errors) == 1
@@ -985,9 +1111,7 @@ def test_bulk_upsert_create_denormalizes_city_and_type_from_entity():
     )
     payload = BulkCurationCreate(curations=[curation])
 
-    result = bulk_upsert_curations(
-        request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth
-    )
+    result = bulk_upsert_curations(request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth)
 
     assert result.created == 1
     assert result.updated == 0
@@ -1061,9 +1185,7 @@ def test_bulk_upsert_records_generic_item_error():
     )
     payload = BulkCurationCreate(curations=[curation])
 
-    result = bulk_upsert_curations(
-        request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth
-    )
+    result = bulk_upsert_curations(request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth)
 
     assert result.created == 0
     assert result.updated == 0
@@ -1101,9 +1223,7 @@ def test_bulk_upsert_update_denormalizes_city_and_type_from_entity():
     )
     payload = BulkCurationCreate(curations=[curation])
 
-    result = bulk_upsert_curations(
-        request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth
-    )
+    result = bulk_upsert_curations(request=MagicMock(), payload=payload, db=mock_db, auth=mock_auth)
 
     assert result.updated == 1
     assert len(result.errors) == 0
@@ -1112,6 +1232,23 @@ def test_bulk_upsert_update_denormalizes_city_and_type_from_entity():
     assert set_doc["city"] == "Rio de Janeiro"
     assert set_doc["type"] == "bar"
     assert set_doc["version"] == 3
+
+
+def _http_request(ip="127.0.0.1"):
+    """Request real do starlette — o decorator do slowapi exige uma instância
+    de starlette.requests.Request (não MagicMock)."""
+    from starlette.requests import Request
+
+    return Request(
+        {
+            "type": "http",
+            "path": "/api/v3/curations/hybrid-search",
+            "method": "POST",
+            "query_string": b"",
+            "headers": [],
+            "client": (ip, 12345),
+        }
+    )
 
 
 @pytest.mark.parametrize(
@@ -1139,7 +1276,7 @@ def test_hybrid_search_escapes_location_regex(location):
         mock_db.entities.find.return_value.limit.return_value = []
         mock_db.curations.find.return_value.limit.return_value = []
 
-        request = HybridSearchRequest(query="pizza", location=location)
+        body = HybridSearchRequest(query="pizza", location=location)
 
         with patch("app.api.curations.OpenAI") as mock_openai:
             mock_client = MagicMock()
@@ -1149,10 +1286,8 @@ def test_hybrid_search_escapes_location_regex(location):
             mock_openai.return_value = mock_client
 
             with patch("app.api.curations.np.linalg.norm", return_value=1.0):
-                with patch(
-                    "app.api.curations.np.asarray", return_value=np.array([0.1] * 1536)
-                ):
-                    response = hybrid_search(request, mock_db)
+                with patch("app.api.curations.np.asarray", return_value=np.array([0.1] * 1536)):
+                    response = hybrid_search(request=_http_request("127.0.0.3"), body=body, db=mock_db)
 
         # Must complete without error (no regex injection crash)
         assert response.total_results >= 0
@@ -1175,9 +1310,7 @@ def test_hybrid_search_escapes_location_regex(location):
             os.environ["OPENAI_API_KEY"] = old_key
 
 
-def test_create_curation_denormalizes_city_type(
-    client, test_db, clean_test_entities, clean_test_curations
-):
+def test_create_curation_denormalizes_city_type(client, test_db, clean_test_entities, clean_test_curations):
     test_db.entities.insert_one(
         {
             "_id": "test_ent_denorm",

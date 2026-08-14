@@ -11,7 +11,9 @@ and curations to provide a unified, LLM-friendly view of restaurant information.
 from typing import Optional, List, Dict, Any, Tuple
 from datetime import datetime
 import logging
+import re
 import threading
+from urllib.parse import quote
 
 from app.models.llm_models import (
     LLMRestaurantSnapshot,
@@ -34,7 +36,6 @@ logger = logging.getLogger(__name__)
 # Google Places API URLs
 PLACES_API_TEXT_SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
 PLACES_API_DETAILS_URL = "https://places.googleapis.com/v1/places"
-PLACES_API_PHOTO_MEDIA_URL = "https://places.googleapis.com/v1/{photo_name}/media"
 
 
 class LLMPlaceService:
@@ -97,14 +98,10 @@ class LLMPlaceService:
                 if response.status_code == 200:
                     return response.json()
                 else:
-                    self.logger.warning(
-                        f"Places API returned {response.status_code} for place_id={place_id}"
-                    )
+                    self.logger.warning(f"Places API returned {response.status_code} for place_id={place_id}")
 
         except Exception as e:
-            self.logger.error(
-                f"Failed to fetch Google place details for {place_id}: {e}"
-            )
+            self.logger.error(f"Failed to fetch Google place details for {place_id}: {e}")
 
         return None
 
@@ -148,19 +145,13 @@ class LLMPlaceService:
                     if max_photos:
                         photos = photos[:max_photos]
 
-                    self.logger.info(
-                        f"Fetched {len(photos)} photos for place_id={place_id}"
-                    )
+                    self.logger.info(f"Fetched {len(photos)} photos for place_id={place_id}")
                     return photos
                 else:
-                    self.logger.warning(
-                        f"Places API photos returned {response.status_code} for place_id={place_id}"
-                    )
+                    self.logger.warning(f"Places API photos returned {response.status_code} for place_id={place_id}")
 
         except Exception as e:
-            self.logger.error(
-                f"Failed to fetch Google place photos for {place_id}: {e}"
-            )
+            self.logger.error(f"Failed to fetch Google place photos for {place_id}: {e}")
 
         return None
 
@@ -170,22 +161,29 @@ class LLMPlaceService:
         max_width: Optional[int] = None,
         max_height: Optional[int] = None,
         skip_redirect: bool = False,
+        base_url: Optional[str] = None,
     ) -> str:
         """
-        Build Google Places Photo Media URL.
+        Build an internal proxy URL for a Google Places photo.
+
+        A chave da API NUNCA vai para o cliente — o endpoint
+        /api/v3/places/photo recebe o photo_name, adiciona a chave no servidor
+        e faz 302 para o Google (o <img> do browser/LLM segue o redirect).
 
         Args:
             photo_name: Photo resource name (e.g., places/xxx/photos/yyy)
             max_width: Maximum width in pixels (400-4800)
             max_height: Maximum height in pixels (400-4800)
-            skip_redirect: If True, returns direct image bytes URL
+            skip_redirect: Se True, pede bytes diretos ao Google (sem redirect HTTP)
+            base_url: Origem absoluta da API (ex.: https://concierge-collector.onrender.com);
+                se omitida, retorna caminho relativo (útil p/ consumers da própria API).
 
         Returns:
-            Photo URL
+            URL do proxy interno (absoluta se base_url for informada)
         """
-        url = PLACES_API_PHOTO_MEDIA_URL.format(photo_name=photo_name)
+        proxy_path = "/api/v3/places/photo"
 
-        params = []
+        params = [f"reference={quote(photo_name, safe='')}"]
         if max_width:
             params.append(f"maxWidthPx={max_width}")
         if max_height:
@@ -193,11 +191,9 @@ class LLMPlaceService:
         if skip_redirect:
             params.append("skipHttpRedirect=true")
 
-        params.append(f"key={settings.google_places_api_key}")
-
-        if params:
-            url += "?" + "&".join(params)
-
+        url = f"{proxy_path}?{'&'.join(params)}"
+        if base_url:
+            url = base_url.rstrip("/") + url
         return url
 
     def search_google_places(
@@ -254,26 +250,20 @@ class LLMPlaceService:
                 body["regionCode"] = region
 
             with httpx.Client(timeout=30.0) as client:
-                response = client.post(
-                    PLACES_API_TEXT_SEARCH_URL, headers=headers, json=body
-                )
+                response = client.post(PLACES_API_TEXT_SEARCH_URL, headers=headers, json=body)
 
                 if response.status_code == 200:
                     data = response.json()
                     return data.get("places", [])
                 else:
-                    self.logger.warning(
-                        f"Places API search returned {response.status_code}: {response.text}"
-                    )
+                    self.logger.warning(f"Places API search returned {response.status_code}: {response.text}")
 
         except Exception as e:
             self.logger.error(f"Failed to search Google Places: {e}")
 
         return []
 
-    def create_entity_from_google_data(
-        self, google_data: Dict[str, Any]
-    ) -> Optional[str]:
+    def create_entity_from_google_data(self, google_data: Dict[str, Any]) -> Optional[str]:
         """
         Create a new entity from Google Places data.
         Includes duplicate prevention.
@@ -324,11 +314,7 @@ class LLMPlaceService:
                 "name": name,
                 "externalId": place_id,
                 "coordinates": coordinates,
-                "location": (
-                    {"type": "Point", "coordinates": coordinates}
-                    if coordinates
-                    else None
-                ),
+                "location": ({"type": "Point", "coordinates": coordinates} if coordinates else None),
                 "address": google_data.get("formattedAddress"),
                 "data": {
                     "place_id": place_id,
@@ -352,15 +338,11 @@ class LLMPlaceService:
             result = self.db.entities.insert_one(entity_doc)
             entity_id = result.inserted_id
 
-            self.logger.info(
-                f"Created new entity {entity_id} for place_id={place_id} ({name})"
-            )
+            self.logger.info(f"Created new entity {entity_id} for place_id={place_id} ({name})")
             return entity_id
 
         except Exception as e:
-            self.logger.error(
-                f"Failed to create entity from Google data: {e}", exc_info=True
-            )
+            self.logger.error(f"Failed to create entity from Google data: {e}", exc_info=True)
             return None
 
     def create_entity_in_background(self, google_data: Dict[str, Any]):
@@ -404,31 +386,21 @@ class LLMPlaceService:
 
             entity_data = entity.get("data", {})
 
-            self.logger.info(
-                f"Updating entity {entity_id} with Google Places data (force={force_update})"
-            )
+            self.logger.info(f"Updating entity {entity_id} with Google Places data (force={force_update})")
 
             # Extract key fields from Google data
             update_fields = {}
 
             # Core fields - only update if missing or force
-            if google_data.get("id") and (
-                force_update or not entity_data.get("place_id")
-            ):
+            if google_data.get("id") and (force_update or not entity_data.get("place_id")):
                 update_fields["data.place_id"] = google_data["id"]
                 update_fields["externalId"] = google_data["id"]
 
-            if google_data.get("displayName", {}).get("text") and (
-                force_update or not entity_data.get("google_name")
-            ):
+            if google_data.get("displayName", {}).get("text") and (force_update or not entity_data.get("google_name")):
                 update_fields["data.google_name"] = google_data["displayName"]["text"]
 
-            if google_data.get("formattedAddress") and (
-                force_update or not entity_data.get("formatted_address")
-            ):
-                update_fields["data.formatted_address"] = google_data[
-                    "formattedAddress"
-                ]
+            if google_data.get("formattedAddress") and (force_update or not entity_data.get("formatted_address")):
+                update_fields["data.formatted_address"] = google_data["formattedAddress"]
 
             # Location - only update if missing or force
             if google_data.get("location"):
@@ -450,26 +422,18 @@ class LLMPlaceService:
                 update_fields["data.opening_hours"] = google_data["regularOpeningHours"]
 
             # Types - only if missing
-            if google_data.get("types") and (
-                force_update or not entity_data.get("types")
-            ):
+            if google_data.get("types") and (force_update or not entity_data.get("types")):
                 update_fields["data.types"] = google_data["types"]
 
             # Contact info - only if missing
-            if google_data.get("nationalPhoneNumber") and (
-                force_update or not entity_data.get("phone")
-            ):
+            if google_data.get("nationalPhoneNumber") and (force_update or not entity_data.get("phone")):
                 update_fields["data.phone"] = google_data["nationalPhoneNumber"]
 
-            if google_data.get("websiteUri") and (
-                force_update or not entity_data.get("website")
-            ):
+            if google_data.get("websiteUri") and (force_update or not entity_data.get("website")):
                 update_fields["data.website"] = google_data["websiteUri"]
 
             # Price level - only if missing
-            if google_data.get("priceLevel") and (
-                force_update or not entity_data.get("priceLevel")
-            ):
+            if google_data.get("priceLevel") and (force_update or not entity_data.get("priceLevel")):
                 update_fields["data.priceLevel"] = google_data["priceLevel"]
 
             # Always update timestamp
@@ -478,14 +442,10 @@ class LLMPlaceService:
 
             # Perform update only if there are fields to update
             if update_fields:
-                result = self.db.entities.update_one(
-                    {"_id": entity_id}, {"$set": update_fields}
-                )
+                result = self.db.entities.update_one({"_id": entity_id}, {"$set": update_fields})
 
                 if result.modified_count > 0:
-                    self.logger.info(
-                        f"Updated {len(update_fields)} fields in entity {entity_id}"
-                    )
+                    self.logger.info(f"Updated {len(update_fields)} fields in entity {entity_id}")
                     return True
                 else:
                     self.logger.debug(f"No changes needed for entity {entity_id}")
@@ -495,9 +455,7 @@ class LLMPlaceService:
                 return True
 
         except Exception as e:
-            self.logger.error(
-                f"Failed to update entity {entity_id} with Google data: {e}"
-            )
+            self.logger.error(f"Failed to update entity {entity_id} with Google data: {e}")
             return False
 
     # =========================================================================
@@ -565,9 +523,7 @@ class LLMPlaceService:
             location = google_place.get("location", {})
             geo = None
             if location.get("latitude") and location.get("longitude"):
-                geo = LLMRestaurantGeo(
-                    lat=location["latitude"], lng=location["longitude"]
-                )
+                geo = LLMRestaurantGeo(lat=location["latitude"], lng=location["longitude"])
 
             # Extract address
             address = google_place.get("formattedAddress")
@@ -591,9 +547,7 @@ class LLMPlaceService:
             michelin_info = None
 
             if entity:
-                entity_id = (
-                    str(entity.get("_id")) if entity.get("_id") is not None else None
-                )
+                entity_id = str(entity.get("_id")) if entity.get("_id") is not None else None
 
                 # Update entity with fresh Google data (incremental)
                 self.update_entity_with_google_data(entity.get("_id"), google_place)
@@ -613,9 +567,7 @@ class LLMPlaceService:
                     )
             else:
                 # Entity doesn't exist - create in background
-                self.logger.info(
-                    f"Creating entity in background for new place_id={place_id}"
-                )
+                self.logger.info(f"Creating entity in background for new place_id={place_id}")
                 self.create_entity_in_background(google_place)
 
             # 4. Build search result item
@@ -635,13 +587,13 @@ class LLMPlaceService:
 
         # 5. If no Google results, fallback to entity search
         if not results:
-            self.logger.info(
-                f"No Google Places results for query='{query}', falling back to entity search"
-            )
+            self.logger.info(f"No Google Places results for query='{query}', falling back to entity search")
 
-            entities_cursor = self.db.entities.find(
-                {"name": {"$regex": query, "$options": "i"}}
-            ).limit(max_results)
+            # re.escape: o query vem do cliente e vira $regex — sem escape,
+            # um "." ou "(" no input injeta padrão regex arbitrário.
+            entities_cursor = self.db.entities.find({"name": {"$regex": re.escape(query), "$options": "i"}}).limit(
+                max_results
+            )
 
             entities = list(entities_cursor)
 
@@ -649,21 +601,7 @@ class LLMPlaceService:
                 data = entity.get("data", {})
 
                 # Extract place_id
-                place_id = (
-                    data.get("place_id")
-                    or data.get("google_place_id")
-                    or entity.get("externalId")
-                )
-
-            for entity in entities:
-                data = entity.get("data", {})
-
-                # Extract place_id
-                place_id = (
-                    data.get("place_id")
-                    or data.get("google_place_id")
-                    or entity.get("externalId")
-                )
+                place_id = data.get("place_id") or data.get("google_place_id") or entity.get("externalId")
 
                 # Extract coordinates
                 coords = entity.get("coordinates", [])
@@ -696,11 +634,7 @@ class LLMPlaceService:
 
                 item = LLMSearchRestaurantItem(
                     place_id=place_id,
-                    entity_id=(
-                        str(entity.get("_id"))
-                        if entity.get("_id") is not None
-                        else None
-                    ),
+                    entity_id=(str(entity.get("_id")) if entity.get("_id") is not None else None),
                     name=entity.get("name", "Unknown"),
                     canonical_address=entity.get("address"),
                     geo=geo,
@@ -772,11 +706,7 @@ class LLMPlaceService:
         # Extract place_id from entity if not provided
         if entity and not place_id:
             data = entity.get("data", {})
-            place_id = (
-                data.get("place_id")
-                or data.get("google_place_id")
-                or entity.get("externalId")
-            )
+            place_id = data.get("place_id") or data.get("google_place_id") or entity.get("externalId")
 
         # 2. Get Google Places data only if needed
         google_data = None
@@ -788,9 +718,7 @@ class LLMPlaceService:
             # Check if entity is missing critical fields
             if not entity:
                 needs_google_fetch = True
-                self.logger.info(
-                    f"Entity not found for place_id={place_id}, fetching from Google"
-                )
+                self.logger.info(f"Entity not found for place_id={place_id}, fetching from Google")
             elif not entity_data.get("opening_hours"):
                 needs_google_fetch = True
                 self.logger.info("Entity missing opening_hours, fetching from Google")
@@ -805,9 +733,7 @@ class LLMPlaceService:
 
         # Fetch from Google if needed
         if needs_google_fetch and place_id:
-            google_data = self.fetch_google_place_details(
-                place_id=place_id, language="pt-BR", region="BR"
-            )
+            google_data = self.fetch_google_place_details(place_id=place_id, language="pt-BR", region="BR")
 
             if google_data:
                 sources_used.append("google_places")
@@ -828,9 +754,7 @@ class LLMPlaceService:
                 # Fallback to entity data if Google API fails
                 google_data = entity.get("data", {})
                 sources_used.append("google_places")
-                self.logger.warning(
-                    f"Using entity data as fallback for place_id={place_id}"
-                )
+                self.logger.warning(f"Using entity data as fallback for place_id={place_id}")
 
         # 3. Get Michelin data
         michelin_data = None
@@ -881,6 +805,7 @@ class LLMPlaceService:
         max_height: Optional[int] = None,
         include_metadata: bool = True,
         language: str = "pt-BR",
+        base_url: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Get restaurant photos with URLs and metadata.
@@ -893,6 +818,8 @@ class LLMPlaceService:
             max_height: Maximum height in pixels (400-4800)
             include_metadata: Include original dimensions and attributions
             language: Language code for attributions
+            base_url: Origem absoluta da API para URLs de foto (proxy interno);
+                relativo se omitido.
 
         Returns:
             Dictionary with photos list and metadata
@@ -915,19 +842,13 @@ class LLMPlaceService:
         # Extract place_id from entity if not provided
         if entity and not place_id:
             data = entity.get("data", {})
-            place_id = (
-                data.get("place_id")
-                or data.get("google_place_id")
-                or entity.get("externalId")
-            )
+            place_id = data.get("place_id") or data.get("google_place_id") or entity.get("externalId")
 
         if not place_id:
             return {"error": "place_id or entity_id required", "photos": []}
 
         # Fetch photos from Google Places
-        photos_metadata = self.fetch_google_place_photos(
-            place_id=place_id, max_photos=max_photos, language=language
-        )
+        photos_metadata = self.fetch_google_place_photos(place_id=place_id, max_photos=max_photos, language=language)
 
         if not photos_metadata:
             return {
@@ -944,12 +865,13 @@ class LLMPlaceService:
             if not photo_name:
                 continue
 
-            # Build photo URL
+            # Build photo URL — proxy interno (chave da API fica no servidor)
             url = self.build_photo_url(
                 photo_name=photo_name,
                 max_width=max_width,
                 max_height=max_height,
                 skip_redirect=False,
+                base_url=base_url,
             )
 
             photo_obj = {"index": idx, "url": url, "photo_reference": photo_name}
@@ -1043,9 +965,7 @@ class LLMPlaceService:
         notes = []
         if open_on_weekend:
             if len(weekend_days_open) == len(weekend_days):
-                notes.append(
-                    f"Aberto todos os dias do fim de semana ({', '.join(weekend_days_open)})"
-                )
+                notes.append(f"Aberto todos os dias do fim de semana ({', '.join(weekend_days_open)})")
             else:
                 notes.append(f"Aberto apenas: {', '.join(weekend_days_open)}")
         else:
@@ -1089,9 +1009,7 @@ class LLMPlaceService:
 
         try:
             # Extract opening hours from Google data
-            regular_hours_data = google_data.get(
-                "regularOpeningHours"
-            ) or google_data.get("opening_hours")
+            regular_hours_data = google_data.get("regularOpeningHours") or google_data.get("opening_hours")
 
             if not regular_hours_data:
                 return None, None
@@ -1212,27 +1130,17 @@ class LLMPlaceService:
             name = entity.get("name", "Unknown")
         elif google_data:
             display_name = google_data.get("displayName", {})
-            name = (
-                display_name.get("text")
-                if isinstance(display_name, dict)
-                else google_data.get("name", "Unknown")
-            )
+            name = display_name.get("text") if isinstance(display_name, dict) else google_data.get("name", "Unknown")
 
         # Extract IDs
-        entity_id = (
-            str(entity.get("_id")) if entity and entity.get("_id") is not None else None
-        )
+        entity_id = str(entity.get("_id")) if entity and entity.get("_id") is not None else None
 
         place_id = None
         if google_data:
             place_id = google_data.get("id") or google_data.get("place_id")
         elif entity:
             data = entity.get("data", {})
-            place_id = (
-                data.get("place_id")
-                or data.get("google_place_id")
-                or entity.get("externalId")
-            )
+            place_id = data.get("place_id") or data.get("google_place_id") or entity.get("externalId")
 
         # Build geo
         geo = None
@@ -1247,9 +1155,7 @@ class LLMPlaceService:
                 )
         elif google_data and "location" in google_data:
             location = google_data["location"]
-            geo = LLMRestaurantGeo(
-                lat=location.get("latitude", 0), lng=location.get("longitude", 0)
-            )
+            geo = LLMRestaurantGeo(lat=location.get("latitude", 0), lng=location.get("longitude", 0))
 
         # Build Michelin block
         michelin_block = None
@@ -1287,11 +1193,7 @@ class LLMPlaceService:
                 # Extract curator info
                 curator_id = curation.get("curator_id")
                 if curator_id:
-                    sources.append(
-                        LLMRestaurantCurationSource(
-                            curator_id=curator_id, strength=data.get("strength")
-                        )
-                    )
+                    sources.append(LLMRestaurantCurationSource(curator_id=curator_id, strength=data.get("strength")))
 
             curation_block = LLMRestaurantCuration(
                 tags=list(set(all_tags)) if all_tags else None,
@@ -1306,18 +1208,14 @@ class LLMPlaceService:
 
         if google_data:
             rating = google_data.get("rating")
-            reviews_count = google_data.get("userRatingCount") or google_data.get(
-                "user_ratings_total"
-            )
+            reviews_count = google_data.get("userRatingCount") or google_data.get("user_ratings_total")
         elif entity:
             data = entity.get("data", {})
             rating = data.get("rating") or entity.get("rating")
             reviews_count = data.get("user_ratings_total")
 
         if rating or reviews_count:
-            scores = LLMRestaurantScores(
-                google_rating=rating, google_reviews_count=reviews_count
-            )
+            scores = LLMRestaurantScores(google_rating=rating, google_reviews_count=reviews_count)
 
         # Extract contact info
         phone = None
@@ -1325,13 +1223,9 @@ class LLMPlaceService:
         address = None
 
         if google_data:
-            phone = google_data.get("nationalPhoneNumber") or google_data.get(
-                "formatted_phone_number"
-            )
+            phone = google_data.get("nationalPhoneNumber") or google_data.get("formatted_phone_number")
             website = google_data.get("websiteUri") or google_data.get("website")
-            address = google_data.get("formattedAddress") or google_data.get(
-                "formatted_address"
-            )
+            address = google_data.get("formattedAddress") or google_data.get("formatted_address")
         elif entity:
             data = entity.get("data", {})
             phone = data.get("phone") or data.get("formatted_phone_number")

@@ -60,14 +60,8 @@ def _ensure_indexes():
     try:
         indexes = db.curations.index_information()
         for name, meta in indexes.items():
-            if (
-                "key" in meta
-                and meta["key"] == [("entity_id", 1)]
-                and meta.get("unique") is True
-            ):
-                logger.warning(
-                    f"Found legacy unique index '{name}' on entity_id - Dropping..."
-                )
+            if "key" in meta and meta["key"] == [("entity_id", 1)] and meta.get("unique") is True:
+                logger.warning(f"Found legacy unique index '{name}' on entity_id - Dropping...")
                 db.curations.drop_index(name)
                 logger.info("✅ Dropped legacy unique index")
                 break

@@ -31,21 +31,13 @@ class LLMRestaurantGeo(BaseModel):
 class LLMRestaurantStatus(BaseModel):
     """Operational status information"""
 
-    is_open_now: Optional[bool] = Field(
-        None, description="Whether the place is currently open"
-    )
-    open_on_weekend: Optional[bool] = Field(
-        None, description="Whether the place opens on weekends"
-    )
+    is_open_now: Optional[bool] = Field(None, description="Whether the place is currently open")
+    open_on_weekend: Optional[bool] = Field(None, description="Whether the place opens on weekends")
     weekend_days_open: Optional[List[str]] = Field(
         None, description="Which weekend days are open (e.g., ['saturday', 'sunday'])"
     )
-    supports_reservation: Optional[bool] = Field(
-        None, description="Whether reservations are supported"
-    )
-    business_status: Optional[str] = Field(
-        None, description="Business operational status (e.g., OPERATIONAL, CLOSED)"
-    )
+    supports_reservation: Optional[bool] = Field(None, description="Whether reservations are supported")
+    business_status: Optional[str] = Field(None, description="Business operational status (e.g., OPERATIONAL, CLOSED)")
 
 
 class LLMRestaurantHoursPeriod(BaseModel):
@@ -59,9 +51,7 @@ class LLMRestaurantOpeningHours(BaseModel):
     """Opening hours information"""
 
     source: Optional[str] = Field(None, description="Data source (e.g., google_places)")
-    timezone: Optional[str] = Field(
-        None, description="Timezone (e.g., America/Sao_Paulo)"
-    )
+    timezone: Optional[str] = Field(None, description="Timezone (e.g., America/Sao_Paulo)")
     regular_hours: Optional[Dict[str, List[LLMRestaurantHoursPeriod]]] = Field(
         None, description="Regular hours by day of week"
     )
@@ -71,17 +61,11 @@ class LLMRestaurantOpeningHours(BaseModel):
 class LLMRestaurantMichelin(BaseModel):
     """Michelin guide information"""
 
-    has_star: bool = Field(
-        False, description="Whether the restaurant has Michelin star(s)"
-    )
+    has_star: bool = Field(False, description="Whether the restaurant has Michelin star(s)")
     stars: Optional[int] = Field(None, description="Number of Michelin stars (1-3)")
     guide_year: Optional[int] = Field(None, description="Year of Michelin guide")
-    bib_gourmand: bool = Field(
-        False, description="Whether the restaurant has Bib Gourmand"
-    )
-    comment: Optional[str] = Field(
-        None, description="Michelin guide comment/description"
-    )
+    bib_gourmand: bool = Field(False, description="Whether the restaurant has Bib Gourmand")
+    comment: Optional[str] = Field(None, description="Michelin guide comment/description")
     cuisine: Optional[str] = Field(None, description="Cuisine type from Michelin")
     price: Optional[str] = Field(None, description="Price level from Michelin")
 
@@ -91,38 +75,24 @@ class LLMRestaurantCurationSource(BaseModel):
 
     curator_id: str = Field(..., description="Curator identifier")
     curator_name: Optional[str] = Field(None, description="Curator display name")
-    strength: Optional[str] = Field(
-        None, description="Recommendation strength (e.g., strong, medium, weak)"
-    )
+    strength: Optional[str] = Field(None, description="Recommendation strength (e.g., strong, medium, weak)")
 
 
 class LLMRestaurantCuration(BaseModel):
     """Curated information about the restaurant"""
 
-    tags: Optional[List[str]] = Field(
-        None, description="Curated tags (e.g., ['romantic', 'good-wines'])"
-    )
-    avoid_for: Optional[List[str]] = Field(
-        None, description="Situations to avoid (e.g., ['large-groups'])"
-    )
-    highlights: Optional[List[str]] = Field(
-        None, description="Key highlights from curators"
-    )
-    sources: Optional[List[LLMRestaurantCurationSource]] = Field(
-        None, description="Curation sources"
-    )
+    tags: Optional[List[str]] = Field(None, description="Curated tags (e.g., ['romantic', 'good-wines'])")
+    avoid_for: Optional[List[str]] = Field(None, description="Situations to avoid (e.g., ['large-groups'])")
+    highlights: Optional[List[str]] = Field(None, description="Key highlights from curators")
+    sources: Optional[List[LLMRestaurantCurationSource]] = Field(None, description="Curation sources")
 
 
 class LLMRestaurantScores(BaseModel):
     """Rating and scoring information"""
 
     google_rating: Optional[float] = Field(None, description="Google rating (0-5)")
-    google_reviews_count: Optional[int] = Field(
-        None, description="Number of Google reviews"
-    )
-    internal_quality_score: Optional[float] = Field(
-        None, description="Internal quality score (0-1)"
-    )
+    google_reviews_count: Optional[int] = Field(None, description="Number of Google reviews")
+    internal_quality_score: Optional[float] = Field(None, description="Internal quality score (0-1)")
 
 
 class LLMRestaurantSnapshot(BaseModel):
@@ -134,9 +104,7 @@ class LLMRestaurantSnapshot(BaseModel):
     # Core identifiers
     entity_id: Optional[str] = Field(None, description="Internal entity ID")
     place_id: Optional[str] = Field(None, description="Google Place ID")
-    external_refs: Optional[Dict[str, Any]] = Field(
-        None, description="External reference IDs"
-    )
+    external_refs: Optional[Dict[str, Any]] = Field(None, description="External reference IDs")
 
     # Basic information
     name: str = Field(..., description="Restaurant name")
@@ -144,40 +112,24 @@ class LLMRestaurantSnapshot(BaseModel):
     geo: Optional[LLMRestaurantGeo] = Field(None, description="Geographic information")
 
     # Status and availability
-    status: Optional[LLMRestaurantStatus] = Field(
-        None, description="Operational status"
-    )
-    opening_hours: Optional[LLMRestaurantOpeningHours] = Field(
-        None, description="Opening hours information"
-    )
+    status: Optional[LLMRestaurantStatus] = Field(None, description="Operational status")
+    opening_hours: Optional[LLMRestaurantOpeningHours] = Field(None, description="Opening hours information")
 
     # Quality indicators
-    michelin: Optional[LLMRestaurantMichelin] = Field(
-        None, description="Michelin guide information"
-    )
-    curation: Optional[LLMRestaurantCuration] = Field(
-        None, description="Curated information"
-    )
-    scores: Optional[LLMRestaurantScores] = Field(
-        None, description="Ratings and scores"
-    )
+    michelin: Optional[LLMRestaurantMichelin] = Field(None, description="Michelin guide information")
+    curation: Optional[LLMRestaurantCuration] = Field(None, description="Curated information")
+    scores: Optional[LLMRestaurantScores] = Field(None, description="Ratings and scores")
 
     # Contact and booking
     phone: Optional[str] = Field(None, description="Phone number")
     website: Optional[str] = Field(None, description="Website URL")
 
     # Additional metadata
-    types: Optional[List[str]] = Field(
-        None, description="Place types (e.g., ['restaurant', 'italian_restaurant'])"
-    )
-    price_level: Optional[str] = Field(
-        None, description="Price level (e.g., MODERATE, EXPENSIVE)"
-    )
+    types: Optional[List[str]] = Field(None, description="Place types (e.g., ['restaurant', 'italian_restaurant'])")
+    price_level: Optional[str] = Field(None, description="Price level (e.g., MODERATE, EXPENSIVE)")
 
     # Raw sources (optional, for debugging or advanced use)
-    raw_sources: Optional[Dict[str, Any]] = Field(
-        None, description="Raw data from sources"
-    )
+    raw_sources: Optional[Dict[str, Any]] = Field(None, description="Raw data from sources")
 
 
 # ============================================================================
@@ -206,15 +158,9 @@ class LLMSearchRestaurantItem(BaseModel):
     canonical_address: Optional[str] = Field(None, description="Full address")
     geo: Optional[LLMRestaurantGeo] = Field(None, description="Geographic coordinates")
     google_rating: Optional[float] = Field(None, description="Google rating")
-    has_entity: bool = Field(
-        False, description="Whether this place has an entity record"
-    )
-    has_michelin_data: bool = Field(
-        False, description="Whether this place has Michelin data"
-    )
-    michelin: Optional[LLMRestaurantMichelin] = Field(
-        None, description="Basic Michelin info if available"
-    )
+    has_entity: bool = Field(False, description="Whether this place has an entity record")
+    has_michelin_data: bool = Field(False, description="Whether this place has Michelin data")
+    michelin: Optional[LLMRestaurantMichelin] = Field(None, description="Basic Michelin info if available")
 
 
 class LLMSearchRestaurantsResponse(BaseModel):
@@ -222,9 +168,7 @@ class LLMSearchRestaurantsResponse(BaseModel):
 
     items: List[LLMSearchRestaurantItem] = Field(..., description="Search results")
     total_results: int = Field(..., description="Number of results returned")
-    search_metadata: Optional[Dict[str, Any]] = Field(
-        None, description="Additional search metadata"
-    )
+    search_metadata: Optional[Dict[str, Any]] = Field(None, description="Additional search metadata")
 
 
 # ============================================================================
@@ -245,12 +189,8 @@ class LLMGetRestaurantSnapshotRequest(BaseModel):
     include_raw_sources: bool = Field(False, description="Include raw source data")
 
     # For time-based calculations
-    reference_datetime_iso: Optional[str] = Field(
-        None, description="Reference datetime in ISO format"
-    )
-    timezone: str = Field(
-        "America/Sao_Paulo", description="Timezone for time calculations"
-    )
+    reference_datetime_iso: Optional[str] = Field(None, description="Reference datetime in ISO format")
+    timezone: str = Field("America/Sao_Paulo", description="Timezone for time calculations")
 
 
 class LLMGetRestaurantSnapshotResponse(BaseModel):
@@ -278,18 +218,14 @@ class LLMGetRestaurantAvailabilityRequest(BaseModel):
     timezone: str = Field("America/Sao_Paulo", description="Timezone")
 
     # Weekend configuration
-    weekend_days: List[str] = Field(
-        ["saturday", "sunday"], description="Days considered as weekend"
-    )
+    weekend_days: List[str] = Field(["saturday", "sunday"], description="Days considered as weekend")
 
 
 class LLMDayAvailability(BaseModel):
     """Availability for a specific day"""
 
     is_open: bool = Field(..., description="Whether the place is open on this day")
-    periods: List[LLMRestaurantHoursPeriod] = Field(
-        ..., description="Opening periods for this day"
-    )
+    periods: List[LLMRestaurantHoursPeriod] = Field(..., description="Opening periods for this day")
 
 
 class LLMGetRestaurantAvailabilityResponse(BaseModel):
@@ -303,12 +239,8 @@ class LLMGetRestaurantAvailabilityResponse(BaseModel):
     is_open_now: Optional[bool] = Field(None, description="Whether currently open")
 
     # Weekend availability
-    open_on_weekend: Optional[bool] = Field(
-        None, description="Whether open on any weekend day"
-    )
-    weekend_days_open: Optional[List[str]] = Field(
-        None, description="Which weekend days are open"
-    )
+    open_on_weekend: Optional[bool] = Field(None, description="Whether open on any weekend day")
+    weekend_days_open: Optional[List[str]] = Field(None, description="Which weekend days are open")
 
     # Detailed availability by day
     availability_by_day: Optional[Dict[str, LLMDayAvailability]] = Field(
@@ -316,7 +248,5 @@ class LLMGetRestaurantAvailabilityResponse(BaseModel):
     )
 
     # Additional notes
-    notes: Optional[List[str]] = Field(
-        None, description="Additional availability notes"
-    )
+    notes: Optional[List[str]] = Field(None, description="Additional availability notes")
     timezone: Optional[str] = Field(None, description="Timezone used for calculations")

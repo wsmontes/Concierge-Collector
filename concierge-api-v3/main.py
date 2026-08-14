@@ -7,23 +7,14 @@ from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
+from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from app.core.config import settings
 from app.core.lifespan import lifespan
+from app.core.rate_limit import limiter
 from app.api import entities, curations, system, places, places_orchestrate, ai, concepts, auth, llm_gateway, openai_compat, places_router, capture, curators
-
-# ---------------------------------------------------------------------------
-# Rate limiter — keyed by client IP
-# Default limits (can be overridden per-endpoint with @limiter.limit):
-#   - Read endpoints: 300 requests / minute
-#   - Write/AI endpoints: 60 requests / minute
-#   - Bulk endpoints: 20 requests / minute
-# ---------------------------------------------------------------------------
-limiter = Limiter(key_func=get_remote_address, default_limits=["300/minute"])
 
 
 # Create FastAPI application
@@ -52,15 +43,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Add exception handler to ensure CORS headers are included in error responses
+# Global exception handler: log the exception, return a generic 500 message.
+# No manual CORS headers here — CORSMiddleware already adds them to every
+# response (incl. errors), and manually echoing the Origin header would bypass
+# the configured allowlist.
 @app.exception_handler(Exception)
-async def global_exception_handler(request, exc):
-    """Ensure CORS headers are present even on error responses.
-
-    Logs the full exception for debugging but returns a generic message
-    to the client — never leak internal details (connection strings, keys,
-    stack traces) in HTTP responses.
-    """
+async def global_exception_handler(request: Request, exc: Exception):
+    """Return a generic 500 without leaking internal details to the client."""
     from fastapi.responses import JSONResponse
     import logging
     logger = logging.getLogger(__name__)
@@ -70,12 +59,6 @@ async def global_exception_handler(request, exc):
     return JSONResponse(
         status_code=500,
         content={"detail": "Internal server error"},
-        headers={
-            "Access-Control-Allow-Origin": request.headers.get("origin", "*"),
-            "Access-Control-Allow-Credentials": "true",
-            "Access-Control-Allow-Methods": "*",
-            "Access-Control-Allow-Headers": "*",
-        }
     )
 
 # Include routers with /api/v3 prefix
@@ -98,12 +81,6 @@ app.include_router(curators.router, prefix="/api/v3")
 async def root():
     from fastapi.responses import RedirectResponse
     return RedirectResponse(url="/capture/")
-
-
-# ── Legacy Collector (served at /app from project root) ──────────────────────
-_LEGACY_DIR = Path(__file__).resolve().parents[1]
-if _LEGACY_DIR.is_dir():
-    app.mount("/app", StaticFiles(directory=str(_LEGACY_DIR), html=True), name="legacy")
 
 
 # ── Capture mode static files (served at /capture) ───────────────────────────

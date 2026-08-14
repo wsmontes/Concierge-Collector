@@ -44,87 +44,6 @@ def get_api_secret_key() -> str:
     return api_key
 
 
-async def verify_api_key(api_key: Optional[str] = Security(api_key_header)) -> str:
-    """
-    Verify API key from request header.
-
-    This function should be used as a dependency in protected endpoints:
-
-    Example:
-        @router.post("/entities", dependencies=[Depends(verify_api_key)])
-        async def create_entity(...):
-            pass
-
-    Args:
-        api_key: API key from X-API-Key header
-
-    Returns:
-        str: Validated API key
-
-    Raises:
-        HTTPException: 403 if API key is missing or invalid
-    """
-    if not api_key:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Missing API key. Include X-API-Key header in your request.",
-            headers={"WWW-Authenticate": "ApiKey"},
-        )
-
-    try:
-        expected_key = get_api_secret_key()
-    except RuntimeError as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
-        )
-
-    # Use secrets.compare_digest to prevent timing attacks
-    if not secrets.compare_digest(api_key, expected_key):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Invalid API key",
-            headers={"WWW-Authenticate": "ApiKey"},
-        )
-
-    return api_key
-
-
-async def optional_api_key(
-    api_key: Optional[str] = Security(api_key_header),
-) -> Optional[str]:
-    """
-    Optional API key verification for endpoints that support both authenticated and public access.
-
-    Returns None if no key provided, validates if key is provided.
-
-    Args:
-        api_key: API key from X-API-Key header
-
-    Returns:
-        Optional[str]: Validated API key or None
-
-    Raises:
-        HTTPException: 403 if API key is provided but invalid
-    """
-    if not api_key:
-        return None
-
-    try:
-        expected_key = get_api_secret_key()
-    except RuntimeError:
-        # If API_SECRET_KEY not configured, allow public access
-        return None
-
-    if not secrets.compare_digest(api_key, expected_key):
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail="Invalid API key",
-            headers={"WWW-Authenticate": "ApiKey"},
-        )
-
-    return api_key
-
-
 def generate_api_key() -> str:
     """
     Generate a secure random API key.
@@ -156,9 +75,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     if expires_delta:
         expire = datetime.now(timezone.utc) + expires_delta
     else:
-        expire = datetime.now(timezone.utc) + timedelta(
-            minutes=ACCESS_TOKEN_EXPIRE_MINUTES
-        )
+        expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
 
     to_encode.update({"exp": expire, "iat": datetime.now(timezone.utc)})
 
@@ -294,7 +211,8 @@ async def verify_access_token(
         )
 
     token = credentials.credentials
-    logger.info(f"[Token Verify] Token: {token[:20]}...")
+    # Nunca logar o token (nem prefixo) — credencial revogável não deve
+    # aparecer em logs coletados por terceiros.
 
     try:
         secret_key = get_api_secret_key()
@@ -333,9 +251,7 @@ async def verify_access_token(
         )
     except RuntimeError as e:
         logger.error(f"[Token Verify] ✗ Runtime Error: {str(e)}")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e)
-        )
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=str(e))
 
 
 def verify_auth(
@@ -373,9 +289,7 @@ def verify_auth(
     # Try JWT Bearer token
     if bearer:
         try:
-            payload = jwt.decode(
-                bearer.credentials, get_api_secret_key(), algorithms=[ALGORITHM]
-            )
+            payload = jwt.decode(bearer.credentials, get_api_secret_key(), algorithms=[ALGORITHM])
             return {
                 "authenticated": True,
                 "method": "jwt",
@@ -394,11 +308,17 @@ def verify_auth(
     raise HTTPException(status_code=401, detail="Missing authorization token")
 
 
+def is_admin_auth(auth: dict) -> bool:
+    """True se a autenticação é admin: API key (scripts de bulk) ou JWT com
+    role=admin. Usado nas regras de ownership (IDOR): admin pode atuar em
+    nome de qualquer curator; curator comum só pode mexer no que é seu."""
+    return auth.get("method") == "api_key" or auth.get("role") == "admin"
+
+
 # Export main dependencies
 __all__ = [
-    "verify_api_key",
-    "optional_api_key",
     "generate_api_key",
     "api_key_header",
     "verify_auth",
+    "is_admin_auth",
 ]

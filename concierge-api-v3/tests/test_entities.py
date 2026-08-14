@@ -105,9 +105,7 @@ class TestEntityEndpoints:
 
     def test_update_entity_without_auth(self, client):
         """Test updating entity without authentication"""
-        response = client.patch(
-            "/api/v3/entities/test_id", json={"name": "Updated Name"}
-        )
+        response = client.patch("/api/v3/entities/test_id", json={"name": "Updated Name"})
 
         assert response.status_code == 401  # Unauthorized
 
@@ -129,9 +127,7 @@ class TestEntityEndpoints:
 
     def test_delete_entity_not_found(self, client, auth_headers):
         """Test deleting non-existent entity"""
-        response = client.delete(
-            "/api/v3/entities/nonexistent_id", headers=auth_headers
-        )
+        response = client.delete("/api/v3/entities/nonexistent_id", headers=auth_headers)
 
         assert response.status_code == 404  # Not Found
 
@@ -220,9 +216,7 @@ def test_list_entities_ids_filter(client, test_db, clean_test_entities):
         ]
     )
 
-    r = client.get(
-        "/api/v3/entities", params={"ids": "ids_slug_ent,ids_hex_ent", "limit": 50}
-    )
+    r = client.get("/api/v3/entities", params={"ids": "ids_slug_ent,ids_hex_ent", "limit": 50})
     assert r.status_code == 200
     items = r.json()["items"]
     ids = {i.get("entity_id") or i.get("_id") for i in items}
@@ -243,12 +237,7 @@ def test_list_entities_ids_filter(client, test_db, clean_test_entities):
             "updatedAt": "2026-08-13T00:00:00Z",
         }
     )
-    r2 = client.get(
-        "/api/v3/entities", params={"ids": "507f1f77bcf86cd799439011", "limit": 50}
-    )
+    r2 = client.get("/api/v3/entities", params={"ids": "507f1f77bcf86cd799439011", "limit": 50})
     assert r2.status_code == 200
     r2_ids = [i.get("entity_id") or i.get("_id") for i in r2.json()["items"]]
-    assert (
-        any(str(i) == "507f1f77bcf86cd799439011" for i in r2_ids)
-        or "hex-oid-slug" in r2_ids
-    )
+    assert any(str(i) == "507f1f77bcf86cd799439011" for i in r2_ids) or "hex-oid-slug" in r2_ids

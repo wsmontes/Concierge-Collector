@@ -132,9 +132,7 @@ def update_entity(
     except ValueError:
         raise HTTPException(status_code=400, detail="Invalid If-Match")
 
-    update_data = {
-        k: v for k, v in updates.model_dump(exclude_unset=True).items() if v is not None
-    }
+    update_data = {k: v for k, v in updates.model_dump(exclude_unset=True).items() if v is not None}
     update_data["updatedAt"] = datetime.now(timezone.utc)
     update_data["version"] = current_version + 1
 
@@ -182,12 +180,8 @@ def delete_entity(
 def list_entities(
     type: Optional[str] = Query(None),
     name: Optional[str] = Query(None),
-    status: Optional[str] = Query(
-        None, description="Filter by entity status (active/archived/...)"
-    ),
-    since: Optional[str] = Query(
-        None, description="ISO timestamp - only return entities updated after this time"
-    ),
+    status: Optional[str] = Query(None, description="Filter by entity status (active/archived/...)"),
+    since: Optional[str] = Query(None, description="ISO timestamp - only return entities updated after this time"),
     ids: Optional[str] = Query(
         None,
         description=(
@@ -230,9 +224,7 @@ def list_entities(
             since_dt = datetime.fromisoformat(since.replace("Z", "+00:00"))
             query["updatedAt"] = {"$gte": since_dt}
         except ValueError:
-            raise HTTPException(
-                status_code=400, detail="Invalid since timestamp format. Use ISO 8601."
-            )
+            raise HTTPException(status_code=400, detail="Invalid since timestamp format. Use ISO 8601.")
 
     if isinstance(ids, str) and ids:
         # ids explícitos: $in com variantes string E ObjectId (hex válido) —
@@ -314,9 +306,7 @@ def bulk_upsert_entities(
 
     for idx, entity in enumerate(payload.entities):
         try:
-            existing = db.entities.find_one(
-                {"_id": entity.entity_id}, {"_id": 1, "version": 1, "data": 1}
-            )
+            existing = db.entities.find_one({"_id": entity.entity_id}, {"_id": 1, "version": 1, "data": 1})
 
             if existing:
                 doc = entity.model_dump(exclude_unset=True)

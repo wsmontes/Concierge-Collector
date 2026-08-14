@@ -100,9 +100,7 @@ def test_oauth_callback_access_denied_friendly_message():
     from unittest.mock import MagicMock
     from app.api.auth import google_oauth_callback
 
-    resp = google_oauth_callback(
-        code=None, state=None, error="access_denied", db=MagicMock()
-    )
+    resp = google_oauth_callback(code=None, state=None, error="access_denied", db=MagicMock())
     url = resp.headers.get("location", "")
     assert "Login%20cancelled%20by%20user" in url
 

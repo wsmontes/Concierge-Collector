@@ -9,7 +9,7 @@ These endpoints consolidate data from Google Places, MongoDB entities,
 Michelin guide, and curations into unified responses optimized for LLM consumption.
 """
 
-from fastapi import APIRouter, HTTPException, Depends
+from fastapi import APIRouter, HTTPException, Depends, Request
 import logging
 
 from app.models.llm_models import (
@@ -21,6 +21,8 @@ from app.models.llm_models import (
     LLMGetRestaurantAvailabilityResponse,
 )
 from app.models.llm_tools import get_all_tools, get_tools_manifest
+from app.core.rate_limit import limiter
+from app.core.security import verify_auth
 from app.services.llm_place_service import LLMPlaceService
 from app.core.database import get_database
 
@@ -36,9 +38,12 @@ def get_llm_service() -> LLMPlaceService:
 
 
 @router.post("/search-restaurants", response_model=LLMSearchRestaurantsResponse)
+@limiter.limit("20/minute")
 def search_restaurants(
-    request: LLMSearchRestaurantsRequest,
+    request: Request,
+    body: LLMSearchRestaurantsRequest,
     service: LLMPlaceService = Depends(get_llm_service),
+    auth: dict = Depends(verify_auth),  # Support both API key and JWT
 ):
     """
     Search for restaurants by name or query.
@@ -59,27 +64,24 @@ def search_restaurants(
     LLM: Calls this endpoint to find candidates, then calls get-restaurant-snapshot
     """
     try:
-        logger.info(
-            f"LLM search-restaurants: query='{request.query}', location=({request.latitude}, {request.longitude})"
-        )
+        logger.info(f"LLM search-restaurants: query='{body.query}', location=({body.latitude}, {body.longitude})")
 
         items = service.search_restaurants(
-            query=request.query,
-            latitude=request.latitude,
-            longitude=request.longitude,
-            radius_m=request.radius_m,
-            max_results=request.max_results,
-            language=request.language,
-            region=request.region,
+            query=body.query,
+            latitude=body.latitude,
+            longitude=body.longitude,
+            radius_m=body.radius_m,
+            max_results=body.max_results,
+            language=body.language,
+            region=body.region,
         )
 
         return LLMSearchRestaurantsResponse(
             items=items,
             total_results=len(items),
             search_metadata={
-                "query": request.query,
-                "location_biased": request.latitude is not None
-                and request.longitude is not None,
+                "query": body.query,
+                "location_biased": body.latitude is not None and body.longitude is not None,
             },
         )
 
@@ -88,12 +90,13 @@ def search_restaurants(
         raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
 
 
-@router.post(
-    "/get-restaurant-snapshot", response_model=LLMGetRestaurantSnapshotResponse
-)
+@router.post("/get-restaurant-snapshot", response_model=LLMGetRestaurantSnapshotResponse)
+@limiter.limit("20/minute")
 def get_restaurant_snapshot(
-    request: LLMGetRestaurantSnapshotRequest,
+    request: Request,
+    body: LLMGetRestaurantSnapshotRequest,
     service: LLMPlaceService = Depends(get_llm_service),
+    auth: dict = Depends(verify_auth),  # Support both API key and JWT
 ):
     """
     Get complete restaurant snapshot with all available data.
@@ -124,24 +127,20 @@ def get_restaurant_snapshot(
     """
     try:
         # Validate input
-        if not request.place_id and not request.entity_id:
-            raise HTTPException(
-                status_code=400, detail="Either place_id or entity_id must be provided"
-            )
+        if not body.place_id and not body.entity_id:
+            raise HTTPException(status_code=400, detail="Either place_id or entity_id must be provided")
 
-        logger.info(
-            f"LLM get-restaurant-snapshot: place_id={request.place_id}, entity_id={request.entity_id}"
-        )
+        logger.info(f"LLM get-restaurant-snapshot: place_id={body.place_id}, entity_id={body.entity_id}")
 
         snapshot, sources_used = service.get_restaurant_snapshot(
-            place_id=request.place_id,
-            entity_id=request.entity_id,
-            include_google_places=request.include_google_places,
-            include_michelin=request.include_michelin,
-            include_curations=request.include_curations,
-            include_raw_sources=request.include_raw_sources,
-            reference_datetime_iso=request.reference_datetime_iso,
-            timezone=request.timezone,
+            place_id=body.place_id,
+            entity_id=body.entity_id,
+            include_google_places=body.include_google_places,
+            include_michelin=body.include_michelin,
+            include_curations=body.include_curations,
+            include_raw_sources=body.include_raw_sources,
+            reference_datetime_iso=body.reference_datetime_iso,
+            timezone=body.timezone,
         )
 
         return LLMGetRestaurantSnapshotResponse(
@@ -149,11 +148,11 @@ def get_restaurant_snapshot(
             sources_used=sources_used,
             metadata={
                 "requested_sources": {
-                    "google_places": request.include_google_places,
-                    "michelin": request.include_michelin,
-                    "curations": request.include_curations,
+                    "google_places": body.include_google_places,
+                    "michelin": body.include_michelin,
+                    "curations": body.include_curations,
                 },
-                "timezone": request.timezone,
+                "timezone": body.timezone,
             },
         )
 
@@ -164,12 +163,13 @@ def get_restaurant_snapshot(
         raise HTTPException(status_code=500, detail=f"Snapshot error: {str(e)}")
 
 
-@router.post(
-    "/get-restaurant-availability", response_model=LLMGetRestaurantAvailabilityResponse
-)
+@router.post("/get-restaurant-availability", response_model=LLMGetRestaurantAvailabilityResponse)
+@limiter.limit("20/minute")
 def get_restaurant_availability(
-    request: LLMGetRestaurantAvailabilityRequest,
+    request: Request,
+    body: LLMGetRestaurantAvailabilityRequest,
     service: LLMPlaceService = Depends(get_llm_service),
+    auth: dict = Depends(verify_auth),  # Support both API key and JWT
 ):
     """
     Get restaurant availability and opening hours information.
@@ -201,22 +201,18 @@ def get_restaurant_availability(
     """
     try:
         # Validate input
-        if not request.place_id and not request.entity_id:
-            raise HTTPException(
-                status_code=400, detail="Either place_id or entity_id must be provided"
-            )
+        if not body.place_id and not body.entity_id:
+            raise HTTPException(status_code=400, detail="Either place_id or entity_id must be provided")
 
-        logger.info(
-            f"LLM get-restaurant-availability: place_id={request.place_id}, entity_id={request.entity_id}"
-        )
+        logger.info(f"LLM get-restaurant-availability: place_id={body.place_id}, entity_id={body.entity_id}")
 
         availability_data = service.get_restaurant_availability(
-            place_id=request.place_id,
-            entity_id=request.entity_id,
-            date_iso=request.date_iso,
-            datetime_iso=request.datetime_iso,
-            timezone=request.timezone,
-            weekend_days=request.weekend_days,
+            place_id=body.place_id,
+            entity_id=body.entity_id,
+            date_iso=body.date_iso,
+            datetime_iso=body.datetime_iso,
+            timezone=body.timezone,
+            weekend_days=body.weekend_days,
         )
 
         return LLMGetRestaurantAvailabilityResponse(**availability_data)

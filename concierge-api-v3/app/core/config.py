@@ -28,8 +28,9 @@ class Settings(BaseSettings):
         '"http://127.0.0.1:5501","http://localhost:8080","https://wsmontes.github.io"]'
     )
 
-    # Environment
-    environment: str = "development"
+    # Environment (fail-safe default: production; dev-login e bypass de teste
+    # só existem quando ENVIRONMENT=development explicitamente)
+    environment: str = "production"
 
     # Google Places API
     google_places_api_key: str = ""
@@ -62,9 +63,7 @@ class Settings(BaseSettings):
         hostname = os.getenv("HOSTNAME", "")
         render_service = os.getenv("RENDER_SERVICE_NAME", "")
 
-        is_pythonanywhere = "pythonanywhere" in hostname.lower() or os.path.exists(
-            "/home/wsmontes"
-        )
+        is_pythonanywhere = "pythonanywhere" in hostname.lower() or os.path.exists("/home/wsmontes")
         is_render = bool(render_service) or "render" in hostname.lower()
 
         # Set redirect_uri based on environment if not already set

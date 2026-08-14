@@ -3,6 +3,7 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 import logging
+import os
 
 from app.core.index_specs import INDEX_SPECS
 
@@ -12,7 +13,9 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Connect to MongoDB, create indexes, and warm caches on startup."""
+    from app.core.config import settings
     from app.core.database import connect_to_mongo, close_mongo_connection, get_database
+    from app.services.openai_service import OpenAIService
 
     # Startup
     try:
@@ -33,6 +36,16 @@ async def lifespan(app: FastAPI):
         logger.info("capture_sessions TTL index ensured")
     except Exception as e:
         logger.warning(f"Failed to create capture_sessions TTL index: {e}")
+
+    # Singleton do OpenAIService no app.state — os clients OpenAI/Motor/PyMongo
+    # são criados UMA vez aqui (antes, ai.py criava uma instância nova a cada
+    # request, desperdiçando conexões). A criação é lazy (sem I/O até o 1º uso).
+    api_key = os.getenv("OPENAI_API_KEY")
+    if api_key:
+        app.state.openai_service = OpenAIService(api_key, settings.mongodb_url, settings.mongodb_db_name)
+    else:
+        app.state.openai_service = None
+        logger.warning("OPENAI_API_KEY not set — AI endpoints (orchestrate, transcribe) will fail")
 
     yield  # App runs here
 

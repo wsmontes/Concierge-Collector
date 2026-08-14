@@ -153,8 +153,7 @@ def get_restaurant_snapshot_tool() -> Dict[str, Any]:
                 "reference_datetime_iso": {
                     "type": "string",
                     "description": (
-                        "Reference datetime for 'is_open_now' calculation "
-                        "(ISO format: '2025-11-21T20:00:00')"
+                        "Reference datetime for 'is_open_now' calculation " "(ISO format: '2025-11-21T20:00:00')"
                     ),
                 },
                 "timezone": {
