@@ -83,11 +83,14 @@ Analise o seguinte texto de uma curadoria e extraia conceitos relevantes que des
     },
     {
         "service": "image_analysis",
-        "model": "gpt-4-vision-preview",
+        "model": "gpt-4o",
         "config": {
             "temperature": 0.3,
-            "max_tokens": 300,
-            "detail": "high"
+            "max_tokens": 1000,
+            "detail": "high",
+            # O prompt exige JSON — o response_format força o modelo a devolver
+            # JSON puro (sem isso o gpt-4o solta markdown/texto e o parse falha)
+            "response_format": {"type": "json_object"}
         },
         "prompt_template": """Você é um especialista em análise visual de restaurantes e ambientes gastronômicos.
 

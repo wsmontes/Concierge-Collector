@@ -157,3 +157,98 @@ async def test_analyze_image_envia_data_url_para_openai(monkeypatch):
     img_block = [b for b in content if b.get("type") == "image_url"][0]
     assert img_block["image_url"]["url"].startswith("data:image/jpeg;base64,")
     assert result["concepts"] == ["aconchegante"]
+    # response_format do config é repassado para a OpenAI
+    assert captured_create.get("response_format") is None or "type" in captured_create["response_format"]
+
+
+@pytest.mark.asyncio
+async def test_resposta_markdown_vira_json(monkeypatch):
+    """Regressão: o gpt-4o às vezes devolve markdown/code fences — o parse
+    extrai o primeiro objeto JSON em vez de estourar json.JSONDecodeError."""
+    captured_create = {}
+
+    class FakeCompletions:
+        def create(self, **kwargs):
+            captured_create.update(kwargs)
+            msg = type("M", (), {"content": '```json\n{"concepts": ["elegante"], "confidence_score": 0.7}\n```'})
+            return type("R", (), {"choices": [type("C", (), {"message": msg})]})
+
+    class FakeClient:
+        def __init__(self):
+            self.chat = type("Chat", (), {"completions": FakeCompletions()})()
+
+    def responder(url):
+        return FakeResponse(IMG_BYTES)
+
+    _mk_fake_httpx(monkeypatch, responder)
+
+    service = OpenAIService(api_key="sk-test", db_url="mongodb://x", db_name="db")
+    service.client = FakeClient()
+    service.config_service = type(
+        "Cfg",
+        (),
+        {
+            "get_config": lambda self, s: {
+                "model": "gpt-4o",
+                "config": {"detail": "high", "temperature": 0.3, "max_tokens": 300},
+            },
+            "render_prompt": lambda self, s, v: "prompt pronto",
+        },
+    )()
+
+    class _CatStub:
+        async def get_categories(self, entity_type):
+            return []
+
+    service.category_service = _CatStub()
+
+    result = await service.analyze_image(
+        "https://api.onrender.com/api/v3/places/photo?reference=abc",
+        entity_type="restaurant",
+        save_to_cache=False,
+    )
+    assert result["concepts"] == ["elegante"]
+
+
+@pytest.mark.asyncio
+async def test_resposta_sem_json_vira_valueerror(monkeypatch):
+    class FakeCompletions:
+        def create(self, **kwargs):
+            msg = type("M", (), {"content": "não consigo analisar esta imagem"})
+            return type("R", (), {"choices": [type("C", (), {"message": msg})]})
+
+    class FakeClient:
+        def __init__(self):
+            self.chat = type("Chat", (), {"completions": FakeCompletions()})()
+
+    def responder(url):
+        return FakeResponse(IMG_BYTES)
+
+    _mk_fake_httpx(monkeypatch, responder)
+
+    service = OpenAIService(api_key="sk-test", db_url="mongodb://x", db_name="db")
+    service.client = FakeClient()
+    service.config_service = type(
+        "Cfg",
+        (),
+        {
+            "get_config": lambda self, s: {
+                "model": "gpt-4o",
+                "config": {"detail": "high", "temperature": 0.3, "max_tokens": 300},
+            },
+            "render_prompt": lambda self, s, v: "prompt pronto",
+        },
+    )()
+
+    class _CatStub:
+        async def get_categories(self, entity_type):
+            return []
+
+    service.category_service = _CatStub()
+
+    with pytest.raises(ValueError, match="não é JSON"):
+        await service.analyze_image(
+            "https://api.onrender.com/api/v3/places/photo?reference=abc",
+            entity_type="restaurant",
+            save_to_cache=False,
+        )

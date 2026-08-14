@@ -387,10 +387,23 @@ class OpenAIService:
             ],
             temperature=config["config"].get("temperature", 0.3),
             max_tokens=config["config"].get("max_tokens", 300),
+            response_format=config["config"].get("response_format"),
         )
 
-        # Parse JSON response
-        result = json.loads(response.choices[0].message.content)
+        # Parse JSON response — gpt-4o sem response_format devolve texto solto
+        # ou markdown; extrai o primeiro objeto JSON quando possível
+        raw_content = (response.choices[0].message.content or "").strip()
+        if raw_content.startswith("```"):
+            raw_content = raw_content.strip("`")
+            if raw_content.startswith("json"):
+                raw_content = raw_content[4:].strip()
+        try:
+            result = json.loads(raw_content)
+        except json.JSONDecodeError:
+            start, end = raw_content.find("{"), raw_content.rfind("}")
+            if start == -1 or end <= start:
+                raise ValueError(f"Resposta da análise de imagem não é JSON: {raw_content[:200]!r}")
+            result = json.loads(raw_content[start : end + 1])
         result["entity_type"] = entity_type
         result["model"] = config["model"]
 
