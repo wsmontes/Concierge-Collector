@@ -36,11 +36,9 @@ API_SECRET_KEY = os.getenv('API_SECRET_KEY')
 GOOGLE_PLACES_API_KEY = os.getenv('GOOGLE_PLACES_API_KEY')
 CONCEPTS_FILE = os.path.join(os.path.dirname(__file__), '..', 'data', 'restaurants - 2025-10-15.json')
 
-# Debug
+# Debug — NUNCA imprimir a chave (nem prefixo) no stdout
 if not API_SECRET_KEY:
-    print(f"WARNING: API_SECRET_KEY not loaded from .env file")
-else:
-    print(f"API_SECRET_KEY loaded: {API_SECRET_KEY[:20]}...")
+    print("WARNING: API_SECRET_KEY not loaded from .env file")
 
 # API Endpoints
 API_ENTITIES_URL = f"{API_BASE_URL}/api/v3/entities"
@@ -451,7 +449,7 @@ def main():
     # Test API connection
     print(f"{Colors.OKCYAN}Testing API connection to {API_BASE_URL}...{Colors.ENDC}")
     try:
-        response = requests.get(f"{API_BASE_URL}/health", timeout=5)
+        response = requests.get(f"{API_BASE_URL}/api/v3/health", timeout=5)
         if response.status_code == 200:
             print(f"{Colors.OKGREEN}API connection successful{Colors.ENDC}")
         else:

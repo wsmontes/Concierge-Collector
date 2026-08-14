@@ -30,6 +30,14 @@ from dataclasses import dataclass, field
 from enum import Enum
 import requests
 from pathlib import Path
+from dotenv import load_dotenv
+
+# O RENDER_API_KEY vive no .env de concierge-api-v3/ — o script não deve
+# depender de export manual no shell (o header já declarava python-dotenv).
+# load_dotenv NÃO sobrescreve env vars já exportadas (override explícito
+# do shell vence).
+_ENV_PATH = Path(__file__).resolve().parents[2] / "concierge-api-v3" / ".env"
+load_dotenv(_ENV_PATH)
 
 # Configuração de logging
 logging.basicConfig(
@@ -496,6 +504,11 @@ class RenderAPI:
     def update_env_var(self, service_id: str, key: str, value: str) -> Dict:
         """
         Atualiza/cria uma variável de ambiente
+
+        ⚠️ Este PUT NÃO é um PATCH: a API do Render SUBSTITUI o conjunto
+        INTEIRO de env vars — o fluxo GET+merge+PUT é read-modify-write e
+        NÃO atômico (um estado lido desatualizado sobrescreve mudanças
+        concorrentes). Prefira update_env_vars() para mudanças múltiplas.
 
         Args:
             service_id: ID do serviço

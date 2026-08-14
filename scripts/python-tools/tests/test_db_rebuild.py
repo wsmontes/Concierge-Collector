@@ -323,7 +323,7 @@ def test_restore_reports_failed_indexes(tmp_path):
     src = FakeDB(_full_colls(entities=FakeCollection([{"_id": 1}])))
     export_dump(FakeClient(), src, str(tmp_path))
     target = FakeDB(_full_colls())
-    target["entities"].fail_index_keys.add(("externalId", True, True, None))
+    target["entities"].fail_index_keys.add(("externalId", None, None, None))  # spec atual: índice simples (sem unique/sparse)
     counts, falhas = restore_dump(target, str(tmp_path), confirmed=True)
     assert counts["entities"] == 1
     assert any("externalId" in f[0] for f in falhas)
@@ -406,7 +406,7 @@ def test_insert_in_byte_batches_inserts_raw_docs_without_reencode():
 
 def test_ensure_indexes_continues_after_unique_index_failure():
     ents = FakeCollection()
-    ents.fail_index_keys.add(("externalId", True, True, None))
+    ents.fail_index_keys.add(("externalId", None, None, None))  # spec atual: índice simples (sem unique/sparse)
     db = FakeDB(
         {
             "entities": ents,

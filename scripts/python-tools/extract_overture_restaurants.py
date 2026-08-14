@@ -323,6 +323,11 @@ def normalize_feature(feature: Dict[str, Any]) -> Optional[Dict[str, Any]]:
 # Bulk API sender (same pattern as extract_osm_restaurants.py)
 # ---------------------------------------------------------------------------
 
+class ApiAuthError(RuntimeError):
+    """401/403 da API = API_SECRET_KEY inválida/expirada — aborta o run em vez
+    de continuar disparando chunks contra produção."""
+
+
 def post_entities_bulk(
     api_bulk_url: str,
     api_key: str,
@@ -344,6 +349,11 @@ def post_entities_bulk(
                 headers=headers,
                 timeout=120,
             )
+            if response.status_code in (401, 403):
+                raise ApiAuthError(
+                    f"HTTP {response.status_code} (API_SECRET_KEY inválida/expirada?) — "
+                    f"abortando; {len(entities) - end_idx} item(ns) NÃO enviados"
+                )
             response.raise_for_status()
             result = response.json()
             c = result.get("created", 0)
@@ -357,6 +367,8 @@ def post_entities_bulk(
             print(f"created={c} updated={u} skipped={s} errors={e}")
             for err in result.get("errors", []):
                 print(f"    [item {err.get('index', '?')}] {err.get('error', 'unknown')}")
+        except ApiAuthError:
+            raise  # fail-fast: 401/403 NÃO é erro transiente de chunk
         except Exception as exc:
             totals["errors"] += len(chunk)
             print(f"FAILED: {exc}")
@@ -380,6 +392,21 @@ def _find_env_file() -> Path:
     return here.parents[2] / "concierge-api-v3" / ".env"
 
 
+def _api_v3_base() -> str:
+    """Base URL SEMPRE terminando em /api/v3 — exatamente uma ocorrência.
+
+    Convenção única do pipeline (2026-08): API_V3_URL (chave histórica do
+    .env local) ou API_BASE_URL, com ou sem o sufixo — o normalize garante o
+    sufixo uma vez só (sem ele, um valor já com /api/v3 somado ao
+    "/entities/bulk" do load_settings vira 404)."""
+    raw = (
+        os.environ.get("API_V3_URL")
+        or os.environ.get("API_BASE_URL")
+        or "https://concierge-collector.onrender.com/api/v3"
+    ).rstrip("/")
+    return raw if raw.endswith("/api/v3") else raw + "/api/v3"
+
+
 def load_settings() -> Tuple[str, str]:
     """Load API base URL and API key from .env file.
 
@@ -387,13 +414,13 @@ def load_settings() -> Tuple[str, str]:
     """
     load_dotenv(_find_env_file())
 
-    base_url = os.environ.get("API_BASE_URL", "https://concierge-collector.onrender.com/api/v3")
-    api_key  = os.environ.get("API_SECRET_KEY", "")
+    base_url = _api_v3_base()
+    api_key = os.environ.get("API_SECRET_KEY", "")
     if not api_key:
         raise RuntimeError(
             "API_SECRET_KEY not set. Add it to concierge-api-v3/.env"
         )
-    bulk_url = base_url.rstrip("/") + "/entities/bulk"
+    bulk_url = base_url + "/entities/bulk"
     return bulk_url, api_key
 
 
@@ -526,7 +553,11 @@ def main() -> int:
         print(f"Chunk size: {args.chunk_size}")
         print()
 
-        totals = post_entities_bulk(api_bulk_url, api_key, entities, args.chunk_size)
+        try:
+            totals = post_entities_bulk(api_bulk_url, api_key, entities, args.chunk_size)
+        except ApiAuthError as exc:
+            print(f"ERROR: {exc}")
+            return 2
 
         print()
         print("=== Import summary ===")

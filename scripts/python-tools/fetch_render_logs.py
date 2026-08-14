@@ -3,7 +3,7 @@
 Fetch Render Logs via API
 
 Purpose: Retrieve recent logs from Render.com production service
-Usage: python scripts/fetch_render_logs.py
+Usage: python scripts/python-tools/fetch_render_logs.py
 
 Requires: RENDER_API_KEY environment variable
 Get your API key from: https://dashboard.render.com/account/settings
@@ -265,19 +265,17 @@ def search_error_logs(service_id, keywords=None, minutes_ago=60):
         "resource": [service_id],
         "startTime": start_time.isoformat(),
         "endTime": end_time.isoformat(),
-    parser.add_argument("--list-services", action="store_true", help="List all services in account")
-    
-    args = parser.parse_args()
+        "limit": 500,
+        "direction": "backward"
+    }
 
-    print("🎯 Render Log Fetcher")
-    print("="*80)
-    print(f"Service ID: {args.service_id}")
-    print(f"Timestamp: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M:%S UTC')}")
-    print("="*80 + "\n")
+    try:
+        response = requests.get(logs_url, headers=headers, params=params)
+        response.raise_for_status()
 
-    if args.list_services:
-        list_all_services()
-    el
+        data = response.json()
+        logs = data.get('logs', [])
+
         error_count = 0
         for log_entry in logs:
             if isinstance(log_entry, dict):
@@ -325,8 +323,13 @@ if __name__ == "__main__":
     parser.add_argument("--minutes", type=int, default=60, help="How many minutes back to fetch logs")
     parser.add_argument("--errors-only", action="store_true", help="Show only error logs")
     parser.add_argument("--keywords", nargs="+", help="Search keywords")
-    
+    parser.add_argument("--list-services", action="store_true", help="List all services in account")
+
     args = parser.parse_args()
+
+    if args.list_services:
+        list_all_services()
+        sys.exit(0)
 
     print("🎯 Render Log Fetcher")
     print("="*80)

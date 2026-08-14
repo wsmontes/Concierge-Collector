@@ -1,4 +1,4 @@
-#!/usr/bin/env python3\
+#!/usr/bin/env python3
 """
 File: import_curations_from_excel.py
 Purpose: Import curation documents from Excel files via the API v3 bulk endpoint.
@@ -52,11 +52,17 @@ def load_settings() -> Tuple[str, str]:
             key, value = text.split("=", 1)
             env_values[key.strip()] = value.strip().strip('"').strip("'")
 
-    api_base_url = (
-        env_values.get("API_BASE_URL")
+    raw_base = (
+        env_values.get("API_V3_URL")
+        or os.getenv("API_V3_URL")
+        or env_values.get("API_BASE_URL")
         or os.getenv("API_BASE_URL")
-        or "https://concierge-collector.onrender.com"
+        or "https://concierge-collector.onrender.com/api/v3"
     ).rstrip("/")
+    # Convenção única do pipeline: base SEMPRE termina em /api/v3 (uma vez só)
+    # — API_V3_URL do .env local (http://localhost:8000) também é aceita e
+    # ganha o sufixo; um valor já com o sufixo não é duplicado (evita 404).
+    api_base_url = raw_base if raw_base.endswith("/api/v3") else raw_base + "/api/v3"
 
     api_key = env_values.get("API_SECRET_KEY") or os.getenv("API_SECRET_KEY")
     if not api_key:
@@ -81,6 +87,18 @@ def normalize_value(value: Any) -> List[str]:
     return [part for part in parts if part]
 
 
+# Cabeçalhos de planilha que NÃO são categorias — espelho da exclusão de
+# chaves reservadas do import_curations.py (extract_categories_from_legacy).
+# Sem isto, TODO cabeçalho não-vazio virava uma categoria de curadoria
+# (ex.: uma coluna "status" ou "name" poluía as categorias).
+RESERVED_CATEGORY_KEYS = {
+    'metadata', 'curation_id', '_id', 'curator_id', 'curator', 'status',
+    'notes', 'sources', 'items', 'entity_id', 'restaurant_name', 'name',
+    'transcript', 'unstructured_text', 'transcription', 'createdAt',
+    'updatedAt', 'version',
+}
+
+
 def build_categories(sheet) -> Dict[str, List[str]]:
     header_row = next(sheet.iter_rows(min_row=1, max_row=1, values_only=True), None)
     if not header_row:
@@ -91,7 +109,7 @@ def build_categories(sheet) -> Dict[str, List[str]]:
 
     for row in sheet.iter_rows(min_row=2, values_only=True):
         for idx, header in enumerate(headers):
-            if not header:
+            if not header or header.lower() in RESERVED_CATEGORY_KEYS:
                 continue
             if idx >= len(row):
                 continue
@@ -235,7 +253,7 @@ def main() -> int:
             print(f"ERROR: {error}")
             return 1
 
-    api_bulk_url = f"{api_base_url}/api/v3/curations/bulk"
+    api_bulk_url = f"{api_base_url}/curations/bulk"  # base já inclui /api/v3
 
     all_curations: List[Dict[str, Any]] = []
     failed_files = 0

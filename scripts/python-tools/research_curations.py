@@ -71,6 +71,23 @@ def load_settings() -> Dict[str, str]:
     }
 
 
+def _write_json_atomic(path: Path, data: list) -> None:
+    """Grava JSON com escrita atômica: vai para <path>.tmp e só substitui o
+    arquivo final no sucesso (padrão do db_rebuild.write_bson_stream).
+
+    Sem isso, a reescrita do array INTEIRO a cada entidade (write_text) pode
+    ser interrompida por disco cheio (incidente 2026-07-10) ou Ctrl-C no meio
+    da gravação — o JSON fica truncado, o próximo run quebra no json.loads e
+    o ledger de retomada vira inalcançável."""
+    tmp_path = path.with_name(path.name + ".tmp")
+    try:
+        tmp_path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+        os.replace(tmp_path, path)
+    finally:
+        if tmp_path.exists():
+            tmp_path.unlink()
+
+
 def build_queries(entity: Dict[str, Any]) -> List[str]:
     name = (entity.get("name") or "").strip()
     loc = (entity.get("data") or {}).get("location") or {}
@@ -578,8 +595,8 @@ def main() -> int:
         n_cats = len(cur["categories"]) if cur else 0
         has_desc = "desc" if patch else "—"
         print(f" ok ({n_cats} categorias, {has_desc})" if (cur or patch) else " sem conceitos")
-        out_path.write_text(json.dumps(curations, ensure_ascii=False, indent=2), encoding="utf-8")
-        desc_path.write_text(json.dumps(descriptions, ensure_ascii=False, indent=2), encoding="utf-8")
+        _write_json_atomic(out_path, curations)
+        _write_json_atomic(desc_path, descriptions)
         if not falhou:
             # ledger só no SUCESSO (ou cauda vazia legítima): uma falha
             # transitória de web/LLM não pode queimar a entidade para sempre

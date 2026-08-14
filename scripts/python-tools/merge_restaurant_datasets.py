@@ -333,6 +333,11 @@ def match_datasets(
 # Bulk API sender (same pattern as other extractor scripts)
 # ---------------------------------------------------------------------------
 
+class ApiAuthError(RuntimeError):
+    """401/403 da API = API_SECRET_KEY inválida/expirada — aborta o run em vez
+    de continuar disparando chunks contra produção."""
+
+
 def post_entities_bulk(
     api_bulk_url: str,
     api_key: str,
@@ -350,6 +355,11 @@ def post_entities_bulk(
         try:
             resp = requests.post(api_bulk_url, json={"entities": chunk},
                                  headers=headers, timeout=120)
+            if resp.status_code in (401, 403):
+                raise ApiAuthError(
+                    f"HTTP {resp.status_code} (API_SECRET_KEY inválida/expirada?) — "
+                    f"abortando; {len(entities) - end_idx} item(ns) NÃO enviados"
+                )
             resp.raise_for_status()
             r = resp.json()
             c, u, s, e = (r.get("created", 0), r.get("updated", 0),
@@ -361,6 +371,8 @@ def post_entities_bulk(
             print(f"created={c} updated={u} skipped={s} errors={e}")
             for err in r.get("errors", []):
                 print(f"    [item {err.get('index', '?')}] {err.get('error', 'unknown')}")
+        except ApiAuthError:
+            raise  # fail-fast: 401/403 NÃO é erro transiente de chunk
         except Exception as exc:
             totals["errors"] += len(chunk)
             print(f"FAILED: {exc}")
@@ -387,15 +399,21 @@ def load_settings(env_path=None) -> Tuple[str, str]:
                     continue
                 k, v = line.split("=", 1)
                 valores[k] = v.strip().strip('"')
-    base_url = valores.get(
-        "API_BASE_URL", "https://concierge-collector.onrender.com/api/v3"
-    )
+    raw_base = (
+        valores.get("API_V3_URL")
+        or valores.get("API_BASE_URL")
+        or "https://concierge-collector.onrender.com/api/v3"
+    ).rstrip("/")
+    # Convenção única do pipeline: base SEMPRE termina em /api/v3 (uma vez só)
+    # — API_V3_URL do .env local (http://localhost:8000) também é aceita e
+    # ganha o sufixo; um valor já com o sufixo não é duplicado (evita 404).
+    base_url = raw_base if raw_base.endswith("/api/v3") else raw_base + "/api/v3"
     api_key = valores.get("API_SECRET_KEY", "")
     if not api_key:
         raise RuntimeError(
             "API_SECRET_KEY not set. Add it to concierge-api-v3/.env as API_SECRET_KEY=<your_key>"
         )
-    return base_url.rstrip("/") + "/entities/bulk", api_key
+    return base_url + "/entities/bulk", api_key
 
 
 # ---------------------------------------------------------------------------
@@ -531,7 +549,11 @@ def main() -> int:
         print(f"Chunk size: {args.chunk_size}")
         print()
 
-        totals = post_entities_bulk(api_bulk_url, api_key, merged, args.chunk_size)
+        try:
+            totals = post_entities_bulk(api_bulk_url, api_key, merged, args.chunk_size)
+        except ApiAuthError as exc:
+            print(f"ERROR: {exc}")
+            return 2
 
         print()
         print("=== Import summary ===")

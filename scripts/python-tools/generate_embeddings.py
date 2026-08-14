@@ -289,7 +289,7 @@ def main():
 
     # Ask for mode
     print(f"{Colors.OKCYAN}Select mode:{Colors.ENDC}")
-    print(f"  {Colors.BOLD}1{Colors.ENDC} - Process all curations (overwrite existing embeddings)")
+    print(f"  {Colors.BOLD}1{Colors.ENDC} - Process all curations (overwrite existing embeddings)  [exige --force]")
     print(f"  {Colors.BOLD}2{Colors.ENDC} - Process only curations without embeddings")
     print()
 
@@ -297,6 +297,16 @@ def main():
 
     if mode not in ['1', '2']:
         print(f"{Colors.FAIL}Invalid option. Exiting.{Colors.ENDC}")
+        return
+
+    if mode == '1' and '--force' not in sys.argv:
+        # Modo 1 re-embute ~1.2k curadorias (chamadas pagas à OpenAI) e
+        # SOBRESCREVE embeddings existentes — um prompt "1" acidental não
+        # pode disparar a conta inteira de novo.
+        print(f"{Colors.FAIL}Modo 1 (re-embutir TODAS as curadorias, sobrescrevendo "
+              f"embeddings existentes) exige confirmação explícita:{Colors.ENDC}")
+        print(f"{Colors.BOLD}  python generate_embeddings.py --force{Colors.ENDC}")
+        print(f"{Colors.WARNING}Nada foi processado.{Colors.ENDC}")
         return
 
     print()

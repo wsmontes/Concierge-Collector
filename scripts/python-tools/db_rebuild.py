@@ -341,10 +341,9 @@ def verify_dump(db, dump_dir):
 
 
 def ensure_indexes(db):
-    """Recria os índices (espelha app/core/database.py + lifespan.py) com
-    tolerância a falha individual: um índice único que não consiga ser criado
-    (ex.: duplicatas no dump) é reportado sem abortar os demais.
-    Retorna [(descrição, ok, erro)]."""
+    """Recria os índices (espelha app/core/index_specs.py) com tolerância a
+    falha individual: um índice que não consiga ser criado é reportado sem
+    abortar os demais. Retorna [(descrição, ok, erro)]."""
     results = []
     for coll, keys, extra in INDEX_SPECS:
         kwargs = {**extra, "background": True}

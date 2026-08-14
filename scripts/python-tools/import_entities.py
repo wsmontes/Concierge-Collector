@@ -34,6 +34,8 @@ from typing import Any, Dict, List, Tuple
 import requests
 from dotenv import load_dotenv
 
+import mongo_tools  # noqa: E402  (mesmo dir; connect() lê o .env e pinga o Mongo)
+
 
 DEFAULT_CHUNK = 200
 VALID_TYPES   = {"restaurant", "hotel", "venue", "bar", "cafe", "other"}
@@ -66,13 +68,75 @@ def _find_env_file() -> Path:
     return here.parents[2] / "concierge-api-v3" / ".env"
 
 
+def _api_v3_base() -> str:
+    """Base URL SEMPRE terminando em /api/v3 — exatamente uma ocorrência.
+
+    Convenção única do pipeline (2026-08): API_V3_URL (chave histórica do
+    .env local, ex. http://localhost:8000) ou API_BASE_URL, com ou sem o
+    sufixo — o normalize garante o sufixo uma vez só (sem ele, um valor já
+    com /api/v3 somado ao "/entities/bulk" do load_settings vira 404)."""
+    raw = (
+        os.environ.get("API_V3_URL")
+        or os.environ.get("API_BASE_URL")
+        or "https://concierge-collector.onrender.com/api/v3"
+    ).rstrip("/")
+    return raw if raw.endswith("/api/v3") else raw + "/api/v3"
+
+
 def load_settings() -> Tuple[str, str]:
     load_dotenv(_find_env_file())
-    base_url = os.environ.get("API_BASE_URL", "https://concierge-collector.onrender.com/api/v3")
-    api_key  = os.environ.get("API_SECRET_KEY", "")
+    base_url = _api_v3_base()
+    api_key = os.environ.get("API_SECRET_KEY", "")
     if not api_key:
         raise RuntimeError("API_SECRET_KEY not set. Add it to concierge-api-v3/.env")
-    return base_url.rstrip("/") + "/entities/bulk", api_key
+    return base_url + "/entities/bulk", api_key
+
+
+def find_existing_keys(db, entities: List[Dict[str, Any]]) -> set:
+    """READ-ONLY: descobre quais (tipo, valor) de externalId / data.place_id do
+    lote JÁ existem no Mongo. Nada é escrito.
+
+    O upsert do bulk keya só por entity_id (concierge-api-v3/app/api/
+    entities.py — bulk_upsert_entities), então o MESMO externalId/place_id com
+    entity_id diferente vira uma "twin" (16 pares já existem no banco,
+    aguardando decisão). Esta checagem impede twins NOVOS a cada run."""
+    existing: set = set()
+
+    ext_ids = [e["externalId"] for e in entities if e.get("externalId")]
+    if ext_ids:
+        for doc in db.entities.find({"externalId": {"$in": ext_ids}}, {"externalId": 1}):
+            existing.add(("externalId", doc.get("externalId")))
+
+    place_ids = [
+        e["data"]["place_id"] for e in entities
+        if isinstance(e.get("data"), dict) and e["data"].get("place_id")
+    ]
+    if place_ids:
+        for doc in db.entities.find({"data.place_id": {"$in": place_ids}}, {"data.place_id": 1}):
+            existing.add(("place_id", (doc.get("data") or {}).get("place_id")))
+
+    return existing
+
+
+def dedupe_against_db(
+    entities: List[Dict[str, Any]], db
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Retorna (mantidos, pulados): pulados são itens cujo externalId OU
+    data.place_id já existe no Mongo — enviá-los criaria um twin."""
+    existing = find_existing_keys(db, entities)
+    if not existing:
+        return entities, []
+    kept: List[Dict[str, Any]] = []
+    skipped: List[Dict[str, Any]] = []
+    for e in entities:
+        dup = (
+            ("externalId", e["externalId"]) in existing if e.get("externalId") else False
+        ) or (
+            ("place_id", e["data"]["place_id"]) in existing
+            if isinstance(e.get("data"), dict) and e["data"].get("place_id") else False
+        )
+        (skipped if dup else kept).append(e)
+    return kept, skipped
 
 
 def validate(entities: List[Dict[str, Any]]) -> List[str]:
@@ -101,6 +165,11 @@ def validate(entities: List[Dict[str, Any]]) -> List[str]:
     return errors
 
 
+class ApiAuthError(RuntimeError):
+    """401/403 da API = API_SECRET_KEY inválida/expirada — aborta o run em vez
+    de continuar disparando chunks contra produção."""
+
+
 def post_bulk(
     api_bulk_url: str,
     api_key: str,
@@ -117,6 +186,11 @@ def post_bulk(
         try:
             resp = requests.post(api_bulk_url, json={"entities": chunk},
                                  headers=headers, timeout=120)
+            if resp.status_code in (401, 403):
+                raise ApiAuthError(
+                    f"HTTP {resp.status_code} (API_SECRET_KEY inválida/expirada?) — "
+                    f"abortando; {len(entities) - end_idx} item(ns) NÃO enviados"
+                )
             resp.raise_for_status()
             r = resp.json()
             c, u, s, e = (r.get("created", 0), r.get("updated", 0),
@@ -128,6 +202,8 @@ def post_bulk(
             print(f"created={c} updated={u} skipped={s} errors={e}")
             for err in r.get("errors", []):
                 print(f"    [item {err.get('index', '?')}] {err.get('error', 'unknown')}")
+        except ApiAuthError:
+            raise  # fail-fast: 401/403 NÃO é erro transiente de chunk
         except Exception as exc:
             totals["errors"] += len(chunk)
             print(f"FAILED — {exc}")
@@ -191,7 +267,35 @@ def main() -> int:
     print(f"Chunk size: {args.chunk_size}")
     print()
 
-    totals = post_bulk(api_bulk_url, api_key, entities, args.chunk_size)
+    # ── Dedup read-only contra o Mongo (evita twins novos) ────────────────────
+    # O upsert do bulk keya por entity_id; um externalId/place_id já existente
+    # com entity_id diferente vira "twin". Falha fechada: sem Mongo não importa.
+    try:
+        _client, db = mongo_tools.connect()
+    except Exception as exc:
+        print(f"ERROR: falha ao conectar no Mongo para o dedup (abortando para "
+              f"não gerar twins): {exc}")
+        return 1
+    try:
+        entities, skipped_dup = dedupe_against_db(entities, db)
+    finally:
+        _client.close()
+    if skipped_dup:
+        print(f"Dedup: {len(skipped_dup)} entidade(s) com externalId/place_id "
+              f"JÁ existente no Mongo — PULADAS (não geram twin):")
+        for e in skipped_dup:
+            data = e.get("data") or {}
+            print(f"    {e.get('entity_id')} | {e.get('name')} | "
+                  f"externalId={e.get('externalId')} | place_id={data.get('place_id')}")
+    if not entities:
+        print("Nada a importar após o dedup.")
+        return 0
+
+    try:
+        totals = post_bulk(api_bulk_url, api_key, entities, args.chunk_size)
+    except ApiAuthError as exc:
+        print(f"ERROR: {exc}")
+        return 2
 
     print()
     print("=" * 60)

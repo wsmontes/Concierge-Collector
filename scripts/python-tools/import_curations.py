@@ -49,10 +49,25 @@ def find_env_file() -> Path:
     return candidates[0]
 
 
+def _api_v3_base() -> str:
+    """Base URL SEMPRE terminando em /api/v3 — exatamente uma ocorrência.
+
+    Convenção única do pipeline (2026-08): API_V3_URL (chave histórica do
+    .env local) ou API_BASE_URL, com ou sem o sufixo — o normalize garante o
+    sufixo uma vez só (sem ele, um valor já com /api/v3 somado ao "/api/v3"
+    do chamador vira ".../api/v3/api/v3/..." e 404a tudo)."""
+    raw = (
+        os.getenv('API_V3_URL')
+        or os.getenv('API_BASE_URL')
+        or 'https://concierge-collector.onrender.com/api/v3'
+    ).rstrip('/')
+    return raw if raw.endswith('/api/v3') else raw + '/api/v3'
+
+
 def load_settings() -> Tuple[str, str]:
     """Load API base URL and API key from environment."""
     load_dotenv(find_env_file())
-    api_base_url = os.getenv('API_BASE_URL', 'https://concierge-collector.onrender.com').rstrip('/')
+    api_base_url = _api_v3_base()
     api_key = os.getenv('API_SECRET_KEY')
     if not api_key:
         raise RuntimeError('API_SECRET_KEY not found in .env')
@@ -331,6 +346,11 @@ def normalize_curation(raw: Dict[str, Any], default_curator_id: str, keep_entity
     return normalized
 
 
+class ApiAuthError(RuntimeError):
+    """401/403 da API = API_SECRET_KEY inválida/expirada — aborta o run em vez
+    de continuar disparando itens contra produção."""
+
+
 def post_curation(api_url: str, api_key: str, curation: Dict[str, Any]) -> Tuple[bool, str]:
     """Send one curation to API and return status/message."""
     headers = {
@@ -340,6 +360,10 @@ def post_curation(api_url: str, api_key: str, curation: Dict[str, Any]) -> Tuple
     response = requests.post(api_url, json=curation, headers=headers, timeout=30)
     if response.status_code == 201:
         return True, 'created'
+    if response.status_code in (401, 403):
+        raise ApiAuthError(
+            f"HTTP {response.status_code} (API_SECRET_KEY inválida/expirada?) — abortando"
+        )
 
     try:
         payload = response.json()
@@ -373,6 +397,11 @@ def post_curations_bulk(
                 headers=headers,
                 timeout=120,
             )
+            if response.status_code in (401, 403):
+                raise ApiAuthError(
+                    f"HTTP {response.status_code} (API_SECRET_KEY inválida/expirada?) — "
+                    f"abortando; {len(curations) - end_idx} item(ns) NÃO enviados"
+                )
             response.raise_for_status()
             result = response.json()
             totals['created'] += result.get('created', 0)
@@ -384,6 +413,8 @@ def post_curations_bulk(
             if result.get('errors'):
                 for err in result['errors']:
                     print(f"    [item {err.get('index', '?')}] {err.get('error', 'unknown error')}")
+        except ApiAuthError:
+            raise  # fail-fast: 401/403 NÃO é erro transiente de chunk
         except Exception as exc:
             totals['errors'] += len(chunk)
             print(f"FAILED: {exc}")
@@ -433,8 +464,8 @@ def main() -> int:
     print(f"Loaded {len(raw_items)} raw item(s) from {args.input}")
     print(f"Mode: {'APPLY' if args.apply else 'DRY-RUN'} | Transport: {'bulk' if use_bulk else 'one-by-one'}")
 
-    api_curations_url = f'{api_base_url}/api/v3/curations'
-    api_bulk_url = f'{api_base_url}/api/v3/curations/bulk'
+    api_curations_url = f'{api_base_url}/curations'  # base já inclui /api/v3
+    api_bulk_url = f'{api_base_url}/curations/bulk'
 
     stats = {
         'total': len(raw_items),
@@ -463,21 +494,29 @@ def main() -> int:
     elif use_bulk:
         # ── Bulk path ────────────────────────────────────────────────────────
         print(f"\nSending {len(normalized_items)} curations in bulk (chunk size={args.chunk_size})…")
-        totals = post_curations_bulk(api_bulk_url, api_key, normalized_items, args.chunk_size)
+        try:
+            totals = post_curations_bulk(api_bulk_url, api_key, normalized_items, args.chunk_size)
+        except ApiAuthError as exc:
+            print(f"{Colors.FAIL}ERROR: {exc}{Colors.ENDC}")
+            return 2
         stats['created'] = totals['created']
         stats['updated'] = totals['updated']
         stats['failed'] = totals['errors']
     else:
         # ── One-by-one path (fallback) ────────────────────────────────────────
-        for index, normalized in enumerate(normalized_items, start=1):
-            curation_id = normalized['curation_id']
-            success, message = post_curation(api_curations_url, api_key, normalized)
-            if success:
-                stats['created'] += 1
-                print(f"[{index}/{stats['valid']}] {Colors.OKGREEN}CREATED{Colors.ENDC} {curation_id}")
-            else:
-                stats['failed'] += 1
-                print(f"[{index}/{stats['valid']}] {Colors.FAIL}FAILED{Colors.ENDC} {curation_id} -> {message}")
+        try:
+            for index, normalized in enumerate(normalized_items, start=1):
+                curation_id = normalized['curation_id']
+                success, message = post_curation(api_curations_url, api_key, normalized)
+                if success:
+                    stats['created'] += 1
+                    print(f"[{index}/{stats['valid']}] {Colors.OKGREEN}CREATED{Colors.ENDC} {curation_id}")
+                else:
+                    stats['failed'] += 1
+                    print(f"[{index}/{stats['valid']}] {Colors.FAIL}FAILED{Colors.ENDC} {curation_id} -> {message}")
+        except ApiAuthError as exc:
+            print(f"{Colors.FAIL}ERROR: {exc}{Colors.ENDC}")
+            return 2
 
     print('\n' + '=' * 72)
     print('Summary')
