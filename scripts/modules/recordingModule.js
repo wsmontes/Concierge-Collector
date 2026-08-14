@@ -106,12 +106,22 @@ class RecordingModule {
                 
                 <!-- Circular timer and audio preview section -->
                 <div id="circular-timer-section" class="hidden">
-                    <div id="timer" class="text-center text-4xl font-bold mb-2 text-gray-800 font-mono">00:00</div>
-                    <div class="flex justify-center gap-2">
-                        <button id="discard-recording" class="px-6 py-2 bg-white border border-red-200 text-red-600 hover:bg-red-50 rounded-full shadow-sm hover:shadow text-base transition-colors flex items-center">
-                            <span class="material-icons mr-1 text-sm">delete</span>
-                            Discard
-                        </button>
+                    <div class="flex flex-col items-center">
+                        <!-- Mesmas proporções do timer do Additional Review:
+                             círculo de 140px + anel SVG + display centralizado -->
+                        <div class="timer-circle">
+                            <div id="timer" class="timer-display">00:00</div>
+                            <svg class="timer-ring" viewBox="0 0 100 100">
+                                <circle class="timer-ring-bg" cx="50" cy="50" r="46" />
+                                <circle class="timer-ring-progress" cx="50" cy="50" r="46" />
+                            </svg>
+                        </div>
+                        <div class="flex justify-center gap-2">
+                            <button id="discard-recording" class="px-6 py-2 bg-white border border-red-200 text-red-600 hover:bg-red-50 rounded-full shadow-sm hover:shadow text-base transition-colors flex items-center">
+                                <span class="material-icons mr-1 text-sm">delete</span>
+                                Discard
+                            </button>
+                        </div>
                     </div>
                 </div>
                 
