@@ -1701,8 +1701,6 @@ if (typeof window.UIManager === 'undefined') {
                 curation.transcription ||
                 '';
 
-            const content = document.createElement('div');
-            content.className = 'space-y-4';
             // Transcrição/categorias vêm do áudio do usuário — escapar antes
             // de interpolar em innerHTML (XSS via conteúdo gravado)
             const esc = (v) => {
@@ -1710,58 +1708,81 @@ if (typeof window.UIManager === 'undefined') {
                 d.textContent = v == null ? '' : String(v);
                 return d.innerHTML;
             };
+
+            // Título = nome do restaurante (não um "Review Details" genérico)
+            const displayName = this.getCurationDisplayName(curation) || 'Review Details';
+            const curatorName = esc(curation.curator?.name || curation.curatorName || 'Unknown');
+
+            const content = document.createElement('div');
+            content.className = 'space-y-5';
             content.innerHTML = `
-                <div class="bg-gray-50 p-3 rounded-lg border border-gray-200">
-                    <p class="text-sm text-gray-500 mb-1">Created</p>
-                    <p class="font-medium text-gray-900">${esc(date)}</p>
+                <!-- Meta em chips (padrão único) -->
+                <div class="flex flex-wrap gap-1.5">
+                    <span class="chip chip--neutral">
+                        <span class="material-icons" aria-hidden="true">schedule</span>
+                        ${esc(date)}
+                    </span>
+                    <span class="chip chip--neutral">
+                        <span class="material-icons" aria-hidden="true">person</span>
+                        ${curatorName}
+                    </span>
+                    ${totalConcepts > 0 ? `
+                        <span class="chip chip--info">${totalConcepts} concepts</span>
+                    ` : ''}
                 </div>
 
-        ${transcription ? `
-                    <div>
-                        <h3 class="font-semibold text-gray-700 mb-2">Transcription</h3>
-                        <div class="bg-white p-3 rounded border border-gray-200 text-gray-600 text-sm max-h-40 overflow-y-auto">
+                ${transcription ? `
+                    <section>
+                        <h3 class="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
+                            <span class="material-icons text-base text-gray-500" aria-hidden="true">record_voice_over</span>
+                            Transcription
+                        </h3>
+                        <div class="bg-gray-50 p-4 rounded-lg border border-gray-200 text-sm text-gray-600 leading-relaxed max-h-48 overflow-y-auto whitespace-pre-wrap">
                             ${esc(transcription)}
                         </div>
-                    </div>
-                ` : ''
-                }
+                    </section>
+                ` : ''}
 
-    <div>
-        <h3 class="font-semibold text-gray-700 mb-2 flex items-center justify-between">
-            <span>Extracted Concepts</span>
-            <span class="text-xs bg-blue-100 text-blue-800 px-2 py-0.5 rounded-full">${totalConcepts}</span>
-        </h3>
+                <section>
+                    <h3 class="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
+                        <span class="material-icons text-base text-gray-500" aria-hidden="true">category</span>
+                        Extracted Concepts
+                    </h3>
 
-        ${Object.keys(categories).length === 0 ?
-                    '<p class="text-gray-500 italic text-sm">No concepts extracted</p>' :
-                    '<div class="space-y-3">' +
-                    Object.entries(categories).map(([category, items]) => `
+                    ${Object.keys(categories).length === 0
+                    ? '<p class="text-sm text-gray-400 italic">No concepts extracted</p>'
+                    : '<div class="space-y-3">' +
+                      Object.entries(categories).map(([category, items]) => `
                             <div>
-                                <h4 class="text-xs font-bold uppercase text-gray-500 mb-1">${esc(category)}</h4>
-                                <div class="flex flex-wrap gap-2">
+                                <h4 class="text-xs font-bold uppercase tracking-wider text-gray-500 mb-1.5">${esc(category)}</h4>
+                                <div class="flex flex-wrap gap-1.5">
                                     ${items.map(item => `
-                                        <span class="px-2 py-1 bg-blue-50 text-blue-700 text-xs rounded border border-blue-100">
-                                            ${esc(item)}
-                                        </span>
+                                        <span class="chip chip--info">${esc(item)}</span>
                                     `).join('')}
                                 </div>
                             </div>
                         `).join('') +
-                    '</div>'
-                }
-    </div>
-    `;
+                      '</div>'
+                    }
+                </section>
+            `;
 
-            window.modalManager.open({
-                title: 'Review Details',
-                content: content,
-                footer: `
-            <button class="btn-close-modal px-4 py-2 bg-gray-200 text-gray-700 rounded hover:bg-gray-300" onclick="window.modalManager.closeAll()">
-            Close
-                    </button>
-        `,
+            const footer = document.createElement('div');
+            footer.className = 'w-full flex justify-end';
+            const closeBtn = document.createElement('button');
+            closeBtn.className = 'px-4 py-2 bg-gray-200 text-gray-700 text-sm font-medium rounded-lg hover:bg-gray-300 transition-colors';
+            closeBtn.textContent = 'Close';
+            footer.appendChild(closeBtn);
+
+            const modalId = window.modalManager.open({
+                title: displayName,
+                content,
+                footer,
                 size: 'md'
             });
+
+            // Listener direto (nada de onclick inline — mais robusto e sem CSP frágil)
+            closeBtn.addEventListener('click', () => window.modalManager.close(modalId));
         }
 
         /**
