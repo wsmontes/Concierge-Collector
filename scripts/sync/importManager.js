@@ -93,7 +93,10 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
                     return;
                 }
 
-                if (confirm(`Are you sure you want to purge ${total} processed audio recordings? This will free up significant disk space.`)) {
+                const proceed = await (window.uiUtils?.confirmDialog
+                    ? window.uiUtils.confirmDialog('Purge Processed Audio', `Purge ${total} processed audio recordings? This will free up disk space.`, 'Purge', 'Cancel')
+                    : confirm(`Are you sure you want to purge ${total} processed audio recordings? This will free up significant disk space.`));
+                if (proceed) {
                     SafetyUtils.showLoading('Cleaning up storage...');
                     const deleted = await window.PendingAudioManager.purgeProcessedAudio();
                     SafetyUtils.hideLoading();
@@ -110,7 +113,10 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
         const resetBtn = document.getElementById('full-reset-btn');
         if (resetBtn) {
             resetBtn.addEventListener('click', async () => {
-                if (confirm('⚠️ Full Local Reset? This will DELETE your entire local IndexedDB (all local restaurants, curations, drafts, pending syncs, and cache). The app will reload and perform a fresh sync from server.')) {
+                const proceed = await (window.uiUtils?.confirmDialog
+                    ? window.uiUtils.confirmDialog('Full Local Reset', 'This will DELETE your entire local IndexedDB (all local restaurants, curations, drafts, pending syncs, and cache). The app will reload and perform a fresh sync from server.', 'Reset', 'Cancel')
+                    : confirm('⚠️ Full Local Reset? This will DELETE your entire local IndexedDB. The app will reload and perform a fresh sync from server.'));
+                if (proceed) {
                     SafetyUtils.showLoading('Running full local reset...');
 
                     try {
@@ -688,43 +694,54 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
     }
 
     async promptExportFormat() {
+        // Modal canônico via ModalManager (foco, Escape, overlay)
+        if (!window.modalManager || typeof window.modalManager.open !== 'function') {
+            return 'v3_json';
+        }
         return new Promise((resolve) => {
-            const modal = document.createElement('div');
-            modal.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
-            modal.innerHTML = `
-                <div class="bg-white rounded-lg shadow-xl p-6 max-w-md w-full mx-4">
-                    <h3 class="text-xl font-semibold mb-4">📤 Export Format</h3>
-                    <p class="text-gray-600 mb-4">Choose the export format:</p>
-                    <div class="space-y-3">
-                        <label class="flex items-center space-x-3 cursor-pointer">
-                            <input type="radio" name="format" value="v3_json" class="text-blue-500" checked>
-                            <div><div class="font-medium">V3 JSON Format</div><div class="text-sm text-gray-500">Full V3 entities and curations</div></div>
-                        </label>
-                        <label class="flex items-center space-x-3 cursor-pointer">
-                            <input type="radio" name="format" value="json_package" class="text-blue-500">
-                            <div><div class="font-medium">JSON Package</div><div class="text-sm text-gray-500">entities.json + curations.json in one package</div></div>
-                        </label>
-                        <label class="flex items-center space-x-3 cursor-pointer">
-                            <input type="radio" name="format" value="csv" class="text-blue-500">
-                            <div><div class="font-medium">CSV Format</div><div class="text-sm text-gray-500">Spreadsheet compatible</div></div>
-                        </label>
-                    </div>
-                    <div class="flex space-x-3 mt-6">
-                        <button id="export-confirm" class="flex-1 bg-blue-500 text-white px-4 py-2 rounded hover:bg-blue-600">Export</button>
-                        <button id="export-cancel" class="flex-1 bg-gray-300 text-gray-700 px-4 py-2 rounded hover:bg-gray-400">Cancel</button>
-                    </div>
-                </div>
+            const body = document.createElement('div');
+            body.className = 'space-y-3';
+            body.innerHTML = `
+                <p class="text-sm text-gray-600">Choose the export format:</p>
+                <label class="flex items-center space-x-3 cursor-pointer">
+                    <input type="radio" name="format" value="v3_json" class="text-blue-500" checked>
+                    <div><div class="font-medium">V3 JSON Format</div><div class="text-sm text-gray-500">Full V3 entities and curations</div></div>
+                </label>
+                <label class="flex items-center space-x-3 cursor-pointer">
+                    <input type="radio" name="format" value="json_package" class="text-blue-500">
+                    <div><div class="font-medium">JSON Package</div><div class="text-sm text-gray-500">entities.json + curations.json in one package</div></div>
+                </label>
+                <label class="flex items-center space-x-3 cursor-pointer">
+                    <input type="radio" name="format" value="csv" class="text-blue-500">
+                    <div><div class="font-medium">CSV Format</div><div class="text-sm text-gray-500">Spreadsheet compatible</div></div>
+                </label>
             `;
-            document.body.appendChild(modal);
-            document.getElementById('export-confirm').onclick = () => {
-                const selectedFormat = modal.querySelector('input[name="format"]:checked')?.value;
-                document.body.removeChild(modal);
+            const footer = document.createElement('div');
+            footer.className = 'w-full flex gap-3';
+            footer.innerHTML = `
+                <button id="export-cancel" class="btn btn-muted btn-sm flex-1">Cancel</button>
+                <button id="export-confirm" class="btn btn-primary btn-sm flex-1">Export</button>
+            `;
+
+            const modalId = window.modalManager.open({
+                title: 'Export Format',
+                content: body,
+                footer,
+                size: 'sm',
+                onClose: () => resolve(null)
+            });
+
+            const overlay = document.getElementById(modalId);
+            if (!overlay) { resolve(null); return; }
+            overlay.querySelector('#export-confirm').addEventListener('click', () => {
+                const selectedFormat = overlay.querySelector('input[name="format"]:checked')?.value || 'v3_json';
+                window.modalManager.close(modalId);
                 resolve(selectedFormat);
-            };
-            document.getElementById('export-cancel').onclick = () => {
-                document.body.removeChild(modal);
+            });
+            overlay.querySelector('#export-cancel').addEventListener('click', () => {
+                window.modalManager.close(modalId);
                 resolve(null);
-            };
+            });
         });
     }
 
