@@ -49,46 +49,9 @@
     margin-right: 0.25rem;
 }
 
-/* Source Type Color Variants (matches SourceUtils.js) */
-
-/* Audio / Voice Note */
-.badge-purple {
-    background-color: #F3E8FF; /* purple-100 */
-    color: #6B21A8; /* purple-800 */
-}
-
-/* Photo */
-.badge-pink {
-    background-color: #FCE7F3; /* pink-100 */
-    color: #9D174D; /* pink-800 */
-}
-
-/* Text */
-.badge-blue {
-    background-color: #DBEAFE; /* blue-100 */
-    color: #1E40AF; /* blue-800 */
-}
-
-/* Google Places */
-.badge-green {
-    background-color: #D1FAE5; /* green-100 */
-    color: #065F46; /* green-800 */
-}
-
-/* Imported */
-.badge-amber {
-    background-color: #FEF3C7; /* amber-100 */
-    color: #92400E; /* amber-800 */
-}
-
-/* Manual */
-.badge-gray {
-    background-color: #F3F4F6; /* gray-100 */
-    color: #374151; /* gray-700 */
-}
-
-/* .data-badge.local/.remote removidos — dead CSS (nenhum uso no JS;
-   a variante ativa é .data-badge + badge-{cor} do SourceUtils). */
+/* Variantes badge-purple/pink/blue/green/amber/gray removidas — dead CSS:
+   o SourceUtils agora emite o padrão único .chip chip--{tone}
+   (components.css + tokens do design-system). Ago/2026. */
 
 .data-badge.syncing {
     background-color: #DBEAFE;
