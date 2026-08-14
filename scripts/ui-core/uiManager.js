@@ -734,6 +734,7 @@ if (typeof window.UIManager === 'undefined') {
          *  curations" com os dados TODOS no IndexedDB. */
         async _loadCurationsFromServer(container, { resetScope = false, page = 0 } = {}) {
             const browser = window.CurationBrowser;
+            this._curationsLocalMode = false;
             try {
                 // resetScope=true só no load inicial: o openScope({}) incondicional
                 // que havia aqui apagava o escopo definido por _reloadOrFilterCurations
@@ -827,6 +828,16 @@ if (typeof window.UIManager === 'undefined') {
 
         /** Renderiza a lista a partir do cache local (offline/fallback). */
         async _loadCurationsFromLocal(container) {
+            // Modo local: o renderCurationsPage passa a paginar client-side
+            // sobre o cache INTEIRO (igual entities) — sem isso o dump
+            // pós-sync renderizava tudo numa página só em produção.
+            this._curationsLocalMode = true;
+            if (window.CurationBrowser) {
+                // total do servidor não vale no modo local (o header usa
+                // o tamanho do cache)
+                window.CurationBrowser.total = -1;
+            }
+
             let allCurations = window.DataStore
                 ? await window.DataStore.getCurations({ excludeDeleted: true })
                 : [];
@@ -973,7 +984,11 @@ if (typeof window.UIManager === 'undefined') {
             var container = this.containers.curations;
             if (!container) return;
 
-            var isServerDriven = !!(window.CurationBrowser && window.CurationBrowser.nextPage);
+            // Server-driven de verdade (offset na API). Se o cache veio do
+            // fallback local (offline/pós-sync), o modo local paginando
+            // client-side assume — senão o dump inteiro do Dexie renderiza
+            // numa página só.
+            var isServerDriven = !!(window.CurationBrowser && window.CurationBrowser.nextPage) && !this._curationsLocalMode;
             var cp = this.curationPagination;
             var browser = isServerDriven ? window.CurationBrowser : null;
 
