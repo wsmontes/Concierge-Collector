@@ -241,6 +241,14 @@ async function initializeApp() {
             console.log('✅ CurationBrowser initialized');
         }
 
+        // Initialize EntityBrowser (navegação server-side da aba Entities —
+        // mesmo padrão do CurationBrowser: o acervo de ~21k nunca é baixado)
+        const EntityBrowserClass = window.EntityBrowser;
+        if (EntityBrowserClass && window.ApiService) {
+            window.EntityBrowser = new EntityBrowserClass({ apiService: window.ApiService });
+            console.log('✅ EntityBrowser initialized');
+        }
+
         // Initialize Sync Manager V3 (depends on DataStore and ApiService)
         console.log('🔍 Checking for SyncManagerV3... Type:', typeof window.SyncManagerV3);
         if (window.SyncManagerV3) {
