@@ -21,32 +21,32 @@ const SourceUtils = (() => {
         [SCOPES.AUDIO]: {
             label: 'Voice Note',
             icon: 'mic',
-            className: 'badge-purple' // Maps to CSS class
+            className: 'chip chip--accent' // padrão único de chips
         },
         [SCOPES.IMAGE]: {
             label: 'Photo',
             icon: 'photo_camera',
-            className: 'badge-pink'
+            className: 'chip chip--accent'
         },
         [SCOPES.TEXT]: {
             label: 'Text Input',
             icon: 'text_fields',
-            className: 'badge-blue'
+            className: 'chip chip--info'
         },
         [SCOPES.GOOGLE]: {
             label: 'Google Places',
             icon: 'place',
-            className: 'badge-green'
+            className: 'chip chip--success'
         },
         [SCOPES.IMPORT]: {
             label: 'Imported',
             icon: 'file_upload',
-            className: 'badge-amber'
+            className: 'chip chip--warning'
         },
         [SCOPES.MANUAL]: {
             label: 'Manual Entry',
             icon: 'edit',
-            className: 'badge-gray'
+            className: 'chip chip--neutral'
         }
     };
 

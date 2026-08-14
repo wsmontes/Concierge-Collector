@@ -660,6 +660,35 @@
 .chip--accent  { background-color: var(--chip-accent-bg);  color: var(--chip-accent-fg); }
 
 /* ========================================================================
+   ICON BUTTON (padrão único de botão de ícone nas ações dos cards)
+   Antes cada card tinha botões próprios com paddings/tons variados.
+   ======================================================================== */
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  flex-shrink: 0;
+  border-radius: var(--radius-lg);
+  background-color: var(--color-neutral-50);
+  color: var(--color-neutral-600);
+  border: 1px solid var(--color-neutral-200);
+  cursor: pointer;
+  transition: background-color var(--transition-fast), color var(--transition-fast), border-color var(--transition-fast);
+}
+
+.icon-btn:hover {
+  background-color: var(--color-neutral-100);
+  color: var(--color-neutral-800);
+}
+
+.icon-btn .material-icons {
+  font-size: 18px;
+}
+
+/* ========================================================================
    UTILITIES ARBITRARY (Tailwind 2 CDN não tem JIT)
    As classes text-[10px]...max-h-[80vh] usadas no markup nunca
    existiram no build CDN do Tailwind 2 — os tamanhos finos pretendidos

@@ -261,7 +261,7 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                     </div>
                 </div>
                 <div class="grid grid-cols-3 gap-2 pt-1">
-                    <button class="btn-entity-details h-10 w-full flex items-center justify-center bg-gray-50 text-gray-700 hover:bg-gray-100 rounded-lg transition-all border border-gray-100 shadow-sm" title="Entity Details">
+                    <button class="btn-entity-details icon-btn w-full text-gray-700 hover:bg-gray-100" title="Entity Details">
                         <span class="material-icons text-[18px]">info</span>
                     </button>
                     <button class="btn-entity-sync h-10 w-full flex items-center justify-center bg-gray-50 text-amber-700 hover:bg-amber-50 rounded-lg transition-all border border-gray-100 shadow-sm" title="Sync Entity">
@@ -547,7 +547,7 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                         <span class="${badgeClass} uppercase tracking-wider">
                             ${status}
                         </span>
-                        <div class="data-badge ${sourceInfo.className}">
+                        <div class="${sourceInfo.className}">
                             <span class="material-icons">${sourceInfo.icon}</span>
                             ${sourceInfo.label}
                         </div>
@@ -560,13 +560,13 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                     </div>
                 </div>
                 <div class="grid grid-cols-3 gap-2 pt-1">
-                    <button class="btn-delete-curation h-10 w-full flex items-center justify-center bg-gray-50 text-red-500 hover:bg-red-50 hover:text-red-700 rounded-lg transition-all border border-gray-100 hover:border-red-100 shadow-sm" title="Delete Curation">
+                    <button class="btn-delete-curation icon-btn w-full text-red-500 hover:bg-red-50 hover:text-red-700 hover:border-red-200" title="Delete Curation">
                         <span class="material-icons text-[18px]">delete_outline</span>
                     </button>
-                    <button class="btn-unlink-curation h-10 w-full flex items-center justify-center bg-gray-50 ${isLinkedCuration ? 'text-amber-600 hover:bg-amber-50 hover:text-amber-700 hover:border-amber-100' : 'text-gray-300 cursor-not-allowed'} rounded-lg transition-all border border-gray-100 shadow-sm" title="Unlink Curation" ${isLinkedCuration ? '' : 'disabled'}>
+                    <button class="btn-unlink-curation icon-btn w-full ${isLinkedCuration ? 'text-amber-700 hover:bg-amber-50 hover:text-amber-800 hover:border-amber-200' : 'text-gray-300 cursor-not-allowed'}" title="Unlink Curation" ${isLinkedCuration ? '' : 'disabled'}>
                         <span class="material-icons text-[18px]">link_off</span>
                     </button>
-                    <button class="btn-edit-curation h-10 w-full flex items-center justify-center bg-blue-600 text-white hover:bg-blue-700 rounded-lg transition-all border border-blue-600 shadow-sm" title="Edit Curation">
+                    <button class="btn-edit-curation icon-btn w-full bg-blue-600 text-white hover:bg-blue-700 border-blue-600" title="Edit Curation">
                         <span class="material-icons text-[18px]">edit</span>
                     </button>
                 </div>
