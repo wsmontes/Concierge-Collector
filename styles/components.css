@@ -631,6 +631,25 @@
 .card-accent-published:hover { border-left-color: #9333ea; }
 
 /* ========================================================================
+   UTILITIES ARBITRARY (Tailwind 2 CDN não tem JIT)
+   As classes text-[10px]...max-h-[80vh] usadas no markup nunca
+   existiram no build CDN do Tailwind 2 — os tamanhos finos pretendidos
+   (badges 11px, ícones 14px) nunca aplicaram e os elementos renderizavam
+   com tamanhos herdados. Utilities equivalentes aqui.
+   ======================================================================== */
+
+.text-\[10px\] { font-size: 10px; }
+.text-\[11px\] { font-size: 11px; }
+.text-\[14px\] { font-size: 14px; }
+.text-\[18px\] { font-size: 18px; }
+.text-\[20px\] { font-size: 20px; }
+.mt-\[1px\] { margin-top: 1px; }
+.w-\[90\%\] { width: 90%; }
+.max-w-\[150px\] { max-width: 150px; }
+.max-h-\[95vh\] { max-height: 95vh; }
+.max-h-\[80vh\] { max-height: 80vh; }
+
+/* ========================================================================
    TOASTS (Toastify)
    Card branco com accent de cor por tipo — mesma linguagem visual dos
    cards de curadoria. Substitui o fundo escuro padrão do Toastify.

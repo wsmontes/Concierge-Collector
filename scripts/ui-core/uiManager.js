@@ -1538,7 +1538,7 @@ if (typeof window.UIManager === 'undefined') {
                                 <span class="font-medium">${linkedEntityName || 'Linked'}</span>
                             </div>
                         ` : `
-                            <button class="btn-link-entity px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1.5 shadow-sm">
+                            <button class="btn-link-entity px-3 py-1.5 text-xs h-8 flex items-center bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1.5 shadow-sm">
                                 <span class="material-icons text-[14px]">link</span>
                                 <span class="font-bold uppercase tracking-wider">Link Entity</span>
                             </button>
