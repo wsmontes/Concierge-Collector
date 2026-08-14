@@ -36,7 +36,7 @@ from app.core.database import get_database
 from bson import ObjectId
 
 from app.core.query_utils import resolve_after_id
-from app.core.rate_limit import limiter
+from app.core.rate_limit import limiter, auth_header_key
 from app.core.security import is_admin_auth, require_role
 from app.models.user import has_role
 from app.services.curation_denorm import denormalize_curation_location
@@ -626,7 +626,7 @@ def delete_curation(
 
 
 @router.post("/semantic-search", response_model=SemanticSearchResponse)
-@limiter.limit("10/minute")
+@limiter.limit("10/minute", key_func=auth_header_key)
 def semantic_search_curations(
     request: Request,
     body: SemanticSearchRequest,
@@ -802,7 +802,7 @@ def semantic_search_curations(
 
 
 @router.post("/hybrid-search", response_model=HybridSearchResponse)
-@limiter.limit("10/minute")
+@limiter.limit("10/minute", key_func=auth_header_key)
 def hybrid_search(request: Request, body: HybridSearchRequest, db: Database = Depends(get_database)):
     """Busca híbrida: combina busca tradicional de entities + busca semântica de curations
 

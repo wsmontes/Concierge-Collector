@@ -124,3 +124,30 @@ class TestPhotoProxy:
         assert response.status_code == 302
         location = response.headers["location"]
         assert "maxWidthPx=1200" in location
+
+
+def test_orchestrate_place_ids_max_20(client):
+    """Fan-out de custo: 1 request do concierge não pode gerar 500 chamadas
+    Google — place_ids limita a 20 (auditoria ago/2026)."""
+    from app.core.security import create_access_token
+
+    token = create_access_token(data={"sub": "t@x.com", "role": "curator"})
+    r = client.post(
+        "/api/v3/places/orchestrate",
+        json={"place_ids": [f"pid_{i}" for i in range(21)]},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 422
+
+
+def test_orchestrate_operations_max_10(client):
+    """operations limita a 10 itens no schema."""
+    from app.core.security import create_access_token
+
+    token = create_access_token(data={"sub": "t@x.com", "role": "curator"})
+    r = client.post(
+        "/api/v3/places/orchestrate",
+        json={"operations": [{"action": "details", "place_id": f"p{i}"} for i in range(11)]},
+        headers={"Authorization": f"Bearer {token}"},
+    )
+    assert r.status_code == 422

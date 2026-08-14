@@ -42,7 +42,11 @@ class PlacesOrchestrationRequest(BaseModel):
     # Search parameters
     query: Optional[str] = Field(None, description="Text query for search")
     place_id: Optional[str] = Field(None, description="Place ID for details lookup")
-    place_ids: Optional[List[str]] = Field(None, description="List of Place IDs for bulk details lookup")
+    place_ids: Optional[List[str]] = Field(
+        None,
+        max_length=20,
+        description="List of Place IDs for bulk details lookup (max 20 — fan-out de custo na API do Google)",
+    )
 
     # Location parameters
     latitude: Optional[float] = Field(None, description="Latitude for location-based search")
@@ -70,7 +74,11 @@ class PlacesOrchestrationRequest(BaseModel):
     combine_results: Optional[bool] = Field(True, description="Combine results from multiple operations")
 
     # Multi-operation parameters
-    operations: Optional[List[Dict[str, Any]]] = Field(None, description="List of operations to execute in bulk")
+    operations: Optional[List[Dict[str, Any]]] = Field(
+        None,
+        max_length=10,
+        description="List of operations to execute in bulk (max 10 — cada operação pode gerar chamadas Google)",
+    )
 
 
 class PlacesOrchestrationResponse(BaseModel):

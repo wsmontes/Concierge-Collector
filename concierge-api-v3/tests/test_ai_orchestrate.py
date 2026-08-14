@@ -10,6 +10,20 @@ import base64
 
 
 @pytest.mark.openai
+@pytest.mark.openai
+@pytest.fixture(autouse=True)
+def _reset_limiter():
+    """O rate limit por usuário (10/min) estoura quando os testes rodam em
+    sequência com o mesmo header — reset entre testes."""
+    from app.core.rate_limit import limiter
+
+    if hasattr(limiter, "reset"):
+        limiter.reset()
+    yield
+    if hasattr(limiter, "reset"):
+        limiter.reset()
+
+
 class TestAIOrchestrate:
     """Comprehensive tests for /api/v3/ai/orchestrate endpoint"""
 
@@ -210,12 +224,16 @@ class TestOutputHandler:
         orchestrator = AIOrchestrator(db=test_db, openai_service=MagicMock())
         results = {
             "entity": {
-                "entity_id": "test_ai_ent", "name": "Casa AI", "entity_type": "restaurant",
+                "entity_id": "test_ai_ent",
+                "name": "Casa AI",
+                "entity_type": "restaurant",
                 "location": {"type": "Point", "coordinates": [0, 0]},
             },
             "curation": {
-                "curation_id": "test_ai_cur", "entity_id": "test_ai_ent",
-                "curator_id": "hacker@evil.com", "categories": {"cuisine": ["brasileira"]},
+                "curation_id": "test_ai_cur",
+                "entity_id": "test_ai_ent",
+                "curator_id": "hacker@evil.com",
+                "categories": {"cuisine": ["brasileira"]},
             },
         }
         auth = {"method": "jwt", "user": "concierge@demo.com", "role": "curator", "authenticated": True}

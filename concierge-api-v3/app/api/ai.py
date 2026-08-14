@@ -14,6 +14,7 @@ from app.core.security import verify_auth, is_admin_auth
 from app.models.user import has_role
 from app.services.openai_service import OpenAIService
 from app.services.ai_orchestrator import AIOrchestrator
+from app.core.rate_limit import limiter, auth_header_key
 
 router = APIRouter(prefix="/ai", tags=["AI Services"])
 
@@ -103,8 +104,10 @@ def get_ai_orchestrator(db=Depends(get_database), openai_service=Depends(get_ope
 
 
 @router.post("/orchestrate", response_model=OrchestrateResponse)
+@limiter.limit("10/minute", key_func=auth_header_key)
 async def orchestrate(
-    request: OrchestrateRequest,
+    request: Request,
+    payload: OrchestrateRequest,
     orchestrator: AIOrchestrator = Depends(get_ai_orchestrator),
     auth: dict = Depends(verify_auth),  # Support both API key and JWT
 ):
@@ -151,14 +154,14 @@ async def orchestrate(
         logger.info("=" * 60)
         logger.info("[AI Orchestrate] New request received")
         logger.info(f"[AI Orchestrate] User: {auth.get('user', 'unknown')}")
-        logger.info(f"[AI Orchestrate] Has audio: {request.audio_file is not None}")
-        logger.info(f"[AI Orchestrate] Has image: {request.image_file is not None}")
-        logger.info(f"[AI Orchestrate] Has text: {request.text is not None}")
-        logger.info(f"[AI Orchestrate] Language: {request.language}")
-        logger.info(f"[AI Orchestrate] Entity type: {request.entity_type}")
+        logger.info(f"[AI Orchestrate] Has audio: {payload.audio_file is not None}")
+        logger.info(f"[AI Orchestrate] Has image: {payload.image_file is not None}")
+        logger.info(f"[AI Orchestrate] Has text: {payload.text is not None}")
+        logger.info(f"[AI Orchestrate] Language: {payload.language}")
+        logger.info(f"[AI Orchestrate] Entity type: {payload.entity_type}")
 
         # Convert Pydantic model to dict
-        request_dict = request.model_dump(exclude_none=True)
+        request_dict = payload.model_dump(exclude_none=True)
 
         # ── RBAC (P0, auditoria ago/2026): salvar é ESCRITA — viewer não
         # escreve. O gate é ANTES do orchestrate (que custa OpenAI), não depois.

@@ -7,8 +7,21 @@ não podem importar de main.py). O main.py anexa esta instância ao
 app.state.limiter e registra o handler/exception handler/middleware.
 """
 
+import hashlib
+
 from slowapi import Limiter
 from slowapi.util import get_remote_address
+
+
+def auth_header_key(request):
+    """Bucket por CREDENCIAL (hash do header, nunca o token em claro) —
+    custo de IA é por usuário, não por IP (IP não protege contra uso
+    distribuído). Sem credencial, cai no IP."""
+    header = request.headers.get("authorization", "") or request.headers.get("x-api-key", "")
+    if not header:
+        return get_remote_address(request)
+    return hashlib.sha256(header.encode()).hexdigest()
+
 
 # Rate limiter — keyed by client IP.
 # Default limits (can be overridden per-endpoint with @limiter.limit):
