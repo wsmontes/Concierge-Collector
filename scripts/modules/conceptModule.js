@@ -1779,187 +1779,154 @@ class ConceptModule {
      * @param {Array} photoDataArray - Array of photo data objects {photoData, fileName}
      */
     showMultiImagePreviewModal(photoDataArray) {
-        // Create modal container
-        const modalContainer = document.createElement('div');
-        modalContainer.id = 'image-preview-modal';
-        modalContainer.className = 'fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50';
+        // Modal canônico via ModalManager. O conteúdo muda a cada
+        // prev/next — em vez de re-renderizar o innerHTML inteiro (que
+        // invalidaria o focus trap), o esqueleto é estático e só os
+        // elementos dinâmicos são atualizados.
+        if (!window.modalManager || typeof window.modalManager.open !== 'function') {
+            this.log?.warn('ModalManager not available');
+            return;
+        }
 
-        // Track the current image index
-        const state = {
-            currentIndex: 0,
-            totalImages: photoDataArray.length
-        };
+        const state = { currentIndex: 0, totalImages: photoDataArray.length };
 
-        // Generate the modal content
-        const updateModalContent = () => {
+        const body = document.createElement('div');
+        body.className = 'space-y-4';
+        body.innerHTML = `
+            <div class="relative">
+                <img id="preview-image" alt="Preview" class="w-full h-64 object-contain rounded border border-gray-300">
+                <div id="preview-dots" class="absolute bottom-2 left-0 right-0 flex justify-center space-x-1" aria-hidden="true"></div>
+                <button id="prev-image" aria-label="Previous image" class="absolute left-2 top-1/2 transform -translate-y-1/2 bg-white rounded-full p-1 shadow hover:bg-gray-100">
+                    <span class="material-icons" aria-hidden="true">chevron_left</span>
+                </button>
+                <button id="next-image" aria-label="Next image" class="absolute right-2 top-1/2 transform -translate-y-1/2 bg-white rounded-full p-1 shadow hover:bg-gray-100">
+                    <span class="material-icons" aria-hidden="true">chevron_right</span>
+                </button>
+            </div>
+
+            <div>
+                <label class="flex items-center">
+                    <input type="checkbox" id="use-ai-analysis" class="mr-2" checked>
+                    <span>Use AI to extract restaurant data</span>
+                    <span class="material-icons ml-1 text-sm text-purple-500">smart_toy</span>
+                </label>
+                <p class="text-xs text-gray-500 mt-1">
+                    AI will attempt to identify restaurant name and concepts from the ${state.totalImages > 1 ? 'images' : 'image'}
+                </p>
+            </div>
+
+            <div class="flex justify-between">
+                <button id="retake-photos" class="bg-gray-500 text-white px-4 py-2 rounded flex items-center">
+                    <span class="material-icons mr-1">replay</span>
+                    Retake
+                </button>
+                <button id="accept-photos" class="bg-green-500 text-white px-4 py-2 rounded flex items-center">
+                    <span class="material-icons mr-1">check</span>
+                    Accept All ${state.totalImages > 1 ? `(${state.totalImages})` : ''}
+                </button>
+            </div>
+        `;
+
+        const modalId = window.modalManager.open({
+            title: 'Image Preview (1/' + state.totalImages + ')',
+            content: body,
+            size: 'md'
+        });
+
+        const overlay = document.getElementById(modalId);
+        if (!overlay) return;
+        const closeModal = () => window.modalManager.close(modalId);
+
+        const img = overlay.querySelector('#preview-image');
+        const dots = overlay.querySelector('#preview-dots');
+        const prevBtn = overlay.querySelector('#prev-image');
+        const nextBtn = overlay.querySelector('#next-image');
+
+        if (state.totalImages <= 1) {
+            prevBtn.classList.add('hidden');
+            nextBtn.classList.add('hidden');
+        }
+
+        // Atualiza só o que muda (img, dots, disabled, título)
+        const renderState = () => {
             const current = photoDataArray[state.currentIndex];
-            const isLastImage = state.currentIndex === state.totalImages - 1;
+            const isLast = state.currentIndex === state.totalImages - 1;
 
-            modalContainer.innerHTML = `
-                <div class="bg-white rounded-lg p-6 max-w-md w-full" role="dialog" aria-modal="true" aria-label="Image preview" tabindex="-1">
-                    <div class="flex justify-between items-center mb-4">
-                        <h2 class="text-xl font-bold flex items-center">
-                            <span class="material-icons mr-2 text-green-500">photo</span>
-                            Image Preview (${state.currentIndex + 1}/${state.totalImages})
-                        </h2>
-                        <button id="close-preview-modal" aria-label="Close preview" class="text-gray-500 hover:text-gray-800 text-xl">&times;</button>
-                    </div>
-
-                    <div class="mb-4 relative">
-                        <img src="${current.photoData}" alt="Preview" class="w-full h-64 object-contain rounded border border-gray-300">
-
-                        <div class="absolute bottom-2 left-0 right-0 flex justify-center space-x-1" aria-hidden="true">
-                            ${photoDataArray.map((_, idx) =>
+            img.src = current.photoData;
+            dots.innerHTML = photoDataArray.map((_, idx) =>
                 `<div class="h-2 w-2 rounded-full ${idx === state.currentIndex ? 'bg-blue-500' : 'bg-gray-300'}"></div>`
-            ).join('')}
-                        </div>
+            ).join('');
 
-                        ${state.totalImages > 1 ? `
-                            <button id="prev-image" aria-label="Previous image" class="absolute left-2 top-1/2 transform -translate-y-1/2 bg-white rounded-full p-1 shadow ${state.currentIndex === 0 ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'}" ${state.currentIndex === 0 ? 'disabled' : ''}>
-                                <span class="material-icons" aria-hidden="true">chevron_left</span>
-                            </button>
-                            <button id="next-image" aria-label="Next image" class="absolute right-2 top-1/2 transform -translate-y-1/2 bg-white rounded-full p-1 shadow ${isLastImage ? 'opacity-50 cursor-not-allowed' : 'hover:bg-gray-100'}" ${isLastImage ? 'disabled' : ''}>
-                                <span class="material-icons" aria-hidden="true">chevron_right</span>
-                            </button>
-                        ` : ''}
-                    </div>
-                    
-                    <div class="mb-4">
-                        <label class="flex items-center">
-                            <input type="checkbox" id="use-ai-analysis" class="mr-2" checked>
-                            <span>Use AI to extract restaurant data</span>
-                            <span class="material-icons ml-1 text-sm text-purple-500">smart_toy</span>
-                        </label>
-                        <p class="text-xs text-gray-500 mt-1">
-                            AI will attempt to identify restaurant name and concepts from the ${state.totalImages > 1 ? 'images' : 'image'}
-                        </p>
-                    </div>
-                    
-                    <div class="flex justify-between">
-                        <button id="retake-photos" class="bg-gray-500 text-white px-4 py-2 rounded flex items-center">
-                            <span class="material-icons mr-1">replay</span>
-                            Retake
-                        </button>
-                        <button id="accept-photos" class="bg-green-500 text-white px-4 py-2 rounded flex items-center">
-                            <span class="material-icons mr-1">check</span>
-                            Accept All ${state.totalImages > 1 ? `(${state.totalImages})` : ''}
-                        </button>
-                    </div>
-                </div>
-            `;
+            prevBtn.disabled = state.currentIndex === 0;
+            prevBtn.classList.toggle('opacity-50', state.currentIndex === 0);
+            prevBtn.classList.toggle('cursor-not-allowed', state.currentIndex === 0);
+            nextBtn.disabled = isLast;
+            nextBtn.classList.toggle('opacity-50', isLast);
+            nextBtn.classList.toggle('cursor-not-allowed', isLast);
 
-            // Setup event handlers after updating the content
-            setupEventHandlers();
+            window.modalManager.update(modalId, {
+                title: `Image Preview (${state.currentIndex + 1}/${state.totalImages})`
+            });
         };
 
-        // Setup the event handlers for the modal
-        const setupEventHandlers = () => {
-            const closeBtn = document.getElementById('close-preview-modal');
-            const retakeBtn = document.getElementById('retake-photos');
-            const acceptBtn = document.getElementById('accept-photos');
-            const prevBtn = document.getElementById('prev-image');
-            const nextBtn = document.getElementById('next-image');
-
-            if (closeBtn) {
-                closeBtn.addEventListener('click', () => {
-                    document.body.removeChild(modalContainer);
-                    document.body.style.overflow = '';
-                });
+        prevBtn.addEventListener('click', () => {
+            if (state.currentIndex > 0) {
+                state.currentIndex--;
+                renderState();
             }
+        });
 
-            if (retakeBtn) {
-                retakeBtn.addEventListener('click', () => {
-                    document.body.removeChild(modalContainer);
-                    document.body.style.overflow = '';
-
-                    // Determine which input to trigger based on the file name
-                    const isCamera = photoDataArray.some(item =>
-                        item.fileName && item.fileName.includes('camera'));
-
-                    if (isCamera) {
-                        document.getElementById('camera-input').click();
-                    } else {
-                        document.getElementById('gallery-input').click();
-                    }
-                });
+        nextBtn.addEventListener('click', () => {
+            if (state.currentIndex < state.totalImages - 1) {
+                state.currentIndex++;
+                renderState();
             }
+        });
 
-            if (acceptBtn) {
-                acceptBtn.addEventListener('click', async () => {
-                    const useAI = document.getElementById('use-ai-analysis').checked;
+        overlay.querySelector('#retake-photos').addEventListener('click', () => {
+            closeModal();
 
-                    // Add all photos to the collection
+            // Determine which input to trigger based on the file name
+            const isCamera = photoDataArray.some(item =>
+                item.fileName && item.fileName.includes('camera'));
+
+            if (isCamera) {
+                document.getElementById('camera-input').click();
+            } else {
+                document.getElementById('gallery-input').click();
+            }
+        });
+
+        overlay.querySelector('#accept-photos').addEventListener('click', async () => {
+            const useAI = document.getElementById('use-ai-analysis').checked;
+
+            // Add all photos to the collection
+            photoDataArray.forEach(item => {
+                this.addPhotoToCollection(item.photoData);
+            });
+
+            closeModal();
+
+            // If AI analysis is enabled, process all images
+            if (useAI) {
+                try {
+                    // Add all images to the processing queue
                     photoDataArray.forEach(item => {
-                        this.addPhotoToCollection(item.photoData);
+                        this.imageProcessingQueue.push(item.photoData);
                     });
 
-                    // Close the modal
-                    document.body.removeChild(modalContainer);
-                    document.body.style.overflow = '';
-
-                    // If AI analysis is enabled, process all images
-                    if (useAI) {
-                        try {
-                            // Add all images to the processing queue
-                            photoDataArray.forEach(item => {
-                                this.imageProcessingQueue.push(item.photoData);
-                            });
-
-                            // Start processing queue if not already running
-                            if (!this.isProcessingQueue) {
-                                await this.processImageQueue();
-                            }
-                        } catch (error) {
-                            this.log.error('Error adding images to AI processing queue:', error);
-                            SafetyUtils.showNotification('Error setting up AI analysis', 'error');
-                        }
+                    // Start processing queue if not already running
+                    if (!this.isProcessingQueue) {
+                        await this.processImageQueue();
                     }
-                });
-            }
-
-            if (prevBtn) {
-                prevBtn.addEventListener('click', () => {
-                    if (state.currentIndex > 0) {
-                        state.currentIndex--;
-                        updateModalContent();
-                    }
-                });
-            }
-
-            if (nextBtn) {
-                nextBtn.addEventListener('click', () => {
-                    if (state.currentIndex < state.totalImages - 1) {
-                        state.currentIndex++;
-                        updateModalContent();
-                    }
-                });
-            }
-        };
-
-        // Initial render of the modal content
-        document.body.appendChild(modalContainer);
-        document.body.style.overflow = 'hidden';
-
-        // A11y: Escape fecha o preview (handler no container sobrevive aos
-        // re-renders do innerHTML e morre junto quando o modal é removido)
-        modalContainer.addEventListener('keydown', (e) => {
-            if (e.key === 'Escape' && document.body.contains(modalContainer)) {
-                document.body.removeChild(modalContainer);
-                document.body.style.overflow = '';
+                } catch (error) {
+                    this.log.error('Error adding images to AI processing queue:', error);
+                    SafetyUtils.showNotification('Error setting up AI analysis', 'error');
+                }
             }
         });
 
-        updateModalContent();
-        // A11y: foco entra no diálogo ao abrir
-        modalContainer.querySelector('[role="dialog"]')?.focus();
-
-        // Close when clicking outside
-        modalContainer.addEventListener('click', event => {
-            if (event.target === modalContainer) {
-                document.body.removeChild(modalContainer);
-                document.body.style.overflow = '';
-            }
-        });
+        renderState();
     }
 
     /**
