@@ -14,6 +14,7 @@ import uuid
 from typing import Dict, Any, Optional
 from datetime import datetime, timezone
 
+import httpx
 from openai import OpenAI
 from motor.motor_asyncio import AsyncIOMotorClient
 from pymongo import MongoClient
@@ -22,6 +23,43 @@ from app.services.category_service import CategoryService
 from app.services.openai_config_service import OpenAIConfigService
 
 logger = logging.getLogger(__name__)
+
+MAX_IMAGE_DOWNLOAD_BYTES = 20 * 1024 * 1024  # 20MB (max_file_size_mb do config)
+
+
+async def resolve_image_input(image: str) -> str:
+    """Normaliza a entrada de imagem para o formato que a OpenAI consegue
+    consumir SEM download remoto: data URL (base64).
+
+    URLs http(s) — inclusive as do proxy /places/photo (302 → Google) — são
+    baixadas AQUI (server-side); o downloader da OpenAI não segue o redirect
+    do proxy e falhava com "Error while downloading https://...". Data URLs
+    passam direto. Qualquer outra entrada é recusada com erro claro."""
+    if isinstance(image, str) and image.startswith("data:"):
+        return image
+
+    if not isinstance(image, str) or not image.startswith(("http://", "https://")):
+        raise ValueError(
+            "Formato de imagem não suportado — use URL http(s) ou data URL "
+            "(o download de imagens é feito pelo servidor)"
+        )
+
+    try:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=30) as client:
+            response = await client.get(image)
+            response.raise_for_status()
+    except Exception as exc:  # httpx.HTTPError + status != 2xx
+        raise ValueError(f"Não foi possível baixar a imagem: {exc}") from exc
+
+    content_type = response.headers.get("content-type", "")
+    if not content_type.startswith("image/"):
+        raise ValueError(f"content-type inválido na imagem: {content_type!r}")
+
+    if len(response.content) > MAX_IMAGE_DOWNLOAD_BYTES:
+        raise ValueError(f"Imagem maior que {MAX_IMAGE_DOWNLOAD_BYTES // (1024 * 1024)}MB")
+
+    b64 = base64.b64encode(response.content).decode()
+    return f"data:{content_type};base64,{b64}"
 
 
 class OpenAIService:
@@ -323,6 +361,10 @@ class OpenAIService:
 
         # Render prompt with variables
         prompt = self.config_service.render_prompt("image_analysis", {"categories": categories})
+
+        # Baixar a imagem AQUI e mandar data URL: o downloader da OpenAI não
+        # segue o 302 do proxy /places/photo (falha "Error while downloading")
+        image_url = await resolve_image_input(image_url)
 
         # Call OpenAI Vision — SDK síncrono em thread (ver transcribe_audio)
         response = await asyncio.to_thread(
