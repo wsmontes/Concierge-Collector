@@ -24,6 +24,22 @@ class FakeResponse:
     def raise_for_status(self):
         return None
 
+    async def aiter_bytes(self):
+        yield self.content
+
+
+class _StreamCtx:
+    """Context manager de stream do httpx fake — devolve a response."""
+
+    def __init__(self, resp):
+        self.resp = resp
+
+    async def __aenter__(self):
+        return self.resp
+
+    async def __aexit__(self, *exc):
+        return False
+
 
 class _BaseClient:
     def __init__(self, *args, **kwargs):
@@ -38,11 +54,14 @@ class _BaseClient:
     async def get(self, url):  # pragma: no cover
         raise AssertionError(f"httpx não deveria baixar {url} neste teste")
 
+    def stream(self, method, url, **kwargs):  # pragma: no cover
+        raise AssertionError(f"httpx não deveria baixar {url} neste teste")
+
 
 def _mk_fake_httpx(monkeypatch, responder):
     class _Client(_BaseClient):
-        async def get(self, url):
-            return responder(url)
+        def stream(self, method, url, **kwargs):
+            return _StreamCtx(responder(url))
 
     monkeypatch.setattr("app.services.openai_service.httpx.AsyncClient", _Client)
 
@@ -105,7 +124,7 @@ async def test_base64_magic_desconhecido_vira_valueerror(monkeypatch):
 @pytest.mark.asyncio
 async def test_download_falha_vira_valueerror(monkeypatch):
     class _Fail(_BaseClient):
-        async def get(self, url):
+        def stream(self, method, url, **kwargs):
             raise RuntimeError("conexão recusada")
 
     monkeypatch.setattr("app.services.openai_service.httpx.AsyncClient", _Fail)
@@ -282,3 +301,103 @@ async def test_resposta_sem_json_vira_valueerror(monkeypatch):
             entity_type="restaurant",
             save_to_cache=False,
         )
+
+
+# ── SSRF / limites de download (auditoria ago/2026) ──────────────────────
+
+async def test_image_url_loopback_bloqueado(monkeypatch):
+    """127.0.0.1/localhost são rede interna — o download NÃO pode nem começar."""
+    from app.services.openai_service import resolve_image_input
+
+    for url in ("http://127.0.0.1/x.png", "http://localhost/x.png", "http://[::1]/x.png"):
+        with pytest.raises(ValueError, match="não permitido|não permitida"):
+            await resolve_image_input(url)
+
+
+async def test_image_url_privado_bloqueado(monkeypatch):
+    """RFC1918, link-local (metadata cloud) e reservados são bloqueados."""
+    from app.services.openai_service import resolve_image_input
+
+    for url in (
+        "http://10.0.0.5/x.png",
+        "http://192.168.1.1/x.png",
+        "http://172.16.0.1/x.png",
+        "http://169.254.169.254/latest/meta-data/",
+    ):
+        with pytest.raises(ValueError, match="não permitido|não permitida"):
+            await resolve_image_input(url)
+
+
+async def test_image_url_com_credenciais_embutidas_bloqueado(monkeypatch):
+    from app.services.openai_service import resolve_image_input
+
+    with pytest.raises(ValueError):
+        await resolve_image_input("http://user:pass@example.com/x.png")
+
+
+async def test_host_nao_resolvivel_bloqueado(monkeypatch):
+    """Host que não resolve não pode ser baixado (evita bypass via DNS)."""
+    import socket
+    from app.services.openai_service import _is_blocked_host
+
+    def fake_getaddrinfo(host, port=None, *args, **kwargs):
+        raise socket.gaierror("no address")
+
+    monkeypatch.setattr(socket, "getaddrinfo", fake_getaddrinfo)
+    assert _is_blocked_host("naoexiste.invalid") is True
+
+
+async def test_download_limita_bytes_durante_streaming(monkeypatch):
+    """O limite de 20MB vale DURANTE o download (não depois de baixar tudo)."""
+    import httpx
+    from app.services.openai_service import resolve_image_input
+
+    class FakeResponse:
+        headers = {"content-type": "image/png"}
+
+        def raise_for_status(self):
+            return None
+
+        async def aiter_bytes(self):
+            chunk = b"x" * 1024
+            while True:
+                yield chunk
+
+    class FakeStream:
+        async def __aenter__(self):
+            return FakeResponse()
+
+        async def __aexit__(self, *args):
+            return None
+
+    class FakeClient:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *exc):
+            return False
+
+        def stream(self, method, url, **kwargs):
+            return FakeStream()
+
+    async def fake_getaddrinfo(host, port=None, *args, **kwargs):
+        return [(2, 1, 6, "", ("93.184.216.34", 0))]
+
+    monkeypatch.setattr(httpx, "AsyncClient", FakeClient)
+    monkeypatch.setattr("socket.getaddrinfo", fake_getaddrinfo)
+
+    with pytest.raises(ValueError, match="maior que"):
+        await resolve_image_input("http://example.com/x.png")
+
+
+async def test_redirect_para_loopback_bloqueado_no_hook(monkeypatch):
+    """Cada request da cadeia de redirects passa pelo hook de validação."""
+    import httpx
+    from app.services.openai_service import _validate_image_request
+
+    req = httpx.Request("GET", "http://127.0.0.1/x.png")
+    with pytest.raises(ValueError):
+        _validate_image_request(req)

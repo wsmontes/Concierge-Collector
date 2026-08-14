@@ -28,6 +28,59 @@ logger = logging.getLogger(__name__)
 MAX_IMAGE_DOWNLOAD_BYTES = 20 * 1024 * 1024  # 20MB (max_file_size_mb do config)
 
 
+# ============================================================================
+# SSRF GUARDS (auditoria ago/2026)
+# ============================================================================
+# resolve_image_input baixava image_url com redirects livres: um usuário
+# autenticado podia apontar para 127.0.0.1/10.x/169.254.169.254 e ler a
+# rede interna do servidor. Bloqueio por DNS do host + revalidação a cada
+# redirect + limite de bytes DURANTE o streaming.
+
+
+def _is_blocked_host(hostname: str) -> bool:
+    """True quando o host resolve para IP interno/reservado (SSRF) ou não
+    resolve (não dá para validar → bloqueia)."""
+    import ipaddress
+    import socket
+
+    if not hostname:
+        return True
+    try:
+        infos = socket.getaddrinfo(hostname, None)
+    except socket.gaierror:
+        return True
+
+    for info in infos:
+        try:
+            ip = ipaddress.ip_address(info[4][0])
+        except ValueError:
+            continue
+        if (
+            ip.is_loopback
+            or ip.is_private
+            or ip.is_link_local  # inclui 169.254.169.254 (metadata cloud)
+            or ip.is_reserved
+            or ip.is_multicast
+        ):
+            return True
+    return False
+
+
+def _validate_image_request(request) -> None:
+    """Hook de request do httpx: valida o destino de TODA requisição da
+    cadeia (a inicial e cada redirect — o httpx dispara os hooks a cada
+    nova requisição da cadeia)."""
+    import urllib.parse
+
+    parsed = urllib.parse.urlparse(str(request.url))
+    if parsed.scheme not in ("http", "https"):
+        raise ValueError("image_url precisa ser http(s)")
+    if parsed.username or parsed.password:
+        raise ValueError("image_url com credenciais embutidas não é permitida")
+    if _is_blocked_host(parsed.hostname or ""):
+        raise ValueError("destino de imagem não permitido (rede interna)")
+
+
 def _sniff_image_mime(raw: bytes) -> Optional[str]:
     """Mime por magic bytes — base64 cru não informa o tipo do arquivo."""
     if raw[:3] == b"\xff\xd8\xff":
@@ -60,21 +113,35 @@ async def resolve_image_input(image: str) -> str:
         )
 
     if image.startswith(("http://", "https://")):
+        # streaming + limite DURANTE o download + SSRF guard em cada
+        # request da cadeia de redirects (event hook)
         try:
-            async with httpx.AsyncClient(follow_redirects=True, timeout=30) as client:
-                response = await client.get(image)
-                response.raise_for_status()
+            async with httpx.AsyncClient(
+                follow_redirects=True, timeout=30, event_hooks={"request": [_validate_image_request]}
+            ) as client:
+                async with client.stream("GET", image) as response:
+                    response.raise_for_status()
+
+                    content_type = response.headers.get("content-type", "")
+                    if not content_type.startswith("image/"):
+                        raise ValueError(f"content-type inválido na imagem: {content_type!r}")
+
+                    chunks = []
+                    total = 0
+                    async for chunk in response.aiter_bytes():
+                        total += len(chunk)
+                        if total > MAX_IMAGE_DOWNLOAD_BYTES:
+                            raise ValueError(
+                                f"Imagem maior que {MAX_IMAGE_DOWNLOAD_BYTES // (1024 * 1024)}MB"
+                            )
+                        chunks.append(chunk)
+                    raw = b"".join(chunks)
+        except ValueError:
+            raise
         except Exception as exc:  # httpx.HTTPError + status != 2xx
             raise ValueError(f"Não foi possível baixar a imagem: {exc}") from exc
 
-        content_type = response.headers.get("content-type", "")
-        if not content_type.startswith("image/"):
-            raise ValueError(f"content-type inválido na imagem: {content_type!r}")
-
-        if len(response.content) > MAX_IMAGE_DOWNLOAD_BYTES:
-            raise ValueError(f"Imagem maior que {MAX_IMAGE_DOWNLOAD_BYTES // (1024 * 1024)}MB")
-
-        b64 = base64.b64encode(response.content).decode()
+        b64 = base64.b64encode(raw).decode()
         return f"data:{content_type};base64,{b64}"
 
     # base64 cru (ex.: image_file do frontend antigo / clientes externos)
