@@ -33,8 +33,9 @@ class TestVerifyAuth:
             verify_auth(api_key=None, bearer=None)
         assert exc.value.status_code == 401
 
-    def test_bearer_missing_role_defaults_to_curator(self):
-        """JWT without role claim defaults to 'curator'."""
+    def test_bearer_missing_role_defaults_to_viewer(self):
+        """JWT sem role claim vira 'viewer' (nunca curator — refresh de
+        viewer sem role era aceito como curator: escalation)."""
         from app.core.security import verify_auth, create_access_token
 
         token = create_access_token(data={"sub": "test@example.com"})
@@ -45,7 +46,7 @@ class TestVerifyAuth:
         result = verify_auth(api_key=None, bearer=creds)
         assert result["authenticated"] is True
         assert result["method"] == "jwt"
-        assert result["role"] == "curator"
+        assert result["role"] == "viewer"
 
     def test_bearer_invalid_raises_401(self):
         """Invalid JWT raises 401."""
@@ -196,3 +197,63 @@ class TestJwtHelpers:
         with pytest.raises(HTTPException) as exc:
             await verify_refresh_token("not.a.token")
         assert exc.value.status_code == 401
+
+    async def test_create_access_token_includes_type_access(self):
+        from app.core.security import create_access_token, ALGORITHM, get_api_secret_key
+        from jose import jwt
+
+        token = create_access_token(data={"sub": "x@example.com"})
+        payload = jwt.decode(token, get_api_secret_key(), algorithms=[ALGORITHM])
+        assert payload["type"] == "access"
+
+    async def test_verify_access_token_rejects_refresh_token(self):
+        from app.core.security import create_refresh_token, verify_access_token
+        from fastapi.security import HTTPAuthorizationCredentials
+
+        refresh = create_refresh_token(data={"sub": "refresh@example.com"})
+        creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=refresh)
+        with pytest.raises(HTTPException) as exc:
+            await verify_access_token(credentials=creds)
+        assert exc.value.status_code == 401
+        assert "token type" in str(exc.value.detail).lower()
+
+    async def test_verify_auth_rejects_refresh_token(self):
+        from app.core.security import create_refresh_token, verify_auth
+        from fastapi.security import HTTPAuthorizationCredentials
+
+        refresh = create_refresh_token(data={"sub": "viewer@example.com"})
+        creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=refresh)
+        with pytest.raises(HTTPException) as exc:
+            verify_auth(api_key=None, bearer=creds)
+        assert exc.value.status_code == 401
+
+    async def test_verify_auth_role_absent_defaults_to_viewer(self):
+        """Access token sem role NUNCA vira curator (era o default antigo)."""
+        from app.core.security import verify_auth
+        from fastapi.security import HTTPAuthorizationCredentials
+        from jose import jwt as _jwt
+
+        # token access sem role, forjado direto (simula emissor externo)
+        from app.core.security import ALGORITHM, get_api_secret_key
+        from datetime import datetime, timedelta, timezone
+
+        payload = {
+            "sub": "semrole@example.com",
+            "exp": datetime.now(timezone.utc) + timedelta(minutes=5),
+            "iat": datetime.now(timezone.utc),
+            "type": "access",
+        }
+        token = _jwt.encode(payload, get_api_secret_key(), algorithm=ALGORITHM)
+        creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+        auth = verify_auth(api_key=None, bearer=creds)
+        assert auth["role"] == "viewer"
+        assert auth["user"] == "semrole@example.com"
+
+    async def test_verify_auth_role_unknown_falls_back_to_viewer(self):
+        from app.core.security import create_access_token, verify_auth
+        from fastapi.security import HTTPAuthorizationCredentials
+
+        token = create_access_token(data={"sub": "estranho@example.com", "role": "superuser"})
+        creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+        auth = verify_auth(api_key=None, bearer=creds)
+        assert auth["role"] == "viewer"

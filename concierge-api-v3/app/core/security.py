@@ -77,7 +77,7 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
     else:
         expire = datetime.now(timezone.utc) + timedelta(minutes=ACCESS_TOKEN_EXPIRE_MINUTES)
 
-    to_encode.update({"exp": expire, "iat": datetime.now(timezone.utc)})
+    to_encode.update({"exp": expire, "iat": datetime.now(timezone.utc), "type": "access"})
 
     # Use API secret key as JWT secret
     secret_key = get_api_secret_key()
@@ -219,6 +219,16 @@ async def verify_access_token(
         logger.info("[Token Verify] Decoding token...")
         payload = jwt.decode(token, secret_key, algorithms=[ALGORITHM])
 
+        # Refresh token NUNCA vale como access (token confusion: um refresh
+        # de viewer sem role era aceito aqui e viraria curator no verify_auth)
+        if payload.get("type") != "access":
+            logger.warning("[Token Verify] ✗ Not an access token")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid token type",
+                headers={"WWW-Authenticate": "Bearer"},
+            )
+
         logger.info("[Token Verify] ✓ Token decoded")
         logger.info(f"[Token Verify]   sub: {payload.get('sub')}")
         logger.info(f"[Token Verify]   exp: {payload.get('exp')}")
@@ -290,11 +300,18 @@ def verify_auth(
     if bearer:
         try:
             payload = jwt.decode(bearer.credentials, get_api_secret_key(), algorithms=[ALGORITHM])
+            # Refresh nunca vale como Bearer de API (paridade com
+            # verify_access_token); role ausente/desconhecido = viewer
+            # (default anterior era curator — escalation de refresh de viewer)
+            if payload.get("type") != "access":
+                raise JWTError("Not an access token")
+            token_role = payload.get("role")
+            role = token_role if token_role in ("admin", "curator", "viewer") else "viewer"
             return {
                 "authenticated": True,
                 "method": "jwt",
                 "user": payload.get("sub"),
-                "role": payload.get("role", "curator"),
+                "role": role,
             }
         except RuntimeError:
             logger.error("API_SECRET_KEY not configured — cannot decode JWT")

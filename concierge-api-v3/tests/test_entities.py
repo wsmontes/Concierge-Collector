@@ -174,7 +174,7 @@ class TestAuth:
         with patch("app.core.security.get_api_secret_key", return_value="test-secret"):
             with patch(
                 "app.core.security.jwt.decode",
-                return_value={"sub": "test@test.com", "role": "curator"},
+                return_value={"sub": "test@test.com", "role": "curator", "type": "access"},
             ):
                 result = verify_auth(api_key=None, bearer=mock_bearer)
                 assert result["authenticated"] is True
