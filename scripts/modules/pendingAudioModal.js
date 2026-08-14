@@ -357,16 +357,46 @@ window.PendingAudioModal = class PendingAudioModal {
         if (this.isOpen) return;
         this.isOpen = true;
 
-        // Build the modal DOM on each open (fresh state)
-        this.buildModal();
-        document.body.appendChild(this.modal);
-        document.body.style.overflow = 'hidden';
-
-        // A11y: foco entra no diálogo ao abrir
-        const dialog = this.modal.querySelector('.pam-dialog');
-        if (dialog) {
-            dialog.focus();
+        // Modal canônico: ModalManager cria header/título/X e gerencia
+        // foco/Escape/overlay. Body traz summary + lista; o footer é
+        // preenchido pelo renderFooter.
+        if (!window.modalManager || typeof window.modalManager.open !== 'function') {
+            this.isOpen = false;
+            return;
         }
+
+        const body = document.createElement('div');
+        body.innerHTML = `
+            <!-- Summary stats -->
+            <div class="pam-summary" id="pam-summary"></div>
+
+            <!-- Audio list -->
+            <div class="pam-list" id="pam-list">
+                <div class="pam-empty">
+                    <span class="material-icons">hourglass_empty</span>
+                    Loading...
+                </div>
+            </div>
+        `;
+
+        const footer = document.createElement('div');
+        footer.id = 'pam-footer';
+        footer.className = 'flex items-center justify-between gap-2 w-full';
+
+        this.modalId = window.modalManager.open({
+            title: 'Pending Recordings',
+            content: body,
+            footer,
+            size: 'md',
+            onClose: () => this.close()
+        });
+
+        this.modal = document.getElementById(this.modalId);
+        if (!this.modal) {
+            this.isOpen = false;
+            return;
+        }
+        this.listContainer = this.modal.querySelector('#pam-list');
 
         // Load data
         await this.refresh();
@@ -374,24 +404,21 @@ window.PendingAudioModal = class PendingAudioModal {
 
     close() {
         if (!this.isOpen) return;
+        // isOpen false ANTES do manager.close: o onClose dispara de volta
+        // e o early-return corta a recursão (mesmo padrão do conflito)
         this.isOpen = false;
 
         // Revoke all object URLs to free memory
         this._objectUrls.forEach(url => URL.revokeObjectURL(url));
         this._objectUrls = [];
 
-        if (this.modal) {
-            this.modal.remove();
-            this.modal = null;
+        const id = this.modalId;
+        this.modalId = null;
+        if (id) {
+            window.modalManager.close(id);
         }
-        document.body.style.overflow = '';
-
-        // Remove o handler de Escape — sem isso um Escape com o modal
-        // fechado por clique ainda era consumido pelo listener órfão
-        if (this._escHandler) {
-            document.removeEventListener('keydown', this._escHandler);
-            this._escHandler = null;
-        }
+        this.modal = null;
+        this.listContainer = null;
 
         // Refresh the badge on the recording section
         if (window.uiManager?.recordingModule?.showPendingAudioBadge) {
@@ -401,50 +428,8 @@ window.PendingAudioModal = class PendingAudioModal {
 
     // ─── Build DOM ──────────────────────────────────────────────
 
-    buildModal() {
-        const el = document.createElement('div');
-        el.id = 'pending-audio-modal';
-        el.innerHTML = `
-            <div class="pam-dialog" role="dialog" aria-labelledby="pam-title" aria-modal="true" tabindex="-1">
-                <!-- Header -->
-                <div class="pam-header">
-                    <h2 id="pam-title">
-                        <span class="material-icons">playlist_play</span>
-                        Pending Recordings
-                    </h2>
-                    <button class="pam-close-btn" aria-label="Close" id="pam-close-x">
-                        <span class="material-icons">close</span>
-                    </button>
-                </div>
-
-                <!-- Summary stats -->
-                <div class="pam-summary" id="pam-summary"></div>
-
-                <!-- Audio list -->
-                <div class="pam-list" id="pam-list">
-                    <div class="pam-empty">
-                        <span class="material-icons">hourglass_empty</span>
-                        Loading...
-                    </div>
-                </div>
-
-                <!-- Footer -->
-                <div class="pam-footer" id="pam-footer"></div>
-            </div>
-        `;
-
-        this.modal = el;
-        this.listContainer = el.querySelector('#pam-list');
-
-        // Close handlers
-        el.querySelector('#pam-close-x').addEventListener('click', () => this.close());
-        el.addEventListener('click', (e) => {
-            if (e.target === el) this.close();
-        });
-        document.addEventListener('keydown', this._escHandler = (e) => {
-            if (e.key === 'Escape') this.close();
-        });
-    }
+    // buildModal removido: a estrutura (body + footer) é criada no open()
+    // via ModalManager — header, título e X vêm do manager.
 
     // ─── Data Loading ──────────────────────────────────────────
 
