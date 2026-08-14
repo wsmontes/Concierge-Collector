@@ -631,6 +631,35 @@
 .card-accent-published:hover { border-left-color: #9333ea; }
 
 /* ========================================================================
+   CHIP / TAG (padrão único de tags e badges)
+   Todas as tags do app (status, fonte de dados, conceitos, sync)
+   usam este componente + tone dos tokens do design-system.
+   ======================================================================== */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 10px;
+  border-radius: 9999px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.chip .material-icons {
+  font-size: 14px;
+}
+
+.chip--info    { background-color: var(--chip-info-bg);    color: var(--chip-info-fg); }
+.chip--success { background-color: var(--chip-success-bg); color: var(--chip-success-fg); }
+.chip--warning { background-color: var(--chip-warning-bg); color: var(--chip-warning-fg); }
+.chip--danger  { background-color: var(--chip-danger-bg);  color: var(--chip-danger-fg); }
+.chip--neutral { background-color: var(--chip-neutral-bg); color: var(--chip-neutral-fg); }
+.chip--accent  { background-color: var(--chip-accent-bg);  color: var(--chip-accent-fg); }
+
+/* ========================================================================
    UTILITIES ARBITRARY (Tailwind 2 CDN não tem JIT)
    As classes text-[10px]...max-h-[80vh] usadas no markup nunca
    existiram no build CDN do Tailwind 2 — os tamanhos finos pretendidos

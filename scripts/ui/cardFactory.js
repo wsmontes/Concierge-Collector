@@ -225,11 +225,12 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
             actionsRow.className = 'mt-auto p-4 mx-1 border-t border-gray-100 bg-white z-20 relative space-y-3';
 
             const status = entity.status || 'active';
+            // tons do padrão único de chips (design-system tokens)
             const statusColors = {
-                active: 'bg-green-100 text-green-800',
-                pending: 'bg-yellow-100 text-yellow-800',
-                archived: 'bg-gray-100 text-gray-800',
-                deleted: 'bg-red-100 text-red-800'
+                active: 'chip chip--success',
+                pending: 'chip chip--warning',
+                archived: 'chip chip--neutral',
+                deleted: 'chip chip--danger'
             };
 
             const syncStatus = entity.sync?.status || 'local';
@@ -246,7 +247,7 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
             actionsRow.innerHTML = `
                 <div class="space-y-2">
                     <div class="flex flex-wrap items-center gap-1.5">
-                        <span class="${statusColors[status] || statusColors.active} rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider shadow-sm">
+                        <span class="${statusColors[status] || statusColors.active} uppercase tracking-wider">
                             ${this.escapeHtml(status)}
                         </span>
                         <div class="inline-flex items-center gap-1 text-[11px] font-medium text-gray-700 bg-gray-50 border border-gray-100 rounded-full px-2 py-1">
@@ -426,13 +427,13 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
             this._applyStatusAccent(card, status);
 
             const statusColors = {
-                draft: 'bg-yellow-100 text-yellow-800',
-                linked: 'bg-blue-100 text-blue-800',
-                active: 'bg-green-100 text-green-800',
-                archived: 'bg-gray-100 text-gray-800',
-                deleted: 'bg-red-100 text-red-800',
-                done: 'bg-green-100 text-green-800',
-                pending: 'bg-blue-100 text-blue-800'
+                draft: 'chip chip--warning',
+                linked: 'chip chip--info',
+                active: 'chip chip--success',
+                archived: 'chip chip--neutral',
+                deleted: 'chip chip--danger',
+                done: 'chip chip--success',
+                pending: 'chip chip--info'
             };
 
             // 1. Clean up top-right header (keep only entity type icon)
@@ -543,7 +544,7 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
             actionsRow.innerHTML = `
                 <div class="space-y-2">
                     <div class="flex flex-wrap items-center gap-1.5">
-                        <span class="${badgeClass} rounded-full px-2.5 py-0.5 text-[11px] font-bold uppercase tracking-wider shadow-sm">
+                        <span class="${badgeClass} uppercase tracking-wider">
                             ${status}
                         </span>
                         <div class="data-badge ${sourceInfo.className}">

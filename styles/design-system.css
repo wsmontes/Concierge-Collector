@@ -247,6 +247,23 @@
   --focus-ring-offset: 2px;
   --focus-ring-color: var(--color-primary);
   --focus-ring-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+
+  /* ===== Chip/Badge Tones (padrão único de tags) =====
+     Fonte única de cor para todos os chips/badges do app — antes cada
+     renderizador tinha combos próprios (yellow vs amber, gray-50 vs
+     gray-100) gerando tags visualmente inconsistentes. */
+  --chip-info-bg: #dbeafe;
+  --chip-info-fg: #1e40af;
+  --chip-success-bg: #d1fae5;
+  --chip-success-fg: #065f46;
+  --chip-warning-bg: #fef3c7;
+  --chip-warning-fg: #92400e;
+  --chip-danger-bg: #fee2e2;
+  --chip-danger-fg: #991b1b;
+  --chip-neutral-bg: #f3f4f6;
+  --chip-neutral-fg: #374151;
+  --chip-accent-bg: #ede9fe;
+  --chip-accent-fg: #5b21b6;
 }
 
 /* ========================================================================

@@ -1459,16 +1459,16 @@ if (typeof window.UIManager === 'undefined') {
             let badgeText, badgeClass;
             if (rawStatus === 'linked' || rawStatus === 'active') {
                 badgeText = 'Linked';
-                badgeClass = 'bg-green-100 text-green-800';
+                badgeClass = 'chip chip--success';
             } else if (rawStatus === 'done') {
                 badgeText = 'Done';
-                badgeClass = 'bg-blue-100 text-blue-800';
+                badgeClass = 'chip chip--info';
             } else if (rawStatus === 'published') {
                 badgeText = 'Published';
-                badgeClass = 'bg-purple-100 text-purple-800';
+                badgeClass = 'chip chip--accent';
             } else {
                 badgeText = 'Draft';
-                badgeClass = 'bg-amber-100 text-amber-800';
+                badgeClass = 'chip chip--warning';
             }
 
             // Accent de status na borda esquerda — segue a linguagem de cor
@@ -1499,7 +1499,7 @@ if (typeof window.UIManager === 'undefined') {
                             ${restaurantName}
                         </h3>
                         <div class="flex items-center gap-2 text-xs text-gray-500 mb-2">
-                            <span class="${badgeClass} px-2 py-0.5 rounded-full font-medium">${badgeText}</span>
+                            <span class="${badgeClass}">${badgeText}</span>
                             <span>•</span>
                             <span>${date}</span>
                         </div>
@@ -1509,7 +1509,7 @@ if (typeof window.UIManager === 'undefined') {
                     ${conceptDisplay ? `
                         <div class="flex flex-wrap gap-1 mb-3">
                             ${conceptNames.slice(0, 3).map(c => `
-                                <span class="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-md border border-gray-200">${c}</span>
+                                <span class="chip chip--neutral">${c}</span>
                             `).join('')}
                             ${totalConcepts > 3 ? `<span class="px-2 py-0.5 bg-gray-50 text-gray-600 text-xs rounded-md border border-gray-100">+${totalConcepts - 3}</span>` : ''}
                         </div>
