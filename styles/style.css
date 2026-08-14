@@ -51,7 +51,7 @@ html {
 body {
   font-family: var(--font-sans);
   color: var(--color-neutral-800);
-  background-color: var(--color-neutral-100);
+  background-color: var(--color-bg);
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
@@ -82,7 +82,9 @@ body {
   margin: 0 auto;
   padding: 0;
   max-width: 100%;
-  background: linear-gradient(to bottom, rgba(248, 250, 252, 0.8), rgba(255, 255, 255, 1));
+  /* mesa limestone uniforme (o gradiente antigo ia do cinza-azulado ao
+     branco e brigava com os cards) */
+  background: transparent;
 }
 
 header {
@@ -93,23 +95,13 @@ header {
   background: white;
   backdrop-filter: blur(8px);
   -webkit-backdrop-filter: blur(8px);
-  border-bottom: 1px solid var(--color-neutral-100);
+  border-bottom: 1px solid var(--color-neutral-200);
   margin-bottom: 1.25rem;
 }
 
-header h1 {
-  font-size: 1.875rem;
-  font-weight: 800;
-  background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
-  -webkit-background-clip: text;
-  background-clip: text;
-  -webkit-text-fill-color: transparent;
-  -moz-text-fill-color: transparent;
-  text-fill-color: transparent;
-  color: var(--color-primary); /* Fallback for browsers without gradient text support */
-  margin-bottom: 0.25rem;
-  letter-spacing: -0.025em;
-}
+/* O título do header usa a classe .brand-wordmark (definida em
+   components.css) — o gradiente azul→laranja antigo foi removido;
+   wordmark em Cormorant Garamond, cor de tinta. */
 
 header p {
   color: var(--color-neutral-600);
@@ -414,18 +406,18 @@ button:not([class]) .material-icons {
 .recording {
   position: relative;
   animation: pulse-ring 2s cubic-bezier(0.455, 0.03, 0.515, 0.955) infinite;
-  background-color: #b91c1c; /* Red 700 */
+  background-color: var(--color-error); /* tijolo — estado de gravação */
 }
 
 @keyframes pulse-ring {
   0% {
-    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0.7);
+    box-shadow: 0 0 0 0 rgba(176, 67, 59, 0.55);
   }
   70% {
-    box-shadow: 0 0 0 15px rgba(239, 68, 68, 0);
+    box-shadow: 0 0 0 15px rgba(176, 67, 59, 0);
   }
   100% {
-    box-shadow: 0 0 0 0 rgba(239, 68, 68, 0);
+    box-shadow: 0 0 0 0 rgba(176, 67, 59, 0);
   }
 }
 
@@ -436,7 +428,7 @@ button:not([class]) .material-icons {
   font-family: var(--font-mono);
   font-size: 2rem;
   font-weight: 500;
-  color: #6366F1;
+  color: var(--color-primary-600);
   letter-spacing: 0.1em;
   line-height: 1;
   z-index: 2;
@@ -485,7 +477,7 @@ button:not([class]) .material-icons {
   padding: 0.5rem;
   margin-bottom: 0.5rem;
   border-radius: var(--radius);
-  background-color: rgba(124, 58, 237, 0.1);
+  background-color: rgba(92, 107, 74, 0.08);
   display: flex;
   align-items: center;
   font-size: 0.875rem;
@@ -497,17 +489,17 @@ button:not([class]) .material-icons {
 }
 
 .processing-step.completed {
-  background-color: rgba(16, 185, 129, 0.1);
+  background-color: rgba(74, 124, 89, 0.1);
   color: var(--color-success);
 }
 
 .processing-step.in-progress {
-  background-color: rgba(245, 158, 11, 0.1);
+  background-color: rgba(154, 91, 31, 0.1);
   color: var(--color-warning);
 }
 
 .processing-step.error {
-  background-color: rgba(239, 68, 68, 0.1);
+  background-color: rgba(176, 67, 59, 0.1);
   color: var(--color-error);
 }
 
@@ -521,9 +513,9 @@ audio {
 
 #audio-preview {
   padding: 1rem;
-  background: linear-gradient(135deg, 
-    rgba(124, 58, 237, 0.05), 
-    rgba(249, 115, 22, 0.05)
+  background: linear-gradient(135deg,
+    rgba(111, 130, 86, 0.05),
+    rgba(74, 69, 61, 0.04)
   );
   border-radius: var(--radius);
   border: 1px solid var(--color-neutral-200);
@@ -904,13 +896,17 @@ audio {
   justify-content: center;
   width: 3.5rem;
   height: 3.5rem;
-  background: linear-gradient(135deg, var(--color-primary), var(--color-primary-700));
+  background: var(--color-primary-600);
   color: white;
   border-radius: 50%;
-  box-shadow: var(--shadow-lg);
+  box-shadow: 0 6px 16px rgba(74, 87, 60, 0.35);
   cursor: pointer;
-  transition: transform var(--ease-bounce) var(--transition-base), box-shadow var(--transition-base);
+  transition: transform var(--ease-bounce) var(--transition-base), box-shadow var(--transition-base), background-color var(--transition-base);
   z-index: 40;
+}
+
+#fab:hover {
+  background: var(--color-primary-700);
 }
 
 /* Ícone do FAB centrado de verdade: display block + line-height 1

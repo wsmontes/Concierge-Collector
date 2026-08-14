@@ -21,74 +21,87 @@
    ======================================================================== */
 
 :root {
-  /* ===== Color System ===== */
-  
-  /* Primary Brand Colors */
-  --color-primary: #3b82f6;        /* Blue 500 */
-  --color-primary-50: #eff6ff;
-  --color-primary-100: #dbeafe;
-  --color-primary-200: #bfdbfe;
-  --color-primary-300: #93c5fd;    /* primary-light */
-  --color-primary-400: #60a5fa;
-  --color-primary-500: #3b82f6;    /* primary */
-  --color-primary-600: #2563eb;
-  --color-primary-700: #1d4ed8;    /* primary-dark */
-  --color-primary-800: #1e40af;
-  --color-primary-900: #1e3a8a;
-  
-  /* Secondary Brand Colors */
-  --color-secondary: #f97316;      /* Orange 500 */
-  --color-secondary-50: #fff7ed;
-  --color-secondary-100: #ffedd5;
-  --color-secondary-200: #fed7aa;
-  --color-secondary-300: #fdba74;
-  --color-secondary-400: #fb923c;
-  --color-secondary-500: #f97316;  /* secondary */
-  --color-secondary-600: #ea580c;
-  --color-secondary-700: #c2410c;
-  --color-secondary-800: #9a3412;
-  --color-secondary-900: #7c2d12;
-  
-  /* Semantic Colors */
-  --color-success: #10b981;        /* Green 500 */
-  --color-success-400: #34d399;    /* Green 400 (bordas/estados leves) */
-  --color-success-light: #d1fae5;
-  --color-success-dark: #065f46;
-  
-  --color-error: #ef4444;          /* Red 500 */
-  --color-error-light: #fee2e2;
-  --color-error-dark: #991b1b;
-  
-  --color-warning: #f59e0b;        /* Amber 500 */
-  --color-warning-400: #fbbf24;    /* Amber 400 (bordas/estados leves) */
-  --color-warning-light: #fef3c7;
-  --color-warning-dark: #92400e;
-  
-  --color-info: #3b82f6;           /* Blue 500 */
-  --color-info-light: #dbeafe;
-  --color-info-dark: #1e40af;
-  
-  /* Neutral Colors */
-  --color-neutral-50: #f9fafb;
-  --color-neutral-100: #f3f4f6;
-  --color-neutral-200: #e5e7eb;
-  --color-neutral-300: #d1d5db;
-  --color-neutral-400: #9ca3af;
-  --color-neutral-500: #6b7280;
-  --color-neutral-600: #4b5563;
-  --color-neutral-700: #374151;
-  --color-neutral-800: #1f2937;
-  --color-neutral-900: #111827;
-  --color-neutral-950: #030712;
+  /* ===== Color System =====
+     Paleta "Concierge" (ago/2026) — unificada com o app capture/:
+     limestone (mesa de papel), olive (marca/ações) e tinta quente.
+     A paleta anterior era o azul Tailwind padrão; os NOMES das
+     variáveis foram preservados para não quebrar os componentes —
+     só os valores mudaram. */
+
+  /* Primary Brand Colors — verde-oliva (marca) */
+  --color-primary: #5c6b4a;
+  --color-primary-50: #f1f3ec;
+  --color-primary-100: #e4e8da;
+  --color-primary-200: #cdd4bc;
+  --color-primary-300: #afb996;    /* primary-light */
+  --color-primary-400: #8fa075;
+  --color-primary-500: #6f8256;    /* primary */
+  --color-primary-600: #5c6b4a;    /* base (AA sobre branco: 5.7:1) */
+  --color-primary-700: #4a573c;    /* primary-dark */
+  --color-primary-800: #3c4630;
+  --color-primary-900: #2f3826;
+
+  /* Secondary Brand Colors — tinta quente (ações secundárias) */
+  --color-secondary: #4a453d;
+  --color-secondary-50: #f4f2f0;
+  --color-secondary-100: #e6e3df;
+  --color-secondary-200: #cdc8c1;
+  --color-secondary-300: #aba49a;
+  --color-secondary-400: #857d72;
+  --color-secondary-500: #5f594f;  /* secondary */
+  --color-secondary-600: #4a453d;
+  --color-secondary-700: #3b3731;
+  --color-secondary-800: #2e2b26;
+  --color-secondary-900: #1a1817;
+
+  /* Semantic Colors — tons harmonizados (sem neon) */
+  --color-success: #4a7c59;        /* verde-garrafa */
+  --color-success-400: #6f9a7c;    /* bordas/estados leves */
+  --color-success-light: #e3ede5;
+  --color-success-dark: #2f5239;
+
+  --color-error: #b0433b;          /* vermelho-tijolo */
+  --color-error-light: #f6e2df;
+  --color-error-dark: #7e2f29;
+
+  --color-warning: #9a5b1f;        /* bronze */
+  --color-warning-400: #c08a4f;    /* bordas/estados leves */
+  --color-warning-light: #f5e8d5;
+  --color-warning-dark: #6e3f14;
+
+  --color-info: #3d5a80;           /* azul-aço (info/links) */
+  --color-info-400: #6e88a6;
+  --color-info-light: #e3eaf2;
+  --color-info-dark: #27405f;
+
+  /* Neutral Colors — rampa de pedra quente */
+  --color-neutral-50: #fbf9f5;
+  --color-neutral-100: #f3efe8;
+  --color-neutral-200: #e7e1d7;
+  --color-neutral-300: #d9d2c6;
+  --color-neutral-400: #a9a193;
+  --color-neutral-500: #7e786c;
+  --color-neutral-600: #5f5a4f;
+  --color-neutral-700: #45413a;
+  --color-neutral-800: #2e2b26;
+  --color-neutral-900: #1a1817;
+  --color-neutral-950: #12110f;
+
+  /* Page surface (mesma mesa do capture) */
+  --color-bg: #f5f2ec;
+  --color-surface: #ffffff;
   
   /* ===== Typography ===== */
   
-  /* Font Families */
-  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  /* Font Families
+     DM Sans (UI) + Cormorant Garamond (display: nomes de restaurantes,
+     wordmark) — mesma dupla do app capture/. Mono só para timers/ids. */
+  --font-sans: 'DM Sans', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-display: 'Cormorant Garamond', 'Times New Roman', Georgia, serif;
   --font-mono: 'JetBrains Mono', 'SF Mono', 'Menlo', 'Monaco', 'Consolas', 'Courier New', monospace;
-  
+
   /* Android-specific font stack */
-  --font-android: 'Inter', 'Roboto', 'Noto Sans', 'Droid Sans', sans-serif;
+  --font-android: 'DM Sans', 'Roboto', 'Noto Sans', 'Droid Sans', sans-serif;
   
   /* Font Sizes (Type Scale) */
   --text-xs: 0.75rem;      /* 12px */
@@ -245,25 +258,25 @@
   /* ===== Accessibility ===== */
   --focus-ring-width: 2px;
   --focus-ring-offset: 2px;
-  --focus-ring-color: var(--color-primary);
-  --focus-ring-shadow: 0 0 0 3px rgba(59, 130, 246, 0.3);
+  --focus-ring-color: var(--color-primary-600);
+  --focus-ring-shadow: 0 0 0 3px rgba(92, 107, 74, 0.28);
 
   /* ===== Chip/Badge Tones (padrão único de tags) =====
      Fonte única de cor para todos os chips/badges do app — antes cada
      renderizador tinha combos próprios (yellow vs amber, gray-50 vs
      gray-100) gerando tags visualmente inconsistentes. */
-  --chip-info-bg: #dbeafe;
-  --chip-info-fg: #1e40af;
-  --chip-success-bg: #d1fae5;
-  --chip-success-fg: #065f46;
-  --chip-warning-bg: #fef3c7;
-  --chip-warning-fg: #92400e;
-  --chip-danger-bg: #fee2e2;
-  --chip-danger-fg: #991b1b;
-  --chip-neutral-bg: #f3f4f6;
-  --chip-neutral-fg: #374151;
-  --chip-accent-bg: #ede9fe;
-  --chip-accent-fg: #5b21b6;
+  --chip-info-bg: #e3eaf2;
+  --chip-info-fg: #27405f;
+  --chip-success-bg: #e3ede5;
+  --chip-success-fg: #2f5239;
+  --chip-warning-bg: #f5e8d5;
+  --chip-warning-fg: #6e3f14;
+  --chip-danger-bg: #f6e2df;
+  --chip-danger-fg: #7e2f29;
+  --chip-neutral-bg: #f0ece4;
+  --chip-neutral-fg: #45413a;
+  --chip-accent-bg: #ece6f1;
+  --chip-accent-fg: #5c4270;
 }
 
 /* ========================================================================
@@ -311,7 +324,7 @@ body {
   font-weight: var(--font-normal);
   line-height: var(--leading-normal);
   color: var(--color-neutral-800);
-  background-color: var(--color-neutral-100);
+  background-color: var(--color-bg);
   /* clip em vez de hidden: overflow-x hidden cria scroll container e
      quebra position:sticky do header em alguns browsers. hidden fica
      como fallback para browsers sem suporte a clip. */
@@ -950,3 +963,158 @@ img {
     justify-content: flex-end;
     gap: var(--space-2);
 }
+
+/* ========================================================================
+   PALETA "CONCIERGE" — REMAP DAS UTILITIES DE COR DO TAILWIND (v2 CDN)
+   ========================================================================
+
+   O build CDN do Tailwind 2 grava valores literais nos utilitários de
+   cor e não lê os tokens CSS (diferente do v3+). O markup (HTML e
+   templates JS) usa bg-blue-600, text-gray-500 etc. em dezenas de
+   arquivos; em vez de editar cada uso, este bloco — carregado DEPOIS
+   do Tailwind — remapeia cada família para a paleta Concierge:
+
+     gray-*   → rampa de pedra quente
+     blue-600/700 (ações) → oliva; blue-50..200/text-* → azul-aço
+     red-*    → tijolo        green-* → garrafa
+     yellow/amber/orange → bronze/ouro     purple/indigo → ameixa
+
+   Novos markup devem usar os componentes (.btn, .chip, .input) e os
+   tokens — este remap é a camada de compatibilidade do markup legado. */
+
+/* ── Cinzas → rampa de pedra quente ── */
+.bg-gray-50 { background-color: #fbf9f5; }
+.bg-gray-100 { background-color: #f3efe8; }
+.bg-gray-200 { background-color: #e7e1d7; }
+.bg-gray-300 { background-color: #d9d2c6; }
+.bg-gray-500 { background-color: #7e786c; }
+.bg-gray-600 { background-color: #5f5a4f; }
+.bg-gray-800 { background-color: #2e2b26; }
+.bg-gray-900 { background-color: #1a1817; }
+.hover\:bg-gray-50:hover { background-color: #fbf9f5; }
+.hover\:bg-gray-100:hover { background-color: #f3efe8; }
+.hover\:bg-gray-200:hover { background-color: #e7e1d7; }
+.hover\:bg-gray-300:hover { background-color: #d9d2c6; }
+.hover\:bg-gray-600:hover { background-color: #5f5a4f; }
+.hover\:bg-gray-700:hover { background-color: #45413a; }
+.hover\:bg-gray-800:hover { background-color: #2e2b26; }
+.hover\:bg-gray-900:hover { background-color: #1a1817; }
+.text-gray-300 { color: #d9d2c6; }
+.text-gray-400 { color: #a9a193; }
+.text-gray-500 { color: #7e786c; }
+.text-gray-600 { color: #5f5a4f; }
+.text-gray-700 { color: #45413a; }
+.text-gray-800 { color: #2e2b26; }
+.text-gray-900 { color: #1a1817; }
+.hover\:text-gray-600:hover { color: #5f5a4f; }
+.hover\:text-gray-700:hover { color: #45413a; }
+.hover\:text-gray-800:hover { color: #2e2b26; }
+.border-gray-100 { border-color: #f3efe8; }
+.border-gray-200 { border-color: #e7e1d7; }
+.border-gray-300 { border-color: #d9d2c6; }
+.hover\:border-gray-300:hover { border-color: #d9d2c6; }
+
+/* ── Azul → oliva (ações) + azul-aço (info/links) ── */
+.bg-blue-50 { background-color: #e8eff4; }
+.bg-blue-100 { background-color: #d7e2ee; }
+.bg-blue-200 { background-color: #c2d2e4; }
+.bg-blue-500 { background-color: #6f8256; }
+.bg-blue-600 { background-color: #5c6b4a; }
+.hover\:bg-blue-50:hover { background-color: #f1f3ec; }
+.hover\:bg-blue-700:hover { background-color: #4a573c; }
+.text-blue-500,
+.text-blue-600,
+.text-blue-700 { color: #3d5a80; }
+.text-blue-800 { color: #27405f; }
+.text-blue-900 { color: #1d3249; }
+.hover\:text-blue-600:hover { color: #5c6b4a; }
+.hover\:text-blue-700:hover { color: #4a573c; }
+.border-blue-100 { border-color: #cbd9e7; }
+.border-blue-200 { border-color: #b8c9dd; }
+.border-blue-500 { border-color: #6f8256; }
+.border-blue-600 { border-color: #5c6b4a; }
+.hover\:border-blue-200:hover,
+.hover\:border-blue-300:hover { border-color: #afb996; }
+.focus\:ring-blue-500:focus { --tw-ring-color: rgba(92, 107, 74, 0.35); }
+.focus\:border-blue-500:focus { border-color: #5c6b4a; }
+
+/* ── Vermelho → tijolo ── */
+.bg-red-50 { background-color: #f6e2df; }
+.bg-red-100 { background-color: #efcfca; }
+.bg-red-600 { background-color: #b0433b; }
+.hover\:bg-red-50:hover { background-color: #f6e2df; }
+.hover\:bg-red-700:hover { background-color: #8a302b; }
+.text-red-400 { color: #c97b74; }
+.text-red-500 { color: #b0433b; }
+.text-red-600 { color: #a33b34; }
+.text-red-700 { color: #8a302b; }
+.text-red-800 { color: #6e2622; }
+.text-red-900 { color: #4e1b18; }
+.hover\:text-red-700:hover { color: #8a302b; }
+.border-red-100 { border-color: #efcfca; }
+.border-red-200 { border-color: #e3b4ae; }
+.border-red-300 { border-color: #d39891; }
+.border-red-500 { border-color: #b0433b; }
+.hover\:border-red-200:hover { border-color: #e3b4ae; }
+.focus\:ring-red-500:focus { --tw-ring-color: rgba(176, 67, 59, 0.35); }
+
+/* ── Verde → garrafa ── */
+.bg-green-50 { background-color: #e7efe9; }
+.bg-green-100 { background-color: #d4e3d8; }
+.bg-green-500 { background-color: #4a7c59; }
+.bg-green-600 { background-color: #3f6b4c; }
+.bg-emerald-600 { background-color: #3f6b4c; }
+.hover\:bg-green-50:hover { background-color: #e7efe9; }
+.hover\:bg-green-700:hover,
+.hover\:bg-emerald-700:hover { background-color: #33563e; }
+.text-green-500,
+.text-emerald-500 { color: #4a7c59; }
+.text-green-600 { color: #3f6b4c; }
+.text-green-700 { color: #33563e; }
+.text-green-800 { color: #274231; }
+.text-green-900 { color: #1b2f23; }
+.hover\:text-green-700:hover { color: #33563e; }
+.border-green-100 { border-color: #d4e3d8; }
+.border-green-200 { border-color: #b9d0bf; }
+.border-green-500 { border-color: #4a7c59; }
+.focus\:ring-green-500:focus { --tw-ring-color: rgba(74, 124, 89, 0.35); }
+
+/* ── Amarelo/âmbar/laranja → bronze e ouro ── */
+.bg-yellow-50 { background-color: #f9f2e2; }
+.bg-yellow-100 { background-color: #f3e7cb; }
+.bg-yellow-400 { background-color: #d9b45c; }
+.bg-yellow-500 { background-color: #b0893b; }
+.bg-yellow-600 { background-color: #97722e; }
+.bg-amber-50,
+.bg-orange-50 { background-color: #f8eee0; }
+.hover\:bg-yellow-600:hover { background-color: #7c5c24; }
+.hover\:bg-yellow-700:hover { background-color: #5c4419; }
+.hover\:bg-amber-50:hover { background-color: #f8eee0; }
+.hover\:bg-amber-100:hover,
+.hover\:bg-orange-100:hover { background-color: #f1dfc7; }
+.text-yellow-500 { color: #b0893b; }
+.text-yellow-600 { color: #97722e; }
+.text-yellow-700 { color: #7c5c24; }
+.text-yellow-800 { color: #5c4419; }
+.text-amber-500 { color: #a16622; }
+.text-amber-600 { color: #8a5018; }
+.text-amber-700 { color: #6e3f14; }
+.text-orange-600 { color: #9a5b1f; }
+.hover\:text-amber-800:hover { color: #57320f; }
+.border-yellow-400 { border-color: #d9b45c; }
+.border-amber-100 { border-color: #f1dfc7; }
+.border-amber-200,
+.border-orange-200 { border-color: #e5cba6; }
+.hover\:border-amber-200:hover { border-color: #e5cba6; }
+
+/* ── Roxo/índigo → ameixa ── */
+.bg-purple-50 { background-color: #f1ecf5; }
+.bg-purple-100 { background-color: #e5dcf0; }
+.bg-purple-600 { background-color: #7a5c8e; }
+.hover\:bg-purple-700:hover { background-color: #5c4270; }
+.text-purple-500 { color: #7a5c8e; }
+.text-purple-600 { color: #6b4e7f; }
+.text-purple-700,
+.text-indigo-600 { color: #5c4270; }
+.text-purple-800 { color: #4a3560; }
+.border-purple-100 { border-color: #e5dcf0; }

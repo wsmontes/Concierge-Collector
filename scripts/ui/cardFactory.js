@@ -113,7 +113,10 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
             <div class="entity-card-main p-5 flex-grow">
                 <!-- Name and cuisine -->
                 <div class="entity-card-header mb-3">
-                    <h3 class="entity-card-name font-bold text-lg text-gray-900 mb-1 pr-12 line-clamp-2 group-hover:text-blue-600 transition-colors">
+                    <!-- card-restaurant-name: serif de exibição (Cormorant
+                         Garamond) — o nome é o verbete do card, como em
+                         um caderno de curadoria. Hover via .group em CSS. -->
+                    <h3 class="entity-card-name card-restaurant-name mb-1 pr-12 line-clamp-2">
                         ${this.escapeHtml(name)}
                     </h3>
                     ${(subtitleHtml || cuisineType) ? `
@@ -162,8 +165,9 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                 ` : ''}
             </div>
             
-            <!-- Hover overlay effect -->
-            <div class="absolute inset-0 bg-gradient-to-t from-blue-50/0 to-blue-50/0 group-hover:from-blue-50/30 group-hover:to-transparent transition-all duration-200 pointer-events-none"></div>
+            <!-- Hover overlay effect: véu de oliva sutil (card-veil em
+                 components.css — substitui o gradiente blue-50 antigo) -->
+            <div class="card-veil"></div>
         `;
 
         // Click handler

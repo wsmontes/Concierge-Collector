@@ -121,8 +121,7 @@
 
 /* Button Variants */
 .btn-primary {
-  /* blue-600: branco sobre blue-500 ficava em 3.68:1 (abaixo de WCAG
-     AA para texto de botão); blue-600 dá ~6.6:1 */
+  /* oliva da marca: 5.7:1 com branco (WCAG AA) */
   background-color: var(--color-primary-600);
   color: white;
   border-color: var(--color-primary-600);
@@ -142,14 +141,14 @@
 }
 
 .btn-secondary {
-  background-color: var(--color-secondary);
+  background-color: var(--color-secondary-600);
   color: white;
-  border-color: var(--color-secondary);
+  border-color: var(--color-secondary-600);
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background-color: var(--color-secondary-600);
-  border-color: var(--color-secondary-600);
+  background-color: var(--color-secondary-700);
+  border-color: var(--color-secondary-700);
   box-shadow: var(--shadow-hover);
   transform: translateY(-1px);
 }
@@ -161,7 +160,8 @@
 }
 
 .btn-success:hover:not(:disabled) {
-  background-color: #059669;
+  background-color: var(--color-success-dark);
+  border-color: var(--color-success-dark);
   box-shadow: var(--shadow-hover);
   transform: translateY(-1px);
 }
@@ -173,7 +173,8 @@
 }
 
 .btn-danger:hover:not(:disabled) {
-  background-color: #dc2626;
+  background-color: var(--color-error-dark);
+  border-color: var(--color-error-dark);
   box-shadow: var(--shadow-hover);
   transform: translateY(-1px);
 }
@@ -185,7 +186,8 @@
 }
 
 .btn-warning:hover:not(:disabled) {
-  background-color: #d97706;
+  background-color: var(--color-warning-dark);
+  border-color: var(--color-warning-dark);
   box-shadow: var(--shadow-hover);
   transform: translateY(-1px);
 }
@@ -266,8 +268,8 @@
 }
 
 .btn-ghost-success:hover:not(:disabled) {
-  background-color: #d1fae5;
-  color: #059669;
+  background-color: var(--color-success-light);
+  color: var(--color-success-dark);
 }
 
 .btn-ghost-danger {
@@ -277,8 +279,8 @@
 }
 
 .btn-ghost-danger:hover:not(:disabled) {
-  background-color: #fee2e2;
-  color: #dc2626;
+  background-color: var(--color-error-light);
+  color: var(--color-error-dark);
 }
 
 /* Icon Button */
@@ -368,8 +370,8 @@
 .textarea:focus,
 .select:focus {
   outline: none;
-  border-color: var(--color-primary);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  border-color: var(--color-primary-600);
+  box-shadow: 0 0 0 3px rgba(92, 107, 74, 0.14);
 }
 
 .input:disabled,
@@ -407,7 +409,7 @@
 .input.error:focus,
 .textarea.error:focus,
 .select.error:focus {
-  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.1);
+  box-shadow: 0 0 0 3px rgba(176, 67, 59, 0.14);
 }
 
 .input.success,
@@ -419,7 +421,7 @@
 .input.success:focus,
 .textarea.success:focus,
 .select.success:focus {
-  box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.1);
+  box-shadow: 0 0 0 3px rgba(74, 124, 89, 0.14);
 }
 
 /* Textarea Specific */
@@ -431,7 +433,7 @@
 /* Select Specific */
 .select {
   padding-right: var(--spacing-10);
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%236b7280' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' fill='none' viewBox='0 0 20 20'%3E%3Cpath stroke='%237e786c' stroke-linecap='round' stroke-linejoin='round' stroke-width='1.5' d='M6 8l4 4 4-4'/%3E%3C/svg%3E");
   background-position: right var(--spacing-2-5) center;
   background-repeat: no-repeat;
   background-size: 1.25rem 1.25rem;
@@ -621,11 +623,11 @@
    sem adicionar ruído ao rodapé do card. A regra :hover gêmea mantém o
    accent quando a utility Tailwind hover:border-blue-300 repinta todas
    as bordas no hover (este arquivo carrega depois do Tailwind). */
-.card-accent-draft { border-left: 4px solid var(--color-warning); }
-.card-accent-draft:hover { border-left-color: var(--color-warning); }
+.card-accent-draft { border-left: 4px solid var(--color-warning-400); }
+.card-accent-draft:hover { border-left-color: var(--color-warning-400); }
 
-.card-accent-linked { border-left: 4px solid var(--color-primary); }
-.card-accent-linked:hover { border-left-color: var(--color-primary); }
+.card-accent-linked { border-left: 4px solid var(--color-info); }
+.card-accent-linked:hover { border-left-color: var(--color-info); }
 
 .card-accent-active { border-left: 4px solid var(--color-success); }
 .card-accent-active:hover { border-left-color: var(--color-success); }
@@ -636,11 +638,11 @@
 .card-accent-deleted { border-left: 4px solid var(--color-error); }
 .card-accent-deleted:hover { border-left-color: var(--color-error); }
 
-.card-accent-pending { border-left: 4px solid var(--color-primary-400); }
-.card-accent-pending:hover { border-left-color: var(--color-primary-400); }
+.card-accent-pending { border-left: 4px solid var(--color-info-400); }
+.card-accent-pending:hover { border-left-color: var(--color-info-400); }
 
-.card-accent-published { border-left: 4px solid #9333ea; }
-.card-accent-published:hover { border-left-color: #9333ea; }
+.card-accent-published { border-left: 4px solid #7a5c8e; }
+.card-accent-published:hover { border-left-color: #7a5c8e; }
 
 /* ========================================================================
    CHIP / TAG (padrão único de tags e badges)
@@ -681,8 +683,9 @@
   display: flex;
   align-items: center;
   gap: var(--spacing-2);
-  font-size: var(--text-xl);
+  font-size: 1.0625rem; /* 17px — título quieto entre card e conteúdo */
   font-weight: var(--font-semibold);
+  letter-spacing: -0.01em;
   color: var(--color-neutral-900);
   margin-bottom: var(--spacing-4);
   padding-bottom: var(--spacing-3);
@@ -691,7 +694,7 @@
 
 .section-heading .material-icons {
   font-size: 20px;
-  color: var(--color-primary);
+  color: var(--color-primary-600);
 }
 
 .section-heading--plain {
@@ -1377,8 +1380,8 @@
 }
 
 .view-tab.active {
-  color: var(--color-primary);
-  border-bottom-color: var(--color-primary);
+  color: var(--color-primary-600);
+  border-bottom-color: var(--color-primary-600);
 }
 
 .view-tab:focus-visible {
@@ -1414,8 +1417,70 @@
     padding: var(--spacing-3) var(--spacing-2);
     font-size: var(--font-size-sm);
   }
-  
-  .view-tab .material-icons {
-    display: none;
-  }
+}
+
+/* ========================================================================
+   PALETA "CONCIERGE" — COMPONENTES NOVOS (ago/2026)
+   ======================================================================== */
+
+/* Painel de seção — substitui a sopa de utilities
+   (bg-white rounded-xl shadow-md border-gray-100 hover:shadow-lg)
+   que o index.html repetia em cada section. Sombra em tinta quente,
+   raio 16px e borda de pedra: o card senta quieto na mesa limestone. */
+.panel {
+  background: var(--color-surface);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-2xl);
+  box-shadow:
+    0 1px 2px rgba(26, 24, 23, 0.04),
+    0 8px 24px rgba(26, 24, 23, 0.05);
+  transition: box-shadow var(--transition-base) var(--ease-out);
+}
+
+.panel:hover {
+  box-shadow:
+    0 2px 4px rgba(26, 24, 23, 0.05),
+    0 14px 34px rgba(26, 24, 23, 0.07);
+}
+
+/* Wordmark do header — serif de exibição, como o capture/ usa para
+   nomes próprios. Acompanha o logo sem competir com ele. */
+.brand-wordmark {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.75rem;
+  line-height: 1.1;
+  letter-spacing: -0.01em;
+  color: var(--color-neutral-900);
+}
+
+/* Nome de restaurante nos cards — a assinatura do app: serif de
+   exibição (Cormorant Garamond) como verbete de menu; no hover do
+   card (grupo) escurece para o oliva da marca. */
+.card-restaurant-name {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.375rem;
+  line-height: 1.25;
+  letter-spacing: -0.005em;
+  color: var(--color-neutral-900);
+  transition: color var(--transition-fast) var(--ease-out);
+}
+
+.group:hover .card-restaurant-name {
+  color: var(--color-primary-600);
+}
+
+/* Véu de hover dos cards — antes um gradiente Tailwind de blue-50/30
+   (grupo hover). Agora um tom de oliva a 8%, sutil como o do capture. */
+.card-veil {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(to top, transparent, transparent);
+  transition: background var(--transition-base) var(--ease-out);
+}
+
+.group:hover .card-veil {
+  background: linear-gradient(to top, rgba(111, 130, 86, 0.08), transparent);
 }

@@ -17,11 +17,13 @@
     <meta property="og:image" content="images/og-image.png">
     <meta property="og:url" content="">
     <meta name="twitter:card" content="summary_large_image">
-    <!-- Google Fonts -->
+    <!-- Google Fonts
+         Cormorant Garamond (display: nomes/wordmark) + DM Sans (UI) —
+         mesma dupla do capture/. JetBrains Mono só para timers/ids. -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link
-        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap"
+        href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@500;600&family=DM+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
         rel="stylesheet">
     <!-- CSS Libraries -->
     <link href="https://cdn.jsdelivr.net/npm/tailwindcss@2.2.19/dist/tailwind.min.css" rel="stylesheet">
@@ -31,22 +33,22 @@
 
     <!-- Custom CSS - New Architecture -->
     <!-- 1. Design System Foundation (FIRST - design tokens, base styles) -->
-    <link rel="stylesheet" href="styles/design-system.css?v=20260813-2">
+    <link rel="stylesheet" href="styles/design-system.css?v=20260814-1">
 
     <!-- 2. Component Library (reusable components) -->
-    <link rel="stylesheet" href="styles/components.css?v=20260813-10">
+    <link rel="stylesheet" href="styles/components.css?v=20260814-1">
 
     <!-- 3. Application-specific Styles -->
     <link rel="stylesheet" href="styles/application.css?v=20260813-1">
 
     <!-- 4. Feature-specific Styles -->
-    <link rel="stylesheet" href="styles/places-section.css">
-    <link rel="stylesheet" href="styles/access-control.css?v=20260813-1">
-    <link rel="stylesheet" href="styles/sync-badges.css?v=20260813-2">
-    <link rel="stylesheet" href="styles/mobile-enhancements.css?v=20260813-1">
+    <link rel="stylesheet" href="styles/places-section.css?v=20260814-1">
+    <link rel="stylesheet" href="styles/access-control.css?v=20260814-1">
+    <link rel="stylesheet" href="styles/sync-badges.css?v=20260814-1">
+    <link rel="stylesheet" href="styles/mobile-enhancements.css?v=20260814-1">
 
     <!-- 5. Legacy Support (will be deprecated after migration) -->
-    <link rel="stylesheet" href="styles/style.css?v=20260813-5">
+    <link rel="stylesheet" href="styles/style.css?v=20260814-1">
 
     <!-- Centralized Configuration (MUST load first) -->
     <script src="scripts/core/config.js"></script>
@@ -115,7 +117,7 @@
                 <!-- Left: Logo and Title -->
                 <div class="flex items-center gap-2 sm:gap-3">
                     <img src="images/Lotier_Concierge_logo_v3.png" alt="Lotier Logo" class="h-12 sm:h-14 w-auto">
-                    <h1 class="text-2xl sm:text-3xl font-bold text-gray-800">Collector</h1>
+                    <h1 class="brand-wordmark">Collector</h1>
                 </div>
 
                 <!-- Right: Sync Status and User Profile -->
@@ -131,13 +133,12 @@
 
 
         <!-- Audio Recording Section -->
-        <section id="recording-section"
-            class="mb-8 p-6 bg-white rounded-xl shadow-md border border-gray-100 hover:shadow-lg transition-all duration-300 hidden">
+        <section id="recording-section" class="panel mb-8 p-6 hidden">
             <h2 class="section-heading">
-                <span class="material-icons" style="color: var(--color-error)">mic</span>
+                <span class="material-icons">mic</span>
                 Record Your Restaurant Review
                 <span id="pending-audio-badge"
-                    class="ml-2 bg-yellow-500 text-white text-xs px-2 py-1 rounded-full cursor-pointer hover:bg-yellow-600 hidden"
+                    class="chip chip--warning ml-2 cursor-pointer hover:opacity-80 hidden"
                     title="Click to view pending recordings"></span>
             </h2>
             <p class="text-sm text-gray-600 mb-4">Record your review — up to 5 minutes. Restaurant details are extracted automatically.</p>
@@ -152,7 +153,7 @@
                     </svg>
                 </div>
                 <div id="audio-preview" class="mt-6 w-full hidden rounded-lg overflow-hidden">
-                    <div class="bg-gradient-to-r from-purple-50 to-blue-50 p-4 rounded-t-lg border-b border-gray-200">
+                    <div class="bg-gray-50 p-4 rounded-t-lg border-b border-gray-200">
                         <h3 class="text-lg font-semibold mb-2">Review recorded</h3>
                         <p class="text-sm text-gray-600">Your recording is being processed automatically</p>
                     </div>
@@ -186,8 +187,7 @@
         </section>
 
         <!-- Transcription Section -->
-        <section id="transcription-section"
-            class="mb-8 p-6 bg-white rounded-xl shadow-md border border-gray-100 hover:shadow-lg transition-all duration-300 hidden">
+        <section id="transcription-section" class="panel mb-8 p-6 hidden">
             <h2 class="section-heading">
                 <span class="material-icons">description</span>
                 Transcription
@@ -206,8 +206,7 @@
         </section>
 
         <!-- Concepts Section -->
-        <section id="concepts-section"
-            class="mb-8 p-6 bg-white rounded-xl shadow-md border border-gray-100 hover:shadow-lg transition-all duration-300 hidden">
+        <section id="concepts-section" class="panel mb-8 p-6 hidden">
             <h2 class="section-heading">
                 <span class="material-icons">category</span>
                 Restaurant Concepts
@@ -232,7 +231,7 @@
 
             <div class="mb-6">
                 <label class="block mb-2 font-medium flex items-center">
-                    <span class="material-icons mr-2 text-blue-500">location_on</span>
+                    <span class="material-icons mr-2">location_on</span>
                     Location:
                 </label>
                 <button id="get-location" class="btn btn-primary btn-md">
@@ -244,7 +243,7 @@
 
             <div id="entity-metadata-editor" class="mb-8 pb-4 border-b border-gray-200 hidden">
                 <h3 class="text-lg font-semibold mb-4 flex items-center">
-                    <span class="material-icons mr-2 text-blue-600" aria-hidden="true">domain</span>
+                    <span class="material-icons mr-2" aria-hidden="true">domain</span>
                     Entity Metadata
                 </h3>
 
@@ -300,7 +299,7 @@
 
             <div class="mb-6">
                 <label class="block mb-2 font-medium flex items-center">
-                    <span class="material-icons mr-2 text-blue-500">photo_camera</span>
+                    <span class="material-icons mr-2">photo_camera</span>
                     Photos:
                 </label>
                 <div class="photo-buttons-container">
@@ -326,7 +325,7 @@
             <!-- New transcription section -->
             <div id="curation-transcription-block" class="mb-8 pb-4 border-b border-gray-200">
                 <label for="restaurant-transcription" class="label flex items-center">
-                    <span class="material-icons mr-2 text-purple-500" aria-hidden="true">description</span>
+                    <span class="material-icons mr-2" aria-hidden="true">description</span>
                     Transcription:
                 </label>
                 <textarea id="restaurant-transcription" class="input input-md h-32"
@@ -358,12 +357,12 @@
             <!-- Curation Notes Section -->
             <div id="curation-notes-block" class="mb-8 pb-4 border-b border-gray-200">
                 <h3 class="text-lg font-semibold mb-4 flex items-center">
-                    <span class="material-icons mr-2 text-indigo-600" aria-hidden="true">edit_note</span>
+                    <span class="material-icons mr-2" aria-hidden="true">edit_note</span>
                     Curation Notes
                 </h3>
                 <div class="mb-4">
                     <label for="curation-notes-public" class="label flex items-center">
-                        <span class="material-icons mr-2 text-green-600" aria-hidden="true">visibility</span>
+                        <span class="material-icons mr-2" aria-hidden="true">visibility</span>
                         Public Notes
                         <span class="text-gray-500 text-xs ml-2">(visible to guests)</span>
                     </label>
@@ -374,7 +373,7 @@
                 </div>
                 <div class="mb-4">
                     <label for="curation-notes-private" class="label flex items-center">
-                        <span class="material-icons mr-2 text-red-600" aria-hidden="true">visibility_off</span>
+                        <span class="material-icons mr-2" aria-hidden="true">visibility_off</span>
                         Private Notes
                         <span class="text-gray-500 text-xs ml-2">(for internal use only)</span>
                     </label>
@@ -402,16 +401,14 @@
 
     <!-- Find Entity Button (starts hidden, revealed by switchView('list')) -->
     <div class="mb-6">
-        <button id="find-entity-btn"
-            class="btn btn-primary btn-lg w-full shadow-md mb-4 bg-blue-600 text-white hover:bg-blue-700 border-none hidden">
+        <button id="find-entity-btn" class="btn btn-primary btn-lg w-full mb-4 hidden">
             <span class="material-icons mr-2" aria-hidden="true">search</span>
             <span class="font-medium">Find Entity</span>
         </button>
     </div>
 
     <!-- Entities Section (Restaurants, Bars, Hotels, etc.) -->
-    <section id="entities-section"
-        class="mb-8 p-6 bg-white rounded-xl shadow-md border border-gray-100 hover:shadow-lg transition-all duration-300 hidden">
+    <section id="entities-section" class="panel mb-8 p-6 hidden">
         <!-- Header -->
         <div class="flex justify-between items-center mb-4">
             <h2 class="section-heading section-heading--plain">
@@ -427,15 +424,11 @@
         <!-- Tab Navigation -->
         <div class="mb-6 border-b border-gray-200">
             <nav class="flex space-x-8" aria-label="View modes">
-                <button id="tab-curations"
-                    class="view-tab active py-4 px-1 border-b-2 border-blue-500 font-medium text-blue-600 focus:outline-none"
-                    data-tab="curations">
+                <button id="tab-curations" class="view-tab active" data-tab="curations">
                     <span class="material-icons text-sm align-middle mr-1">edit_note</span>
                     Curations
                 </button>
-                <button id="tab-entities"
-                    class="view-tab py-4 px-1 border-b-2 border-transparent font-medium text-gray-500 hover:text-gray-700 hover:border-gray-300 focus:outline-none"
-                    data-tab="entities">
+                <button id="tab-entities" class="view-tab" data-tab="entities">
                     <span class="material-icons text-sm align-middle mr-1">restaurant</span>
                     Entities
                 </button>
@@ -455,14 +448,13 @@
                 <div class="md:col-span-2">
                     <div class="relative">
                         <input type="text" id="curation-search" placeholder="Search curations..."
-                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                            class="input input-md" />
                     </div>
                 </div>
 
                 <!-- Status Filter -->
                 <div>
-                    <select id="curation-status-filter"
-                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    <select id="curation-status-filter" class="select input-md">
                         <option value="all">All Status</option>
                         <option value="draft">Draft</option>
                         <option value="linked">Linked</option>
@@ -474,8 +466,7 @@
 
                 <!-- Curator Filter -->
                 <div>
-                    <select id="curation-curator-filter"
-                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    <select id="curation-curator-filter" class="select input-md">
                         <option value="all">All Curators</option>
                     </select>
                 </div>
@@ -483,13 +474,12 @@
                 <!-- City Filter -->
                 <div>
                     <input type="text" id="curation-city-filter" placeholder="Filter by city..."
-                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                        class="input input-md" />
                 </div>
 
                 <!-- Type Filter -->
                 <div>
-                    <select id="curation-type-filter"
-                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    <select id="curation-type-filter" class="select input-md">
                         <option value="all">All Types</option>
                         <option value="restaurant">Restaurants</option>
                         <option value="bar">Bars</option>
@@ -511,14 +501,13 @@
                 <div class="md:col-span-2">
                     <div class="relative">
                         <input type="text" id="entity-search" placeholder="Search entities..."
-                            class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent" />
+                            class="input input-md" />
                     </div>
                 </div>
 
                 <!-- Type Filter -->
                 <div>
-                    <select id="entity-type-filter"
-                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    <select id="entity-type-filter" class="select input-md">
                         <option value="all">All Types</option>
                         <option value="restaurant">Restaurants</option>
                         <option value="bar">Bars</option>
@@ -529,8 +518,7 @@
 
                 <!-- City Filter -->
                 <div>
-                    <select id="entity-city-filter"
-                        class="w-full px-4 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent">
+                    <select id="entity-city-filter" class="select input-md">
                         <option value="all">All Cities</option>
                     </select>
                 </div>
@@ -543,8 +531,7 @@
     </section>
 
     <!-- Export/Import Section -->
-    <section id="export-import-section"
-        class="mb-8 p-6 bg-white rounded-xl shadow-md border border-gray-100 hover:shadow-lg transition-all duration-300 hidden">
+    <section id="export-import-section" class="panel mb-8 p-6 hidden">
         <h2 class="section-heading">
             <span class="material-icons">settings</span>
             Data Management
@@ -616,9 +603,9 @@
     <!-- Quick Action Modal -->
     <div id="quick-action-modal"
         class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
-        <div class="bg-white p-6 rounded-lg max-w-sm w-full shadow-xl border border-gray-100">
+        <div class="bg-white p-6 rounded-2xl max-w-sm w-full shadow-xl border border-gray-100">
             <div class="flex items-center mb-6">
-                <span class="material-icons mr-2 text-blue-500">add_circle</span>
+                <span class="material-icons mr-2">add_circle</span>
                 <h3 class="text-xl font-semibold">Quick Actions</h3>
                 <button id="close-quick-modal" aria-label="Close quick actions" class="ml-auto text-gray-500 hover:text-gray-800 text-xl leading-none h-8 w-8 flex items-center justify-center rounded hover:bg-gray-100 transition-colors">&times;</button>
             </div>
@@ -648,7 +635,7 @@
 
     <!-- Floating Action Button -->
     <button id="fab" type="button" aria-label="Open quick actions"
-        class="fixed bottom-6 right-6 bg-blue-600 text-white rounded-full w-16 h-16 flex items-center justify-center shadow-lg cursor-pointer">
+        class="fixed bottom-6 right-6 text-white rounded-full w-16 h-16 flex items-center justify-center cursor-pointer">
         <span class="material-icons text-2xl" aria-hidden="true">add</span>
     </button>
 

@@ -41,11 +41,11 @@
 }
 
 .restaurant-card.restaurant-local {
-    border-left: 3px solid #F59E0B;
+    border-left: 3px solid var(--color-warning-400);
 }
 
 .restaurant-card.restaurant-remote {
-    border-left: 3px solid #10B981;
+    border-left: 3px solid var(--color-success-400);
 }
 
 /* Curator selector styles */
@@ -79,7 +79,7 @@
 }
 
 .sync-restaurant:hover {
-    background-color: rgba(16, 185, 129, 0.1);
+    background-color: rgba(74, 124, 89, 0.1);
 }
 
 /* Curator filter toggle */
@@ -88,14 +88,14 @@
     align-items: center;
     margin-top: 0.5rem;
     font-size: 0.875rem;
-    color: #4B5563;
+    color: var(--color-neutral-600);
 }
 
 .curator-filter-toggle input[type="checkbox"] {
     width: 1rem;
     height: 1rem;
     margin-right: 0.5rem;
-    accent-color: #2563EB;
+    accent-color: var(--color-primary-600);
 }
 
 /* Compact curator section styles */
@@ -154,7 +154,7 @@
 }
 
 #toggle-api-visibility:focus {
-    outline: 2px solid #3B82F6;
+    outline: 2px solid var(--color-primary-600);
     outline-offset: 2px;
     border-radius: 0.25rem;
 }
