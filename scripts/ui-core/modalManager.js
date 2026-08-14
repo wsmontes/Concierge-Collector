@@ -377,6 +377,12 @@ window.ModalManager = (function() {
         // Remove active class
         modal.element.classList.remove(CSS_CLASSES.active);
 
+        // Notify caller (fechamento por X/Escape/overlay precisa resolver
+        // promises de modais de confirmação, ex.: conflito → cancel)
+        if (modal.options && typeof modal.options.onClose === 'function') {
+            modal.options.onClose(modalId);
+        }
+
         // Wait for animation
         setTimeout(() => {
             // Remove from DOM
