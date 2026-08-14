@@ -13,15 +13,27 @@ const DB_NAME = 'ConciergeCaptureQueue';
 const DB_VERSION = 1;
 const STORE_NAME = 'captures';
 
+// Conexão cacheadas: abrir o IndexedDB por operação custa caro e gera
+// conexões concorrentes (cada operação abria e nunca fechava a própria).
+let dbPromise = null;
+
 function openDB() {
-  return new Promise((resolve, reject) => {
-    const req = indexedDB.open(DB_NAME, DB_VERSION);
-    req.onupgradeneeded = () => {
-      req.result.createObjectStore(STORE_NAME, { keyPath: 'id' });
-    };
-    req.onsuccess = () => resolve(req.result);
-    req.onerror = () => reject(req.error);
-  });
+  if (!dbPromise) {
+    dbPromise = new Promise((resolve, reject) => {
+      const req = indexedDB.open(DB_NAME, DB_VERSION);
+      req.onupgradeneeded = () => {
+        req.result.createObjectStore(STORE_NAME, { keyPath: 'id' });
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => {
+        // Falha pode ser transitória (ex.: quota) — não envenena a promise
+        // cacheada; a próxima chamada tenta abrir de novo.
+        dbPromise = null;
+        reject(req.error);
+      };
+    });
+  }
+  return dbPromise;
 }
 
 async function withStore(mode, fn) {
@@ -66,6 +78,12 @@ export async function getAllItems() {
   return withStore('readonly', store => store.getAll()).then(
     items => items.sort((a, b) => b.createdAt - a.createdAt)
   );
+}
+
+/** Get a single item by id (or undefined if not present). Usado pelo app
+ * para resolver updates da fila sem depender do handle em memória. */
+export async function getItem(id) {
+  return withStore('readonly', store => store.get(id));
 }
 
 /** Update specific fields of a stored item. */

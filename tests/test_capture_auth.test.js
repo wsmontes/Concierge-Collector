@@ -65,3 +65,69 @@ describe('captureService — save/clear credentials', () => {
     expect(hasCredentials()).toBe(false);
   });
 });
+
+describe('captureService — request com timeout e 401', () => {
+  beforeEach(() => {
+    localStorage.clear();
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  test('fetch envia AbortSignal.timeout (60s) e usa o path com prefixo /api/v3', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ ok: 1 }) });
+    vi.stubGlobal('fetch', fetchMock);
+    localStorage.setItem('capture_token', 'jwt-token');
+    const { postCapture } = await import('../capture/captureService.js');
+
+    await postCapture({ audioBase64: 'x', idempotencyKey: 'k', curatorId: 'c' });
+
+    const [url, opts] = fetchMock.mock.calls[0];
+    expect(url).toBe('/api/v3/capture');
+    // Sem timeout, um fetch pendurado seguraria processing=true da fila
+    // para sempre (queueProcessor.js:73-76).
+    expect(opts.signal).toBeInstanceOf(AbortSignal);
+    expect(opts.signal.aborted).toBe(false);
+    expect(opts.headers.Authorization).toBe('Bearer jwt-token');
+  });
+
+  test('401 limpa credenciais, dispara onUnauthorized e expõe status no erro', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false, status: 401, statusText: 'Unauthorized', text: async () => 'token expired',
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    localStorage.setItem('capture_token', 'jwt-token');
+    const { postCapture, setOnUnauthorized, hasCredentials } = await import('../capture/captureService.js');
+    const onUnauthorized = vi.fn();
+    setOnUnauthorized(onUnauthorized);
+
+    const err = await postCapture({ audioBase64: 'x', idempotencyKey: 'k', curatorId: 'c' })
+      .then(() => null, e => e);
+
+    // Erro com status 401 (não é Error genérico) para o queueProcessor
+    // distinguir auth de falha transitória.
+    expect(err).toBeInstanceOf(Error);
+    expect(err.status).toBe(401);
+    expect(err.message).toContain('401');
+    expect(hasCredentials()).toBe(false); // credencial inválida não fica salva
+    expect(onUnauthorized).toHaveBeenCalledTimes(1);
+  });
+
+  test('resposta não-401 não limpa credenciais nem dispara onUnauthorized', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: false, status: 500, statusText: 'Internal Server Error', text: async () => 'boom',
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    localStorage.setItem('api_key', 'chave');
+    const { postCapture, setOnUnauthorized, hasCredentials } = await import('../capture/captureService.js');
+    const onUnauthorized = vi.fn();
+    setOnUnauthorized(onUnauthorized);
+
+    const err = await postCapture({ audioBase64: 'x', idempotencyKey: 'k', curatorId: 'c' })
+      .then(() => null, e => e);
+
+    expect(err.status).toBe(500);
+    expect(hasCredentials()).toBe(true); // credencial segue salva
+    expect(onUnauthorized).not.toHaveBeenCalled();
+  });
+});

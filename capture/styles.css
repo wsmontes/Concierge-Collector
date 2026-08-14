@@ -403,6 +403,12 @@ button {
   align-items: center;
 }
 .auth-panel__title { width: 100%; margin: 0 0 0.25rem; font-size: 0.9rem; }
+.auth-panel__message {
+  width: 100%;
+  margin: 0 0 0.25rem;
+  font-size: 0.8rem;
+  color: var(--danger);
+}
 .auth-panel__label { width: 100%; margin: 0; font-size: 0.75rem; color: var(--muted); }
 .auth-panel__input {
   flex: 1;
@@ -431,20 +437,21 @@ button {
   cursor: pointer;
 }
 .auth-panel__btn:hover { background: var(--olive-dim); }
-.auth-panel__clear {
-  padding: 0.55rem 0.75rem;
-  border: none;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--danger);
-  font-family: inherit;
-  font-size: 0.9rem;
-  cursor: pointer;
-}
 
 /* ── Session items com falha ────────────────────────────────────────────── */
 .session-item--failed { border-left: 3px solid var(--danger); }
 .session-item__retry {
+  padding: 0.3rem 0.7rem;
+  border: 1px solid rgba(0,0,0,0.2);
+  border-radius: 8px;
+  background: transparent;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+/* ── Session items com match pendente (abrir card) ──────────────────────── */
+.session-item--matched { border-left: 3px solid var(--warn); }
+.session-item__open {
   padding: 0.3rem 0.7rem;
   border: 1px solid rgba(0,0,0,0.2);
   border-radius: 8px;

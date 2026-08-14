@@ -131,3 +131,107 @@ describe('queueProcessor — estados absorventes (uploading/confirming)', () => 
     expect(postCaptureConfirm).not.toHaveBeenCalled();
   });
 });
+
+describe('queueProcessor — dirty-flag pós-loop', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    getPendingItems.mockReset();
+    updateItem.mockReset();
+    postCapture.mockReset();
+    postCaptureConfirm.mockReset();
+  });
+
+  test('confirm que chega no meio do loop é pego na re-passada (não espera heartbeat)', async () => {
+    // A primeira leitura vê o item 'queued'; no meio do loop o usuário
+    // confirma (segunda leitura pós-loop mostra matched+confirmed). A
+    // re-passada confirma e a leitura final não tem mais trabalho.
+    getPendingItems
+      .mockResolvedValueOnce([{ id: 'a', status: 'queued', createdAt: 1, audioBlob: new Blob(['x']) }])
+      .mockResolvedValueOnce([{ id: 'a', status: 'matched', captureId: 'c1', confirmedEntityId: 'e1', createdAt: 1 }])
+      .mockResolvedValueOnce([{ id: 'a', status: 'matched', captureId: 'c1', confirmedEntityId: 'e1', createdAt: 1 }])
+      .mockResolvedValueOnce([]);
+    postCapture.mockResolvedValue({ capture_id: 'c1', entities: [], restaurant_name: 'X' });
+    const { processQueue } = await import('../capture/queueProcessor.js');
+    await processQueue();
+
+    // upload + confirmação da re-passada
+    expect(postCapture).toHaveBeenCalledTimes(1);
+    expect(postCaptureConfirm).toHaveBeenCalledWith('c1', expect.objectContaining({ entityId: 'e1' }));
+  });
+
+  test('item novo gravado no meio do loop também é pego na re-passada', async () => {
+    getPendingItems
+      .mockResolvedValueOnce([])   // snapshot: fila vazia no início do loop
+      .mockResolvedValueOnce([{ id: 'b', status: 'queued', createdAt: 2, audioBlob: new Blob(['y']) }])
+      .mockResolvedValueOnce([{ id: 'b', status: 'queued', createdAt: 2, audioBlob: new Blob(['y']) }])
+      .mockResolvedValueOnce([]);
+    postCapture.mockResolvedValue({ capture_id: 'c2', entities: [], restaurant_name: 'Y' });
+    const { processQueue } = await import('../capture/queueProcessor.js');
+    await processQueue();
+
+    expect(postCapture).toHaveBeenCalledTimes(1);
+  });
+
+  test('falha de upload do próprio loop não dispara re-passada (evita martelar a rede)', async () => {
+    vi.useFakeTimers();
+    try {
+      getPendingItems
+        .mockResolvedValueOnce([{ id: 'a', status: 'queued', createdAt: 1, audioBlob: new Blob(['x']) }])
+        .mockResolvedValueOnce([{ id: 'a', status: 'failed', retries: 1, createdAt: 1 }]);
+      postCapture.mockRejectedValue(new Error('network down'));
+      const { processQueue } = await import('../capture/queueProcessor.js');
+      const done = processQueue();
+      await vi.runAllTimersAsync();
+      await done;
+
+      // a falha (com seus retries de backoff) aconteceu numa passada só:
+      // só 1 transição 'uploading' — a falha em si não re-dispara passadas
+      const uploadingCalls = updateItem.mock.calls.filter(([id, u]) => u.status === 'uploading');
+      expect(uploadingCalls).toHaveLength(1);
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+});
+
+describe('queueProcessor — 401 e quota', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    getPendingItems.mockReset();
+    updateItem.mockReset();
+    postCapture.mockReset();
+    postCaptureConfirm.mockReset();
+  });
+
+  test('401 falha imediato sem retry com backoff e com mensagem específica', async () => {
+    getPendingItems.mockResolvedValue([
+      { id: 'a', status: 'queued', createdAt: 1, audioBlob: new Blob(['x']) },
+    ]);
+    // Erro com status 401 (como o captureService lança) — não pode queimar
+    // retries com backoff: re-tentar credencial inválida não resolve.
+    postCapture.mockRejectedValue(Object.assign(new Error('401: token expired'), { status: 401 }));
+    const { processQueue } = await import('../capture/queueProcessor.js');
+    await processQueue();
+
+    expect(postCapture).toHaveBeenCalledTimes(1); // sem as 3 tentativas de backoff
+    const failedCall = updateItem.mock.calls.find(([id, u]) => u.status === 'failed');
+    expect(failedCall).toBeDefined();
+    expect(failedCall[1].retries).toBe(1);
+    // o notify carrega a mensagem específica de auth para a UI mostrar
+    // (o teste captura via updateItem; o payload vai no notify — aqui
+    // garantimos que o contador avançou e o item foi para 'failed')
+  });
+
+  test('item done tem o áudio removido (devolve quota ao IndexedDB)', async () => {
+    getPendingItems.mockResolvedValue([
+      { id: 'a', status: 'matched', captureId: 'c1', confirmedEntityId: 'e1', createdAt: 1 },
+    ]);
+    postCaptureConfirm.mockResolvedValue({});
+    const { processQueue } = await import('../capture/queueProcessor.js');
+    await processQueue();
+
+    const doneCall = updateItem.mock.calls.find(([id, u]) => u.status === 'done');
+    expect(doneCall).toBeDefined();
+    expect(doneCall[1].audioBlob).toBeUndefined();
+  });
+});

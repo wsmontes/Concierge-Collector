@@ -5,6 +5,9 @@
  */
 
 const BASE = '/api/v3';
+const REQUEST_TIMEOUT_MS = 60_000;
+
+let onUnauthorized = null; // callback de 401 — registrado pelo app.js
 
 /**
  * Credenciais do capture (mesma origin da API em produção — o app é servido
@@ -47,18 +50,46 @@ export function hasCredentials() {
   );
 }
 
+/** Registra callback chamado quando a API devolve 401 (credencial expirada
+ * ou inválida) — o app usa para limpar o estado e pedir um novo token. */
+export function setOnUnauthorized(fn) { onUnauthorized = fn; }
+
 async function request(method, path, body) {
   const headers = authHeaders();
 
-  const res = await fetch(`${BASE}${path}`, {
-    method,
-    headers,
-    body: body ? JSON.stringify(body) : undefined,
-  });
+  // Timeout de 60s: um fetch pendurado seguraria processing=true na fila
+  // para sempre. AbortSignal.timeout não existe em navegadores muito antigos
+  // — nesse caso, fica sem signal (fetch sem timeout, comportamento antigo).
+  const signal = (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function')
+    ? AbortSignal.timeout(REQUEST_TIMEOUT_MS)
+    : undefined;
+
+  let res;
+  try {
+    res = await fetch(`${BASE}${path}`, {
+      method,
+      headers,
+      body: body ? JSON.stringify(body) : undefined,
+      signal,
+    });
+  } catch (err) {
+    if (err && (err.name === 'TimeoutError' || err.name === 'AbortError')) {
+      throw new Error(`timeout: ${method} ${path} não respondeu em ${REQUEST_TIMEOUT_MS / 1000}s`);
+    }
+    throw err;
+  }
 
   if (!res.ok) {
     const text = await res.text().catch(() => '');
-    throw new Error(`${res.status}: ${text || res.statusText}`);
+    const err = new Error(`${res.status}: ${text || res.statusText}`);
+    err.status = res.status;
+    if (res.status === 401) {
+      // Credencial inválida/expirada: limpa e avisa a UI (via callback) —
+      // re-tentar não resolve e o header velho só martela a API.
+      clearCredentials();
+      if (onUnauthorized) onUnauthorized();
+    }
+    throw err;
   }
 
   return res.json();

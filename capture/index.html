@@ -70,11 +70,11 @@
   <!-- Auth: credencial da API (JWT ou X-API-Key) — escondido quando autenticado -->
   <section id="auth-panel" class="auth-panel" hidden aria-label="Credenciais da API">
     <p class="auth-panel__title">Conecte-se para enviar capturas</p>
+    <p id="auth-message" class="auth-panel__message" hidden></p>
     <label for="auth-input" class="auth-panel__label">Token JWT ou X-API-Key</label>
     <input id="auth-input" class="auth-panel__input" type="password"
            placeholder="Cole o token JWT ou a X-API-Key" autocomplete="off">
     <button id="auth-save" class="auth-panel__btn">Salvar</button>
-    <button id="auth-clear" class="auth-panel__clear" hidden>Sair</button>
   </section>
 
   <!-- Navigation: subtle link to legacy Collector -->
@@ -83,6 +83,9 @@
          absoluto caía no root da API, que redireciona de volta pro capture -->
     <a href="../app/" class="bottom-nav__link">Browse</a>
     <span class="bottom-nav__current">Capture</span>
+    <!-- "Sair" fica FORA do auth-panel: o painel é ocultado quando
+         autenticado, então um botão dentro dele seria UI morta -->
+    <button id="auth-logout" class="bottom-nav__link" hidden>Sair</button>
   </nav>
 
 </main>
