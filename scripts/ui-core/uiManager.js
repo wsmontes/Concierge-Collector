@@ -1442,7 +1442,8 @@ if (typeof window.UIManager === 'undefined') {
                 curation.restaurantName ||
                 'Unmatched Review';
 
-            const curatorName = curation.curator?.name || curation.curatorName || 'Unknown';
+            const _escC = (v) => { const d = document.createElement('div'); d.textContent = v == null ? '' : String(v); return d.innerHTML; };
+            const curatorName = _escC(curation.curator?.name || curation.curatorName || 'Unknown');
 
             // Transcription snippet
             const transcription =
@@ -1510,7 +1511,7 @@ if (typeof window.UIManager === 'undefined') {
                             ${conceptNames.slice(0, 3).map(c => `
                                 <span class="px-2 py-0.5 bg-gray-100 text-gray-600 text-xs rounded-md border border-gray-200">${c}</span>
                             `).join('')}
-                            ${totalConcepts > 3 ? `<span class="px-2 py-0.5 bg-gray-50 text-gray-400 text-xs rounded-md border border-gray-100">+${totalConcepts - 3}</span>` : ''}
+                            ${totalConcepts > 3 ? `<span class="px-2 py-0.5 bg-gray-50 text-gray-600 text-xs rounded-md border border-gray-100">+${totalConcepts - 3}</span>` : ''}
                         </div>
                     ` : ''}
                     
@@ -1522,7 +1523,7 @@ if (typeof window.UIManager === 'undefined') {
                     ` : ''}
 
                     <!-- Curator Info -->
-                    <div class="flex items-center gap-1.5 text-xs text-gray-400 mt-auto pt-2">
+                    <div class="flex items-center gap-1.5 text-xs text-gray-500 mt-auto pt-2">
                         <span class="material-icons text-[14px]">person</span>
                         <span>${curatorName}</span>
                     </div>

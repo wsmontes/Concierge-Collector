@@ -125,7 +125,7 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
                 statusHtml = `
                     <button 
                         id="btn-sync-details"
-                        class="flex items-center gap-1 text-xs sm:text-sm text-blue-600 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded px-2 py-1"
+                        class="flex items-center gap-1 text-xs sm:text-sm text-blue-600 hover:text-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 rounded px-2 py-1.5 min-h-8"
                         title="Syncing now${pendingTotal ? ` • ${pendingTotal} pending` : ''}"
                     >
                         <span class="material-icons text-xl animate-spin">sync</span>
@@ -161,7 +161,7 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
                 statusHtml = `
                     <button 
                         id="btn-sync-details"
-                        class="flex items-center gap-1 text-xs sm:text-sm text-green-600 hover:text-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 rounded px-2 py-1"
+                        class="flex items-center gap-1 text-xs sm:text-sm text-green-600 hover:text-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 rounded px-2 py-1.5 min-h-8"
                         title="Last synced: ${lastSyncTime}"
                     >
                         <span class="material-icons text-xl">cloud_done</span>

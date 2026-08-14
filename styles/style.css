@@ -345,14 +345,16 @@ button:hover::after {
 }
 
 /* Button Variants */
+/* Blue-600 como base: o var(--color-info) (blue-500) deixava o texto
+   branco em 3.68:1 — abaixo de WCAG AA. Blue-600 dá ~6.6:1. */
 button.bg-blue-500, button.bg-blue-600 {
-  background-color: var(--color-info);
+  background-color: #2563eb; /* Blue 600 */
   color: white;
-  box-shadow: 0 2px 0 rgba(59, 130, 246, 0.5);
+  box-shadow: 0 2px 0 rgba(37, 99, 235, 0.5);
 }
 
 button.bg-blue-500:hover, button.bg-blue-600:hover {
-  background-color: #2563eb; /* Blue 600 */
+  background-color: #1d4ed8; /* Blue 700 */
 }
 
 button.bg-red-500 {

@@ -157,11 +157,11 @@ const CuratorProfile = (function() {
                                 class="w-8 h-8 sm:w-10 sm:h-10 rounded-full ring-2 ring-blue-200 object-cover flex-shrink-0"
                                 onerror="this.style.display='none'; this.nextElementSibling.style.display='flex'"
                             >
-                            <div class="avatar-fallback w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-blue-500 text-white flex items-center justify-center font-bold flex-shrink-0" style="display:none">
+                            <div class="avatar-fallback w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold flex-shrink-0" style="display:none">
                                 ${getInitials(_currentCurator.name)}
                             </div>
                         ` : `
-                            <div class="avatar-fallback w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-blue-500 text-white flex items-center justify-center font-bold flex-shrink-0">
+                            <div class="avatar-fallback w-8 h-8 sm:w-10 sm:h-10 rounded-full bg-blue-600 text-white flex items-center justify-center font-bold flex-shrink-0">
                                 ${getInitials(_currentCurator.name)}
                             </div>
                         `}

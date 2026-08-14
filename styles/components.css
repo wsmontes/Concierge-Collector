@@ -121,9 +121,11 @@
 
 /* Button Variants */
 .btn-primary {
-  background-color: var(--color-primary);
+  /* blue-600: branco sobre blue-500 ficava em 3.68:1 (abaixo de WCAG
+     AA para texto de botão); blue-600 dá ~6.6:1 */
+  background-color: var(--color-primary-600);
   color: white;
-  border-color: var(--color-primary);
+  border-color: var(--color-primary-600);
 }
 
 .btn-primary:hover:not(:disabled) {
