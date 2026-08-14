@@ -27,23 +27,10 @@ if (typeof window.ConceptMatcher === 'undefined') {
         }
 
         async loadModel() {
-            // Since we're using a simplified matching approach, just log a notification
+            // Implementação interna — o aviso "Using enhanced concept matching"
+            // era um toast de DEV que aparecia a cada load sem valor pro
+            // usuário; fica só no console.
             console.log("Using enhanced text similarity matching for concepts");
-            
-            // Show notification to user
-            if (typeof Toastify === 'function') {
-                Toastify({
-                    text: "Using enhanced concept matching",
-                    duration: 3000,
-                    gravity: "bottom",
-                    position: "center",
-                    style: { 
-                        background: "linear-gradient(to right, #4b6cb7, #182848)",
-                        color: "#ffffff" 
-                    }
-                }).showToast();
-            }
-            
             return true;
         }
 
