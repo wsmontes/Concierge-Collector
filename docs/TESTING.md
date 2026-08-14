@@ -300,44 +300,18 @@ const entity = await createTestEntity({
 
 ## CI/CD Integration
 
-GitHub Actions runs **tests only** (no deployment). Two workflows live in `.github/workflows/`:
+**CI removido em 2026-08-14** (a pedido): os workflows do GitHub Actions foram
+deletados e Actions desabilitadas no repo (conta travada por billing — todo
+run falhava em 3s). A barra de qualidade é LOCAL, com os mesmos comandos que
+o CI rodava:
 
-- **`test-frontend.yml`** — Frontend Tests (Vitest, Node 18)
-- **`test-backend.yml`** — Backend Tests (pytest + flake8/black, Python 3.13)
-
-### Frontend Workflow (`test-frontend.yml`)
-
-**Triggers:**
-- Push to `main`, `Front-End-V3`, `develop` branches
-- Pull requests targeting `main`, `Front-End-V3`
-
-**Jobs:**
-
-1. **`test`** (Run Frontend Tests, `ubuntu-latest`):
-   - `actions/checkout@v4`
-   - `actions/setup-node@v4` with `node-version: '18'` and `cache: 'npm'`
-   - `npm ci`
-   - A single `npm run test:coverage` run (coverage thresholds 70/60/70/70 are enforced by `vitest.config.js`)
-   - `actions/upload-artifact@v4` uploads `coverage/` (retention 30 days)
-   - On pull requests, `actions/github-script@v7` posts a coverage comment reading `coverage/coverage-summary.json` (written because `vitest.config.js` includes the `json-summary` coverage reporter)
-2. **`lint`** (Code Quality Check): syntax-check of all JS files in `scripts/` **and** `capture/` via `node -c`
-
-### Backend Workflow (`test-backend.yml`)
-
-**Triggers:**
-- Push to `main`, `develop` branches
-- Pull requests targeting `main`
-
-**Jobs:**
-
-1. **`test`** (Run Backend Tests, `ubuntu-latest`):
-   - `actions/checkout@v4`
-   - `actions/setup-python@v5` with `python-version: '3.13'` (matches `runtime.txt` / production) and `cache: 'pip'`
-   - `pip install -r requirements.txt` (working dir `concierge-api-v3`)
-   - `pytest` with unit tests only: `-m "not integration and not external_api and not mongo and not openai"`
-   - Coverage run with `pytest-cov` (`--cov=app --cov-report=xml --cov-report=term`), artifact `backend-coverage-report` uploaded
-   - Step summary of the run
-2. **`lint`** (Code Quality Check): pinned `flake8==7.3.0` and `black==26.5.1`; `black --check app/ tests/` and `flake8 app/ tests/ --max-line-length=120 --ignore=E203,W503` (working dir `concierge-api-v3`)
+- **Frontend:** `npm test` (Vitest, jsdom + fake-indexeddb) e
+  `npm run test:coverage` (thresholds 70/60/70/70 no `vitest.config.js`)
+- **Backend** (`concierge-api-v3/`): `venv/bin/pytest -m "not integration and
+  not external_api and not mongo and not openai"`; lint
+  `flake8 app/ tests/ --max-line-length=120 --ignore=E203,W503` e
+  `black --check app/ tests/` (line-length 120 via `pyproject.toml`)
+- **Pipeline:** `venv/bin/python -m pytest scripts/python-tools/tests/`
 
 ## Test Types
 
