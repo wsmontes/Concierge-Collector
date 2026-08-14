@@ -1754,7 +1754,11 @@ if (typeof window.UIManager === 'undefined') {
                 curation.unstructured_text ||
                 curation.transcription ||
                 '';
-            const notes = curation.notes || '';
+            // notes é um OBJETO {public, private} (o form de edição tem os
+            // dois campos) — stringify cego virava "[object Object]"
+            const notesRaw = curation.notes || {};
+            const notesPublic = typeof notesRaw === 'string' ? notesRaw : (notesRaw.public || '');
+            const notesPrivate = typeof notesRaw === 'string' ? '' : (notesRaw.private || '');
             const city = curation.city || '';
             const type = curation.type || '';
             const isLinked = !!curation.entity_id;
@@ -1819,19 +1823,36 @@ if (typeof window.UIManager === 'undefined') {
                 `);
             }
 
-            // ── Notas ──
-            if (notes) {
-                sections.push(`
-                    <section>
-                        <h3 class="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
-                            <span class="material-icons text-base text-gray-500" aria-hidden="true">edit_note</span>
-                            Notes
-                        </h3>
-                        <div class="bg-amber-50/60 p-4 rounded-lg border border-amber-100 text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
-                            ${esc(notes)}
+            // ── Notas (públicas e privadas separadas) ──
+            if (notesPublic || notesPrivate) {
+                const notesBlocks = [];
+                if (notesPublic) {
+                    notesBlocks.push(`
+                        <div>
+                            <h3 class="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
+                                <span class="material-icons text-base text-gray-500" aria-hidden="true">visibility</span>
+                                Public Notes
+                            </h3>
+                            <div class="bg-amber-50/60 p-4 rounded-lg border border-amber-100 text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+                                ${esc(notesPublic)}
+                            </div>
                         </div>
-                    </section>
-                `);
+                    `);
+                }
+                if (notesPrivate) {
+                    notesBlocks.push(`
+                        <div>
+                            <h3 class="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
+                                <span class="material-icons text-base text-gray-500" aria-hidden="true">visibility_off</span>
+                                Private Notes
+                            </h3>
+                            <div class="bg-gray-50 p-4 rounded-lg border border-gray-200 text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">
+                                ${esc(notesPrivate)}
+                            </div>
+                        </div>
+                    `);
+                }
+                sections.push(`<section class="space-y-3">${notesBlocks.join('')}</section>`);
             }
 
             // ── Conceitos ──
