@@ -240,6 +240,29 @@ async def test_fetch_og_image_cache_evita_refetch(monkeypatch):
     assert client.stream.call_count == 1  # segunda chamada veio do cache
 
 
+def test_miss_cache_expira_mais_cedo_que_hit(monkeypatch):
+    # backoff do feedmine: sem imagem re-tenta em 10min; hit fica 1h
+    from app.services import og_image_service as svc
+
+    fake_time = {"t": 1000.0}
+    monkeypatch.setattr(svc.time, "monotonic", lambda: fake_time["t"])
+    _og_cache.clear()
+
+    svc._cache_put("https://hit.com", ["https://img.com/a.jpg"])
+    svc._cache_put("https://miss.com", None)
+
+    hit_exp = _og_cache["https://hit.com"][1]
+    miss_exp = _og_cache["https://miss.com"][1]
+    assert hit_exp - 1000.0 == svc.OG_CACHE_TTL_SECONDS
+    assert miss_exp - 1000.0 == svc.OG_MISS_TTL_SECONDS
+
+    # 11min depois: o miss já expirou (fora do cache), o hit não
+    fake_time["t"] = 1000.0 + 660.0
+    assert svc._cache_get("https://miss.com") is None
+    assert "https://miss.com" not in _og_cache
+    assert svc._cache_get("https://hit.com") is not None
+
+
 @pytest.mark.asyncio
 async def test_fetch_og_image_host_interno_ssrf():
     # localhost resolve para loopback → guard bloqueia ANTES de rede

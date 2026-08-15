@@ -54,6 +54,10 @@ FETCH_TIMEOUT_SECONDS = 6.0
 IMAGE_FETCH_TIMEOUT_SECONDS = 30.0
 MAX_IMAGE_BYTES = 20 * 1024 * 1024  # mesmo cap do openai_service
 OG_CACHE_TTL_SECONDS = 3600
+# Misses (site sem imagem/down) re-tentam mais cedo — padrão de
+# backoff do feedmine (ImageCache.misses): falha transitória não fica
+# presa 1h no cache negativo.
+OG_MISS_TTL_SECONDS = 600
 OG_CACHE_MAX_ENTRIES = 2000
 DOWNLOAD_ATTEMPTS = 2  # tentativa inicial + 1 retry
 RETRY_BACKOFF_SECONDS = 0.4
@@ -182,7 +186,8 @@ def _cache_get(url: str) -> Optional[tuple[Optional[List[str]], float]]:
 def _cache_put(url: str, candidates: Optional[List[str]]) -> None:
     if len(_og_cache) >= OG_CACHE_MAX_ENTRIES:
         _og_cache.clear()
-    _og_cache[url] = (candidates, time.monotonic() + OG_CACHE_TTL_SECONDS)
+    ttl = OG_CACHE_TTL_SECONDS if candidates else OG_MISS_TTL_SECONDS
+    _og_cache[url] = (candidates, time.monotonic() + ttl)
 
 
 def _jsonld_image_urls(raw: bytes, base_url: str) -> List[str]:
