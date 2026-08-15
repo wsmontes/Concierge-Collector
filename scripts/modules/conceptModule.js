@@ -445,8 +445,13 @@ class ConceptModule {
         if (privateNotes) privateNotes.value = '';
 
         // Navigate back to the main view (Home)
-        // This shows both the recording section and the restaurant list
-        this.uiManager.showRestaurantListSection();
+        // Rota canônica (replace): o back do browser volta para antes da
+        // edição, não para o estado intermediário de discard
+        if (window.navigationManager && typeof window.navigationManager.goTo === 'function') {
+            await window.navigationManager.goTo('/', { replace: true });
+        } else {
+            this.uiManager.showRestaurantListSection();
+        }
 
         // If we were editing, refresh the list to make sure it's clean
         if (wasEditingId) {
@@ -733,7 +738,14 @@ class ConceptModule {
             }
 
             // Navigate to main screen (restaurant list) after successful save
-            if (this.uiManager && typeof this.uiManager.showRestaurantListSection === 'function') {
+            // Rota canônica (replace): o back do browser volta para antes da
+            // edição; a lista é re-carregada para o card novo aparecer
+            if (window.navigationManager && typeof window.navigationManager.goTo === 'function') {
+                await window.navigationManager.goTo('/', { replace: true });
+                if (typeof this.uiManager.loadTabData === 'function') {
+                    this.uiManager.loadTabData(this.uiManager.currentTab || 'curations');
+                }
+            } else if (this.uiManager && typeof this.uiManager.showRestaurantListSection === 'function') {
                 this.uiManager.showRestaurantListSection();
                 // Reload curations data so the newly saved card appears
                 if (typeof this.uiManager.loadTabData === 'function') {

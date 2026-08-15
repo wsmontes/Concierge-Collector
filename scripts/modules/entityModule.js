@@ -607,7 +607,12 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
             window.uiManager.isEditingRestaurant = false;
             window.uiManager.editingRestaurantId = null;
             window.uiManager.formIsDirty = false;
-            window.uiManager.showRestaurantListSection();
+            // Rota canônica (replace) — back do browser volta a antes da edição
+            if (window.navigationManager && typeof window.navigationManager.goTo === 'function') {
+                await window.navigationManager.goTo('/', { replace: true });
+            } else {
+                window.uiManager.showRestaurantListSection();
+            }
         }
 
         if (!skipReload) {
@@ -854,7 +859,12 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
             if (editBtn) {
                 editBtn.addEventListener('click', async () => {
                     window.modalManager.close(modalId);
-                    await this.startEntityEdit(entity);
+                    // Entrada canônica via rota (#/entity/:id/edit)
+                    if (window.uiManager?.navigateToEntityEdit) {
+                        window.uiManager.navigateToEntityEdit(entity);
+                    } else {
+                        await this.startEntityEdit(entity);
+                    }
                 });
             }
 

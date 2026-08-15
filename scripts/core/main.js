@@ -317,6 +317,12 @@ async function initializeApp() {
         window.uiManager = new UIManager();
         window.uiManager.init();
 
+        // Navegação explícita (Collection ↔ Editor ↔ New Curation):
+        // registra rotas hash, breadcrumbs, back mobile e o guard de
+        // mudanças não salvas. Roda DEPOIS do uiManager.init() — o
+        // dispatch inicial do NavigationManager precisa dos módulos vivos.
+        initializeNavigation();
+
         // Verify recording module is properly initialized
         console.log('🔍 Verifying RecordingModule initialization:', {
             RecordingModuleClassExists: typeof RecordingModule !== 'undefined',
@@ -796,6 +802,218 @@ function triggerInitialSync() {
             // Silent fail - user can manually sync if needed
         }
     }, 1000); // reduced from 3000ms: 1s is enough for UI to settle
+}
+
+// ============================================================================
+// Navegação explícita (Collection ↔ Editor ↔ New Curation)
+// ============================================================================
+// O NavigationManager existia dormente desde 2024; daqui para baixo ele é
+// integrado de verdade: rotas hash com estado, breadcrumbs no desktop,
+// back + título no mobile e proteção de mudanças não salvas.
+
+/** Busca uma curation no IndexedDB pelo curation_id (ou id local). */
+async function findLocalCuration(id) {
+    try {
+        const db = window.DataStore?.db;
+        if (!db?.curations) return null;
+        const byId = await db.curations.get(id);
+        if (byId) return byId;
+        return (await db.curations.where('curation_id').equals(id).first()) || null;
+    } catch (e) {
+        console.warn('findLocalCuration failed:', e);
+        return null;
+    }
+}
+
+/** Busca uma entity no IndexedDB por id local ou entity_id. */
+async function findLocalEntity(id) {
+    try {
+        const db = window.DataStore?.db;
+        if (!db?.entities) return null;
+        const byId = await db.entities.get(id);
+        if (byId) return byId;
+        return (await db.entities.where('entity_id').equals(id).first()) || null;
+    } catch (e) {
+        console.warn('findLocalEntity failed:', e);
+        return null;
+    }
+}
+
+/**
+ * Registra as rotas do app. Handlers só delegam para os métodos existentes
+ * do uiManager/entityModule — nenhuma lógica nova de view aqui.
+ */
+function registerNavigationRoutes(nm) {
+    // Coleção (lista)
+    nm.register('/', {
+        breadcrumb: 'Collection',
+        handler: () => {
+            const m = window.uiManager;
+            // No startup o uiManager.init já mostrou a lista — re-chamar
+            // aqui reintroduzia a corrida com o fetch inicial do servidor.
+            if (m && m.currentView !== 'list') m.showRestaurantListSection();
+        }
+    });
+
+    // Nova curadoria (quick actions) — entrada desktop (item 5)
+    nm.register('/new', {
+        breadcrumb: 'New Curation',
+        handler: () => {
+            window.uiManager?.quickActionModule?.openQuickActions?.();
+        }
+    });
+
+    // Editor em modo novo (gravou/importou/manual — rota de substituição
+    // atribuída por showRestaurantFormSection/showConceptsSection)
+    nm.register('/new/edit', {
+        breadcrumb: 'New Curation',
+        handler: () => {
+            const m = window.uiManager;
+            if (m && m.currentView !== 'concepts') m.showRestaurantFormSection();
+        }
+    });
+
+    // Segmentos intermediários (só dão rótulo ao breadcrumb — o título
+    // real vem do state da navegação; crumb vazio some do breadcrumb)
+    nm.register('/curation', {
+        breadcrumb: (params, state) => state?.title || 'Curation',
+        handler: () => {}
+    });
+    nm.register('/curation/:id', {
+        breadcrumb: () => null,
+        handler: () => {}
+    });
+    nm.register('/entity', {
+        breadcrumb: (params, state) => state?.title || 'Entity',
+        handler: () => {}
+    });
+    nm.register('/entity/:id', {
+        breadcrumb: () => null,
+        handler: () => {}
+    });
+
+    // Edição de curadoria
+    nm.register('/curation/:id/edit', {
+        breadcrumb: 'Edit Curation',
+        handler: async (params, state) => {
+            const m = window.uiManager;
+            if (!m) return;
+            let curation = state?.curation || null;
+            if (!curation) curation = await findLocalCuration(params.id);
+            if (!curation) {
+                m.showNotification('This curation is not available locally', 'info');
+                nm.goTo('/', { replace: true });
+                return;
+            }
+            await m.editCuration(curation);
+        }
+    });
+
+    // Edição de entidade
+    nm.register('/entity/:id/edit', {
+        breadcrumb: 'Edit Entity',
+        handler: async (params, state) => {
+            const m = window.uiManager;
+            if (!m) return;
+            let entity = state?.entity || null;
+            if (!entity) entity = await findLocalEntity(params.id);
+            if (!entity) {
+                m.showNotification('This entity is not available locally', 'info');
+                nm.goTo('/', { replace: true });
+                return;
+            }
+            if (!m.canMutateWhileSyncing()) {
+                nm.goTo('/', { replace: true });
+                return;
+            }
+            window.entityModule?.startEntityEdit(entity);
+        }
+    });
+}
+
+/**
+ * Guard de navegação: sair de uma rota de edição com mudanças não salvas
+ * pede confirmação e limpa o estado de edição (mesmo caminho do Discard).
+ */
+function registerNavigationGuard(nm) {
+    nm.addGuard(async (fromPath, toPath) => {
+        const m = window.uiManager;
+        if (!m) return true;
+
+        const editing = !!(m.isEditingRestaurant || m.isEditingEntity);
+        if (!editing || !fromPath || !String(fromPath).includes('/edit')) return true;
+
+        // Navegação originada pelo próprio discard/save (estado já limpo)
+        if (window.__leavingEdit) return true;
+
+        const dirty = m.formIsDirty === true;
+        if (dirty && !window.confirm('Discard unsaved changes?')) return false;
+
+        if (m.conceptModule && typeof m.conceptModule.discardRestaurant === 'function') {
+            window.__leavingEdit = true;
+            try {
+                await m.conceptModule.discardRestaurant();
+            } finally {
+                window.__leavingEdit = false;
+            }
+        }
+        return true;
+    });
+}
+
+/**
+ * Contexto de navegação visível: breadcrumbs no desktop (escondidos na
+ * rota raiz) e, no mobile, back + título do modo.
+ */
+function setupNavigationContext(nm) {
+    const breadcrumbs = document.getElementById('breadcrumbs');
+    const context = document.getElementById('mobile-nav-context');
+    const titleEl = document.getElementById('mobile-nav-title');
+    const labelEl = document.getElementById('mobile-back-label');
+
+    nm.addNavigateCallback(() => {
+        const route = nm.getCurrentRoute();
+        const path = route?.path || '/';
+
+        if (breadcrumbs) breadcrumbs.classList.toggle('hidden', path === '/');
+        if (context) context.classList.toggle('hidden', path === '/');
+
+        if (path !== '/' && titleEl) {
+            const crumbs = nm.generateBreadcrumbs();
+            const current = crumbs[crumbs.length - 1];
+            const parent = crumbs.length > 1 ? crumbs[crumbs.length - 2] : null;
+            if (labelEl) labelEl.textContent = parent?.label || 'Collection';
+            titleEl.textContent = current?.label || '';
+        }
+    });
+
+    const backBtn = document.getElementById('mobile-back-btn');
+    if (backBtn) {
+        backBtn.addEventListener('click', () => {
+            if (nm.getHistory().length > 1) {
+                nm.goBack();
+            } else {
+                nm.goTo('/', { replace: true });
+            }
+        });
+    }
+}
+
+/**
+ * Liga o NavigationManager de verdade (auto-init estava desativado desde
+ * 2024 — ver navigationManager.js). Chamado uma vez, no boot.
+ */
+function initializeNavigation() {
+    const nm = window.navigationManager;
+    if (!nm || typeof nm.register !== 'function') {
+        console.warn('NavigationManager unavailable — navigation context disabled');
+        return;
+    }
+
+    registerNavigationRoutes(nm);
+    registerNavigationGuard(nm);
+    setupNavigationContext(nm);
+    nm.init();
 }
 
 /**

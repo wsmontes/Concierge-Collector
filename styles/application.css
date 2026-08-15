@@ -317,6 +317,54 @@ body:has(.toolbar-fixed-bottom:not(.hidden)) #app {
 }
 
 /* ===================================================================
+   NAVIGATION CONTEXT (breadcrumbs desktop + back/título mobile)
+   =================================================================== */
+
+/* O NavigationManager injeta .breadcrumbs com display:flex — o toggle
+   .hidden do JS precisa vencer o estilo injetado (id+class > class) */
+#breadcrumbs.hidden {
+    display: none;
+}
+
+/* Contexto mobile (back + título do modo) — só existe abaixo de 640px;
+   no desktop permanece invisível mesmo sem a classe .hidden */
+#mobile-nav-context {
+    display: none;
+}
+
+@media (max-width: 639px) {
+    #breadcrumbs {
+        display: none !important;
+    }
+
+    #mobile-nav-context:not(.hidden) {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+        padding: 0.25rem 0 0.75rem;
+    }
+
+    #mobile-nav-context .back-button {
+        padding-left: 0;
+        font-weight: var(--font-weight-medium, 500);
+        color: var(--color-info, #3d5a80);
+        min-height: 44px; /* touch target mínimo */
+    }
+
+    #mobile-nav-title {
+        font-family: var(--font-display, 'Cormorant Garamond', serif);
+        font-size: 1.25rem;
+        font-weight: 600;
+        color: var(--color-text-primary, #111827);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        flex: 1;
+        text-align: center;
+    }
+}
+
+/* ===================================================================
    PRINT STYLES
    =================================================================== */
 

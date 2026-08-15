@@ -461,11 +461,24 @@ if (typeof window.UIManager === 'undefined') {
          * Manages tab state and view visibility.
          */
         initTabSystem() {
-            // Attach click handlers to all tabs
-            Object.keys(this.tabs).forEach(tabName => {
+            // Semântica ARIA de tabs (role/aria-selected/aria-controls) +
+            // navegação por setas para leitores de tela e teclado
+            const tabNames = Object.keys(this.tabs);
+            tabNames.forEach((tabName, index) => {
                 const tabButton = this.tabs[tabName];
                 if (tabButton) {
+                    tabButton.setAttribute('role', 'tab');
+                    tabButton.setAttribute('aria-controls', `${tabName}-view`);
+                    tabButton.setAttribute('aria-selected', 'false');
                     tabButton.addEventListener('click', () => this.switchTab(tabName));
+                    tabButton.addEventListener('keydown', (e) => {
+                        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+                        e.preventDefault();
+                        const delta = e.key === 'ArrowRight' ? 1 : -1;
+                        const next = tabNames[(index + delta + tabNames.length) % tabNames.length];
+                        this.switchTab(next);
+                        this.tabs[next]?.focus();
+                    });
                 }
             });
 
@@ -494,14 +507,25 @@ if (typeof window.UIManager === 'undefined') {
             // Update tab button states
             Object.keys(this.tabs).forEach(name => {
                 const tab = this.tabs[name];
-                if (name === tabName) {
-                    tab.classList.add('active', 'border-blue-500', 'text-blue-600');
-                    tab.classList.remove('border-transparent', 'text-gray-500');
-                } else {
-                    tab.classList.remove('active', 'border-blue-500', 'text-blue-600');
-                    tab.classList.add('border-transparent', 'text-gray-500');
+                const isActive = name === tabName;
+                if (tab) {
+                    tab.classList.toggle('active', isActive);
+                    tab.classList.toggle('border-blue-500', isActive);
+                    tab.classList.toggle('text-blue-600', isActive);
+                    tab.classList.toggle('border-transparent', !isActive);
+                    tab.classList.toggle('text-gray-500', !isActive);
+                    tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
                 }
             });
+
+            // Frase que ensina a diferença Curations × Entities no ponto
+            // da decisão — muda junto com a aba (learnability sem docs)
+            const tabSubtitle = document.getElementById('tab-subtitle');
+            if (tabSubtitle) {
+                tabSubtitle.textContent = tabName === 'curations'
+                    ? 'Your reviews, notes and recommendations.'
+                    : 'Places and their factual information.';
+            }
 
             // Update view visibility
             Object.keys(this.views).forEach(name => {
@@ -1218,8 +1242,8 @@ if (typeof window.UIManager === 'undefined') {
                 threshold: 60,
                 onSwipeLeft: () => {
                     card.dataset.swipeActive = '1';
-                    if (typeof this.editCuration === 'function') {
-                        this.editCuration(curation);
+                    if (typeof this.navigateToCurationEdit === 'function') {
+                        this.navigateToCurationEdit(curation);
                     }
                 },
                 onSwipeRight: () => {
@@ -1658,9 +1682,7 @@ if (typeof window.UIManager === 'undefined') {
                             return;
                         }
 
-                        if (window.entityModule?.startEntityEdit) {
-                            window.entityModule.startEntityEdit(selectedEntity);
-                        }
+                        this.navigateToEntityEdit(selectedEntity);
                     },
                     onSync: async () => {
                         if (!this.canMutateWhileSyncing()) {
@@ -1929,7 +1951,7 @@ if (typeof window.UIManager === 'undefined') {
             // Add event listeners
             card.querySelector('.btn-edit-curation')?.addEventListener('click', (e) => {
                 e.stopPropagation();
-                this.editCuration(curation);
+                this.navigateToCurationEdit(curation);
             });
 
             card.querySelector('.btn-link-entity')?.addEventListener('click', (e) => {
@@ -2240,8 +2262,8 @@ if (typeof window.UIManager === 'undefined') {
             footer.insertBefore(editBtn, closeBtn);
             editBtn.addEventListener('click', () => {
                 window.modalManager.close(modalId);
-                if (typeof this.editCuration === 'function') {
-                    this.editCuration(curation);
+                if (typeof this.navigateToCurationEdit === 'function') {
+                    this.navigateToCurationEdit(curation);
                 }
             });
 
@@ -2382,6 +2404,16 @@ if (typeof window.UIManager === 'undefined') {
             this.switchView('concepts');
             window.scrollTo({ top: 0, behavior: 'auto' });
 
+            // Navegação explícita: modo novo ganha a rota #/new/edit
+            // (replace — o back do browser volta para antes do editor,
+            // não para estados intermediários do fluxo de criação)
+            const nm = window.navigationManager;
+            if (nm && typeof nm.goTo === 'function' &&
+                !this.isEditingRestaurant && !this.isEditingEntity &&
+                nm.getCurrentRoute?.()?.path !== '/new/edit') {
+                nm.goTo('/new/edit', { replace: true, state: { title: 'New Curation' } });
+            }
+
             // Update toolbar title based on mode
             if (this.restaurantEditToolbar) {
                 const toolbarTitle = this.restaurantEditToolbar.querySelector('.toolbar-info-title');
@@ -2423,6 +2455,15 @@ if (typeof window.UIManager === 'undefined') {
 
         showConceptsSection() {
             this.switchView('concepts');
+
+            // Navegação explícita: o fim do fluxo de captura (gravação →
+            // conceitos) também é "novo registro" — mesma rota do modo novo
+            const nm = window.navigationManager;
+            if (nm && typeof nm.goTo === 'function' &&
+                !this.isEditingRestaurant && !this.isEditingEntity &&
+                nm.getCurrentRoute?.()?.path !== '/new/edit') {
+                nm.goTo('/new/edit', { replace: true, state: { title: 'New Curation' } });
+            }
 
             // Update toolbar title based on mode
             if (this.restaurantEditToolbar) {
@@ -2600,6 +2641,48 @@ if (typeof window.UIManager === 'undefined') {
             this.clearTranscriptionData();
 
             this.restaurantModule.editRestaurant(restaurant);
+        }
+
+        /**
+         * Entrada canônica para edição de curadoria via rota:
+         * #/curation/:id/edit com o objeto no state (o handler da rota faz
+         * o fallback de lookup local para deep links frios).
+         */
+        navigateToCurationEdit(curation) {
+            const id = curation?.curation_id ||
+                (curation?.entity_id && curation?.curator_id
+                    ? `${curation.entity_id}:${curation.curator_id}`
+                    : null);
+            const nm = window.navigationManager;
+            if (nm && typeof nm.goTo === 'function' && id) {
+                nm.goTo(`/curation/${encodeURIComponent(id)}/edit`, {
+                    state: {
+                        title: this.getCurationDisplayName(curation) || 'Curation',
+                        curation
+                    }
+                });
+                return;
+            }
+            // Fallback sem NavigationManager (testes/ambiente degradado)
+            this.editCuration(curation);
+        }
+
+        /**
+         * Entrada canônica para edição de entidade via rota:
+         * #/entity/:id/edit com o objeto no state.
+         */
+        navigateToEntityEdit(entity) {
+            const id = entity?.entity_id || entity?.id;
+            const nm = window.navigationManager;
+            if (nm && typeof nm.goTo === 'function' && id) {
+                nm.goTo(`/entity/${encodeURIComponent(id)}/edit`, {
+                    state: { title: entity?.name || 'Entity', entity }
+                });
+                return;
+            }
+            // Fallback sem NavigationManager (testes/ambiente degradado)
+            if (!this.canMutateWhileSyncing()) return;
+            window.entityModule?.startEntityEdit(entity);
         }
 
         /**

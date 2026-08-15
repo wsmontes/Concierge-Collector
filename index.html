@@ -131,6 +131,18 @@
             </div>
         </header>
 
+        <!-- Navegação de contexto (UX "lugares definidos"): desktop mostra
+             breadcrumbs (Collection › Ritz › Edit Curation), preenchidos
+             pelo NavigationManager via main.js; mobile (<640px) mostra
+             back + título do modo no #mobile-nav-context -->
+        <nav id="breadcrumbs" class="hidden" aria-label="Breadcrumb"></nav>
+        <div id="mobile-nav-context" class="hidden">
+            <button id="mobile-back-btn" type="button" aria-label="Go back">
+                <span class="material-icons" aria-hidden="true">arrow_back</span>
+                <span id="mobile-back-label">Collection</span>
+            </button>
+            <span id="mobile-nav-title"></span>
+        </div>
 
 
         <!-- Audio Recording Section -->
@@ -423,17 +435,22 @@
         </div>
 
         <!-- Tab Navigation -->
-        <div class="mb-6 border-b border-gray-200">
-            <nav class="flex space-x-8" aria-label="View modes">
-                <button id="tab-curations" class="view-tab active" data-tab="curations">
+        <div class="mb-3 border-b border-gray-200">
+            <nav class="flex space-x-8" role="tablist" aria-label="View modes">
+                <button id="tab-curations" class="view-tab active" role="tab" aria-selected="true"
+                    aria-controls="curations-view" data-tab="curations">
                     <span class="material-icons text-sm align-middle mr-1">edit_note</span>
                     Curations
                 </button>
-                <button id="tab-entities" class="view-tab" data-tab="entities">
+                <button id="tab-entities" class="view-tab" role="tab" aria-selected="false"
+                    aria-controls="entities-view" data-tab="entities">
                     <span class="material-icons text-sm align-middle mr-1">restaurant</span>
                     Entities
                 </button>
             </nav>
+            <!-- Uma frase que ensina a diferença Curations × Entities sem
+                 exigir documentação — muda junto com a aba ativa -->
+            <p id="tab-subtitle" class="text-xs text-gray-500 mb-4"></p>
         </div>
 
         <div class="mb-4 flex items-center justify-between text-sm text-gray-600">

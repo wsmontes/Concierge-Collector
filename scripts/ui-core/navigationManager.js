@@ -39,6 +39,7 @@ window.NavigationManager = (function() {
     let navigationHistory = [];
     let guards = [];
     let breadcrumbsEnabled = true;
+    let navigateCallbacks = [];
 
     /**
      * Initialize the navigation manager
@@ -69,15 +70,16 @@ window.NavigationManager = (function() {
         const style = document.createElement('style');
         style.id = 'navigation-manager-styles';
         style.textContent = `
-            /* Breadcrumbs */
+            /* Breadcrumbs (tema concierge: steel blue p/ links, warm ink
+               p/ atual — o azul #3b82f6 padrão foi substituído) */
             .breadcrumbs {
                 display: flex;
                 align-items: center;
                 gap: 0.5rem;
-                padding: 0.75rem 1rem;
-                background: var(--color-bg-secondary, #f9fafb);
-                border-radius: var(--radius-md, 0.375rem);
-                margin-bottom: 1.5rem;
+                padding: 0.5rem 0;
+                margin-bottom: 0.75rem;
+                background: transparent;
+                border-bottom: 1px solid var(--color-border, #e5e7eb);
                 flex-wrap: wrap;
             }
 
@@ -95,13 +97,13 @@ window.NavigationManager = (function() {
             }
 
             .breadcrumb-link {
-                color: var(--color-primary, #3b82f6);
+                color: var(--color-info, #3d5a80);
                 text-decoration: none;
                 transition: color 0.2s ease;
             }
 
             .breadcrumb-link:hover {
-                color: var(--color-primary-600, #2563eb);
+                color: var(--color-info-dark, #27405f);
                 text-decoration: underline;
             }
 
@@ -141,10 +143,23 @@ window.NavigationManager = (function() {
      * Setup browser history handling
      */
     function setupHistoryHandling() {
-        // Handle back/forward buttons
-        window.addEventListener('popstate', (event) => {
+        // Handle back/forward buttons — guards rodam também no popstate:
+        // sem isso, o back do browser pulava a proteção de mudanças
+        // não salvas na edição.
+        window.addEventListener('popstate', async (event) => {
             if (event.state && event.state.path) {
-                this.handleRoute(event.state.path, false);
+                const allowed = await this.runGuards(this.currentRoute?.path, event.state.path);
+                if (!allowed) {
+                    // Guarda vetou: re-empilha a rota atual para o histórico
+                    // ficar consistente com a tela que permanece
+                    window.history.pushState(
+                        { path: this.currentRoute?.path },
+                        '',
+                        `#${this.currentRoute?.path}`
+                    );
+                    return;
+                }
+                this.handleRoute(event.state.path, false, event.state);
             } else {
                 this.handleCurrentRoute();
             }
@@ -213,7 +228,7 @@ window.NavigationManager = (function() {
         }
 
         // Handle route
-        return this.handleRoute(path, true);
+        return this.handleRoute(path, true, options.state || {});
     }
 
     /**
@@ -240,8 +255,9 @@ window.NavigationManager = (function() {
      * Handle a route
      * @param {string} path - Route path
      * @param {boolean} addToHistory - Whether to add to navigation history
+     * @param {Object} [state] - Route state (carried by history entries)
      */
-    async function handleRoute(path, addToHistory) {
+    async function handleRoute(path, addToHistory, state) {
         // Find matching route
         const match = this.matchRoute(path);
 
@@ -255,7 +271,8 @@ window.NavigationManager = (function() {
         this.currentRoute = {
             path,
             route: match.route,
-            params: match.params
+            params: match.params,
+            state: state || {}
         };
 
         // Add to navigation history
@@ -279,13 +296,23 @@ window.NavigationManager = (function() {
 
         // Call route handler
         try {
-            await match.route.handler(match.params);
+            await match.route.handler(match.params, this.currentRoute.state);
             console.log(`[NavigationManager] Navigated to: ${path}`);
-            return true;
         } catch (error) {
             console.error('[NavigationManager] Error in route handler:', error);
             return false;
         }
+
+        // Notify subscribers (e.g. mobile back button / header title)
+        this.navigateCallbacks.forEach((callback) => {
+            try {
+                callback(path, match.params);
+            } catch (callbackError) {
+                console.error('[NavigationManager] Error in navigate callback:', callbackError);
+            }
+        });
+
+        return true;
     }
 
     /**
@@ -402,27 +429,43 @@ window.NavigationManager = (function() {
      * @returns {Array} Breadcrumb array
      */
     function generateBreadcrumbs() {
-        if (!this.currentRoute) {
-            return [{ label: 'Home', path: '/' }];
+        // Home label comes from the '/' route's breadcrumb when registered
+        // (e.g. 'Collection'), otherwise falls back to 'Home'.
+        const homeRoute = this.routes.get('/');
+        let homeLabel = 'Home';
+        if (homeRoute && homeRoute.breadcrumb) {
+            homeLabel = typeof homeRoute.breadcrumb === 'function'
+                ? homeRoute.breadcrumb(this.currentRoute ? this.currentRoute.params : {})
+                : homeRoute.breadcrumb;
         }
 
-        const breadcrumbs = [{ label: 'Home', path: '/' }];
+        if (!this.currentRoute) {
+            return [{ label: homeLabel, path: '/' }];
+        }
+
+        const breadcrumbs = [{ label: homeLabel, path: '/' }];
         const pathParts = this.currentRoute.path.split('/').filter(Boolean);
 
         let currentPath = '';
         pathParts.forEach((part, index) => {
             currentPath += '/' + part;
-            
+
             // Try to find label from route
             const route = this.routes.get(currentPath);
             let label = part;
 
             if (route && route.breadcrumb) {
                 if (typeof route.breadcrumb === 'function') {
-                    label = route.breadcrumb(this.currentRoute.params);
+                    label = route.breadcrumb(this.currentRoute.params, this.currentRoute.state);
                 } else {
                     label = route.breadcrumb;
                 }
+            }
+
+            // Label vazio/null suprime o crumb — permite rotas intermediárias
+            // que só existem para montar o caminho (ex.: /curation/:id)
+            if (label === null || label === '' || label === undefined) {
+                return;
             }
 
             breadcrumbs.push({
@@ -487,6 +530,21 @@ window.NavigationManager = (function() {
         }
     }
 
+    /**
+     * Subscribe to successful navigations.
+     * @param {Function} callback - (path, params) => void
+     * @returns {Function} Unsubscribe function
+     */
+    function addNavigateCallback(callback) {
+        navigateCallbacks.push(callback);
+        return function removeNavigateCallback() {
+            const index = navigateCallbacks.indexOf(callback);
+            if (index > -1) {
+                navigateCallbacks.splice(index, 1);
+            }
+        };
+    }
+
     // Public API
     return {
         // State
@@ -505,6 +563,7 @@ window.NavigationManager = (function() {
         getHistory,
         addGuard,
         removeGuard,
+        addNavigateCallback,
         setBreadcrumbsEnabled,
         createBackButton,
 
