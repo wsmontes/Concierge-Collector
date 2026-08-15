@@ -1108,9 +1108,14 @@ if (typeof window.UIManager === 'undefined') {
 
             this.updateCurationsCountSummary(allCurations.length, allCurations.length);
 
-            container.innerHTML = '';
-
             var self = this;
+
+            // TUDO é montado num fragment ANTES de tocar o DOM e trocado
+            // atomicamente no final — o innerHTML='' + resolução async
+            // das entities deixava a lista EM BRANCO entre o clear e o
+            // render (flicker "cards somem e voltam" a cada refresh do
+            // sync / sync-success / data-changed).
+            var frag = document.createDocumentFragment();
 
             // Header de paginação sempre visível (mesmo padrão da aba
             // Entities): "Showing X–Y of N" + prev/next + "Page X of Y".
@@ -1133,7 +1138,7 @@ if (typeof window.UIManager === 'undefined') {
                         </button>
                     </div>
                 `;
-                container.appendChild(header);
+                frag.appendChild(header);
 
                 header.querySelector('#curation-prev-page')?.addEventListener('click', function() {
                     self.curationPagination.currentPage--;
@@ -1175,8 +1180,12 @@ if (typeof window.UIManager === 'undefined') {
                         onClick: () => self.handleViewReviewDetails(curation)
                     })
                     : self.createReviewCard(curation);
-                container.appendChild(card);
+                frag.appendChild(card);
             });
+
+            // troca atômica: a lista anterior fica visível até a nova
+            // estar pronta (sem janela em branco)
+            container.replaceChildren(frag);
         }
 
         /**

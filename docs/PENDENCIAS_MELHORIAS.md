@@ -17,6 +17,7 @@ Fonte: memórias do projeto, auditoria de segurança, sessões de trabalho e est
 ## Pendências
 
 ### Frontend/UI
+- [x] ~~Cards "somem e voltam" a cada refresh do sync~~ — RESOLVIDO: renderCurationsPage fazia innerHTML='' ANTES da resolução async das entities (janela em branco no data-changed/sync-success); agora monta em fragment e troca atomicamente (replaceChildren) — lista antiga visível até a nova pronta. Validado com resolução atrasada 600ms: container nunca esvazia.
 - [x] ~~Ruído de log: `Unhandled rejection: NotFoundError: objectStore not found`~~ — RESOLVIDO: hooks do DataStore disparavam `concierge:data-changed` SINCRONAMENTE dentro da transação (escopo travado); listeners liam outras tabelas → NotFoundError. Evento agora é deferido (setTimeout 0).
 - [x] ~~Click no card de curadoria linkada não abria detalhes~~ — RESOLVIDO: regressão do renderCurationsPage (createCurationCard sem onClick — o default é console.log); agora abre handleViewReviewDetails como o review card.
 - [ ] `dbg.tmp.mjs` na raiz (resto de debug do IndexedDB) — apagar
@@ -24,9 +25,9 @@ Fonte: memórias do projeto, auditoria de segurança, sessões de trabalho e est
 - [ ] Degraded mode: tela de erro usa cinzas antigos; fluxo sem IndexedDB merece passe visual
 
 ### Backend API
-- [ ] **Revisão sistemática dos endpoints** (13 routers) — dead code, contratos de erro, rate limits, consistência de auth
+- [x] ~~**Revisão sistemática dos endpoints**~~ — FEITA: docs/API_ENDPOINT_REVIEW.md (inventário + uso + remoções + consolidações)
 - [x] ~~Routers `places.py` + `places_router.py` + `places_orchestrate.py`~~ — CONSOLIDADOS (rotas preservadas; healths duplicados sem consumidor removidos; rotas mortas usage-stats/health-original removidas — ver docs/API_ENDPOINT_REVIEW.md)
-- [ ] Endpoints sem uso real: mapear chamadas do frontend vs. rotas expostas
+- [x] ~~Endpoints sem uso real~~ — mapeados no review (consumidores frontend/MCP/OpenAI identificados)
 
 ### Auth/Segurança
 - [ ] OAuth: cookie HttpOnly para tokens (pendência da auditoria) — hoje o access token vive em localStorage
@@ -51,7 +52,7 @@ Fonte: memórias do projeto, auditoria de segurança, sessões de trabalho e est
 - [ ] Avaliar OKLCH para novas escalas (só em componentes novos — tema atual é curado)
 
 ### og-image (véu)
-- [ ] Negative cache com backoff (misses do feedmine) — hoje miss fica 1h fixo
+- [x] ~~Negative cache com backoff~~ ✓ — miss re-tenta em 10min (hit 1h), teste de TTL com monotonic mockado
 - [ ] Métricas de cobertura por fonte (og vs places vs corpo) — dashboard de "quantos cards têm véu"
 - [ ] Cache Storage: eviction explícito por LRU (hoje o browser decide)
 
