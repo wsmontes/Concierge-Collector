@@ -338,14 +338,6 @@
 
 /* Target both viewport width AND touch devices for maximum compatibility */
 @media (max-width: 768px), (hover: none) and (pointer: coarse) {
-    /* Convert large buttons to medium on mobile - External search buttons */
-    #open-places-search,
-    #open-staging-search {
-        padding: 0.625rem 1rem !important; /* 10px 16px */
-        font-size: 0.875rem !important; /* 14px */
-        min-height: 44px !important;
-    }
-    
     /* Quick action buttons (FAB menu) - reduce from lg to md */
     #quick-record,
     #quick-location,
@@ -357,8 +349,6 @@
     
     /* Restaurant list action buttons - these are btn-sm but need to meet 44px touch target */
     #sync-button,
-    #add-restaurant,
-    #sync-restaurants-btn,
     #manual-sync {
         padding: 0.625rem 1rem !important;
         font-size: 0.875rem !important;
@@ -481,28 +471,11 @@
    Purpose: Show only icons on very small screens, full labels on larger screens
    ======================================================================== */
 
-/* On very small screens (< 400px), show icon only for specific buttons */
+/* On very small screens (< 400px), show icon only for specific buttons.
+   Lista enxuta (ago/2026): ids mortos removidos (#add-restaurant,
+   #sync-restaurants-btn, #open-places-search, #open-staging-search) —
+   todos os botões da lista têm aria-label no markup. */
 @media (max-width: 400px) {
-    /* Restaurant action buttons - show icon only */
-    #add-restaurant span:not(.material-icons),
-    #sync-restaurants-btn span:not(.material-icons):not(#sync-restaurants-badge),
-    #sync-button span:not(.material-icons) {
-        display: none;
-    }
-    
-    /* External search buttons - show icon only */
-    #open-places-search span:not(.material-icons),
-    #open-staging-search span:not(.material-icons) {
-        display: none;
-    }
-    
-    /* Quick action buttons - show icon only */
-    #quick-record span:not(.material-icons),
-    #quick-location span:not(.material-icons),
-    #quick-photo span:not(.material-icons) {
-        display: none;
-    }
-    
     /* Toolbar buttons - show icon only */
     #save-restaurant span:not(.material-icons),
     #discard-restaurant span:not(.material-icons),
@@ -510,19 +483,26 @@
     #cancel-curator-compact span:not(.material-icons) {
         display: none;
     }
-    
+
+    /* Quick action buttons - show icon only */
+    #quick-record span:not(.material-icons),
+    #quick-location span:not(.material-icons),
+    #quick-photo span:not(.material-icons) {
+        display: none;
+    }
+
     /* Import/Export buttons - show icon only */
     #export-data span:not(.material-icons),
     #import-data span:not(.material-icons) {
         display: none;
     }
-    
+
+    #sync-button span:not(.material-icons) {
+        display: none;
+    }
+
     /* Ensure buttons maintain square aspect ratio when icon-only */
-    #add-restaurant,
-    #sync-restaurants-btn,
     #sync-button,
-    #open-places-search,
-    #open-staging-search,
     #quick-record,
     #quick-location,
     #quick-photo,
@@ -531,7 +511,7 @@
         padding: 0.625rem !important;
         min-width: 44px !important;
     }
-    
+
     /* Toolbar buttons can be slightly more compact */
     #save-restaurant,
     #discard-restaurant,
@@ -540,13 +520,9 @@
         padding: 0.5rem !important;
         min-width: 44px !important;
     }
-    
+
     /* Keep the icon centered - remove margin */
-    #add-restaurant .material-icons,
-    #sync-restaurants-btn .material-icons,
     #sync-button .material-icons,
-    #open-places-search .material-icons,
-    #open-staging-search .material-icons,
     #quick-record .material-icons,
     #quick-location .material-icons,
     #quick-photo .material-icons,
@@ -555,45 +531,6 @@
     #export-data .material-icons,
     #import-data .material-icons {
         margin: 0 !important;
-    }
-    
-    /* Keep sync badge visible but repositioned */
-    #sync-restaurants-badge {
-        display: inline-block !important;
-        margin-left: 0 !important;
-        position: absolute;
-        top: -4px;
-        right: -4px;
-    }
-}
-
-/* On small screens (400px - 640px), use abbreviated labels */
-@media (min-width: 400px) and (max-width: 640px) {
-    /* Add data attributes for shortened text in HTML, or use CSS content */
-    #add-restaurant {
-        font-size: 0.8125rem; /* Slightly smaller text */
-    }
-    
-    #sync-restaurants-btn {
-        font-size: 0.8125rem;
-    }
-    
-    /* Make external search buttons more compact */
-    #open-places-search,
-    #open-staging-search {
-        padding-left: 0.75rem !important;
-        padding-right: 0.75rem !important;
-    }
-}
-
-/* Medium screens and up (> 640px) - show full labels */
-@media (min-width: 641px) {
-    /* Ensure full labels are visible */
-    #add-restaurant span,
-    #sync-restaurants-btn span,
-    #open-places-search span,
-    #open-staging-search span {
-        display: inline !important;
     }
 }
 
@@ -707,12 +644,8 @@
  * overlays to appear above them correctly.
  */
 
-/* Fix empty space issue - remove excessive padding from #app container */
-/* Apply to all screen sizes, not just mobile */
-#app {
-    min-height: 0 !important; /* Remove viewport height constraint */
-    padding-bottom: var(--spacing-4) !important; /* Reduce from 80px to 16px */
-}
+/* #app consolidado em application.css (media max-width:640px) — o
+   override !important duplicado desta camada foi removido. Ago/2026. */
 
 /* Bloco antigo de #restaurant-list-section removido — o id não existe
    no HTML atual (a seção é #entities-section; o próprio uiManager
@@ -868,36 +801,5 @@
     flex-shrink: 0;
 }
 
-/* Mobile navigation tabs */
-.mobile-tabs {
-    display: flex;
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    background: white;
-    border-top: 1px solid var(--color-neutral-200);
-    z-index: 100;
-    padding-bottom: env(safe-area-inset-bottom);
-}
-
-.mobile-tab {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.25rem;
-    padding: 0.75rem 0.5rem;
-    color: var(--color-neutral-500);
-    text-decoration: none;
-    font-size: 0.75rem;
-    transition: color 0.2s ease;
-}
-
-.mobile-tab.active {
-    color: var(--color-primary);
-}
-
-.mobile-tab .material-icons {
-    font-size: 1.5rem;
-}
+/* .mobile-tabs removido (ago/2026): zero referências — a navegação por
+   abas é a .view-tab dentro da seção de coleção. */

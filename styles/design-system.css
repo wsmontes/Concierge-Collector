@@ -674,56 +674,30 @@ img {
    Purpose: Extended utility classes for consistent spacing and typography
    ======================================================================== */
 
-/* Enhanced Typography Scale (Type Scale: 1.250 - Major Third) */
+/* Vocabulário ÚNICO de tokens (consolidação ago/2026):
+   --text-* (tipografia), --spacing-* (espaçamento) e --font-<peso>
+   são os canônicos. Os pares legados (--font-size-*, --font-weight-*)
+   viram aliases; --space-* e --line-height-* foram removidos
+   (zero usos) — dois vocabulários equivalentes era dívida de UI. */
 :root {
-    /* Enhanced font size scale */
-    --font-size-base: 1rem; /* 16px */
-    --font-size-xs: 0.75rem;    /* 12px */
-    --font-size-sm: 0.875rem;   /* 14px */
-    --font-size-md: 1rem;        /* 16px - base */
-    --font-size-lg: 1.125rem;    /* 18px */
-    --font-size-xl: 1.25rem;     /* 20px */
-    --font-size-2xl: 1.5rem;     /* 24px */
-    --font-size-3xl: 1.875rem;   /* 30px */
-    --font-size-4xl: 2.25rem;    /* 36px */
-    --font-size-5xl: 3rem;       /* 48px */
-    
-    /* Enhanced Line Heights */
-    --line-height-tight: 1.25;
-    --line-height-normal: 1.5;
-    --line-height-relaxed: 1.75;
-    
-    /* Font Weights */
-    --font-weight-normal: 400;
-    --font-weight-medium: 500;
-    --font-weight-semibold: 600;
-    --font-weight-bold: 700;
-    --font-weight-extrabold: 800;
-}
+    /* Aliases do vocabulário canônico --text-* */
+    --font-size-base: var(--text-base);
+    --font-size-xs: var(--text-xs);
+    --font-size-sm: var(--text-sm);
+    --font-size-md: var(--text-base); /* base */
+    --font-size-lg: var(--text-lg);
+    --font-size-xl: var(--text-xl);
+    --font-size-2xl: var(--text-2xl);
+    --font-size-3xl: var(--text-3xl);
+    --font-size-4xl: var(--text-4xl);
+    --font-size-5xl: var(--text-5xl);
 
-/* Enhanced Spacing Scale (8px base) */
-:root {
-    --space-0: 0;
-    --space-px: 1px;
-    --space-0\.5: 0.125rem;  /* 2px */
-    --space-1: 0.25rem;      /* 4px */
-    --space-1\.5: 0.375rem;  /* 6px */
-    --space-2: 0.5rem;       /* 8px - base */
-    --space-2\.5: 0.625rem;  /* 10px */
-    --space-3: 0.75rem;      /* 12px */
-    --space-3\.5: 0.875rem;  /* 14px */
-    --space-4: 1rem;         /* 16px */
-    --space-5: 1.25rem;      /* 20px */
-    --space-6: 1.5rem;       /* 24px */
-    --space-7: 1.75rem;      /* 28px */
-    --space-8: 2rem;         /* 32px */
-    --space-9: 2.25rem;      /* 36px */
-    --space-10: 2.5rem;      /* 40px */
-    --space-12: 3rem;        /* 48px */
-    --space-14: 3.5rem;      /* 56px */
-    --space-16: 4rem;        /* 64px */
-    --space-20: 5rem;        /* 80px */
-    --space-24: 6rem;        /* 96px */
+    /* Aliases do vocabulário canônico --font-<peso> */
+    --font-weight-normal: var(--font-normal);
+    --font-weight-medium: var(--font-medium);
+    --font-weight-semibold: var(--font-semibold);
+    --font-weight-bold: var(--font-bold);
+    --font-weight-extrabold: var(--font-extrabold);
 }
 
 /* Container Widths */

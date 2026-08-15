@@ -34,19 +34,8 @@
 /* Data origin badges removidos — dead CSS: o SourceUtils emite o padrão
    único .chip chip--{tone} (components.css + tokens do design-system). Ago/2026. */
 
-/* Restaurant cards with sync status */
-.restaurant-card {
-    position: relative;
-    transition: all 0.2s ease-in-out;
-}
-
-.restaurant-card.restaurant-local {
-    border-left: 3px solid var(--color-warning-400);
-}
-
-.restaurant-card.restaurant-remote {
-    border-left: 3px solid var(--color-success-400);
-}
+/* .restaurant-card removido (ago/2026): zero referências — o status
+   visual dos cards vive no .card-accent-* (components.css). */
 
 /* Curator selector styles */
 #curator-selector-container {
