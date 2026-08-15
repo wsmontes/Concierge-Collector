@@ -15,6 +15,20 @@ logger = logging.getLogger(__name__)
 # Global client
 _client: MongoClient = None
 
+# Estado da criação de índices no startup — consumido pelo /ready (readiness).
+# Falha de índice estrutural NÃO pode manter o deploy "verde" em silêncio
+# (incidente 2026-08-12: entities ficou com 4 de 10 índices sem alarme).
+index_state = {"created": 0, "failed": 0, "failed_details": []}
+
+
+def get_index_state() -> dict:
+    """Snapshot do estado de índices para o endpoint /ready."""
+    return {
+        "created": index_state["created"],
+        "failed": index_state["failed"],
+        "failed_details": list(index_state["failed_details"]),
+    }
+
 
 def connect_to_mongo():
     """Connect to MongoDB - called at startup"""
@@ -74,12 +88,20 @@ def _ensure_indexes():
     specs = [s for s in INDEX_SPECS if s[0] != "capture_sessions"]
 
     created, failed = 0, 0
+    failed_details = []
     for coll_name, keys, kwargs in specs:
         try:
             getattr(db, coll_name).create_index(keys, background=True, **kwargs)
             created += 1
         except Exception as e:
             failed += 1
-            logger.warning(f"Index creation failed on {coll_name} {keys}: {e}")
+            failed_details.append({"collection": coll_name, "keys": str(keys), "error": str(e)})
+            # ERROR (não warning): índice estrutural ausente degrada consulta —
+            # o /ready precisa enxergar e o log do Render precisa alarmar
+            logger.error(f"Index creation failed on {coll_name} {keys}: {e}")
+
+    index_state["created"] = created
+    index_state["failed"] = failed
+    index_state["failed_details"] = failed_details
 
     logger.info(f"✅ Indexes ready ({created} created, {failed} failed)")

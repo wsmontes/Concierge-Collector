@@ -281,27 +281,68 @@ const AuthService = (function() {
 
     /**
      * Refresh access token using refresh token
-     * @returns {Promise<boolean>} True if token refreshed successfully
+     *
+     * Cookie-first (2026-08-15): o refresh_token HttpOnly é o portador no
+     * deploy same-site — funciona mesmo SEM refresh no localStorage. Em 401
+     * (cookie ausente/revogado) cai para o body legado (cross-site GitHub
+     * Pages / localStorage).
+     *
+     * @returns {Promise<boolean|'offline'>} True if token refreshed successfully
      */
     async function refreshAccessToken() {
         const refreshToken = getRefreshToken();
-        
+
+        const baseUrl = AppConfig.api.backend.baseUrl;
+        const refreshUrl = `${baseUrl}/auth/refresh`;
+
+        // 1) Cookie-first: POST sem body, credentials include — o servidor
+        //    lê o cookie refresh_token e ROTACIONA (revoga o jti antigo).
+        try {
+            console.log('[AuthService] Refreshing access token (cookie)...');
+
+            const response = await fetch(refreshUrl, {
+                method: 'POST',
+                credentials: 'include'
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                storeTokens({
+                    access_token: data.access_token,
+                    refresh_token: data.refresh_token,
+                    expires_in: data.expires_in || 3600
+                });
+                console.log('[AuthService] ✓ Token refreshed successfully (cookie)');
+                return true;
+            }
+
+            if (response.status !== 401) {
+                console.error('[AuthService] Token refresh failed:', response.status);
+                return false;
+            }
+            // 401 → cookie ausente/revogado: tenta o caminho legado abaixo
+        } catch (error) {
+            // FALHA DE REDE ≠ token inválido: retorna 'offline' para os
+            // callers manterem as credenciais (logout só em erro HTTP).
+            console.error('[AuthService] Token refresh error (network?):', error);
+            return 'offline';
+        }
+
+        // 2) Fallback legado: body com refresh do localStorage (cross-site)
         if (!refreshToken) {
-            console.log('[AuthService] No refresh token available');
+            console.log('[AuthService] No refresh token available (cookie failed)');
             return false;
         }
 
         try {
-            console.log('[AuthService] Refreshing access token...');
-            
-            const baseUrl = AppConfig.api.backend.baseUrl;
-            const refreshUrl = `${baseUrl}/auth/refresh`;
+            console.log('[AuthService] Refreshing access token (body legado)...');
 
             const response = await fetch(refreshUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json'
                 },
+                credentials: 'include',
                 body: JSON.stringify({ refresh_token: refreshToken })
             });
 
@@ -311,20 +352,18 @@ const AuthService = (function() {
             }
 
             const data = await response.json();
-            
+
             // Store new tokens
             storeTokens({
                 access_token: data.access_token,
                 refresh_token: data.refresh_token,
                 expires_in: data.expires_in || 3600
             });
-            
-            console.log('[AuthService] ✓ Token refreshed successfully');
+
+            console.log('[AuthService] ✓ Token refreshed successfully (body)');
             return true;
 
         } catch (error) {
-            // FALHA DE REDE ≠ token inválido: retorna 'offline' para os
-            // callers manterem as credenciais (logout só em erro HTTP).
             console.error('[AuthService] Token refresh error (network?):', error);
             return 'offline';
         }
@@ -414,22 +453,47 @@ const AuthService = (function() {
      */
     async function verifyToken() {
         const token = getToken();
+        const baseUrl = AppConfig.api.backend.baseUrl;
+        const verifyUrl = `${baseUrl}${ENDPOINTS.verify}`;
+
         if (!token) {
-            console.log('[AuthService] No token to verify');
-            return null;
+            // Migração 2026-08-15: sem token local (?session=1 no deploy
+            // same-site), o cookie HttpOnly é o portador — tenta verificar
+            // via cookie, sem header Authorization.
+            console.log('[AuthService] No local token — trying HttpOnly cookie...');
+            try {
+                const response = await fetch(verifyUrl, {
+                    method: 'GET',
+                    credentials: 'include'
+                });
+
+                if (response.ok) {
+                    const userData = await response.json();
+                    _currentUser = userData;
+                    saveUserProfile(userData);  // identidade sobrevive a reload offline
+                    console.log(`[AuthService] ✓ Cookie verified: ${userData.email}`);
+                    return userData;
+                }
+
+                console.warn(`[AuthService] Cookie verification failed: ${response.status}`);
+                return null;
+            } catch (error) {
+                console.error('[AuthService] Cookie verification error (network?):', error);
+                const stored = getStoredUserProfile();
+                if (stored) _currentUser = stored;
+                return stored;
+            }
         }
 
         try {
             console.log('[AuthService] Verifying token with backend...');
-            
-            const baseUrl = AppConfig.api.backend.baseUrl;
-            const verifyUrl = `${baseUrl}${ENDPOINTS.verify}`;
 
             const response = await fetch(verifyUrl, {
                 method: 'GET',
                 headers: {
                     'Authorization': `Bearer ${token}`
-                }
+                },
+                credentials: 'include'
             });
 
             if (!response.ok) {
@@ -472,19 +536,22 @@ const AuthService = (function() {
      */
     async function logout() {
         try {
+            // Notify backend to revoke tokens/session (2026-08-15: o backend
+            // revoga o jti do refresh server-side). Bearer quando existe;
+            // credentials inclui o cookie para os dois cenários (same-site).
+            const baseUrl = AppConfig.api.backend.baseUrl;
+            const logoutUrl = `${baseUrl}${ENDPOINTS.logout}`;
+            const headers = {};
             const token = getToken();
             if (token) {
-                // Notify backend to revoke token
-                const baseUrl = AppConfig.api.backend.baseUrl;
-                const logoutUrl = `${baseUrl}${ENDPOINTS.logout}`;
-
-                await fetch(logoutUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Authorization': `Bearer ${token}`
-                    }
-                });
+                headers['Authorization'] = `Bearer ${token}`;
             }
+
+            await fetch(logoutUrl, {
+                method: 'POST',
+                headers,
+                credentials: 'include'
+            });
         } catch (error) {
             console.error('[AuthService] Logout request failed:', error);
         } finally {

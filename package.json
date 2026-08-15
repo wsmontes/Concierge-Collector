@@ -8,8 +8,8 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:ui": "vitest --ui",
-    "lint": "eslint scripts/ tests/ eslint.config.js",
-    "lint:fix": "eslint scripts/ tests/ eslint.config.js --fix"
+    "lint": "eslint scripts/ tests/ eslint.config.mjs",
+    "lint:fix": "eslint scripts/ tests/ eslint.config.mjs --fix"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^1.6.1",

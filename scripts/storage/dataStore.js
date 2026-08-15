@@ -208,6 +208,13 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
         // Wait a moment for Dexie to fully initialize the object stores
         await new Promise(resolve => setTimeout(resolve, 100));
 
+        // Bug 2026-08-15: o fallback declarava version(93) mas NÃO gravava o
+        // _meta — no load seguinte o DatabaseManager lia versão null, tratava
+        // como "fresh install" e Dexie lançava VersionError (92 < 93), com
+        // reset nuclear em potencial. Grava o MESMO version record que o
+        // DatabaseManager escreve (currentVersion = 92).
+        await this.db._meta.put({ key: 'version', value: 92 });
+
         // Verify database is ready before proceeding
         if (!this.db.isOpen()) {
             throw new Error('Database failed to open properly');
@@ -1172,7 +1179,11 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
                 this.db.close();
             }
 
-            await Dexie.delete(AppConfig.database.name);
+            // Bug 2026-08-15: AppConfig.database.name era 'ConciergeCollectorV3'
+            // (nome MORTO) — o reset apagava um banco que não existe e o banco
+            // real sobrevivia. Deleta o nome real e, por higiene, o legado.
+            await Dexie.delete('ConciergeCollector');
+            await Dexie.delete('ConciergeCollectorV3').catch(() => {});
             await this.initializeDatabase();
 
             this.log.debug('✅ Database reset completed');

@@ -7,7 +7,10 @@ Automatically detects localhost vs production environment
 from pydantic_settings import BaseSettings
 from typing import List
 import json
+import logging
 import os
+
+logger = logging.getLogger(__name__)
 
 
 class Settings(BaseSettings):
@@ -40,6 +43,14 @@ class Settings(BaseSettings):
 
     # API Security
     api_secret_key: str = ""
+
+    # Separação de segredos (2026-08-15, achado #11 do code review):
+    # antes API_SECRET_KEY fazia papel duplo (chave do X-API-Key E segredo
+    # HS256 dos JWTs). Agora cada poder tem sua config; o fallback legado
+    # mantém transição com zero downtime (Render seta as novas vars).
+    jwt_signing_secret: str = ""  # assina access/refresh/oauth state
+    admin_api_keys: str = ""  # CSV de chaves válidas do X-API-Key
+    admin_emails: str = ""  # CSV — substitui a regra automática @lotier.com
 
     # Google OAuth
     google_oauth_client_id: str = ""
@@ -97,6 +108,42 @@ class Settings(BaseSettings):
             # Fall back to comma-separated string
             origins = [origin.strip() for origin in self.cors_origins.split(",")]
             return origins if origins else ["http://localhost:3000"]
+
+    @property
+    def jwt_secret(self) -> str:
+        """Segredo de assinatura dos JWTs — JWT_SIGNING_SECRET com fallback
+        no API_SECRET_KEY legado (warn na transição)."""
+        if self.jwt_signing_secret:
+            return self.jwt_signing_secret
+        logger.warning(
+            "JWT_SIGNING_SECRET não configurado — usando API_SECRET_KEY como "
+            "fallback (transição; separar no Render para remover o poder duplo)"
+        )
+        return self.api_secret_key
+
+    @property
+    def admin_api_key_list(self) -> List[str]:
+        """Lista de chaves válidas do X-API-Key — ADMIN_API_KEYS (CSV) com
+        fallback no API_SECRET_KEY legado."""
+        if self.admin_api_keys:
+            return [k.strip() for k in self.admin_api_keys.split(",") if k.strip()]
+        logger.warning(
+            "ADMIN_API_KEYS não configurado — usando API_SECRET_KEY como " "chave única (transição; separar no Render)"
+        )
+        return [self.api_secret_key] if self.api_secret_key else []
+
+    def is_admin_email(self, email: str) -> bool:
+        """ADMIN_EMAILS (allowlist explícita) substitui a regra legada de
+        domínio @lotier.com — o domínio do Google Workspace deixou de ser
+        security boundary automática."""
+        if self.admin_emails:
+            allowlist = {e.strip().lower() for e in self.admin_emails.split(",") if e.strip()}
+            return (email or "").lower() in allowlist
+        logger.warning(
+            "ADMIN_EMAILS não configurado — usando regra legada @lotier.com "
+            "(transição; documentar a decisão de boundary)"
+        )
+        return bool(email) and email.lower().endswith("@lotier.com")
 
     @property
     def trusted_callback_origins_list(self) -> List[str]:

@@ -491,7 +491,22 @@ describe('ApiService - Curation Operations', () => {
   afterAll(async () => {
     if (!apiAvailable || !testEntityId) return;
 
-    // Cleanup test entity (will cascade delete curations)
+    // Cleanup: DELETE de entity agora é 409 com curadorias ativas
+    // (admin-only + bloqueio, 2026-08-15) — apaga as curadorias do teste
+    // antes da entity.
+    const listRes = await fetch(`${API_BASE}/curations/search?entity_id=${testEntityId}&limit=1000`, {
+      headers: { 'X-API-Key': API_KEY }
+    });
+    if (listRes.ok) {
+      const { items } = await listRes.json();
+      for (const c of items) {
+        await fetch(`${API_BASE}/curations/${c.curation_id}`, {
+          method: 'DELETE',
+          headers: { 'X-API-Key': API_KEY }
+        });
+      }
+    }
+
     await fetch(`${API_BASE}/entities/${testEntityId}`, {
       method: 'DELETE',
       headers: { 'X-API-Key': API_KEY }
@@ -545,7 +560,9 @@ describe('ApiService - Curation Operations', () => {
   test('should get curation by ID', async () => {
     if (!apiAvailable || !testCurationId) return;
 
-    const response = await fetch(`${API_BASE}/curations/${testCurationId}`);
+    const response = await fetch(`${API_BASE}/curations/${testCurationId}`, {
+      headers: { 'X-API-Key': API_KEY }
+    });
     expect(response.ok).toBe(true);
     
     const curation = await response.json();
@@ -556,7 +573,9 @@ describe('ApiService - Curation Operations', () => {
   test('should list all curations', async () => {
     if (!apiAvailable) return;
 
-    const response = await fetch(`${API_BASE}/curations/search`);
+    const response = await fetch(`${API_BASE}/curations/search`, {
+      headers: { 'X-API-Key': API_KEY }
+    });
     expect(response.ok).toBe(true);
     
     const result = await response.json();
@@ -568,7 +587,9 @@ describe('ApiService - Curation Operations', () => {
   test('should filter curations by entity_id', async () => {
     if (!apiAvailable || !testEntityId) return;
 
-    const response = await fetch(`${API_BASE}/curations/search?entity_id=${testEntityId}`);
+    const response = await fetch(`${API_BASE}/curations/search?entity_id=${testEntityId}`, {
+      headers: { 'X-API-Key': API_KEY }
+    });
     expect(response.ok).toBe(true);
     
     const result = await response.json();
@@ -579,7 +600,9 @@ describe('ApiService - Curation Operations', () => {
   test('should filter curations by status', async () => {
     if (!apiAvailable) return;
 
-    const response = await fetch(`${API_BASE}/curations/search?status=draft`);
+    const response = await fetch(`${API_BASE}/curations/search?status=draft`, {
+      headers: { 'X-API-Key': API_KEY }
+    });
     expect(response.ok).toBe(true);
     
     const result = await response.json();
@@ -589,7 +612,9 @@ describe('ApiService - Curation Operations', () => {
   test('should filter curations by curator_id', async () => {
     if (!apiAvailable) return;
 
-    const response = await fetch(`${API_BASE}/curations/search?curator_id=test_curator`);
+    const response = await fetch(`${API_BASE}/curations/search?curator_id=test_curator`, {
+      headers: { 'X-API-Key': API_KEY }
+    });
     expect(response.ok).toBe(true);
     
     const result = await response.json();
@@ -602,7 +627,9 @@ describe('ApiService - Curation Operations', () => {
     if (!apiAvailable || !testCurationId) return;
 
     // Get current version
-    const getResponse = await fetch(`${API_BASE}/curations/${testCurationId}`);
+    const getResponse = await fetch(`${API_BASE}/curations/${testCurationId}`, {
+      headers: { 'X-API-Key': API_KEY }
+    });
     const current = await getResponse.json();
 
     // Update with If-Match header
@@ -672,7 +699,9 @@ describe('ApiService - Curation Operations', () => {
     }
 
     // Verify both curations exist for entity
-    const getResponse = await fetch(`${API_BASE}/curations/search?entity_id=${testEntityId}`);
+    const getResponse = await fetch(`${API_BASE}/curations/search?entity_id=${testEntityId}`, {
+      headers: { 'X-API-Key': API_KEY }
+    });
     const result = await getResponse.json();
     expect(result.items.length).toBeGreaterThanOrEqual(3); // Including the first one
   });
@@ -689,8 +718,10 @@ describe('ApiService - Curation Operations', () => {
 
     expect(response.ok).toBe(true);
 
-    // Verify deleted
-    const getResponse = await fetch(`${API_BASE}/curations/${testCurationId}`);
+    // Verify deleted (login-gate: leitura exige auth)
+    const getResponse = await fetch(`${API_BASE}/curations/${testCurationId}`, {
+      headers: { 'X-API-Key': API_KEY }
+    });
     if (getResponse.status === 404) {
       expect(getResponse.status).toBe(404);
     } else {

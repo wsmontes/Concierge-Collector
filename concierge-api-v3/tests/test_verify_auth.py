@@ -66,10 +66,10 @@ class TestVerifyAuth:
         assert exc.value.status_code == 401
 
     def test_api_key_misconfigured_returns_500(self):
-        """Missing API_SECRET_KEY returns 500 with diagnostic, not silent skip."""
+        """Missing ADMIN_API_KEYS/API_SECRET_KEY returns 500 with diagnostic, not silent skip."""
         from app.core.security import verify_auth
 
-        with patch("app.core.security.get_api_secret_key", side_effect=RuntimeError("not set")):
+        with patch("app.core.security.get_admin_api_keys", side_effect=RuntimeError("not set")):
             with pytest.raises(HTTPException) as exc:
                 verify_auth(_req(), api_key="anything", bearer=None)
             assert exc.value.status_code == 500
@@ -106,7 +106,7 @@ class TestVerifyAuth:
         from fastapi.security import HTTPAuthorizationCredentials
 
         creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials="some.jwt.here")
-        with patch("app.core.security.get_api_secret_key", side_effect=RuntimeError("not set")):
+        with patch("app.core.security.get_jwt_secret", side_effect=RuntimeError("not set")):
             with pytest.raises(HTTPException) as exc:
                 verify_auth(_req(), api_key=None, bearer=creds)
             assert exc.value.status_code == 500
@@ -181,13 +181,31 @@ class TestJwtHelpers:
         payload = await verify_access_token(credentials=None)
         assert payload["email"] == "test@example.com"
 
-    async def test_verify_refresh_token_roundtrip(self):
+    async def test_verify_refresh_token_roundtrip(self, test_db):
+        from app.core.security import ALGORITHM, create_refresh_token, get_jwt_secret, verify_refresh_token
+        from app.services.session_service import register_session
+        from jose import jwt
+
+        token = create_refresh_token(data={"sub": "refresh@example.com"})
+        # Token novo carrega jti → exige sessão registrada em auth_sessions
+        # (rotação 2026-08-15). Sem sessão o verify é fail-closed 401.
+        jti = jwt.decode(token, get_jwt_secret(), algorithms=[ALGORITHM])["jti"]
+        register_session(test_db, jti, "refresh@example.com")
+        try:
+            payload = await verify_refresh_token(token, db=test_db)
+        finally:
+            test_db.auth_sessions.delete_many({"jti": jti})
+        assert payload["sub"] == "refresh@example.com"
+        assert payload["type"] == "refresh"
+
+    async def test_verify_refresh_token_jti_sem_db_recusado(self):
+        """Token com jti verificado SEM db → 401 (fail-closed, rotação)."""
         from app.core.security import create_refresh_token, verify_refresh_token
 
         token = create_refresh_token(data={"sub": "refresh@example.com"})
-        payload = await verify_refresh_token(token)
-        assert payload["sub"] == "refresh@example.com"
-        assert payload["type"] == "refresh"
+        with pytest.raises(HTTPException) as exc:
+            await verify_refresh_token(token)
+        assert exc.value.status_code == 401
 
     async def test_verify_refresh_token_rejects_access_token(self):
         from app.core.security import create_access_token, verify_refresh_token
@@ -264,6 +282,65 @@ class TestJwtHelpers:
         creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
         auth = verify_auth(_req(), api_key=None, bearer=creds)
         assert auth["role"] == "viewer"
+
+
+class TestSecretSeparation:
+    """Separação de segredos (2026-08-15, achado #11 do code review).
+
+    Antes, API_SECRET_KEY fazia papel duplo: chave do X-API-Key E segredo
+    HS256 dos JWTs — quem tinha a API key podia forjar token de admin.
+    Agora: JWT_SIGNING_SECRET assina tokens; ADMIN_API_KEYS valida o header;
+    ADMIN_EMAILS substitui a regra automática @lotier.com → admin.
+    Transição com fallback legado (API_SECRET_KEY) para zero downtime.
+    """
+
+    def test_access_token_signed_with_jwt_signing_secret(self, monkeypatch):
+        """Com JWT_SIGNING_SECRET setado, o token é assinado com ELE (não a API key)."""
+        from app.core.config import settings
+        from app.core.security import create_access_token, ALGORITHM
+        from jose import jwt as _jwt
+
+        monkeypatch.setattr(settings, "jwt_signing_secret", "jwt-secret-xyz")
+        token = create_access_token(data={"sub": "x@example.com"})
+        payload = _jwt.decode(token, "jwt-secret-xyz", algorithms=[ALGORITHM])
+        assert payload["sub"] == "x@example.com"
+        assert payload["type"] == "access"
+
+    def test_x_api_key_validated_against_admin_list(self, monkeypatch):
+        """X-API-Key valida contra a LISTA ADMIN_API_KEYS, não o segredo JWT."""
+        from app.core.config import settings
+        from app.core.security import verify_auth
+
+        monkeypatch.setattr(settings, "admin_api_keys", "key-a,key-b")
+        result = verify_auth(_req(), api_key="key-b", bearer=None)
+        assert result["authenticated"] is True
+        assert result["method"] == "api_key"
+
+        with pytest.raises(HTTPException) as exc:
+            verify_auth(_req(), api_key="key-c", bearer=None)
+        assert exc.value.status_code == 401
+
+    def test_is_admin_email_uses_allowlist(self, monkeypatch):
+        """ADMIN_EMAILS substitui a regra legada @lotier.com (boundary explícita)."""
+        from app.core.config import settings
+
+        monkeypatch.setattr(settings, "admin_emails", "boss@x.com, chief@x.com")
+        assert settings.is_admin_email("boss@x.com") is True
+        assert settings.is_admin_email("chief@x.com") is True
+        # allowlist setada → domínio @lotier.com NÃO promove mais sozinho
+        assert settings.is_admin_email("someone@lotier.com") is False
+
+    def test_jwt_secret_falls_back_to_api_secret_key(self):
+        """Sem JWT_SIGNING_SECRET, o fallback legado mantém tudo funcionando."""
+        from app.core.config import settings
+
+        assert settings.jwt_secret == settings.api_secret_key
+
+    def test_admin_api_key_list_falls_back_to_api_secret_key(self):
+        """Sem ADMIN_API_KEYS, a lista é [API_SECRET_KEY] (comportamento legado)."""
+        from app.core.config import settings
+
+        assert settings.admin_api_key_list[0] == settings.api_secret_key
 
 
 class TestRequireRole:

@@ -55,4 +55,21 @@ describe('ApiService.listEntities — query params', () => {
     expect(url).not.toContain('city=');
     expect(url).not.toContain('q=');
   });
+
+  test('envia ids (array) como CSV na URL — bug do fast path', async () => {
+    // Regressão 2026-08-15: o filtro ids era SILENCIOSAMENTE descartado —
+    // o fast path do pull baixava 500 entities arbitrárias do acervo em vez
+    // das vinculadas às curadorias locais.
+    await apiService.listEntities({ ids: ['a1', 'b2', 'c3'] });
+
+    const url = window.fetch.mock.calls[0][0];
+    expect(decodeURIComponent(url)).toContain('ids=a1,b2,c3');
+  });
+
+  test('envia ids (string) sem quebrar', async () => {
+    await apiService.listEntities({ ids: 'a1,b2' });
+
+    const url = window.fetch.mock.calls[0][0];
+    expect(decodeURIComponent(url)).toContain('ids=a1,b2');
+  });
 });

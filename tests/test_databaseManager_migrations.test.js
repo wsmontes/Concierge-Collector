@@ -265,3 +265,85 @@ describe('DatabaseManager — migrações sem wipe destrutivo', () => {
     expect(await manager.db.syncQueue.count()).toBe(1);
   });
 });
+
+describe('DatabaseManager — recovery (repairEntity/duplicatas/export)', () => {
+  let dm;
+
+  beforeEach(async () => {
+    // cada teste parte de um IndexedDB limpo (fake-indexeddb persiste no env)
+    await new Promise((resolve) => {
+      const req = indexedDB.deleteDatabase('ConciergeCollector');
+      req.onsuccess = req.onerror = req.onblocked = () => resolve();
+    });
+    const Klass = loadDatabaseManager();
+    dm = new Klass();
+  });
+
+  async function openSeedDb() {
+    const db = new Dexie('ConciergeCollector');
+    db.version(92).stores(SCHEMA_92);
+    await db.open();
+    return db;
+  }
+
+  test('repairEntity corrige pelo entity_id (a PK é ++id — update(entity_id) era no-op)', async () => {
+    const db = await openSeedDb();
+    await db.entities.put({
+      entity_id: 'ent_repair', name: 'X', type: 'restaurant', status: 'active',
+      data: { location: {} }, metadata: 'bad', version: 0
+    });
+    dm.db = db;
+
+    const doc = await db.entities.where('entity_id').equals('ent_repair').first();
+    const repaired = await dm.repairEntity(doc, [
+      'Empty location object (should be undefined or have data)',
+      'Missing or invalid metadata array',
+      'Missing or invalid version'
+    ]);
+
+    expect(repaired).toBe(true);
+    const fixed = await db.entities.where('entity_id').equals('ent_repair').first();
+    expect(fixed.data.location).toBeUndefined();
+    expect(fixed.metadata).toEqual([]);
+    expect(fixed.version).toBe(1);
+    db.close();
+  });
+
+  test('removeDuplicates mantém a cópia MAIS RECENTE e poupa cópia pending', async () => {
+    const db = await openSeedDb();
+    await db.entities.bulkPut([
+      { entity_id: 'ent_dup', name: 'Old', status: 'active', updatedAt: '2026-01-01T00:00:00Z', sync: { status: 'synced' } },
+      { entity_id: 'ent_dup', name: 'New', status: 'active', updatedAt: '2026-08-01T00:00:00Z', sync: { status: 'synced' } },
+      { entity_id: 'ent_dup', name: 'Oldest pending', status: 'active', updatedAt: '2025-01-01T00:00:00Z', sync: { status: 'pending' } },
+    ]);
+    dm.db = db;
+
+    const dups = await dm.findDuplicates();
+    expect(dups.length).toBe(2);
+
+    const removed = await dm.removeDuplicates(dups);
+
+    const remaining = await db.entities.where('entity_id').equals('ent_dup').toArray();
+    const names = remaining.map(e => e.name).sort();
+    // keeper = 'New' (mais recente); 'Old' removida; 'Oldest pending' poupada
+    // (nunca apagar trabalho não sincronizado)
+    expect(names).toEqual(['New', 'Oldest pending']);
+    expect(removed).toBe(1);
+    db.close();
+  });
+
+  test('exportForDebug lê settings em vez da store inexistente sync_metadata', async () => {
+    const db = await openSeedDb();
+    await db.settings.put({ key: 'sync_metadata', value: { lastPullAt: '2026-08-15' } });
+    dm.db = db;
+
+    // polyfills browser-only do export (Blob/URL/document não existem em node)
+    globalThis.Blob = class { constructor(parts) { this.parts = parts; } };
+    globalThis.URL = { createObjectURL: () => 'blob:test', revokeObjectURL: () => {} };
+    globalThis.document = { createElement: () => ({ click() {}, download: '', href: '' }) };
+
+    await expect(dm.exportForDebug()).resolves.not.toThrow();
+
+    db.close();
+  });
+});

@@ -58,4 +58,8 @@ INDEX_SPECS = [
     # ── capture_sessions ───────────────────────────────────────────────────
     # TTL 48h (auto-delete de sessões de captura) — criado pelo lifespan.py
     ("capture_sessions", "createdAt", {"expireAfterSeconds": 172800}),
+    # ── auth_sessions ──────────────────────────────────────────────────────
+    # TTL: sessões de refresh expiram sozinhas (rotação/revogação 2026-08-15),
+    # alinhadas aos REFRESH_TOKEN_EXPIRE_DAYS (30d)
+    ("auth_sessions", "expiresAt", {"expireAfterSeconds": 0}),
 ]

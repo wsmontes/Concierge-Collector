@@ -61,8 +61,51 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             entitiesPushed: 0,
             curationsPulled: 0,
             curationsPushed: 0,
-            conflicts: 0
+            conflicts: 0,
+            // Contadores do ÚLTIMO ciclo (zerados a cada fullSync/quickSync) —
+            // alimentam o status 'partial' do sync-complete (2026-08-15).
+            attempted: 0,
+            failed: 0,
+            skipped: 0,
+            cycleConflicts: 0,
+            pendingAfter: 0,
+            lastCycle: null
         };
+    }
+
+    /**
+     * Zera os contadores do ciclo corrente — chamado no início de cada
+     * fullSync/quickSync. 'conflicts' acumulado é histórico e permanece.
+     */
+    _resetCycleCounters() {
+        this.stats.attempted = 0;
+        this.stats.failed = 0;
+        this.stats.skipped = 0;
+        this.stats.cycleConflicts = 0;
+        this.stats.pendingAfter = 0;
+    }
+
+    /**
+     * Itens ainda pendentes APÓS o push (entities/curations pending +
+     * syncQueue) — base do status 'partial': "sync completo" com trabalho
+     * não enviado não é sucesso (propriedade de integridade offline-first).
+     */
+    async _countPendingAfter() {
+        try {
+            const db = window.DataStore?.db;
+            if (!db?.entities?.where || !db?.curations?.where || !db?.syncQueue?.count) {
+                return 0;
+            }
+            const [e, c, q] = await Promise.all([
+                db.entities.where('sync.status').equals('pending').count(),
+                db.curations.where('sync.status').equals('pending').count(),
+                db.syncQueue.count()
+            ]);
+            return e + c + q;
+        } catch (error) {
+            this.log.warn('Falha ao contar pendências pós-sync:', error?.message);
+            return 0;
+        }
     }
 
     /**
@@ -628,15 +671,19 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
         try {
             this.isSyncing = true;
             this.isPushing = true;  // trava de mutação SÓ durante o push
+            this._resetCycleCounters();
             this.emitSyncEvent('sync-start');
             this.log.info('🔄 Starting full sync...');
 
             // 1. Push to server (client → server)
-            this.emitSyncEvent('sync-progress', { stage: 'push-entities', message: 'Uploading local entity updates...' });
-            await this.pushEntities();
-
+            // CURATIONS PRIMEIRO: o soft-delete das curations vinculadas precisa
+            // chegar ao servidor antes do delete da entity (DELETE de entity é
+            // admin-only com 409 quando há curadorias ativas — 2026-08-15).
             this.emitSyncEvent('sync-progress', { stage: 'push-curations', message: 'Uploading local curation updates...' });
             await this.pushCurations();
+
+            this.emitSyncEvent('sync-progress', { stage: 'push-entities', message: 'Uploading local entity updates...' });
+            await this.pushEntities();
             this.isPushing = false;  // pull não trava edições (guards de pending protegem)
 
             // 2. Pull incremental (server → client) — dados de outros dispositivos/curadores
@@ -646,11 +693,29 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             this.emitSyncEvent('sync-progress', { stage: 'pull-entities', message: 'Baixando entidades vinculadas...' });
             await this.pullLinkedEntities();
 
-            this.log.info('✅ Full sync complete', this.stats);
-            this.emitSyncEvent('sync-complete', { status: 'success', stats: this.stats });
+            // 3. Fechamento HONESTO do ciclo (2026-08-15): 'success' só quando
+            // nada falhou e nada ficou pendente — caso contrário 'partial'.
+            const pendingAfter = await this._countPendingAfter();
+            this.stats.pendingAfter = pendingAfter;
+            this.stats.lastCycle = {
+                attempted: this.stats.attempted,
+                failed: this.stats.failed,
+                skipped: this.stats.skipped,
+                conflicts: this.stats.cycleConflicts,
+                pendingAfter
+            };
+            const status = this.stats.failed > 0 || pendingAfter > 0 ? 'partial' : 'success';
+
+            this.log.info(`✅ Full sync complete (${status})`, this.stats);
+            this.emitSyncEvent('sync-complete', {
+                status,
+                stats: this.stats,
+                failed: this.stats.failed,
+                pending: pendingAfter
+            });
 
             return {
-                status: 'success',
+                status,
                 stats: { ...this.stats }
             };
         } catch (error) {
@@ -713,11 +778,32 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
 
         try {
             this.isSyncing = true;
+            this._resetCycleCounters();
             this.emitSyncEvent('sync-start');
             this.emitSyncEvent('sync-progress', { stage: 'quick-sync', message: 'Syncing pending local updates...' });
-            await this.pushEntities();
+            // curations antes de entities: soft-delete de curations vinculadas
+            // precede o delete da entity (409 — ver fullSync)
             await this.pushCurations();
-            this.emitSyncEvent('sync-complete', { status: 'success', stats: this.stats, mode: 'quick' });
+            await this.pushEntities();
+
+            // Fechamento honesto: 'partial' quando sobrou falha/pendência
+            const pendingAfter = await this._countPendingAfter();
+            this.stats.pendingAfter = pendingAfter;
+            this.stats.lastCycle = {
+                attempted: this.stats.attempted,
+                failed: this.stats.failed,
+                skipped: this.stats.skipped,
+                conflicts: this.stats.cycleConflicts,
+                pendingAfter
+            };
+            const status = this.stats.failed > 0 || pendingAfter > 0 ? 'partial' : 'success';
+            this.emitSyncEvent('sync-complete', {
+                status,
+                stats: this.stats,
+                failed: this.stats.failed,
+                pending: pendingAfter,
+                mode: 'quick'
+            });
         } catch (error) {
             this.log.warn('Quick sync failed:', error.message);
             this.emitSyncEvent('sync-error', { error: error.message, mode: 'quick' });
@@ -823,15 +909,29 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             // e o watermark nunca salvava se o usuário fechasse antes do fim)
             const idList = Array.from(linkedEntityIds);
             if (idList.length) {
-                const params = { limit: 500, ids: idList.slice(0, 500).join(',') };
-                if (since) {
-                    params.since = since;  // incremental: só vinculadas MUDADAS desde o último pull
-                }
-                const response = await window.ApiService.listEntities(params);
-                const items = response.items || [];
-                for (const serverEntity of items) {
-                    await this.processServerEntity(serverEntity);
-                    totalPulled++;
+                // Chunks de 500: o servidor limita ?ids a 500 (cap defensivo)
+                // — antes o slice(0,500) descartava TODAS as vinculadas além
+                // da 500ª (ficavam stale para sempre). Falha de um chunk não
+                // derruba o pull: loga e segue (retry no próximo ciclo).
+                const CHUNK = 500;
+                for (let i = 0; i < idList.length; i += CHUNK) {
+                    const params = { limit: CHUNK, ids: idList.slice(i, i + CHUNK).join(',') };
+                    if (since) {
+                        params.since = since;  // incremental: só vinculadas MUDADAS desde o último pull
+                    }
+                    try {
+                        const response = await window.ApiService.listEntities(params);
+                        const items = response.items || [];
+                        for (const serverEntity of items) {
+                            await this.processServerEntity(serverEntity);
+                            totalPulled++;
+                        }
+                    } catch (chunkError) {
+                        this.stats.failed++;
+                        this.log.warn(
+                            `Chunk ${i / CHUNK + 1} do pull de entities falhou (${chunkError?.message}) — será re-tentado no próximo sync`
+                        );
+                    }
                 }
             }
 
@@ -1231,18 +1331,65 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             this.log.debug('⬆️ Pushing pending entities to server...');
 
             // P2 fix: deleções locais (docs já removidos do IndexedDB) via syncQueue
+            // Delete de entity agora é admin-only com 409 quando há curadorias
+            // ativas (2026-08-15) — 403 é permanente (sai da fila + restaura a
+            // entity local); 409 para de retry automático após 3 tentativas e
+            // notifica (antes: retry infinito com só log.warn, sem UI).
             const deleteOps = await window.DataStore.db.syncQueue.where('action').equals('delete').toArray();
             for (const op of deleteOps) {
+                const retryCount = op.retryCount || 0;
+                const lastError = String(op.lastError || '');
+                if (retryCount >= 3 && lastError.includes('409')) {
+                    this.log.warn(`Delete de ${op.entity_id} estagnado (409 após ${retryCount} tentativas) — aguardando ação do usuário`);
+                    continue;
+                }
+                this.stats.attempted++;
                 try {
                     await window.ApiService.deleteEntity(op.entity_id);
                     await window.DataStore.removeFromSyncQueue(op.id);
                     this.log.debug(`✅ Deletado no servidor: ${op.entity_id}`);
                 } catch (error) {
+                    const status = error?.status;
                     const msg = String(error?.message || '');
-                    if (msg.includes('404') || msg.includes('not found')) {
+                    if (status === 404 || msg.includes('404') || msg.includes('not found')) {
                         // já não existe no servidor — tira da fila
+                        this.stats.skipped++;
                         await window.DataStore.removeFromSyncQueue(op.id);
+                    } else if (status === 403 || msg.includes('403') || msg.includes('forbidden')) {
+                        // permissão permanente: o servidor nunca vai aceitar —
+                        // sai da fila e a entity volta a existir localmente
+                        this.stats.failed++;
+                        this.log.warn(`Delete de ${op.entity_id} recusado (403) — entity restaurada localmente`);
+                        await window.DataStore.removeFromSyncQueue(op.id);
+                        try {
+                            const serverEntity = await window.ApiService.getEntity(op.entity_id);
+                            if (serverEntity) {
+                                await window.DataStore.db.entities.put({
+                                    ...serverEntity,
+                                    sync: {
+                                        serverId: serverEntity._id || null,
+                                        status: 'synced',
+                                        lastSyncedAt: new Date().toISOString()
+                                    }
+                                });
+                            }
+                        } catch (refetchError) {
+                            this.log.warn(`Entity ${op.entity_id} não re-materializável: ${refetchError?.message}`);
+                        }
+                        window.uiUtils?.showNotification?.(`Delete not authorized for ${op.entity_id} — entity restored`, 'error');
+                    } else if (status === 409 || msg.includes('409')) {
+                        // bloqueio por curadorias ativas: retry controlado
+                        this.stats.failed++;
+                        const next = retryCount + 1;
+                        await window.DataStore.db.syncQueue.update(op.id, { retryCount: next, lastError: msg });
+                        if (next >= 3) {
+                            this.log.error(`Delete de ${op.entity_id} bloqueado (409) após ${next} tentativas — sem retry automático`);
+                            window.uiUtils?.showNotification?.(`Cannot delete ${op.entity_id}: ${msg}`, 'error');
+                        } else {
+                            this.log.warn(`Falha ao deletar ${op.entity_id}: ${msg} (tentativa ${next}/3)`);
+                        }
                     } else {
+                        this.stats.failed++;
                         this.log.warn(`Falha ao deletar ${op.entity_id}: ${msg}`);
                     }
                 }
@@ -1276,10 +1423,12 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                 }
 
                 const errorIndexes = new Set((bulkResult.errors || []).map(e => e.index));
+                this.stats.attempted += newEntities.length;
 
                 for (let i = 0; i < newEntities.length; i++) {
                     const entity = newEntities[i];
                     if (errorIndexes.has(i)) {
+                        this.stats.failed++;
                         this.log.warn(`Bulk create failed for entity ${entity.entity_id}: ${bulkResult.errors.find(e => e.index === i)?.error}`);
                         // Leave as pending — will retry on next sync
                     } else {
@@ -1302,6 +1451,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
 
             // ── Careful path: PATCH em chunks paralelos (P5 — antes era serial, 1 request por vez) ─
             const PATCH_CHUNK = 4;
+            this.stats.attempted += existingEntities.length;
             for (let i = 0; i < existingEntities.length; i += PATCH_CHUNK) {
                 const results = await Promise.all(
                     existingEntities.slice(i, i + PATCH_CHUNK).map(e => this.pushExistingEntity(e))
@@ -1309,11 +1459,14 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                 for (const r of results) {
                     if (r === 'pushed') pushed++;
                     else if (r === 'conflict') conflicts++;
+                    else if (r === 'failed') this.stats.failed++;
+                    else if (r === 'skipped') this.stats.skipped++;
                 }
             }
 
             this.stats.entitiesPushed = pushed;
             this.stats.conflicts += conflicts;
+            this.stats.cycleConflicts += conflicts;
             this.stats.lastPushAt = new Date().toISOString();
             await this.saveSyncMetadata();
 
@@ -1431,10 +1584,12 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                 }
 
                 const errorIndexes = new Set((bulkResult.errors || []).map(e => e.index));
+                this.stats.attempted += noServerIdCurations.length;
 
                 for (let i = 0; i < noServerIdCurations.length; i++) {
                     const curation = noServerIdCurations[i];
                     if (errorIndexes.has(i)) {
+                        this.stats.failed++;
                         this.log.warn(`Bulk upsert failed for curation ${curation.curation_id}: ${bulkResult.errors.find(e => e.index === i)?.error}`);
                         // Leave as pending — will retry next sync
                     } else {
@@ -1458,6 +1613,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
 
             // ── Careful path: PATCH em chunks paralelos (P5 — antes era serial) ─
             const PATCH_CHUNK = 4;
+            this.stats.attempted += hasServerIdCurations.length;
             for (let i = 0; i < hasServerIdCurations.length; i += PATCH_CHUNK) {
                 const results = await Promise.all(
                     hasServerIdCurations.slice(i, i + PATCH_CHUNK).map(c => this.pushExistingCuration(c))
@@ -1465,11 +1621,14 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                 for (const r of results) {
                     if (r === 'pushed') pushed++;
                     else if (r === 'conflict') conflicts++;
+                    else if (r === PULL_RESULT.FAILED) this.stats.failed++;
+                    else if (r === 'skipped') this.stats.skipped++;
                 }
             }
 
             this.stats.curationsPushed = pushed;
             this.stats.conflicts += conflicts;
+            this.stats.cycleConflicts += conflicts;
             this.stats.lastPushAt = new Date().toISOString();
             await this.saveSyncMetadata();
 
@@ -1639,7 +1798,9 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                 lastSync: {
                     pull: this.stats.lastPullAt,
                     push: this.stats.lastPushAt
-                }
+                },
+                // Contadores do último ciclo — alimentam o badge 'Partial'
+                lastCycle: this.stats.lastCycle
             };
         } catch (error) {
             this.log.error('Failed to get sync status:', error);

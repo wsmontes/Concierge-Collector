@@ -68,6 +68,16 @@ def client(hermetic_test_database):
         yield c
 
 
+@pytest.fixture(autouse=True)
+def _client_cookie_isolation(client):
+    """Isola o jar de cookies ENTRE testes (2026-08-15): o client é
+    session-scoped e o TestClient persiste cookies — o dev-login de
+    test_auth deixava o access_token no jar e autenticava requests "sem
+    credencial" dos testes seguintes (poluição cross-file)."""
+    yield
+    client.cookies.clear()
+
+
 @pytest.fixture(scope="function")
 def clean_test_entities(test_db):
     """Clean test entities before and after each test"""
@@ -156,17 +166,18 @@ async def async_client():
 
 @pytest.fixture
 def auth_headers():
-    """Real auth headers using API key from .env"""
-    api_key = settings.api_secret_key
-    if not api_key:
-        pytest.skip("API_SECRET_KEY not set in .env")
-    return {"X-API-Key": api_key}
+    """Real auth headers — primeira chave da lista ADMIN_API_KEYS (fallback
+    API_SECRET_KEY; separação de segredos 2026-08-15)."""
+    keys = settings.admin_api_key_list
+    if not keys:
+        pytest.skip("API_SECRET_KEY/ADMIN_API_KEYS not set in .env")
+    return {"X-API-Key": keys[0]}
 
 
 @pytest.fixture
 def auth_token():
     """API key for tests that expect just the token"""
-    api_key = settings.api_secret_key
-    if not api_key:
-        pytest.skip("API_SECRET_KEY not set in .env")
-    return api_key
+    keys = settings.admin_api_key_list
+    if not keys:
+        pytest.skip("API_SECRET_KEY/ADMIN_API_KEYS not set in .env")
+    return keys[0]

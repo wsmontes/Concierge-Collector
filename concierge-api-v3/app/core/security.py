@@ -44,6 +44,45 @@ def get_api_secret_key() -> str:
     return api_key
 
 
+def get_admin_api_keys() -> list:
+    """
+    Chaves válidas do header X-API-Key (ADMIN_API_KEYS CSV, fallback
+    API_SECRET_KEY). Levanta RuntimeError quando nenhuma está configurada —
+    misconfiguration precisa virar 500, nunca silent-skip.
+
+    Separado em função para o mesmo motivo de get_jwt_secret: os testes
+    patcheiam o ponto de falha de configuração.
+    """
+    keys = settings.admin_api_key_list
+    if not keys:
+        raise RuntimeError(
+            "ADMIN_API_KEYS/API_SECRET_KEY not configured. "
+            "Generate one with: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
+        )
+    return keys
+
+
+def get_jwt_secret() -> str:
+    """
+    Segredo de assinatura dos JWTs (access/refresh/oauth state).
+
+    Separação de segredos (2026-08-15): antes a API key servia de segredo
+    HS256 — quem tivesse o X-API-Key podia forjar token de admin. Agora o
+    segredo vem de JWT_SIGNING_SECRET (fallback legado API_SECRET_KEY na
+    transição, via settings.jwt_secret).
+
+    Raises:
+        RuntimeError: If neither secret is configured
+    """
+    secret = settings.jwt_secret
+    if not secret:
+        raise RuntimeError(
+            "JWT_SIGNING_SECRET (or API_SECRET_KEY) not configured. "
+            "Generate one with: python -c 'import secrets; print(secrets.token_urlsafe(32))'"
+        )
+    return secret
+
+
 def generate_api_key() -> str:
     """
     Generate a secure random API key.
@@ -79,8 +118,8 @@ def create_access_token(data: dict, expires_delta: Optional[timedelta] = None) -
 
     to_encode.update({"exp": expire, "iat": datetime.now(timezone.utc), "type": "access"})
 
-    # Use API secret key as JWT secret
-    secret_key = get_api_secret_key()
+    # JWT_SIGNING_SECRET (fallback legado via settings.jwt_secret)
+    secret_key = get_jwt_secret()
     encoded_jwt = jwt.encode(to_encode, secret_key, algorithm=ALGORITHM)
 
     return encoded_jwt
@@ -103,35 +142,41 @@ def create_refresh_token(data: dict) -> str:
             "exp": expire,
             "iat": datetime.now(timezone.utc),
             "type": "refresh",  # Distinguish from access tokens
+            # jti = identidade da sessão server-side (rotação 2026-08-15):
+            # cada refresh revoga o jti anterior — replay é detectável
+            "jti": secrets.token_urlsafe(16),
         }
     )
 
-    # Use API secret key as JWT secret
-    secret_key = get_api_secret_key()
+    # JWT_SIGNING_SECRET (fallback legado via settings.jwt_secret)
+    secret_key = get_jwt_secret()
     encoded_jwt = jwt.encode(to_encode, secret_key, algorithm=ALGORITHM)
 
     return encoded_jwt
 
 
-async def verify_refresh_token(token: str) -> dict:
+async def verify_refresh_token(token: str, db=None) -> dict:
     """
-    Verify JWT refresh token
+    Verify JWT refresh token (+ sessão server-side quando há jti)
 
     Args:
         token: JWT refresh token
+        db: Database (opcional) — com jti presente, a sessão em
+            auth_sessions precisa existir (rotação/revogação 2026-08-15).
+            Sem db, token com jti é RECUSADO (fail-closed).
 
     Returns:
         dict: Decoded token payload
 
     Raises:
-        HTTPException: 401 if token is invalid or expired
+        HTTPException: 401 if token is invalid, expired or revoked
     """
     import logging
 
     logger = logging.getLogger(__name__)
 
     try:
-        secret_key = get_api_secret_key()
+        secret_key = get_jwt_secret()
         payload = jwt.decode(token, secret_key, algorithms=[ALGORITHM])
 
         # Verify it's a refresh token
@@ -154,6 +199,26 @@ async def verify_refresh_token(token: str) -> dict:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
                     detail="Refresh token expired",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+
+        # Sessão server-side (rotação/revogação 2026-08-15): token NOVO tem
+        # jti e precisa de sessão ativa em auth_sessions. Token LEGADO (sem
+        # jti, emitido antes da migração) segue aceito até expirar.
+        if payload.get("jti"):
+            if db is None:
+                logger.warning("[Refresh Token] jti presente sem db — recusando (fail-closed)")
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Session validation unavailable",
+                    headers={"WWW-Authenticate": "Bearer"},
+                )
+            session = db.auth_sessions.find_one({"jti": payload["jti"]})
+            if not session:
+                logger.warning("[Refresh Token] Sessão não encontrada — refresh revogado (replay?)")
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Refresh token revoked",
                     headers={"WWW-Authenticate": "Bearer"},
                 )
 
@@ -215,7 +280,7 @@ async def verify_access_token(
     # aparecer em logs coletados por terceiros.
 
     try:
-        secret_key = get_api_secret_key()
+        secret_key = get_jwt_secret()
         logger.info("[Token Verify] Decoding token...")
         payload = jwt.decode(token, secret_key, algorithms=[ALGORITHM])
 
@@ -281,14 +346,15 @@ def verify_auth(
 
     logger = logging.getLogger(__name__)
 
-    # Try API key first
+    # Try API key first — valida contra a LISTA ADMIN_API_KEYS (separação de
+    # segredos 2026-08-15: a API key não assina mais JWTs)
     if api_key:
         try:
-            expected_key = get_api_secret_key()
-            if secrets.compare_digest(api_key, expected_key):
-                return {"authenticated": True, "method": "api_key"}
+            for expected_key in get_admin_api_keys():
+                if secrets.compare_digest(api_key, expected_key):
+                    return {"authenticated": True, "method": "api_key"}
         except RuntimeError:
-            # API_SECRET_KEY not configured — surface to operators
+            # ADMIN_API_KEYS/API_SECRET_KEY not configured — surface to operators
             logger.error("API_SECRET_KEY not configured — rejecting API key auth")
             raise HTTPException(
                 status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
@@ -300,7 +366,7 @@ def verify_auth(
     # Try JWT Bearer token
     if bearer:
         try:
-            payload = jwt.decode(bearer.credentials, get_api_secret_key(), algorithms=[ALGORITHM])
+            payload = jwt.decode(bearer.credentials, get_jwt_secret(), algorithms=[ALGORITHM])
             # Refresh nunca vale como Bearer de API (paridade com
             # verify_access_token); role ausente/desconhecido = viewer
             # (default anterior era curator — escalation de refresh de viewer)
@@ -329,7 +395,7 @@ def verify_auth(
     access_cookie = request.cookies.get("access_token")
     if access_cookie:
         try:
-            payload = jwt.decode(access_cookie, get_api_secret_key(), algorithms=[ALGORITHM])
+            payload = jwt.decode(access_cookie, get_jwt_secret(), algorithms=[ALGORITHM])
             if payload.get("type") != "access":
                 raise JWTError("Not an access token")
             token_role = payload.get("role")

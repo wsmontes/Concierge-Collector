@@ -37,7 +37,7 @@ from bson import ObjectId
 
 from app.core.query_utils import resolve_after_id
 from app.core.rate_limit import limiter, auth_header_key
-from app.core.security import is_admin_auth, require_role
+from app.core.security import is_admin_auth, require_role, verify_auth
 from app.models.user import has_role
 from app.services.curation_denorm import denormalize_curation_location
 from app.services.curation_service import (
@@ -317,8 +317,12 @@ def search_curations(
         ),
     ),
     db: Database = Depends(get_database),
+    auth: dict = Depends(verify_auth),  # login-gate: curadorias são IP interna (2026-08-15)
 ):
     """Search curations with filters.
+
+    **Authentication Required:** Include `Authorization: Bearer <token>` OR `X-API-Key: <key>` header
+    (login-gate sem redação por dono — usuário logado vê o documento completo).
 
     Two pagination modes (mutually exclusive — after_id takes priority):
     - **Cursor-based** (?after_id=<last_id>): O(log n), preferred for large collections.
@@ -397,15 +401,20 @@ def search_curations(
 
 
 @router.get("/cities")
-def list_cities(db: Database = Depends(get_database)):
+def list_cities(db: Database = Depends(get_database), auth: dict = Depends(verify_auth)):
     """Retorna lista distinta de cidades para o dropdown de filtro.
-    Usa MongoDB distinct() com índice implícito — O(1) na prática."""
+    Usa MongoDB distinct() com índice implícito — O(1) na prática.
+    Login-gate (2026-08-15): exige autenticação como as demais leituras de curation."""
     cities = db.curations.distinct("city")
     return sorted([c for c in cities if c])
 
 
 @router.get("/entities/{entity_id}/curations", response_model=List[Curation])
-def get_entity_curations(entity_id: str, db: Database = Depends(get_database)):
+def get_entity_curations(
+    entity_id: str,
+    db: Database = Depends(get_database),
+    auth: dict = Depends(verify_auth),  # login-gate: curadorias são IP interna (2026-08-15)
+):
     """Get all curations for an entity"""
     # Verify entity exists
     entity = find_entity(db, entity_id)
@@ -424,7 +433,11 @@ def get_entity_curations(entity_id: str, db: Database = Depends(get_database)):
 
 
 @router.get("/{curation_id}", response_model=Curation)
-def get_curation(curation_id: str, db: Database = Depends(get_database)):
+def get_curation(
+    curation_id: str,
+    db: Database = Depends(get_database),
+    auth: dict = Depends(verify_auth),  # login-gate: curadorias são IP interna (2026-08-15)
+):
     """Get curation by ID"""
     result = find_curation(db, curation_id, projection=CURATION_RESPONSE_PROJECTION)
 
@@ -662,14 +675,15 @@ def semantic_search_curations(
     request: Request,
     body: SemanticSearchRequest,
     db: Database = Depends(get_database),
+    auth: dict = Depends(verify_auth),  # login-gate: curadorias são IP interna (2026-08-15)
 ):
     """Semantic search for curations using concept embeddings
 
     Generates embedding for the query and finds curations with similar concepts
     using cosine similarity between vectors.
 
-    Endpoint público (documentado), mas limitado a 10/min por IP — cada busca
-    gera um embedding pago na OpenAI.
+    **Authentication Required** (login-gate 2026-08-15): cada busca gera um
+    embedding pago na OpenAI — agora exige login, além do limite de 10/min por IP.
 
     **Example queries:**
     - "casual japanese food"
@@ -844,7 +858,12 @@ def semantic_search_curations(
 
 @router.post("/hybrid-search", response_model=HybridSearchResponse)
 @limiter.limit("10/minute", key_func=auth_header_key)
-def hybrid_search(request: Request, body: HybridSearchRequest, db: Database = Depends(get_database)):
+def hybrid_search(
+    request: Request,
+    body: HybridSearchRequest,
+    db: Database = Depends(get_database),
+    auth: dict = Depends(verify_auth),  # login-gate: curadorias são IP interna (2026-08-15)
+):
     """Busca híbrida: combina busca tradicional de entities + busca semântica de curations
 
     Executa ambas as buscas EM PARALELO e combina os resultados de forma inteligente:
@@ -852,8 +871,8 @@ def hybrid_search(request: Request, body: HybridSearchRequest, db: Database = De
     - Curations que batem semanticamente recebem semantic_score
     - Score final = (1 - boost_semantic) * entity_score + boost_semantic * semantic_score
 
-    Endpoint público (documentado), mas limitado a 10/min por IP — cada busca
-    gera um embedding pago na OpenAI.
+    **Authentication Required** (login-gate 2026-08-15): cada busca gera um
+    embedding pago na OpenAI — agora exige login, além do limite de 10/min por IP.
 
     **Example queries:**
     - "restaurante japonês em jardins"

@@ -773,6 +773,16 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
         `;
 
         // Footer Actions
+        // Delete restrito a admin (2026-08-15): o servidor recusa delete de
+        // curator (403) e 409 quando há curadorias vinculadas — o botão nem
+        // é oferecido para quem não pode usar. Offline (sem perfil) → oculto.
+        const isAdmin = window.AuthService?.getCurrentUser?.()?.role === 'admin';
+        const deleteButton = isAdmin
+            ? `<button class="btn-delete-entity flex-1 py-2 px-4 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 flex items-center justify-center gap-2">
+                <span class="material-icons text-sm">delete</span>
+                Delete Entity
+            </button>`
+            : '';
         const footer = document.createElement('div');
         footer.className = 'w-full flex gap-2';
         footer.innerHTML = `
@@ -780,10 +790,7 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
                 <span class="material-icons text-sm">edit</span>
                 Edit Entity
             </button>
-            <button class="btn-delete-entity flex-1 py-2 px-4 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 flex items-center justify-center gap-2">
-                <span class="material-icons text-sm">delete</span>
-                Delete Entity
-            </button>
+            ${deleteButton}
         `;
 
         // Bind events

@@ -721,6 +721,16 @@ function triggerInitialSync() {
                     const updated = syncResults.entitiesUpdated || syncResults.updated || 0;
                     const curationCount = syncResults.curationsAdded || 0;
                     console.log(`V3: Synced ${added} entities, updated ${updated}, ${curationCount} curations`);
+                    // Ciclo partial (2026-08-15): notificar falhas/pendências —
+                    // "sync completo" não pode ser anunciado com itens não enviados
+                    if (syncResults.status === 'partial' && window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
+                        const failed = syncResults.stats?.failed || 0;
+                        const pending = syncResults.stats?.pendingAfter || 0;
+                        window.uiUtils.showNotification(
+                            `Sync completed with ${failed} failed, ${pending} pending — will retry`,
+                            'warning'
+                        );
+                    }
                 }
 
                 // Update UI to reflect new data if UI manager exists (only if there are changes)

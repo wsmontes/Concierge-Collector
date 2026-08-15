@@ -262,6 +262,19 @@ class HealthResponse(BaseModel):
     database: str
 
 
+class ReadyResponse(BaseModel):
+    """Readiness response — /ready (2026-08-15).
+
+    /health permanece LIVENESS (200 sempre — contrato do health check do
+    Render); /ready é para monitoramento: 503 quando o Mongo está
+    inacessível ou algum índice estrutural falhou no startup.
+    """
+
+    status: str
+    database: str
+    indexes: Dict[str, Any]
+
+
 class APIInfo(BaseModel):
     """API information"""
 

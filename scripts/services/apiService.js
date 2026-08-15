@@ -272,6 +272,12 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         if (filters.after_id) params.append('after_id', filters.after_id);
         if (filters.city) params.append('city', filters.city);
         if (filters.q) params.append('q', filters.q);
+        // Bug 2026-08-15: ids era SILENCIOSAMENTE descartado — o fast path do
+        // pullLinkedEntities baixava as 500 primeiras entities do acervo
+        // inteiro em vez das vinculadas às curadorias locais.
+        if (filters.ids) {
+            params.append('ids', Array.isArray(filters.ids) ? filters.ids.join(',') : filters.ids);
+        }
 
         const queryString = params.toString();
         const endpoint = queryString ? `entities?${queryString}` : 'entities';

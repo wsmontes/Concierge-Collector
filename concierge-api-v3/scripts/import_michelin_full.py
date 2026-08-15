@@ -25,7 +25,7 @@ console = Console()
 
 # Use production API for Google Places
 API_URL = "https://concierge-api-v3.onrender.com"
-API_KEY = settings.api_secret_key
+API_KEY = settings.admin_api_key_list[0] if settings.admin_api_key_list else settings.api_secret_key  # ADMIN_API_KEYS (fallback legado)
 
 
 def calculate_distance(lat1: float, lon1: float, lat2: float, lon2: float) -> float:

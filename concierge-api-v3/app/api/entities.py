@@ -164,12 +164,33 @@ def update_entity(
 def delete_entity(
     entity_id: str,
     db: Database = Depends(get_database),
-    auth: dict = Depends(require_role("curator")),
+    auth: dict = Depends(require_role("admin")),
 ):
-    """Delete entity"""
+    """Delete entity — admin only, bloqueado com curadorias ativas.
+
+    Decisão 2026-08-15 (code review externo, achado #9): curator podia apagar
+    QUALQUER entity e orfanar curadorias de terceiros. Agora só admin deleta,
+    e somente quando não há curadorias ativas vinculadas (soft-deletadas não
+    bloqueiam). Archive (soft delete de entity) fica como follow-up (onda 3).
+    """
     resolved = find_entity(db, entity_id)
     if not resolved:
         raise HTTPException(status_code=404, detail=f"Entity {entity_id} not found")
+
+    # Variantes de identidade: a curation pode referenciar a entity por _id
+    # (string ou ObjectId), entity_id ou slug — a contagem cobre todas.
+    variants = {str(resolved["_id"])}
+    if resolved.get("entity_id"):
+        variants.add(str(resolved["entity_id"]))
+    variants.add(entity_id)
+
+    linked = db.curations.count_documents({"entity_id": {"$in": list(variants)}, "status": {"$ne": "deleted"}})
+    if linked:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Entity has {linked} linked curation(s) not deleted. Delete them first.",
+        )
+
     result = db.entities.delete_one({"_id": resolved["_id"]})
 
     if result.deleted_count == 0:

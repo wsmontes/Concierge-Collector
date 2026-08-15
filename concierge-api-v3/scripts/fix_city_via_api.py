@@ -54,7 +54,7 @@ def fix_via_api(dry_run: bool = False):
     """Fix entities using the API endpoint."""
     
     # Get API key
-    api_key = settings.api_secret_key
+    api_key = settings.admin_api_key_list[0] if settings.admin_api_key_list else settings.api_secret_key  # ADMIN_API_KEYS (fallback legado)
     base_url = "http://localhost:8000"  # Local API
     
     console.print(f"[cyan]🔌 Using API: {base_url}[/cyan]")

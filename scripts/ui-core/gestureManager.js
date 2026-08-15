@@ -62,7 +62,12 @@
                 onSwipeDown: options.onSwipeDown || null,
                 threshold: options.threshold || this.config.swipeThreshold,
                 velocity: options.velocity || this.config.swipeVelocity,
-                preventDefault: options.preventDefault !== false
+                // Opt-in (2026-08-15): antes o default era true — o touchmove
+                // cancelava o pan vertical NATIVO em qualquer movimento >10px
+                // e o scroll travava quando o toque começava num card (swipe
+                // actions com touch-action:pan-y). Suprimir o scroll agora é
+                // decisão EXPLÍCITA do caller (ex.: makeSwipeable).
+                preventDefault: options.preventDefault === true
             };
 
             // Touch tracking state
@@ -170,10 +175,14 @@
                 state.isSwiping = false;
             };
 
-            // Attach event listeners
+            // Attach event listeners — touchcancel faz o MESMO reset do
+            // touchend: com listener passivo, o browser assume o scroll
+            // nativo e cancela o toque (sem isso a classe .swiping ficava
+            // presa nos cards rolados)
             element.addEventListener('touchstart', handleTouchStart, { passive: !config.preventDefault });
             element.addEventListener('touchmove', handleTouchMove, { passive: !config.preventDefault });
             element.addEventListener('touchend', handleTouchEnd, { passive: true });
+            element.addEventListener('touchcancel', handleTouchEnd, { passive: true });
 
             // Store for cleanup
             this.activeGestures.set(gestureId, {

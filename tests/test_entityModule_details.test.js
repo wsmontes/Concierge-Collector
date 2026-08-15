@@ -43,6 +43,7 @@ describe('EntityModule — showEntityDetails com os dois formatos de entity', ()
 
   afterEach(() => {
     window.modalManager = undefined;
+    window.AuthService = undefined;
     vi.clearAllMocks();
   });
 
@@ -164,5 +165,31 @@ describe('EntityModule — showEntityDetails com os dois formatos de entity', ()
     expect(html).not.toContain('<script>alert');
     expect(html).toContain('&lt;img');
     expect(window.__pwned).toBeUndefined();
+  });
+
+  describe('botão Delete Entity — visível só para admin (2026-08-15)', () => {
+    test('curator NÃO vê o botão de delete', async () => {
+      window.AuthService = { getCurrentUser: () => ({ role: 'curator' }) };
+      const entityModule = makeModule();
+      await entityModule.showEntityDetails({ entity_id: 'entity-del', name: 'X', data: {} });
+      const { footer } = openSpy.mock.calls[0][0];
+      expect(footer.innerHTML).not.toContain('btn-delete-entity');
+    });
+
+    test('admin vê o botão de delete', async () => {
+      window.AuthService = { getCurrentUser: () => ({ role: 'admin' }) };
+      const entityModule = makeModule();
+      await entityModule.showEntityDetails({ entity_id: 'entity-del', name: 'X', data: {} });
+      const { footer } = openSpy.mock.calls[0][0];
+      expect(footer.innerHTML).toContain('btn-delete-entity');
+    });
+
+    test('sem perfil logado (offline) o botão fica oculto', async () => {
+      window.AuthService = { getCurrentUser: () => null };
+      const entityModule = makeModule();
+      await entityModule.showEntityDetails({ entity_id: 'entity-del', name: 'X', data: {} });
+      const { footer } = openSpy.mock.calls[0][0];
+      expect(footer.innerHTML).not.toContain('btn-delete-entity');
+    });
   });
 });

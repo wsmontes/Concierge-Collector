@@ -356,3 +356,108 @@ def test_list_entities_q_alias_of_name(client, clean_test_entities, test_db):
     names = [i["name"] for i in response.json()["items"]]
     assert "Quesadilla House" in names
     assert "Other Place" not in names
+
+
+@pytest.mark.mongo
+class TestDeleteEntityAccess:
+    """Delete de entity: admin-only + 409 com curadorias vinculadas.
+
+    Decisão 2026-08-15 (code review externo, achado #9): curator podia apagar
+    QUALQUER entity (hard delete) e orfanar curadorias de terceiros. Agora o
+    delete é restrito a admin e bloqueado quando há curadorias ativas.
+    """
+
+    def _seed_entity(self, test_db, eid):
+        from datetime import datetime, timezone
+
+        test_db.entities.insert_one(
+            {
+                "_id": eid,
+                "entity_id": eid,
+                "type": "restaurant",
+                "name": f"Rest {eid}",
+                "status": "active",
+                "createdAt": datetime.now(timezone.utc),
+                "updatedAt": datetime.now(timezone.utc),
+                "version": 1,
+            }
+        )
+
+    def test_delete_entity_curator_forbidden(self, client, test_db):
+        """Curator comum (JWT) recebe 403 — mesmo sem curations vinculadas."""
+        from app.core.security import create_access_token
+
+        self._seed_entity(test_db, "test_del_e1")
+        token = create_access_token(data={"sub": "cur@x.com", "role": "curator"})
+        r = client.delete("/api/v3/entities/test_del_e1", headers={"Authorization": f"Bearer {token}"})
+        assert r.status_code == 403
+        assert test_db.entities.find_one({"_id": "test_del_e1"}) is not None  # nada foi apagado
+        test_db.entities.delete_one({"_id": "test_del_e1"})
+
+    def test_delete_entity_admin_without_links(self, client, test_db, auth_headers):
+        """Admin (API key) apaga entity sem curadorias ativas → 204."""
+        self._seed_entity(test_db, "test_del_e2")
+        r = client.delete("/api/v3/entities/test_del_e2", headers=auth_headers)
+        assert r.status_code == 204
+        assert test_db.entities.find_one({"_id": "test_del_e2"}) is None
+
+    def test_delete_entity_blocked_by_active_curations(self, client, test_db, auth_headers):
+        """Com curadorias ativas vinculadas → 409 com contagem; entity permanece."""
+        from datetime import datetime, timezone
+
+        self._seed_entity(test_db, "test_del_e3")
+        test_db.curations.insert_many(
+            [
+                {
+                    "_id": f"test_del_c{n}",
+                    "curation_id": f"test_del_c{n}",
+                    "entity_id": "test_del_e3",
+                    "status": "active",
+                    "curator": {"id": "a@x.com", "name": "a"},
+                    "createdAt": datetime.now(timezone.utc),
+                    "updatedAt": datetime.now(timezone.utc),
+                }
+                for n in (1, 2)
+            ]
+        )
+        r = client.delete("/api/v3/entities/test_del_e3", headers=auth_headers)
+        assert r.status_code == 409
+        assert "2" in r.json()["detail"]
+        assert test_db.entities.find_one({"_id": "test_del_e3"}) is not None
+        test_db.curations.delete_many({"entity_id": "test_del_e3"})
+        test_db.entities.delete_one({"_id": "test_del_e3"})
+
+    def test_delete_entity_ignores_deleted_curations(self, client, test_db, auth_headers):
+        """Curadorias soft-deletadas (status=deleted) não bloqueiam o delete."""
+        from datetime import datetime, timezone
+
+        self._seed_entity(test_db, "test_del_e4")
+        test_db.curations.insert_one(
+            {
+                "_id": "test_del_c3",
+                "curation_id": "test_del_c3",
+                "entity_id": "test_del_e4",
+                "status": "deleted",
+                "curator": {"id": "a@x.com", "name": "a"},
+                "createdAt": datetime.now(timezone.utc),
+                "updatedAt": datetime.now(timezone.utc),
+            }
+        )
+        r = client.delete("/api/v3/entities/test_del_e4", headers=auth_headers)
+        assert r.status_code == 204
+        test_db.curations.delete_one({"_id": "test_del_c3"})
+
+
+@pytest.mark.mongo
+def test_list_entities_ids_accepts_more_than_500(client):
+    """Contrato do fast path: o servidor aplica o cap de 500 sem erro.
+
+    O cliente faz chunking dos ids (bug 2026-08-15: o parâmetro era
+    descartado no transporte e nunca chegava aqui) — o servidor precisa
+    aceitar listas longas e limitar internamente.
+    """
+    ids = ",".join(f"ent_nonexistent_{i}" for i in range(505))
+    r = client.get(f"/api/v3/entities?ids={ids}")
+    assert r.status_code == 200
+    data = r.json()
+    assert "items" in data

@@ -21,12 +21,11 @@ import logging
 
 from app.core.config import settings
 from app.core.database import get_database
-from app.core.security import create_access_token, verify_access_token
+from app.core.security import create_access_token, verify_auth
 from app.models.user import (
     User,
     UserInDB,
     UserAuthResponse,
-    TokenRefreshRequest,
 )
 
 # Setup logging
@@ -45,6 +44,87 @@ def _set_access_cookie(response: Response, access_token: str) -> None:
         max_age=settings.access_token_expire_minutes * 60,
         path="/",
     )
+
+
+def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
+    """Cookie HttpOnly com o refresh token (2026-08-15) — tira o refresh do
+    localStorage/URL no deploy same-site. SameSite=Lax é suficiente: Render
+    web → Render API é same-site; o legado GitHub Pages (cross-site) segue
+    no caminho Bearer/body."""
+    response.set_cookie(
+        key="refresh_token",
+        value=refresh_token,
+        httponly=True,
+        samesite="lax",
+        secure=settings.environment == "production",
+        max_age=settings.refresh_token_expire_days * 86400,
+        path="/",
+    )
+
+
+def _is_same_site(url_a: str, url_b: str) -> bool:
+    """Compara o SITE (scheme + registrable domain) de duas URLs — a mesma
+    regra que o SameSite=Lax do browser usa para enviar o cookie.
+
+    IPs e hostnames locais (localhost vs 127.0.0.1) valem por igualdade
+    exata: são sites diferentes para cookie — o caminho legado (tokens na
+    URL) segue cobrindo dev e GitHub Pages.
+    """
+    import re
+
+    from urllib.parse import urlparse
+
+    a, b = urlparse(url_a), urlparse(url_b)
+    if a.scheme != b.scheme:
+        return False
+    ha, hb = (a.hostname or "").lower(), (b.hostname or "").lower()
+    if ha == hb:
+        return True
+
+    def site(host: str) -> str:
+        if re.match(r"^\d+\.\d+\.\d+\.\d+$", host):
+            return host  # IP: identidade exata
+        parts = host.split(".")
+        return ".".join(parts[-2:]) if len(parts) >= 2 else host
+
+    return site(ha) == site(hb)
+
+
+def _build_auth_redirect_url(
+    frontend_url: str,
+    access_token: str,
+    refresh_token: str,
+    user_email: str,
+    user_name: str,
+    same_site: bool,
+) -> str:
+    """Redirect pós-login. Same-site → SEM tokens na URL (o cookie HttpOnly é
+    o portador; `?session=1` sinaliza o frontend para autenticar via cookie).
+    Cross-site legado (GitHub Pages) → tokens na URL, como antes (o cookie
+    Lax não é enviado cross-site)."""
+    base = f"{frontend_url.rstrip('/')}/"
+    if same_site:
+        return f"{base}?session=1"
+    return (
+        f"{base}"
+        f"?token={access_token}"
+        f"&refresh_token={refresh_token}"
+        f"&expires_in={settings.access_token_expire_minutes * 60}"
+        f"&user_email={user_email}"
+        f"&user_name={user_name}"
+    )
+
+
+def _issue_refresh(db: Database, email: str) -> str:
+    """Emite refresh token e REGISTRA a sessão (jti) em auth_sessions —
+    rotação/revogação 2026-08-15."""
+    from app.core.security import ALGORITHM, create_refresh_token, get_jwt_secret
+    from app.services.session_service import register_session
+
+    token = create_refresh_token(data={"sub": email})
+    payload = jwt.decode(token, get_jwt_secret(), algorithms=[ALGORITHM])
+    register_session(db, payload["jti"], email)
+    return token
 
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
@@ -89,10 +169,10 @@ def generate_state(state_data: str) -> str:
         "type": "oauth_state",
     }
 
-    # Use API secret key as JWT secret
-    from app.core.security import get_api_secret_key
+    # JWT_SIGNING_SECRET (separação de segredos 2026-08-15)
+    from app.core.security import get_jwt_secret
 
-    secret_key = get_api_secret_key()
+    secret_key = get_jwt_secret()
     state = jwt.encode(payload, secret_key, algorithm=ALGORITHM)
 
     logger.info(f"[OAuth] Generated stateless state (expires: {expires})")
@@ -109,10 +189,10 @@ def verify_state(state: str) -> Optional[str]:
     Returns:
         str: code_verifier data if valid, None if invalid/expired
     """
-    from app.core.security import ALGORITHM, get_api_secret_key, JWTError
+    from app.core.security import ALGORITHM, get_jwt_secret, JWTError
 
     try:
-        secret_key = get_api_secret_key()
+        secret_key = get_jwt_secret()
         payload = jwt.decode(state, secret_key, algorithms=[ALGORITHM])
 
         # Verify it's an OAuth state token
@@ -150,10 +230,12 @@ def get_user_by_email(db: Database, email: str) -> Optional[UserInDB]:
 def create_or_update_user(db: Database, user_data: dict) -> UserInDB:
     """
     Create new user or update existing user's last login and refresh token.
-    Lotier.com users are auto-authorized with role=admin.
-    New non-Lotier users start as unauthorized with role=curator.
+    Emails da allowlist ADMIN_EMAILS (legado: domínio @lotier.com) são
+    auto-autorizados com role=admin. Separação de segredos/boundary
+    explícita (2026-08-15).
+    New non-admin users start as unauthorized with role=curator.
     """
-    is_lotier = user_data["email"].lower().endswith("@lotier.com")
+    is_lotier = settings.is_admin_email(user_data["email"])
     existing_user = get_user_by_google_id(db, user_data["google_id"])
 
     if existing_user:
@@ -307,6 +389,7 @@ def google_oauth_callback(
     state: Optional[str] = None,
     error: Optional[str] = None,
     db: Database = Depends(get_database),
+    request: Request = None,
 ):
     """
     Handle OAuth callback from Google
@@ -499,45 +582,53 @@ def google_oauth_callback(
         expires_delta=timedelta(minutes=settings.access_token_expire_minutes),
     )
 
-    # Create refresh token for persistent login
-    from app.core.security import create_refresh_token
-
-    refresh_token = create_refresh_token(data={"sub": user.email})
+    # Create refresh token for persistent login (+ sessão server-side)
+    refresh_token = _issue_refresh(db, user.email)
 
     logger.info("[OAuth] ✓ JWT tokens created")
 
-    # Redirect to frontend with tokens in URL
-    # Using query params because frontend may be on different port/domain
-    redirect_url = (
-        f"{frontend_redirect_url}/"
-        f"?token={access_token}"
-        f"&refresh_token={refresh_token}"
-        f"&expires_in={settings.access_token_expire_minutes * 60}"
-        f"&user_email={user.email}"
-        f"&user_name={user.name}"
+    # Same-site (Render→Render): o cookie HttpOnly é o portador — SEM tokens
+    # na URL (vazam via Referer/histórico/logs). Cross-site legado (GitHub
+    # Pages): mantém tokens na URL (o cookie Lax não é enviado lá).
+    same_site = False
+    if request is not None:
+        same_site = _is_same_site(frontend_redirect_url, str(request.url))
+
+    redirect_url = _build_auth_redirect_url(
+        frontend_url=frontend_redirect_url,
+        access_token=access_token,
+        refresh_token=refresh_token,
+        user_email=user.email,
+        user_name=user.name,
+        same_site=same_site,
     )
 
-    logger.info(f"[OAuth] ✓ Redirecting to frontend: {frontend_redirect_url}")
+    logger.info(f"[OAuth] ✓ Redirecting to frontend: {frontend_redirect_url} (same_site={same_site})")
 
     response = RedirectResponse(url=redirect_url)
     _set_access_cookie(response, access_token)
+    _set_refresh_cookie(response, refresh_token)
     return response
 
 
 @router.get("/verify", response_model=UserAuthResponse)
 def verify_token(
-    token_data: dict = Depends(verify_access_token),
+    auth: dict = Depends(verify_auth),
     db: Database = Depends(get_database),
 ):
     """
     Verify JWT access token and return user data
 
-    Requires: Authorization: Bearer <token> header
+    Aceita Bearer OU cookie HttpOnly (migração 2026-08-15). API key não tem
+    identidade de usuário — recusada.
 
     Returns:
         UserAuthResponse: User data if token is valid and user is authorized
     """
-    email = token_data.get("sub")
+    if auth.get("method") == "api_key":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="API key has no user identity")
+
+    email = auth.get("user")
     if not email:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -564,27 +655,48 @@ def verify_token(
 
 @router.post("/refresh")
 async def refresh_access_token(
-    request: TokenRefreshRequest,
+    request: Request,
     response: Response,
     db: Database = Depends(get_database),
 ):
     """
-    Refresh access token using a valid refresh token
+    Refresh access token — ROTAÇÃO (2026-08-15).
 
-    Request body:
-        refresh_token: JWT refresh token
+    Aceita o refresh token de três fontes (prioridade):
+      1. cookie HttpOnly `refresh_token` (caminho principal same-site);
+      2. body JSON `refresh_token` (compat legado cross-site);
+      3. header Authorization Bearer.
 
-    Returns:
-        New access token and refresh token
+    Cada uso REVOGA o jti antigo e emite par novo (replay detectável).
     """
     from app.core.security import (
         verify_refresh_token,
         create_access_token,
-        create_refresh_token,
     )
+    from app.services.session_service import revoke_session
 
-    # Verify refresh token
-    token_data = await verify_refresh_token(request.refresh_token)
+    refresh_token = request.cookies.get("refresh_token")
+    if not refresh_token:
+        body = {}
+        content_type = request.headers.get("content-type", "")
+        if "application/json" in content_type:
+            try:
+                body = await request.json() or {}
+            except Exception:
+                body = {}
+        refresh_token = body.get("refresh_token")
+    if not refresh_token:
+        auth_header = request.headers.get("authorization", "")
+        if auth_header.lower().startswith("bearer "):
+            refresh_token = auth_header[7:].strip()
+    if not refresh_token:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Missing refresh token",
+        )
+
+    # Verify refresh token (com sessão server-side quando houver jti)
+    token_data = await verify_refresh_token(refresh_token, db=db)
 
     email = token_data.get("sub")
     if not email:
@@ -601,13 +713,19 @@ async def refresh_access_token(
     if not user.authorized:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User not authorized")
 
+    # ROTAÇÃO: o jti usado morre aqui — um replay do token antigo bate em
+    # sessão inexistente no verify_refresh_token
+    if token_data.get("jti"):
+        revoke_session(db, token_data["jti"])
+
     # Create new tokens
     new_access_token = create_access_token(data={"sub": user.email, "role": getattr(user, "role", "curator")})
-    new_refresh_token = create_refresh_token(data={"sub": user.email})
+    new_refresh_token = _issue_refresh(db, user.email)
 
     logger.info(f"[OAuth] Token refreshed for user: {user.email}")
 
     _set_access_cookie(response, new_access_token)
+    _set_refresh_cookie(response, new_refresh_token)
     return {
         "access_token": new_access_token,
         "refresh_token": new_refresh_token,
@@ -624,16 +742,44 @@ async def refresh_access_token(
 
 
 @router.post("/logout")
-def logout(response: Response, token_data: dict = Depends(verify_access_token)):
+def logout(
+    request: Request,
+    response: Response,
+    db: Database = Depends(get_database),
+    auth: dict = Depends(verify_auth),
+):
     """
-    Logout user
+    Logout — revoga a sessão de refresh server-side (2026-08-15).
 
-    In production, add token to blacklist (Redis)
-    For now, client-side token deletion is sufficient
+    Antes: só apagava o cookie client-side; um refresh token roubado seguia
+    válido até expirar (30 dias). Agora o jti do refresh (cookie > Bearer) é
+    revogado na coleção auth_sessions.
     """
-    email = token_data.get("sub")
+    from app.core.security import ALGORITHM, get_jwt_secret
+    from app.services.session_service import revoke_session
+
+    if auth.get("method") == "api_key":
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="API key has no session to revoke")
+
+    email = auth.get("user")
     logger.info(f"[OAuth] User logged out: {email}")
+
+    refresh_token = request.cookies.get("refresh_token")
+    if not refresh_token:
+        auth_header = request.headers.get("authorization", "")
+        if auth_header.lower().startswith("bearer "):
+            refresh_token = auth_header[7:].strip()
+    if refresh_token:
+        try:
+            payload = jwt.decode(refresh_token, get_jwt_secret(), algorithms=[ALGORITHM])
+            if payload.get("jti"):
+                revoke_session(db, payload["jti"])
+                logger.info(f"[OAuth] Refresh session revoked: {payload['jti']}")
+        except Exception as e:
+            logger.warning(f"[OAuth] Falha ao revogar refresh no logout: {e}")
+
     response.delete_cookie("access_token", path="/")
+    response.delete_cookie("refresh_token", path="/")
     return {"message": "Logged out successfully"}
 
 
@@ -648,7 +794,7 @@ def dev_login(response: Response, db: Database = Depends(get_database)):
     Returns:
         dict: access_token, refresh_token, expires_in, user_email, user_name
     """
-    from app.core.security import create_access_token, create_refresh_token
+    from app.core.security import create_access_token
     from datetime import timedelta
 
     # 🔒 CRITICAL: Only available in development
@@ -706,16 +852,17 @@ def dev_login(response: Response, db: Database = Depends(get_database)):
         db.users.update_one({"email": dev_email}, {"$set": {"last_login": datetime.now(timezone.utc)}})
         logger.info(f"[DevLogin] ✓ Using existing dev user: {dev_email}")
 
-    # Generate real JWT tokens
+    # Generate real JWT tokens — refresh com sessão registrada (rotação 2026-08-15)
     access_token = create_access_token(
         data={"sub": dev_email, "google_id": f"dev-{dev_email}", "role": "admin"},
         expires_delta=timedelta(minutes=settings.access_token_expire_minutes),
     )
-    refresh_token = create_refresh_token(data={"sub": dev_email})
+    refresh_token = _issue_refresh(db, dev_email)
 
     logger.info(f"[DevLogin] ✓ Tokens generated (expires in {settings.access_token_expire_minutes}m)")
 
     _set_access_cookie(response, access_token)
+    _set_refresh_cookie(response, refresh_token)
     return {
         "access_token": access_token,
         "refresh_token": refresh_token,

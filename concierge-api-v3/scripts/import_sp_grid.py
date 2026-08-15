@@ -30,7 +30,7 @@ from rich.table import Table
 console = Console()
 
 # API Configuration
-API_KEY = os.getenv("API_SECRET_KEY")
+API_KEY = (os.getenv("ADMIN_API_KEYS") or os.getenv("API_SECRET_KEY") or "").split(",")[0].strip()  # ADMIN_API_KEYS (fallback legado)
 if not API_KEY:
     console.print("[red]❌ API_SECRET_KEY not found in environment[/red]")
     console.print("   Set it in .env file or export API_SECRET_KEY=your_key")

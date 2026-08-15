@@ -42,11 +42,11 @@ class TestAuthEndpoints:
         assert response.status_code == 401
 
     def test_refresh_token_without_data(self, client):
-        """Test refreshing token without refresh token"""
-        response = client.post("/api/v3/auth/refresh", json={})
+        """Test refreshing token without refresh token (nem cookie)"""
+        response = client.post("/api/v3/auth/refresh", json={}, cookies={"refresh_token": ""})
 
         # Should fail without refresh token
-        assert response.status_code == 422
+        assert response.status_code == 401
 
 
 class TestAuthValidation:
@@ -231,3 +231,120 @@ def test_logout_limpa_o_cookie(client):
     assert "access_token=" in set_cookie  # clear: valor vazio/expiração
     lowered = set_cookie.lower().replace(" ", "")
     assert "max-age=0" in lowered or 'access_token="";' in lowered or "access_token=;" in lowered
+
+
+# --- Refresh com ROTAÇÃO + cookie (2026-08-15) -------------------------------
+
+
+def test_refresh_rotaciona_e_revoga_jti_antigo(client):
+    """Reuso do refresh antigo após rotação → 401 (detecção de replay)."""
+    # ATENÇÃO: o TestClient persiste cookies no jar — o dev-login deixa o
+    # cookie refresh_token lá; sem o override, o endpoint leria o cookie
+    # (caminho preferencial) em vez do body sob teste. cookies={"refresh_token": ""}
+    # anula o jar para isolar o body.
+    login = client.get("/api/v3/auth/dev-login").json()
+    refresh = login.get("refresh_token")
+    assert refresh
+
+    r1 = client.post("/api/v3/auth/refresh", json={"refresh_token": refresh}, cookies={"refresh_token": ""})
+    assert r1.status_code == 200, r1.text
+    new_refresh = r1.json()["refresh_token"]
+    assert new_refresh != refresh
+
+    # jti antigo foi revogado server-side
+    r2 = client.post("/api/v3/auth/refresh", json={"refresh_token": refresh}, cookies={"refresh_token": ""})
+    assert r2.status_code == 401
+
+    # o novo par segue válido
+    r3 = client.post("/api/v3/auth/refresh", json={"refresh_token": new_refresh}, cookies={"refresh_token": ""})
+    assert r3.status_code == 200
+
+
+def test_refresh_aceita_cookie_httponly_sem_body(client):
+    """Cookie refresh_token substitui o body (migração do localStorage)."""
+    login = client.get("/api/v3/auth/dev-login").json()
+    refresh = login["refresh_token"]
+
+    r = client.post("/api/v3/auth/refresh", cookies={"refresh_token": refresh})
+    assert r.status_code == 200, r.text
+    # resposta seta AMBOS os cookies (access + refresh rotacionado)
+    set_cookie = r.headers.get("set-cookie", "")
+    assert "access_token=" in set_cookie
+    assert "refresh_token=" in set_cookie
+
+
+def test_logout_revoga_sessao_de_refresh(client):
+    """Logout revoga o refresh server-side (antes só apagava cookie)."""
+    login = client.get("/api/v3/auth/dev-login").json()
+    access, refresh = login["access_token"], login["refresh_token"]
+
+    r = client.post("/api/v3/auth/logout", headers={"Authorization": f"Bearer {access}"})
+    assert r.status_code == 200
+
+    r2 = client.post("/api/v3/auth/refresh", json={"refresh_token": refresh})
+    assert r2.status_code == 401
+
+
+def test_verify_aceita_so_cookie(client):
+    """/auth/verify autentica via cookie HttpOnly (sem Bearer)."""
+    cookie = _dev_login_cookie(client)
+    resp = client.get("/api/v3/auth/verify", headers={"Cookie": f"access_token={cookie}"})
+    assert resp.status_code == 200, resp.text
+    data = resp.json()
+    assert data["email"]
+
+
+def test_verify_rejeita_api_key(client, auth_headers):
+    """API key não tem identidade de usuário — /verify recusa (401)."""
+    resp = client.get("/api/v3/auth/verify", headers=auth_headers)
+    assert resp.status_code == 401
+
+
+def test_is_same_site_helper():
+    from app.api.auth import _is_same_site
+
+    # Render web → Render API: mesmo site (onrender.com)
+    assert _is_same_site(
+        "https://concierge-collector-web.onrender.com/",
+        "https://concierge-collector.onrender.com/api/v3/auth/callback",
+    )
+    # GitHub Pages legado → API: cross-site
+    assert not _is_same_site(
+        "https://wsmontes.github.io/Concierge-Collector",
+        "https://concierge-collector.onrender.com/api/v3/auth/callback",
+    )
+    # IP vs hostname: sites diferentes (dev local — mantém caminho legado)
+    assert not _is_same_site("http://127.0.0.1:5500", "http://localhost:8000")
+    assert _is_same_site("http://localhost:5500", "http://localhost:8000")
+
+
+def test_auth_redirect_same_site_sem_tokens_na_url():
+    """Same-site: redirect SEM tokens na URL (cookie HttpOnly é o portador)."""
+    from app.api.auth import _build_auth_redirect_url
+
+    url = _build_auth_redirect_url(
+        frontend_url="https://concierge-collector-web.onrender.com",
+        access_token="acc",
+        refresh_token="ref",
+        user_email="a@x.com",
+        user_name="A",
+        same_site=True,
+    )
+    assert "token=" not in url
+    assert "session=1" in url
+
+
+def test_auth_redirect_cross_site_mantem_tokens_na_url():
+    """Cross-site legado (GitHub Pages): tokens na URL como antes."""
+    from app.api.auth import _build_auth_redirect_url
+
+    url = _build_auth_redirect_url(
+        frontend_url="https://wsmontes.github.io/Concierge-Collector",
+        access_token="acc",
+        refresh_token="ref",
+        user_email="a@x.com",
+        user_name="A",
+        same_site=False,
+    )
+    assert "token=acc" in url
+    assert "refresh_token=ref" in url

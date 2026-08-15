@@ -29,6 +29,51 @@ class TestSystemEndpoints:
         assert data["version"] == "3.0.0"
         assert "description" in data
 
+    def test_ready_reports_ready_when_healthy(self, client, monkeypatch):
+        """/ready: 200 quando Mongo conectado e nenhum índice falhou no startup.
+
+        Decisão 2026-08-15 (code review, achado #10): /health continua liveness
+        (200 sempre — contrato do Render); /ready é a readiness para monitoramento.
+
+        Hermético: o index_state é module-level e outros testes (ex.:
+        test_database_indexes) o sobrescrevem — aqui o estado é fixado limpo.
+        """
+        from app.api import system as system_mod
+
+        monkeypatch.setattr(
+            system_mod,
+            "get_index_state",
+            lambda: {"created": 20, "failed": 0, "failed_details": []},
+        )
+        response = client.get("/api/v3/ready")
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["status"] == "ready"
+        assert data["database"] == "connected"
+        assert "indexes" in data
+
+    def test_ready_returns_503_when_indexes_failed(self, client, monkeypatch):
+        """Com índice falhado no startup, /ready responde 503 — o deploy não
+        pode parecer saudável com índice estrutural ausente."""
+        from app.api import system as system_mod
+
+        monkeypatch.setattr(
+            system_mod,
+            "get_index_state",
+            lambda: {
+                "created": 4,
+                "failed": 1,
+                "failed_details": [{"collection": "entities", "keys": "externalId", "error": "E11000 (simulado)"}],
+            },
+        )
+        response = client.get("/api/v3/ready")
+
+        assert response.status_code == 503
+        data = response.json()
+        assert data["status"] == "not_ready"
+        assert data["indexes"]["failed"] == 1
+
     def test_openai_endpoints_require_auth(self, client):
         """Endpoints OpenAI-compatíveis devem exigir autenticação."""
         # POST /v1/chat/completions sem auth
@@ -70,7 +115,7 @@ class TestSystemEndpoints:
         response = client.get("/api/v3/openai/v1/models", headers=auth_headers)
         assert response.status_code != 401  # Deve passar auth
 
-    def test_global_exception_handler_does_not_leak_details(self, client):
+    def test_global_exception_handler_does_not_leak_details(self, client, auth_headers):
         """O exception handler global nao deve expor detalhes internos no body."""
         from unittest.mock import patch
         from pymongo.collection import Collection
@@ -88,7 +133,9 @@ class TestSystemEndpoints:
             side_effect=RuntimeError("Something broke internally"),
         ):
             with TestClient(app, raise_server_exceptions=False) as tc:
-                response = tc.get("/api/v3/curations/test_id_that_will_crash")
+                # login-gate (2026-08-15): a rota de leitura exige auth — o
+                # crash mockado só é alcançado autenticado
+                response = tc.get("/api/v3/curations/test_id_that_will_crash", headers=auth_headers)
 
         assert response.status_code == 500, f"Expected 500, got {response.status_code}: {response.text[:200]}"
         data = response.json()

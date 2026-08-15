@@ -46,7 +46,8 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
 
             for (const entity of entities) {
                 if (!entity.metadata) {
-                    await db.entities.update(entity.entity_id, {
+                    // PK é ++id — update(entity_id) era no-op silencioso
+                    await db.entities.where('entity_id').equals(entity.entity_id).modify({
                         metadata: []
                     });
                     updated++;
@@ -721,8 +722,17 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
         }
 
         if (repaired) {
-            await this.db.entities.update(entity.entity_id, updates);
-            this.log.info(`✅ Repaired entity ${entity.entity_id}`);
+            // PK da store é ++id — update(entity_id) era NO-OP silencioso
+            // (resolvia 0 sem lançar e logava sucesso falso). modify() pelo
+            // índice secundário é o padrão correto (usado em :756 e dataStore).
+            const modified = await this.db.entities
+                .where('entity_id').equals(entity.entity_id)
+                .modify(updates);
+            if (modified > 0) {
+                this.log.info(`✅ Repaired entity ${entity.entity_id} (${modified} registro(s))`);
+            } else {
+                this.log.warn(`⚠️ Nada foi reparado para ${entity.entity_id} — registro não encontrado`);
+            }
         }
 
         return repaired;
@@ -765,12 +775,20 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
 
     /**
      * Find duplicate items (Entities and Curations)
+     *
+     * Ordena por updatedAt desc ANTES do dedupe: o primeiro visto de cada
+     * chave é o MAIS RECENTE (keeper) — antes a ordem era a de inserção
+     * (PK ++id), então a cópia VELHA era mantida e a nova entrava na lista
+     * de duplicatas a remover.
      */
     async findDuplicates() {
         const results = [];
+        const byRecency = (a, b) =>
+            (b.updatedAt || b.createdAt || 0) > (a.updatedAt || a.createdAt || 0) ? 1 : -1;
 
         // Check entities
         const entities = await this.db.entities.toArray();
+        entities.sort(byRecency);
         const seenEntities = new Map();
         for (const entity of entities) {
             if (seenEntities.has(entity.entity_id)) {
@@ -782,6 +800,7 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
 
         // Check curations
         const curations = await this.db.curations.toArray();
+        curations.sort(byRecency);
         const seenCurations = new Map();
         for (const curation of curations) {
             if (seenCurations.has(curation.curation_id)) {
@@ -796,6 +815,9 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
 
     /**
      * Remove duplicate entries (keep most recent)
+     *
+     * Nunca apaga uma cópia com sync.status pending/conflict: pode ser a
+     * única cópia de trabalho não sincronizado (offline-first).
      */
     async removeDuplicates(duplicates) {
         let removedCount = 0;
@@ -803,6 +825,13 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
             const { table, item } = dup;
             const idField = table === 'entities' ? 'entity_id' : 'curation_id';
             const value = item[idField];
+
+            if (item.sync?.status === 'pending' || item.sync?.status === 'conflict') {
+                this.log.warn(
+                    `⏸️ Duplicata ${table === 'entities' ? 'entity' : 'curation'} ${value} com sync ${item.sync.status} — não será apagada`
+                );
+                continue;
+            }
 
             // Safety check: ensure we still have another record with same ID before deleting
             const count = await this.db[table].where(idField).equals(value).count();
@@ -931,12 +960,14 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
      * Export database for debugging
      */
     async exportForDebug() {
+        // sync_metadata NÃO é uma store — vive em settings (key 'sync_metadata',
+        // syncManagerV3). A store inexistente fazia o export SEMPRE falhar.
         const data = {
             version: this.currentVersion,
             timestamp: new Date().toISOString(),
             entities: await this.db.entities.toArray(),
             curations: await this.db.curations.toArray(),
-            sync_metadata: await this.db.sync_metadata.toArray()
+            sync_metadata: await this.db.settings.get('sync_metadata')
         };
 
         const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });

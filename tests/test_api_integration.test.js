@@ -251,7 +251,9 @@ describe('API Integration - Curations', () => {
     if (!apiAvailable || !testEntityId || !testCurationId) return;
     
     // Use search endpoint with entity_id filter instead of entity/{id}/curations
-    const response = await fetch(`${API_BASE}/curations/search?entity_id=${testEntityId}`);
+    const response = await fetch(`${API_BASE}/curations/search?entity_id=${testEntityId}`, {
+      headers: { 'X-API-Key': API_KEY }
+    });
     
     if (!response.ok) {
       const error = await response.json();

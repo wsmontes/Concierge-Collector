@@ -10,9 +10,9 @@ import pytest
 class TestCurationEndpoints:
     """Test curation CRUD operations"""
 
-    def test_search_curations_default(self, client):
+    def test_search_curations_default(self, client, auth_headers):
         """Test searching curations with default params"""
-        response = client.get("/api/v3/curations/search")
+        response = client.get("/api/v3/curations/search", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -20,17 +20,17 @@ class TestCurationEndpoints:
         assert "total" in data
         assert isinstance(data["items"], list)
 
-    def test_search_curations_with_limit(self, client):
+    def test_search_curations_with_limit(self, client, auth_headers):
         """Test searching curations with custom limit"""
-        response = client.get("/api/v3/curations/search?limit=10")
+        response = client.get("/api/v3/curations/search?limit=10", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
         assert data["limit"] == 10
 
-    def test_search_curations_filter_by_status(self, client):
+    def test_search_curations_filter_by_status(self, client, auth_headers):
         """Test filtering curations by status"""
-        response = client.get("/api/v3/curations/search?status=draft")
+        response = client.get("/api/v3/curations/search?status=draft", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -39,15 +39,15 @@ class TestCurationEndpoints:
             if "status" in item:
                 assert item["status"] == "draft"
 
-    def test_search_curations_filter_by_curator(self, client):
+    def test_search_curations_filter_by_curator(self, client, auth_headers):
         """Test filtering curations by curator"""
-        response = client.get("/api/v3/curations/search?curator_id=test_curator")
+        response = client.get("/api/v3/curations/search?curator_id=test_curator", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
         assert isinstance(data["items"], list)
 
-    def test_get_entity_curations(self, client):
+    def test_get_entity_curations(self, client, auth_headers):
         """Test getting curations for specific entity"""
         # Use first entity from list
         entities_response = client.get("/api/v3/entities?limit=1")
@@ -56,7 +56,10 @@ class TestCurationEndpoints:
         if entities:
             # Try both _id and entity_id fields
             entity_id = entities[0].get("entity_id") or entities[0].get("_id")
-            response = client.get(f"/api/v3/curations/entities/{entity_id}/curations")
+            response = client.get(
+                f"/api/v3/curations/entities/{entity_id}/curations",
+                headers=auth_headers,
+            )
 
             # May return 404 if entity not found by _id field
             assert response.status_code in [200, 404]
@@ -71,9 +74,9 @@ class TestCurationEndpoints:
 
         assert response.status_code == 401
 
-    def test_get_curation_not_found(self, client):
+    def test_get_curation_not_found(self, client, auth_headers):
         """Test getting non-existent curation"""
-        response = client.get("/api/v3/curations/nonexistent_id")
+        response = client.get("/api/v3/curations/nonexistent_id", headers=auth_headers)
 
         assert response.status_code == 404
 
@@ -90,10 +93,10 @@ class TestCurationEndpoints:
         # Should fail without auth
         assert response.status_code == 401
 
-    def test_search_long_special_query_no_500(self, client):
+    def test_search_long_special_query_no_500(self, client, auth_headers):
         """200 chars ending in a regex-special char; must not 500 (invalid-regex bug)"""
         q = "a" * 199 + "."
-        r = client.get("/api/v3/curations/search", params={"q": q, "limit": 5})
+        r = client.get("/api/v3/curations/search", params={"q": q, "limit": 5}, headers=auth_headers)
         assert r.status_code == 200, r.text
 
 
@@ -110,9 +113,9 @@ class TestCurationValidation:
         response = client.post("/api/v3/curations", json=invalid_curation)
         assert response.status_code == 401  # No auth provided
 
-    def test_search_curations_invalid_status(self, client):
+    def test_search_curations_invalid_status(self, client, auth_headers):
         """Test searching with invalid status"""
-        response = client.get("/api/v3/curations/search?status=invalid_status")
+        response = client.get("/api/v3/curations/search?status=invalid_status", headers=auth_headers)
 
         # Should either accept (empty results) or reject
         assert response.status_code in [200, 422]
@@ -123,7 +126,7 @@ def _api_headers():
 
 
 @pytest.mark.mongo
-def test_search_filters_by_city_and_text(client, test_db, clean_test_curations):
+def test_search_filters_by_city_and_text(client, test_db, clean_test_curations, auth_headers):
     # roda no banco HERMÉTICO (conftest força <db>-test), então os únicos
     # docs da busca são os inseridos aqui — sem dependência do volume real
     test_db.curations.insert_many(
@@ -150,11 +153,11 @@ def test_search_filters_by_city_and_text(client, test_db, clean_test_curations):
             },
         ]
     )
-    r = client.get("/api/v3/curations/search?city=São Paulo&limit=100")
+    r = client.get("/api/v3/curations/search?city=São Paulo&limit=100", headers=auth_headers)
     ids = [i.get("curation_id") for i in r.json()["items"]]
     assert "test_c_sp" in ids and "test_c_rio" not in ids
 
-    r2 = client.get("/api/v3/curations/search?q=napoli&limit=100")
+    r2 = client.get("/api/v3/curations/search?q=napoli&limit=100", headers=auth_headers)
     ids2 = [i.get("curation_id") for i in r2.json()["items"]]
     assert "test_c_sp" in ids2 and "test_c_rio" not in ids2
     test_db.curations.delete_many({"_id": {"$in": ["test_c_sp", "test_c_rio"]}})

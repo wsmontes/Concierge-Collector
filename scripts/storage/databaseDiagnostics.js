@@ -57,8 +57,9 @@ const DatabaseDiagnostics = ModuleWrapper.defineClass('DatabaseDiagnostics', cla
             console.log('Curations:', curationCount);
             console.log('Sync Queue:', queueCount);
             
-            // Sync status
-            const syncMeta = await db.sync_metadata.toArray();
+            // Sync status — a metadata vive em settings (key 'sync_metadata'),
+            // não numa store própria (syncManagerV3)
+            const syncMeta = await db.settings.get('sync_metadata');
             console.log('Sync Metadata:', syncMeta);
             
             // Check for issues
@@ -211,11 +212,12 @@ const DatabaseDiagnostics = ModuleWrapper.defineClass('DatabaseDiagnostics', cla
         try {
             const db = DataStore.db;
             
-            // Clear all data
+            // Clear all data — sync_metadata vive em settings (key PK),
+            // não numa store própria
             await db.entities.clear();
             await db.curations.clear();
             await db.syncQueue.clear();
-            await db.sync_metadata.clear();
+            await db.settings.delete('sync_metadata');
             
             console.log('✅ Database cleared');
             

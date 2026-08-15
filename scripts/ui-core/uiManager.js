@@ -229,7 +229,18 @@ if (typeof window.UIManager === 'undefined') {
             window.addEventListener('concierge:sync-complete', (e) => {
                 console.log('UI: Sync complete, refreshing view...', e.detail);
                 this.isSyncInProgress = false;
-                this.updateSyncActivityIndicator('Synced successfully', 'success');
+                if (e?.detail?.status === 'partial') {
+                    // ciclo fechou com falhas/pendências (2026-08-15) — "Synced
+                    // successfully" verde seria mentira
+                    const failed = e.detail.failed ?? 0;
+                    const pending = e.detail.pending ?? 0;
+                    this.updateSyncActivityIndicator(
+                        `Sync completed with ${failed} failed, ${pending} pending`,
+                        'warning'
+                    );
+                } else {
+                    this.updateSyncActivityIndicator('Synced successfully', 'success');
+                }
                 this.scheduleDataRefresh('sync-complete', 80);
             });
 
@@ -361,6 +372,7 @@ if (typeof window.UIManager === 'undefined') {
             const syncingClasses = ['bg-blue-50', 'text-blue-700', 'border-blue-100'];
             const successClasses = ['bg-green-50', 'text-green-700', 'border-green-100'];
             const errorClasses = ['bg-red-50', 'text-red-700', 'border-red-100'];
+            const warningClasses = ['bg-amber-50', 'text-amber-700', 'border-amber-100'];
 
             this.syncActivityContainer.className = '';
             baseClasses.forEach(c => this.syncActivityContainer.classList.add(c));
@@ -369,6 +381,8 @@ if (typeof window.UIManager === 'undefined') {
                 successClasses.forEach(c => this.syncActivityContainer.classList.add(c));
             } else if (mode === 'error') {
                 errorClasses.forEach(c => this.syncActivityContainer.classList.add(c));
+            } else if (mode === 'warning') {
+                warningClasses.forEach(c => this.syncActivityContainer.classList.add(c));
             } else {
                 syncingClasses.forEach(c => this.syncActivityContainer.classList.add(c));
             }

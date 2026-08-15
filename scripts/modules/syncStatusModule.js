@@ -146,6 +146,22 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
                     </button>
                 `;
             }
+            // Último ciclo terminou com falhas/pendências (2026-08-15):
+            // "Synced" verde seria mentira — o sync-complete agora emite
+            // status 'partial' com contadores por ciclo.
+            else if (status.lastCycle && (status.lastCycle.failed > 0 || status.lastCycle.pendingAfter > 0)) {
+                const { failed = 0, pendingAfter = 0 } = status.lastCycle;
+                statusHtml = `
+                    <button
+                        id="btn-sync-details"
+                        class="flex items-center gap-1 text-xs sm:text-sm text-amber-600 hover:text-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-500 rounded px-2 py-1.5 min-h-8"
+                        title="Partial sync • ${failed} failed • ${pendingAfter} pending"
+                    >
+                        <span class="material-icons text-xl">cloud_done</span>
+                        <span class="hidden sm:inline">Partial</span>
+                    </button>
+                `;
+            }
             // Show pending count if any
             else if (status.pending && status.pending.total > 0) {
                 statusHtml = `
@@ -257,6 +273,23 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
                     </div>
                 </div>
             </div>
+
+            <!-- Last Cycle (partial sync counters) -->
+            ${status.lastCycle && (status.lastCycle.failed > 0 || status.lastCycle.pendingAfter > 0) ? `
+                <div class="border-t pt-4">
+                    <h3 class="font-semibold text-amber-700 mb-3">Last Cycle</h3>
+                    <div class="space-y-2 text-sm">
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Failed:</span>
+                            <span class="font-medium text-amber-600">${status.lastCycle.failed}</span>
+                        </div>
+                        <div class="flex justify-between">
+                            <span class="text-gray-600">Pending after sync:</span>
+                            <span class="font-medium text-amber-600">${status.lastCycle.pendingAfter}</span>
+                        </div>
+                    </div>
+                </div>
+            ` : ''}
 
             <!-- Pending Changes -->
             ${status.pending.total > 0 ? `
