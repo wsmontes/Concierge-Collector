@@ -212,24 +212,6 @@ async def orchestrate(
         )
 
 
-@router.get("/usage-stats")
-async def get_usage_stats(days: int = 7, openai_service: OpenAIService = Depends(get_openai_service)):
-    """
-    Get AI usage statistics.
-
-    Returns counts of transcriptions, concept extractions, and image analyses
-    for the specified number of days.
-    """
-    try:
-        stats = await openai_service.get_usage_stats(days)
-        return stats
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Failed to get usage stats: {str(e)}",
-        )
-
-
 @router.post("/extract-restaurant-name", response_model=RestaurantNameExtractionResponse)
 async def extract_restaurant_name(
     request: RestaurantNameExtractionRequest,
@@ -313,30 +295,3 @@ def health_check(db=Depends(get_database)):
     except Exception as e:
         logger.error(f"[AI Health] ✗ Health check failed: {str(e)}")
         return {"service": "AI Services", "status": "error", "error": str(e)}
-
-
-@router.get("/health/original")
-def health_check_original(db=Depends(get_database)):
-    """Health check for AI services - original implementation"""
-    try:
-        # Check if MongoDB collections exist
-        collections = db.list_collection_names()
-
-        has_categories = "categories" in collections
-        has_configs = "openai_configs" in collections
-
-        # Count documents
-        category_count = db.categories.count_documents({"active": True}) if has_categories else 0
-        config_count = db.openai_configs.count_documents({"enabled": True}) if has_configs else 0
-
-        return {
-            "status": "healthy",
-            "categories_configured": category_count,
-            "services_enabled": config_count,
-            "openai_api_key_set": bool(os.getenv("OPENAI_API_KEY")),
-        }
-    except Exception as e:
-        raise HTTPException(
-            status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-            detail=f"Health check failed: {str(e)}",
-        )

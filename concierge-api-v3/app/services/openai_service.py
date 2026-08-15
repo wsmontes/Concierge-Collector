@@ -543,23 +543,3 @@ class OpenAIService:
             )
 
         return result
-
-    async def get_usage_stats(self, days: int = 7) -> Dict[str, Any]:
-        """
-        Get AI usage statistics.
-
-        Args:
-            days: Number of days to look back
-
-        Returns:
-            Dictionary with usage stats by service
-        """
-        # TODO: Implement proper usage tracking with cost calculation
-        stats = {
-            "transcriptions": await self.db.ai_transcriptions.count_documents({}),
-            "concept_extractions": await self.db.ai_concepts.count_documents({}),
-            "image_analyses": await self.db.ai_image_analysis.count_documents({}),
-            "days": days,
-        }
-
-        return stats

@@ -54,16 +54,6 @@ class TestAIEndpoints:
             503,
         ], f"Expected 200/400/503 with valid auth, got {response.status_code}"
 
-    def test_get_usage_stats(self, client):
-        """Test getting AI usage statistics"""
-        response = client.get("/api/v3/ai/usage-stats")
-
-        # Should work or require auth, but not crash with 500
-        assert response.status_code != 500, f"Usage stats should not return 500: {response.text}"
-
-        # Expected: 200 (success)
-        assert response.status_code == 200
-
 
 class TestAIValidation:
     """Test AI endpoint validation"""

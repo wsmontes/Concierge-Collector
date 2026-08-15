@@ -15,8 +15,8 @@ Inventário das ~40 rotas em 14 routers (`concierge-api-v3/app/api/`), cruzado c
 
 | Rota | Uso frontend | Consumidor provável |
 |---|---|---|
-| `POST /ai/usage-stats` | 0 | morta (nenhum consumidor conhecido) — confirmar antes de remover |
-| `GET /ai/health/original` | 0 | legado — remover |
+| `POST /ai/usage-stats` | 0 | ~~morta~~ — REMOVIDA em ago/2026 (rota + service method + teste) |
+| `GET /ai/health/original` | 0 | ~~legado~~ — REMOVIDA em ago/2026 |
 | `POST /llm_gateway/search-restaurants`, `get-restaurant-snapshot`, `get-restaurant-availability` | 0 | MCP server (`mcp-server.py`) |
 | `GET /llm_gateway/tools`, `tools-manifest` | 0 | MCP |
 | `GET /openai_compat/v1/models`, `v1/functions` | 0 | clientes OpenAI-compat |
@@ -39,6 +39,6 @@ Inventário das ~40 rotas em 14 routers (`concierge-api-v3/app/api/`), cruzado c
 
 ## Pendências de ação (ver docs/PENDENCIAS_MELHORIAS.md)
 
-- [ ] Confirmar `usage-stats` morta → remover
-- [ ] Remover `health/original`
+- [x] ~~Confirmar `usage-stats` morta → remover~~ ✓
+- [x] ~~Remover `health/original`~~ ✓
 - [ ] Consolidar routers places + orchestrates + healths (refactor planejado, com testes)
