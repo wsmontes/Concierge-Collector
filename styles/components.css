@@ -2020,6 +2020,24 @@
   font-size: 0.875rem;
 }
 
+/* Entrada de nova curadoria por plataforma: "+ New Curation" no header
+   (desktop); o FAB flutuante fica só no mobile, onde corresponde ao
+   ambiente de uso (gravou/fotografou no restaurante) */
+#new-curation-btn {
+  display: none;
+}
+
+@media (min-width: 641px) {
+  #new-curation-btn {
+    display: inline-flex;
+    align-items: center;
+  }
+
+  #fab {
+    display: none !important;
+  }
+}
+
 /* Variante desktop do bottom sheet de filtros: painel flutuante no
    canto inferior direito, não folha de tela cheia */
 @media (min-width: 1024px) {

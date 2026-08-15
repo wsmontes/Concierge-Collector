@@ -121,8 +121,14 @@
                     <h1 class="brand-wordmark">Collector</h1>
                 </div>
 
-                <!-- Right: Sync Status and User Profile -->
+                <!-- Right: New Curation (desktop) + Sync Status + User Profile -->
                 <div class="flex items-center gap-2 sm:gap-4 flex-shrink-0">
+                    <!-- Ação principal do desktop (o FAB fica só no mobile):
+                         mesma entrada das quick actions, linguagem do lugar -->
+                    <button id="new-curation-btn" type="button" class="btn btn-primary btn-md">
+                        <span class="material-icons mr-1" aria-hidden="true">add</span>
+                        New Curation
+                    </button>
                     <!-- Sync Status (populated by SyncStatusModule) -->
                     <div id="sync-status-header"></div>
                     <!-- User Profile Section (populated by CuratorProfile.js) -->
@@ -211,7 +217,7 @@
                     <span class="material-icons mr-1" aria-hidden="true">arrow_back</span>
                     Back
                 </button>
-                <button id="extract-concepts" class="btn btn-success btn-md">
+                <button id="extract-concepts" class="btn btn-primary btn-md">
                     <span class="material-icons mr-1" aria-hidden="true">category</span>
                     Extract Concepts
                 </button>
@@ -257,7 +263,7 @@
                     <div class="flex-grow relative">
                         <input type="text" id="restaurant-name" class="input input-md" placeholder="Restaurant Name">
                     </div>
-                    <button id="places-lookup-btn" type="button" class="btn btn-primary btn-sm"
+                    <button id="places-lookup-btn" type="button" class="btn btn-secondary btn-sm"
                         title="Get from Google Places">
                         <span class="material-icons mr-1" aria-hidden="true">travel_explore</span>
                         Places
@@ -272,7 +278,7 @@
                     <span class="material-icons mr-2">location_on</span>
                     Location:
                 </label>
-                <button id="get-location" class="btn btn-primary btn-md">
+                <button id="get-location" class="btn btn-secondary btn-md">
                     <span class="material-icons mr-2" aria-hidden="true">my_location</span>
                     Get Current Location
                 </button>
@@ -354,11 +360,11 @@
                     Photos:
                 </label>
                 <div class="photo-buttons-container">
-                    <button type="button" id="take-photo" class="btn btn-success btn-md mr-2">
+                    <button type="button" id="take-photo" class="btn btn-secondary btn-md mr-2">
                         <span class="material-icons mr-1" aria-hidden="true">photo_camera</span>
                         Take Photo
                     </button>
-                    <button type="button" id="gallery-photo" class="btn btn-primary btn-md">
+                    <button type="button" id="gallery-photo" class="btn btn-secondary btn-md">
                         <span class="material-icons mr-1" aria-hidden="true">photo_library</span>
                         Gallery
                     </button>
@@ -412,7 +418,7 @@
                 <textarea id="restaurant-description" class="input input-md h-20"
                     placeholder="Short restaurant description" maxlength="200"></textarea>
                 <div class="mt-2 flex justify-end">
-                    <button id="generate-description" class="btn btn-warning btn-md">
+                    <button id="generate-description" class="btn btn-secondary btn-md">
                         <span class="material-icons mr-1" aria-hidden="true">auto_awesome</span>
                         Generate Description
                     </button>
@@ -695,7 +701,7 @@
                         <label for="import-file" class="block text-sm font-medium text-gray-600 mb-2">Import from
                             JSON</label>
                         <input type="file" id="import-file" accept=".json" class="text-sm w-full mb-2">
-                        <button id="import-data" class="btn btn-success btn-sm w-full">
+                        <button id="import-data" class="btn btn-secondary btn-sm w-full">
                             <span class="material-icons text-sm mr-1">file_upload</span>
                             Import File
                         </button>
@@ -751,17 +757,17 @@
                 <button id="close-quick-modal" aria-label="Close quick actions" class="ml-auto text-gray-500 hover:text-gray-800 text-xl leading-none h-8 w-8 flex items-center justify-center rounded hover:bg-gray-100 transition-colors">&times;</button>
             </div>
             <div class="grid grid-cols-1 gap-4">
-                <button id="quick-record" class="btn btn-danger btn-lg">
+                <button id="quick-record" class="btn btn-primary btn-lg">
                     <span class="material-icons mr-2" aria-hidden="true">mic</span>
                     Record Review
                 </button>
 
-                <button id="quick-location" class="btn btn-primary btn-lg">
+                <button id="quick-location" class="btn btn-secondary btn-lg">
                     <span class="material-icons mr-2" aria-hidden="true">location_on</span>
                     Get Location
                 </button>
 
-                <button id="quick-photo" class="btn btn-success btn-lg">
+                <button id="quick-photo" class="btn btn-secondary btn-lg">
                     <span class="material-icons mr-2" aria-hidden="true">photo_camera</span>
                     Take Photos
                 </button>
@@ -814,7 +820,7 @@
                     <span class="material-icons" aria-hidden="true">close</span>
                     <span>Discard</span>
                 </button>
-                <button id="save-restaurant" class="btn btn-success btn-md">
+                <button id="save-restaurant" class="btn btn-primary btn-md">
                     <span class="material-icons" aria-hidden="true">check</span>
                     <span>Save</span>
                 </button>
