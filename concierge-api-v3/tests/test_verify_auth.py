@@ -3,6 +3,13 @@
 import pytest
 from unittest.mock import patch
 from fastapi import HTTPException
+from starlette.requests import Request
+
+
+def _req():
+    """Request mínimo para chamadas DIRETAS do verify_auth (o cookie
+    ausente é o caso padrão dos testes)."""
+    return Request({"type": "http", "method": "GET", "path": "/", "headers": [], "query_string": b""})
 
 
 class TestVerifyAuth:
@@ -13,7 +20,7 @@ class TestVerifyAuth:
         from app.core.security import verify_auth
         from app.core.config import settings
 
-        result = verify_auth(api_key=settings.api_secret_key, bearer=None)
+        result = verify_auth(_req(), api_key=settings.api_secret_key, bearer=None)
         assert result["authenticated"] is True
         assert result["method"] == "api_key"
 
@@ -22,7 +29,7 @@ class TestVerifyAuth:
         from app.core.security import verify_auth
 
         with pytest.raises(HTTPException) as exc:
-            verify_auth(api_key="bad-key", bearer=None)
+            verify_auth(_req(), api_key="bad-key", bearer=None)
         assert exc.value.status_code == 401
 
     def test_no_credentials_raises_401(self):
@@ -30,7 +37,7 @@ class TestVerifyAuth:
         from app.core.security import verify_auth
 
         with pytest.raises(HTTPException) as exc:
-            verify_auth(api_key=None, bearer=None)
+            verify_auth(_req(), api_key=None, bearer=None)
         assert exc.value.status_code == 401
 
     def test_bearer_missing_role_defaults_to_viewer(self):
@@ -43,7 +50,7 @@ class TestVerifyAuth:
 
         creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
 
-        result = verify_auth(api_key=None, bearer=creds)
+        result = verify_auth(_req(), api_key=None, bearer=creds)
         assert result["authenticated"] is True
         assert result["method"] == "jwt"
         assert result["role"] == "viewer"
@@ -55,7 +62,7 @@ class TestVerifyAuth:
 
         creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials="not.a.jwt")
         with pytest.raises(HTTPException) as exc:
-            verify_auth(api_key=None, bearer=creds)
+            verify_auth(_req(), api_key=None, bearer=creds)
         assert exc.value.status_code == 401
 
     def test_api_key_misconfigured_returns_500(self):
@@ -64,7 +71,7 @@ class TestVerifyAuth:
 
         with patch("app.core.security.get_api_secret_key", side_effect=RuntimeError("not set")):
             with pytest.raises(HTTPException) as exc:
-                verify_auth(api_key="anything", bearer=None)
+                verify_auth(_req(), api_key="anything", bearer=None)
             assert exc.value.status_code == 500
 
     def test_api_key_invalid_jwt_valid(self):
@@ -75,7 +82,7 @@ class TestVerifyAuth:
         token = create_access_token(data={"sub": "jwt-user@example.com"})
         creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
 
-        result = verify_auth(api_key="bad-key", bearer=creds)
+        result = verify_auth(_req(), api_key="bad-key", bearer=creds)
         assert result["authenticated"] is True
         assert result["method"] == "jwt"
         assert result["user"] == "jwt-user@example.com"
@@ -88,7 +95,7 @@ class TestVerifyAuth:
         token = create_access_token(data={"sub": "admin@example.com", "role": "admin"})
         creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
 
-        result = verify_auth(api_key=None, bearer=creds)
+        result = verify_auth(_req(), api_key=None, bearer=creds)
         assert result["authenticated"] is True
         assert result["method"] == "jwt"
         assert result["role"] == "admin"
@@ -101,7 +108,7 @@ class TestVerifyAuth:
         creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials="some.jwt.here")
         with patch("app.core.security.get_api_secret_key", side_effect=RuntimeError("not set")):
             with pytest.raises(HTTPException) as exc:
-                verify_auth(api_key=None, bearer=creds)
+                verify_auth(_req(), api_key=None, bearer=creds)
             assert exc.value.status_code == 500
             assert "not configured" in str(exc.value.detail)
 
@@ -224,7 +231,7 @@ class TestJwtHelpers:
         refresh = create_refresh_token(data={"sub": "viewer@example.com"})
         creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=refresh)
         with pytest.raises(HTTPException) as exc:
-            verify_auth(api_key=None, bearer=creds)
+            verify_auth(_req(), api_key=None, bearer=creds)
         assert exc.value.status_code == 401
 
     async def test_verify_auth_role_absent_defaults_to_viewer(self):
@@ -245,7 +252,7 @@ class TestJwtHelpers:
         }
         token = _jwt.encode(payload, get_api_secret_key(), algorithm=ALGORITHM)
         creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
-        auth = verify_auth(api_key=None, bearer=creds)
+        auth = verify_auth(_req(), api_key=None, bearer=creds)
         assert auth["role"] == "viewer"
         assert auth["user"] == "semrole@example.com"
 
@@ -255,7 +262,7 @@ class TestJwtHelpers:
 
         token = create_access_token(data={"sub": "estranho@example.com", "role": "superuser"})
         creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
-        auth = verify_auth(api_key=None, bearer=creds)
+        auth = verify_auth(_req(), api_key=None, bearer=creds)
         assert auth["role"] == "viewer"
 
 

@@ -107,7 +107,14 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         }
 
         const { headers: _customHeaders, ...restOptions } = options;
-        const fetchOptions = { method, headers, ...restOptions };
+        const fetchOptions = {
+    method,
+    headers,
+    // cookie HttpOnly (auth aditivo): o access_token também flui via
+    // cookie quando o header Bearer não está — CORS já tem allow_credentials
+    credentials: 'include',
+    ...restOptions
+};
 
         this.log.debug(`${method} ${url}`);
 

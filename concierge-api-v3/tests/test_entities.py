@@ -3,6 +3,12 @@ Test entity endpoints: CRUD operations
 """
 
 import pytest
+from starlette.requests import Request
+
+
+def _req():
+    """Request mínimo para chamadas diretas do verify_auth."""
+    return Request({"type": "http", "method": "GET", "path": "/", "headers": [], "query_string": b""})
 
 
 @pytest.mark.mongo
@@ -176,7 +182,7 @@ class TestAuth:
                 "app.core.security.jwt.decode",
                 return_value={"sub": "test@test.com", "role": "curator", "type": "access"},
             ):
-                result = verify_auth(api_key=None, bearer=mock_bearer)
+                result = verify_auth(_req(), api_key=None, bearer=mock_bearer)
                 assert result["authenticated"] is True
                 assert result["method"] == "jwt"
                 assert result["user"] == "test@test.com"

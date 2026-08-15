@@ -184,3 +184,50 @@ def test_oauth_init_accepts_trusted_callback_url():
     decoded = jwt.decode(state_encoded, settings.api_secret_key, algorithms=["HS256"])
     sd = decoded.get("sd", "")
     assert trusted in sd, f"State deveria conter a URL confiável: {sd}"
+
+
+# --- Cookie HttpOnly (aditivo, ago/2026) ------------------------------------
+
+
+def _dev_login_cookie(client):
+    """Faz dev-login e devolve o valor do cookie access_token (ou None)."""
+    resp = client.get("/api/v3/auth/dev-login")
+    assert resp.status_code == 200, resp.text
+    set_cookie = resp.headers.get("set-cookie", "")
+    for part in set_cookie.split(";"):
+        part = part.strip()
+        if part.startswith("access_token="):
+            return part[len("access_token=") :]
+    return None
+
+
+def test_dev_login_define_cookie_httponly(client):
+    cookie = _dev_login_cookie(client)
+    assert cookie, "dev-login deveria definir o cookie access_token"
+    set_cookie = client.get("/api/v3/auth/dev-login").headers.get("set-cookie", "")
+    assert "HttpOnly" in set_cookie
+    assert "SameSite=lax" in set_cookie or "samesite=lax" in set_cookie.lower()
+
+
+def test_cookie_autentica_sem_bearer(client):
+    cookie = _dev_login_cookie(client)
+    assert cookie
+    # /og-image/stats exige JWT (verify_auth) — só o cookie autentica
+    resp = client.get("/api/v3/og-image/stats", headers={"Cookie": f"access_token={cookie}"})
+    assert resp.status_code == 200, resp.text
+
+
+def test_cookie_invalido_e_rejeitado(client):
+    resp = client.get("/api/v3/og-image/stats", headers={"Cookie": "access_token=nao-e-jwt"})
+    assert resp.status_code == 401
+
+
+def test_logout_limpa_o_cookie(client):
+    login = client.get("/api/v3/auth/dev-login").json()
+    bearer = login.get("access_token")
+    assert bearer
+    resp = client.post("/api/v3/auth/logout", headers={"Authorization": f"Bearer {bearer}"})
+    set_cookie = resp.headers.get("set-cookie", "")
+    assert "access_token=" in set_cookie  # clear: valor vazio/expiração
+    lowered = set_cookie.lower().replace(" ", "")
+    assert "max-age=0" in lowered or 'access_token="";' in lowered or "access_token=;" in lowered

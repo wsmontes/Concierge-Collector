@@ -7,7 +7,7 @@ import os
 import secrets
 from typing import Optional
 from datetime import datetime, timedelta, timezone
-from fastapi import Security, HTTPException, status, Depends
+from fastapi import Security, HTTPException, status, Depends, Request
 from fastapi.security import APIKeyHeader, HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 
@@ -265,6 +265,7 @@ async def verify_access_token(
 
 
 def verify_auth(
+    request: Request,
     api_key: Optional[str] = Security(api_key_header),
     bearer: Optional[HTTPAuthorizationCredentials] = Security(bearer_scheme),
 ) -> dict:
@@ -320,6 +321,26 @@ def verify_auth(
                 detail="Server authentication not configured (missing API_SECRET_KEY)",
             )
         except JWTError:
+            pass
+
+    # Cookie HttpOnly (ADITIVO — o Bearer continua o caminho principal;
+    # o cookie permite tirar o access token do localStorage numa próxima
+    # fase. Pendência da auditoria de segurança, ago/2026.)
+    access_cookie = request.cookies.get("access_token")
+    if access_cookie:
+        try:
+            payload = jwt.decode(access_cookie, get_api_secret_key(), algorithms=[ALGORITHM])
+            if payload.get("type") != "access":
+                raise JWTError("Not an access token")
+            token_role = payload.get("role")
+            role = token_role if token_role in ("admin", "curator", "viewer") else "viewer"
+            return {
+                "authenticated": True,
+                "method": "cookie",
+                "user": payload.get("sub"),
+                "role": role,
+            }
+        except (RuntimeError, JWTError):
             pass
 
     raise HTTPException(status_code=401, detail="Missing authorization token")

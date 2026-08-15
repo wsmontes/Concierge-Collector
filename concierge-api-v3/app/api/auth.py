@@ -8,7 +8,7 @@ Implements secure OAuth flow following best practices:
 """
 
 from fastapi import APIRouter, HTTPException, Depends, status, Request
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, Response
 from pymongo.database import Database
 from datetime import datetime, timedelta, timezone
 import httpx
@@ -31,6 +31,21 @@ from app.models.user import (
 
 # Setup logging
 logger = logging.getLogger(__name__)
+
+
+def _set_access_cookie(response: Response, access_token: str) -> None:
+    """Cookie HttpOnly com o access token (aditivo — o Bearer continua o
+    caminho principal). Pendência da auditoria de segurança, ago/2026."""
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        samesite="lax",
+        secure=settings.environment == "production",
+        max_age=settings.access_token_expire_minutes * 60,
+        path="/",
+    )
+
 
 router = APIRouter(prefix="/auth", tags=["authentication"])
 
@@ -504,7 +519,9 @@ def google_oauth_callback(
 
     logger.info(f"[OAuth] ✓ Redirecting to frontend: {frontend_redirect_url}")
 
-    return RedirectResponse(url=redirect_url)
+    response = RedirectResponse(url=redirect_url)
+    _set_access_cookie(response, access_token)
+    return response
 
 
 @router.get("/verify", response_model=UserAuthResponse)
@@ -546,7 +563,11 @@ def verify_token(
 
 
 @router.post("/refresh")
-async def refresh_access_token(request: TokenRefreshRequest, db: Database = Depends(get_database)):
+async def refresh_access_token(
+    request: TokenRefreshRequest,
+    response: Response,
+    db: Database = Depends(get_database),
+):
     """
     Refresh access token using a valid refresh token
 
@@ -586,6 +607,7 @@ async def refresh_access_token(request: TokenRefreshRequest, db: Database = Depe
 
     logger.info(f"[OAuth] Token refreshed for user: {user.email}")
 
+    _set_access_cookie(response, new_access_token)
     return {
         "access_token": new_access_token,
         "refresh_token": new_refresh_token,
@@ -602,7 +624,7 @@ async def refresh_access_token(request: TokenRefreshRequest, db: Database = Depe
 
 
 @router.post("/logout")
-def logout(token_data: dict = Depends(verify_access_token)):
+def logout(response: Response, token_data: dict = Depends(verify_access_token)):
     """
     Logout user
 
@@ -611,11 +633,12 @@ def logout(token_data: dict = Depends(verify_access_token)):
     """
     email = token_data.get("sub")
     logger.info(f"[OAuth] User logged out: {email}")
+    response.delete_cookie("access_token", path="/")
     return {"message": "Logged out successfully"}
 
 
 @router.get("/dev-login")
-def dev_login(db: Database = Depends(get_database)):
+def dev_login(response: Response, db: Database = Depends(get_database)):
     """
     Development-only login — bypass Google OAuth for local debugging.
 
@@ -692,6 +715,7 @@ def dev_login(db: Database = Depends(get_database)):
 
     logger.info(f"[DevLogin] ✓ Tokens generated (expires in {settings.access_token_expire_minutes}m)")
 
+    _set_access_cookie(response, access_token)
     return {
         "access_token": access_token,
         "refresh_token": refresh_token,

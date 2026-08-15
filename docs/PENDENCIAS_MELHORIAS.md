@@ -37,7 +37,7 @@ Fonte: memórias do projeto, auditoria de segurança, sessões de trabalho e est
 - [ ] **Pipeline local** (research_curations.py usa DeepSeek): avaliar modelos e prompts junto
 
 ### Auth/Segurança
-- [ ] OAuth: cookie HttpOnly para tokens (pendência da auditoria) — hoje o access token vive em localStorage
+- [x] ~~OAuth: cookie HttpOnly~~ ✓ (ADITIVO — o Bearer continua o caminho principal): access_token também flui via cookie HttpOnly (SameSite=lax, Secure em prod) definido no callback/refresh/dev-login e limpo no logout; verify_auth aceita o cookie como fallback; apiService manda credentials:include. Remover o localStorage fica pra próxima fase (quando a superfície 100% cookie for validada).
 - [ ] Rotação do client id/secret OAuth vazados em docs (usuário adiou — cobrar de novo)
 
 ### Sync/Offline
