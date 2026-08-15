@@ -1297,11 +1297,11 @@ if (typeof window.UIManager === 'undefined') {
                         Showing <span class="font-semibold">${start + 1}</span>&ndash;<span class="font-semibold">${end}</span> of <span class="font-semibold">${serverTotal}</span> curations
                     </div>
                     <div class="flex gap-2">
-                        <button id="curation-prev-page" class="px-3 py-1 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" ${cp.currentPage === 0 ? 'disabled' : ''}>
+                        <button id="curation-prev-page" aria-label="Previous page" class="px-3 py-1 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" ${cp.currentPage === 0 ? 'disabled' : ''}>
                             <span class="material-icons text-sm">chevron_left</span>
                         </button>
                         <div class="px-3 py-1 text-sm font-medium">Page ${cp.currentPage + 1} of ${totalPages}</div>
-                        <button id="curation-next-page" class="px-3 py-1 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" ${cp.currentPage >= totalPages - 1 ? 'disabled' : ''}>
+                        <button id="curation-next-page" aria-label="Next page" class="px-3 py-1 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" ${cp.currentPage >= totalPages - 1 ? 'disabled' : ''}>
                             <span class="material-icons text-sm">chevron_right</span>
                         </button>
                     </div>
@@ -1363,6 +1363,32 @@ if (typeof window.UIManager === 'undefined') {
             // troca atômica: a lista anterior fica visível até a nova
             // estar pronta (sem janela em branco)
             container.replaceChildren(frag);
+
+            // Dica one-time dos swipes (touch): gesto não é descobrível
+            // espontaneamente — uma dica discreta, nunca mais
+            this._maybeShowSwipeHint();
+        }
+
+        /**
+         * Dica one-time de swipe nas curations (mobile): mostrada uma
+         * única vez por dispositivo; sem setas permanentes nos cards.
+         */
+        _maybeShowSwipeHint() {
+            try {
+                const touch = window.matchMedia?.('(hover: none)')?.matches ||
+                    (navigator.maxTouchPoints || 0) > 0;
+                if (!touch) return;
+                if (localStorage.getItem('swipe_hint_seen') === '1') return;
+                localStorage.setItem('swipe_hint_seen', '1');
+                if (this.showNotification) {
+                    this.showNotification(
+                        'Tip: swipe a curation left to edit, right for details',
+                        'info'
+                    );
+                }
+            } catch (e) {
+                // localStorage bloqueado não pode quebrar o render
+            }
         }
 
         /**
@@ -1770,13 +1796,13 @@ if (typeof window.UIManager === 'undefined') {
                     Showing <span class="font-semibold">${start + 1}</span>&ndash;<span class="font-semibold">${end}</span> of <span class="font-semibold">${serverTotal}</span> entities
                 </div>
                 <div class="flex gap-2">
-                    <button id="entity-prev-page" class="px-3 py-1 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" ${ep.currentPage === 0 ? 'disabled' : ''}>
+                    <button id="entity-prev-page" aria-label="Previous page" class="px-3 py-1 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" ${ep.currentPage === 0 ? 'disabled' : ''}>
                         <span class="material-icons text-sm">chevron_left</span>
                     </button>
                     <div class="px-3 py-1 text-sm font-medium">
                         Page ${ep.currentPage + 1} of ${totalPages}
                     </div>
-                    <button id="entity-next-page" class="px-3 py-1 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" ${ep.currentPage >= totalPages - 1 ? 'disabled' : ''}>
+                    <button id="entity-next-page" aria-label="Next page" class="px-3 py-1 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" ${ep.currentPage >= totalPages - 1 ? 'disabled' : ''}>
                         <span class="material-icons text-sm">chevron_right</span>
                     </button>
                 </div>
@@ -2624,6 +2650,12 @@ if (typeof window.UIManager === 'undefined') {
             if (this.originalTranscription && !this.editingRestaurantId && transcriptionTextarea && !transcriptionTextarea.value) {
                 // Only update if the textarea is empty and we have a new transcription
                 transcriptionTextarea.value = this.originalTranscription;
+            }
+
+            // Transcrito recém-processado: os conceitos acabaram de ser
+            // extraídos do texto — nada pendente de reprocessar
+            if (this.conceptModule && typeof this.conceptModule.resetTranscriptionPending === 'function') {
+                this.conceptModule.resetTranscriptionPending();
             }
 
             // Render the extracted concepts

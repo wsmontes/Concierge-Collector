@@ -602,6 +602,13 @@ const RestaurantModule = ModuleWrapper.defineClass('RestaurantModule', class {
             this.uiManager.currentConcepts = concepts;
             this.uiManager.renderConcepts();
         }
+
+        // Estados de microcopy recomeçam zerados a cada carga do
+        // formulário: pendência de reprocess e contador de palavras
+        if (this.uiManager.conceptModule) {
+            this.uiManager.conceptModule.resetTranscriptionPending();
+            this.uiManager.conceptModule.updateDescriptionWordCount();
+        }
     }
 
     /**

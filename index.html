@@ -387,10 +387,11 @@
                 </label>
                 <textarea id="restaurant-transcription" class="input input-md h-32"
                     placeholder="No transcription available" spellcheck="true"></textarea>
+                <p class="helper-text">Changes to the transcription won't affect concepts until you reprocess.</p>
                 <div class="mt-2 flex justify-end">
                     <button id="reprocess-concepts" class="btn btn-secondary btn-md">
                         <span class="material-icons mr-1" aria-hidden="true">refresh</span>
-                        Reprocess Concepts
+                        <span class="reprocess-label">Reprocess Concepts</span>
                     </button>
                 </div>
             </div>
@@ -414,6 +415,7 @@
             <div class="mb-6">
                 <label for="restaurant-description" class="label">
                     Description (30 words max):
+                    <span id="description-word-count" class="description-word-count" aria-live="polite"></span>
                 </label>
                 <textarea id="restaurant-description" class="input input-md h-20"
                     placeholder="Short restaurant description" maxlength="200"></textarea>
@@ -692,7 +694,7 @@
                     Export / Import
                 </h3>
                 <div class="space-y-4">
-                    <button id="export-data" class="btn btn-primary btn-md w-full">
+                    <button id="export-data" class="btn btn-primary btn-md w-full" aria-label="Export all data">
                         <span class="material-icons mr-1" aria-hidden="true">file_download</span>
                         Export All Data
                     </button>
@@ -701,7 +703,7 @@
                         <label for="import-file" class="block text-sm font-medium text-gray-600 mb-2">Import from
                             JSON</label>
                         <input type="file" id="import-file" accept=".json" class="text-sm w-full mb-2">
-                        <button id="import-data" class="btn btn-secondary btn-sm w-full">
+                        <button id="import-data" class="btn btn-secondary btn-sm w-full" aria-label="Import file">
                             <span class="material-icons text-sm mr-1">file_upload</span>
                             Import File
                         </button>
@@ -757,22 +759,22 @@
                 <button id="close-quick-modal" aria-label="Close quick actions" class="ml-auto text-gray-500 hover:text-gray-800 text-xl leading-none h-8 w-8 flex items-center justify-center rounded hover:bg-gray-100 transition-colors">&times;</button>
             </div>
             <div class="grid grid-cols-1 gap-4">
-                <button id="quick-record" class="btn btn-primary btn-lg">
+                <button id="quick-record" class="btn btn-primary btn-lg" aria-label="Record review">
                     <span class="material-icons mr-2" aria-hidden="true">mic</span>
                     Record Review
                 </button>
 
-                <button id="quick-location" class="btn btn-secondary btn-lg">
+                <button id="quick-location" class="btn btn-secondary btn-lg" aria-label="Get location">
                     <span class="material-icons mr-2" aria-hidden="true">location_on</span>
                     Get Location
                 </button>
 
-                <button id="quick-photo" class="btn btn-secondary btn-lg">
+                <button id="quick-photo" class="btn btn-secondary btn-lg" aria-label="Take photos">
                     <span class="material-icons mr-2" aria-hidden="true">photo_camera</span>
                     Take Photos
                 </button>
 
-                <button id="quick-manual" class="btn btn-secondary btn-lg">
+                <button id="quick-manual" class="btn btn-secondary btn-lg" aria-label="Manual entry">
                     <span class="material-icons mr-2" aria-hidden="true">edit</span>
                     Manual Entry
                 </button>
@@ -791,7 +793,7 @@
         <h3 class="text-sm font-semibold uppercase text-gray-500 pl-4 mb-2">Synchronization</h3>
 
         <div class="px-4">
-            <button id="sync-button" class="btn btn-primary btn-md w-full mb-2">
+            <button id="sync-button" class="btn btn-primary btn-md w-full mb-2" aria-label="Sync data">
                 <span class="material-icons mr-2" aria-hidden="true">sync</span>
                 Sync Data
             </button>
@@ -816,11 +818,11 @@
                 <span class="toolbar-info-title">Edit Restaurant</span>
             </div>
             <div class="toolbar-actions">
-                <button id="discard-restaurant" class="btn btn-outline btn-md">
+                <button id="discard-restaurant" class="btn btn-outline btn-md" aria-label="Discard changes">
                     <span class="material-icons" aria-hidden="true">close</span>
                     <span>Discard</span>
                 </button>
-                <button id="save-restaurant" class="btn btn-primary btn-md">
+                <button id="save-restaurant" class="btn btn-primary btn-md" aria-label="Save restaurant">
                     <span class="material-icons" aria-hidden="true">check</span>
                     <span>Save</span>
                 </button>
@@ -835,11 +837,11 @@
                 <span class="toolbar-info-title">Edit Curator</span>
             </div>
             <div class="toolbar-actions">
-                <button id="cancel-curator-compact" class="btn btn-outline btn-md">
+                <button id="cancel-curator-compact" class="btn btn-outline btn-md" aria-label="Cancel">
                     <span class="material-icons" aria-hidden="true">close</span>
                     <span>Cancel</span>
                 </button>
-                <button id="save-curator-compact" class="btn btn-primary btn-md">
+                <button id="save-curator-compact" class="btn btn-primary btn-md" aria-label="Save curator">
                     <span class="material-icons" aria-hidden="true">check</span>
                     <span>Save</span>
                 </button>

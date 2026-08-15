@@ -1267,21 +1267,30 @@
   align-items: center;
 }
 
-/* Responsive behavior */
+/* Responsive behavior: UMA linha no mobile — Cancel | Save lado a
+   lado. O título "Edit Restaurant" não ocupa mais linha própria: o
+   contexto do modo já vive no header (mobile-nav-title) e na rota */
 @media (max-width: 640px) {
   .toolbar-fixed-bottom {
-    padding: var(--spacing-3);
+    padding: 0.5rem 0.75rem;
+    padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
   }
-  
+
   .toolbar-container {
-    flex-direction: column;
-    align-items: stretch;
+    flex-direction: row;
+    align-items: center;
+    gap: 0.75rem;
   }
-  
+
+  .toolbar-info {
+    display: none;
+  }
+
   .toolbar-actions {
-    justify-content: stretch;
+    flex: 1;
+    gap: 0.75rem;
   }
-  
+
   .toolbar-actions .btn {
     flex: 1;
   }
@@ -1934,6 +1943,20 @@
   .editor-area.is-collapsed .editor-section-body {
     display: block;
   }
+}
+
+/* Contador de palavras da descrição (o limite de verdade é por
+   palavras; bronze quando estoura) */
+.description-word-count {
+  margin-left: 0.5rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--color-text-tertiary, #9ca3af);
+}
+
+.description-word-count--over {
+  color: var(--color-warning, #9a5b1f);
+  font-weight: 700;
 }
 
 /* ===================================================================
