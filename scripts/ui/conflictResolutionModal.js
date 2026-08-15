@@ -73,7 +73,7 @@ const ConflictResolutionModal = ModuleWrapper.defineClass('ConflictResolutionMod
                             <span class="text-xs font-mono text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
                                 v${local.version || 0}
                             </span>
-                            <div class="text-xs text-blue-600 mt-0.5">${this.formatDate(local.updatedAt)}</div>
+                            <div class="text-xs text-blue-600 mt-0.5" title="${this.formatDate(local.updatedAt)}">${this.formatRelativeDate(local.updatedAt)}</div>
                         </div>
                     </div>
                     <div id="conflict-local-content" class="p-4 text-sm flex-grow">
@@ -92,7 +92,7 @@ const ConflictResolutionModal = ModuleWrapper.defineClass('ConflictResolutionMod
                             <span class="text-xs font-mono text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
                                 v${server.version || 0}
                             </span>
-                            <div class="text-xs text-green-700 mt-0.5">${this.formatDate(server.updatedAt)}</div>
+                            <div class="text-xs text-green-700 mt-0.5" title="${this.formatDate(server.updatedAt)}">${this.formatRelativeDate(server.updatedAt)}</div>
                         </div>
                     </div>
                     <div id="conflict-server-content" class="p-4 text-sm flex-grow">
@@ -377,6 +377,44 @@ const ConflictResolutionModal = ModuleWrapper.defineClass('ConflictResolutionMod
         } catch (e) {
             return dateStr;
         }
+    }
+
+    /**
+     * Data relativa estilo feedmine (RelativeDateTimeFormatter cacheado):
+     * "2 hours ago", "in 5 minutes" — cai no formato absoluto quando a
+     * distância passa de ~30 dias. O formatter é compartilhado (estático)
+     * para não alocar por render, como no FeedItemRowView.
+     * @param {string} dateStr - ISO timestamp
+     * @returns {string} - Data relativa ou absoluta
+     */
+    formatRelativeDate(dateStr) {
+        if (!dateStr) return 'Unknown';
+        const date = new Date(dateStr);
+        if (isNaN(date.getTime())) return dateStr;
+
+        const diffSec = Math.round((date.getTime() - Date.now()) / 1000);
+        const abs = Math.abs(diffSec);
+        let unit;
+        let value;
+        if (abs < 60) {
+            unit = 'second';
+            value = diffSec;
+        } else if (abs < 3600) {
+            unit = 'minute';
+            value = Math.round(diffSec / 60);
+        } else if (abs < 86400) {
+            unit = 'hour';
+            value = Math.round(diffSec / 3600);
+        } else if (abs < 86400 * 30) {
+            unit = 'day';
+            value = Math.round(diffSec / 86400);
+        } else {
+            return date.toLocaleString();
+        }
+        if (!ConflictResolutionModal._relFormatter) {
+            ConflictResolutionModal._relFormatter = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
+        }
+        return ConflictResolutionModal._relFormatter.format(value, unit);
     }
 
     /**

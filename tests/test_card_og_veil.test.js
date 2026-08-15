@@ -65,6 +65,10 @@ describe('CardFactory — véu OG (data-og-source)', () => {
     // o slot existe sempre: o módulo aplica o véu de fallback no tom
     // do status (princípio feedmine de card nunca branco vazio)
     expect(card.querySelector('.card-og-veil')).toBeTruthy();
+    // ícone fantasma do tipo (contentTypePlaceholder do feedmine)
+    const icon = card.querySelector('.card-og-veil__icon');
+    expect(icon).toBeTruthy();
+    expect(icon.classList.contains('material-icons')).toBe(true);
   });
 
   test('shape bulk (data.contacts.website plural) também ganha o véu', () => {

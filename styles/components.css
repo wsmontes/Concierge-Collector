@@ -1657,6 +1657,23 @@
   );
 }
 
+/* Ícone fantasma do tipo no véu de fallback (padrão
+   contentTypePlaceholderImage do feedmine): só visível no fallback,
+   posicionado no canto de maior presença da máscara diagonal. */
+.card-og-veil__icon {
+  display: none;
+}
+.card-og-veil--fallback .card-og-veil__icon {
+  display: block;
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  font-size: 56px;
+  line-height: 1;
+  color: var(--og-fallback-fg, #7e786c);
+  opacity: 0.14;
+}
+
 /* Tons do fallback por status (mesmo mapeamento semântico do tema:
    draft=bronze, linked=aço, active=garrafa, archived=pedra,
    deleted=tijolo) */
@@ -1664,22 +1681,27 @@
 .card-accent-pending .card-og-veil--fallback {
   --og-fallback-a: rgba(176, 137, 59, 0.16); /* bronze */
   --og-fallback-b: rgba(176, 137, 59, 0.03);
+  --og-fallback-fg: #b0893b;
 }
 .card-accent-linked .card-og-veil--fallback {
   --og-fallback-a: rgba(61, 90, 128, 0.14); /* aço */
   --og-fallback-b: rgba(61, 90, 128, 0.03);
+  --og-fallback-fg: #3d5a80;
 }
 .card-accent-active .card-og-veil--fallback {
   --og-fallback-a: rgba(74, 124, 89, 0.14); /* garrafa */
   --og-fallback-b: rgba(74, 124, 89, 0.03);
+  --og-fallback-fg: #4a7c59;
 }
 .card-accent-archived .card-og-veil--fallback {
   --og-fallback-a: rgba(126, 120, 108, 0.15); /* pedra */
   --og-fallback-b: rgba(126, 120, 108, 0.03);
+  --og-fallback-fg: #7e786c;
 }
 .card-accent-deleted .card-og-veil--fallback {
   --og-fallback-a: rgba(176, 67, 59, 0.15); /* tijolo */
   --og-fallback-b: rgba(176, 67, 59, 0.03);
+  --og-fallback-fg: #b0433b;
 }
 
 /* Read-state do feedmine: cards arquivados/deletados ficam atenuados

@@ -124,9 +124,11 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
             <!-- Véu de imagem OG (degrade suave direita→card) —
                  preenchido pelo ogImageModule; sem site nem place_id,
                  o módulo aplica o véu de FALLBACK (gradiente no tom do
-                 status — princípio feedmine de card nunca ficar branco
-                 vazio) -->
-            <div class="card-og-veil" aria-hidden="true"></div>
+                 status + ícone fantasma do tipo — princípio feedmine de
+                 card nunca ficar branco vazio, contentTypePlaceholder) -->
+            <div class="card-og-veil" aria-hidden="true">
+                <span class="card-og-veil__icon material-icons">${this.getTypeIcon(type)}</span>
+            </div>
             <!-- Header with type icon (badge circular perfeito via
                  .card-type-badge — o div com p-2 + inline-block criava
                  círculo oval e glifo descentralizado) -->
