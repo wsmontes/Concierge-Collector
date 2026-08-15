@@ -114,6 +114,21 @@ class CurationBrowser {
       this.loading = false;
     }
   }
+
+  /**
+   * Espia uma página via offset SEM tocar o estado (prefetch do véu OG
+   * — padrão ImagePrefetcher do feedmine): openPage SUBSTITUI items/
+   * cursor; o peek só devolve os itens da página.
+   * @param {number} pageNumber - Zero-based page index
+   * @returns {Promise<Array>} Itens da página (sem efeitos colaterais)
+   */
+  async peekPage(pageNumber) {
+    if (this.loading) return [];
+    const params = { ...this._params(null), offset: pageNumber * this.pageSize };
+    delete params.after_id;
+    const resp = await this.apiService.listCurations(params);
+    return resp.items || [];
+  }
 }
 
 if (typeof window !== 'undefined') { window.CurationBrowser = CurationBrowser; }

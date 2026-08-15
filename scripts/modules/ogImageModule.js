@@ -27,6 +27,9 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
         // url do site -> Promise<objectURL|null> (dedupe de cards do mesmo site)
         this._pending = new Map();
         this._cacheName = 'og-images-v1';
+        // prefetch da próxima página (padrão ImagePrefetcher do feedmine)
+        this._prefetchedPages = new Set();
+        this._prefetchTimer = null;
     }
 
     /**
@@ -99,6 +102,55 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
             this._applyFallback(card);
             card.dataset.ogFailed = '1';
         });
+
+        // Prefetch da próxima página (debounce): depois que a página
+        // atual terminou de enfileirar, pré-resolve as imagens da página
+        // seguinte — o clique em "next" encontra o véu pronto.
+        clearTimeout(this._prefetchTimer);
+        this._prefetchTimer = setTimeout(() => this._prefetchNextPage(), 1500);
+    }
+
+    /**
+     * Pré-resolve as imagens OG da PRÓXIMA página dos browsers
+     * (CurationBrowser/EntityBrowser) via peekPage — espia SEM avançar
+     * o cursor (openPage/nextPage mutariam a paginação). Padrão
+     * ImagePrefetcher do feedmine.
+     */
+    _prefetchNextPage() {
+        const targets = [
+            {
+                browser: window.CurationBrowser,
+                getPage: () => window.uiManager?.curationPagination?.currentPage
+            },
+            {
+                browser: window.EntityBrowser,
+                getPage: () => window.uiManager?.entityPagination?.currentPage
+            }
+        ];
+
+        for (const { browser, getPage } of targets) {
+            if (!browser || typeof browser.peekPage !== 'function') continue;
+            const currentPage = getPage && getPage();
+            if (typeof currentPage !== 'number') continue;
+
+            const pageKey = `${browser.constructor.name}:${currentPage + 1}`;
+            if (this._prefetchedPages.has(pageKey)) continue;
+            this._prefetchedPages.add(pageKey);
+
+            browser.peekPage(currentPage + 1).then((items) => {
+                for (const item of items || []) {
+                    const d = item.data || {};
+                    const url = d.contact?.website || d.contacts?.website || d.website || item.website || '';
+                    const placeId = d.place_id || item.place_id || '';
+                    const key = url || (placeId ? `place:${placeId}` : '');
+                    if (key && !this._pending.has(key)) {
+                        this._pending.set(key, this._resolve(url, placeId, key));
+                    }
+                }
+            }).catch((error) => {
+                this.log.debug(`prefetch da próxima página falhou (${browser.constructor.name}):`, error);
+            });
+        }
     }
 
     /**

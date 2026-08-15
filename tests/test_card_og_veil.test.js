@@ -221,6 +221,33 @@ describe('OgImageModule — resolução, cache e aplicação do véu', () => {
     expect(request).not.toHaveBeenCalled();
   });
 
+  test('prefetch da próxima página espia via peekPage SEM mutar estado', async () => {
+    const OgImageModuleClass = loadOgImageModule();
+    vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn(() => 'blob:prefetch-1') });
+
+    const request = vi.fn().mockResolvedValue(fakeApiResponseOk());
+    window.ApiService = { request };
+    const peekPage = vi.fn().mockResolvedValue([
+      { curation_id: 'n1', entity_id: null, data: { contact: { website: 'https://next.example.com' } } }
+    ]);
+    window.CurationBrowser = { constructor: { name: 'CurationBrowser' }, peekPage };
+    window.uiManager = { curationPagination: { currentPage: 0 } };
+
+    const module = new OgImageModuleClass();
+    await module.init();
+
+    module._prefetchNextPage();
+    await vi.waitFor(() => {
+      expect(peekPage).toHaveBeenCalledWith(1); // página seguinte da atual (0)
+    });
+    await vi.waitFor(() => {
+      expect(request).toHaveBeenCalled(); // resolveu a imagem do item espiado
+    });
+    // dedupe: segunda chamada não re-espia a mesma página
+    module._prefetchNextPage();
+    expect(peekPage).toHaveBeenCalledTimes(1);
+  });
+
   test('card sem website mas com place_id chama a API só com place_id', async () => {
     const OgImageModuleClass = loadOgImageModule();
     vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn(() => 'blob:places-1') });

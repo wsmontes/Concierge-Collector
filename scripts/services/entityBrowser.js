@@ -98,6 +98,20 @@ class EntityBrowser {
     this.done = false;
     return { items, total: resp.total };
   }
+
+  /**
+   * Espia uma página via offset SEM tocar o estado (prefetch do véu OG
+   * — padrão ImagePrefetcher do feedmine): openPage SUBSTITUI items;
+   * o peek só devolve os itens da página.
+   * @param {number} pageNumber - Zero-based page index
+   * @returns {Promise<Array>} Itens da página (sem efeitos colaterais)
+   */
+  async peekPage(pageNumber) {
+    const params = { ...this._params(null), offset: pageNumber * this.pageSize };
+    delete params.after_id;
+    const resp = await this.apiService.listEntities(params);
+    return resp.items || [];
+  }
 }
 
 // Classe disponível para o main.js instanciar (mesmo contrato do
