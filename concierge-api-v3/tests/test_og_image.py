@@ -458,3 +458,27 @@ def _async_iter(chunks):
             yield chunk
 
     return gen()
+
+
+def test_og_image_stats_endpoint(client, auth_headers, monkeypatch):
+    # reseta os contadores e simula uma extração com fonte places
+    from app.services import og_image_service as svc
+
+    for key in svc._og_stats:
+        svc._og_stats[key] = 0
+
+    async def fake_get(page_url=None, place_id=None):
+        return (_make_png(800, 500), "image/jpeg")
+
+    monkeypatch.setattr("app.api.og_image.get_og_image_bytes", fake_get)
+    client.get("/api/v3/og-image", params={"place_id": "ChIJxyz"}, headers=auth_headers)
+
+    resp = client.get("/api/v3/og-image/stats", headers=auth_headers)
+    assert resp.status_code == 200
+    data = resp.json()
+    assert set(data.keys()) == {"requests", "cache_hits_bytes", "source_og", "source_places", "no_image"}
+
+
+def test_og_image_stats_exige_auth(client):
+    resp = client.get("/api/v3/og-image/stats")
+    assert resp.status_code in (401, 403)

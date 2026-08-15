@@ -17,11 +17,18 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 
 from app.core.security import require_role
-from app.services.og_image_service import get_og_image_bytes
+from app.services.og_image_service import get_og_image_bytes, get_og_stats
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter()
+
+
+@router.get("/og-image/stats")
+async def og_image_stats(auth: dict = Depends(require_role("curator"))):
+    """Métricas de cobertura do véu: quantos resolvem por fonte
+    (og vs places), cache hits e cards sem imagem (em memória)."""
+    return get_og_stats()
 
 
 @router.get("/og-image")

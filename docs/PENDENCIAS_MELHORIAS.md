@@ -61,7 +61,7 @@ Fonte: memórias do projeto, auditoria de segurança, sessões de trabalho e est
 
 ### og-image (véu)
 - [x] ~~Negative cache com backoff~~ ✓ — miss re-tenta em 10min (hit 1h), teste de TTL com monotonic mockado
-- [ ] Métricas de cobertura por fonte (og vs places vs corpo) — dashboard de "quantos cards têm véu"
+- [x] ~~Métricas de cobertura por fonte~~ ✓ — contadores em memória (requests, cache_hits_bytes, source_og, source_places, no_image) + GET /api/v3/og-image/stats (auth curator); testes cobrem shape e auth
 - [ ] Cache Storage: eviction explícito por LRU (hoje o browser decide)
 
 ### API

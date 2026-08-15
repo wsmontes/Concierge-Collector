@@ -36,7 +36,7 @@ import io
 import logging
 import re
 import time
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 from urllib.parse import urljoin
 
 import httpx
@@ -454,6 +454,23 @@ async def _places_photo_bytes(place_id: str) -> Optional[Tuple[bytes, str]]:
     return None
 
 
+# Métricas de cobertura (observabilidade — GET /og-image/stats):
+# quantos véus resolvem por fonte (og vs places) e quantos cards ficam
+# sem imagem. Em memória: instância única no Render, sem Redis.
+_og_stats: Dict[str, int] = {
+    "requests": 0,
+    "cache_hits_bytes": 0,
+    "source_og": 0,
+    "source_places": 0,
+    "no_image": 0,
+}
+
+
+def get_og_stats() -> Dict[str, int]:
+    """Snapshot das métricas de cobertura do véu."""
+    return dict(_og_stats)
+
+
 async def get_og_image_bytes(
     page_url: Optional[str] = None,
     place_id: Optional[str] = None,
@@ -477,11 +494,14 @@ async def get_og_image_bytes(
     now = time.monotonic()
     hit = _og_bytes_cache.get(cache_key)
     if hit and hit[1] >= now:
+        _og_stats["cache_hits_bytes"] += 1
         return hit[0]
     if hit:
         _og_bytes_cache.pop(cache_key, None)
 
+    _og_stats["requests"] += 1
     result: Optional[Tuple[bytes, str]] = None
+    source = "no_image"
 
     if has_url:
         candidates = await _resolve_og_image_candidates(page_url)
@@ -492,6 +512,7 @@ async def get_og_image_bytes(
                     continue
                 try:
                     result = _resize_to_card_jpeg(raw)
+                    source = "source_og"
                 except Exception as exc:
                     logger.debug("candidata indecodificável %s para %s: %s", image_url, page_url, exc)
                     continue
@@ -499,9 +520,14 @@ async def get_og_image_bytes(
 
     if result is None and has_place:
         result = await _places_photo_bytes(place_id)
+        if result is not None:
+            source = "source_places"
 
     if result is not None:
         if len(_og_bytes_cache) >= OG_BYTES_CACHE_MAX_ENTRIES:
             _og_bytes_cache.clear()
         _og_bytes_cache[cache_key] = (result, time.monotonic() + OG_CACHE_TTL_SECONDS)
+    else:
+        _og_stats["no_image"] += 1
+    _og_stats[source] += 1
     return result
