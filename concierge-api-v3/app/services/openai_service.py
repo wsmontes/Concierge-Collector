@@ -475,28 +475,43 @@ class OpenAIService:
         # segue o 302 do proxy /places/photo (falha "Error while downloading")
         image_url = await resolve_image_input(image_url)
 
+        # Params da família GPT-5 (modernização ago/2026): `max_tokens` é
+        # REJEITADO (usar max_completion_tokens) e `temperature` só aceita
+        # o default 1 — omitir quando o config não trouxer. O contrato é
+        # lido do config do Mongo (fonte única), não hardcoded por modelo.
+        cfg = config["config"]
+        completion_kwargs = {}
+        if cfg.get("max_completion_tokens") is not None:
+            completion_kwargs["max_completion_tokens"] = cfg["max_completion_tokens"]
+        else:
+            completion_kwargs["max_tokens"] = cfg.get("max_tokens", 300)
+        if cfg.get("temperature") is not None:
+            completion_kwargs["temperature"] = cfg["temperature"]
+        if cfg.get("response_format"):
+            completion_kwargs["response_format"] = cfg["response_format"]
+
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {
+                        "type": "image_url",
+                        "image_url": {
+                            "url": image_url,
+                            "detail": cfg.get("detail", "high"),
+                        },
+                    },
+                ],
+            }
+        ]
+
         # Call OpenAI Vision — SDK síncrono em thread (ver transcribe_audio)
         response = await asyncio.to_thread(
             self.client.chat.completions.create,
             model=config["model"],
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": image_url,
-                                "detail": config["config"].get("detail", "high"),
-                            },
-                        },
-                    ],
-                }
-            ],
-            temperature=config["config"].get("temperature", 0.3),
-            max_tokens=config["config"].get("max_tokens", 300),
-            response_format=config["config"].get("response_format"),
+            messages=messages,
+            **completion_kwargs,
         )
 
         # Parse JSON response — gpt-4o sem response_format devolve texto solto

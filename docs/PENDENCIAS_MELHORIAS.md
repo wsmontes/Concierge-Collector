@@ -29,6 +29,13 @@ Fonte: memórias do projeto, auditoria de segurança, sessões de trabalho e est
 - [x] ~~Routers `places.py` + `places_router.py` + `places_orchestrate.py`~~ — CONSOLIDADOS (rotas preservadas; healths duplicados sem consumidor removidos; rotas mortas usage-stats/health-original removidas — ver docs/API_ENDPOINT_REVIEW.md)
 - [x] ~~Endpoints sem uso real~~ — mapeados no review (consumidores frontend/MCP/OpenAI identificados)
 
+### IA (bloco grande — modernização completa)
+- [ ] **Modelos recentes**: auditar openai_configs (Mongo) e referências no código — GPT-4 legado → gpt-4o/gpt-4.1; Whisper e text-embedding-3-small continuam; verificar sufixo _text do registry
+- [ ] **Prompts melhores**: promptTemplate.js (frontend) + prompts do ai_orchestrator/openai_service/llm_place_service — vocabulário de categorias de curadoria (memória: curation-category-vocabulary), instruções de formato JSON, few-shot
+- [ ] **Validação de resultado**: schema enforcement do JSON extraído (Pydantic v2 no backend), rejeição de categoria fora do vocabulário, consistência entity↔concepts
+- [ ] **Retries**: política explícita (exponencial + jitter) nos serviços OpenAI — hoje retry é pontual; alinhar com rate limits
+- [ ] **Pipeline local** (research_curations.py usa DeepSeek): avaliar modelos e prompts junto
+
 ### Auth/Segurança
 - [ ] OAuth: cookie HttpOnly para tokens (pendência da auditoria) — hoje o access token vive em localStorage
 - [ ] Rotação do client id/secret OAuth vazados em docs (usuário adiou — cobrar de novo)
