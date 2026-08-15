@@ -162,7 +162,7 @@ function showFatalError(message) {
             gravity: "top",
             position: "center",
             style: {
-                background: "#ef4444", // Red from variables
+                background: "var(--color-error)", // tijolo do tema (era #ef4444)
                 color: "white",
                 minWidth: "300px"
             },

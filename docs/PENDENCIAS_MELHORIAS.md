@@ -22,7 +22,7 @@ Fonte: memórias do projeto, auditoria de segurança, sessões de trabalho e est
 - [x] ~~Click no card de curadoria linkada não abria detalhes~~ — RESOLVIDO: regressão do renderCurationsPage (createCurationCard sem onClick — o default é console.log); agora abre handleViewReviewDetails como o review card.
 - [ ] `dbg.tmp.mjs` na raiz (resto de debug do IndexedDB) — apagar
 - [ ] Curadorias órfãs (53 no Mongo, ids `entity_curation_test_*`): review card sem véu — decidir: limpar lixo ou resolver por nome via EntityBrowser
-- [ ] Degraded mode: tela de erro usa cinzas antigos; fluxo sem IndexedDB merece passe visual
+- [x] ~~Degraded mode: passe visual~~ ✓ — DOM audit no modo degradado (IndexedDB quebrado) mostra 100% do tema (limestone/oliva/tints remapeados); resquícios reais corrigidos: toast fatal usava #ef4444 → var(--color-error), e --color-danger não existia (7 usos caíam no vermelho velho) → alias criado. (O pixel-scan antigo dava falso positivo: tolerância ±10 confunde #fbf9f5 quente com #f9fafb frio.)
 
 ### Backend API
 - [x] ~~**Revisão sistemática dos endpoints**~~ — FEITA: docs/API_ENDPOINT_REVIEW.md (inventário + uso + remoções + consolidações)

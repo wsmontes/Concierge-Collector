@@ -290,6 +290,9 @@
   --color-text-secondary: var(--color-neutral-500);
   --color-text-tertiary: var(--color-neutral-400);
   --color-border: var(--color-neutral-200);
+  /* formManager e amigos referenciam --color-danger com fallback
+     #ef4444 (vermelho-500 antigo) — o alias resolve pro tijolo */
+  --color-danger: var(--color-error);
 }
 
 /* ========================================================================
