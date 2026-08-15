@@ -135,6 +135,22 @@ describe('DatabaseManager — migrações sem wipe destrutivo', () => {
     localStorage.clear();
   });
 
+  test('fresh install (perfil novo, DB inexistente) inicializa direto, sem erro nem wipe', async () => {
+    // Regressão: perfil novo caía em getCurrentVersion→'legacy'→version(0)
+    // ("Given version is not a positive number") e o wipe nuclear.
+    // Nada semeado, localStorage vazio — o cenário do primeiro load.
+    const DatabaseManagerClass = loadDatabaseManager();
+    const manager = new DatabaseManagerClass({ currentVersion: 93 });
+
+    const db = await manager.initialize();
+    expect(db).toBeTruthy();
+
+    const after = await countData();
+    expect(after.version).toBe(93);
+    expect(after.entities).toBe(0);
+    expect(after.curations).toBe(0);
+  });
+
   test('upgrade 92→93 preserva entities, curations e syncQueue (nunca Dexie.delete)', async () => {
     await seedV92Db(true);
     localStorage.setItem('concierge_db_schema_version', '92');

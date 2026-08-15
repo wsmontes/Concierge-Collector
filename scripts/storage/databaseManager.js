@@ -283,21 +283,37 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
      * legacy falhava (Dexie sem schema) → _autoReset apagava o banco
      * INTEIRO em todo load. Agora abre o IDB cru (indexedDB.open sem
      * versão = abre na versão corrente, sem VersionError) e lê o _meta.
+     *
+     * P1 fix (ago/2026): o onupgradeneeded resolvia NO MEIO do
+     * versionchange — um DB recém-criado (v0, sem stores) era
+     * classificado como 'legacy' e o branch legacy fazia version(0) →
+     * "Given version is not a positive number" em todo perfil novo
+     * (fresh install caía no wipe nuclear). Agora o success resolve
+     * APÓS a criação (v1 vazio) e um DB SEM object stores é tratado
+     * como instalação fresca, não legacy.
      */
     async getCurrentVersion() {
         const openRaw = () => new Promise((resolve, reject) => {
             const req = indexedDB.open(this.dbName);
             req.onsuccess = () => resolve(req.result);
             req.onerror = () => reject(req.error);
-            // upgrade em DB v0 (recém-criado vazio): resolve e o read do
-            // _meta falhará com NotFoundError → tratado como fresh (null)
-            req.onupgradeneeded = () => resolve(req.result);
+            // no-op: sem versão explícita, um DB inexistente é criado em
+            // v1 vazio e o success dispara logo depois — resolver aqui
+            // entregaria um DB no meio do versionchange (v0 sem stores)
+            req.onupgradeneeded = () => {};
         });
 
         let raw;
         try {
             raw = await openRaw();
         } catch (e) {
+            return null;
+        }
+
+        // DB recém-criado (nenhuma object store) = instalação FRESCA —
+        // legacy é um DB REAL pré-DatabaseManager, que TEM stores
+        if (!raw.objectStoreNames || raw.objectStoreNames.length === 0) {
+            raw.close();
             return null;
         }
 

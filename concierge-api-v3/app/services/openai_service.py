@@ -67,9 +67,9 @@ def _is_blocked_host(hostname: str) -> bool:
 
 
 def _validate_image_request(request) -> None:
-    """Hook de request do httpx: valida o destino de TODA requisição da
-    cadeia (a inicial e cada redirect — o httpx dispara os hooks a cada
-    nova requisição da cadeia)."""
+    """Valida o destino de UMA requisição (a inicial e cada redirect).
+    Versão síncrona da lógica — use `_validate_image_request_hook` como
+    event hook do httpx."""
     import urllib.parse
 
     parsed = urllib.parse.urlparse(str(request.url))
@@ -79,6 +79,16 @@ def _validate_image_request(request) -> None:
         raise ValueError("image_url com credenciais embutidas não é permitida")
     if _is_blocked_host(parsed.hostname or ""):
         raise ValueError("destino de imagem não permitido (rede interna)")
+
+
+async def _validate_image_request_hook(request) -> None:
+    """Hook de request do httpx ≥0.28: o client faz `await hook(request)`
+    INCONDICIONAL — hook síncrono que retorna None quebra com
+    "TypeError: object NoneType can't be used in 'await' expression"
+    (regressão do httpx 0.28.1: o download de imagens falhava calado,
+    capturado pelo except genérico como "Não foi possível baixar").
+    Este wrapper assíncrono preserva a validação síncrona acima."""
+    _validate_image_request(request)
 
 
 def _sniff_image_mime(raw: bytes) -> Optional[str]:
@@ -117,7 +127,7 @@ async def resolve_image_input(image: str) -> str:
         # request da cadeia de redirects (event hook)
         try:
             async with httpx.AsyncClient(
-                follow_redirects=True, timeout=30, event_hooks={"request": [_validate_image_request]}
+                follow_redirects=True, timeout=30, event_hooks={"request": [_validate_image_request_hook]}
             ) as client:
                 async with client.stream("GET", image) as response:
                     response.raise_for_status()
