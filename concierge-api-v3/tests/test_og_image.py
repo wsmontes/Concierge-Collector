@@ -25,7 +25,6 @@ from app.services.og_image_service import (
     _og_bytes_cache,
 )
 
-
 # ---------------------------------------------------------------------------
 # Parser (sem rede)
 # ---------------------------------------------------------------------------
@@ -73,10 +72,7 @@ def test_parse_og_images_ordem_de_prioridade_e_dedupe():
 
 
 def test_parse_og_images_respeita_base_href():
-    raw = (
-        b'<base href="https://cdn.site.com/loja/">'
-        b'<meta property="og:image" content="fotos/capa.jpg">'
-    )
+    raw = b'<base href="https://cdn.site.com/loja/">' b'<meta property="og:image" content="fotos/capa.jpg">'
     assert _parse_og_images(raw, "https://site.com/pagina") == ["https://cdn.site.com/loja/fotos/capa.jpg"]
 
 
@@ -94,6 +90,49 @@ def test_parse_og_images_fallbacks_secure_url_e_itemprop():
 def test_parse_og_images_ignora_data_uri():
     raw = b'<meta property="og:image" content="data:image/png;base64,AAAA">'
     assert _parse_og_images(raw, "https://site.com/") == []
+
+
+# --- extração nível feedmine: JSON-LD, <img> lazy, decorativas ---
+
+
+def test_parse_jsonld_imagem_wix_style():
+    raw = (
+        b'<script type="application/ld+json">'
+        b'{"@type":"Restaurant","name":"Kith",'
+        b'"image":"https:\\/\\/static.wixstatic.com\\/media\\/foto.jpg",'
+        b'"servesCuisine":"Brasileira"}'
+        b"</script>"
+    )
+    assert _parse_og_images(raw, "https://thekith.com.br/") == ["https://static.wixstatic.com/media/foto.jpg"]
+
+
+def test_parse_img_corpo_com_lazy_load():
+    # WordPress sem meta og: — o src é placeholder e a foto real está
+    # no data-lazy-src (o caso do dalvaedito.com.br)
+    raw = (
+        b"<html><body>"
+        b'<img src="data:image/gif;base64,R0lGOD" data-lazy-src="https://site.com/wp-content/uploads/hero.jpg">'
+        b"</body></html>"
+    )
+    assert _parse_og_images(raw, "https://site.com/") == ["https://site.com/wp-content/uploads/hero.jpg"]
+
+
+def test_parse_filtra_decorativas():
+    raw = (
+        b'<img src="https://site.com/wp-content/uploads/2026/favicon.ico">'
+        b'<img src="https://site.com/wp-content/themes/x/images/site-logo.png">'
+        b'<img src="https://stats.doubleclick.net/pixel.gif">'
+        b'<img data-src="https://site.com/wp-content/uploads/2026/prato.jpg">'
+    )
+    assert _parse_og_images(raw, "https://site.com/") == ["https://site.com/wp-content/uploads/2026/prato.jpg"]
+
+
+def test_parse_og_tem_prioridade_sobre_img_corpo():
+    raw = b'<meta property="og:image" content="https://site.com/og.jpg">' b'<img src="https://site.com/body.jpg">'
+    assert _parse_og_images(raw, "https://site.com/") == [
+        "https://site.com/og.jpg",
+        "https://site.com/body.jpg",
+    ]
 
 
 # ---------------------------------------------------------------------------
@@ -128,6 +167,20 @@ def test_resize_imagem_pequena_nao_estoura():
 def test_resize_bytes_corrompidos_lanca():
     with pytest.raises(Exception):
         _resize_to_card_jpeg(b"nao sou uma imagem")
+
+
+def test_resize_banner_faixa_fora_do_gate_lanca():
+    # 635×62 (banner de header) — primeiro <img> do corpo de sites
+    # WordPress; o gate rejeita e a cascata tenta a próxima candidata
+    raw = _make_png(635, 62)
+    with pytest.raises(ValueError):
+        _resize_to_card_jpeg(raw)
+
+
+def test_resize_icone_minusculo_fora_do_gate_lanca():
+    raw = _make_png(80, 80)
+    with pytest.raises(ValueError):
+        _resize_to_card_jpeg(raw)
 
 
 # ---------------------------------------------------------------------------
@@ -318,8 +371,6 @@ async def test_get_og_image_bytes_fallback_places(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_get_og_image_bytes_sem_url_nem_place():
-    from app.services import og_image_service as svc
-
     with pytest.raises(ValueError):
         await get_og_image_bytes(page_url=None, place_id=None)
 

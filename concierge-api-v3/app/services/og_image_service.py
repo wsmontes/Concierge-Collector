@@ -101,8 +101,14 @@ _META_PATTERN_GROUPS: List[Tuple[str, List[re.Pattern]]] = [
     (
         "twitter:image:src",
         [
-            re.compile(rb'<meta[^>]+(?:name|property)=["\']twitter:image:src["\'][^>]*content=["\']([^"\']+)["\']', re.I),
-            re.compile(rb'<meta[^>]+content=["\']([^"\']+)["\'][^>]*(?:name|property)=["\']twitter:image:src["\']', re.I),
+            re.compile(
+                rb'<meta[^>]+(?:name|property)=["\']twitter:image:src["\'][^>]*content=["\']([^"\']+)["\']',
+                re.I,
+            ),
+            re.compile(
+                rb'<meta[^>]+content=["\']([^"\']+)["\'][^>]*(?:name|property)=["\']twitter:image:src["\']',
+                re.I,
+            ),
         ],
     ),
     (
@@ -120,7 +126,41 @@ _META_PATTERN_GROUPS: List[Tuple[str, List[re.Pattern]]] = [
 
 _BASE_HREF = re.compile(rb'<base[^>]+href=["\']([^"\']+)["\']', re.I)
 # Corpo com cara de HTML mesmo quando o content-type mente
-_HTML_SNIFF = re.compile(rb'<(html|head|meta|body|!doctype)\b', re.I)
+_HTML_SNIFF = re.compile(rb"<(html|head|meta|body|!doctype)\b", re.I)
+
+# ── Extração de imagem nível feedmine (padrões portados do projeto
+#    feedmine do usuário, ImageCache.articleImageURLs) ──
+# JSON-LD (schema.org): sites Wix/Squarespace/modernos declaram a
+# imagem no bloco application/ld+json mesmo sem meta og:.
+_LD_JSON_BLOCK = re.compile(rb'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>', re.I | re.S)
+_LD_IMAGE_KEY = re.compile(rb'"image"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"', re.I)
+# <img> do corpo: último recurso (WordPress SEM plugin de SEO não tem
+# meta og: nenhuma). Atributos lazy primeiro — data-lazy-src/data-src
+# carregam a foto real só depois do JS; o src seria um placeholder.
+_PLAIN_IMG_TAG = re.compile(rb"<img\b[^>]*>", re.I)
+_IMG_ATTR = re.compile(rb'([a-zA-Z0-9_-]+)\s*=\s*["\']([^"\']+)["\']', re.I)
+_IMG_SRC_ATTRS = ("data-lazy-src", "data-original", "data-src", "data-echo", "src")
+# Imagens decorativas/de identidade que NUNCA devem virar véu —
+# marcadores estreitos (feedmine: "logo" sozinho é agressivo demais)
+_DECORATIVE_MARKERS = (
+    "favicon",
+    "sprite",
+    "avatar",
+    "emoji",
+    "tracking",
+    "spacer",
+    "pixel.gif",
+    "count.gif",
+    "doubleclick",
+    "analytics",
+    "site-logo",
+    "header-logo",
+    "footer-logo",
+    "nav-logo",
+    "apple-touch-icon",
+    "/icons/",
+    "icon-",
+)
 
 # url do site -> (candidatas ou None, expires_at)
 _og_cache: dict[str, tuple[Optional[List[str]], float]] = {}
@@ -145,11 +185,60 @@ def _cache_put(url: str, candidates: Optional[List[str]]) -> None:
     _og_cache[url] = (candidates, time.monotonic() + OG_CACHE_TTL_SECONDS)
 
 
+def _jsonld_image_urls(raw: bytes, base_url: str) -> List[str]:
+    """Imagens do bloco application/ld+json (schema.org ImageObject).
+
+    Cobre sites Wix/Squarespace/modernos que declararam a imagem só no
+    JSON-LD. Unescape de \\/ e entidades HTML; ignora data:/blob:.
+    """
+    out: List[str] = []
+    for block in _LD_JSON_BLOCK.findall(raw):
+        for match in _LD_IMAGE_KEY.finditer(block):
+            value = match.group(1).decode("utf-8", errors="replace")
+            value = html_lib.unescape(value.replace(r"\/", "/")).strip()
+            absolute = urljoin(base_url, value)
+            if absolute.startswith(("http://", "https://")):
+                out.append(absolute)
+    return out
+
+
+def _plain_image_urls(raw: bytes, base_url: str) -> List[str]:
+    """Imagens de tags <img> do corpo — último recurso.
+
+    Atributos lazy primeiro (data-lazy-src/data-original/data-src/
+    data-echo): em sites WordPress com lazy-load, o src é placeholder
+    1px e a foto real só aparece no atributo data-*.
+    """
+    out: List[str] = []
+    for tag in _PLAIN_IMG_TAG.findall(raw):
+        attrs: dict = {}
+        for match in _IMG_ATTR.finditer(tag):
+            attrs[match.group(1).decode("ascii", errors="ignore").lower()] = match.group(2).decode(
+                "utf-8", errors="replace"
+            )
+        value = next((attrs[name] for name in _IMG_SRC_ATTRS if attrs.get(name)), None)
+        if not value:
+            continue
+        absolute = urljoin(base_url, html_lib.unescape(value.strip()))
+        if absolute.startswith(("http://", "https://")):
+            out.append(absolute)
+    return out
+
+
+def _is_decorative_image(url: str) -> bool:
+    """True para imagens de identidade/rastreio que não servem de véu."""
+    value = url.lower()
+    return any(marker in value for marker in _DECORATIVE_MARKERS)
+
+
 def _parse_og_images(raw: bytes, final_url: str) -> List[str]:
     """TODAS as imagens candidatas do HTML, em ordem de prioridade.
 
-    Respeita `<base href>` para URLs relativas; ignora data:/blob: e
-    deduplica preservando a ordem (a primeira é a mais confiável).
+    Ordem (a primeira que decodificar vence no pipeline): meta og: em
+    cascata → JSON-LD (schema.org) → <img> do corpo. Respeita
+    `<base href>` para URLs relativas; ignora data:/blob:, filtra
+    imagens decorativas (favicon/logo/tracking) e deduplica
+    preservando a ordem.
     """
     base_url = final_url
     base_match = _BASE_HREF.search(raw)
@@ -170,7 +259,14 @@ def _parse_og_images(raw: bytes, final_url: str) -> List[str]:
                 absolute = urljoin(base_url, candidate)
                 if absolute.startswith(("http://", "https://")):
                     candidates.append(absolute)
-    return list(dict.fromkeys(candidates))
+
+    # caps de sanidade: página de galeria com dezenas de <img> não pode
+    # virar dezenas de tentativas de download na cascata
+    candidates.extend(_jsonld_image_urls(raw, base_url)[:5])
+    candidates.extend(_plain_image_urls(raw, base_url)[:10])
+
+    filtered = [url for url in candidates if not _is_decorative_image(url)]
+    return list(dict.fromkeys(filtered))
 
 
 def _parse_og_image(raw: bytes, final_url: str) -> Optional[str]:
@@ -218,7 +314,8 @@ async def _resolve_og_image_candidates(page_url: str) -> Optional[List[str]]:
 
                 # leniência de content-type: só descarta quando o header
                 # nega HTML E o corpo não parece HTML
-                if content_type and not content_type.startswith(("text/html", "application/xhtml")) and not _HTML_SNIFF.search(raw):
+                nao_e_html_header = content_type and not content_type.startswith(("text/html", "application/xhtml"))
+                if nao_e_html_header and not _HTML_SNIFF.search(raw):
                     candidates = None
                 else:
                     candidates = _parse_og_images(raw, str(response.url)) or None
@@ -250,14 +347,26 @@ PLACES_API_PHOTO_MEDIA_URL = "https://places.googleapis.com/v1/{photo_name}/medi
 _og_bytes_cache: dict[str, tuple[Tuple[bytes, str], float]] = {}
 
 
+# Gate de aceitabilidade (padrão feedmine: dimensões reais decidem):
+# o primeiro <img> do corpo costuma ser banner/faixa (635×62, 10:1) ou
+# logo — o véu de card precisa de FOTO. Min-dim 100px + aspect ≤ 3.5:1
+# (fotos panorâmicas até ~3.5:1 ainda funcionam no cover do card).
+CARD_IMAGE_MIN_DIM = 100
+CARD_IMAGE_MAX_ASPECT = 3.5
+
+
 def _resize_to_card_jpeg(raw: bytes) -> Tuple[bytes, str]:
     """Converte a imagem original para JPEG thumbnail até 768px.
 
-    Falha de decodificação (formato exótico/corrompido) propaga
-    Exception — o chamador trata como "sem imagem" e tenta a próxima
-    candidata.
+    Falha de decodificação (formato exótico/corrompido) e imagem fora
+    do gate de aceitabilidade (banner/faixa/logo: min-dim < 100px ou
+    aspect > 3.5:1) propagam Exception — o chamador trata como "sem
+    imagem" e tenta a próxima candidata.
     """
     with Image.open(io.BytesIO(raw)) as img:
+        width, height = img.size
+        if min(width, height) < CARD_IMAGE_MIN_DIM or max(width, height) / min(width, height) > CARD_IMAGE_MAX_ASPECT:
+            raise ValueError(f"imagem fora do gate do card: {width}x{height}")
         img = img.convert("RGB")  # JPEG não tem alpha; achata transparência
         img.thumbnail((OG_IMAGE_MAX_DIM, OG_IMAGE_MAX_DIM))
         out = io.BytesIO()
