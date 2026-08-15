@@ -171,6 +171,55 @@ async def resolve_image_input(image: str) -> str:
     )
 
 
+_PRICE_ALIASES = {
+    "inexpensive": "unexpensive",
+    "cheap": "unexpensive",
+    "economical": "unexpensive",
+    "moderate": "mid-range",
+    "medium": "mid-range",
+    "average": "mid-range",
+    "pricey": "expensive",
+    "high-end": "expensive",
+    "luxury": "expensive",
+}
+
+
+def _canonicalize_categories(raw_result: Dict[str, Any], allowed_keys: set) -> Dict[str, list]:
+    """Validação dura do resultado da extração (Fase 3 da modernização).
+
+    - Chaves fora do vocabulário são ignoradas (nunca inventar campos)
+    - price_range: só aceita unexpensive|mid-range|expensive (aliases
+      comuns são mapeados; o primeiro válido vence — "exatamente um")
+    - Tags em lowercase como rede de segurança (exceções: menu e
+      price_and_payment, que carregam nomes próprios/valores)
+    """
+    normalized: Dict[str, list] = {}
+    for category_key in allowed_keys:
+        values = raw_result.get(category_key)
+        if not isinstance(values, list):
+            continue
+        cleaned = []
+        for v in values:
+            s = str(v).strip()
+            if not s:
+                continue
+            if category_key == "price_range":
+                norm = s.lower()
+                if norm in ("unexpensive", "mid-range", "expensive"):
+                    cleaned.append(norm)
+                    break  # exatamente um
+                if norm in _PRICE_ALIASES:
+                    cleaned.append(_PRICE_ALIASES[norm])
+                    break
+                continue  # fora do vocabulário: descarta
+            if category_key not in ("menu", "price_and_payment"):
+                s = s.lower()
+            cleaned.append(s)
+        if cleaned:
+            normalized[category_key] = cleaned
+    return normalized
+
+
 class OpenAIService:
     """OpenAI service using MongoDB configuration"""
 
@@ -183,7 +232,13 @@ class OpenAIService:
             db_url: MongoDB connection URL
             db_name: Database name
         """
-        self.client = OpenAI(api_key=api_key)
+        self.client = OpenAI(
+            api_key=api_key,
+            # Fase 4: retries explícitos (exponencial + jitter do SDK) e
+            # timeout por chamada — antes dependia só do default do SDK
+            max_retries=3,
+            timeout=60.0,
+        )
 
         # Create Motor async client for db operations (insert_one, find_one)
         async_client = AsyncIOMotorClient(db_url)
@@ -298,16 +353,38 @@ class OpenAIService:
         # Render prompt with variables
         prompt = self.config_service.render_prompt("concept_extraction_text", {"text": text, "categories": categories})
 
-        # Call OpenAI — SDK síncrono em thread (ver transcribe_audio)
-        response = await asyncio.to_thread(
-            self.client.chat.completions.create,
-            model=config["model"],
-            messages=[{"role": "user", "content": prompt}],
-            **config["config"],
-        )
+        # Call OpenAI — SDK síncrono em thread (ver transcribe_audio).
+        # RE-PROMPT único em parse inválido (Fase 3): resposta não-JSON
+        # recebe o erro e tenta mais uma vez — máx 2 chamadas por extração.
+        raw_result = None
+        last_error = None
+        for attempt in range(2):
+            response = await asyncio.to_thread(
+                self.client.chat.completions.create,
+                model=config["model"],
+                messages=[{"role": "user", "content": prompt}],
+                **config["config"],
+            )
 
-        # Parse JSON response
-        raw_result = json.loads(response.choices[0].message.content)
+            # Parse JSON response
+            raw_content = (response.choices[0].message.content or "").strip()
+            if raw_content.startswith("```"):
+                raw_content = raw_content.strip("`")
+                if raw_content.startswith("json"):
+                    raw_content = raw_content[4:].strip()
+            try:
+                raw_result = json.loads(raw_content)
+                break
+            except json.JSONDecodeError as exc:
+                last_error = str(exc)
+                prompt = (
+                    prompt
+                    + "\n\nSua resposta anterior não era JSON válido (erro: "
+                    + last_error
+                    + "). Responda SOMENTE com JSON válido, sem markdown."
+                )
+        if raw_result is None:
+            raise ValueError(f"concept extraction devolveu JSON inválido duas vezes: {last_error}")
 
         # Normalize to the frontend-compatible shape expected by ConceptModule:
         # {
@@ -317,16 +394,7 @@ class OpenAIService:
         #   ...metadata
         # }
         allowed_category_keys = set(categories or [])
-        normalized_categories: Dict[str, list] = {}
-
-        # Preferred format: keys per category (current MongoDB categories list contains keys)
-        for category_key in allowed_category_keys:
-            values = raw_result.get(category_key)
-            if not isinstance(values, list):
-                continue
-            cleaned_values = [str(v).strip() for v in values if str(v).strip()]
-            if cleaned_values:
-                normalized_categories[category_key] = cleaned_values
+        normalized_categories: Dict[str, list] = _canonicalize_categories(raw_result, allowed_category_keys)
 
         # Backward-compat: if model returned a flat concepts list of objects
         if not normalized_categories and isinstance(raw_result.get("concepts"), list):

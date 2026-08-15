@@ -18,7 +18,7 @@ Estado atual auditado: 5 serviços em `openai_configs` (Mongo). `whisper-1` e `t
 
 ## Fase 2 — Prompts melhores
 
-- [x] ~~Auditar os `prompt_template` dos 5 serviços + `promptTemplate.js`~~ ✓ (todos dumpados; concept é o crítico)
+- [x] ~~Auditar os `prompt_template` dos 5 serviços + `promptTemplate.js`~~ ✓ (todos dumpados; concept + image_analysis reescritos com vocabulário forçado; name extractions já corretos)
 - [x] ~~JSON schema explícito~~ ✓ (concept_extraction_text: só as chaves das categorias + confidence_score; omitir vazias; nunca inventar campos)
 - [x] ~~Vocabulário FORÇADO~~ ✓ (concept: lowercase em todas as tags, exceções menu/price_and_payment; price_range exatamente um de unexpensive|mid-range|expensive; promptTemplate.js alinhado — antes dizia "inexpensive, moderate, expensive")
 - [ ] Few-shot com exemplos reais de curadorias boas
@@ -26,15 +26,15 @@ Estado atual auditado: 5 serviços em `openai_configs` (Mongo). `whisper-1` e `t
 
 ## Fase 3 — Validação de resultado
 
-- [ ] Parse do JSON com Pydantic v2 (schema do orchestrator) — hoje o parse é manual
-- [ ] Rejeição de categoria fora do vocabulário → re-prompt único com o erro (não só logar)
-- [ ] Validação entity name não-vazio / coerência concepts↔entity
+- [x] ~~Parse do JSON~~ ✓ — re-prompt ÚNICO em JSON inválido (o erro vai no prompt da 2ª chamada; máx 2 por extração; falhou as duas → ValueError)
+- [x] ~~Rejeição de categoria fora do vocabulário~~ ✓ — `_canonicalize_categories`: chaves fora do vocabulário ignoradas, price_range só aceita o canônico (aliases mapeados, exatamente um), tags lowercased (exceções menu/price_and_payment). 7 testes unit.
+- [ ] Validação entity name não-vazio / coerência concepts↔entity (rodada seguinte)
 
 ## Fase 4 — Retries
 
-- [ ] `max_retries` explícito no client OpenAI (ex.: 3) com backoff exponencial + jitter
-- [ ] Retry de VALIDAÇÃO: resposta inválida → re-request com feedback (máx 2 tentativas, custo limitado)
-- [ ] Timeout por chamada (evita request pendurado comendo cota)
+- [x] ~~`max_retries` explícito no client OpenAI~~ ✓ (max_retries=3, backoff do SDK; timeout=60s por chamada no construtor do OpenAIService)
+- [x] ~~Retry de VALIDAÇÃO~~ ✓ (re-prompt único em parse inválido — Fase 3)
+- [x] ~~Timeout por chamada~~ ✓
 
 ## Fase 5 — Pipeline local + testes
 
