@@ -193,6 +193,15 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
             entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt, etag, sync.status, lastAccessedAt, source',
         });
 
+        // Version 93: _meta (version tracking do DatabaseManager). Este
+        // fallback parava no 92 SEM _meta — num perfil que caísse aqui,
+        // databaseDiagnostics/_meta rejeitava com NotFoundError (ruído
+        // de "Unhandled rejection: objectStore not found" no console).
+        // O fallback precisa produzir o MESMO schema do DatabaseManager.
+        this.db.version(93).stores({
+            _meta: 'key'
+        });
+
         // Open the database and wait for it to be ready
         await this.db.open();
 
@@ -235,20 +244,28 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
      */
     addDatabaseHooks() {
         const emitDataChanged = (table, action, recordId, payload = {}) => {
-            try {
-                window.dispatchEvent(new CustomEvent('concierge:data-changed', {
-                    detail: {
-                        table,
-                        action,
-                        recordId,
-                        source: payload.source || 'local',
-                        timestamp: new Date().toISOString(),
-                        ...payload
-                    }
-                }));
-            } catch (eventError) {
-                this.log.warn('⚠️ Failed to emit data change event:', eventError?.message || eventError);
-            }
+            // DEFERIDO (setTimeout 0): o hook roda DENTRO da transação do
+            // IndexedDB (escopo já travado). Disparar o evento síncrono
+            // deixava listeners (uiManager/syncStatus) lerem OUTRAS
+            // tabelas dentro da transação → "objectStore not found"
+            // (NotFoundError não tratada em todo pull de curations).
+            // Fora da zona, cada acesso vira transação própria.
+            setTimeout(() => {
+                try {
+                    window.dispatchEvent(new CustomEvent('concierge:data-changed', {
+                        detail: {
+                            table,
+                            action,
+                            recordId,
+                            source: payload.source || 'local',
+                            timestamp: new Date().toISOString(),
+                            ...payload
+                        }
+                    }));
+                } catch (eventError) {
+                    this.log.warn('⚠️ Failed to emit data change event:', eventError?.message || eventError);
+                }
+            }, 0);
         };
 
         // Auto-timestamp entities

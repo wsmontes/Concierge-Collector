@@ -17,7 +17,8 @@ Fonte: memórias do projeto, auditoria de segurança, sessões de trabalho e est
 ## Pendências
 
 ### Frontend/UI
-- [ ] Ruído de log: `Unhandled rejection: NotFoundError: objectStore not found` no SyncManagerV3 em perfil novo (fallback scan) — inofensivo mas polui console
+- [x] ~~Ruído de log: `Unhandled rejection: NotFoundError: objectStore not found`~~ — RESOLVIDO: hooks do DataStore disparavam `concierge:data-changed` SINCRONAMENTE dentro da transação (escopo travado); listeners liam outras tabelas → NotFoundError. Evento agora é deferido (setTimeout 0).
+- [x] ~~Click no card de curadoria linkada não abria detalhes~~ — RESOLVIDO: regressão do renderCurationsPage (createCurationCard sem onClick — o default é console.log); agora abre handleViewReviewDetails como o review card.
 - [ ] `dbg.tmp.mjs` na raiz (resto de debug do IndexedDB) — apagar
 - [ ] Curadorias órfãs (53 no Mongo, ids `entity_curation_test_*`): review card sem véu — decidir: limpar lixo ou resolver por nome via EntityBrowser
 - [ ] Degraded mode: tela de erro usa cinzas antigos; fluxo sem IndexedDB merece passe visual

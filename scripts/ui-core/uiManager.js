@@ -1168,7 +1168,12 @@ if (typeof window.UIManager === 'undefined') {
             pageCurations.forEach(function(curation) {
                 var entity = curation.entity_id ? entitiesMap.get(curation.entity_id) : null;
                 var card = entity
-                    ? window.CardFactory.createCurationCard(entity, curation)
+                    ? window.CardFactory.createCurationCard(entity, curation, {
+                        // Regressão: o card de entity não tem handler de
+                        // detalhes por padrão (só console.log) — o review
+                        // card abre handleViewReviewDetails no click.
+                        onClick: () => self.handleViewReviewDetails(curation)
+                    })
                     : self.createReviewCard(curation);
                 container.appendChild(card);
             });
