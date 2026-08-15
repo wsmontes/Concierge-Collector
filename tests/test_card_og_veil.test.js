@@ -56,12 +56,15 @@ describe('CardFactory — véu OG (data-og-source)', () => {
     expect(card.querySelector('.card-og-veil')).toBeTruthy();
   });
 
-  test('card sem website fica sem véu e sem marcação', () => {
+  test('card sem website fica sem marcação, mas com slot de véu (fallback)', () => {
     const factory = loadCardFactory();
     const card = factory.createEntityCard(entitySemSite, { showEntityActions: false });
 
     expect(card.dataset.ogSource).toBeUndefined();
-    expect(card.querySelector('.card-og-veil')).toBeNull();
+    expect(card.dataset.ogPlaceId).toBeUndefined();
+    // o slot existe sempre: o módulo aplica o véu de fallback no tom
+    // do status (princípio feedmine de card nunca branco vazio)
+    expect(card.querySelector('.card-og-veil')).toBeTruthy();
   });
 
   test('shape bulk (data.contacts.website plural) também ganha o véu', () => {
@@ -173,7 +176,7 @@ describe('OgImageModule — resolução, cache e aplicação do véu', () => {
     expect(card.querySelector('.card-og-veil').style.backgroundImage).toContain('blob:cached-1');
   });
 
-  test('404/sem imagem deixa o card limpo (sem véu, sem erro)', async () => {
+  test('404/sem imagem aplica o véu de fallback (nunca card cru)', async () => {
     const OgImageModuleClass = loadOgImageModule();
     window.ApiService = { request: vi.fn().mockResolvedValue({ ok: false, status: 404 }) };
 
@@ -189,7 +192,29 @@ describe('OgImageModule — resolução, cache e aplicação do véu', () => {
     await vi.waitFor(() => {
       expect(window.ApiService.request).toHaveBeenCalled();
     });
-    expect(card.querySelector('.card-og-veil').classList.contains('card-og-veil--visible')).toBe(false);
+    const veil = card.querySelector('.card-og-veil');
+    expect(veil.classList.contains('card-og-veil--visible')).toBe(false);
+    expect(veil.classList.contains('card-og-veil--fallback')).toBe(true);
+  });
+
+  test('card sem nenhuma fonte ganha fallback imediato SEM chamada de API', async () => {
+    const OgImageModuleClass = loadOgImageModule();
+    const request = vi.fn();
+    window.ApiService = { request };
+
+    const module = new OgImageModuleClass();
+    await module.init();
+
+    const card = document.createElement('div');
+    card.innerHTML = '<div class="card-og-veil"></div>';
+    document.body.appendChild(card);
+
+    module._queue(card);
+    await vi.waitFor(() => {
+      expect(card.querySelector('.card-og-veil').classList.contains('card-og-veil--fallback')).toBe(true);
+    });
+
+    expect(request).not.toHaveBeenCalled();
   });
 
   test('card sem website mas com place_id chama a API só com place_id', async () => {

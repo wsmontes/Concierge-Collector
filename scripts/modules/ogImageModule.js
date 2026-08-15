@@ -64,10 +64,20 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
      * @param {HTMLElement} card - Card com data-og-source e/ou data-og-place-id
      */
     _queue(card) {
+        if (card.dataset && (card.dataset.ogResolved || card.dataset.ogFailed)) return;
+        if (!card.querySelector('.card-og-veil')) return; // card sem slot de véu
+
         const url = (card.dataset && card.dataset.ogSource) || '';
         const placeId = (card.dataset && card.dataset.ogPlaceId) || '';
-        if ((!url && !placeId) || card.dataset.ogResolved || card.dataset.ogFailed) return;
-        card.dataset.ogResolved = '1'; // enfileirado — nunca processa duas vezes
+        card.dataset.ogResolved = '1'; // processado — nunca duas vezes
+
+        // Sem NENHUMA fonte: estado final decidido já no render (padrão
+        // feedmine "cards resolvidos antes de aparecer") — véu de
+        // fallback no tom do status, sem rede.
+        if (!url && !placeId) {
+            this._applyFallback(card);
+            return;
+        }
 
         // chave de dedupe/cache: site quando existe; senão o lugar
         const key = url || `place:${placeId}`;
@@ -78,12 +88,28 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
             this._pending.set(key, promise);
         }
         promise.then((objectUrl) => {
-            if (!objectUrl) return; // sem imagem em nenhuma fonte — card limpo
+            if (!objectUrl) {
+                // sem imagem em nenhuma fonte — véu de fallback
+                this._applyFallback(card);
+                return;
+            }
             this._applyVeil(card, objectUrl);
         }).catch(() => {
-            // falha de rede/api — card fica limpo
+            // falha de rede/api — véu de fallback, card nunca fica cru
+            this._applyFallback(card);
             card.dataset.ogFailed = '1';
         });
+    }
+
+    /**
+     * Véu de fallback: gradiente suave no tom do status do card
+     * (card-accent-* + CSS em components.css). Sem imagem, sem rede.
+     * @param {HTMLElement} card - Card alvo
+     */
+    _applyFallback(card) {
+        const veil = card.querySelector('.card-og-veil');
+        if (!veil) return;
+        veil.classList.add('card-og-veil--fallback');
     }
 
     /**
