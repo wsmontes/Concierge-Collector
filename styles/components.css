@@ -1629,6 +1629,15 @@
   z-index: 1;
 }
 
+/* Estabilização mobile: cards só rolam no EIXO VERTICAL — o pan
+   horizontal fica livre para gestos próprios do app (swipe actions)
+   sem disputar com o scroll/back do browser */
+.restaurant-card,
+[data-entity-id],
+.review-card {
+  touch-action: pan-y;
+}
+
 /* Véu de FALLBACK — princípio feedmine "cards resolvidos antes de
    aparecer": card sem imagem nunca fica branco vazio; ganha um
    gradiente suave no TOM DO STATUS (placeholder de categoria, como o
