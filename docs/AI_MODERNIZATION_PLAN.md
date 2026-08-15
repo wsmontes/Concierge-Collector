@@ -9,7 +9,7 @@ Estado atual auditado: 5 serviços em `openai_configs` (Mongo). `whisper-1` e `t
 - [x] ~~`concept_extraction_text` → **`gpt-5.6-terra`**~~ ✓ (extração real validada: JSON estruturado OK)
 - [x] ~~`restaurant_name_extraction` + `restaurant_name_extraction_text` → **`gpt-5.6-luna`**~~ ✓ (nome extraído OK)
 - [ ] `image_analysis` (`gpt-4o` atual): avaliar migração para gpt-5.6-terra — validar suporte a visão antes
-- [ ] `reasoning_effort` none/minimal nas extrações (terra usou 98 reasoning tokens sozinho — avaliar)
+- [x] ~~`reasoning_effort` nas extrações~~ ✓ — contrato empírico: `reasoning_effort` via `extra_body` (SDK 1.57 não expõe; a forma `reasoning:{effort}` é rejeitada). concept_extraction_text roda com `low` (0 reasoning tokens medidos, qualidade mantida nas 2 amostras)
 - [x] ~~Validar end-to-end com amostra real~~ ✓ (SDK direto; LM Studio shadow contornado com env -u)
 - [x] ~~Update cirúrgico no Mongo~~ ✓ (3 rows; NUNCA re-rodar o seed)
 - [x] ~~Contrato empírico da família 5.6~~ ✓ — `max_tokens` REJEITADO (usar `max_completion_tokens`), `temperature` só aceita 1 (omitir). openai_service.py agora lê os params do config (fonte única) em vez de hardcodar — código ajustado e testado (206 unit ✓)
@@ -28,7 +28,7 @@ Estado atual auditado: 5 serviços em `openai_configs` (Mongo). `whisper-1` e `t
 
 - [x] ~~Parse do JSON~~ ✓ — re-prompt ÚNICO em JSON inválido (o erro vai no prompt da 2ª chamada; máx 2 por extração; falhou as duas → ValueError)
 - [x] ~~Rejeição de categoria fora do vocabulário~~ ✓ — `_canonicalize_categories`: chaves fora do vocabulário ignoradas, price_range só aceita o canônico (aliases mapeados, exatamente um), tags lowercased (exceções menu/price_and_payment). 7 testes unit.
-- [ ] Validação entity name não-vazio / coerência concepts↔entity (rodada seguinte)
+- [x] ~~Validação entity name~~ ✓ — `_clean_restaurant_name` (placeholders → None, >100 chars → None) + re-prompt único em JSON inválido na extração de nome; 9 testes unit no arquivo de validação
 
 ## Fase 4 — Retries
 

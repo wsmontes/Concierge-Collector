@@ -220,6 +220,20 @@ def _canonicalize_categories(raw_result: Dict[str, Any], allowed_keys: set) -> D
     return normalized
 
 
+def _clean_restaurant_name(value) -> Optional[str]:
+    """Validação do nome extraído (Fase 3): placeholders viram None e
+    nomes absurdamente longos (frase inteira em vez de nome) são
+    descartados."""
+    if not isinstance(value, str):
+        return None
+    name = value.strip()
+    if not name or name.lower() in {"unknown", "null", "none", "n/a"}:
+        return None
+    if len(name) > 100:
+        return None
+    return name
+
+
 class OpenAIService:
     """OpenAI service using MongoDB configuration"""
 
@@ -459,35 +473,42 @@ class OpenAIService:
 
         prompt = self.config_service.render_prompt(config_service_name, {"text": text})
 
-        response = await asyncio.to_thread(
-            self.client.chat.completions.create,
-            model=config["model"],
-            messages=[{"role": "user", "content": prompt}],
-            **config["config"],
-        )
-
-        raw_content = (response.choices[0].message.content or "").strip()
+        # Re-prompt único em parse inválido (mesmo padrão da extração de
+        # conceitos — Fase 3 da modernização)
+        parsed = None
+        raw_content = ""
+        for attempt in range(2):
+            response = await asyncio.to_thread(
+                self.client.chat.completions.create,
+                model=config["model"],
+                messages=[{"role": "user", "content": prompt}],
+                **config["config"],
+            )
+            raw_content = (response.choices[0].message.content or "").strip()
+            if raw_content.startswith("```"):
+                raw_content = raw_content.strip("`")
+                if raw_content.startswith("json"):
+                    raw_content = raw_content[4:].strip()
+            try:
+                parsed = json.loads(raw_content)
+                break
+            except json.JSONDecodeError:
+                prompt = (
+                    prompt
+                    + "\n\nSua resposta anterior não era JSON válido. "
+                    + "Responda SOMENTE com JSON válido, sem markdown."
+                )
 
         restaurant_name = None
         confidence_score = None
 
-        try:
-            parsed = json.loads(raw_content)
-            if isinstance(parsed, dict):
-                restaurant_name = parsed.get("restaurant_name") or parsed.get("name") or parsed.get("result")
-                confidence_score = parsed.get("confidence_score")
-        except Exception:
+        if isinstance(parsed, dict):
+            restaurant_name = parsed.get("restaurant_name") or parsed.get("name") or parsed.get("result")
+            confidence_score = parsed.get("confidence_score")
+        else:
             restaurant_name = raw_content
 
-        if isinstance(restaurant_name, str):
-            restaurant_name = restaurant_name.strip()
-            if not restaurant_name or restaurant_name.lower() in {
-                "unknown",
-                "null",
-                "none",
-                "n/a",
-            }:
-                restaurant_name = None
+        restaurant_name = _clean_restaurant_name(restaurant_name)
 
         result = {
             "restaurant_name": restaurant_name,
@@ -557,6 +578,10 @@ class OpenAIService:
             completion_kwargs["temperature"] = cfg["temperature"]
         if cfg.get("response_format"):
             completion_kwargs["response_format"] = cfg["response_format"]
+        # GPT-5.6 aceita reasoning_effort (none..max) mas o SDK 1.57 não
+        # expõe o param — vai via extra_body, declarado no config do Mongo
+        if cfg.get("extra_body"):
+            completion_kwargs["extra_body"] = cfg["extra_body"]
 
         messages = [
             {

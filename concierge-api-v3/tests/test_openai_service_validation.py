@@ -71,3 +71,20 @@ def test_price_and_payment_preserva_formato():
     raw = {"price_and_payment": ["R$ 480"]}
     out = _canonicalize_categories(raw, ALLOWED)
     assert out["price_and_payment"] == ["R$ 480"]
+
+
+def test_clean_restaurant_name_placeholders():
+    from app.services.openai_service import _clean_restaurant_name
+
+    assert _clean_restaurant_name("Unknown") is None
+    assert _clean_restaurant_name("N/A") is None
+    assert _clean_restaurant_name("  ") is None
+    assert _clean_restaurant_name(None) is None
+    assert _clean_restaurant_name(42) is None
+
+
+def test_clean_restaurant_name_valida_e_longa():
+    from app.services.openai_service import _clean_restaurant_name
+
+    assert _clean_restaurant_name("  Trattoria del Centro ") == "Trattoria del Centro"
+    assert _clean_restaurant_name("x" * 150) is None  # frase inteira, não nome
