@@ -51,7 +51,7 @@ const DatabaseDiagnostics = ModuleWrapper.defineClass('DatabaseDiagnostics', cla
             // Counts
             const entityCount = await db.entities.count();
             const curationCount = await db.curations.count();
-            const queueCount = await db.sync_queue.count();
+            const queueCount = await db.syncQueue.count();
             
             console.log('Entities:', entityCount);
             console.log('Curations:', curationCount);
@@ -214,7 +214,7 @@ const DatabaseDiagnostics = ModuleWrapper.defineClass('DatabaseDiagnostics', cla
             // Clear all data
             await db.entities.clear();
             await db.curations.clear();
-            await db.sync_queue.clear();
+            await db.syncQueue.clear();
             await db.sync_metadata.clear();
             
             console.log('✅ Database cleared');
