@@ -2073,14 +2073,14 @@ if (typeof window.UIManager === 'undefined') {
                     </div>
                     <div class="flex items-center gap-2">
                         ${isLinked ? `
-                            <button class="btn-unlink-entity icon-btn text-amber-700 hover:bg-amber-100 hover:text-amber-800 hover:border-amber-200" title="Unlink from entity">
+                            <button class="btn-unlink-entity icon-btn text-amber-700 hover:bg-amber-100 hover:text-amber-800 hover:border-amber-200" title="Unlink from entity" aria-label="Unlink from entity">
                                 <span class="material-icons text-lg">link_off</span>
                             </button>
                         ` : ''}
-                        <button class="btn-edit-curation icon-btn hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200" title="Edit Curation">
+                        <button class="btn-edit-curation icon-btn hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200" title="Edit Curation" aria-label="Edit curation">
                             <span class="material-icons text-xl">edit</span>
                         </button>
-                        <button class="btn-delete-curation icon-btn text-red-500 hover:bg-red-50 hover:text-red-700 hover:border-red-200" title="Delete Draft">
+                        <button class="btn-delete-curation icon-btn text-red-500 hover:bg-red-50 hover:text-red-700 hover:border-red-200" title="Delete Draft" aria-label="Delete draft">
                             <span class="material-icons text-xl">delete_outline</span>
                         </button>
                     </div>

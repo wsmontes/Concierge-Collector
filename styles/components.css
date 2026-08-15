@@ -1709,31 +1709,62 @@
 /* Tons do fallback por status (mesmo mapeamento semântico do tema:
    draft=bronze, linked=aço, active=garrafa, archived=pedra,
    deleted=tijolo) */
-.card-accent-draft .card-og-veil--fallback,
-.card-accent-pending .card-og-veil--fallback {
-  --og-fallback-a: rgba(176, 137, 59, 0.16); /* bronze */
-  --og-fallback-b: rgba(176, 137, 59, 0.03);
-  --og-fallback-fg: #b0893b;
+/* Fallback do véu: NEUTRO (pedra) para todos os status — o estado do
+   workflow já vive na borda (card-accent-*) e no chip; o fallback da
+   imagem é conteúdo, não status. Uma cor só, mais calmo. */
+.card-og-veil--fallback {
+  --og-fallback-a: rgba(126, 120, 108, 0.13); /* pedra */
+  --og-fallback-b: rgba(126, 120, 108, 0.02);
+  --og-fallback-fg: #8a8377;
 }
-.card-accent-linked .card-og-veil--fallback {
-  --og-fallback-a: rgba(61, 90, 128, 0.14); /* aço */
-  --og-fallback-b: rgba(61, 90, 128, 0.03);
-  --og-fallback-fg: #3d5a80;
+
+/* Menu "⋯" dos cards (source/sync + Delete) — nível operacional
+   secundário; posicionado fixo via JS sob o botão */
+.card-more-menu {
+  position: fixed;
+  z-index: 1060;
+  min-width: 12rem;
+  background: #fff;
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-radius: 0.75rem;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
+  padding: 0.375rem;
 }
-.card-accent-active .card-og-veil--fallback {
-  --og-fallback-a: rgba(74, 124, 89, 0.14); /* garrafa */
-  --og-fallback-b: rgba(74, 124, 89, 0.03);
-  --og-fallback-fg: #4a7c59;
+
+.card-more-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.5rem 0.625rem;
+  font-size: 0.8125rem;
+  border-radius: 0.5rem;
+  border: none;
+  background: none;
+  cursor: pointer;
+  color: var(--color-text-primary, #111827);
+  text-align: left;
 }
-.card-accent-archived .card-og-veil--fallback {
-  --og-fallback-a: rgba(126, 120, 108, 0.15); /* pedra */
-  --og-fallback-b: rgba(126, 120, 108, 0.03);
-  --og-fallback-fg: #7e786c;
+
+.card-more-menu__info {
+  color: var(--color-text-secondary, #6b7280);
+  cursor: default;
 }
-.card-accent-deleted .card-og-veil--fallback {
-  --og-fallback-a: rgba(176, 67, 59, 0.15); /* tijolo */
-  --og-fallback-b: rgba(176, 67, 59, 0.03);
-  --og-fallback-fg: #b0433b;
+
+.card-more-menu__info .material-icons {
+  font-size: 1rem;
+}
+
+.card-more-menu__danger {
+  color: var(--color-error, #b0433b);
+}
+
+.card-more-menu__danger:hover {
+  background: var(--color-error-light, #f6e2df);
+}
+
+.card-more-menu__item:hover:not(.card-more-menu__info) {
+  background: var(--color-bg-secondary, #f3f4f6);
 }
 
 /* Read-state do feedmine: cards arquivados/deletados ficam atenuados
