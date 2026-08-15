@@ -1747,3 +1747,160 @@
 .card-accent-deleted:hover {
   opacity: 1;
 }
+
+/* ===================================================================
+   EDITOR POR ÁREAS (UX: Identity / Curation / Concepts / Source material)
+   ===================================================================
+   Mobile: uma coluna, accordions na ordem natural do fluxo.
+   Desktop (≥1024px): 2 colunas — editorial (Curation+Concepts) à
+   esquerda, contexto factual (Identity+Sources) à direita — e uma
+   faixa de âncoras sticky sob o header. */
+
+/* O style.css legado dá overflow:hidden + ripple ::after às sections —
+   o overflow quebra o sticky das âncoras do editor; aqui o editor pede
+   overflow visível e sem ripple */
+#concepts-section {
+  overflow: visible;
+}
+
+#concepts-section::after {
+  display: none;
+}
+
+.editor-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+
+/* No mobile as colunas somem e as áreas viram itens diretos (a ordem
+   visual é controlada pelos .editor-area--* abaixo) */
+.editor-col-main,
+.editor-col-context {
+  display: contents;
+}
+
+.editor-area {
+  scroll-margin-top: 8rem;
+}
+
+.editor-area--identity { order: 1; }
+.editor-area--curation { order: 2; }
+.editor-area--concepts { order: 3; }
+.editor-area--sources { order: 4; }
+
+.editor-section-heading {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-family: var(--font-sans, 'DM Sans', sans-serif);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: var(--color-text-secondary, #6b7280);
+  padding-bottom: 0.5rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--color-border, #e5e7eb);
+}
+
+.editor-section-heading > .material-icons {
+  font-size: 1rem;
+  color: var(--color-primary, #6f8256);
+}
+
+/* Botão do accordion (mobile) — desktop esconde, mas o estado
+   colapsado sobrevive à rotação */
+.editor-section-toggle {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  min-height: 44px; /* touch target mínimo */
+  border: none;
+  background: transparent;
+  border-radius: 0.375rem;
+  color: var(--color-text-secondary, #6b7280);
+  cursor: pointer;
+}
+
+.editor-section-toggle:hover {
+  background: var(--color-bg-secondary, #f3f4f6);
+}
+
+.editor-section-toggle .material-icons {
+  transition: transform 0.2s ease;
+}
+
+.editor-area.is-collapsed .editor-section-toggle .material-icons {
+  transform: rotate(180deg);
+}
+
+.editor-area.is-collapsed .editor-section-body {
+  display: none;
+}
+
+/* Faixa de âncoras do editor (desktop apenas) */
+#edit-section-nav {
+  display: none;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0 0.5rem;
+  margin-bottom: 1rem;
+  border-bottom: 1px solid var(--color-border, #e5e7eb);
+  position: sticky;
+  top: 4.25rem;
+  background: var(--color-bg-primary, #ffffff);
+  z-index: 30;
+}
+
+.edit-nav-link {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: var(--color-text-secondary, #6b7280);
+  padding: 0.375rem 0.625rem;
+  border-radius: 0.375rem;
+  text-decoration: none;
+  white-space: nowrap;
+}
+
+.edit-nav-link:hover {
+  color: var(--color-text-primary, #111827);
+  background: var(--color-bg-secondary, #f3f4f6);
+}
+
+@media (min-width: 1024px) {
+  #edit-section-nav {
+    display: flex;
+  }
+
+  .editor-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1.62fr) minmax(0, 1fr);
+    gap: 1.5rem;
+    align-items: start;
+  }
+
+  .editor-col-main {
+    display: block;
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .editor-col-context {
+    display: block;
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .editor-section-toggle {
+    display: none;
+  }
+
+  /* Estado colapsado no mobile não pode esconder conteúdo no desktop */
+  .editor-area.is-collapsed .editor-section-body {
+    display: block;
+  }
+}

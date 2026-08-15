@@ -212,7 +212,41 @@ if (typeof window.UIManager === 'undefined') {
             // Setup global sync/data events
             this.setupGlobalEvents();
 
+            // Editor por áreas: âncoras (desktop) + accordions (mobile)
+            this.setupEditorSectionNav();
+
             console.log('UIManager initialized');
+        }
+
+        /**
+         * Editor por áreas (Identity / Curation / Concepts / Source
+         * material): âncoras no desktop e accordions no mobile.
+         * As âncoras NÃO usam href="#id" — o hash é rota do
+         * NavigationManager; o scroll é feito via scrollIntoView.
+         */
+        setupEditorSectionNav() {
+            document.querySelectorAll('#edit-section-nav [data-edit-nav]').forEach((link) => {
+                link.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    const target = document.getElementById(link.dataset.editNav);
+                    if (target) {
+                        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
+                    }
+                });
+            });
+
+            document.querySelectorAll('.editor-section-toggle').forEach((toggle) => {
+                const area = toggle.closest('.editor-area');
+                toggle.addEventListener('click', () => {
+                    if (!area) return;
+                    const collapsed = area.classList.toggle('is-collapsed');
+                    toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+                    toggle.setAttribute(
+                        'aria-label',
+                        collapsed ? 'Expand section' : 'Collapse section'
+                    );
+                });
+            });
         }
 
         /**

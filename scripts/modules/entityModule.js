@@ -386,6 +386,9 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
         const notesBlock = document.getElementById('curation-notes-block');
         const conceptsContainer = document.getElementById('concepts-container');
         const curationFooter = document.getElementById('curation-edit-footer');
+        // Editor por áreas: a área Concepts inteira some no modo entity
+        // (o body ficaria vazio com o heading órfão)
+        const conceptsSection = document.getElementById('edit-section-concepts');
 
         if (entityEditor) {
             entityEditor.classList.toggle('hidden', !isEntityEdit);
@@ -401,6 +404,10 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
 
         if (conceptsContainer) {
             conceptsContainer.classList.toggle('hidden', isEntityEdit);
+        }
+
+        if (conceptsSection) {
+            conceptsSection.classList.toggle('hidden', isEntityEdit);
         }
 
         if (curationFooter) {

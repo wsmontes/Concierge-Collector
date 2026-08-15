@@ -221,9 +221,34 @@
         <!-- Concepts Section -->
         <section id="concepts-section" class="panel mb-8 p-6 hidden">
             <h2 class="section-heading">
-                <span class="material-icons">category</span>
-                Restaurant Concepts
+                <span class="material-icons">edit_note</span>
+                Curation
             </h2>
+
+            <!-- Navegação de seções do editor (desktop) — no mobile as
+                 mesmas áreas viram accordions -->
+            <nav id="edit-section-nav" aria-label="Editor sections">
+                <a href="#" data-edit-nav="edit-section-identity" class="edit-nav-link">Identity</a>
+                <a href="#" data-edit-nav="edit-section-curation" class="edit-nav-link">Curation</a>
+                <a href="#" data-edit-nav="edit-section-concepts" class="edit-nav-link">Concepts</a>
+                <a href="#" data-edit-nav="edit-section-sources" class="edit-nav-link">Source material</a>
+            </nav>
+
+            <!-- Editor por áreas conceituais: Identity / Curation / Concepts
+                 / Source material. Desktop: 2 colunas (editorial à esquerda,
+                 contexto factual à direita). Mobile: accordions. -->
+            <div class="editor-grid">
+                <div class="editor-col-context">
+                    <div id="edit-section-identity" class="editor-area editor-area--identity">
+                        <h3 class="editor-section-heading">
+                            <span class="material-icons" aria-hidden="true">storefront</span>
+                            Identity
+                            <button type="button" class="editor-section-toggle" aria-expanded="true"
+                                aria-controls="edit-section-identity-body" aria-label="Collapse Identity section">
+                                <span class="material-icons" aria-hidden="true">expand_less</span>
+                            </button>
+                        </h3>
+                        <div id="edit-section-identity-body" class="editor-section-body">
             <div class="mb-6">
                 <label for="restaurant-name" class="label label-required">
                     Restaurant Name:
@@ -309,6 +334,19 @@
                     </div>
                 </div>
             </div>
+                    </div>
+                </div>
+
+                <div id="edit-section-sources" class="editor-area editor-area--sources">
+                    <h3 class="editor-section-heading">
+                        <span class="material-icons" aria-hidden="true">inventory_2</span>
+                        Source material
+                        <button type="button" class="editor-section-toggle" aria-expanded="true"
+                            aria-controls="edit-section-sources-body" aria-label="Collapse Source material section">
+                            <span class="material-icons" aria-hidden="true">expand_less</span>
+                        </button>
+                    </h3>
+                    <div id="edit-section-sources-body" class="editor-section-body">
 
             <div class="mb-6">
                 <label class="block mb-2 font-medium flex items-center">
@@ -350,6 +388,21 @@
                     </button>
                 </div>
             </div>
+
+                    </div>
+                </div>
+            </div>
+            <div class="editor-col-main">
+                <div id="edit-section-curation" class="editor-area editor-area--curation">
+                    <h3 class="editor-section-heading">
+                        <span class="material-icons" aria-hidden="true">edit_note</span>
+                        Curation
+                        <button type="button" class="editor-section-toggle" aria-expanded="true"
+                            aria-controls="edit-section-curation-body" aria-label="Collapse Curation section">
+                            <span class="material-icons" aria-hidden="true">expand_less</span>
+                        </button>
+                    </h3>
+                    <div id="edit-section-curation-body" class="editor-section-body">
 
             <!-- Restaurant Description -->
             <div class="mb-6">
@@ -396,7 +449,26 @@
                 </div>
             </div>
 
+                    </div>
+                </div>
+
+                <div id="edit-section-concepts" class="editor-area editor-area--concepts">
+                    <h3 class="editor-section-heading">
+                        <span class="material-icons" aria-hidden="true">category</span>
+                        Concepts
+                        <button type="button" class="editor-section-toggle" aria-expanded="true"
+                            aria-controls="edit-section-concepts-body" aria-label="Collapse Concepts section">
+                            <span class="material-icons" aria-hidden="true">expand_less</span>
+                        </button>
+                    </h3>
+                    <div id="edit-section-concepts-body" class="editor-section-body">
+
             <div id="concepts-container" class="mb-6"></div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
 
             <div id="curation-edit-footer" class="mt-8 pt-4 border-t border-gray-200 hidden">
                 <div class="flex items-center justify-end gap-2">
