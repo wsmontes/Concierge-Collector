@@ -8,7 +8,7 @@ Inventário das ~40 rotas em 14 routers (`concierge-api-v3/app/api/`), cruzado c
 |---|---|---|
 | `/health` × 5 | system.py, ai.py (`/health` + `/health/original`), places.py, places_orchestrate.py, llm_gateway.py | Manter `system/health` como canônico; remover `health/original` (0 usos); os demais viram alias ou somem |
 | `/orchestrate` × 2 | ai.py e places_orchestrate.py | Consolidar (auditoria de segurança já apontou; places_orchestrate é o canônico) |
-| Routers Places duplicados | `places.py` (nearby/details) + `places_router.py` (photo, photos) | Mesclar num único `places` router |
+| Routers Places duplicados | `places.py` (nearby/details) + `places_router.py` (photo, photos) | ~~Mesclar~~ — CONSOLIDADOS em ago/2026 (places_router.py removido; rotas preservadas) |
 | `db.sync_queue` (typo) | databaseDiagnostics — corrigido em ago/2026 | ✓ |
 
 ## Rotas sem uso no frontend (consumidor externo ou morta?)
@@ -41,4 +41,4 @@ Inventário das ~40 rotas em 14 routers (`concierge-api-v3/app/api/`), cruzado c
 
 - [x] ~~Confirmar `usage-stats` morta → remover~~ ✓
 - [x] ~~Remover `health/original`~~ ✓
-- [ ] Consolidar routers places + orchestrates + healths (refactor planejado, com testes)
+- [x] ~~Consolidar routers places~~ ✓ (orchestrates/healths restam)
