@@ -25,7 +25,7 @@ Fonte: memórias do projeto, auditoria de segurança, sessões de trabalho e est
 
 ### Backend API
 - [ ] **Revisão sistemática dos endpoints** (13 routers) — dead code, contratos de erro, rate limits, consistência de auth
-- [ ] Routers `places.py` + `places_router.py` duplicados — consolidar em um único (pendência da auditoria de segurança)
+- [x] ~~Routers `places.py` + `places_router.py` + `places_orchestrate.py`~~ — CONSOLIDADOS (rotas preservadas; healths duplicados sem consumidor removidos; rotas mortas usage-stats/health-original removidas — ver docs/API_ENDPOINT_REVIEW.md)
 - [ ] Endpoints sem uso real: mapear chamadas do frontend vs. rotas expostas
 
 ### Auth/Segurança
