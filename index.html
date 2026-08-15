@@ -532,50 +532,77 @@
 
         <!-- Curations View -->
         <div id="curations-view" class="view-content">
-            <!-- Search and Filters -->
-            <div class="mb-4 grid grid-cols-1 md:grid-cols-6 gap-3">
-                <!-- Search -->
-                <div class="md:col-span-2">
-                    <div class="relative">
-                        <input type="text" id="curation-search" placeholder="Search curations..."
-                            class="input input-md" />
+            <!-- Hierarquia de filtros: Search e Status ficam sempre
+                 visíveis (frequência alta); Curator/City/Type são
+                 refinamentos atrás de "Filters" — bottom sheet no
+                 mobile, painel flutuante no desktop -->
+            <div class="mb-4">
+                <div class="filters-bar">
+                    <!-- Search -->
+                    <div class="filters-bar__search">
+                        <div class="relative">
+                            <input type="text" id="curation-search" placeholder="Search curations..."
+                                class="input input-md" />
+                        </div>
                     </div>
-                </div>
 
-                <!-- Status Filter -->
-                <div>
-                    <select id="curation-status-filter" class="select input-md">
-                        <option value="all">All Status</option>
-                        <option value="draft">Draft</option>
-                        <option value="linked">Linked</option>
-                        <option value="active">Active</option>
-                        <option value="archived">Archived</option>
-                        <option value="deleted">Deleted</option>
-                    </select>
-                </div>
+                    <!-- Status Filter -->
+                    <div class="filters-bar__status">
+                        <select id="curation-status-filter" class="select input-md" aria-label="Filter by status">
+                            <option value="all">All Status</option>
+                            <option value="draft">Draft</option>
+                            <option value="linked">Linked</option>
+                            <option value="active">Active</option>
+                            <option value="archived">Archived</option>
+                            <option value="deleted">Deleted</option>
+                        </select>
+                    </div>
 
-                <!-- Curator Filter -->
-                <div>
-                    <select id="curation-curator-filter" class="select input-md">
-                        <option value="all">All Curators</option>
-                    </select>
+                    <button id="curation-filters-toggle" type="button" class="btn btn-outline btn-md filters-toggle"
+                        aria-haspopup="dialog" aria-controls="curation-filters-sheet">
+                        <span class="material-icons mr-1" aria-hidden="true">tune</span>
+                        Filters
+                        <span id="curation-filters-count" class="filters-count hidden" aria-label="active filters">0</span>
+                    </button>
                 </div>
+            </div>
 
-                <!-- City Filter -->
-                <div>
-                    <input type="text" id="curation-city-filter" placeholder="Filter by city..."
-                        class="input input-md" />
+            <!-- Filtros avançados (bottom sheet — mobile) -->
+            <div id="curation-filters-sheet" class="bottom-sheet" data-bottom-sheet data-height="auto">
+                <div class="bottom-sheet-handle"></div>
+                <div class="bottom-sheet-header">
+                    <h3 class="bottom-sheet-title">Filters</h3>
                 </div>
+                <div class="bottom-sheet-body">
+                    <div id="curation-filter-chips" class="filters-chips"></div>
+                    <div class="space-y-4">
+                        <!-- Curator Filter -->
+                        <div>
+                            <label for="curation-curator-filter" class="filters-sheet-label">Curator</label>
+                            <select id="curation-curator-filter" class="select input-md">
+                                <option value="all">All Curators</option>
+                            </select>
+                        </div>
 
-                <!-- Type Filter -->
-                <div>
-                    <select id="curation-type-filter" class="select input-md">
-                        <option value="all">All Types</option>
-                        <option value="restaurant">Restaurants</option>
-                        <option value="bar">Bars</option>
-                        <option value="hotel">Hotels</option>
-                        <option value="cafe">Cafés</option>
-                    </select>
+                        <!-- City Filter -->
+                        <div>
+                            <label for="curation-city-filter" class="filters-sheet-label">City</label>
+                            <input type="text" id="curation-city-filter" placeholder="Filter by city..."
+                                class="input input-md" />
+                        </div>
+
+                        <!-- Type Filter -->
+                        <div>
+                            <label for="curation-type-filter" class="filters-sheet-label">Type</label>
+                            <select id="curation-type-filter" class="select input-md">
+                                <option value="all">All Types</option>
+                                <option value="restaurant">Restaurants</option>
+                                <option value="bar">Bars</option>
+                                <option value="hotel">Hotels</option>
+                                <option value="cafe">Cafés</option>
+                            </select>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -585,32 +612,56 @@
 
         <!-- Entities View -->
         <div id="entities-view" class="view-content hidden">
-            <!-- Search and Filters -->
-            <div class="mb-4 grid grid-cols-1 md:grid-cols-4 gap-3">
-                <!-- Search -->
-                <div class="md:col-span-2">
-                    <div class="relative">
-                        <input type="text" id="entity-search" placeholder="Search entities..."
-                            class="input input-md" />
+            <!-- Mesma hierarquia das curations: Search sempre visível;
+                 Type/City atrás de "Filters" (bottom sheet) -->
+            <div class="mb-4">
+                <div class="filters-bar">
+                    <!-- Search -->
+                    <div class="filters-bar__search">
+                        <div class="relative">
+                            <input type="text" id="entity-search" placeholder="Search entities..."
+                                class="input input-md" />
+                        </div>
                     </div>
-                </div>
 
-                <!-- Type Filter -->
-                <div>
-                    <select id="entity-type-filter" class="select input-md">
-                        <option value="all">All Types</option>
-                        <option value="restaurant">Restaurants</option>
-                        <option value="bar">Bars</option>
-                        <option value="hotel">Hotels</option>
-                        <option value="cafe">Cafés</option>
-                    </select>
+                    <button id="entity-filters-toggle" type="button" class="btn btn-outline btn-md filters-toggle"
+                        aria-haspopup="dialog" aria-controls="entity-filters-sheet">
+                        <span class="material-icons mr-1" aria-hidden="true">tune</span>
+                        Filters
+                        <span id="entity-filters-count" class="filters-count hidden" aria-label="active filters">0</span>
+                    </button>
                 </div>
+            </div>
 
-                <!-- City Filter (texto livre — regex server-side no street;
-                     o bulk import guarda a cidade dentro do endereço) -->
-                <div>
-                    <input type="text" id="entity-city-filter" placeholder="Filter by city..."
-                        class="input input-md" />
+            <!-- Filtros avançados de entities (bottom sheet) -->
+            <div id="entity-filters-sheet" class="bottom-sheet" data-bottom-sheet data-height="auto">
+                <div class="bottom-sheet-handle"></div>
+                <div class="bottom-sheet-header">
+                    <h3 class="bottom-sheet-title">Filters</h3>
+                </div>
+                <div class="bottom-sheet-body">
+                    <div id="entity-filter-chips" class="filters-chips"></div>
+                    <div class="space-y-4">
+                        <!-- Type Filter -->
+                        <div>
+                            <label for="entity-type-filter" class="filters-sheet-label">Type</label>
+                            <select id="entity-type-filter" class="select input-md">
+                                <option value="all">All Types</option>
+                                <option value="restaurant">Restaurants</option>
+                                <option value="bar">Bars</option>
+                                <option value="hotel">Hotels</option>
+                                <option value="cafe">Cafés</option>
+                            </select>
+                        </div>
+
+                        <!-- City Filter (texto livre — regex server-side no street;
+                             o bulk import guarda a cidade dentro do endereço) -->
+                        <div>
+                            <label for="entity-city-filter" class="filters-sheet-label">City</label>
+                            <input type="text" id="entity-city-filter" placeholder="Filter by city..."
+                                class="input input-md" />
+                        </div>
+                    </div>
                 </div>
             </div>
 

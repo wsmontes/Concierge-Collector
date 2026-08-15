@@ -617,6 +617,8 @@ if (typeof window.UIManager === 'undefined') {
          * client-side filtering when CurationBrowser is not available.
          */
         async _reloadOrFilterCurations() {
+            // Contador/chips dos refinamentos refletem o estado novo
+            this.updateCurationFilterState();
             const browser = window.CurationBrowser;
             if (browser && browser.nextPage) {
                 // Server-driven: reset scope and fetch fresh page 1
@@ -692,6 +694,100 @@ if (typeof window.UIManager === 'undefined') {
             if (typeFilter) {
                 typeFilter.addEventListener('change', function() {
                     self._reloadOrFilterCurations();
+                });
+            }
+
+            // "Filters" abre o bottom sheet dos refinamentos
+            // (Curator/City/Type) — a instância é criada pelo auto-init
+            // do bottomSheetManager (data-bottom-sheet no markup)
+            const filtersToggle = document.getElementById('curation-filters-toggle');
+            if (filtersToggle) {
+                filtersToggle.addEventListener('click', function() {
+                    if (window.bottomSheetManager && typeof window.bottomSheetManager.open === 'function') {
+                        window.bottomSheetManager.open('curation-filters-sheet');
+                    }
+                });
+            }
+        }
+
+        /**
+         * Contador + chips dos filtros avançados de curations
+         * (Curator/City/Type). Chips limpam o próprio filtro.
+         */
+        updateCurationFilterState() {
+            this._renderFilterState({
+                countId: 'curation-filters-count',
+                chipsId: 'curation-filter-chips',
+                filters: [
+                    { id: 'curation-curator-filter', kind: 'select', label: 'Curator' },
+                    { id: 'curation-city-filter', kind: 'input', label: 'City' },
+                    { id: 'curation-type-filter', kind: 'select', label: 'Type' }
+                ],
+                onClear: () => this._reloadOrFilterCurations()
+            });
+        }
+
+        /**
+         * Contador + chips dos filtros avançados de entities (Type/City).
+         */
+        updateEntityFilterState() {
+            this._renderFilterState({
+                countId: 'entity-filters-count',
+                chipsId: 'entity-filter-chips',
+                filters: [
+                    { id: 'entity-type-filter', kind: 'select', label: 'Type' },
+                    { id: 'entity-city-filter', kind: 'input', label: 'City' }
+                ],
+                onClear: () => this._reloadOrFilterEntities()
+            });
+        }
+
+        /**
+         * Render genérico de estado de filtros avançados: contador no
+         * botão "Filters" + chips com × dentro do bottom sheet.
+         * Texto SEMPRE via textContent — o valor de city é digitado
+         * pelo usuário e nunca pode virar innerHTML.
+         */
+        _renderFilterState({ countId, chipsId, filters, onClear }) {
+            const countEl = document.getElementById(countId);
+            const chipsEl = document.getElementById(chipsId);
+            if (!countEl && !chipsEl) return;
+
+            const active = filters.filter((f) => {
+                const el = document.getElementById(f.id);
+                if (!el) return false;
+                const val = el.value || '';
+                return f.kind === 'select' ? (val && val !== 'all') : !!val.trim();
+            });
+
+            if (countEl) {
+                countEl.textContent = active.length;
+                countEl.classList.toggle('hidden', active.length === 0);
+            }
+
+            if (chipsEl) {
+                chipsEl.replaceChildren();
+                active.forEach((f) => {
+                    const el = document.getElementById(f.id);
+                    const display = f.kind === 'select'
+                        ? (el.selectedOptions?.[0]?.textContent || el.value)
+                        : el.value.trim();
+                    const chip = document.createElement('button');
+                    chip.type = 'button';
+                    chip.className = 'filters-chip';
+                    chip.setAttribute('aria-label', `Clear ${f.label} filter`);
+                    const labelSpan = document.createElement('span');
+                    labelSpan.textContent = display;
+                    const icon = document.createElement('span');
+                    icon.className = 'material-icons';
+                    icon.setAttribute('aria-hidden', 'true');
+                    icon.textContent = 'close';
+                    chip.append(labelSpan, icon);
+                    chip.addEventListener('click', () => {
+                        el.value = f.kind === 'select' ? 'all' : '';
+                        onClear();
+                    });
+                    chipsEl.appendChild(chip);
                 });
             }
         }
@@ -790,6 +886,16 @@ if (typeof window.UIManager === 'undefined') {
                     }, 300);
                 });
             }
+
+            // "Filters" abre o bottom sheet (Type/City)
+            const filtersToggle = document.getElementById('entity-filters-toggle');
+            if (filtersToggle) {
+                filtersToggle.addEventListener('click', function() {
+                    if (window.bottomSheetManager && typeof window.bottomSheetManager.open === 'function') {
+                        window.bottomSheetManager.open('entity-filters-sheet');
+                    }
+                });
+            }
         }
 
         /** Filtros da view Entities → scope do EntityBrowser (server-side).
@@ -798,6 +904,8 @@ if (typeof window.UIManager === 'undefined') {
          *  existe para o load inicial; reaplicar aqui APAGAVA o scope
          *  recém-setado e a busca server-side nunca recebia os filtros). */
         async _reloadOrFilterEntities() {
+            // Contador/chips dos refinamentos refletem o estado novo
+            this.updateEntityFilterState();
             const browser = window.EntityBrowser;
             if (browser && browser.openPage) {
                 const scope = this._getCurrentEntityFilterScope();
