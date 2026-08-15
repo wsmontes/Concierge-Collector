@@ -9,18 +9,6 @@ import pytest
 class TestAIEndpoints:
     """Test AI integration endpoints"""
 
-    def test_ai_health_check(self, client):
-        """Test AI service health endpoint"""
-        response = client.get("/api/v3/ai/health")
-
-        # May return 503 if database connection fails, but NOT 500
-        assert response.status_code in [
-            200,
-            503,
-        ], f"Health check should not return 500: {response.text}"
-        data = response.json()
-        assert "status" in data
-
     def test_orchestrate_missing_data(self, client):
         """Test orchestrate without data - should validate, not crash"""
         response = client.post("/api/v3/ai/orchestrate", json={})

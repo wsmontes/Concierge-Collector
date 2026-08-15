@@ -192,7 +192,6 @@ class TestAsyncAwaitPatterns:
         """
         # Test all async endpoints return valid responses
         endpoints = [
-            ("/api/v3/ai/health", "GET", None),
             # Add more async endpoints as needed
         ]
 

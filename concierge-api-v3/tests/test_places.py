@@ -9,14 +9,6 @@ import pytest
 class TestPlacesEndpoints:
     """Test Google Places integration"""
 
-    def test_places_health_check(self, client):
-        """Test Places API health endpoint"""
-        response = client.get("/api/v3/places/health")
-
-        assert response.status_code == 200
-        data = response.json()
-        assert "status" in data
-
     def test_nearby_search_missing_params(self, client, auth_headers):
         """Test nearby search without required params"""
         response = client.get("/api/v3/places/nearby", headers=auth_headers)

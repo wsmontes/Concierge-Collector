@@ -7,7 +7,6 @@ Handles transcription, concept extraction, image analysis, and intelligent orche
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
-import os
 
 from app.core.database import get_database
 from app.core.security import verify_auth, is_admin_auth
@@ -233,65 +232,3 @@ async def extract_restaurant_name(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Restaurant name extraction failed: {str(e)}",
         )
-
-
-@router.get("/health")
-def health_check(db=Depends(get_database)):
-    """
-    Health check for AI services.
-
-    Verifies:
-    - OpenAI API key is configured
-    - MongoDB connection is working
-    - Required collections exist
-
-    **No authentication required** - use this to diagnose issues
-    """
-    import logging
-
-    logger = logging.getLogger(__name__)
-
-    try:
-        health_status = {"service": "AI Services", "status": "healthy", "checks": {}}
-
-        # Check OpenAI API key (endpoint público — nunca expor prefixo da chave)
-        api_key = os.getenv("OPENAI_API_KEY")
-        if api_key:
-            health_status["checks"]["openai_api_key"] = {"status": "configured"}
-        else:
-            health_status["status"] = "unhealthy"
-            health_status["checks"]["openai_api_key"] = {
-                "status": "missing",
-                "error": "OPENAI_API_KEY environment variable not set",
-            }
-            logger.error("[AI Health] ✗ OPENAI_API_KEY not configured")
-
-        # Check MongoDB collections
-        try:
-            collections = db.list_collection_names()
-            has_categories = "categories" in collections
-
-            health_status["checks"]["mongodb"] = {
-                "status": "connected",
-                "collections_count": len(collections),
-                "has_categories": has_categories,
-            }
-
-            if not has_categories:
-                logger.warning("[AI Health] ⚠ Categories collection not found")
-                health_status["checks"]["mongodb"]["warning"] = "Categories collection missing"
-
-        except Exception as db_error:
-            health_status["status"] = "degraded"
-            health_status["checks"]["mongodb"] = {
-                "status": "error",
-                "error": str(db_error),
-            }
-            logger.error(f"[AI Health] ✗ MongoDB error: {str(db_error)}")
-
-        logger.info(f"[AI Health] Status: {health_status['status']}")
-        return health_status
-
-    except Exception as e:
-        logger.error(f"[AI Health] ✗ Health check failed: {str(e)}")
-        return {"service": "AI Services", "status": "error", "error": str(e)}
