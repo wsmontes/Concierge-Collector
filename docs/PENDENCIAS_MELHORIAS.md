@@ -70,7 +70,7 @@ Fonte: memórias do projeto, auditoria de segurança, sessões de trabalho e est
 
 ### UX
 - [ ] Datas relativas nos demais lugares com timestamp (sync activity)
-- [ ] Empty states tipados por seção (emptyStateManager com ícone por contexto — padrão feedmine)
+- [x] ~~Empty states tipados por seção~~ ✓ — templates no-curations (rate_review), no-entities (storefront), no-curator (person_off) no emptyStateManager; 4 blocos inline do uiManager trocados pelos presets
 
 ## Cadência
 

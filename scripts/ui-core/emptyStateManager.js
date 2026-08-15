@@ -139,6 +139,28 @@
                     { label: 'Add Manually', icon: 'add', variant: 'secondary', onClick: null }
                 ]
             },
+            // Tipados por seção (padrão feedmine de placeholder por
+            // conteúdo): cada aba tem identidade própria no vazio.
+            'no-curations': {
+                icon: 'rate_review',
+                iconTheme: 'primary',
+                title: 'No curations yet',
+                description: 'Start curating entities by clicking on them',
+                actions: []
+            },
+            'no-entities': {
+                icon: 'storefront',
+                iconTheme: 'primary',
+                title: 'No entities yet',
+                description: 'Search for restaurants to add them to your collection.',
+                actions: []
+            },
+            'no-curator': {
+                icon: 'person_off',
+                title: 'Curator not logged in',
+                description: 'Please log in to see your curations',
+                actions: []
+            },
             'no-drafts': {
                 icon: 'draft',
                 title: 'No drafts',

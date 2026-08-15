@@ -785,13 +785,7 @@ if (typeof window.UIManager === 'undefined') {
                 if (allCurations.length === 0) {
                     this.curationsCache = [];
                     this.updateCurationsCountSummary(0, 0);
-                    container.innerHTML = `
-                        <div class="col-span-full text-center py-12">
-                            <span class="material-icons text-6xl text-gray-300 mb-4">rate_review</span>
-                            <p class="text-gray-500 mb-2">No curations yet</p>
-                            <p class="text-sm text-gray-400">Start curating entities by clicking on them</p>
-                        </div>
-                    `;
+                    window.emptyStateManager.show(container, 'no-curations');
                     return;
                 }
 
@@ -880,13 +874,7 @@ if (typeof window.UIManager === 'undefined') {
                         self._reloadOrFilterCurations();
                     });
                 } else {
-                    container.innerHTML = `
-                        <div class="empty-state">
-                            <span class="empty-state__icon material-icons">rate_review</span>
-                            <p class="empty-state__title">No curations yet</p>
-                            <p class="empty-state__description">Start curating entities by clicking on them</p>
-                        </div>
-                    `;
+                    window.emptyStateManager.show(container, 'no-curations');
                 }
                 return;
             }
@@ -1263,13 +1251,7 @@ if (typeof window.UIManager === 'undefined') {
                 // Get current curator
                 const curator = window.CuratorProfile?.getCurrentCurator();
                 if (!curator) {
-                    container.innerHTML = `
-                        <div class="col-span-full text-center py-12">
-                            <span class="material-icons text-6xl text-gray-300 mb-4">person_off</span>
-                            <p class="text-gray-500 mb-2">Curator not logged in</p>
-                            <p class="text-sm text-gray-400">Please log in to see your curations</p>
-                        </div>
-                    `;
+                    window.emptyStateManager.show(container, 'no-curator');
                     return;
                 }
 
@@ -1281,13 +1263,7 @@ if (typeof window.UIManager === 'undefined') {
                 });
 
                 if (curations.length === 0) {
-                    container.innerHTML = `
-                        <div class="col-span-full text-center py-12">
-                            <span class="material-icons text-6xl text-gray-300 mb-4">rate_review</span>
-                            <p class="text-gray-500 mb-2">No curations yet</p>
-                            <p class="text-sm text-gray-400">Start curating entities by clicking on them</p>
-                        </div>
-                    `;
+                    window.emptyStateManager.show(container, 'no-curations');
                     return;
                 }
 
