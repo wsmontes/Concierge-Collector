@@ -46,7 +46,7 @@ Fonte: memórias do projeto, auditoria de segurança, sessões de trabalho e est
 ## Melhorias
 
 ### Feedmine (estudo: `docs/UI/FEEDMINE_DESIGN_STUDY.md`)
-- [ ] **Prefetch da próxima página** (ImagePrefetcher): resolver og:image da página seguinte antes do usuário paginar — véu instantâneo
+- [x] ~~**Prefetch da próxima página**~~ ✓ — peekPage() não-mutante nos browsers + pré-resolução 1,5s após a página enfileirar (dedupe por página); validação real sem corromper paginação
 - [ ] Swipe actions mobile nos cards (gestureManager já existe em ui-core)
 - [ ] Badges de tipo no fallback com mais distinção (novo/vídeo-equivalente)
 - [ ] Avaliar OKLCH para novas escalas (só em componentes novos — tema atual é curado)
