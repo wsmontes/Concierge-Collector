@@ -1,0 +1,68 @@
+# Pendências & Melhorias do Concierge Collector
+
+Lista viva de áreas, pendências e melhorias — atualizada em 2026-08-15.
+Fonte: memórias do projeto, auditoria de segurança, sessões de trabalho e estudo do feedmine.
+
+## Áreas
+
+1. **Frontend/UI** — Collector (raiz, tema concierge) + capture app (identidade-fonte)
+2. **Backend API** — 13+ routers FastAPI em `app/api/` (revisão de endpoints pendente)
+3. **Auth/Segurança** — JWT, OAuth Google, RBAC, SSRF, rate limits
+4. **Sync/Offline** — sync bidirecional, IndexedDB, fila client-side
+5. **Places/Google** — Places API (New), fotos, autocomplete
+6. **Pipeline Python** — OSM/Overture/Michelin → merge → rich → import → curations draft
+7. **Infra/Deploy** — Render (2 serviços), Atlas, deploy manual quando auto falha
+8. **Testes/Qualidade** — vitest (569/10), pytest (205 unit), lint local (CI removido)
+
+## Pendências
+
+### Frontend/UI
+- [ ] Ruído de log: `Unhandled rejection: NotFoundError: objectStore not found` no SyncManagerV3 em perfil novo (fallback scan) — inofensivo mas polui console
+- [ ] `dbg.tmp.mjs` na raiz (resto de debug do IndexedDB) — apagar
+- [ ] Curadorias órfãs (53 no Mongo, ids `entity_curation_test_*`): review card sem véu — decidir: limpar lixo ou resolver por nome via EntityBrowser
+- [ ] Degraded mode: tela de erro usa cinzas antigos; fluxo sem IndexedDB merece passe visual
+
+### Backend API
+- [ ] **Revisão sistemática dos endpoints** (13 routers) — dead code, contratos de erro, rate limits, consistência de auth
+- [ ] Routers `places.py` + `places_router.py` duplicados — consolidar em um único (pendência da auditoria de segurança)
+- [ ] Endpoints sem uso real: mapear chamadas do frontend vs. rotas expostas
+
+### Auth/Segurança
+- [ ] OAuth: cookie HttpOnly para tokens (pendência da auditoria) — hoje o access token vive em localStorage
+- [ ] Rotação do client id/secret OAuth vazados em docs (usuário adiou — cobrar de novo)
+
+### Sync/Offline
+- [ ] Pull de entities vinculadas depende de curations locais; aba server-driven resolvia por fora — monitorar consistência
+
+### Dados
+- [ ] Junk de teste no banco: `entity_curation_test_*` (entities + curations) — limpar via `scripts/python-tools/data_cleanup.py` (destrutivo: confirmar antes)
+
+### Infra
+- [ ] CI do GitHub Actions removido (billing) — decidir se reativa
+- [ ] Auto-deploy do Render não confiável — sempre verificar após push
+
+## Melhorias
+
+### Feedmine (estudo: `docs/UI/FEEDMINE_DESIGN_STUDY.md`)
+- [ ] **Prefetch da próxima página** (ImagePrefetcher): resolver og:image da página seguinte antes do usuário paginar — véu instantâneo
+- [ ] Swipe actions mobile nos cards (gestureManager já existe em ui-core)
+- [ ] Badges de tipo no fallback com mais distinção (novo/vídeo-equivalente)
+- [ ] Avaliar OKLCH para novas escalas (só em componentes novos — tema atual é curado)
+
+### og-image (véu)
+- [ ] Negative cache com backoff (misses do feedmine) — hoje miss fica 1h fixo
+- [ ] Métricas de cobertura por fonte (og vs places vs corpo) — dashboard de "quantos cards têm véu"
+- [ ] Cache Storage: eviction explícito por LRU (hoje o browser decide)
+
+### API
+- [ ] Endpoint agregado por entity (`/entities/{id}/image`) que encapsula og+places — hoje o frontend monta a consulta
+- [ ] Docs OpenAPI com exemplos dos endpoints novos (og-image)
+
+### UX
+- [ ] Datas relativas nos demais lugares com timestamp (sync activity)
+- [ ] Empty states tipados por seção (emptyStateManager com ícone por contexto — padrão feedmine)
+
+## Cadência
+
+- Commitar + pushar **de tempos em tempos** durante sessões longas (a cada ~30 min com mudanças não commitadas) — sessão atual usa lembrete recorrente
+- Após cada push em `main`: verificar deploy dos 2 serviços do Render (auto-deploy existe mas não é confiável)
