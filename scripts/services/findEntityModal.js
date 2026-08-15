@@ -97,7 +97,7 @@ window.FindEntityModal = class FindEntityModal {
                 align-items: center;
                 justify-content: space-between;
                 padding: var(--spacing-5, 1.25rem) var(--spacing-6, 1.5rem);
-                background: linear-gradient(135deg, var(--color-primary-600, #2563eb), var(--color-primary-800, #1e40af));
+                background: linear-gradient(135deg, var(--color-primary-600, #5c6b4a), var(--color-primary-800, #3f4d33));
                 color: white;
                 flex-shrink: 0;
             }
@@ -175,7 +175,7 @@ window.FindEntityModal = class FindEntityModal {
             }
 
             #find-entity-modal .fem-search-input:focus {
-                border-color: var(--color-primary, #3b82f6);
+                border-color: var(--color-primary, #6f8256);
                 box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
             }
 
@@ -188,7 +188,7 @@ window.FindEntityModal = class FindEntityModal {
                 align-items: center;
                 gap: var(--spacing-2, 0.5rem);
                 padding: var(--spacing-2-5, 0.625rem) var(--spacing-5, 1.25rem);
-                background: var(--color-primary, #3b82f6);
+                background: var(--color-primary, #6f8256);
                 color: white;
                 border: none;
                 border-radius: var(--radius-lg, 0.5rem);
@@ -261,7 +261,7 @@ window.FindEntityModal = class FindEntityModal {
             }
 
             #find-entity-modal .fem-filter-select:focus {
-                border-color: var(--color-primary, #3b82f6);
+                border-color: var(--color-primary, #6f8256);
                 box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
             }
 
@@ -325,9 +325,9 @@ window.FindEntityModal = class FindEntityModal {
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                background: linear-gradient(135deg, var(--color-primary-50, #eff6ff), var(--color-primary-100, #dbeafe));
+                background: linear-gradient(135deg, var(--color-primary-50, #f1f4ec), var(--color-primary-100, #e3e8d9));
                 border-radius: var(--radius-lg, 0.5rem);
-                color: var(--color-primary, #3b82f6);
+                color: var(--color-primary, #6f8256);
             }
 
             #find-entity-modal .fem-place-icon .material-icons {
@@ -422,8 +422,8 @@ window.FindEntityModal = class FindEntityModal {
                 font-family: inherit;
                 font-size: var(--text-sm, 0.875rem);
                 font-weight: var(--font-medium, 500);
-                color: var(--color-primary, #3b82f6);
-                background: var(--color-primary-50, #eff6ff);
+                color: var(--color-primary, #6f8256);
+                background: var(--color-primary-50, #f1f4ec);
                 border: 1px solid var(--color-primary-200, #bfdbfe);
                 border-radius: var(--radius-lg, 0.5rem);
                 cursor: pointer;
@@ -431,9 +431,9 @@ window.FindEntityModal = class FindEntityModal {
             }
 
             #find-entity-modal .fem-import-btn:hover:not(:disabled) {
-                background: var(--color-primary, #3b82f6);
+                background: var(--color-primary, #6f8256);
                 color: white;
-                border-color: var(--color-primary, #3b82f6);
+                border-color: var(--color-primary, #6f8256);
                 transform: translateY(-1px);
                 box-shadow: var(--shadow-sm);
             }
@@ -460,7 +460,7 @@ window.FindEntityModal = class FindEntityModal {
             }
 
             #find-entity-modal .fem-import-btn.fem-btn-select {
-                background: var(--color-primary-600, #2563eb);
+                background: var(--color-primary-600, #5c6b4a);
                 color: white;
                 border-color: var(--color-primary-700, #1d4ed8);
             }
@@ -503,7 +503,7 @@ window.FindEntityModal = class FindEntityModal {
                 width: 2.5rem;
                 height: 2.5rem;
                 border: 3px solid var(--color-neutral-200, #e5e7eb);
-                border-top-color: var(--color-primary, #3b82f6);
+                border-top-color: var(--color-primary, #6f8256);
                 border-radius: 50%;
                 animation: spin 0.7s linear infinite;
                 margin-bottom: var(--spacing-4, 1rem);
@@ -528,7 +528,7 @@ window.FindEntityModal = class FindEntityModal {
                     <div class="fem-header">
                         <div class="fem-header-title">
                             <span class="material-icons">travel_explore</span>
-                            <h2>Find Entity</h2>
+                            <h2>Search Google Places</h2>
                         </div>
                         <button id="close-find-entity-modal" class="fem-close-btn" aria-label="Close">
                             <span class="material-icons">close</span>
@@ -796,7 +796,7 @@ window.FindEntityModal = class FindEntityModal {
         // Update header if in selection mode
         const titleEl = this.modal.querySelector('h2');
         if (titleEl) {
-            titleEl.textContent = this.onEntitySelected ? 'Select Entity to Link' : 'Find Entity';
+            titleEl.textContent = this.onEntitySelected ? 'Select Entity to Link' : 'Search Google Places';
         }
 
         // Focus search input

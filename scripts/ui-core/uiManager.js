@@ -1653,7 +1653,7 @@ if (typeof window.UIManager === 'undefined') {
                         <div class="empty-state">
                             <span class="empty-state__icon material-icons">restaurant</span>
                             <p class="empty-state__title">No entities yet</p>
-                            <p class="empty-state__description">Use Find Entity to import your first restaurant</p>
+                            <p class="empty-state__description">Use Add a Place to import your first restaurant</p>
                         </div>
                     `;
                 }
