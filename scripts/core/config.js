@@ -68,6 +68,7 @@ const AppConfig = {
                 // System endpoints
                 info: '/info',                   // GET - API info (no auth)
                 health: '/health',               // GET - Health check (no auth)
+                ogImage: '/og-image',            // GET - og:image do site do restaurante (JWT)
 
                 // Entity endpoints
                 entities: '/entities',           // GET list (filters, no auth), POST create (X-API-Key)

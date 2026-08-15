@@ -4,31 +4,24 @@
    Cores/fontes movidas para os tokens do design-system.css
    (--color-*, --font-*, --radius-*, --shadow-*). As definições
    duplicadas de --primary/--neutral-* foram removidas e as referências
-   normalizadas — valores eram 1:1, sem mudança visual. Ago/2026. */
+   normalizadas — valores eram 1:1, sem mudança visual. Ago/2026.
+
+   FONTES/SOMBRAS/TRANSIÇÕES: este arquivo carrega DEPOIS do
+   design-system.css e redefinia --font-sans:'Inter' (o app inteiro
+   renderizava na fonte velha, derrotando o tema DM Sans) e
+   --shadow-*/--transition-* com os valores antigos do Tailwind.
+   Removidas em ago/2026 — o :root daqui agora só tem o que o
+   design-system NÃO define. */
 :root {
   /* State colors */
   --hover-overlay: rgba(0, 0, 0, 0.05);
   --active-overlay: rgba(0, 0, 0, 0.1);
   --disabled-opacity: 0.6;
 
-  /* Typography */
-  --font-sans: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
-  --font-mono: 'JetBrains Mono', 'SF Mono', SFMono-Regular, ui-monospace, Menlo, Consolas, monospace;
-
   /* Text contrast levels for accessibility */
   --text-normal-contrast: 4.5;  /* WCAG AA standard for normal text */
   --text-high-contrast: 7;      /* WCAG AAA standard */
-  
-  /* Shadows */
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.05), 0 1px 2px rgba(0, 0, 0, 0.03);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
-  
-  /* Animation speeds */
-  --transition-fast: 150ms;
-  --transition-normal: 250ms;
-  --transition-slow: 350ms;
-  
+
   /* Layout */
   --border-radius-sm: 0.125rem;
   --border-radius-md: 0.25rem;
@@ -246,16 +239,19 @@ select {
 
 .required-field:focus {
   border-color: var(--color-error);
-  box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2);
+  box-shadow: 0 0 0 3px rgba(176, 67, 59, 0.25); /* tijolo — era o vermelho-500 antigo */
 }
 
+/* Foco oliva (--focus-ring-shadow do design-system): esta regra tem
+   especificidade maior que .input:focus do components.css e carregava
+   o glow ROXO antigo (rgba(124,58,237)) em todo input focado. */
 input[type="text"]:focus,
 input[type="password"]:focus,
 textarea:focus,
 select:focus {
   outline: none;
   border-color: var(--color-primary-300);
-  box-shadow: 0 0 0 3px rgba(124, 58, 237, 0.2);
+  box-shadow: var(--focus-ring-shadow);
 }
 
 input[type="file"] {
@@ -388,7 +384,7 @@ button.bg-gray-500:hover {
 button.bg-purple-500 {
   background-color: var(--color-primary);
   color: white;
-  box-shadow: 0 2px 0 rgba(124, 58, 237, 0.5);
+  box-shadow: 0 2px 0 rgba(92, 107, 74, 0.35); /* oliva — era sombra roxa */
 }
 
 button.bg-purple-500:hover {
@@ -594,16 +590,21 @@ audio {
   opacity: 1;
 }
 
-/* Concept Card Colors */
-.concept-card.cuisine { border-left-color: #f87171; } /* Red 400 */
-.concept-card.menu { border-left-color: #60a5fa; } /* Blue 400 */
-.concept-card.price-range { border-left-color: #34d399; } /* Green 400 */
-.concept-card.mood { border-left-color: #a78bfa; } /* Violet 400 */
-.concept-card.setting { border-left-color: #fbbf24; } /* Amber 400 */
-.concept-card.crowd { border-left-color: #f472b6; } /* Pink 400 */
-.concept-card.suitable-for { border-left-color: #2dd4bf; } /* Teal 400 */
-.concept-card.food-style { border-left-color: #fb923c; } /* Orange 400 */
-.concept-card.drinks { border-left-color: #4ade80; } /* Green 300 */
+/* Concept Card Colors
+   Tons do tema concierge (ago/2026) — antes eram os 400s saturados
+   do Tailwind antigo. O color-coding por categoria é preservado via
+   família de matiz: vermelho→tijolo, azul→aço, verde→garrafa,
+   violeta→ameixa, âmbar/laranja→bronze, rosa→tijolo-claro,
+   teal→oliva. */
+.concept-card.cuisine { border-left-color: #b0433b; } /* tijolo */
+.concept-card.menu { border-left-color: #3d5a80; } /* aço */
+.concept-card.price-range { border-left-color: #4a7c59; } /* garrafa */
+.concept-card.mood { border-left-color: #7a5c8e; } /* ameixa */
+.concept-card.setting { border-left-color: #b0893b; } /* bronze */
+.concept-card.crowd { border-left-color: #c97b74; } /* tijolo-claro */
+.concept-card.suitable-for { border-left-color: #6f8256; } /* oliva */
+.concept-card.food-style { border-left-color: #97722e; } /* bronze-escuro */
+.concept-card.drinks { border-left-color: #8fa075; } /* oliva-claro */
 
 /* Concept Tags */
 .concept-tag {
@@ -721,8 +722,9 @@ audio {
 .ai-generated-badge {
     display: inline-flex;
     align-items: center;
-    background-color: rgba(147, 51, 234, 0.1);
-    color: rgb(107, 33, 168);
+    /* tokens chip--accent (ameixa) — era o roxo-600 antigo */
+    background-color: var(--chip-accent-bg);
+    color: var(--chip-accent-fg);
     font-size: 0.75rem;
     padding: 0.25rem 0.5rem;
     border-radius: 4px;
@@ -1071,7 +1073,7 @@ audio {
 
 .file-input-container:hover {
   border-color: var(--color-primary-300);
-  background-color: rgba(124, 58, 237, 0.05);
+  background-color: rgba(92, 107, 74, 0.06); /* tint oliva — era roxo antigo */
 }
 
 .file-input-container input[type="file"] {
@@ -1465,19 +1467,19 @@ gmp-pac-item {
     transition: background-color 0.2s ease !important;
 }
 
-/* Hover and selected states */
+/* Hover and selected states — neutro quente do tema (era azul-50 frio) */
 .pac-item:hover,
 .pac-item-selected,
 gmp-pac-item:hover,
 gmp-pac-item-selected {
-    background-color: #f0f4ff !important;
+    background-color: var(--color-neutral-50) !important;
 }
 
-/* Style for the input field to give visual cues */
+/* Style for the input field to give visual cues — foco oliva (era azul Google) */
 #places-autocomplete-input:focus,
 gmp-place-autocomplete input:focus {
-    box-shadow: 0 0 0 2px rgba(66, 133, 244, 0.4) !important;
-    border-color: #4285f4 !important;
+    box-shadow: var(--focus-ring-shadow) !important;
+    border-color: var(--color-primary-500) !important;
     outline: none !important;
 }
 
@@ -1537,7 +1539,7 @@ gmp-place-autocomplete input:focus {
 
 /* Animation for textarea update highlight */
 @keyframes highlight-fade {
-    0% { background-color: rgba(147, 51, 234, 0.2); }
+    0% { background-color: rgba(122, 92, 142, 0.22); } /* ameixa — era roxo-600 */
     100% { background-color: transparent; }
 }
 
@@ -1557,7 +1559,7 @@ gmp-place-autocomplete input:focus {
 }
 
 .recording-indicator.additional-recording {
-    background-color: #9333ea; /* Purple */
+    background-color: #7a5c8e; /* ameixa — era o roxo-600 antigo */
     animation: recording-pulse 1.5s infinite;
 }
 

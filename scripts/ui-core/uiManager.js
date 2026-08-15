@@ -1075,7 +1075,7 @@ if (typeof window.UIManager === 'undefined') {
             this.renderCurationsPage(filtered);
         }
 
-        renderCurationsPage(allCurations) {
+        async renderCurationsPage(allCurations) {
             var container = this.containers.curations;
             if (!container) return;
 
@@ -1156,10 +1156,83 @@ if (typeof window.UIManager === 'undefined') {
                 });
             }
 
+            // Resolução entity↔curation: curadoria linkada renderiza o
+            // card COMPLETO da entity (nome, contato, véu OG, ações);
+            // só curadoria ÓRFÃ (entity inexistente) cai no review card.
+            // Regressão: o forEach antigo chamava createReviewCard para
+            // TODAS — a aba inteira ficava sem vínculo (e sem véu).
+            var entitiesMap = await self._resolveEntitiesForCurations(
+                pageCurations.map(function (c) { return c && c.entity_id; }).filter(Boolean)
+            );
+
             pageCurations.forEach(function(curation) {
-                var card = self.createReviewCard(curation);
+                var entity = curation.entity_id ? entitiesMap.get(curation.entity_id) : null;
+                var card = entity
+                    ? window.CardFactory.createCurationCard(entity, curation)
+                    : self.createReviewCard(curation);
                 container.appendChild(card);
             });
+        }
+
+        /**
+         * Resolve as entities das curations: local (IndexedDB, chunked) e
+         * o que faltar via API (filtro ids) — persistindo o resultado
+         * localmente pra próximos renders e offline.
+         * @param {string[]} entityIds - ids linkados pelas curations
+         * @returns {Promise<Map<string, Object>>} entity_id → entity
+         */
+        async _resolveEntitiesForCurations(entityIds) {
+            var map = new Map();
+            var uniqueIds = [...new Set(entityIds.filter(Boolean))];
+            if (!uniqueIds.length) return map;
+
+            // 1) locais — anyOf em CHUNKS de 200 (arrays gigantes estouram
+            //    o limite de argumentos de alguns browsers)
+            var chunkSize = 200;
+            try {
+                for (var i = 0; i < uniqueIds.length; i += chunkSize) {
+                    var chunk = uniqueIds.slice(i, i + chunkSize);
+                    var rows = await window.DataStore.db.entities
+                        .where('entity_id').anyOf(chunk).toArray();
+                    rows.forEach(function (entity) { map.set(entity.entity_id, entity); });
+                }
+            } catch (error) {
+                console.warn('Resolução local de entities falhou:', error);
+            }
+
+            // 2) faltantes via API (o endpoint aceita ?ids=) + persistência
+            //    local no mesmo shape do sync (processServerEntity)
+            var missing = uniqueIds.filter(function (id) { return !map.has(id); });
+            if (missing.length && window.ApiService) {
+                try {
+                    var response = await window.ApiService.listEntities({
+                        limit: 500,
+                        ids: missing.slice(0, 500).join(',')
+                    });
+                    var items = (response && response.items) || [];
+                    for (var item of items) {
+                        var eid = item.entity_id || String(item._id || '');
+                        map.set(eid, item);
+                        try {
+                            await window.DataStore.db.entities.put({
+                                ...item,
+                                sync: {
+                                    serverId: item._id || null,
+                                    status: 'synced',
+                                    lastSyncedAt: new Date().toISOString()
+                                }
+                            });
+                        } catch (putError) {
+                            // conflito de id local — o render usa o doc da API mesmo assim
+                            console.debug('Persistência local da entity falhou:', putError);
+                        }
+                    }
+                } catch (error) {
+                    console.warn('Resolução de entities do servidor falhou:', error);
+                }
+            }
+
+            return map;
         }
 
         /** @deprecated */
@@ -1771,7 +1844,7 @@ if (typeof window.UIManager === 'undefined') {
 
                     <!-- Curator Info -->
                     <div class="flex items-center gap-1.5 text-xs text-gray-500 mt-auto pt-2">
-                        <span class="material-icons text-[14px]">person</span>
+                        <span class="material-icons text-sm">person</span>
                         <span>${curatorName}</span>
                     </div>
                 </div>
@@ -1781,12 +1854,12 @@ if (typeof window.UIManager === 'undefined') {
                      <div class="flex flex-col gap-1">
                         ${isLinked ? `
                             <div class="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 px-2.5 py-1.5 rounded-lg border border-green-200">
-                                <span class="material-icons text-[14px]">link</span>
+                                <span class="material-icons text-sm">link</span>
                                 <span class="font-medium">${_escC(linkedEntityName) || 'Linked'}</span>
                             </div>
                         ` : `
                             <button class="btn-link-entity px-3 py-1.5 text-xs h-8 flex items-center bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1.5 shadow-sm">
-                                <span class="material-icons text-[14px]">link</span>
+                                <span class="material-icons text-sm">link</span>
                                 <span class="font-bold uppercase tracking-wider">Link Entity</span>
                             </button>
                         `}
@@ -1794,14 +1867,14 @@ if (typeof window.UIManager === 'undefined') {
                     <div class="flex items-center gap-2">
                         ${isLinked ? `
                             <button class="btn-unlink-entity icon-btn text-amber-700 hover:bg-amber-100 hover:text-amber-800 hover:border-amber-200" title="Unlink from entity">
-                                <span class="material-icons text-[18px]">link_off</span>
+                                <span class="material-icons text-lg">link_off</span>
                             </button>
                         ` : ''}
                         <button class="btn-edit-curation icon-btn hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200" title="Edit Curation">
-                            <span class="material-icons text-[20px]">edit</span>
+                            <span class="material-icons text-xl">edit</span>
                         </button>
                         <button class="btn-delete-curation icon-btn text-red-500 hover:bg-red-50 hover:text-red-700 hover:border-red-200" title="Delete Draft">
-                            <span class="material-icons text-[20px]">delete_outline</span>
+                            <span class="material-icons text-xl">delete_outline</span>
                         </button>
                     </div>
                 </div>
@@ -2035,7 +2108,7 @@ if (typeof window.UIManager === 'undefined') {
                                 <span class="material-icons text-base text-gray-500" aria-hidden="true">visibility</span>
                                 Public Notes
                             </h3>
-                            <div class="bg-amber-50/60 p-4 rounded-lg border border-amber-100 text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
+                            <div class="bg-amber-50 p-4 rounded-lg border border-amber-100 text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
                                 ${esc(notesPublic)}
                             </div>
                         </div>

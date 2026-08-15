@@ -64,16 +64,16 @@ const ConflictResolutionModal = ModuleWrapper.defineClass('ConflictResolutionMod
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 md:gap-6">
                 <!-- Local Version -->
                 <div class="flex flex-col h-full bg-white border border-blue-200 rounded-xl overflow-hidden shadow-sm">
-                    <div class="bg-blue-50/50 px-4 py-3 border-b border-blue-100 flex justify-between items-center">
+                    <div class="bg-blue-50 px-4 py-3 border-b border-blue-100 flex justify-between items-center">
                         <h3 class="font-bold text-blue-900 flex items-center gap-2">
                             <span class="material-icons text-lg">computer</span>
                             Your Version
                         </h3>
                         <div class="text-right">
-                            <span class="text-[10px] font-mono text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
+                            <span class="text-xs font-mono text-blue-700 bg-blue-100 px-2 py-0.5 rounded-full">
                                 v${local.version || 0}
                             </span>
-                            <div class="text-[10px] text-blue-600 mt-0.5">${this.formatDate(local.updatedAt)}</div>
+                            <div class="text-xs text-blue-600 mt-0.5">${this.formatDate(local.updatedAt)}</div>
                         </div>
                     </div>
                     <div id="conflict-local-content" class="p-4 text-sm flex-grow">
@@ -83,16 +83,16 @@ const ConflictResolutionModal = ModuleWrapper.defineClass('ConflictResolutionMod
 
                 <!-- Server Version -->
                 <div class="flex flex-col h-full bg-white border border-green-200 rounded-xl overflow-hidden shadow-sm">
-                    <div class="bg-green-50/50 px-4 py-3 border-b border-green-100 flex justify-between items-center">
+                    <div class="bg-green-50 px-4 py-3 border-b border-green-100 flex justify-between items-center">
                         <h3 class="font-bold text-green-900 flex items-center gap-2">
                             <span class="material-icons text-lg">cloud</span>
                             Server Version
                         </h3>
                         <div class="text-right">
-                            <span class="text-[10px] font-mono text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
+                            <span class="text-xs font-mono text-green-700 bg-green-100 px-2 py-0.5 rounded-full">
                                 v${server.version || 0}
                             </span>
-                            <div class="text-[10px] text-green-700 mt-0.5">${this.formatDate(server.updatedAt)}</div>
+                            <div class="text-xs text-green-700 mt-0.5">${this.formatDate(server.updatedAt)}</div>
                         </div>
                     </div>
                     <div id="conflict-server-content" class="p-4 text-sm flex-grow">
@@ -117,7 +117,7 @@ const ConflictResolutionModal = ModuleWrapper.defineClass('ConflictResolutionMod
         footer.className = 'w-full flex flex-col md:flex-row items-center gap-3';
         footer.innerHTML = `
             <p class="text-xs text-gray-400 flex items-center gap-1 mr-auto">
-                <span class="material-icons text-[14px]">info</span>
+                <span class="material-icons text-sm">info</span>
                 This action cannot be undone
             </p>
             <button id="conflict-keep-local"

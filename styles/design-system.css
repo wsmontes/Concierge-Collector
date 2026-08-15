@@ -277,6 +277,19 @@
   --chip-neutral-fg: #45413a;
   --chip-accent-bg: #ece6f1;
   --chip-accent-fg: #5c4270;
+
+  /* ===== Aliases de superfície/texto (compatibilidade) =====
+     Markup legado (JS-generated) referencia estes nomes com fallbacks
+     hexados do Tailwind antigo (#f9fafb, #6b7280, #111827, #9ca3af,
+     #e5e7eb) — como os vars não existiam, os fallbacks cinza-frios
+     ganhavam sobre o tema. Aliases resolvem para os tokens quentes. */
+  --color-bg-secondary: var(--color-neutral-50);
+  --color-surface-alt: var(--color-neutral-50);
+  --color-surface-secondary: var(--color-neutral-100);
+  --color-text-primary: var(--color-neutral-900);
+  --color-text-secondary: var(--color-neutral-500);
+  --color-text-tertiary: var(--color-neutral-400);
+  --color-border: var(--color-neutral-200);
 }
 
 /* ========================================================================
@@ -1037,6 +1050,10 @@ img {
 .hover\:border-blue-300:hover { border-color: #afb996; }
 .focus\:ring-blue-500:focus { --tw-ring-color: rgba(92, 107, 74, 0.35); }
 .focus\:border-blue-500:focus { border-color: #5c6b4a; }
+/* Rings sem variante (validação de input no Places, anel de avatar) —
+   ficavam no azul Tailwind vivo; mesmo destino dos focus: */
+.ring-blue-200 { --tw-ring-color: #cbd9e7; }
+.ring-blue-500 { --tw-ring-color: rgba(92, 107, 74, 0.35); }
 
 /* ── Vermelho → tijolo ── */
 .bg-red-50 { background-color: #f6e2df; }

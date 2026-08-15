@@ -233,6 +233,14 @@ async function initializeApp() {
             console.warn('⚠️ API Service not available');
         }
 
+        // Initialize OG Image Module (véu de imagem nos cards via
+        // /api/v3/og-image) — depende só do ApiService; falha silenciosa
+        // se o endpoint não existir no backend.
+        if (window.OgImageModule && window.ApiService) {
+            window.ogImageModule = new window.OgImageModule();
+            await window.ogImageModule.init();
+        }
+
         // Initialize CurationBrowser (server-driven pagination — no local cache)
         // window.CurationBrowser is the class at this point — instantiate it
         const CurationBrowserClass = window.CurationBrowser;

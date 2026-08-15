@@ -1561,10 +1561,12 @@
 }
 
 /* Véu de hover dos cards — antes um gradiente Tailwind de blue-50/30
-   (grupo hover). Agora um tom de oliva a 8%, sutil como o do capture. */
+   (grupo hover). Agora um tom de oliva a 8%, sutil como o do capture.
+   z-index 2: acima do conteúdo (z-1) e do véu OG (z-0), como sempre foi. */
 .card-veil {
   position: absolute;
   inset: 0;
+  z-index: 2;
   pointer-events: none;
   background: linear-gradient(to top, transparent, transparent);
   transition: background var(--transition-base) var(--ease-out);
@@ -1572,4 +1574,57 @@
 
 .group:hover .card-veil {
   background: linear-gradient(to top, rgba(111, 130, 86, 0.08), transparent);
+}
+
+/* Véu de imagem OG — degradê suave com a foto do site do restaurante
+   (resolvida em real-time pelo ogImageModule via /api/v3/og-image).
+   A máscara é HORIZONTAL: transparente na esquerda (onde mora o texto)
+   e vai ganhando opacidade para a direita — a foto não compete com
+   nome/localização. O ::before é um wash branco de reforço no topo. */
+.card-og-veil {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: cover;
+  opacity: 0;
+  transition: opacity 700ms var(--ease-out);
+  -webkit-mask-image: linear-gradient(
+    to right,
+    rgba(0, 0, 0, 0) 0%,
+    rgba(0, 0, 0, 0) 30%,
+    rgba(0, 0, 0, 0.55) 62%,
+    rgba(0, 0, 0, 0.85) 100%
+  );
+  mask-image: linear-gradient(
+    to right,
+    rgba(0, 0, 0, 0) 0%,
+    rgba(0, 0, 0, 0) 30%,
+    rgba(0, 0, 0, 0.55) 62%,
+    rgba(0, 0, 0, 0.85) 100%
+  );
+}
+
+.card-og-veil::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    to bottom,
+    rgba(255, 255, 255, 0.82),
+    rgba(255, 255, 255, 0.45) 35%,
+    rgba(255, 255, 255, 0) 75%
+  );
+}
+
+.card-og-veil--visible {
+  opacity: 0.38;
+}
+
+/* Conteúdo do card acima do véu OG (z-0) e abaixo do véu de hover (z-2) */
+.entity-card-main {
+  position: relative;
+  z-index: 1;
 }

@@ -56,11 +56,12 @@
             }
 
             [data-src].error {
-                background: #fee2e2;
+                /* tokens chip--danger — eram red-100/red-800 do Tailwind antigo */
+                background: var(--chip-danger-bg);
                 display: flex;
                 align-items: center;
                 justify-content: center;
-                color: #991b1b;
+                color: var(--chip-danger-fg);
                 font-size: 0.875rem;
                 padding: 1rem;
             }

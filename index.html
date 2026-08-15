@@ -34,10 +34,10 @@
 
     <!-- Custom CSS - New Architecture -->
     <!-- 1. Design System Foundation (FIRST - design tokens, base styles) -->
-    <link rel="stylesheet" href="styles/design-system.css?v=20260814-1">
+    <link rel="stylesheet" href="styles/design-system.css?v=20260814-2">
 
     <!-- 2. Component Library (reusable components) -->
-    <link rel="stylesheet" href="styles/components.css?v=20260814-4">
+    <link rel="stylesheet" href="styles/components.css?v=20260814-5">
 
     <!-- 3. Application-specific Styles -->
     <link rel="stylesheet" href="styles/application.css?v=20260813-1">
@@ -49,10 +49,10 @@
     <link rel="stylesheet" href="styles/mobile-enhancements.css?v=20260814-2">
 
     <!-- 5. Legacy Support (will be deprecated after migration) -->
-    <link rel="stylesheet" href="styles/style.css?v=20260814-2">
+    <link rel="stylesheet" href="styles/style.css?v=20260814-3">
 
     <!-- Centralized Configuration (MUST load first) -->
-    <script src="scripts/core/config.js"></script>
+    <script src="scripts/core/config.js?v=20260814-1"></script>
 
     <!-- Centralized Logging (loads after config) -->
     <script src="scripts/core/logger.js"></script>
@@ -731,7 +731,7 @@
     <script src="scripts/ui-core/bottomSheet.js?v=20260813-1"></script>
     <script src="scripts/ui-core/gestureManager.js"></script>
     <script src="scripts/ui-core/skeletonLoader.js"></script>
-    <script src="scripts/ui-core/lazyLoader.js?v=20260813-1"></script>
+    <script src="scripts/ui-core/lazyLoader.js?v=20260813-2"></script>
     <script src="scripts/ui-core/optimisticUI.js"></script>
     <script src="scripts/ui-core/emptyStateManager.js?v=20260813-1"></script>
     <script src="scripts/ui-core/accessibilityChecker.js?v=20260813-1"></script>
@@ -747,8 +747,8 @@
     <script src="scripts/sync/importManager.js?v=20260813-3"></script>
 
     <!-- UI Components -->
-    <script src="scripts/ui/cardFactory.js?v=20260814-2"></script>
-    <script src="scripts/ui/conflictResolutionModal.js?v=20260813-2"></script>
+    <script src="scripts/ui/cardFactory.js?v=20260814-4"></script>
+    <script src="scripts/ui/conflictResolutionModal.js?v=20260813-3"></script>
 
     <!-- Compatibility Layer for Legacy UI Modules -->
     <script src="scripts/storage/dataStorageWrapper.js"></script>
@@ -756,7 +756,7 @@
     <!-- Application modules - keeping essential ones -->
     <script src="scripts/services/promptTemplate.js"></script>
     <script src="scripts/services/conceptMatcher.js"></script>
-    <script src="scripts/ui-core/uiManager.js?v=20260814-7"></script>
+    <script src="scripts/ui-core/uiManager.js?v=20260814-9"></script>
 
     <!-- Module implementations - V3 Compatible -->
     <script src="scripts/modules/safetyUtils.js?v=20260813-1"></script>
@@ -765,17 +765,18 @@
     <script src="scripts/utils/sourceUtils.js?v=20260813-1"></script>
 
     <script src="scripts/modules/pendingAudioManager.js"></script>
-    <script src="scripts/modules/pendingAudioModal.js?v=20260813-3"></script>
+    <script src="scripts/modules/pendingAudioModal.js?v=20260813-4"></script>
     <script src="scripts/modules/draftRestaurantManager.js"></script>
     <script src="scripts/modules/curatorModule.js"></script>
     <script src="scripts/modules/recordingModule.js?v=20260814-1"></script>
     <script src="scripts/modules/transcriptionModule.js"></script>
     <script src="scripts/modules/conceptModule.js?v=20260813-1"></script>
     <script src="scripts/modules/restaurantModule.js?v=20260813-1"></script>
-    <script src="scripts/modules/entityModule.js?v=20260814-2"></script>
+    <script src="scripts/modules/entityModule.js?v=20260814-3"></script>
     <script src="scripts/modules/syncStatusModule.js?v=20260813-3"></script>
     <!-- DEPRECATED: <script src="scripts/modules/exportImportModule.js"></script> -->
     <script src="scripts/modules/quickActionModule.js?v=20260814-1"></script>
+    <script src="scripts/modules/ogImageModule.js?v=20260814-3"></script>
     <!-- REMOVED: michelinStagingModule.js and michelin CSS - Michelin data will be batch imported -->
 
     <!-- V3 Data Services (Sprint 1, Day 3 - MongoDB ↔ IndexedDB compatibility) -->
@@ -809,7 +810,7 @@
     <script src="scripts/auth/accessControl.js?v=20260813-1"></script>
 
     <!-- Core application scripts -->
-    <script src="scripts/core/main.js?v=20260813-1"></script>
+    <script src="scripts/core/main.js?v=20260813-2"></script>
 </body>
 
 </html>

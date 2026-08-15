@@ -454,7 +454,7 @@ window.PendingAudioModal = class PendingAudioModal {
             console.error('Error loading pending audios:', error);
             this.listContainer.innerHTML = `
                 <div class="pam-empty">
-                    <span class="material-icons" style="color:#dc2626">error</span>
+                    <span class="material-icons" style="color:var(--color-error)">error</span>
                     <p>Failed to load recordings</p>
                 </div>
             `;
@@ -474,7 +474,7 @@ window.PendingAudioModal = class PendingAudioModal {
         if (counts.failed) stats.push(`<span class="pam-stat failed"><span class="material-icons" style="font-size:.85rem">error_outline</span> ${counts.failed} failed</span>`);
         if (counts.transcribed) stats.push(`<span class="pam-stat transcribed"><span class="material-icons" style="font-size:.85rem">check_circle</span> ${counts.transcribed} done</span>`);
 
-        summaryEl.innerHTML = stats.length > 0 ? stats.join('') : '<span style="color:#6b7280;font-size:.85rem">No recordings</span>';
+        summaryEl.innerHTML = stats.length > 0 ? stats.join('') : '<span style="color:var(--color-neutral-500);font-size:.85rem">No recordings</span>';
     }
 
     renderList() {
@@ -484,7 +484,7 @@ window.PendingAudioModal = class PendingAudioModal {
             this.listContainer.innerHTML = `
                 <div class="pam-empty">
                     <span class="material-icons">check_circle</span>
-                    <p style="font-weight:600;color:#374151">All clear!</p>
+                    <p style="font-weight:600;color:var(--color-neutral-700)">All clear!</p>
                     <p style="font-size:.85rem">No pending recordings to manage.</p>
                 </div>
             `;
@@ -551,7 +551,7 @@ window.PendingAudioModal = class PendingAudioModal {
                         <span class="material-icons" style="font-size:.85rem">${statusIcon}</span>
                         ${audio.status}
                     </span>
-                    <span style="font-size:.75rem;color:#6b7280">#${audio.id}</span>
+                    <span style="font-size:.75rem;color:var(--color-neutral-500)">#${audio.id}</span>
                 </div>
 
                 <div class="pam-card-meta">

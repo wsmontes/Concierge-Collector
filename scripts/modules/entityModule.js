@@ -923,7 +923,7 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
                         <p class="text-xs text-gray-400 mt-1">${curationId}</p>
                     </div>
                     <div class="flex items-center gap-2 flex-shrink-0">
-                        <span class="px-2 py-1 text-[10px] uppercase tracking-wider rounded-full bg-gray-100 text-gray-700">${status}</span>
+                        <span class="px-2 py-1 text-xs uppercase tracking-wider rounded-full bg-gray-100 text-gray-700">${status}</span>
                         <button
                             type="button"
                             class="btn-open-curation px-2.5 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"

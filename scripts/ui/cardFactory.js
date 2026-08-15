@@ -84,7 +84,26 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
         const priceLevel = entity.data?.attributes?.price_level || entity.data?.price_level || 0;
         const cuisine = entity.data?.attributes?.cuisine || entity.data?.cuisine || [];
         const phone = entity.data?.contact?.phone || entity.data?.contacts?.phone || entity.data?.phone || '';
-        const website = entity.data?.contact?.website || entity.data?.website || '';
+        // Tolerante aos dois shapes (v3 singular + bulk plural) — mesma
+        // cadeia do extractEntityWebsite: sem isso, entities com
+        // data.contacts.website ficavam sem data-og-source (sem véu)
+        const website =
+            entity.data?.contact?.website ||
+            entity.data?.contacts?.website ||
+            entity.data?.website ||
+            entity?.website || '';
+
+        // Véu de imagem OG (ogImageModule resolve em real-time via
+        // /api/v3/og-image). Fonte primária: website. Fallback de
+        // cobertura: place_id → foto do Google Places (muitos sites de
+        // restaurante não têm og:image — o place_id cobre a lacuna).
+        if (website) {
+            card.dataset.ogSource = website;
+        }
+        const placeId = entity.data?.place_id || entity.place_id || '';
+        if (placeId) {
+            card.dataset.ogPlaceId = placeId;
+        }
 
         // Get first cuisine type if available
         const cuisineType = Array.isArray(cuisine) && cuisine.length > 0 ? cuisine[0] : '';
@@ -102,6 +121,10 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
         const priceIndicator = priceLevel > 0 ? '€'.repeat(priceLevel) : '';
 
         card.innerHTML = `
+            <!-- Véu de imagem OG (degrade suave direita→card) —
+                 preenchido pelo ogImageModule; sem site nem place_id
+                 = sem véu -->
+            ${(website || placeId) ? '<div class="card-og-veil" aria-hidden="true"></div>' : ''}
             <!-- Header with type icon (badge circular perfeito via
                  .card-type-badge — o div com p-2 + inline-block criava
                  círculo oval e glifo descentralizado) -->
@@ -155,7 +178,7 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                         ${phone ? `
                             <div class="flex items-center gap-1.5 text-xs text-gray-500" title="${this.escapeHtml(phone)}">
                                 <span class="material-icons text-sm">phone</span>
-                                <span class="truncate max-w-[150px]">${this.escapeHtml(phone)}</span>
+                                <span class="truncate" style="max-width:150px">${this.escapeHtml(phone)}</span>
                             </div>
                         ` : ''}
                         ${website ? `
@@ -200,25 +223,25 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                 detailsEl.innerHTML = `
                     ${fullAddress ? `
                         <div class="flex items-start gap-1.5 text-xs text-gray-600" title="${this.escapeHtml(fullAddress)}">
-                            <span class="material-icons text-[14px] mt-[1px] flex-shrink-0">place</span>
+                            <span class="material-icons text-sm mt-px flex-shrink-0">place</span>
                             ${mapsUrl ? `<a href="${mapsUrl}" target="_blank" rel="noopener noreferrer" class="linked-contact-link hover:underline line-clamp-2">${this.escapeHtml(fullAddress)}</a>` : `<span class="line-clamp-2">${this.escapeHtml(fullAddress)}</span>`}
                         </div>
                     ` : ''}
                     ${entityPhone ? `
                         <div class="flex items-center gap-1.5 text-xs text-gray-600" title="${this.escapeHtml(entityPhone)}">
-                            <span class="material-icons text-[14px]">phone</span>
+                            <span class="material-icons text-sm">phone</span>
                             <a href="tel:${this.escapeHtml(entityPhone)}" class="linked-contact-link hover:underline">${this.escapeHtml(entityPhone)}</a>
                         </div>
                     ` : ''}
                     ${entityWebsiteHref ? `
                         <div class="flex items-center gap-1.5 text-xs text-blue-700" title="${this.escapeHtml(entityWebsiteRaw)}">
-                            <span class="material-icons text-[14px]">language</span>
+                            <span class="material-icons text-sm">language</span>
                             <a href="${entityWebsiteHref}" target="_blank" rel="noopener noreferrer" class="linked-contact-link hover:underline line-clamp-1">${this.escapeHtml(entityWebsiteLabel)}</a>
                         </div>
                     ` : ''}
                     ${rating > 0 ? `
                         <div class="flex items-center gap-1.5 text-xs text-amber-700">
-                            <span class="material-icons text-[14px]">star</span>
+                            <span class="material-icons text-sm">star</span>
                             <span class="font-semibold">${rating.toFixed(1)}</span>
                             ${priceIndicator ? `<span class="text-gray-600">• ${this.escapeHtml(priceIndicator)}</span>` : ''}
                         </div>
@@ -256,25 +279,25 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                         <span class="${statusColors[status] || statusColors.active} uppercase tracking-wider">
                             ${this.escapeHtml(status)}
                         </span>
-                        <div class="inline-flex items-center gap-1 text-[11px] font-medium text-gray-700 bg-gray-50 border border-gray-100 rounded-full px-2 py-1">
-                            <span class="material-icons text-[14px]">inventory_2</span>
+                        <div class="inline-flex items-center gap-1 text-xs font-medium text-gray-700 bg-gray-50 border border-gray-100 rounded-full px-2 py-1">
+                            <span class="material-icons text-sm">inventory_2</span>
                             <span>${sourceText}</span>
                         </div>
-                        <div class="inline-flex items-center gap-1 text-[11px] font-medium ${syncColor} bg-white border border-gray-100 rounded-full px-2 py-1" title="Sync Status: ${syncStatus}">
-                            <span class="material-icons text-[14px]">${syncIcon}</span>
+                        <div class="inline-flex items-center gap-1 text-xs font-medium ${syncColor} bg-white border border-gray-100 rounded-full px-2 py-1" title="Sync Status: ${syncStatus}">
+                            <span class="material-icons text-sm">${syncIcon}</span>
                             <span class="capitalize">${syncStatus}</span>
                         </div>
                     </div>
                 </div>
                 <div class="grid grid-cols-3 gap-2 pt-1">
                     <button class="btn-entity-details icon-btn w-full text-gray-700 hover:bg-gray-100" title="Entity Details">
-                        <span class="material-icons text-[18px]">info</span>
+                        <span class="material-icons text-lg">info</span>
                     </button>
                     <button class="btn-entity-sync h-10 w-full flex items-center justify-center bg-gray-50 text-amber-700 hover:bg-amber-50 rounded-lg transition-all border border-gray-100 shadow-sm" title="Sync Entity">
-                        <span class="material-icons text-[18px]">sync</span>
+                        <span class="material-icons text-lg">sync</span>
                     </button>
                     <button class="btn-entity-edit card-edit-btn" title="Edit Entity">
-                        <span class="material-icons text-[18px]">edit</span>
+                        <span class="material-icons text-lg">edit</span>
                     </button>
                 </div>
             `;
@@ -465,7 +488,7 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
             const bodyDetails = isLinkedCuration && (fullAddress || phone || websiteHref) ? `                <div class="entity-curation-details pt-1 space-y-2">
                     ${fullAddress ? `
                         <div class="flex items-start gap-1.5 text-xs text-gray-600" title="${this.escapeHtml(fullAddress)}">
-                            <span class="material-icons text-[14px] mt-[1px] flex-shrink-0">place</span>
+                            <span class="material-icons text-sm mt-px flex-shrink-0">place</span>
                             ${mapsUrl
                     ? `<a href="${mapsUrl}" target="_blank" rel="noopener noreferrer" class="linked-contact-link hover:underline line-clamp-2">${this.escapeHtml(fullAddress)}</a>`
                     : `<span class="line-clamp-2">${this.escapeHtml(fullAddress)}</span>`}
@@ -473,13 +496,13 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                     ` : ''}
                     ${phone ? `
                         <div class="flex items-center gap-1.5 text-xs text-gray-600" title="${this.escapeHtml(phone)}">
-                            <span class="material-icons text-[14px]">phone</span>
+                            <span class="material-icons text-sm">phone</span>
                             <a href="tel:${this.escapeHtml(phone)}" class="linked-contact-link hover:underline">${this.escapeHtml(phone)}</a>
                         </div>
                     ` : ''}
                     ${websiteHref ? `
                         <div class="flex items-center gap-1.5 text-xs text-blue-700" title="${this.escapeHtml(websiteRaw)}">
-                            <span class="material-icons text-[14px]">language</span>
+                            <span class="material-icons text-sm">language</span>
                             <a href="${websiteHref}" target="_blank" rel="noopener noreferrer" class="linked-contact-link hover:underline line-clamp-1">${this.escapeHtml(websiteLabel)}</a>
                         </div>
                     ` : ''}
@@ -490,7 +513,7 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
             if (subtitleEl) {
                 subtitleEl.innerHTML = `
                     <span class="inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-50 border border-gray-100 rounded-full px-2 py-1">
-                        <span class="material-icons text-[14px]">person</span>
+                        <span class="material-icons text-sm">person</span>
                         <span class="font-medium">${safeCuratorName}</span>
                     </span>
                 `;
@@ -501,7 +524,7 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                     curatorChip.className = 'entity-card-subtitle text-sm text-gray-500 font-medium';
                     curatorChip.innerHTML = `
                         <span class="inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-50 border border-gray-100 rounded-full px-2 py-1">
-                            <span class="material-icons text-[14px]">person</span>
+                            <span class="material-icons text-sm">person</span>
                             <span class="font-medium">${safeCuratorName}</span>
                         </span>
                     `;
@@ -558,35 +581,35 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                             <span class="material-icons">${this.escapeHtml(sourceInfo.icon)}</span>
                             ${this.escapeHtml(sourceInfo.label)}
                         </div>
-                        <div class="inline-flex items-center gap-1 text-[11px] font-medium ${syncColor} ${syncStatus === 'conflict' ? 'sync-conflict-chip' : ''} bg-white border border-gray-100 rounded-full px-2 py-1"
+                        <div class="inline-flex items-center gap-1 text-xs font-medium ${syncColor} ${syncStatus === 'conflict' ? 'sync-conflict-chip' : ''} bg-white border border-gray-100 rounded-full px-2 py-1"
                              title="${syncStatus === 'conflict' ? 'Click to resolve conflict' : `Sync Status: ${this.escapeHtml(syncLabel)}` }">
-                            <span class="material-icons text-[14px]">${syncIcon}</span>
+                            <span class="material-icons text-sm">${syncIcon}</span>
                             <span class="capitalize">${this.escapeHtml(syncLabel)}</span>
                         </div>
                     </div>
                 </div>
                 <div class="grid grid-cols-3 gap-2 pt-1">
                     <button class="btn-delete-curation icon-btn w-full text-red-500 hover:bg-red-50 hover:text-red-700 hover:border-red-200" title="Delete Curation">
-                        <span class="material-icons text-[18px]">delete_outline</span>
+                        <span class="material-icons text-lg">delete_outline</span>
                     </button>
                     ${isLinkedCuration ? `
                     <!-- vínculo ativo: o botão ABRE a página de detalhes da
                          entity linkada (a tag "Linked" foi removida — este
                          botão é quem comunica o vínculo agora) -->
                     <button class="btn-view-entity card-link-btn" title="View linked entity details">
-                        <span class="material-icons text-[16px]">visibility</span>
+                        <span class="material-icons text-base">visibility</span>
                         View Entity
                     </button>
                     ` : `
                     <!-- sem vínculo: aqui mora o Link Entity (mesmo espaço,
                          mesma linguagem quieta — nada de azul sólido) -->
                     <button class="btn-link-entity card-link-btn" title="Link this curation to an entity">
-                        <span class="material-icons text-[16px]">link</span>
+                        <span class="material-icons text-base">link</span>
                         Link Entity
                     </button>
                     `}
                     <button class="btn-edit-curation card-edit-btn" title="Edit Curation">
-                        <span class="material-icons text-[18px]">edit</span>
+                        <span class="material-icons text-lg">edit</span>
                     </button>
                 </div>
             `;
