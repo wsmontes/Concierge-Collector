@@ -29,19 +29,14 @@ Fonte: memórias do projeto, auditoria de segurança, sessões de trabalho e est
 - [x] ~~Routers `places.py` + `places_router.py` + `places_orchestrate.py`~~ — CONSOLIDADOS (rotas preservadas; healths duplicados sem consumidor removidos; rotas mortas usage-stats/health-original removidas — ver docs/API_ENDPOINT_REVIEW.md)
 - [x] ~~Endpoints sem uso real~~ — mapeados no review (consumidores frontend/MCP/OpenAI identificados)
 
-### IA (bloco grande — modernização completa)
-- [ ] **Modelos recentes**: auditar openai_configs (Mongo) e referências no código — GPT-4 legado → gpt-4o/gpt-4.1; Whisper e text-embedding-3-small continuam; verificar sufixo _text do registry
-- [ ] **Prompts melhores**: promptTemplate.js (frontend) + prompts do ai_orchestrator/openai_service/llm_place_service — vocabulário de categorias de curadoria (memória: curation-category-vocabulary), instruções de formato JSON, few-shot
-- [ ] **Validação de resultado**: schema enforcement do JSON extraído (Pydantic v2 no backend), rejeição de categoria fora do vocabulário, consistência entity↔concepts
-- [ ] **Retries**: política explícita (exponencial + jitter) nos serviços OpenAI — hoje retry é pontual; alinhar com rate limits
-- [ ] **Pipeline local** (research_curations.py usa DeepSeek): avaliar modelos e prompts junto
+### IA — CONCLUÍDO (ver docs/AI_MODERNIZATION_PLAN.md — 5 fases: modelos gpt-5.6, prompts com vocabulário forçado, validação+re-prompt, retries, pipeline DeepSeek)
 
 ### Auth/Segurança
 - [x] ~~OAuth: cookie HttpOnly~~ ✓ (ADITIVO — o Bearer continua o caminho principal): access_token também flui via cookie HttpOnly (SameSite=lax, Secure em prod) definido no callback/refresh/dev-login e limpo no logout; verify_auth aceita o cookie como fallback; apiService manda credentials:include. Remover o localStorage fica pra próxima fase (quando a superfície 100% cookie for validada).
 - [ ] Rotação do client id/secret OAuth vazados em docs (usuário adiou — cobrar de novo)
 
 ### Sync/Offline
-- [ ] Pull de entities vinculadas depende de curations locais; aba server-driven resolvia por fora — monitorar consistência
+- [x] ~~Pull de entities vinculadas / consistência~~ ✓ — aba server-driven resolve entities por fora (local chunked + API ids + persistência) desde o fix do renderCurationsPage
 
 ### Dados
 - [ ] Junk de teste no banco: `entity_curation_test_*` (entities + curations) — limpar via `scripts/python-tools/data_cleanup.py` (destrutivo: confirmar antes)
@@ -56,13 +51,13 @@ Fonte: memórias do projeto, auditoria de segurança, sessões de trabalho e est
 - [x] ~~**Prefetch da próxima página**~~ ✓ — peekPage() não-mutante nos browsers + pré-resolução 1,5s após a página enfileirar (dedupe por página); validação real sem corromper paginação
 - [x] ~~Estabilizar visualização mobile (pré-requisito dos swipe actions)~~ ✓ — #app forçava padding:0 matando o px-4 do Tailwind (overflow 16px + pan horizontal); overscroll-behavior-x:none no body; cards com touch-action:pan-y. Validado: scrollWidth == viewport em 390px e 1280px, zero offenders.
 - [x] ~~Swipe actions mobile nos cards~~ ✓ — swipe esquerda = editar, direita = detalhes (design conservador, não-destrutivo); click pós-gesto suprimido via flag swipeActive; feedback visual via classe .swiping (tint oliva); validado com touch emulado (edit/details/click pós-swipe)
-- [ ] Badges de tipo no fallback com mais distinção (novo/vídeo-equivalente)
+- [x] ~~Badges de tipo no fallback~~ ✓ — badge "novo" (createdAt ≤ 24h) sob o badge do tipo, tom aço (padrão newBadge do feedmine)
 - [ ] Avaliar OKLCH para novas escalas (só em componentes novos — tema atual é curado)
 
 ### og-image (véu)
 - [x] ~~Negative cache com backoff~~ ✓ — miss re-tenta em 10min (hit 1h), teste de TTL com monotonic mockado
 - [x] ~~Métricas de cobertura por fonte~~ ✓ — contadores em memória (requests, cache_hits_bytes, source_og, source_places, no_image) + GET /api/v3/og-image/stats (auth curator); testes cobrem shape e auth
-- [ ] Cache Storage: eviction explícito por LRU (hoje o browser decide)
+- [x] ~~Cache Storage: eviction LRU~~ ✓ — cap de ~200 entradas no _writeCache (remove as mais antigas por ordem de inserção)
 
 ### API
 - [ ] Endpoint agregado por entity (`/entities/{id}/image`) que encapsula og+places — hoje o frontend monta a consulta

@@ -1638,6 +1638,21 @@
   touch-action: pan-y;
 }
 
+/* Badge "novo" (padrão newBadge do feedmine): criado/atualizado nas
+   últimas 24h — chip discreto sob o badge do tipo, tom aço */
+.card-new-badge {
+  margin-top: 0.375rem;
+  text-align: center;
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--chip-info-fg);
+  background: var(--chip-info-bg);
+  border-radius: var(--radius-full);
+  padding: 0.125rem 0.5rem;
+}
+
 /* Feedback visual do swipe (classe .swiping aplicada pelo
    gestureManager durante o gesto): tint oliva sutil que volta no
    touchend — sem transform, sem risco de layout */

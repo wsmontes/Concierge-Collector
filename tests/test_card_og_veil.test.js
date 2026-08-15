@@ -273,3 +273,33 @@ describe('OgImageModule — resolução, cache e aplicação do véu', () => {
     expect(query).not.toContain('url=');
   });
 });
+
+describe('CardFactory — badge "novo" (feedmine newBadge)', () => {
+  const base = {
+    entity_id: 'ent_new',
+    name: 'Novo Teste',
+    type: 'restaurant',
+    status: 'active',
+    data: {}
+  };
+
+  test('entity criada há pouco ganha o badge new', () => {
+    const factory = loadCardFactory();
+    const card = factory.createEntityCard(
+      { ...base, createdAt: new Date().toISOString() },
+      { showEntityActions: false }
+    );
+    expect(card.querySelector('.card-new-badge')).toBeTruthy();
+  });
+
+  test('entity antiga ou sem timestamp fica sem badge', () => {
+    const factory = loadCardFactory();
+    const old = factory.createEntityCard(
+      { ...base, createdAt: new Date(Date.now() - 30 * 86400 * 1000).toISOString() },
+      { showEntityActions: false }
+    );
+    const none = factory.createEntityCard(base, { showEntityActions: false });
+    expect(old.querySelector('.card-new-badge')).toBeNull();
+    expect(none.querySelector('.card-new-badge')).toBeNull();
+  });
+});

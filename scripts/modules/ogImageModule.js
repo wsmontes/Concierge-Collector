@@ -227,6 +227,16 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
         try {
             const cache = await caches.open(this._cacheName);
             await cache.put(url, new Response(blob, { headers: { 'Content-Type': blob.type } }));
+            // LRU manual: o browser decide a cota, mas ~200 imagens (60-120KB)
+            // são suficientes para o acervo local — além disso, remove as
+            // entradas mais antigas em ordem de inserção (feedmine
+            // DiskImageCache tem política parecida).
+            const keys = await cache.keys();
+            if (keys.length > 200) {
+                for (const stale of keys.slice(0, keys.length - 200)) {
+                    await cache.delete(stale);
+                }
+            }
         } catch (error) {
             this.log.debug('escrita no Cache Storage falhou:', error);
         }

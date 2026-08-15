@@ -40,6 +40,26 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
     }
 
     /**
+     * True quando o card é "novo" (criado/atualizado nas últimas 24h).
+     * Tolerante aos shapes de timestamp dos dois formatos de entity.
+     * @param {Object} entity - Entity do card
+     * @returns {boolean}
+     */
+    _isRecentlyCreated(entity) {
+        const raw =
+            entity.createdAt ||
+            entity.updatedAt ||
+            entity.data?.createdAt ||
+            entity.data?.updatedAt ||
+            entity.data?.created_at ||
+            entity.data?.updated_at;
+        if (!raw) return false;
+        const t = new Date(raw).getTime();
+        if (isNaN(t)) return false;
+        return Date.now() - t < 24 * 3600 * 1000;
+    }
+
+    /**
      * Create standardized entity card
      * @param {Object} entity - Entity data
      * @param {Object} options - Card options (size, variant, etc.)
@@ -105,6 +125,11 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
             card.dataset.ogPlaceId = placeId;
         }
 
+        // Badge "novo" (padrão newBadge do feedmine): criado/atualizado
+        // nas últimas 24h — ajuda o concierge a achar o que acabou de
+        // entrar sem ler a lista inteira.
+        const isNew = this._isRecentlyCreated(entity);
+
         // Get first cuisine type if available
         const cuisineType = Array.isArray(cuisine) && cuisine.length > 0 ? cuisine[0] : '';
 
@@ -136,6 +161,7 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                 <div class="card-type-badge">
                     <span class="material-icons text-gray-600">${this.getTypeIcon(type)}</span>
                 </div>
+                ${isNew ? '<div class="card-new-badge">new</div>' : ''}
             </div>
             
             <!-- Main content - flex-grow to push footer down -->
