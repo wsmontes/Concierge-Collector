@@ -55,7 +55,7 @@ Fonte: memórias do projeto, auditoria de segurança, sessões de trabalho e est
 ### Feedmine (estudo: `docs/UI/FEEDMINE_DESIGN_STUDY.md`)
 - [x] ~~**Prefetch da próxima página**~~ ✓ — peekPage() não-mutante nos browsers + pré-resolução 1,5s após a página enfileirar (dedupe por página); validação real sem corromper paginação
 - [x] ~~Estabilizar visualização mobile (pré-requisito dos swipe actions)~~ ✓ — #app forçava padding:0 matando o px-4 do Tailwind (overflow 16px + pan horizontal); overscroll-behavior-x:none no body; cards com touch-action:pan-y. Validado: scrollWidth == viewport em 390px e 1280px, zero offenders.
-- [ ] Swipe actions mobile nos cards (agora seguro: eixo horizontal livre + overscroll contido — implementar com gestureManager)
+- [x] ~~Swipe actions mobile nos cards~~ ✓ — swipe esquerda = editar, direita = detalhes (design conservador, não-destrutivo); click pós-gesto suprimido via flag swipeActive; feedback visual via classe .swiping (tint oliva); validado com touch emulado (edit/details/click pós-swipe)
 - [ ] Badges de tipo no fallback com mais distinção (novo/vídeo-equivalente)
 - [ ] Avaliar OKLCH para novas escalas (só em componentes novos — tema atual é curado)
 

@@ -1165,15 +1165,54 @@ if (typeof window.UIManager === 'undefined') {
                         // Regressão: o card de entity não tem handler de
                         // detalhes por padrão (só console.log) — o review
                         // card abre handleViewReviewDetails no click.
-                        onClick: () => self.handleViewReviewDetails(curation)
+                        // O guard de swipe evita que o click pós-gesto
+                        // dispare os detalhes junto com a ação do swipe.
+                        onClick: () => {
+                            if (card.dataset.swipeActive) {
+                                delete card.dataset.swipeActive;
+                                return;
+                            }
+                            self.handleViewReviewDetails(curation);
+                        }
                     })
                     : self.createReviewCard(curation);
+                self._wireSwipeActions(card, curation);
                 frag.appendChild(card);
             });
 
             // troca atômica: a lista anterior fica visível até a nova
             // estar pronta (sem janela em branco)
             container.replaceChildren(frag);
+        }
+
+        /**
+         * Swipe actions nos cards de curadoria (mobile, via gestureManager
+         * — desbloqueado pela estabilização mobile: overscroll-x contido +
+         * touch-action pan-y nos cards fazem o vertical rolar nativo).
+         * Design conservador: swipe esquerda = EDITAR (não-destrutivo),
+         * swipe direita = detalhes. O click pós-gesto é suprimido pelo
+         * guard swipeActive (ver renderCurationsPage/createReviewCard).
+         * @param {HTMLElement} card - Card alvo
+         * @param {Object} curation - Curation do card
+         */
+        _wireSwipeActions(card, curation) {
+            if (!window.gestureManager || typeof window.gestureManager.onSwipe !== 'function') return;
+            if (card.dataset.swipeWired) return;
+            card.dataset.swipeWired = '1';
+
+            window.gestureManager.onSwipe(card, {
+                threshold: 60,
+                onSwipeLeft: () => {
+                    card.dataset.swipeActive = '1';
+                    if (typeof this.editCuration === 'function') {
+                        this.editCuration(curation);
+                    }
+                },
+                onSwipeRight: () => {
+                    card.dataset.swipeActive = '1';
+                    this.handleViewReviewDetails(curation);
+                }
+            });
         }
 
         /**
@@ -1898,6 +1937,11 @@ if (typeof window.UIManager === 'undefined') {
             card.addEventListener('click', (e) => {
                 // Don't trigger if clicked on buttons (handled by stopPropagation, but just in case)
                 if (e.target.closest('button')) return;
+                // Click pós-swipe: o gesto já tratou a ação — não reabrir
+                if (card.dataset.swipeActive) {
+                    delete card.dataset.swipeActive;
+                    return;
+                }
                 this.handleViewReviewDetails(curation);
             });
 

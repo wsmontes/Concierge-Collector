@@ -1638,6 +1638,14 @@
   touch-action: pan-y;
 }
 
+/* Feedback visual do swipe (classe .swiping aplicada pelo
+   gestureManager durante o gesto): tint oliva sutil que volta no
+   touchend — sem transform, sem risco de layout */
+[data-entity-id].swiping,
+.review-card.swiping {
+  background-color: var(--color-primary-50);
+}
+
 /* Véu de FALLBACK — princípio feedmine "cards resolvidos antes de
    aparecer": card sem imagem nunca fica branco vazio; ganha um
    gradiente suave no TOM DO STATUS (placeholder de categoria, como o
