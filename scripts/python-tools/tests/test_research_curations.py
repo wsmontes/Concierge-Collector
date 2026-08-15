@@ -383,3 +383,39 @@ def test_scrape_urls_skips_url_that_exceeds_timeout():
     assert by_url["fast"] == "fast"
     assert by_url["slow"] == ""          # não esperou a URL lenta
     assert [p["url"] for p in pages] == ["fast", "slow"]  # ordem preservada
+
+
+# --- Fase 5: re-prompt em parse inválido ------------------------------------
+
+class _SequenceClient:
+    """Fake client que devolve respostas em sequência (uma por create)."""
+
+    def __init__(self, contents):
+        self._contents = list(contents)
+        self.calls = 0
+        self.chat = type("Chat", (), {"completions": self})
+
+    def create(self, **kwargs):
+        self.calls += 1
+        content = self._contents.pop(0) if self._contents else ""
+        self.last_messages = kwargs.get("messages")
+        return _FakeResp(content)
+
+
+def test_extract_llm_re_prompt_em_json_invalido():
+    payload = _json.dumps({"categories": {"cuisine": ["Brazilian"]}, "description": "Boteco raiz."})
+    client = _SequenceClient(["resposta solta sem json", payload])
+    out = extract_concepts_llm("--- FONTE: a ---\ntexto", "Boteco X", client, "deepseek-chat")
+
+    assert client.calls == 2  # primeira falhou → re-prompt
+    assert "Sua resposta anterior não era um objeto JSON válido" in client.last_messages[-1]["content"]
+    assert out["categories"] == {"cuisine": ["brazilian"]}
+    assert out["description"] == "Boteco raiz."
+
+
+def test_extract_llm_duas_falhas_cai_no_fallback_vazio():
+    client = _SequenceClient(["texto solto", "ainda não é json"])
+    out = extract_concepts_llm("--- FONTE: a ---\ntexto", "X", client, "deepseek-chat")
+
+    assert client.calls == 2
+    assert out == {"categories": {}, "description": ""}

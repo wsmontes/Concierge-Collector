@@ -260,21 +260,27 @@ def build_entity_patch(entity: Dict[str, Any], description: str) -> Dict[str, An
     }
 
 
-def _parse_json_object(text: str) -> Dict[str, Any]:
-    """Extrai o primeiro objeto JSON de uma resposta de LLM; {} se falhar."""
+def _parse_json_object(text: str) -> Dict[str, Any] | None:
+    """Extrai o primeiro objeto JSON de uma resposta de LLM; None se falhar.
+
+    None (em vez de {}) sinaliza falha de parse para o re-prompt do
+    extract_concepts_llm (Fase 5 da modernização de IA).
+    """
     if not text:
-        return {}
+        return None
     try:
-        return json.loads(text)
+        parsed = json.loads(text)
+        return parsed if isinstance(parsed, dict) else None
     except Exception:
         pass
     match = re.search(r"\{.*\}", text, re.DOTALL)
     if match:
         try:
-            return json.loads(match.group(0))
+            parsed = json.loads(match.group(0))
+            return parsed if isinstance(parsed, dict) else None
         except Exception:
-            return {}
-    return {}
+            return None
+    return None
 
 
 def _format_vocab_block(vocabulary: Dict[str, List[str]], max_per_cat: int = 40) -> str:
@@ -344,13 +350,25 @@ def extract_concepts_llm(
         '"description": "..."} with only categories that have explicit support.\n\n'
         f"RESEARCHED TEXT:\n{research_block}"
     )
-    resp = client.chat.completions.create(
-        model=model,
-        messages=[{"role": "system", "content": system}, {"role": "user", "content": user}],
-        temperature=0,
-    )
-    content = resp.choices[0].message.content
-    data = _parse_json_object(content)
+    # Re-prompt único em parse inválido (mesmo padrão do backend — Fase 5):
+    # resposta sem JSON recebe o aviso e tenta mais uma vez; sem sucesso,
+    # cai no fallback vazio ({} + description "") como antes.
+    messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+    data = None
+    for attempt in range(2):
+        resp = client.chat.completions.create(
+            model=model,
+            messages=messages,
+            temperature=0,
+        )
+        content = resp.choices[0].message.content
+        data = _parse_json_object(content)
+        if data is not None:
+            break
+        messages = messages + [{"role": "user", "content": (
+            "Sua resposta anterior não era um objeto JSON válido. "
+            "Responda SOMENTE com o objeto JSON pedido, sem markdown."
+        )}]
     if not isinstance(data, dict):
         return {"categories": {}, "description": ""}
     categories = clean_llm_categories(data.get("categories"))  # safe: clean_llm_categories(None) -> {}
@@ -519,7 +537,13 @@ def main() -> int:
         print("ERRO: DEEPSEEK_API_KEY não definida em concierge-api-v3/.env")
         return 1
 
-    client = OpenAI(api_key=s["deepseek_api_key"], base_url=s["deepseek_base_url"], timeout=90)
+    client = OpenAI(
+        api_key=s["deepseek_api_key"],
+        base_url=s["deepseek_base_url"],
+        timeout=90,
+        # Fase 4: retries explícitos — antes dependia só do default do SDK
+        max_retries=3,
+    )
     model = s["deepseek_model"]
 
     db = MongoClient(s["mongodb_url"])[s["mongodb_db_name"]]

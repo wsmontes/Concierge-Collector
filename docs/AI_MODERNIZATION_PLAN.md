@@ -38,8 +38,8 @@ Estado atual auditado: 5 serviços em `openai_configs` (Mongo). `whisper-1` e `t
 
 ## Fase 5 — Pipeline local + testes
 
-- [ ] `research_curations.py` (DeepSeek): mesmos critérios de prompt/validação
-- [ ] Testes: parser com respostas malformadas (JSON quebrado, categoria inválida, campo faltando), retry mockado
+- [x] ~~`research_curations.py` (DeepSeek)~~ ✓ — o prompt já seguia o vocabulário canônico (price fechado + sinônimos + chaves-alvo em clean_llm_categories); adicionados re-prompt único em parse inválido (_parse_json_object agora retorna None em falha) e max_retries=3 no client DeepSeek.
+- [x] ~~Testes~~ ✓ — re-prompt mockado (1ª falha → 2ª ok; duas falhas → fallback vazio); suite python-tools 130 ✓
 
 ## Riscos
 
