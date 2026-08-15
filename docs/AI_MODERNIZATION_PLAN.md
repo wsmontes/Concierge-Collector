@@ -18,9 +18,9 @@ Estado atual auditado: 5 serviços em `openai_configs` (Mongo). `whisper-1` e `t
 
 ## Fase 2 — Prompts melhores
 
-- [ ] Auditar os `prompt_template` dos 5 serviços + `promptTemplate.js`
-- [ ] JSON schema explícito nas instruções (campos exatos, tipos)
-- [ ] Vocabulário de categorias FORÇADO: tags em inglês lowercase, price_range = unexpensive|mid-range|expensive (memória curation-category-vocabulary)
+- [x] ~~Auditar os `prompt_template` dos 5 serviços + `promptTemplate.js`~~ ✓ (todos dumpados; concept é o crítico)
+- [x] ~~JSON schema explícito~~ ✓ (concept_extraction_text: só as chaves das categorias + confidence_score; omitir vazias; nunca inventar campos)
+- [x] ~~Vocabulário FORÇADO~~ ✓ (concept: lowercase em todas as tags, exceções menu/price_and_payment; price_range exatamente um de unexpensive|mid-range|expensive; promptTemplate.js alinhado — antes dizia "inexpensive, moderate, expensive")
 - [ ] Few-shot com exemplos reais de curadorias boas
 - [ ] Instrução anti-alucinação: "campo ausente = omitir, nunca inventar"
 

@@ -16,18 +16,19 @@ if (!window.promptTemplates) {
 
 {texto}
 
-Categories for classification:
-- Cuisine: types of cuisine/gastronomy (e.g.: Italian, Japanese, fusion)
-- Menu: specific dishes or ingredients mentioned
-- Price Range: price range (e.g.: inexpensive, moderate, expensive)
-- Mood: atmosphere/vibe of the place (e.g.: romantic, casual, lively)
-- Setting: physical environment (e.g.: rustic, modern, outdoor)
-- Crowd: predominant type of audience (e.g.: family, executives, tourists)
-- Suitable For: suitable for which occasions (e.g.: dates, business meetings)
-- Food Style: food style (e.g.: comfort food, gourmet, street food)
-- Drinks: featured beverages (e.g.: wine list, signature cocktails)
+Categories for classification (use ONLY these keys — never invent new ones):
+- cuisine: types of cuisine/gastronomy (e.g.: italian, japanese, fusion)
+- menu: specific dishes or ingredients mentioned (keep original dish capitalization)
+- price_range: EXACTLY ONE of "unexpensive", "mid-range", "expensive"
+- mood: atmosphere/vibe of the place (e.g.: romantic, casual, lively)
+- setting: physical environment (e.g.: rustic, modern, outdoor)
+- crowd: predominant type of audience (e.g.: family, executives, tourists)
+- suitable_for: suitable for which occasions (e.g.: dates, business meetings)
+- food_style: food style (e.g.: comfort food, gourmet, street food)
+- drinks: featured beverages (e.g.: wine, signature cocktails)
+- special_features: noteworthy attributes (e.g.: wine focus, open kitchen)
 
-Format your response as a JSON object with the above categories as keys and arrays of values found in the text. If there is no information about a category, return an empty array. Be extremely precise and consider different context. Your analysis must be in English regardless of the input language, but keep original names and local terms in native language.`
+Format your response as a JSON object with the above categories as keys and arrays of lowercase values found in the text (proper dish names keep their capitalization). Omit categories with no information. Be extremely precise and consider different context. Your analysis must be in English regardless of the input language, but keep original names and local terms in native language.`
         },
         
         // Prompt for disambiguation of similar concepts
