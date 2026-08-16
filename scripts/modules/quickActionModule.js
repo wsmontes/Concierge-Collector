@@ -113,16 +113,8 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
      * "+ New Curation" (desktop) e a rota #/new. Exige curador logado.
      */
     openQuickActions() {
-        // Curador autenticado (CuratorProfile/OAuth) OU curador legado
-        // selecionado. uiManager.currentCurator é o modelo LEGADO do
-        // selector local — fica null pra quem só logou via Google, mas
-        // o login real mora no CuratorProfile (curator_id = email).
-        const authCurator = window.CuratorProfile &&
-            typeof window.CuratorProfile.getCurrentCurator === 'function'
-            ? window.CuratorProfile.getCurrentCurator()
-            : null;
-
-        if (!this.uiManager.currentCurator && !authCurator) {
+        // Only show quick actions if a curator is logged in
+        if (!this.uiManager.currentCurator) {
             SafetyUtils.showNotification('Please set up curator information first', 'error');
             return;
         }
