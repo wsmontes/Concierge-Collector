@@ -3033,9 +3033,13 @@ if (typeof window.UIManager === 'undefined') {
             if (syncStatusElements.length > 0) {
                 const lastSyncTime = await dataStorage.getLastSyncTime();
                 if (lastSyncTime) {
-                    const formattedTime = new Date(lastSyncTime).toLocaleString();
+                    // Data relativa ("2 hours ago") — timestamp absoluto
+                    // fica no title para quem precisa da precisão
+                    const formattedTime = window.uiUtils.formatRelativeDate(lastSyncTime);
+                    const absoluteTime = new Date(lastSyncTime).toLocaleString();
                     syncStatusElements.forEach(el => {
-                        el.textContent = `Last sync: ${formattedTime} `;
+                        el.textContent = `Last sync: ${formattedTime}`;
+                        el.title = absoluteTime;
                     });
                 }
             }

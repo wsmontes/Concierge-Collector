@@ -1452,11 +1452,13 @@
     0 14px 34px rgba(26, 24, 23, 0.07);
 }
 
-/* Logo da top bar — 20% maior que o h-12/h-14 original (58px mobile,
-   67px em >=640px). Tailwind 2 CDN não tem utilitários arbitrários,
-   então a altura exata vive aqui. */
+/* Logo da top bar — 48px mobile, 67px em >=640px. O 58px original
+   (auditoria, ponto 15) inflava o header sticky junto com o wordmark
+   centrado; 48px devolve ~10px de viewport ao editor no mobile.
+   Tailwind 2 CDN não tem utilitários arbitrários, então a altura
+   exata vive aqui. */
 .brand-logo {
-  height: 58px;
+  height: 48px;
   width: auto;
 }
 
