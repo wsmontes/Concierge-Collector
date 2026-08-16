@@ -605,9 +605,28 @@ def google_oauth_callback(
 
     logger.info(f"[OAuth] ✓ Redirecting to frontend: {frontend_redirect_url} (same_site={same_site})")
 
+    # TEMP-DIAG (login loop OAuth): o que o callback envia de fato
+    logger.warning(
+        "[AUTH-DIAG] callback success: same_site=%s env=%s secure_cookie=%s redirect=%s",
+        same_site,
+        settings.environment,
+        settings.environment == "production",
+        redirect_url[:140],
+    )
+
     response = RedirectResponse(url=redirect_url)
     _set_access_cookie(response, access_token)
     _set_refresh_cookie(response, refresh_token)
+    # TEMP-DIAG: SÓ os atributos das cookies (o valor é o JWT — nunca logar;
+    # regra f797959: tokenData nunca vai para log)
+    logger.warning(
+        "[AUTH-DIAG] callback set-cookie attrs: %s",
+        [
+            h[1].decode("latin-1").split("; ", 1)[1] if b"; " in h[1] else "(sem attrs)"
+            for h in response.raw_headers
+            if h[0] == b"set-cookie"
+        ],
+    )
     return response
 
 
