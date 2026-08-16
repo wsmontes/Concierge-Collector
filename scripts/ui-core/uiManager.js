@@ -2257,13 +2257,35 @@ if (typeof window.UIManager === 'undefined') {
         /**
          * Handle viewing review details
          */
-        handleViewReviewDetails(curation) {
+        async handleViewReviewDetails(curation) {
             // Modal completo de detalhes da review: meta, vínculo com
             // entidade, fotos, transcrição (expansível), notas e conceitos
             // — tudo no padrão de componentes (chips, cards, icon-btn).
             if (!window.modalManager || typeof window.modalManager.open !== 'function') {
                 console.warn('ModalManager not available');
                 return;
+            }
+
+            // Véu OG (mesmo pipeline dos cards): para curadoria VINCULADA,
+            // website/place_id vêm da entity local — a mesma cadeia
+            // tolerante dos dois formatos que os cards usam
+            let veilWebsite = '';
+            let veilPlaceId = '';
+            if (curation.entity_id && window.DataStore?.db) {
+                try {
+                    const entity = await window.DataStore.db.entities
+                        .where('entity_id').equals(curation.entity_id).first();
+                    if (entity) {
+                        veilWebsite = entity.data?.contact?.website ||
+                            entity.data?.contacts?.website ||
+                            entity.data?.website ||
+                            entity.website || '';
+                        veilPlaceId = entity.data?.place_id ||
+                            entity.data?.google_place_id || '';
+                    }
+                } catch (e) {
+                    // lookup é melhor-esforço — o modal abre sem véu
+                }
             }
 
             // Transcrição/categorias/notas vêm do áudio/import — escapar
@@ -2315,6 +2337,22 @@ if (typeof window.UIManager === 'undefined') {
             if (isLinked) metaChips.push(`<span class="chip chip--success"><span class="material-icons" aria-hidden="true">link</span>Linked</span>`);
 
             const sections = [];
+
+            // ── Herói: véu OG da entity vinculada (mesma faixa dos
+            // detalhes de entity e dos cards — ogImageModule pinta o
+            // slot observando data-og-source no DOM) ──
+            let heroAttrs = '';
+            if (veilWebsite) heroAttrs += ` data-og-source="${esc(veilWebsite)}"`;
+            if (veilPlaceId) heroAttrs += ` data-og-place-id="${esc(veilPlaceId)}"`;
+            if (heroAttrs) {
+                sections.push(`
+                    <section class="detail-hero"${heroAttrs}>
+                        <div class="card-og-veil" aria-hidden="true">
+                            <span class="card-og-veil__icon material-icons">restaurant</span>
+                        </div>
+                    </section>
+                `);
+            }
 
             sections.push(`
                 <div class="detail-hero__facts detail-hero__facts--meta">${metaChips.join('')}</div>
