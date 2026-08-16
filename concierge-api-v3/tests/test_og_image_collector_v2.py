@@ -5,6 +5,7 @@ Network calls are patched; existing SSRF/download behavior remains covered by
 test_og_image.py.
 """
 
+import asyncio
 import io
 
 import pytest
@@ -138,3 +139,29 @@ async def test_collector_still_propagates_invalid_restaurant_page_url(monkeypatc
     svc._image_catalog_cache.clear()
     with pytest.raises(ValueError, match="rede interna"):
         await svc.get_restaurant_images("http://127.0.0.1/private", None, limit=1)
+
+
+@pytest.mark.asyncio
+async def test_places_metadata_does_not_block_event_loop(monkeypatch):
+    import time
+
+    from app.services import llm_place_service
+
+    class SlowPlacesService:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def fetch_google_place_photos(self, place_id, max_photos=10, language="pt-BR"):
+            time.sleep(0.08)
+            return [{"name": "places/P1/photos/PH1"}]
+
+    monkeypatch.setattr(llm_place_service, "LLMPlaceService", SlowPlacesService)
+    monkeypatch.setattr(svc.settings, "google_places_api_key", "fake-key")
+
+    started = time.perf_counter()
+    task = asyncio.create_task(svc._places_image_candidates("P1", max_photos=1))
+    await asyncio.sleep(0.01)
+    elapsed = time.perf_counter() - started
+    await task
+
+    assert elapsed < 0.05
