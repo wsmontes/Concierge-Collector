@@ -2040,20 +2040,11 @@
   display: none;
 }
 
-/* Desktop de VERDADE = largura + ponteiro fino. Esconder o FAB só por
-   largura "mistura as bolas" em touch devices largos (iPad, iPhone
-   deitado): o aparelho via o botão desktop e perdia o FAB/gravador.
-   Touch device (pointer coarse) mantém o FAB mesmo ≥641px. */
-@media (min-width: 641px) and (hover: hover) and (pointer: fine) {
-  #new-curation-btn {
-    display: inline-flex;
-    align-items: center;
-  }
-
-  #fab {
-    display: none !important;
-  }
-}
+/* FAB sempre visível: escondê-lo por largura (ou ponteiro) tirou o
+   gravador de aparelhos touch com viewport >=641px — bisect em prod
+   (2026-08-16) apontou essa regra como o pepino. O botão desktop
+   #new-curation-btn fica oculto (base display:none) e o FAB é a
+   entrada única de gravação em qualquer tela. */
 
 /* Variante desktop do bottom sheet de filtros: painel flutuante no
    canto inferior direito, não folha de tela cheia */
