@@ -47,11 +47,13 @@ async def collect_candidates(
     semaphore = asyncio.Semaphore(max(1, max_concurrency))
 
     async def process(candidate: ImageCandidate) -> Optional[CollectedImage]:
+        # Downloader ValueError is security-significant (the legacy SSRF
+        # contract propagates it as HTTP 400), so do not swallow it here.
+        async with semaphore:
+            raw = await downloader(candidate)
+        if raw is None:
+            return None
         try:
-            async with semaphore:
-                raw = await downloader(candidate)
-            if raw is None:
-                return None
             return prepare_image(
                 raw,
                 candidate,
@@ -60,12 +62,8 @@ async def collect_candidates(
                 min_dim=min_dim,
                 max_aspect=max_aspect,
             )
-        except ValueError:
-            # SSRF ValueError should be handled before this layer by the
-            # injected downloader. Decode/gate ValueError means rejection.
-            return None
         except Exception:
-            # One broken image must not fail the restaurant gallery.
+            # Decode/gate failure of one image must not fail the gallery.
             return None
 
     processed = await asyncio.gather(*(process(candidate) for candidate in candidates))
