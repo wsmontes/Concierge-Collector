@@ -35,24 +35,13 @@ describe('EntityModule — showEntityDetails com os dois formatos de entity', ()
   let openSpy;
 
   beforeEach(() => {
-    // Mock que realmente monta o modal no DOM: os listeners do
-    // showEntityDetails são anexados via setTimeout ao elemento vivo
-    // (document.getElementById) — sem montar, os cliques não têm handler.
-    openSpy = vi.fn().mockImplementation(({ title, content, footer }) => {
-      const modalEl = document.createElement('div');
-      modalEl.id = 'modal-1';
-      modalEl.appendChild(content);
-      if (footer) modalEl.appendChild(footer);
-      document.body.appendChild(modalEl);
-      return 'modal-1';
-    });
-    window.modalManager = { open: openSpy, close: vi.fn() };
+    openSpy = vi.fn().mockReturnValue('modal-1');
+    window.modalManager = { open: openSpy };
 
     EntityModuleClass = loadEntityModule();
   });
 
   afterEach(() => {
-    document.body.innerHTML = '';
     window.modalManager = undefined;
     window.AuthService = undefined;
     vi.clearAllMocks();
@@ -102,7 +91,7 @@ describe('EntityModule — showEntityDetails com os dois formatos de entity', ()
     expect(html).toContain('+55 11 98765-4321');
     expect(html).toContain('casateste.com.br');
     expect(html).toContain('4.6');
-    expect(html).toContain('€€€');
+    expect(html).toContain('$$$');
     // lat/lng vindas do GeoJSON (toFixed(6) do double 64: -23.5683684999…)
     expect(html).toContain('-23.568368');
     expect(html).toContain('-46.688482');
@@ -141,7 +130,7 @@ describe('EntityModule — showEntityDetails com os dois formatos de entity', ()
     expect(html).toContain('4.2');
     expect(html).toContain('120');
     expect(html).toContain('Italiana');
-    expect(html).toContain('€€');
+    expect(html).toContain('$$');
     expect(html).toContain('-25.428954');
   });
 
@@ -176,63 +165,6 @@ describe('EntityModule — showEntityDetails com os dois formatos de entity', ()
     expect(html).not.toContain('<script>alert');
     expect(html).toContain('&lt;img');
     expect(window.__pwned).toBeUndefined();
-  });
-
-  test('herói carrega o véu OG do card (data-og-source quando há website)', async () => {
-    const entityModule = makeModule();
-    const entity = {
-      entity_id: 'entity-veil',
-      name: 'Com Véu',
-      data: { contact: { website: 'https://casateste.com.br' }, google_place_id: 'ChIJ-veil' }
-    };
-
-    await entityModule.showEntityDetails(entity);
-
-    const { content } = openSpy.mock.calls[0][0];
-    const hero = content.querySelector('[data-og-source]');
-    expect(hero).toBeTruthy();
-    expect(hero.dataset.ogSource).toBe('https://casateste.com.br');
-    expect(hero.dataset.ogPlaceId).toBe('ChIJ-veil');
-    expect(hero.querySelector('.card-og-veil')).toBeTruthy();
-  });
-
-  test('localização tem link real "Open in Google Maps"', async () => {
-    const entityModule = makeModule();
-    const entity = {
-      entity_id: 'entity-maps',
-      name: 'Com Mapa',
-      data: { address: { street: 'Rua A, 1 - Centro', city: 'São Paulo' } }
-    };
-
-    await entityModule.showEntityDetails(entity);
-
-    const { content } = openSpy.mock.calls[0][0];
-    const mapsLink = content.querySelector('.btn-open-maps');
-    expect(mapsLink).toBeTruthy();
-    expect(mapsLink.href).toContain('google.com/maps/search');
-    expect(mapsLink.target).toBe('_blank');
-  });
-
-  test('curadoria relacionada abre o modal da review ao clicar', async () => {
-    window.uiManager = { handleViewReviewDetails: vi.fn() };
-    const entityModule = makeModule();
-    entityModule.dataStore.getEntityCurations.mockResolvedValue([
-      { curation_id: 'cur-1', restaurant_name: 'Review Um', status: 'draft' }
-    ]);
-
-    await entityModule.showEntityDetails({ entity_id: 'entity-rel', name: 'Rel', data: {} });
-
-    // deixa o setTimeout(0) do wiring rodar antes do clique
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    const { content } = openSpy.mock.calls[0][0];
-    const btn = content.querySelector('.btn-open-curation');
-    expect(btn).toBeTruthy();
-    btn.click();
-    expect(window.uiManager.handleViewReviewDetails).toHaveBeenCalledWith(
-      expect.objectContaining({ curation_id: 'cur-1' })
-    );
-    window.uiManager = undefined;
   });
 
   describe('botão Delete Entity — visível só para admin (2026-08-15)', () => {

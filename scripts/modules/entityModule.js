@@ -670,7 +670,7 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
         const relatedCurations = await this.getRelatedCurations(entity.entity_id);
 
         const content = document.createElement('div');
-        content.className = 'detail-sheet';
+        content.className = 'space-y-4';
         // Dados vindos do servidor/import — escapar antes de interpolar
         // (helper do próprio arquivo; evita XSS via nome/endereço/contato)
         const esc = (v) => this.escapeHtml(v);
@@ -716,125 +716,73 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
         const hasContact = Boolean(phone || website || email);
         const hasAttributes = Boolean(rating || reviews || priceLevel || cuisine);
 
-        const typeIcon = (window.CardFactory && typeof window.CardFactory.getTypeIcon === 'function')
-            ? window.CardFactory.getTypeIcon(entity.type)
-            : 'place';
-        const placeId = data.place_id || data.google_place_id || '';
-        const fullAddress = [street, [city, country].filter(Boolean).join(', ')].filter(Boolean).join(' · ');
-        const mapsHref = fullAddress
-            ? `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(fullAddress)}`
-            : '';
-        const siteHref = website ? (/^https?:\/\//i.test(website) ? website : `https://${website}`) : '';
-
-        // ── Herói: o MESMO véu OG dos cards (data-og-source é observado
-        // pelo ogImageModule e pinta o slot .card-og-veil; sem website/
-        // place_id o módulo aplica o véu de fallback por tom de status) +
-        // faixa de fatos que o concierge escaneia primeiro (rating/preço)
-        const hero = document.createElement('div');
-        hero.className = 'detail-hero';
-        if (website) hero.dataset.ogSource = website;
-        if (placeId) hero.dataset.ogPlaceId = placeId;
-        hero.innerHTML = `
-            <div class="card-og-veil" aria-hidden="true">
-                <span class="card-og-veil__icon material-icons">${esc(typeIcon)}</span>
-            </div>
-            <div class="detail-hero__facts">
-                ${rating > 0 ? `
-                    <span class="detail-hero__rating">
-                        <span class="material-icons" aria-hidden="true">star</span>
-                        <span class="font-semibold">${Number(rating).toFixed(1)}</span>
-                    </span>
-                ` : ''}
-                ${priceLevel > 0 ? `<span class="detail-hero__price">${'€'.repeat(Number(priceLevel))}</span>` : ''}
-                ${cuisine ? `<span class="chip chip--neutral">${esc(cuisine)}</span>` : ''}
-            </div>
-        `;
-        content.appendChild(hero);
-
-        // ── Localização: painel com ação real de mapa ──
-        if (hasLocation) {
-            const panel = document.createElement('section');
-            panel.className = 'detail-panel';
-            panel.innerHTML = `
-                <h3 class="detail-eyebrow"><span class="material-icons" aria-hidden="true">place</span>Location</h3>
-                ${street ? `<p class="detail-text">${esc(street)}</p>` : ''}
-                ${(city || country) ? `<p class="detail-sub">${esc([city, country].filter(Boolean).join(', '))}</p>` : ''}
-                ${mapsHref ? `
-                    <div class="detail-actions">
-                        <a class="btn-open-maps btn btn-ghost btn-sm" href="${esc(mapsHref)}" target="_blank" rel="noopener noreferrer">
-                            <span class="material-icons" aria-hidden="true">map</span>
-                            Open in Google Maps
-                        </a>
-                    </div>
-                ` : ''}
-                ${(lat !== null && lng !== null) ? `
-                    <p class="detail-coords">${Number(lat).toFixed(6)}, ${Number(lng).toFixed(6)}</p>
-                ` : ''}
-            `;
-            content.appendChild(panel);
-        }
-
-        // ── Contato: links reais (tel/mailto/site) ──
-        if (hasContact) {
-            const panel = document.createElement('section');
-            panel.className = 'detail-panel';
-            panel.innerHTML = `
-                <h3 class="detail-eyebrow"><span class="material-icons" aria-hidden="true">alternate_email</span>Contact</h3>
-                <div class="detail-links">
-                    ${phone ? `
-                        <a class="detail-link" href="tel:${esc(phone.replace(/[^+\d]/g, ''))}">
-                            <span class="material-icons" aria-hidden="true">phone</span>${esc(phone)}
-                        </a>
-                    ` : ''}
-                    ${siteHref ? `
-                        <a class="detail-link" href="${esc(siteHref)}" target="_blank" rel="noopener noreferrer">
-                            <span class="material-icons" aria-hidden="true">language</span>${esc(website)}
-                        </a>
-                    ` : ''}
-                    ${email ? `
-                        <a class="detail-link" href="mailto:${esc(email)}">
-                            <span class="material-icons" aria-hidden="true">mail</span>${esc(email)}
-                        </a>
+        content.innerHTML = `
+            ${hasLocation ? `
+                <div>
+                    <h3 class="font-semibold text-gray-700 mb-2">Location</h3>
+                    ${street ? `<p class="text-gray-600">${esc(street)}</p>` : ''}
+                    ${(city || country) ? `<p class="text-sm text-gray-500">${esc([city, country].filter(Boolean).join(', '))}</p>` : ''}
+                    ${(lat !== null && lng !== null) ? `
+                        <p class="text-xs text-gray-400 mt-1">
+                            ${Number(lat).toFixed(6)}, ${Number(lng).toFixed(6)}
+                        </p>
                     ` : ''}
                 </div>
-            `;
-            content.appendChild(panel);
-        }
+            ` : ''}
 
-        // ── Fatos restantes (review count etc.) ──
-        if (reviews > 0) {
-            const panel = document.createElement('section');
-            panel.className = 'detail-panel';
-            panel.innerHTML = `
-                <h3 class="detail-eyebrow"><span class="material-icons" aria-hidden="true">rate_review</span>Reviews</h3>
-                <p class="detail-text">${Number(reviews).toLocaleString()} review${Number(reviews) === 1 ? '' : 's'}</p>
-            `;
-            content.appendChild(panel);
-        }
+            ${hasContact ? `
+                <div>
+                    <h3 class="font-semibold text-gray-700 mb-2">Contact</h3>
+                    ${phone ? `<p class="text-gray-600">📞 ${esc(phone)}</p>` : ''}
+                    ${website ? `<p class="text-gray-600">🌐 <a href="${esc(website)}" target="_blank" rel="noopener noreferrer" class="text-blue-600 hover:underline">${esc(website)}</a></p>` : ''}
+                    ${email ? `<p class="text-gray-600">📧 ${esc(email)}</p>` : ''}
+                </div>
+            ` : ''}
 
-        // ── Curadoria vinculada: clicável, abre o modal da review ──
-        content.appendChild(this._renderRelatedCurationsPanel(relatedCurations));
+            ${hasAttributes ? `
+                <div>
+                    <h3 class="font-semibold text-gray-700 mb-2">Attributes</h3>
+                    <div class="grid grid-cols-2 gap-2 text-sm">
+                        ${rating ? `<p><span class="font-medium">Rating:</span> ${Number(rating).toFixed(1)} ⭐</p>` : ''}
+                        ${reviews ? `<p><span class="font-medium">Reviews:</span> ${reviews}</p>` : ''}
+                        ${priceLevel ? `<p><span class="font-medium">Price:</span> ${'$'.repeat(Number(priceLevel))}</p>` : ''}
+                        ${cuisine ? `<p><span class="font-medium">Cuisine:</span> ${esc(cuisine)}</p>` : ''}
+                    </div>
+                </div>
+            ` : ''}
 
-        // ── Metadata/sync: rodapé informativo dim ──
-        const metaPanel = document.createElement('section');
-        metaPanel.className = 'detail-panel detail-panel--dim';
-        metaPanel.innerHTML = `
-            <div class="detail-meta">
-                <span>${esc(entity.type || 'restaurant')}</span>
-                <span class="detail-meta__dot" aria-hidden="true">·</span>
-                <span>${esc(entity.status || 'active')}</span>
-                <span class="detail-meta__dot" aria-hidden="true">·</span>
-                <span class="detail-meta__id" title="${esc(entity.entity_id)}">${esc(entity.entity_id)}</span>
-                ${entity.sync ? `<span class="detail-meta__dot" aria-hidden="true">·</span>${this.getSyncStatusBadge(entity)}` : ''}
+            ${this.renderRelatedCurationsSection(relatedCurations)}
+
+            <!-- Metadata -->
+            <div class="border-t pt-4">
+                <h3 class="font-semibold text-gray-700 mb-2">Metadata</h3>
+                <div class="text-sm text-gray-600 space-y-1">
+                    <p><span class="font-medium">Entity ID:</span> ${entity.entity_id}</p>
+                    <p><span class="font-medium">Type:</span> ${entity.type || 'restaurant'}</p>
+                    <p><span class="font-medium">Status:</span> ${entity.status || 'active'}</p>
+                    <p><span class="font-medium">Version:</span> ${entity.version || 1}</p>
+                </div>
             </div>
-            ${entity.sync && (entity.sync.status === 'pending' || entity.sync.status === 'conflict') ? `
-                <button class="btn-sync-entity btn btn-ghost btn-sm mt-2">
-                    <span class="material-icons" aria-hidden="true">sync</span>
-                    ${entity.sync.status === 'conflict' ? 'Resolve Conflict' : 'Sync Now'}
-                </button>
+
+            <!-- Sync Status -->
+            ${entity.sync ? `
+                <div class="border-t pt-4">
+                    <h3 class="font-semibold text-gray-700 mb-2">Sync Status</h3>
+                    <div class="text-sm text-gray-600 space-y-1">
+                        <p class="flex items-center gap-2">
+                            <span class="font-medium">Status:</span> 
+                            ${this.getSyncStatusBadge(entity)}
+                        </p>
+                    </div>
+                    ${entity.sync.status === 'pending' || entity.sync.status === 'conflict' ? `
+                        <button class="btn-sync-entity mt-2 w-full text-sm py-2 px-4 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center justify-center gap-2">
+                            <span class="material-icons text-sm">sync</span>
+                            ${entity.sync.status === 'conflict' ? 'Resolve Conflict' : 'Sync Now'}
+                        </button>
+                    ` : ''}
+                </div>
             ` : ''}
         `;
-        content.appendChild(metaPanel);
 
         // Footer Actions
         // Delete restrito a admin (2026-08-15): o servidor recusa delete de
@@ -842,16 +790,16 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
         // é oferecido para quem não pode usar. Offline (sem perfil) → oculto.
         const isAdmin = window.AuthService?.getCurrentUser?.()?.role === 'admin';
         const deleteButton = isAdmin
-            ? `<button class="btn-delete-entity btn btn-danger btn-md flex-1">
-                <span class="material-icons" aria-hidden="true">delete</span>
+            ? `<button class="btn-delete-entity flex-1 py-2 px-4 bg-gray-200 text-gray-700 rounded hover:bg-gray-300 flex items-center justify-center gap-2">
+                <span class="material-icons text-sm">delete</span>
                 Delete Entity
             </button>`
             : '';
         const footer = document.createElement('div');
         footer.className = 'w-full flex gap-2';
         footer.innerHTML = `
-            <button class="btn-edit-entity btn btn-primary btn-md flex-1">
-                <span class="material-icons" aria-hidden="true">edit</span>
+            <button class="btn-edit-entity flex-1 py-2 px-4 bg-blue-600 text-white rounded hover:bg-blue-700 flex items-center justify-center gap-2">
+                <span class="material-icons text-sm">edit</span>
                 Edit Entity
             </button>
             ${deleteButton}
@@ -862,7 +810,7 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
             title: entity.name || 'Unknown',
             content: content,
             footer: footer,
-            size: 'lg'
+            size: 'md'
         });
 
         // Event Listeners
@@ -870,21 +818,28 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
             const modalEl = document.getElementById(modalId);
             if (!modalEl) return;
 
-            // Curadoria vinculada: clique abre os DETALHES da review
-            // (view mode — edição é só pelo botão Edit da review)
+            // Open specific related curation
             const openCurationButtons = modalEl.querySelectorAll('.btn-open-curation');
             openCurationButtons.forEach(button => {
-                button.addEventListener('click', () => {
+                button.addEventListener('click', async () => {
                     const curationId = button.getAttribute('data-curation-id');
-                    const curation = relatedCurations.find(
-                        (c) => (c.curation_id || '') === curationId
-                    );
-                    if (!curation) {
-                        window.uiUtils?.showNotification?.('Curation not found', 'error');
-                        return;
+                    if (!curationId) return;
+
+                    try {
+                        const curation = await this.dataStore.getCuration(curationId);
+                        if (!curation) {
+                            window.uiUtils?.showNotification?.('Curation not found', 'error');
+                            return;
+                        }
+
+                        window.modalManager.close(modalId);
+                        if (window.uiManager && typeof window.uiManager.editCuration === 'function') {
+                            window.uiManager.editCuration(curation);
+                        }
+                    } catch (error) {
+                        this.log.error('Failed to open curation from entity details:', error);
+                        window.uiUtils?.showNotification?.('Failed to open curation', 'error');
                     }
-                    window.modalManager.close(modalId);
-                    window.uiManager?.handleViewReviewDetails?.(curation);
                 });
             });
 
@@ -964,43 +919,52 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
     }
 
     /**
-     * Painel de curadoria vinculada do modal de detalhes: linhas
-     * clicáveis que abrem o modal da review (view mode). Conteúdo
-     * escapado — nada de dados crus em innerHTML.
-     * @param {Array} curations - Curadorias vinculadas à entity
-     * @returns {HTMLElement} Painel pronto para append
+     * Render related curations section for entity details view
+     * @param {Array} curations - Linked curations
+     * @returns {string} HTML string
      */
-    _renderRelatedCurationsPanel(curations = []) {
-        const panel = document.createElement('section');
-        panel.className = 'detail-panel';
-        const list = Array.isArray(curations) ? curations : [];
+    renderRelatedCurationsSection(curations = []) {
+        if (!Array.isArray(curations) || curations.length === 0) {
+            return `
+                <div class="border-t pt-4">
+                    <h3 class="font-semibold text-gray-700 mb-2">Related Curations</h3>
+                    <p class="text-sm text-gray-500">No curations linked to this entity yet.</p>
+                </div>
+            `;
+        }
 
-        const rows = list.map((curation) => {
+        const rowsHtml = curations.map((curation) => {
             const curationId = this.escapeHtml(curation.curation_id || '');
             const curationName = this.escapeHtml(curation.restaurant_name || curation.name || 'Untitled curation');
-            const curatorName = this.escapeHtml(curation.curator?.name || curation.curator || '');
+            const curatorName = this.escapeHtml(curation.curator?.name || curation.curator || 'Unknown curator');
             const status = this.escapeHtml(curation.status || 'draft');
 
             return `
-                <button type="button" class="btn-open-curation detail-curation-row" data-curation-id="${curationId}">
-                    <span class="min-w-0 text-left">
-                        <span class="detail-curation-row__name">${curationName}</span>
-                        ${curatorName ? `<span class="detail-curation-row__curator">${curatorName}</span>` : ''}
-                    </span>
-                    <span class="chip chip--neutral">${status}</span>
-                    <span class="material-icons detail-curation-row__go" aria-hidden="true">chevron_right</span>
-                </button>
+                <div class="border border-gray-100 rounded-lg p-3 flex items-center justify-between gap-3">
+                    <div class="min-w-0">
+                        <p class="font-medium text-sm text-gray-900 truncate">${curationName}</p>
+                        <p class="text-xs text-gray-500 mt-1 truncate">Curator: ${curatorName}</p>
+                        <p class="text-xs text-gray-400 mt-1">${curationId}</p>
+                    </div>
+                    <div class="flex items-center gap-2 flex-shrink-0">
+                        <span class="px-2 py-1 text-xs uppercase tracking-wider rounded-full bg-gray-100 text-gray-700">${status}</span>
+                        <button
+                            type="button"
+                            class="btn-open-curation px-2.5 py-1.5 text-xs bg-blue-600 text-white rounded hover:bg-blue-700"
+                            data-curation-id="${curationId}">
+                            Open
+                        </button>
+                    </div>
+                </div>
             `;
         }).join('');
 
-        panel.innerHTML = `
-            <h3 class="detail-eyebrow"><span class="material-icons" aria-hidden="true">link</span>Related Curations</h3>
-            ${list.length === 0
-                ? '<p class="detail-sub">No curations linked to this entity yet.</p>'
-                : `<div class="detail-curation-list">${rows}</div>`
-            }
+        return `
+            <div class="border-t pt-4">
+                <h3 class="font-semibold text-gray-700 mb-2">Related Curations</h3>
+                <div class="space-y-2">${rowsHtml}</div>
+            </div>
         `;
-        return panel;
     }
 
     /**
