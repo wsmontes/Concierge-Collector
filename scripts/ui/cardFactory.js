@@ -281,7 +281,7 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
             }
 
             const actionsRow = document.createElement('div');
-            actionsRow.className = 'mt-auto p-4 mx-1 border-t border-gray-100 bg-white z-20 relative space-y-3';
+            actionsRow.className = 'mt-auto p-4 mx-1 border-t border-gray-100 card-footer-glass z-20 relative space-y-3';
 
             const status = entity.status || 'active';
             // tons do padrão único de chips (design-system tokens)
@@ -737,7 +737,7 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
 
             // NEW: Append actions row to the CARD itself (footer), not the content area
             // This ensures it stays at the bottom due to flex-col and flex-grow on content
-            actionsRow.className = 'mt-auto p-4 mx-1 border-t border-gray-100 bg-white z-20 relative space-y-3';
+            actionsRow.className = 'mt-auto p-4 mx-1 border-t border-gray-100 card-footer-glass z-20 relative space-y-3';
             card.appendChild(actionsRow);
         }
 

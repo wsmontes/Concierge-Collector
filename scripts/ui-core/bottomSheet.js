@@ -201,13 +201,20 @@
             // Prevent body scroll
             document.body.style.overflow = 'hidden';
 
-            // A11y: foco entra no sheet ao abrir (e volta ao sair)
-            this._previouslyFocused = document.activeElement;
+            // A11y: foco entra no sheet ao abrir (e volta ao sair).
+            // Regressão (2026-08-16): auto-focar o PRIMEIRO focável
+            // atingia o <select> do Curator — no touch, focar um select
+            // ABRE o picker nativo (menu de curadores sozinho) e rola a
+            // tela. Contrato: auto-foco só em botão/link/tabindex;
+            // select/input nunca — sem botão, o painel assume (tabindex=-1).
             const firstFocusable = this.sheet.querySelector(
-                'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+                'button, [href], [tabindex]:not([tabindex="-1"])'
             );
             if (firstFocusable) {
                 firstFocusable.focus();
+            } else {
+                this.sheet.setAttribute('tabindex', '-1');
+                this.sheet.focus();
             }
 
             // Call onOpen callback

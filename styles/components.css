@@ -2328,3 +2328,23 @@
 .detail-meta__id {
   font-variant-numeric: tabular-nums;
 }
+
+/* Rodapé de ações do card em VIDRO FOSCO (pedido do usuário, padrão
+   feedmine): o véu OG do card passa por trás desfocado — substitui o
+   banner branco sólido dos botões inferiores */
+.card-footer-glass {
+  background: rgba(255, 255, 255, 0.72);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+}
+
+/* Paginação: mobile EMPILHA (resumo em cima, controles embaixo) em
+   vez de apertar tudo numa linha — o flex-row quebrava em 2-3 linhas
+   de texto no aparelho */
+@media (max-width: 640px) {
+  .pagination-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+}

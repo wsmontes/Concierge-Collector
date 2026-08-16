@@ -556,14 +556,11 @@ if (typeof window.UIManager === 'undefined') {
                 }
             });
 
-            // Frase que ensina a diferença Curations × Entities no ponto
-            // da decisão — muda junto com a aba (learnability sem docs).
-            // A frase das curations foi removida a pedido do usuário.
+            // As frases de legenda das abas foram removidas a pedido do
+            // usuário — o elemento #tab-subtitle fica vazio.
             const tabSubtitle = document.getElementById('tab-subtitle');
             if (tabSubtitle) {
-                tabSubtitle.textContent = tabName === 'curations'
-                    ? ''
-                    : 'Places and their factual information.';
+                tabSubtitle.textContent = '';
             }
 
             // Update view visibility
@@ -1408,7 +1405,7 @@ if (typeof window.UIManager === 'undefined') {
             // no fallback pagina o cache local.
             {
                 var header = document.createElement('div');
-                header.className = 'col-span-full mb-4 p-4 bg-neutral-50 border border-neutral-200 rounded-lg flex items-center justify-between';
+                header.className = 'col-span-full mb-4 p-4 bg-neutral-50 border border-neutral-200 rounded-lg flex items-center justify-between pagination-header';
                 header.innerHTML = `
                     <div class="text-sm text-gray-600">
                         Showing <span class="font-semibold">${start + 1}</span>&ndash;<span class="font-semibold">${end}</span> of <span class="font-semibold">${serverTotal}</span> curations
@@ -1815,7 +1812,7 @@ if (typeof window.UIManager === 'undefined') {
 
             // Add pagination header
             const header = document.createElement('div');
-            header.className = 'col-span-full mb-4 p-4 bg-neutral-50 border border-neutral-200 rounded-lg flex items-center justify-between';
+            header.className = 'col-span-full mb-4 p-4 bg-neutral-50 border border-neutral-200 rounded-lg flex items-center justify-between pagination-header';
             header.innerHTML = `
                 <div class="text-sm text-gray-600">
                     Showing <span class="font-semibold">${start + 1}</span>&ndash;<span class="font-semibold">${end}</span> of <span class="font-semibold">${serverTotal}</span> entities
@@ -2097,7 +2094,7 @@ if (typeof window.UIManager === 'undefined') {
                      editar + ⋯ à direita. Antes este card tinha pill azul
                      sólido + trio de icon-btns — a terceira linguagem de
                      rodapé na mesma grade. Unlink e Delete moram no ⋯. -->
-                <div class="mt-auto p-4 mx-1 border-t border-gray-100 bg-white z-20 relative space-y-3">
+                <div class="mt-auto p-4 mx-1 border-t border-gray-100 card-footer-glass z-20 relative space-y-3">
                     <div class="grid grid-cols-3 gap-2 pt-1">
                         ${isLinked ? `
                         <button class="btn-view-entity card-link-btn" title="View linked entity details" aria-label="View linked entity details">
