@@ -55,11 +55,16 @@ describe('CardFactory — XSS via dados de entity/curation', () => {
     // O que importa é a SEMÂNTICA do DOM: o payload vira texto inerte, nunca
     // elemento real. (Serializar atributos deixa `<` cru no innerHTML por
     // spec — checar innerHTML cru daria falso positivo.)
-    expect(card.querySelector('img')).toBeNull();
-    expect(card.querySelector('.entity-card-name').textContent).toContain(PAYLOAD);
-    expect(card.querySelector('.entity-card-name').innerHTML).toContain('&lt;img');
+    // O ÚNICO <img> permitido é a thumbnail estrutural do card
+    // (sem src — o ogImageModule resolve com objectURL de blob).
+    const imgs = card.querySelectorAll('img');
+    expect(imgs.length).toBe(1);
+    expect(imgs[0].classList.contains('collection-card__thumb')).toBe(true);
+    expect(imgs[0].hasAttribute('src')).toBe(false);
+    expect(card.querySelector('.card-restaurant-name').textContent).toContain(PAYLOAD);
+    expect(card.querySelector('.card-restaurant-name').innerHTML).toContain('&lt;img');
     // atributo title preserva o valor intacto, sem quebrar o atributo
-    const contactTitle = card.querySelector('.entity-card-contact [title]');
+    const contactTitle = card.querySelector('.collection-card__address[title]');
     expect(contactTitle?.getAttribute('title')).toBe(PAYLOAD);
     expect(window.__pwned).toBeUndefined();
   });
@@ -87,7 +92,9 @@ describe('CardFactory — XSS via dados de entity/curation', () => {
     const card = factory.createCurationCard(entity, curation);
     document.body.appendChild(card);
 
-    expect(card.querySelector('img')).toBeNull();
+    const imgs = card.querySelectorAll('img');
+    expect(imgs.length).toBe(1);
+    expect(imgs[0].classList.contains('collection-card__thumb')).toBe(true);
     expect(card.innerHTML).not.toContain('onclick="');
     // chip de conflito continua presente, agora com listener real
     expect(card.querySelector('.sync-conflict-chip')).toBeTruthy();

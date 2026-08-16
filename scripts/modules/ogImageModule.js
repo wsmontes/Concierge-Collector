@@ -18,6 +18,11 @@
  *
  * O véu em si é estilizado em components.css (.card-og-veil): degradê
  * topo→transparente com wash branco pra legibilidade, opacidade baixa.
+ * Nos cards da coleção (redesign ago/2026) o alvo é a THUMBNAIL
+ * explícita (.collection-card__thumb): o módulo preenche o src do img
+ * e marca .is-loaded (fade); o fallback de gradiente pedra do markup
+ * cobre os cards sem imagem. O véu continua suportado para o herói
+ * dos detail sheets.
  */
 
 const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
@@ -68,17 +73,27 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
      */
     _queue(card) {
         if (card.dataset && (card.dataset.ogResolved || card.dataset.ogFailed)) return;
-        if (!card.querySelector('.card-og-veil')) return; // card sem slot de véu
+        // Dois slots de imagem coexistem: a thumbnail explícita dos
+        // cards da coleção (.collection-card__thumb — img com lazy
+        // loading) e o véu legado (.card-og-veil — herói dos detail
+        // sheets). Sem nenhum dos dois, não há o que pintar.
+        const hasThumb = !!card.querySelector('.collection-card__thumb');
+        const hasVeil = !!card.querySelector('.card-og-veil');
+        if (!hasThumb && !hasVeil) return;
 
         const url = (card.dataset && card.dataset.ogSource) || '';
         const placeId = (card.dataset && card.dataset.ogPlaceId) || '';
         card.dataset.ogResolved = '1'; // processado — nunca duas vezes
 
-        // Sem NENHUMA fonte: estado final decidido já no render (padrão
-        // feedmine "cards resolvidos antes de aparecer") — véu de
-        // fallback no tom do status, sem rede.
+        // Sem NENHUMA fonte: no card com thumb o placeholder do markup
+        // (gradiente pedra + ícone do tipo, sempre renderizado sob o img
+        // vazio) já é o estado final — padrão feedmine "cards resolvidos
+        // antes de aparecer", sem rede. O véu legado recebe a classe de
+        // fallback como antes.
         if (!url && !placeId) {
-            this._applyFallback(card);
+            if (!hasThumb) {
+                this._applyFallback(card);
+            }
             return;
         }
 
@@ -243,7 +258,9 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
     }
 
     /**
-     * Aplica o véu no card (classe --visible dispara o fade do CSS).
+     * Aplica a imagem no card: thumbnail (img com src) quando o card da
+     * coleção tem o slot novo; véu legado (background + classe --visible)
+     * nos detail sheets.
      * @param {HTMLElement} card - Card alvo
      * @param {string} objectUrl - objectURL gerado pelo módulo (blob:)
      */
@@ -251,6 +268,14 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
         // objectURLs são gerados por URL.createObjectURL — nunca entram
         // markup alheio; o teste de sanidade só afasta lixo.
         if (typeof objectUrl !== 'string' || !objectUrl.startsWith('blob:')) return;
+
+        const thumb = card.querySelector('.collection-card__thumb');
+        if (thumb) {
+            thumb.src = objectUrl;
+            thumb.classList.add('is-loaded');
+            return;
+        }
+
         const veil = card.querySelector('.card-og-veil');
         if (!veil) return;
         veil.style.backgroundImage = `url("${objectUrl}")`;

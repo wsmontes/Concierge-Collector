@@ -83,12 +83,12 @@ describe('createReviewCard — rodapé unificado (padrão curation card)', () =>
         expect(card.querySelector('.btn-more-curation')).toBeTruthy();
     });
 
-    test('rodapé tem o trio padrão: vínculo + editar + ⋯', () => {
+    test('rodapé tem o trio padrão: vínculo + editar + ⋯ (collection-card__actions)', () => {
         const card = ui.createReviewCard(makeCuration());
         document.body.appendChild(card);
-        const grid = card.querySelector('.grid-cols-3');
-        expect(grid).toBeTruthy();
-        expect(grid.children.length).toBe(3);
+        const actions = card.querySelector('.collection-card__actions');
+        expect(actions).toBeTruthy();
+        expect(actions.children.length).toBe(3);
         expect(card.querySelector('.card-edit-btn')).toBeTruthy();
         expect(card.querySelector('.btn-more-curation')).toBeTruthy();
     });

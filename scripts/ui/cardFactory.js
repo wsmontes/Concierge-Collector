@@ -76,7 +76,7 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
         }
 
         const {
-            variant = 'default', // default, compact, detailed
+            variant = 'default', // default, compact, detailed (API preservada)
             showActions = true,
             onClick = null,
             subtitleHtml = null,
@@ -84,17 +84,20 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
             showEntityActions = false,
             onEdit = null,
             onDetails = null,
-            onSync = null
+            onSync = null,
+            // 'card' = card inteiro clicável (entidades); 'name' = só o
+            // nome é alvo de clique (curadoria — card não parece editável)
+            clickTarget = 'card'
         } = options;
 
         const card = document.createElement('div');
-        // Added h-full, flex, flex-col for equal height cards
-        card.className = 'bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-lg hover:border-blue-300 transition-all duration-200 cursor-pointer group h-full flex flex-col justify-between relative';
+        card.className = 'collection-card group';
         card.dataset.entityId = entity.entity_id;
         this._applyStatusAccent(card, entity.status || 'active');
 
         const name = entity.name || 'Unknown';
         const type = entity.type || 'restaurant';
+        const typeIcon = this.getTypeIcon(type);
 
         // Extract city using robust method
         const city = this.extractCity(entity);
@@ -103,20 +106,19 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
         const rating = entity.data?.attributes?.rating || entity.data?.rating || 0;
         const priceLevel = entity.data?.attributes?.price_level || entity.data?.price_level || 0;
         const cuisine = entity.data?.attributes?.cuisine || entity.data?.cuisine || [];
-        const phone = entity.data?.contact?.phone || entity.data?.contacts?.phone || entity.data?.phone || '';
         // Tolerante aos dois shapes (v3 singular + bulk plural) — mesma
         // cadeia do extractEntityWebsite: sem isso, entities com
-        // data.contacts.website ficavam sem data-og-source (sem véu)
+        // data.contacts.website ficavam sem data-og-source (sem foto)
         const website =
             entity.data?.contact?.website ||
             entity.data?.contacts?.website ||
             entity.data?.website ||
             entity?.website || '';
 
-        // Véu de imagem OG (ogImageModule resolve em real-time via
-        // /api/v3/og-image). Fonte primária: website. Fallback de
-        // cobertura: place_id → foto do Google Places (muitos sites de
-        // restaurante não têm og:image — o place_id cobre a lacuna).
+        // Thumbnail OG (ogImageModule resolve em real-time via
+        // /api/v3/og-image e preenche .collection-card__thumb).
+        // Fonte primária: website. Fallback de cobertura: place_id →
+        // foto do Google Places (muitos sites não têm og:image).
         if (website) {
             card.dataset.ogSource = website;
         }
@@ -145,144 +147,115 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
         // Price level indicator
         const priceIndicator = priceLevel > 0 ? '€'.repeat(priceLevel) : '';
 
+        // Endereço: cadeia completa quando existe; senão a localização
+        // cidade/bairro/país (fallback do card legado preservado)
+        const fullAddress = this.extractEntityAddress(entity) || locationStr;
+        const mapsUrl = this.buildGoogleMapsUrl(fullAddress);
+        const entityPhone = this.extractEntityPhone(entity);
+        const entityWebsiteRaw = this.extractEntityWebsite(entity);
+        const entityWebsiteHref = this.normalizeWebsiteUrl(entityWebsiteRaw);
+        const entityWebsiteLabel = entityWebsiteRaw ? entityWebsiteRaw.replace(/^https?:\/\//i, '').replace(/^www\./i, '') : '';
+
+        // Badge de source da ENTITY (curadoria usa SourceUtils e troca
+        // este badge pelo dela)
+        const sourceLabel = entity.data?.source || entity.source || (entity.data?.google_place_id ? 'google_places' : 'manual');
+        const sourceText = this.escapeHtml(String(sourceLabel).replace(/_/g, ' '));
+
+        // Nome: verbete do card. Em clickTarget 'name' vira botão real
+        // (única área clicável do card de curadoria).
+        const nameHtml = clickTarget === 'name'
+            ? `<button type="button" class="collection-card__name-link line-clamp-2" title="View curation details">${this.escapeHtml(name)}</button>`
+            : this.escapeHtml(name);
+
         card.innerHTML = `
-            <!-- Véu de imagem OG (degrade suave direita→card) —
-                 preenchido pelo ogImageModule; sem site nem place_id,
-                 o módulo aplica o véu de FALLBACK (gradiente no tom do
-                 status + ícone fantasma do tipo — princípio feedmine de
-                 card nunca ficar branco vazio, contentTypePlaceholder) -->
-            <div class="card-og-veil" aria-hidden="true">
-                <span class="card-og-veil__icon material-icons">${this.getTypeIcon(type)}</span>
-            </div>
-            <!-- Header with type icon (badge circular perfeito via
-                 .card-type-badge — o div com p-2 + inline-block criava
-                 círculo oval e glifo descentralizado) -->
-            <div class="absolute top-3 right-3 z-10">
-                <div class="card-type-badge">
-                    <span class="material-icons text-gray-600">${this.getTypeIcon(type)}</span>
-                </div>
-                ${isNew ? '<div class="card-new-badge">new</div>' : ''}
-            </div>
-            
-            <!-- Main content - flex-grow to push footer down -->
-            <div class="entity-card-main p-5 flex-grow">
-                <!-- Name and cuisine -->
-                <div class="entity-card-header mb-3">
-                    <!-- card-restaurant-name: serif de exibição (Cormorant
-                         Garamond) — o nome é o verbete do card, como em
-                         um caderno de curadoria. Hover via .group em CSS. -->
-                    <h3 class="entity-card-name card-restaurant-name mb-2 pr-12 line-clamp-2">
-                        ${this.escapeHtml(name)}
-                    </h3>
-                    ${(subtitleHtml || cuisineType) ? `
-                        <div class="entity-card-subtitle text-sm text-gray-500 font-medium">${this.escapeHtml(subtitleHtml || cuisineType)}</div>
-                    ` : ''}
+            <div class="collection-card__main">
+                <!-- Thumbnail explícita (foto como objeto, não fundo):
+                     img sem src até o ogImageModule resolver; fallback
+                     de gradiente pedra + ícone do tipo por baixo
+                     (card nunca fica com mídia vazia) -->
+                <div class="collection-card__media">
+                    <img class="collection-card__thumb" loading="lazy" decoding="async" alt="" />
+                    <div class="collection-card__thumb-fallback" aria-hidden="true">
+                        <span class="material-icons">${typeIcon}</span>
+                    </div>
                 </div>
 
-                ${detailsHtml || ''}
-                
-                <!-- Location -->
-                <div class="entity-card-location flex items-start gap-2 mb-3 text-sm text-gray-600">
-                    <span class="material-icons text-base mt-0.5 flex-shrink-0">place</span>
-                    <span class="line-clamp-2">${this.escapeHtml(locationStr)}</span>
-                </div>
-                
-                <!-- Rating and Price -->
-                <div class="entity-card-rating flex items-center gap-4 mb-4">
-                    ${rating > 0 ? `
-                        <div class="flex items-center gap-1.5">
-                            <span class="material-icons text-base text-yellow-500">star</span>
-                            <span class="font-semibold text-gray-900">${rating.toFixed(1)}</span>
+                <div class="collection-card__body">
+                    <div class="collection-card__title-row">
+                        <h3 class="card-restaurant-name">
+                            ${nameHtml}
+                        </h3>
+                        <div class="collection-card__badges">
+                            <div class="card-type-badge">
+                                <span class="material-icons">${typeIcon}</span>
+                            </div>
+                            ${isNew ? '<div class="card-new-badge">new</div>' : ''}
                         </div>
+                    </div>
+
+                    ${(subtitleHtml || cuisineType) ? `
+                        <div class="collection-card__subtitle">${this.escapeHtml(subtitleHtml || cuisineType)}</div>
                     ` : ''}
-                    ${priceIndicator ? `
-                        <div class="flex items-center">
-                            <span class="font-semibold text-gray-700">${priceIndicator}</span>
-                        </div>
-                    ` : ''}
-                </div>
-                
-                <!-- Contact info -->
-                ${phone || website ? `
-                    <div class="entity-card-contact flex items-center gap-3 pt-3 border-t border-gray-100">
-                        ${phone ? `
-                            <div class="flex items-center gap-1.5 text-xs text-gray-500" title="${this.escapeHtml(phone)}">
-                                <span class="material-icons text-sm">phone</span>
-                                <span class="truncate" style="max-width:150px">${this.escapeHtml(phone)}</span>
+
+                    ${detailsHtml || ''}
+
+                    <div class="collection-card__meta">
+                        <span class="collection-source-badge">
+                            <span class="material-icons" aria-hidden="true">inventory_2</span>
+                            <span class="collection-source-badge__label">${sourceText}</span>
+                        </span>
+                        ${fullAddress ? `
+                            <div class="collection-card__address" title="${this.escapeHtml(fullAddress)}">
+                                <span class="material-icons" aria-hidden="true">place</span>
+                                ${mapsUrl
+                                    ? `<a href="${mapsUrl}" target="_blank" rel="noopener noreferrer" class="linked-contact-link line-clamp-2">${this.escapeHtml(fullAddress)}</a>`
+                                    : `<span class="line-clamp-2">${this.escapeHtml(fullAddress)}</span>`}
                             </div>
                         ` : ''}
-                        ${website ? `
-                            <div class="flex items-center gap-1.5 text-xs text-blue-600" title="Has website">
-                                <span class="material-icons text-sm">language</span>
+                        ${entityPhone ? `
+                            <div class="collection-card__address" title="${this.escapeHtml(entityPhone)}">
+                                <span class="material-icons" aria-hidden="true">phone</span>
+                                <a href="tel:${this.escapeHtml(entityPhone)}" class="linked-contact-link">${this.escapeHtml(entityPhone)}</a>
+                            </div>
+                        ` : ''}
+                        ${entityWebsiteHref ? `
+                            <a href="${entityWebsiteHref}" target="_blank" rel="noopener noreferrer"
+                                class="collection-card__website linked-contact-link"
+                                title="${this.escapeHtml(entityWebsiteRaw)}">
+                                <span class="material-icons" aria-hidden="true">language</span>
+                                <span class="line-clamp-1">${this.escapeHtml(entityWebsiteLabel)}</span>
+                            </a>
+                        ` : ''}
+                        ${rating > 0 ? `
+                            <div class="collection-card__rating">
+                                <span class="material-icons" aria-hidden="true">star</span>
+                                <span class="collection-card__rating-value">${rating.toFixed(1)}</span>
+                                ${priceIndicator ? `<span class="collection-card__rating-price">• ${this.escapeHtml(priceIndicator)}</span>` : ''}
                             </div>
                         ` : ''}
                     </div>
-                ` : ''}
+                </div>
             </div>
-            
-            <!-- Hover overlay effect: véu de oliva sutil (card-veil em
-                 components.css — substitui o gradiente blue-50 antigo) -->
-            <div class="card-veil"></div>
         `;
 
-        // Click handler
+        // Click handler: card inteiro (entidades) ou só o nome (curadoria)
         if (onClick) {
-            card.addEventListener('click', () => onClick(entity));
-        } else {
-            card.addEventListener('click', () => {
-                console.log('Entity clicked:', entity.entity_id);
-            });
+            if (clickTarget === 'name') {
+                const nameBtn = card.querySelector('.collection-card__name-link');
+                if (nameBtn) {
+                    nameBtn.addEventListener('click', (e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        onClick(entity);
+                    });
+                }
+            } else {
+                card.classList.add('collection-card--clickable');
+                card.addEventListener('click', () => onClick(entity));
+            }
         }
 
         if (showEntityActions) {
-            const fullAddress = this.extractEntityAddress(entity);
-            const mapsUrl = this.buildGoogleMapsUrl(fullAddress);
-            const entityPhone = this.extractEntityPhone(entity);
-            const entityWebsiteRaw = this.extractEntityWebsite(entity);
-            const entityWebsiteHref = this.normalizeWebsiteUrl(entityWebsiteRaw);
-            const entityWebsiteLabel = entityWebsiteRaw ? entityWebsiteRaw.replace(/^https?:\/\//i, '').replace(/^www\./i, '') : '';
-
-            card.querySelector('.entity-card-location')?.remove();
-            card.querySelector('.entity-card-rating')?.remove();
-            card.querySelector('.entity-card-contact')?.remove();
-
-            const entityMainEl = card.querySelector('.entity-card-main');
-            if (entityMainEl && (fullAddress || entityPhone || entityWebsiteHref || rating > 0 || priceIndicator)) {
-                const detailsEl = document.createElement('div');
-                detailsEl.className = 'entity-curation-details pt-1 space-y-2';
-                detailsEl.innerHTML = `
-                    ${fullAddress ? `
-                        <div class="flex items-start gap-1.5 text-xs text-gray-600" title="${this.escapeHtml(fullAddress)}">
-                            <span class="material-icons text-sm mt-px flex-shrink-0">place</span>
-                            ${mapsUrl ? `<a href="${mapsUrl}" target="_blank" rel="noopener noreferrer" class="linked-contact-link hover:underline line-clamp-2">${this.escapeHtml(fullAddress)}</a>` : `<span class="line-clamp-2">${this.escapeHtml(fullAddress)}</span>`}
-                        </div>
-                    ` : ''}
-                    ${entityPhone ? `
-                        <div class="flex items-center gap-1.5 text-xs text-gray-600" title="${this.escapeHtml(entityPhone)}">
-                            <span class="material-icons text-sm">phone</span>
-                            <a href="tel:${this.escapeHtml(entityPhone)}" class="linked-contact-link hover:underline">${this.escapeHtml(entityPhone)}</a>
-                        </div>
-                    ` : ''}
-                    ${entityWebsiteHref ? `
-                        <div class="flex items-center gap-1.5 text-xs text-blue-700" title="${this.escapeHtml(entityWebsiteRaw)}">
-                            <span class="material-icons text-sm">language</span>
-                            <a href="${entityWebsiteHref}" target="_blank" rel="noopener noreferrer" class="linked-contact-link hover:underline line-clamp-1">${this.escapeHtml(entityWebsiteLabel)}</a>
-                        </div>
-                    ` : ''}
-                    ${rating > 0 ? `
-                        <div class="flex items-center gap-1.5 text-xs text-amber-700">
-                            <span class="material-icons text-sm">star</span>
-                            <span class="font-semibold">${rating.toFixed(1)}</span>
-                            ${priceIndicator ? `<span class="text-gray-600">• ${this.escapeHtml(priceIndicator)}</span>` : ''}
-                        </div>
-                    ` : ''}
-                `;
-                entityMainEl.appendChild(detailsEl);
-            }
-
-            const actionsRow = document.createElement('div');
-            actionsRow.className = 'mt-auto p-4 mx-1 border-t border-gray-100 card-footer-glass z-20 relative space-y-3';
-
             const status = entity.status || 'active';
             // tons do padrão único de chips (design-system tokens)
             const statusColors = {
@@ -300,66 +273,49 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                 ? 'text-green-500'
                 : (syncStatus === 'pending' ? 'text-amber-500' : (syncStatus === 'conflict' ? 'text-orange-600' : 'text-gray-400'));
 
-            const sourceLabel = entity.data?.source || entity.source || (entity.data?.google_place_id ? 'google_places' : 'manual');
-            const sourceText = this.escapeHtml(String(sourceLabel).replace(/_/g, ' '));
-
             // Sync silencioso quando normal: o chip só existe para
             // estados que exigem atenção (pending/conflict/error) —
             // "synced" é o normal e não merece peso visual
             const showSyncChip = ['pending', 'conflict', 'error'].includes(syncStatus);
 
+            const actionsRow = document.createElement('div');
+            actionsRow.className = 'collection-card__footer';
             actionsRow.innerHTML = `
-                <div class="space-y-2">
-                    <div class="flex flex-wrap items-center gap-1.5">
-                        <span class="${statusColors[status] || statusColors.active} uppercase tracking-wider">
-                            ${this.escapeHtml(status)}
-                        </span>
-                        <div class="inline-flex items-center gap-1 text-xs font-medium text-gray-700 bg-gray-50 border border-gray-100 rounded-full px-2 py-1">
-                            <span class="material-icons text-sm">inventory_2</span>
-                            <span>${sourceText}</span>
-                        </div>
-                        ${showSyncChip ? `
-                        <div class="inline-flex items-center gap-1 text-xs font-medium ${syncColor} bg-white border border-gray-100 rounded-full px-2 py-1" title="Sync Status: ${syncStatus}">
-                            <span class="material-icons text-sm">${syncIcon}</span>
-                            <span class="capitalize">${syncStatus}</span>
-                        </div>
-                        ` : ''}
+                <div class="collection-card__status">
+                    <span class="${statusColors[status] || statusColors.active} uppercase tracking-wider">
+                        ${this.escapeHtml(status)}
+                    </span>
+                    ${showSyncChip ? `
+                    <div class="inline-flex items-center gap-1 text-xs font-medium ${syncColor} bg-white border border-gray-100 rounded-full px-2 py-1" title="Sync Status: ${syncStatus}">
+                        <span class="material-icons text-sm">${syncIcon}</span>
+                        <span class="capitalize">${syncStatus}</span>
                     </div>
+                    ` : ''}
                 </div>
-                <div class="grid grid-cols-3 gap-2 pt-1">
-                    <button class="btn-entity-details icon-btn w-full text-gray-700 hover:bg-gray-100" title="Entity Details" aria-label="Entity details">
-                        <span class="material-icons text-lg">info</span>
-                    </button>
-                    <!-- Sync deixa de ser âmbar permanente (âmbar = warning):
-                         ação rotineira, tom neutro de icon-btn. Estados de
-                         atenção continuam nos chips de sync (pending/
-                         conflict/error). -->
-                    <button class="btn-entity-sync icon-btn w-full text-gray-600" title="Sync Entity" aria-label="Sync entity">
-                        <span class="material-icons text-lg">sync</span>
+                <div class="collection-card__actions">
+                    <button class="btn-entity-details card-link-btn" title="Entity Details" aria-label="Entity details">
+                        <span class="material-icons" aria-hidden="true">visibility</span>
+                        <span>Details</span>
                     </button>
                     <button class="btn-entity-edit card-edit-btn" title="Edit Entity" aria-label="Edit entity">
-                        <span class="material-icons text-lg">edit</span>
+                        <span class="material-icons" aria-hidden="true">edit</span>
+                        <span>Edit</span>
+                    </button>
+                    <button class="btn-more-curation" title="More actions" aria-label="More actions" aria-haspopup="menu">
+                        <span class="material-icons" aria-hidden="true">more_horiz</span>
                     </button>
                 </div>
             `;
 
             const detailsBtn = actionsRow.querySelector('.btn-entity-details');
-            const syncBtn = actionsRow.querySelector('.btn-entity-sync');
             const editBtn = actionsRow.querySelector('.btn-entity-edit');
+            const moreBtn = actionsRow.querySelector('.btn-more-curation');
 
             if (detailsBtn && onDetails) {
                 detailsBtn.onclick = (e) => {
                     e.preventDefault();
                     e.stopPropagation();
                     onDetails(entity);
-                };
-            }
-
-            if (syncBtn && onSync) {
-                syncBtn.onclick = async (e) => {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    await onSync(entity);
                 };
             }
 
@@ -371,13 +327,22 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                 };
             }
 
-            const linkedContactLinks = actionsRow.querySelectorAll('.linked-contact-link');
-            linkedContactLinks.forEach(link => {
-                link.addEventListener('click', (e) => e.stopPropagation());
-            });
+            // Sync Entity mora no menu ⋯ (rotina neutra — não compete
+            // com as ações editoriais por espaço no rodapé)
+            if (moreBtn) {
+                moreBtn.onclick = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this._openCardMenu(moreBtn, {
+                        sourceInfo: { icon: 'inventory_2', label: String(sourceLabel).replace(/_/g, ' ') },
+                        syncLabel: syncStatus,
+                        items: onSync ? [{ icon: 'sync', label: 'Sync Entity', onClick: () => onSync(entity) }] : []
+                    });
+                };
+            }
 
-            const entityMainLinks = card.querySelectorAll('.entity-curation-details .linked-contact-link');
-            entityMainLinks.forEach(link => {
+            const linkedContactLinks = card.querySelectorAll('.linked-contact-link');
+            linkedContactLinks.forEach(link => {
                 link.addEventListener('click', (e) => e.stopPropagation());
             });
 
@@ -484,7 +449,14 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
      * @returns {HTMLElement} Card element
      */
     createCurationCard(entity, curation, options = {}) {
-        const card = this.createEntityCard(entity, options);
+        // clickTarget 'name': o card NÃO é clicável por inteiro — o nome
+        // é o único alvo (ver detalhes da curadoria). Edit/View/Links têm
+        // cada um o seu affordance, sem áreas sobrepostas.
+        const card = this.createEntityCard(entity, {
+            ...options,
+            clickTarget: 'name',
+            showEntityActions: false
+        });
 
         if (curation) {
             // Determine status with proper fallback
@@ -506,90 +478,48 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                 pending: 'chip chip--info'
             };
 
-            // 1. Clean up top-right header (keep only entity type icon)
-            // No changes needed to createEntityCard, it already has the icon.
-            // We just don't insert buttons there anymore.
-
-            // 2. Create Curation Actions Row
-            const actionsRow = document.createElement('div');
-            actionsRow.className = 'mt-4 pt-4 border-t border-gray-100 flex items-center justify-between';
-
             const curatorName = curation.curator?.name || 'Unknown';
             const badgeClass = statusColors[status] || statusColors.draft;
             const isLinkedCuration = status === 'linked' || !!curation.entity_id;
-
-            const fullAddress = this.extractEntityAddress(entity);
-            const mapsUrl = this.buildGoogleMapsUrl(fullAddress);
-            const phone = this.extractEntityPhone(entity);
-            const websiteRaw = this.extractEntityWebsite(entity);
-            const websiteHref = this.normalizeWebsiteUrl(websiteRaw);
-            const websiteLabel = websiteRaw ? websiteRaw.replace(/^https?:\/\//i, '').replace(/^www\./i, '') : '';
             const safeCuratorName = this.escapeHtml(curatorName);
 
-            const bodyDetails = isLinkedCuration && (fullAddress || phone || websiteHref) ? `                <div class="entity-curation-details pt-1 space-y-2">
-                    ${fullAddress ? `
-                        <div class="flex items-start gap-1.5 text-xs text-gray-600" title="${this.escapeHtml(fullAddress)}">
-                            <span class="material-icons text-sm mt-px flex-shrink-0">place</span>
-                            ${mapsUrl
-                    ? `<a href="${mapsUrl}" target="_blank" rel="noopener noreferrer" class="linked-contact-link hover:underline line-clamp-2">${this.escapeHtml(fullAddress)}</a>`
-                    : `<span class="line-clamp-2">${this.escapeHtml(fullAddress)}</span>`}
-                        </div>
-                    ` : ''}
-                    ${phone ? `
-                        <div class="flex items-center gap-1.5 text-xs text-gray-600" title="${this.escapeHtml(phone)}">
-                            <span class="material-icons text-sm">phone</span>
-                            <a href="tel:${this.escapeHtml(phone)}" class="linked-contact-link hover:underline">${this.escapeHtml(phone)}</a>
-                        </div>
-                    ` : ''}
-                    ${websiteHref ? `
-                        <div class="flex items-center gap-1.5 text-xs text-blue-700" title="${this.escapeHtml(websiteRaw)}">
-                            <span class="material-icons text-sm">language</span>
-                            <a href="${websiteHref}" target="_blank" rel="noopener noreferrer" class="linked-contact-link hover:underline line-clamp-1">${this.escapeHtml(websiteLabel)}</a>
-                        </div>
-                    ` : ''}
-                </div>
-            ` : '';
-
-            const subtitleEl = card.querySelector('.entity-card-subtitle');
+            // 1. Subtitle → chip do curador (mesma posição, novo visual)
+            const curatorChipHtml = `
+                <span class="material-icons" aria-hidden="true">person</span>
+                <span class="collection-card__subtitle-label">${safeCuratorName}</span>
+            `;
+            const subtitleEl = card.querySelector('.collection-card__subtitle');
             if (subtitleEl) {
-                subtitleEl.innerHTML = `
-                    <span class="inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-50 border border-gray-100 rounded-full px-2 py-1">
-                        <span class="material-icons text-sm">person</span>
-                        <span class="font-medium">${safeCuratorName}</span>
-                    </span>
-                `;
+                subtitleEl.innerHTML = curatorChipHtml;
             } else {
-                const headerEl = card.querySelector('.entity-card-header');
-                if (headerEl) {
+                const titleRow = card.querySelector('.collection-card__title-row');
+                if (titleRow) {
                     const curatorChip = document.createElement('div');
-                    curatorChip.className = 'entity-card-subtitle text-sm text-gray-500 font-medium';
-                    curatorChip.innerHTML = `
-                        <span class="inline-flex items-center gap-1 text-xs text-gray-500 bg-gray-50 border border-gray-100 rounded-full px-2 py-1">
-                            <span class="material-icons text-sm">person</span>
-                            <span class="font-medium">${safeCuratorName}</span>
-                        </span>
-                    `;
-                    headerEl.appendChild(curatorChip);
+                    curatorChip.className = 'collection-card__subtitle';
+                    curatorChip.innerHTML = curatorChipHtml;
+                    titleRow.after(curatorChip);
                 }
             }
 
-            card.querySelector('.entity-card-location')?.remove();
-            card.querySelector('.entity-card-rating')?.remove();
-            card.querySelector('.entity-card-contact')?.remove();
+            // 2. Curadoria não mostra rating/preço (comportamento legado
+            //    preservado — o véu do rating era removido antes também)
+            card.querySelector('.collection-card__rating')?.remove();
 
-            if (bodyDetails) {
-                const mainEl = card.querySelector('.entity-card-main');
-                if (mainEl) {
-                    const detailsEl = document.createElement('div');
-                    detailsEl.innerHTML = bodyDetails;
-                    mainEl.appendChild(detailsEl);
-                }
-            }
-
-
-            // Use centralized SourceUtils for consistent logic and styling
+            // 3. Badge de source da CURATION (SourceUtils centraliza
+            //    origem: Manual Entry / Excel Import / Web Import /
+            //    AI generated / API import)
             const sourceInfo = window.SourceUtils.detectSource(curation, entity);
+            const sourceBadge = card.querySelector('.collection-source-badge');
+            if (sourceBadge) {
+                sourceBadge.innerHTML = `
+                    <span class="material-icons" aria-hidden="true">${this.escapeHtml(sourceInfo?.icon || 'inventory_2')}</span>
+                    <span class="collection-source-badge__label">${this.escapeHtml(sourceInfo?.label || 'unknown')}</span>
+                `;
+            }
 
+            // 4. Footer: status/sync à esquerda, ações hierarquizadas à
+            //    direita — Edit (oliva-soft, primária), View/Link Entity
+            //    (neutra, secundária), ⋯ (overflow: source/sync + Delete)
             let syncStatus = curation.sync?.status || 'local';
             let syncIcon = 'cloud_off';
             let syncColor = 'text-gray-400';
@@ -612,49 +542,48 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
 
             // Sync silencioso quando normal — o chip só existe para
             // estados que exigem atenção (pending/conflito/erro).
-            // Source e Delete saem da linha visível: moram no menu "⋯"
-            // (nível operacional secundário, não protagonista)
             const showSyncChip = ['pending', 'conflict', 'error'].includes(syncStatus);
 
+            const actionsRow = document.createElement('div');
+            actionsRow.className = 'collection-card__footer';
             actionsRow.innerHTML = `
-                <div class="space-y-3">
-                    <div class="flex flex-wrap items-center gap-1.5">
-                        ${status !== 'linked' ? `
-                        <span class="${badgeClass} uppercase tracking-wider">
-                            ${this.escapeHtml(status)}
-                        </span>
-                        ` : ''}
-                        ${showSyncChip ? `
-                        <div class="inline-flex items-center gap-1 text-xs font-medium ${syncColor} ${syncStatus === 'conflict' ? 'sync-conflict-chip' : ''} bg-white border border-gray-100 rounded-full px-2 py-1"
-                             title="${syncStatus === 'conflict' ? 'Click to resolve conflict' : `Sync Status: ${this.escapeHtml(syncLabel)}` }">
-                            <span class="material-icons text-sm">${syncIcon}</span>
-                            <span class="capitalize">${this.escapeHtml(syncLabel)}</span>
-                        </div>
-                        ` : ''}
+                <div class="collection-card__status">
+                    ${status !== 'linked' ? `
+                    <span class="${badgeClass} uppercase tracking-wider">
+                        ${this.escapeHtml(status)}
+                    </span>
+                    ` : ''}
+                    ${showSyncChip ? `
+                    <div class="inline-flex items-center gap-1 text-xs font-medium ${syncColor} ${syncStatus === 'conflict' ? 'sync-conflict-chip' : ''} bg-white border border-gray-100 rounded-full px-2 py-1"
+                         title="${syncStatus === 'conflict' ? 'Click to resolve conflict' : `Sync Status: ${this.escapeHtml(syncLabel)}` }">
+                        <span class="material-icons text-sm">${syncIcon}</span>
+                        <span class="capitalize">${this.escapeHtml(syncLabel)}</span>
                     </div>
+                    ` : ''}
                 </div>
-                <div class="grid grid-cols-3 gap-2 pt-1">
+                <div class="collection-card__actions">
                     ${isLinkedCuration ? `
                     <!-- vínculo ativo: o botão ABRE a página de detalhes da
                          entity linkada (a tag "Linked" foi removida — este
                          botão é quem comunica o vínculo agora) -->
                     <button class="btn-view-entity card-link-btn" title="View linked entity details" aria-label="View linked entity details">
-                        <span class="material-icons text-base">visibility</span>
-                        View Entity
+                        <span class="material-icons" aria-hidden="true">visibility</span>
+                        <span>View Entity</span>
                     </button>
                     ` : `
                     <!-- sem vínculo: aqui mora o Link Entity (mesmo espaço,
                          mesma linguagem quieta — nada de azul sólido) -->
                     <button class="btn-link-entity card-link-btn" title="Link this curation to an entity" aria-label="Link this curation to an entity">
-                        <span class="material-icons text-base">link</span>
-                        Link Entity
+                        <span class="material-icons" aria-hidden="true">link</span>
+                        <span>Link Entity</span>
                     </button>
                     `}
                     <button class="btn-edit-curation card-edit-btn" title="Edit Curation" aria-label="Edit curation">
-                        <span class="material-icons text-lg">edit</span>
+                        <span class="material-icons" aria-hidden="true">edit</span>
+                        <span>Edit</span>
                     </button>
-                    <button class="btn-more-curation icon-btn w-full text-gray-500 hover:bg-gray-100 hover:border-gray-200" title="More actions" aria-label="More actions" aria-haspopup="menu">
-                        <span class="material-icons text-lg">more_horiz</span>
+                    <button class="btn-more-curation" title="More actions" aria-label="More actions" aria-haspopup="menu">
+                        <span class="material-icons" aria-hidden="true">more_horiz</span>
                     </button>
                 </div>
             `;
@@ -694,7 +623,7 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                 };
             }
 
-            const linkedContactLinks = actionsRow.querySelectorAll('.linked-contact-link');
+            const linkedContactLinks = card.querySelectorAll('.linked-contact-link');
             linkedContactLinks.forEach(link => {
                 link.addEventListener('click', (e) => e.stopPropagation());
             });
@@ -741,9 +670,6 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                 };
             }
 
-            // NEW: Append actions row to the CARD itself (footer), not the content area
-            // This ensures it stays at the bottom due to flex-col and flex-grow on content
-            actionsRow.className = 'mt-auto p-4 mx-1 border-t border-gray-100 card-footer-glass z-20 relative space-y-3';
             card.appendChild(actionsRow);
         }
 
@@ -950,24 +876,25 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
      * @returns {HTMLElement} Skeleton card element
      */
     createSkeletonCard() {
+        // Esqueleto na MESMA shell do card real (thumb + linhas de
+        // texto + rodapé) — sem layout shift quando os dados chegam.
         const card = document.createElement('div');
-        card.className = 'bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden animate-pulse';
+        card.className = 'collection-card skeleton-card animate-pulse';
+        card.setAttribute('aria-hidden', 'true');
 
         card.innerHTML = `
-            <div class="p-5">
-                <div class="flex justify-between mb-3">
-                    <div class="h-6 bg-gray-200 rounded w-3/4"></div>
-                    <div class="h-8 w-8 bg-gray-200 rounded-full"></div>
+            <div class="collection-card__main">
+                <div class="collection-card__media skeleton-block"></div>
+                <div class="collection-card__body">
+                    <div class="skeleton-block skeleton-line" style="width: 70%"></div>
+                    <div class="skeleton-block skeleton-line" style="width: 45%"></div>
+                    <div class="skeleton-block skeleton-line" style="width: 85%"></div>
+                    <div class="skeleton-block skeleton-line" style="width: 55%"></div>
                 </div>
-                <div class="h-4 bg-gray-200 rounded w-1/2 mb-3"></div>
-                <div class="h-4 bg-gray-200 rounded w-2/3 mb-4"></div>
-                <div class="flex gap-4 mb-4">
-                    <div class="h-4 bg-gray-200 rounded w-16"></div>
-                    <div class="h-4 bg-gray-200 rounded w-12"></div>
-                </div>
-                <div class="flex gap-3 pt-3 border-t border-gray-100">
-                    <div class="h-4 bg-gray-200 rounded w-24"></div>
-                </div>
+            </div>
+            <div class="collection-card__footer">
+                <div class="skeleton-block skeleton-line" style="width: 30%"></div>
+                <div class="skeleton-block skeleton-line" style="width: 40%; margin-left: auto"></div>
             </div>
         `;
 

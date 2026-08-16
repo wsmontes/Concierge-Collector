@@ -34,10 +34,10 @@
 
     <!-- Custom CSS - New Architecture -->
     <!-- 1. Design System Foundation (FIRST - design tokens, base styles) -->
-    <link rel="stylesheet" href="styles/design-system.css?v=20260816-1">
+    <link rel="stylesheet" href="styles/design-system.css?v=20260816-2">
 
     <!-- 2. Component Library (reusable components) -->
-    <link rel="stylesheet" href="styles/components.css?v=20260816-2">
+    <link rel="stylesheet" href="styles/components.css?v=20260816-3">
 
     <!-- 3. Application-specific Styles -->
     <link rel="stylesheet" href="styles/application.css?v=20260816-1">
@@ -46,10 +46,10 @@
     <link rel="stylesheet" href="styles/places-section.css?v=20260816-1">
     <link rel="stylesheet" href="styles/access-control.css?v=20260814-1">
     <link rel="stylesheet" href="styles/sync-badges.css?v=20260816-1">
-    <link rel="stylesheet" href="styles/mobile-enhancements.css?v=20260816-1">
+    <link rel="stylesheet" href="styles/mobile-enhancements.css?v=20260816-2">
 
     <!-- 5. Legacy Support (will be deprecated after migration) -->
-    <link rel="stylesheet" href="styles/style.css?v=20260816-1">
+    <link rel="stylesheet" href="styles/style.css?v=20260816-2">
 
     <!-- Centralized Configuration (MUST load first) -->
     <script src="scripts/core/config.js?v=20260814-1"></script>
@@ -112,19 +112,25 @@
 
 <body>
     <div id="app" class="container mx-auto px-4 sm:px-6">
-        <header class="mb-6 bg-white py-2 sm:py-3 -mx-4 px-4 sm:mx-0 sm:px-0 border-b border-gray-200 sticky top-0 z-40">
-            <!-- Logo, Title, Controls and User Profile - All horizontally aligned -->
-            <div class="flex items-center justify-between gap-2 sm:gap-4">
-                <!-- Left: Logo and Title -->
-                <div class="flex items-center gap-2 sm:gap-3">
-                    <img src="images/lotier-logo-2026.jpg" alt="Lotier Logo" class="brand-logo">
-                    <h1 class="brand-wordmark">Collector</h1>
+        <!-- Header: barra compacta. Mobile = [logo Lotier] [Collector
+             centrado] [sync] [avatar ▼]; desktop = logo+título à
+             esquerda, cluster à direita (estrutura preservada — o
+             centramento mobile é só CSS). -->
+        <header class="header-bar sticky top-0 z-40">
+            <div class="header-bar__inner">
+                <!-- Left: Logo Lotier -->
+                <div class="header-bar__brand">
+                    <img src="images/lotier-logo-2026.jpg" alt="Lotier Concierge" class="brand-logo">
                 </div>
 
-                <!-- Right: New Curation (desktop) + Sync Status + User Profile -->
-                <div class="flex items-center gap-2 sm:gap-4 flex-shrink-0">
-                    <!-- Ação principal do desktop (o FAB fica só no mobile):
-                         mesma entrada das quick actions, linguagem do lugar -->
+                <!-- Título do app — serif; visualmente centralizado no mobile -->
+                <h1 class="brand-wordmark">Collector</h1>
+
+                <!-- Right: New Curation (desktop, oculto) + Sync + User Profile -->
+                <div class="header-bar__actions">
+                    <!-- Ação principal do desktop (o FAB fica como entrada
+                         única em todas as telas — decisão de prod 2026-08-16;
+                         botão permanece display:none) -->
                     <button id="new-curation-btn" type="button" class="btn btn-primary btn-md">
                         <span class="material-icons mr-1" aria-hidden="true">add</span>
                         New Curation
@@ -532,39 +538,40 @@
     </div>
 
     <!-- Entities Section (Restaurants, Bars, Hotels, etc.) -->
-    <section id="entities-section" class="panel mb-8 p-6 hidden">
-        <!-- Header -->
-        <div class="flex justify-between items-center mb-4">
-            <h2 class="section-heading section-heading--plain">
-                <span class="material-icons" style="color: var(--color-success)">restaurant</span>
-                My Collection
-            </h2>
+    <section id="entities-section" class="panel collection-panel hidden">
+        <!-- Cabeçalho editorial: ícone circular suave + título serif +
+             subtítulo (some em telas muito estreitas) + sync em atividade -->
+        <div class="page-head">
+            <div class="page-head__icon" aria-hidden="true">
+                <span class="material-icons">restaurant</span>
+            </div>
+            <div class="page-head__text">
+                <h2 class="page-head__title">My Collection</h2>
+                <p class="page-head__subtitle">Manage your curations and entities</p>
+            </div>
             <div id="view-sync-activity" class="hidden text-sm px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 border border-blue-100 items-center gap-2">
                 <span class="material-icons text-sm animate-spin">sync</span>
                 <span id="view-sync-activity-text">Syncing data...</span>
             </div>
         </div>
 
-        <!-- Tab Navigation -->
-        <div class="mb-3 border-b border-gray-200">
-            <nav class="flex space-x-8" role="tablist" aria-label="View modes">
-                <button id="tab-curations" class="view-tab active" role="tab" aria-selected="true"
-                    aria-controls="curations-view" data-tab="curations">
-                    <span class="material-icons text-sm align-middle mr-1">edit_note</span>
-                    Curations
-                </button>
-                <button id="tab-entities" class="view-tab" role="tab" aria-selected="false"
-                    aria-controls="entities-view" data-tab="entities">
-                    <span class="material-icons text-sm align-middle mr-1">restaurant</span>
-                    Entities
-                </button>
-            </nav>
-            <!-- Uma frase que ensina a diferença Curations × Entities sem
-                 exigir documentação — muda junto com a aba ativa -->
-            <p id="tab-subtitle" class="text-xs text-gray-500 mb-4"></p>
-        </div>
+        <!-- Tab Navigation: área inteira clicável, underline oliva na ativa -->
+        <nav class="view-tabs" role="tablist" aria-label="View modes">
+            <button id="tab-curations" class="view-tab active" role="tab" aria-selected="true"
+                aria-controls="curations-view" data-tab="curations">
+                <span class="material-icons" aria-hidden="true">edit_note</span>
+                Curations
+            </button>
+            <button id="tab-entities" class="view-tab" role="tab" aria-selected="false"
+                aria-controls="entities-view" data-tab="entities">
+                <span class="material-icons" aria-hidden="true">restaurant</span>
+                Entities
+            </button>
+        </nav>
 
-        <div class="mb-4 flex items-center justify-between text-sm text-gray-600">
+        <!-- Estados loading/vazio (gerenciados pelo uiManager — ficam
+             ocultos quando a paginação mostra a contagem) -->
+        <div class="view-counts">
             <span id="curations-count-summary" class="hidden">Loading curations...</span>
             <span id="entities-count-summary" class="hidden">Loading entities...</span>
         </div>
@@ -577,11 +584,12 @@
                  mobile, painel flutuante no desktop -->
             <div class="mb-4">
                 <div class="filters-bar">
-                    <!-- Search -->
+                    <!-- Search (ícone real dentro do campo) -->
                     <div class="filters-bar__search">
-                        <div class="relative">
+                        <div class="search-field">
+                            <span class="material-icons search-field__icon" aria-hidden="true">search</span>
                             <input type="text" id="curation-search" placeholder="Search curations..."
-                                class="input input-md" />
+                                class="input input-md search-field__input" aria-label="Search curations" />
                         </div>
                     </div>
 
@@ -611,11 +619,20 @@
                      toggle desliga. Estado gerenciado no uiManager. -->
                 <div id="curation-saved-views" class="saved-views" role="group" aria-label="Saved views">
                     <button type="button" class="saved-view-chip" data-saved-view="my-drafts"
-                        aria-pressed="false">My drafts</button>
+                        aria-pressed="false">
+                        <span class="material-icons" aria-hidden="true">description</span>
+                        <span>My drafts</span>
+                    </button>
                     <button type="button" class="saved-view-chip" data-saved-view="unlinked"
-                        aria-pressed="false">Unlinked</button>
+                        aria-pressed="false">
+                        <span class="material-icons" aria-hidden="true">link</span>
+                        <span>Unlinked</span>
+                    </button>
                     <button type="button" class="saved-view-chip" data-saved-view="recent"
-                        aria-pressed="false">Recently added</button>
+                        aria-pressed="false">
+                        <span class="material-icons" aria-hidden="true">history</span>
+                        <span>Recently added</span>
+                    </button>
                 </div>
             </div>
 
@@ -658,8 +675,8 @@
                 </div>
             </div>
 
-            <!-- Curations Grid -->
-            <div id="curations-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4"></div>
+            <!-- Curations Grid (breakpoints no CSS: 1 col → 2 → 3) -->
+            <div id="curations-container" class="collection-grid"></div>
         </div>
 
         <!-- Entities View -->
@@ -668,11 +685,12 @@
                  Type/City atrás de "Filters" (bottom sheet) -->
             <div class="mb-4">
                 <div class="filters-bar">
-                    <!-- Search -->
+                    <!-- Search (ícone real dentro do campo) -->
                     <div class="filters-bar__search">
-                        <div class="relative">
+                        <div class="search-field">
+                            <span class="material-icons search-field__icon" aria-hidden="true">search</span>
                             <input type="text" id="entity-search" placeholder="Search entities..."
-                                class="input input-md" />
+                                class="input input-md search-field__input" aria-label="Search entities" />
                         </div>
                     </div>
 
@@ -717,8 +735,8 @@
                 </div>
             </div>
 
-            <!-- Entity Grid -->
-            <div id="entities-container" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+            <!-- Entity Grid (breakpoints no CSS: 1 → 2 → 3 → 4) -->
+            <div id="entities-container" class="collection-grid collection-grid--entities">
             </div>
         </div>
     </section>
@@ -831,7 +849,7 @@
     </div>
 
     <!-- Floating Action Button -->
-    <button id="fab" type="button" aria-label="Open quick actions"
+    <button id="fab" type="button" aria-label="Open quick actions" title="Quick actions"
         class="fixed bottom-6 right-6 text-white rounded-full w-16 h-16 flex items-center justify-center cursor-pointer">
         <span class="material-icons text-2xl" aria-hidden="true">add</span>
     </button>

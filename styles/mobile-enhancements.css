@@ -140,7 +140,12 @@
 /* Touch targets - minimum 44x44px (Apple HIG) */
 @media (max-width: 768px) {
     .btn,
-    button:not(.checkbox):not(.radio),
+    /* Os controles do redesign da coleção (ago/2026) definem os
+       próprios alvos de toque (chips 38px, paginação 32px, ações do
+       card 36px, botão-nome de texto 0) — ficam fora do mínimo HIG
+       genérico, que os inflava para 44px vencendo por especificidade
+       (button:not(...) = 0,2,1 > classes de componente = 0,2,0). */
+    button:not(.checkbox):not(.radio):not(.saved-view-chip):not(.collection-pagination__btn):not(.card-link-btn):not(.card-edit-btn):not(.btn-more-curation):not(.collection-card__name-link),
     a.btn {
         min-height: 44px;
         min-width: 44px;

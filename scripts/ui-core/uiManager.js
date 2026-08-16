@@ -557,7 +557,8 @@ if (typeof window.UIManager === 'undefined') {
             });
 
             // As frases de legenda das abas foram removidas a pedido do
-            // usuário — o elemento #tab-subtitle fica vazio.
+            // usuário — o elemento #tab-subtitle saiu do markup
+            // (redesign ago/2026); o getElementById null é inofensivo.
             const tabSubtitle = document.getElementById('tab-subtitle');
             if (tabSubtitle) {
                 tabSubtitle.textContent = '';
@@ -1405,20 +1406,20 @@ if (typeof window.UIManager === 'undefined') {
             // no fallback pagina o cache local.
             {
                 var header = document.createElement('div');
-                header.className = 'col-span-full p-4 bg-neutral-50 rounded-lg flex items-center justify-between pagination-header';
+                header.className = 'col-span-full collection-pagination';
                 header.innerHTML = `
-                    <div class="text-sm text-gray-600">
-                        Showing <span class="font-semibold">${start + 1}</span>&ndash;<span class="font-semibold">${end}</span> of <span class="font-semibold">${serverTotal}</span> curations
-                    </div>
-                    <div class="flex gap-2">
-                        <button id="curation-prev-page" aria-label="Previous page" class="px-3 h-10 flex items-center bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" ${cp.currentPage === 0 ? 'disabled' : ''}>
-                            <span class="material-icons text-sm">chevron_left</span>
+                    <span class="collection-pagination__summary">
+                        Showing <strong>${start + 1}</strong>&ndash;<strong>${end}</strong> of <strong>${serverTotal}</strong> curations
+                    </span>
+                    <span class="collection-pagination__controls">
+                        <button id="curation-prev-page" aria-label="Previous page" class="collection-pagination__btn" ${cp.currentPage === 0 ? 'disabled' : ''}>
+                            <span class="material-icons" aria-hidden="true">chevron_left</span>
                         </button>
-                        <div class="px-3 py-1 text-sm font-medium">Page ${cp.currentPage + 1} of ${totalPages}</div>
-                        <button id="curation-next-page" aria-label="Next page" class="px-3 h-10 flex items-center bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" ${cp.currentPage >= totalPages - 1 ? 'disabled' : ''}>
-                            <span class="material-icons text-sm">chevron_right</span>
+                        <span class="collection-pagination__page">Page ${cp.currentPage + 1} of ${totalPages}</span>
+                        <button id="curation-next-page" aria-label="Next page" class="collection-pagination__btn" ${cp.currentPage >= totalPages - 1 ? 'disabled' : ''}>
+                            <span class="material-icons" aria-hidden="true">chevron_right</span>
                         </button>
-                    </div>
+                    </span>
                 `;
                 frag.appendChild(header);
 
@@ -1812,22 +1813,20 @@ if (typeof window.UIManager === 'undefined') {
 
             // Add pagination header
             const header = document.createElement('div');
-            header.className = 'col-span-full p-4 bg-neutral-50 rounded-lg flex items-center justify-between pagination-header';
+            header.className = 'col-span-full collection-pagination';
             header.innerHTML = `
-                <div class="text-sm text-gray-600">
-                    Showing <span class="font-semibold">${start + 1}</span>&ndash;<span class="font-semibold">${end}</span> of <span class="font-semibold">${serverTotal}</span> entities
-                </div>
-                <div class="flex gap-2">
-                    <button id="entity-prev-page" aria-label="Previous page" class="px-3 h-10 flex items-center bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" ${ep.currentPage === 0 ? 'disabled' : ''}>
-                        <span class="material-icons text-sm">chevron_left</span>
+                <span class="collection-pagination__summary">
+                    Showing <strong>${start + 1}</strong>&ndash;<strong>${end}</strong> of <strong>${serverTotal}</strong> entities
+                </span>
+                <span class="collection-pagination__controls">
+                    <button id="entity-prev-page" aria-label="Previous page" class="collection-pagination__btn" ${ep.currentPage === 0 ? 'disabled' : ''}>
+                        <span class="material-icons" aria-hidden="true">chevron_left</span>
                     </button>
-                    <div class="px-3 py-1 text-sm font-medium">
-                        Page ${ep.currentPage + 1} of ${totalPages}
-                    </div>
-                    <button id="entity-next-page" aria-label="Next page" class="px-3 h-10 flex items-center bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" ${ep.currentPage >= totalPages - 1 ? 'disabled' : ''}>
-                        <span class="material-icons text-sm">chevron_right</span>
+                    <span class="collection-pagination__page">Page ${ep.currentPage + 1} of ${totalPages}</span>
+                    <button id="entity-next-page" aria-label="Next page" class="collection-pagination__btn" ${ep.currentPage >= totalPages - 1 ? 'disabled' : ''}>
+                        <span class="material-icons" aria-hidden="true">chevron_right</span>
                     </button>
-                </div>
+                </span>
             `;
             container.appendChild(header);
 
@@ -1973,9 +1972,12 @@ if (typeof window.UIManager === 'undefined') {
          * Create a review card for orphaned curations
          */
         createReviewCard(curation) {
+            // Mesma shell da coleção (.collection-card) dos cards de
+            // entity: mídia fantasma (nota — curadoria órfã não tem
+            // foto), nome como ÚNICO alvo de clique (ver detalhes),
+            // rodapé com a mesma hierarquia de ações.
             const card = document.createElement('div');
-            // Match createEntityCard style: white bg, rounded, shadow, border
-            card.className = 'bg-white rounded-xl shadow-sm border border-gray-200 overflow-hidden hover:shadow-lg hover:border-blue-300 transition-all duration-200 cursor-pointer group h-full flex flex-col justify-between relative';
+            card.className = 'collection-card group';
             card.dataset.curationId = curation.curation_id;
 
             const cardCreatedAt = curation.createdAt || curation.created_at;
@@ -1983,7 +1985,6 @@ if (typeof window.UIManager === 'undefined') {
 
             // Check if curation is already linked to an entity
             const isLinked = !!(curation.entity_id);
-            const linkedEntityName = curation.entity_name || curation.restaurant_name || null;
 
             // Extract concept names from categories object
             const categories = curation.categories || {};
@@ -2043,82 +2044,90 @@ if (typeof window.UIManager === 'undefined') {
             card.classList.add(accentByStatus[rawStatus] || 'card-accent-draft');
 
             card.innerHTML = `
-                <!-- Ícone decorativo (não é botão) — .card-type-badge
-                     (círculo perfeito, glifo centrado). -->
-                <div class="absolute top-3 right-3 z-10">
-                    <div class="card-type-badge">
-                        <span class="material-icons text-gray-600">edit_note</span>
+                <div class="collection-card__main">
+                    <!-- Mídia: nota fantasma (review órfã não tem foto) -->
+                    <div class="collection-card__media collection-card__media--note">
+                        <div class="collection-card__thumb-fallback" aria-hidden="true">
+                            <span class="material-icons">edit_note</span>
+                        </div>
                     </div>
-                </div>
 
-                <!-- Main content -->
-                <div class="p-5 flex-grow">
-                    <!-- Name -->
-                    <div class="mb-3">
-                        <h3 class="card-restaurant-name mb-2 pr-12 line-clamp-2">
-                            ${restaurantName}
-                        </h3>
-                        <div class="flex items-center gap-2 text-xs text-gray-500 mb-2">
+                    <div class="collection-card__body">
+                        <div class="collection-card__title-row">
+                            <h3 class="card-restaurant-name">
+                                <button type="button" class="collection-card__name-link line-clamp-2" title="View curation details">${restaurantName}</button>
+                            </h3>
+                            <div class="collection-card__badges">
+                                <div class="card-type-badge">
+                                    <span class="material-icons">edit_note</span>
+                                </div>
+                            </div>
+                        </div>
+
+                        <div class="collection-card__review-row">
                             <span class="${badgeClass}">${badgeText}</span>
-                            <span>•</span>
-                            <span>${date}</span>
+                            <span class="collection-card__review-date">${date}</span>
                         </div>
-                    </div>
 
-                    <!-- Concepts/Tags -->
-                    ${conceptDisplay ? `
-                        <div class="flex flex-wrap gap-1 mb-3">
-                            ${conceptNames.slice(0, 3).map(c => `
-                                <span class="chip chip--neutral">${_escC(c)}</span>
-                            `).join('')}
-                            ${totalConcepts > 3 ? `<span class="px-2 py-0.5 bg-gray-50 text-gray-600 text-xs rounded-md border border-gray-100">+${totalConcepts - 3}</span>` : ''}
-                        </div>
-                    ` : ''}
-                    
-                    <!-- Transcription Preview -->
-                    ${transcriptionSnippet ? `
-                        <div class="text-sm text-gray-600 italic border-l-2 border-gray-100 pl-3 py-1 mb-3 line-clamp-3">
-                            "${_escC(transcriptionSnippet)}"
-                        </div>
-                    ` : ''}
+                        <!-- Concepts/Tags -->
+                        ${conceptDisplay ? `
+                            <div class="collection-card__concepts">
+                                ${conceptNames.slice(0, 3).map(c => `
+                                    <span class="chip chip--neutral">${_escC(c)}</span>
+                                `).join('')}
+                                ${totalConcepts > 3 ? `<span class="collection-card__concepts-more">+${totalConcepts - 3}</span>` : ''}
+                            </div>
+                        ` : ''}
 
-                    <!-- Curator Info -->
-                    <div class="flex items-center gap-1.5 text-xs text-gray-500 mt-auto pt-2">
-                        <span class="material-icons text-sm">person</span>
-                        <span>${curatorName}</span>
+                        <!-- Transcription Preview -->
+                        ${transcriptionSnippet ? `
+                            <div class="collection-card__transcript line-clamp-3">
+                                "${_escC(transcriptionSnippet)}"
+                            </div>
+                        ` : ''}
+
+                        <!-- Curator Info -->
+                        <div class="collection-card__curator">
+                            <span class="material-icons" aria-hidden="true">person</span>
+                            <span>${curatorName}</span>
+                        </div>
                     </div>
                 </div>
 
                 <!-- Actions Footer — MESMO padrão do curation card
-                     (cardFactory.js): vínculo à esquerda (.card-link-btn),
-                     editar + ⋯ à direita. Antes este card tinha pill azul
-                     sólido + trio de icon-btns — a terceira linguagem de
-                     rodapé na mesma grade. Unlink e Delete moram no ⋯. -->
-                <div class="mt-auto p-4 mx-1 border-t border-gray-100 card-footer-glass z-20 relative space-y-3">
-                    <div class="grid grid-cols-3 gap-2 pt-1">
+                     (cardFactory.js): vínculo (.card-link-btn), editar
+                     (.card-edit-btn) + ⋯. Unlink e Delete moram no ⋯. -->
+                <div class="collection-card__footer">
+                    <div class="collection-card__status"></div>
+                    <div class="collection-card__actions">
                         ${isLinked ? `
-                        <button class="btn-view-entity card-link-btn" title="View linked entity details" aria-label="View linked entity details">
-                            <span class="material-icons text-base">visibility</span>
-                            View Entity
+                        <button class="btn-view-entity card-link-btn" title="View curation details" aria-label="View curation details">
+                            <span class="material-icons" aria-hidden="true">visibility</span>
+                            <span>View Entity</span>
                         </button>
                         ` : `
                         <button class="btn-link-entity card-link-btn" title="Link this curation to an entity" aria-label="Link this curation to an entity">
-                            <span class="material-icons text-base">link</span>
-                            Link Entity
+                            <span class="material-icons" aria-hidden="true">link</span>
+                            <span>Link Entity</span>
                         </button>
                         `}
                         <button class="btn-edit-curation card-edit-btn" title="Edit Curation" aria-label="Edit curation">
-                            <span class="material-icons text-lg">edit</span>
+                            <span class="material-icons" aria-hidden="true">edit</span>
+                            <span>Edit</span>
                         </button>
-                        <button class="btn-more-curation icon-btn w-full text-gray-500 hover:bg-gray-100 hover:border-gray-200" title="More actions" aria-label="More actions" aria-haspopup="menu">
-                            <span class="material-icons text-lg">more_horiz</span>
+                        <button class="btn-more-curation" title="More actions" aria-label="More actions" aria-haspopup="menu">
+                            <span class="material-icons" aria-hidden="true">more_horiz</span>
                         </button>
                     </div>
                 </div>
-
-                <!-- Hover overlay effect -->
-                <div class="card-veil"></div>
             `;
+
+            // Nome = único alvo de clique (abre os detalhes da review)
+            card.querySelector('.collection-card__name-link')?.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                this.handleViewReviewDetails(curation);
+            });
 
             // Add event listeners
             card.querySelector('.btn-edit-curation')?.addEventListener('click', (e) => {
@@ -2158,13 +2167,6 @@ if (typeof window.UIManager === 'undefined') {
                         onDelete: () => this.confirmDeleteCuration(curation.curation_id)
                     });
                 }
-            });
-
-            // Make whole card clickable for details (except buttons)
-            card.addEventListener('click', (e) => {
-                // Don't trigger if clicked on buttons (handled by stopPropagation, but just in case)
-                if (e.target.closest('button')) return;
-                this.handleViewReviewDetails(curation);
             });
 
             return card;

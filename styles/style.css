@@ -729,11 +729,15 @@ audio {
   margin: 0;
 }
 
-/* ===== Floating Action Button ===== */
+/* ===== Floating Action Button =====
+   56px, oliva, sombra discreta, respeita a safe-area inferior.
+   Sempre visível em TODAS as telas (decisão de prod 2026-08-16 —
+   escondê-lo por largura tirou o gravador de aparelhos touch ≥641px).
+   Tooltip no desktop via title ("Quick actions" no markup). */
 #fab {
   position: fixed;
-  bottom: 1.5rem;
-  right: 1.5rem;
+  bottom: calc(1.25rem + var(--safe-area-inset-bottom));
+  right: 1.25rem;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -741,8 +745,9 @@ audio {
   height: 3.5rem;
   background: var(--color-primary-600);
   color: white;
+  border: none;
   border-radius: 50%;
-  box-shadow: 0 6px 16px rgba(74, 87, 60, 0.35);
+  box-shadow: 0 4px 12px rgba(74, 87, 60, 0.28);
   cursor: pointer;
   transition: transform var(--ease-bounce) var(--transition-base), box-shadow var(--transition-base), background-color var(--transition-base);
   z-index: 40;
@@ -763,8 +768,8 @@ audio {
 #fab:hover {
   /* rotate(45deg) removido (ago/2026): o "+" virar "×" no hover sugeria
      "fechar" quando o botão ABRE — affordance enganosa */
-  transform: scale(1.1);
-  box-shadow: 0 15px 20px rgba(0, 0, 0, 0.2);
+  transform: scale(1.05);
+  box-shadow: 0 8px 18px rgba(74, 87, 60, 0.32);
 }
 
 #fab:focus-visible {
@@ -967,11 +972,13 @@ button:not([class]) .material-icons {
     padding: 0.5rem 1rem;
   }
   
+  /* FAB: 56px em todas as telas (redesign ago/2026 — o encolhimento
+     para 48px aqui desfazia o alvo de toque pedido no mobile) */
   #fab {
-    bottom: 1rem;
-    right: 1rem;
-    width: 3rem;
-    height: 3rem;
+    bottom: calc(1.25rem + var(--safe-area-inset-bottom));
+    right: 1.25rem;
+    width: 3.5rem;
+    height: 3.5rem;
   }
 }
 

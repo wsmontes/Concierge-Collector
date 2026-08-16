@@ -1,9 +1,10 @@
 /**
- * Testes do véu de imagem OG dos cards: o CardFactory marca cards com
- * website nos metadados (data-og-source + div .card-og-veil) e o
+ * Testes da imagem OG dos cards: o CardFactory marca cards com website
+ * nos metadados (data-og-source + thumbnail .collection-card__thumb;
+ * o véu .card-og-veil continua para o herói dos detail sheets) e o
  * OgImageModule resolve a imagem em real-time via /api/v3/og-image
  * (o backend devolve o JPEG redimensionado) com persistência em Cache
- * Storage e dedupe por URL — falha silenciosa deixa o card limpo.
+ * Storage e dedupe por URL — falha silenciosa deixa o card no fallback.
  */
 import { readFileSync } from 'fs';
 import path from 'path';
@@ -48,32 +49,37 @@ describe('CardFactory — véu OG (data-og-source)', () => {
   };
   const entitySemSite = { ...entityComSite, data: {} };
 
-  test('card com website ganha data-og-source e div do véu', () => {
+  test('card com website ganha data-og-source e thumbnail explícita', () => {
     const factory = loadCardFactory();
     const card = factory.createEntityCard(entityComSite, { showEntityActions: false });
 
     expect(card.dataset.ogSource).toBe('https://casa.example.com');
-    expect(card.querySelector('.card-og-veil')).toBeTruthy();
+    // img real com lazy loading (redesign ago/2026 — foto como objeto,
+    // não mais como fundo)
+    const thumb = card.querySelector('.collection-card__thumb');
+    expect(thumb).toBeTruthy();
+    expect(thumb.getAttribute('loading')).toBe('lazy');
   });
 
-  test('card sem website fica sem marcação, mas com slot de véu (fallback)', () => {
+  test('card sem website fica sem marcação, mas com mídia de fallback', () => {
     const factory = loadCardFactory();
     const card = factory.createEntityCard(entitySemSite, { showEntityActions: false });
 
     expect(card.dataset.ogSource).toBeUndefined();
     expect(card.dataset.ogPlaceId).toBeUndefined();
-    // o slot existe sempre: o módulo aplica o véu de fallback no tom
-    // do status (princípio feedmine de card nunca branco vazio)
-    expect(card.querySelector('.card-og-veil')).toBeTruthy();
+    // o placeholder existe sempre (princípio feedmine de card nunca
+    // ficar com mídia vazia — gradiente pedra sob o img vazio)
+    const fallback = card.querySelector('.collection-card__thumb-fallback');
+    expect(fallback).toBeTruthy();
     // ícone fantasma do tipo (contentTypePlaceholder do feedmine)
-    const icon = card.querySelector('.card-og-veil__icon');
+    const icon = fallback.querySelector('.material-icons');
     expect(icon).toBeTruthy();
-    expect(icon.classList.contains('material-icons')).toBe(true);
+    expect(icon.textContent).toBe('restaurant');
   });
 
-  test('shape bulk (data.contacts.website plural) também ganha o véu', () => {
+  test('shape bulk (data.contacts.website plural) também ganha a thumbnail', () => {
     // Regressão: entities do import bulk guardam o site em contacts
-    // (plural) — a extração estreita deixava esses cards sem véu.
+    // (plural) — a extração estreita deixava esses cards sem imagem.
     const factory = loadCardFactory();
     const card = factory.createEntityCard(
       { ...entitySemSite, data: { contacts: { website: 'https://bulk.example.com' } } },
@@ -81,7 +87,7 @@ describe('CardFactory — véu OG (data-og-source)', () => {
     );
 
     expect(card.dataset.ogSource).toBe('https://bulk.example.com');
-    expect(card.querySelector('.card-og-veil')).toBeTruthy();
+    expect(card.querySelector('.collection-card__thumb')).toBeTruthy();
   });
 
   test('entity com place_id ganha data-og-place-id (fallback Places)', () => {
@@ -93,10 +99,10 @@ describe('CardFactory — véu OG (data-og-source)', () => {
 
     expect(card.dataset.ogSource).toBeUndefined();
     expect(card.dataset.ogPlaceId).toBe('ChIJxyz123');
-    expect(card.querySelector('.card-og-veil')).toBeTruthy(); // véu espera a imagem
+    expect(card.querySelector('.collection-card__thumb')).toBeTruthy(); // img espera a resolução
   });
 
-  test('curadoria linkada herda o véu da entity', () => {
+  test('curadoria linkada herda a thumbnail da entity', () => {
     const factory = loadCardFactory();
     window.SourceUtils = { detectSource: () => ({ className: 'chip', icon: 'public', label: 'openai' }) };
     const card = factory.createCurationCard(entityComSite, {
@@ -107,7 +113,7 @@ describe('CardFactory — véu OG (data-og-source)', () => {
     });
 
     expect(card.dataset.ogSource).toBe('https://casa.example.com');
-    expect(card.querySelector('.card-og-veil')).toBeTruthy();
+    expect(card.querySelector('.collection-card__thumb')).toBeTruthy();
   });
 });
 
@@ -149,6 +155,63 @@ describe('OgImageModule — resolução, cache e aplicação do véu', () => {
     // dedupe: uma única chamada de API para os dois cards do mesmo site
     expect(request).toHaveBeenCalledTimes(1);
     expect(cardA.querySelector('.card-og-veil').style.backgroundImage).toContain('blob:fake-1');
+  });
+
+  test('card da coleção com thumbnail recebe a imagem via src (não background)', async () => {
+    const OgImageModuleClass = loadOgImageModule();
+    vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn(() => 'blob:thumb-1') });
+
+    const request = vi.fn().mockResolvedValue(fakeApiResponseOk());
+    window.ApiService = { request };
+
+    const module = new OgImageModuleClass();
+    await module.init();
+
+    const card = document.createElement('div');
+    card.dataset.ogSource = 'https://site.example.com/t';
+    card.innerHTML = `
+      <div class="collection-card__media">
+        <img class="collection-card__thumb" loading="lazy" alt="" />
+        <div class="collection-card__thumb-fallback" aria-hidden="true">
+          <span class="material-icons">restaurant</span>
+        </div>
+      </div>
+    `;
+    document.body.appendChild(card);
+
+    module._queue(card);
+    await vi.waitFor(() => {
+      const thumb = card.querySelector('.collection-card__thumb');
+      expect(thumb.src).toContain('blob:thumb-1');
+      expect(thumb.classList.contains('is-loaded')).toBe(true);
+    });
+    // o fallback continua no DOM (some via CSS com .is-loaded)
+    expect(card.querySelector('.collection-card__thumb-fallback')).toBeTruthy();
+  });
+
+  test('card com thumbnail e SEM fonte nenhuma não chama a API (placeholder basta)', async () => {
+    const OgImageModuleClass = loadOgImageModule();
+    const request = vi.fn();
+    window.ApiService = { request };
+
+    const module = new OgImageModuleClass();
+    await module.init();
+
+    const card = document.createElement('div');
+    card.innerHTML = `
+      <div class="collection-card__media">
+        <img class="collection-card__thumb" loading="lazy" alt="" />
+        <div class="collection-card__thumb-fallback"></div>
+      </div>
+    `;
+    document.body.appendChild(card);
+
+    module._queue(card);
+    await vi.waitFor(() => {
+      expect(request).not.toHaveBeenCalled();
+    });
+    const thumb = card.querySelector('.collection-card__thumb');
+    expect(thumb.classList.contains('is-loaded')).toBe(false);
   });
 
   test('cache quente no Cache Storage dispensa a API', async () => {
