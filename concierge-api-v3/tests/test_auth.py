@@ -318,8 +318,10 @@ def test_is_same_site_helper():
     assert _is_same_site("http://localhost:5500", "http://localhost:8000")
 
 
-def test_auth_redirect_same_site_sem_tokens_na_url():
-    """Same-site: redirect SEM tokens na URL (cookie HttpOnly é o portador)."""
+def test_auth_redirect_same_site_tokens_no_fragment():
+    """Same-site: tokens NO FRAGMENT (não vazam via query/Referer/logs) +
+    ?session=1 mantém o fallback de cookie. iOS Safari descarta Set-Cookie
+    de redirect cross-site — o fragment é o caminho que funciona lá."""
     from app.api.auth import _build_auth_redirect_url
 
     url = _build_auth_redirect_url(
@@ -330,8 +332,12 @@ def test_auth_redirect_same_site_sem_tokens_na_url():
         user_name="A",
         same_site=True,
     )
-    assert "token=" not in url
-    assert "session=1" in url
+    base, fragment = url.split("#")
+    assert base == "https://concierge-collector-web.onrender.com/?session=1"
+    assert "token=acc" in fragment
+    assert "refresh_token=ref" in fragment
+    # nada de token na QUERY (log de request/Referer não vêem)
+    assert "token=acc" not in url.split("#")[0]
 
 
 def test_auth_redirect_cross_site_mantem_tokens_na_url():
@@ -348,3 +354,8 @@ def test_auth_redirect_cross_site_mantem_tokens_na_url():
     )
     assert "token=acc" in url
     assert "refresh_token=ref" in url
+
+
+# ============================================================================
+# Redirect pós-login: fragment same-site (Safari descarta cookie de redirect)
+# ============================================================================

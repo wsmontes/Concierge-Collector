@@ -98,21 +98,28 @@ def _build_auth_redirect_url(
     user_name: str,
     same_site: bool,
 ) -> str:
-    """Redirect pós-login. Same-site → SEM tokens na URL (o cookie HttpOnly é
-    o portador; `?session=1` sinaliza o frontend para autenticar via cookie).
-    Cross-site legado (GitHub Pages) → tokens na URL, como antes (o cookie
+    """Redirect pós-login.
+
+    Same-site: cookies HttpOnly seguem setadas (browsers que as armazenam),
+    e o FRAGMENT leva os tokens como caminho alternativo — iOS Safari
+    descarta Set-Cookie vindo de redirect iniciado em outro site (Google →
+    API), então cookie-sozinho deixa o login em loop no iPhone. Fragment não
+    vaza via query/Referer/logs de request. `?session=1` mantém o fallback
+    de cookie para quem chega sem tokens.
+
+    Cross-site legado (GitHub Pages) → tokens na query, como antes (o cookie
     Lax não é enviado cross-site)."""
     base = f"{frontend_url.rstrip('/')}/"
-    if same_site:
-        return f"{base}?session=1"
-    return (
-        f"{base}"
-        f"?token={access_token}"
+    legacy_params = (
+        f"token={access_token}"
         f"&refresh_token={refresh_token}"
         f"&expires_in={settings.access_token_expire_minutes * 60}"
         f"&user_email={user_email}"
         f"&user_name={user_name}"
     )
+    if same_site:
+        return f"{base}?session=1#{legacy_params}"
+    return f"{base}?{legacy_params}"
 
 
 def _issue_refresh(db: Database, email: str) -> str:
@@ -605,28 +612,9 @@ def google_oauth_callback(
 
     logger.info(f"[OAuth] ✓ Redirecting to frontend: {frontend_redirect_url} (same_site={same_site})")
 
-    # TEMP-DIAG (login loop OAuth): o que o callback envia de fato
-    logger.warning(
-        "[AUTH-DIAG] callback success: same_site=%s env=%s secure_cookie=%s redirect=%s",
-        same_site,
-        settings.environment,
-        settings.environment == "production",
-        redirect_url[:140],
-    )
-
     response = RedirectResponse(url=redirect_url)
     _set_access_cookie(response, access_token)
     _set_refresh_cookie(response, refresh_token)
-    # TEMP-DIAG: SÓ os atributos das cookies (o valor é o JWT — nunca logar;
-    # regra f797959: tokenData nunca vai para log)
-    logger.warning(
-        "[AUTH-DIAG] callback set-cookie attrs: %s",
-        [
-            h[1].decode("latin-1").split("; ", 1)[1] if b"; " in h[1] else "(sem attrs)"
-            for h in response.raw_headers
-            if h[0] == b"set-cookie"
-        ],
-    )
     return response
 
 

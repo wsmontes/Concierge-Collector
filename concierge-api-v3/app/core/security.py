@@ -393,13 +393,6 @@ def verify_auth(
     # o cookie permite tirar o access token do localStorage numa próxima
     # fase. Pendência da auditoria de segurança, ago/2026.)
     access_cookie = request.cookies.get("access_token")
-    # TEMP-DIAG (login loop OAuth): evidência da fronteira bearer/cookie
-    logger.warning(
-        "[AUTH-DIAG] verify_auth: bearer=%s cookie_present=%s cookie_len=%s",
-        bool(bearer),
-        bool(access_cookie),
-        len(access_cookie) if access_cookie else 0,
-    )
     if access_cookie:
         try:
             payload = jwt.decode(access_cookie, get_jwt_secret(), algorithms=[ALGORITHM])
@@ -413,8 +406,8 @@ def verify_auth(
                 "user": payload.get("sub"),
                 "role": role,
             }
-        except (RuntimeError, JWTError) as exc:
-            logger.warning("[AUTH-DIAG] cookie decode failed: %s", exc)
+        except (RuntimeError, JWTError):
+            pass
 
     raise HTTPException(status_code=401, detail="Missing authorization token")
 
