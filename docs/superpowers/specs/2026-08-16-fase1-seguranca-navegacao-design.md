@@ -93,10 +93,7 @@ Todos os claims foram verificados contra a working tree atual por 8 agentes read
    - modo novo → `goTo('/new/edit', { replace: true, state: { title: 'New Curation' } })` (comportamento atual);
    - manter a checagem `nm.getCurrentRoute()?.path !== <alvo>` para não re-navegar (previne loop com os handlers de rota que chamam o próprio método);
    - se o objeto não estiver disponível no ponto da chamada, passar apenas o `id` nos params — os handlers de rota já fazem o fallback `findLocalCuration`/`findLocalEntity` (`main.js:811-843`).
-2. Entradas de edição passam a ser route-first (as rotas e handlers **já existem** em `main.js:809-844`):
-   - `restaurantModule.js:140-141` → `nm.goTo('/curation/:id/edit', { state: { curation } })`;
-   - `entityModule.js:453` → `nm.goTo('/entity/:id/edit', { state: { entity } })`;
-   - os handlers existentes já fazem o fallback `findLocalCuration`/`findLocalEntity` quando o state não traz o objeto.
+2. Entrada externa de edição passa a ser route-first: o botão Edit do card (`scripts/ui/cardFactory.js:685-686`, hoje chama `uiManager.editCuration(curation)` direto) navega via `goTo('/curation/:id/edit', { state: { curation } })`, com fallback para `editCuration` direto se o navigationManager não existir. As chamadas internas de convergência (dentro de `restaurantModule.editCuration` → `showRestaurantFormSection`, verificado na exploração) **permanecem diretas** — o branch de M4.1 cobre a URL delas; convertê-las em `goTo` quebraria o switch de view quando a entrada já vem da rota.
 3. Quick Actions:
    - `quickRecord` (`quickActionModule.js:138-158`): substituir `showRecordingSection()` por `nm.goTo('/new/record')` (handler da rota mostra a section) + manter o auto-click de `#start-record` (comportamento de UX: começar a gravar imediatamente);
    - `quickLocation`/`quickPhoto` (`:163-240`): remover as mutações diretas de `isEditingRestaurant`/`editingRestaurantId`; novo helper `uiManager.beginNewCuration()` centraliza reset de flags + `switchView('concepts')` + `goTo('/new/edit', { replace: true })` — usado pelos dois;
