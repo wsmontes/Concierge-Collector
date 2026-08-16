@@ -329,9 +329,10 @@ async def get_restaurant_images(
 ) -> List[CollectedImage]:
     """Return ranked restaurant images from website + Google Places.
 
-    Hero mode (limit=1) avoids a Places metadata call when a structured site
-    image scores confidently. Gallery mode always merges Places candidates so
-    the result is diverse and not tied to HTML order.
+    Hero mode validates the highest-priority structured candidate first so a
+    confident OG image remains a one-download fast path. Gallery mode always
+    merges Places candidates so the result is diverse and not tied to HTML
+    order.
     """
     has_url = isinstance(page_url, str) and bool(page_url.strip())
     has_place = isinstance(place_id, str) and bool(place_id.strip())
@@ -361,11 +362,37 @@ async def get_restaurant_images(
                 )
             )
 
-    website_result = await _collect_candidate_group(website_candidates)
-    website_images = website_result.images if website_result else []
+    website_results = []
+    website_images: List[CollectedImage] = []
+
+    # Fast path for the common card/hero request: validate the highest-priority
+    # structured candidate first. A confident OG image should cost one image
+    # download, not a full crawl of every candidate on the page.
+    remaining_website_candidates = website_candidates
+    if not gallery and website_candidates:
+        primary_result = await _collect_candidate_group(website_candidates[:1])
+        if primary_result:
+            website_results.append(primary_result)
+            website_images.extend(primary_result.images)
+        if website_images and website_images[0].score >= SITE_HERO_CONFIDENCE_SCORE:
+            for result in website_results:
+                _collector_stats["candidates_discovered"] += result.discovered
+                _collector_stats["candidates_accepted"] += result.accepted
+                _collector_stats["candidates_rejected"] += result.rejected
+                _collector_stats["duplicates_removed"] += result.duplicates_removed
+            _collector_stats["selected_website"] += 1
+            ranked = website_images[:1]
+            _catalog_cache_put(cache_key, ranked)
+            return ranked
+        remaining_website_candidates = website_candidates[1:]
+
+    website_result = await _collect_candidate_group(remaining_website_candidates)
+    if website_result:
+        website_results.append(website_result)
+        website_images.extend(website_result.images)
 
     should_fetch_places = has_place and (
-        gallery or not website_images or website_images[0].score < SITE_HERO_CONFIDENCE_SCORE
+        gallery or not website_images or max(image.score for image in website_images) < SITE_HERO_CONFIDENCE_SCORE
     )
     places_candidates: List[ImageCandidate] = []
     if should_fetch_places:
@@ -383,7 +410,7 @@ async def get_restaurant_images(
     cross_duplicates = len(combined) - len(unique)
     ranked = unique[:target_limit]
 
-    for result in (website_result, places_result):
+    for result in [*website_results, places_result]:
         if result:
             _collector_stats["candidates_discovered"] += result.discovered
             _collector_stats["candidates_accepted"] += result.accepted
