@@ -3,6 +3,7 @@ Entity endpoints - CRUD operations
 """
 
 import re
+from urllib.parse import quote
 
 from fastapi import APIRouter, HTTPException, Header, Query, Depends, Request, Response
 from typing import Optional
@@ -30,7 +31,11 @@ from app.core.security import (
     require_role,
 )
 from app.services.entity_service import upsert_entity
-from app.services.og_image_service import get_og_image_bytes
+from app.services.og_image_service import (
+    get_og_image_bytes,
+    get_restaurant_image_bytes,
+    get_restaurant_images,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -136,14 +141,21 @@ def _extract_image_sources(doc: dict) -> tuple[Optional[str], Optional[str]]:
 @router.get("/{entity_id}/image")
 async def get_entity_image(
     entity_id: str,
+    rank: int = Query(
+        0,
+        ge=0,
+        le=7,
+        description="Rank da imagem coletada. O padrão 0 preserva o endpoint hero legado.",
+    ),
     db: Database = Depends(get_database),
     auth: dict = Depends(require_role("curator")),
 ):
-    """Imagem agregada da entity (véu dos cards sem o frontend montar a
-    consulta): resolve website/place_id da própria entity e devolve o JPEG
-    via og_image_service (og:image do site com fallback de foto do Places).
-    404 quando a entity não existe ou nenhuma fonte tem imagem; 400 quando
-    o serviço rejeita uma URL (mesmo contrato do /og-image)."""
+    """Imagem agregada da entity.
+
+    Sem `rank` (ou rank=0), preserva exatamente o caminho legado de hero JPEG.
+    Ranks 1..7 usam o catálogo do collector para permitir galerias sem expor
+    URLs de origem nem a chave server-side do Google Places.
+    """
     result = find_entity(db, entity_id)
     if not result:
         raise HTTPException(status_code=404, detail=f"Entity {entity_id} not found")
@@ -152,8 +164,15 @@ async def get_entity_image(
     if not website and not place_id:
         raise HTTPException(status_code=404, detail="entity sem website nem place_id (sem fonte de imagem)")
 
+    # Chamadas diretas dos unit tests recebem o objeto Query como default;
+    # na rota HTTP o FastAPI sempre entrega int.
+    rank_value = rank if isinstance(rank, int) else 0
+
     try:
-        image = await get_og_image_bytes(page_url=website, place_id=place_id)
+        if rank_value == 0:
+            image = await get_og_image_bytes(page_url=website, place_id=place_id)
+        else:
+            image = await get_restaurant_image_bytes(page_url=website, place_id=place_id, rank=rank_value)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
@@ -166,6 +185,48 @@ async def get_entity_image(
         media_type=content_type,
         headers={"Cache-Control": "public, max-age=3600"},
     )
+
+
+@router.get("/{entity_id}/images")
+async def get_entity_images(
+    entity_id: str,
+    limit: int = Query(8, ge=1, le=8, description="Quantidade máxima de imagens ranqueadas."),
+    db: Database = Depends(get_database),
+    auth: dict = Depends(require_role("curator")),
+):
+    """Galeria ranqueada de imagens da entity com metadados seguros.
+
+    As URLs retornadas apontam apenas para o proxy autenticado desta API; URLs
+    originais e credenciais do Google Places nunca fazem parte da resposta.
+    """
+    result = find_entity(db, entity_id)
+    if not result:
+        raise HTTPException(status_code=404, detail=f"Entity {entity_id} not found")
+
+    website, place_id = _extract_image_sources(result)
+    if not website and not place_id:
+        raise HTTPException(status_code=404, detail="entity sem website nem place_id (sem fonte de imagem)")
+
+    limit_value = limit if isinstance(limit, int) else 8
+    try:
+        images = await get_restaurant_images(page_url=website, place_id=place_id, limit=limit_value)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    encoded_entity_id = quote(entity_id, safe="")
+    metadata = [
+        image.public_metadata(
+            rank=index,
+            image_url=f"/api/v3/entities/{encoded_entity_id}/image?rank={index}",
+        )
+        for index, image in enumerate(images)
+    ]
+    return {
+        "entity_id": entity_id,
+        "count": len(metadata),
+        "hero_rank": 0 if metadata else None,
+        "images": metadata,
+    }
 
 
 @router.patch("/{entity_id}", response_model=Entity)
