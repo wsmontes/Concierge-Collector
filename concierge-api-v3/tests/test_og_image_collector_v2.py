@@ -172,3 +172,10 @@ async def test_places_metadata_does_not_block_event_loop(monkeypatch):
     await task
 
     assert elapsed < 0.05
+
+
+def test_safe_log_url_redacts_query_and_fragment():
+    raw = "https://places.googleapis.com/v1/places/P1/photos/PH1/media?key=super-secret&maxWidthPx=768#frag"
+    safe = svc._safe_log_url(raw)
+    assert safe == "https://places.googleapis.com/v1/places/P1/photos/PH1/media"
+    assert "super-secret" not in safe
