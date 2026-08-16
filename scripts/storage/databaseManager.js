@@ -24,6 +24,12 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
         // currentVersion pode ser sobrescrito nos testes de migração
         // (92→93) sem alterar o schema de produção
         this.currentVersion = options.currentVersion || 92;
+        // Retry de falha TRANSITÓRIA do open (iOS/Safari: o processo IDB
+        // do WebKit pode ser morto pelo OS e o primeiro open rejeita com
+        // erro interno truncado — 't'). Sem retry, uma falha de um segundo
+        // derrubava o app para degraded mode até reload.
+        this.retryAttempts = options.retryAttempts ?? 3;
+        this.retryDelayMs = options.retryDelayMs ?? 1500;
         this.db = null;
         this.migrations = new Map();
         this.validators = new Map();
@@ -153,6 +159,43 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
      * Initialize database with automatic migrations and recovery
      */
     async initialize() {
+        const attempts = Math.max(1, this.retryAttempts);
+        for (let attempt = 1; attempt <= attempts; attempt++) {
+            try {
+                return await this._initializeOnce();
+            } catch (error) {
+                this.log.error(`Failed to initialize database (attempt ${attempt}/${attempts}):`, error);
+
+                // Falha transitória (ex.: processo IDB do WebKit morto
+                // pelo OS no iOS — rejeita com erro interno truncado):
+                // recua e tenta de novo. Backup/nuclear só entram quando
+                // os retries se esgotam.
+                if (attempt < attempts) {
+                    if (this.db) {
+                        try { this.db.close(); } catch (_) {}
+                        this.db = null;
+                    }
+                    await new Promise((resolve) => setTimeout(resolve, this.retryDelayMs));
+                    continue;
+                }
+
+                // Retries esgotados: tenta a recuperação (backup → nuclear)
+                if (await this.attemptRecovery()) {
+                    this._setSentinelVersion(this.currentVersion);
+                    this.log.info('✅ Database recovered successfully');
+                    return this.db;
+                }
+
+                throw error;
+            }
+        }
+    }
+
+    /**
+     * Uma passada do fluxo de init (rodada em loop pelo initialize —
+     * ver retryAttempts/retryDelayMs no construtor).
+     */
+    async _initializeOnce() {
         try {
             this.log.info(`Initializing database (target version: ${this.currentVersion})`);
 
@@ -264,14 +307,6 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
 
         } catch (error) {
             this.log.error('Failed to initialize database:', error);
-
-            // Try to recover
-            if (await this.attemptRecovery()) {
-                this._setSentinelVersion(this.currentVersion);
-                this.log.info('✅ Database recovered successfully');
-                return this.db;
-            }
-
             throw error;
         }
     }
