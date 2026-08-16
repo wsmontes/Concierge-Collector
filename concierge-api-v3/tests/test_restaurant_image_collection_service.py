@@ -74,11 +74,18 @@ async def test_collect_candidates_reports_visual_duplicates_removed():
 
 
 @pytest.mark.asyncio
-async def test_collect_candidates_propagates_downloader_security_value_error():
-    candidates = [ImageCandidate("http://127.0.0.1/private.jpg", "website_img", 0)]
+async def test_collect_candidates_rejects_blocked_secondary_candidate_without_poisoning_valid_image():
+    candidates = [
+        ImageCandidate("https://site.com/hero.jpg", "website_og", 0),
+        ImageCandidate("http://127.0.0.1/private.jpg", "website_img", 1),
+    ]
 
     async def downloader(candidate):
-        raise ValueError("destino de imagem não permitido (rede interna)")
+        if candidate.url.startswith("http://127.0.0.1"):
+            raise ValueError("destino de imagem não permitido (rede interna)")
+        return _make_png(color=(40, 120, 180))
 
-    with pytest.raises(ValueError, match="rede interna"):
-        await collect_candidates(candidates, downloader, limit=1)
+    result = await collect_candidates(candidates, downloader, limit=1)
+    assert len(result.images) == 1
+    assert result.images[0].source == "website_og"
+    assert result.rejected == 1
