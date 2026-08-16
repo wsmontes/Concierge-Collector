@@ -771,6 +771,24 @@ const AuthService = (function() {
             console.log('[AuthService] ========================================');
             console.log('[AuthService] No valid token found');
             console.log('[AuthService] ========================================');
+
+            // ── Sessão por cookie (OAuth same-site, ?session=1) ────────────────
+            // O callback do Render redireciona SEM tokens na URL (o cookie
+            // HttpOnly é o portador desde 2026-08-15). Sem token local, a
+            // sessão pode estar no cookie — verifica uma vez antes de cair
+            // na tela de login. Sem isso, o login "volta ao início" sem
+            // erro visível após validar no Google.
+            console.log('[AuthService] Trying HttpOnly cookie session...');
+            const cookieUser = await verifyToken();
+            if (cookieUser) {
+                console.log('[AuthService] ✓ Initialization complete (cookie session)');
+                console.log(`[AuthService] ✓ Logged in as: ${cookieUser.email}`);
+                if (new URLSearchParams(window.location.search).get('session') === '1') {
+                    cleanURL();
+                }
+                _initialized = true;
+                return cookieUser;
+            }
         }
 
         // ── Dev Mode Auto-Login ────────────────────────────────────────────────

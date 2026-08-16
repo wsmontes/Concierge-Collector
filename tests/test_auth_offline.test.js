@@ -160,3 +160,32 @@ describe('AuthService — cookie HttpOnly (2026-08-15)', () => {
     expect(opts.headers?.Authorization).toBeUndefined();
   });
 });
+
+describe('AuthService — landing OAuth same-site (?session=1)', () => {
+  test('initialize sem tokens locais autentica via cookie e limpa a URL', async () => {
+    window.history.replaceState({}, '', '/?session=1');
+    const Auth = loadAuthService();
+    global.fetch = (url, opts) => {
+      expect(opts.credentials).toBe('include');
+      expect(opts.headers?.Authorization).toBeUndefined();
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(PROFILE) });
+    };
+
+    const user = await Auth.initialize();
+
+    expect(user).toEqual(PROFILE);
+    expect(window.location.search).toBe('');
+    expect(Auth.getCurrentUser().email).toBe('concierge@hotel.com');
+  });
+
+  test('initialize sem cookie (401) cai para null — login é mostrado', async () => {
+    window.history.replaceState({}, '', '/?session=1');
+    const Auth = loadAuthService();
+    global.fetch = () =>
+      Promise.resolve({ ok: false, status: 401, statusText: 'Unauthorized', json: () => Promise.resolve({}) });
+
+    const user = await Auth.initialize();
+
+    expect(user).toBeNull();
+  });
+});
