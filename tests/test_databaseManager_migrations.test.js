@@ -93,6 +93,17 @@ async function seedV92Db(withPendingWork = true) {
   db.close();
 }
 
+async function rawDbVersion() {
+  const raw = await new Promise((resolve, reject) => {
+    const req = indexedDB.open('ConciergeCollector');
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+  const version = raw.version;
+  raw.close();
+  return version;
+}
+
 async function countData() {
   // abre na versão CORRENTE via raw IDB — Dexie version(92) num DB que o
   // manager já migrou pra 93 rejeitaria VersionError (e o formatador de
@@ -149,6 +160,52 @@ describe('DatabaseManager — migrações sem wipe destrutivo', () => {
     expect(after.version).toBe(93);
     expect(after.entities).toBe(0);
     expect(after.curations).toBe(0);
+  });
+
+  test('REPRO brick: upgrade legado grava _meta=92 num IDB 1330 e o boot seguinte trava', async () => {
+    // Banco da era pré-DatabaseManager: verno 132, schema antigo, SEM _meta.
+    // O branch legacy abre em 132, declara 132+1 (→ IDB 1330, Dexie pede
+    // verno×10) e grava _meta = currentVersion (92). No boot seguinte o
+    // _meta diz 92 → same-version → version(92) → pedido 920 < existente
+    // 1330 → VersionError PRA SEMPRE (brick do usuário em produção).
+    const legacy = new Dexie('ConciergeCollector');
+    legacy.version(132).stores({
+      entities: '++id, entity_id',
+      curations: '++id, curation_id',
+      curators: '++id, curator_id',
+      syncQueue: '++id',
+      settings: 'key',
+      cache: 'key',
+      drafts: '++id',
+      draftRestaurants: '++id',
+      pendingAudio: '++id'
+    });
+    await legacy.open();
+    await legacy.entities.put({ entity_id: 'legacy_1', name: 'Do tempo antigo' });
+    legacy.close();
+
+    // Boot 1: branch legacy — upgrade para 1330 e _meta = 92
+    const Mgr1 = loadDatabaseManager();
+    const m1 = new Mgr1();
+    await m1.initialize();
+    expect(await rawDbVersion()).toBe(1330);
+    m1.db.close();
+
+    // Boot 2 (recarga da página): _meta=92 com IDB real em 1330.
+    // Sem o fix, rejeita com VersionError 920<1330 — o brick. (O
+    // formatador de stack do Dexie quebra no vitest, então a falha é
+    // capturada por flag, sem expect().rejects.)
+    const Mgr2 = loadDatabaseManager();
+    const m2 = new Mgr2({ retryAttempts: 1, retryDelayMs: 0 });
+    let bricked = false;
+    try {
+      await m2.initialize();
+    } catch (e) {
+      bricked = true;
+    }
+    expect(bricked).toBe(false);
+    const after = await countData();
+    expect(after.entities).toBe(1);
   });
 
   test('falha transitória do open recupera via retry, sem tocar backup/nuclear', async () => {
