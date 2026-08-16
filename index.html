@@ -137,6 +137,28 @@
             </div>
         </header>
 
+        <!-- Onboarding pós-auth (auditoria, ponto 22): só na primeira
+             entrada real (flag por usuário no localStorage). Nomeia os
+             verbos e ensina a diferença Curations × Entities em uma
+             frase — learnability sem wizard. Exibido pelo uiManager
+             (_maybeShowOnboarding). -->
+        <div id="onboarding-welcome" class="onboarding-welcome hidden" role="region" aria-label="Welcome to Collector">
+            <div class="onboarding-welcome__inner">
+                <div class="onboarding-welcome__copy">
+                    <p class="onboarding-welcome__title">Welcome to Collector</p>
+                    <p class="onboarding-welcome__text">Record a review, add a place, or browse your collection.
+                        Curations are your reviews and notes; entities are the places behind them.</p>
+                </div>
+                <div class="onboarding-welcome__actions">
+                    <button id="onboarding-record" type="button" class="btn btn-primary btn-sm">
+                        <span class="material-icons text-base mr-1" aria-hidden="true">mic</span>
+                        Record a review
+                    </button>
+                    <button id="onboarding-dismiss" type="button" class="btn btn-outline btn-sm">Got it</button>
+                </div>
+            </div>
+        </div>
+
         <!-- Navegação de contexto (UX "lugares definidos"): desktop mostra
              breadcrumbs (Collection › Ritz › Edit Curation), preenchidos
              pelo NavigationManager via main.js; mobile (<640px) mostra

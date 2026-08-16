@@ -1522,6 +1522,47 @@ if (typeof window.UIManager === 'undefined') {
         }
 
         /**
+         * Onboarding pós-auth (auditoria, ponto 22): faixa de boas-vindas
+         * na PRIMEIRA entrada real — flag por usuário no localStorage.
+         * Nomeia os verbos e ensina a diferença Curations × Entities em
+         * uma frase; "Record a review" dispara o fluxo principal.
+         * Dismiss marca para sempre (por usuário).
+         */
+        _maybeShowOnboarding() {
+            try {
+                const strip = document.getElementById('onboarding-welcome');
+                if (!strip || !strip.classList.contains('hidden')) return;
+                let curatorId = null;
+                const cur = window.CuratorProfile?.getCurrentCurator?.();
+                if (cur && cur.id) curatorId = cur.id;
+                const key = `concierge_onboarded_v1${curatorId ? `_${curatorId}` : ''}`;
+                if (localStorage.getItem(key) === '1') return;
+                strip.classList.remove('hidden');
+                const done = () => {
+                    try {
+                        localStorage.setItem(key, '1');
+                    } catch (e) {
+                        // localStorage bloqueado não pode quebrar a coleção
+                    }
+                    strip.classList.add('hidden');
+                };
+                const dismissBtn = document.getElementById('onboarding-dismiss');
+                const recordBtn = document.getElementById('onboarding-record');
+                if (dismissBtn) dismissBtn.addEventListener('click', done);
+                if (recordBtn) {
+                    recordBtn.addEventListener('click', () => {
+                        done();
+                        if (this.quickActionModule && typeof this.quickActionModule.quickRecord === 'function') {
+                            this.quickActionModule.quickRecord();
+                        }
+                    });
+                }
+            } catch (e) {
+                // guardas de ambiente não podem derrubar a navegação
+            }
+        }
+
+        /**
          * Swipe actions nos cards de curadoria (mobile, via gestureManager
          * — desbloqueado pela estabilização mobile: overscroll-x contido +
          * touch-action pan-y nos cards fazem o vertical rolar nativo).
@@ -2668,6 +2709,12 @@ if (typeof window.UIManager === 'undefined') {
             // Track current view state
             this.currentView = viewName;
             console.log(`[UIManager] switchView → ${viewName} `);
+
+            // Onboarding pós-auth (auditoria, ponto 22): checagem barata
+            // em toda entrada na coleção — a flag de primeiro uso decide
+            if (viewName === 'list') {
+                this._maybeShowOnboarding();
+            }
 
             // Hide elements
             config.hide.forEach(elementName => {

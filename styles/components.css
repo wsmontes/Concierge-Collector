@@ -2087,6 +2087,47 @@
   border-color: var(--color-primary, #6f8256);
 }
 
+/* Onboarding pós-auth (auditoria UX, ponto 22): faixa de boas-vindas da
+   primeira entrada — papel limestone com fio oliva à esquerda; some
+   para sempre no dismiss. Não é wizard: só nomes de verbos. */
+.onboarding-welcome {
+  margin-bottom: 1.5rem;
+  background: var(--color-bg-secondary, #faf8f4);
+  border: 1px solid var(--color-border, #e5e7eb);
+  border-left: 3px solid var(--color-primary, #6f8256);
+  border-radius: 0.75rem;
+  padding: 1rem 1.25rem;
+}
+
+.onboarding-welcome__inner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem 1.5rem;
+}
+
+.onboarding-welcome__title {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.125rem;
+  color: var(--color-neutral-900);
+  margin-bottom: 0.125rem;
+}
+
+.onboarding-welcome__text {
+  font-size: 0.875rem;
+  color: var(--color-text-secondary, #6b7280);
+  max-width: 52ch;
+}
+
+.onboarding-welcome__actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
 /* Entrada de nova curadoria por plataforma: "+ New Curation" no header
    (desktop); o FAB flutuante fica só no mobile, onde corresponde ao
    ambiente de uso (gravou/fotografou no restaurante) */
