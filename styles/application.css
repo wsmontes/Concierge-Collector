@@ -73,6 +73,59 @@ body:has(.toolbar-fixed-bottom:not(.hidden)) #app {
     padding-bottom: 90px !important;
 }
 
+/* ===================================================================
+   RECORDING SECTION SPECIFIC — bloco pré-merge RESTAURADO (2026-08-16):
+   o CSS legado desmontado tinha removido a centralização dos controles
+   de gravação e o botão circular de 80px — o "Start Recording" criado
+   pelo repair do recordingModule ficava torto na home. Código que já
+   funcionava, devolvido como estava.
+   =================================================================== */
+
+.recording-controls {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-4);
+    align-items: center;
+}
+
+.recording-button {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    transition: all var(--transition-normal);
+    box-shadow: var(--shadow-lg);
+}
+
+.recording-button:hover {
+    transform: scale(1.05);
+    box-shadow: var(--shadow-xl);
+}
+
+.recording-button:active {
+    transform: scale(0.95);
+}
+
+.recording-status {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-3);
+    padding: var(--spacing-4);
+    background: var(--color-neutral-50);
+    border-radius: var(--radius-lg);
+    font-size: var(--text-base);
+}
+
+.recording-timer {
+    font-family: var(--font-mono);
+    font-size: var(--text-2xl);
+    font-weight: var(--font-bold);
+    color: var(--color-error);
+}
+
 /* Content sections */
 .section {
     background: white;
