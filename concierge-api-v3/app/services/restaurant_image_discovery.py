@@ -45,8 +45,14 @@ _META_PATTERN_GROUPS: List[Tuple[str, List[re.Pattern]]] = [
         [
             re.compile(rb'<meta[^>]+(?:name|property)=["\']twitter:image["\'][^>]*content=["\']([^"\']+)["\']', re.I),
             re.compile(rb'<meta[^>]+content=["\']([^"\']+)["\'][^>]*(?:name|property)=["\']twitter:image["\']', re.I),
-            re.compile(rb'<meta[^>]+(?:name|property)=["\']twitter:image:src["\'][^>]*content=["\']([^"\']+)["\']', re.I),
-            re.compile(rb'<meta[^>]+content=["\']([^"\']+)["\'][^>]*(?:name|property)=["\']twitter:image:src["\']', re.I),
+            re.compile(
+                rb'<meta[^>]+(?:name|property)=["\']twitter:image:src["\'][^>]*content=["\']([^"\']+)["\']',
+                re.I,
+            ),
+            re.compile(
+                rb'<meta[^>]+content=["\']([^"\']+)["\'][^>]*(?:name|property)=["\']twitter:image:src["\']',
+                re.I,
+            ),
         ],
     ),
     (
@@ -152,7 +158,11 @@ def _media_urls(raw: bytes, base_url: str) -> Iterable[str]:
                     break
         if not value:
             value = next(
-                (attrs[name] for name in ("data-lazy-src", "data-original", "data-src", "data-echo", "src") if attrs.get(name)),
+                (
+                    attrs[name]
+                    for name in ("data-lazy-src", "data-original", "data-src", "data-echo", "src")
+                    if attrs.get(name)
+                ),
                 None,
             )
         if value:
@@ -161,7 +171,13 @@ def _media_urls(raw: bytes, base_url: str) -> Iterable[str]:
                 yield absolute
 
 
-def discover_image_urls(raw: bytes, final_url: str, *, jsonld_cap: int = 5, body_cap: int = 10) -> List[SourcedImageURL]:
+def discover_image_urls(
+    raw: bytes,
+    final_url: str,
+    *,
+    jsonld_cap: int = 5,
+    body_cap: int = 10,
+) -> List[SourcedImageURL]:
     """Discover candidate images in priority order with source provenance."""
     base_url = final_url
     base_match = _BASE_HREF.search(raw)
