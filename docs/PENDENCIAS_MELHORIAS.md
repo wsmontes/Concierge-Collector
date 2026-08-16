@@ -21,7 +21,7 @@ Fonte: memórias do projeto, auditoria de segurança, sessões de trabalho e est
 - [x] ~~Ruído de log: `Unhandled rejection: NotFoundError: objectStore not found`~~ — RESOLVIDO: hooks do DataStore disparavam `concierge:data-changed` SINCRONAMENTE dentro da transação (escopo travado); listeners liam outras tabelas → NotFoundError. Evento agora é deferido (setTimeout 0).
 - [x] ~~Click no card de curadoria linkada não abria detalhes~~ — RESOLVIDO: regressão do renderCurationsPage (createCurationCard sem onClick — o default é console.log); agora abre handleViewReviewDetails como o review card.
 - [x] ~~`dbg.tmp.mjs` na raiz (resto de debug do IndexedDB)~~ — RESOLVIDO: arquivo não existe mais no repo
-- [ ] Curadorias órfãs (53 no Mongo, ids `entity_curation_test_*`): review card sem véu — decidir: limpar lixo ou resolver por nome via EntityBrowser
+- [ ] Curadorias órfãs (53 no Mongo, ids `entity_curation_test_*`): review card sem véu — decidir: limpar lixo ou resolver por nome via EntityBrowser (a saved view "Unlinked" agora as expõe na UI — facilita a decisão)
 - [x] ~~Degraded mode: passe visual~~ ✓ — DOM audit no modo degradado (IndexedDB quebrado) mostra 100% do tema (limestone/oliva/tints remapeados); resquícios reais corrigidos: toast fatal usava #ef4444 → var(--color-error), e --color-danger não existia (7 usos caíam no vermelho velho) → alias criado. (O pixel-scan antigo dava falso positivo: tolerância ±10 confunde #fbf9f5 quente com #f9fafb frio.)
 
 ### Backend API
@@ -65,6 +65,7 @@ Fonte: memórias do projeto, auditoria de segurança, sessões de trabalho e est
 
 ### UX
 - [x] ~~Datas relativas nos demais lugares com timestamp (sync activity)~~ ✓ — formatter canônico em `uiUtils.formatRelativeDate` (Intl.RelativeTimeFormat cacheado, ~30 dias → absoluto); sync status mostra "Last sync: 2 hours ago" com absoluto no title; ConflictResolutionModal delega para a mesma implementação
+- [x] ~~Saved views (auditoria, ponto 20)~~ ✓ — chips "My drafts" (status=draft + curator atual), "Unlinked" (param novo `unlinked` no /curations/search) e "Recently added" (param `created_after`, janela 24h = badge "novo") na view de curations; toggle liga/desliga, My drafts deriva dos selects (mudança manual desliga o chip); fallback local também filtra. ⚠️ "Sync issues" (4º exemplo da auditoria) fica pendente — exige juntar estado local de fila/conflitos à listagem
 - [x] ~~Empty states tipados por seção~~ ✓ — templates no-curations (rate_review), no-entities (storefront), no-curator (person_off) no emptyStateManager; 4 blocos inline do uiManager trocados pelos presets
 
 ## Cadência

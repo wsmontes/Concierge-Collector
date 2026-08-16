@@ -575,6 +575,19 @@
                         <span id="curation-filters-count" class="filters-count hidden" aria-label="active filters">0</span>
                     </button>
                 </div>
+
+                <!-- Saved views (auditoria UX, ponto 20): presets de escopo
+                     para operação em volume. Cada chip vira filtro real nos
+                     controles (estado visível, sem filtro fantasma);
+                     toggle desliga. Estado gerenciado no uiManager. -->
+                <div id="curation-saved-views" class="saved-views" role="group" aria-label="Saved views">
+                    <button type="button" class="saved-view-chip" data-saved-view="my-drafts"
+                        aria-pressed="false">My drafts</button>
+                    <button type="button" class="saved-view-chip" data-saved-view="unlinked"
+                        aria-pressed="false">Unlinked</button>
+                    <button type="button" class="saved-view-chip" data-saved-view="recent"
+                        aria-pressed="false">Recently added</button>
+                </div>
             </div>
 
             <!-- Filtros avançados (bottom sheet — mobile) -->

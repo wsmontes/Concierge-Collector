@@ -1513,3 +1513,138 @@ def test_semantic_response_expõe_modo_e_parcialidade():
         candidate_count=2000,
     )
     assert r2.partial is False
+
+
+# ============================================================================
+# Saved views (auditoria UX, ponto 20): build_search_query + params novos
+# ============================================================================
+
+
+def test_build_search_query_unlinked_com_pesquisa_textual():
+    """unlinked=true com q: condição de órfã compõe por $and com o $or do
+    texto (AND entre texto e vínculo) — nunca mistura as duas condições
+    num $or único."""
+    from app.api.curations import build_search_query
+
+    query = build_search_query(unlinked=True, q="ritz")
+    assert "$and" in query
+    assert query["$and"][0]["$or"]  # grupo do texto
+    assert query["$and"][1] == {"entity_id": {"$in": [None, ""]}}
+
+    # sem q: condição direta no campo
+    query2 = build_search_query(unlinked=True)
+    assert query2["entity_id"] == {"$in": [None, ""]}
+    assert "$and" not in query2
+
+
+def test_build_search_query_created_after_e_invalidos():
+    """created_after vira createdAt >= ISO; formato inválido → 400."""
+    from fastapi import HTTPException
+    from app.api.curations import build_search_query
+
+    query = build_search_query(created_after="2026-08-14T00:00:00Z")
+    assert "createdAt" in query
+    assert query["createdAt"]["$gte"].isoformat().startswith("2026-08-14")
+
+    with pytest.raises(HTTPException) as exc:
+        build_search_query(created_after="ontem")
+    assert exc.value.status_code == 400
+
+    with pytest.raises(HTTPException) as exc:
+        build_search_query(since="não é data")
+    assert exc.value.status_code == 400
+
+
+def test_build_search_query_preserva_contrato_atual():
+    """O refactor para função pura preserva: status default exclui deleted,
+    entity_id/curator/city/type mapeiam como antes."""
+    from app.api.curations import build_search_query
+
+    q = build_search_query()
+    assert q == {"status": {"$ne": "deleted"}}
+
+    q2 = build_search_query(entity_id="e1", curator_id="c1", city="SP", type="restaurant", status="draft")
+    assert q2 == {
+        "entity_id": "e1",
+        "curator.id": "c1",
+        "city": "SP",
+        "type": "restaurant",
+        "status": "draft",
+    }
+
+    q3 = build_search_query(include_deleted=True)
+    assert "status" not in q3
+
+
+@pytest.mark.mongo
+def test_search_unlinked_e_created_after_hermetico(client, test_db, clean_test_curations, auth_headers):
+    """Saved views no banco hermético: unlinked retorna só órfãs;
+    created_after corta por createdAt (janela de 24h do frontend)."""
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc)
+    old = (now - timedelta(days=7)).isoformat()
+    test_db.curations.insert_many(
+        [
+            {
+                "_id": "test_sv_linked",
+                "curation_id": "test_sv_linked",
+                "entity_id": "test_e_sv",
+                "restaurant_name": "Linked Fresh",
+                "status": "draft",
+                "curator": {"id": "test_curator", "name": "Test"},
+                "createdAt": now,
+                "updatedAt": now,
+            },
+            {
+                "_id": "test_sv_orphan",
+                "curation_id": "test_sv_orphan",
+                "restaurant_name": "Orphan Fresh",
+                "status": "draft",
+                "curator": {"id": "test_curator", "name": "Test"},
+                "createdAt": now,
+                "updatedAt": now,
+            },
+            {
+                "_id": "test_sv_old",
+                "curation_id": "test_sv_old",
+                "entity_id": "test_e_sv",
+                "restaurant_name": "Linked Old",
+                "status": "draft",
+                "curator": {"id": "test_curator", "name": "Test"},
+                "createdAt": old,
+                "updatedAt": old,
+            },
+        ]
+    )
+
+    r = client.get("/api/v3/curations/search?unlinked=true&limit=100", headers=auth_headers)
+    assert r.status_code == 200
+    ids = [i.get("curation_id") for i in r.json()["items"]]
+    assert "test_sv_orphan" in ids
+    assert "test_sv_linked" not in ids
+    assert "test_sv_old" not in ids
+
+    # janela: só o que foi criado depois do corte (fresh, não old).
+    # Sufixo Z: "+00:00" no query string viraria espaço (URL encoding)
+    cutoff = (now - timedelta(days=1)).strftime("%Y-%m-%dT%H:%M:%SZ")
+    r2 = client.get(f"/api/v3/curations/search?created_after={cutoff}&limit=100", headers=auth_headers)
+    assert r2.status_code == 200
+    ids2 = [i.get("curation_id") for i in r2.json()["items"]]
+    assert "test_sv_linked" in ids2 and "test_sv_orphan" in ids2
+    assert "test_sv_old" not in ids2
+
+    # combinação: órfã + janela
+    r3 = client.get(
+        f"/api/v3/curations/search?unlinked=true&created_after={cutoff}&limit=100",
+        headers=auth_headers,
+    )
+    assert r3.status_code == 200
+    ids3 = [i.get("curation_id") for i in r3.json()["items"]]
+    assert ids3 == ["test_sv_orphan"] or "test_sv_orphan" in ids3 and "test_sv_linked" not in ids3
+
+    # timestamp inválido → 400 (antes de tocar o banco)
+    r4 = client.get("/api/v3/curations/search?created_after=ontem", headers=auth_headers)
+    assert r4.status_code == 400
+
+    test_db.curations.delete_many({"_id": {"$in": ["test_sv_linked", "test_sv_orphan", "test_sv_old"]}})

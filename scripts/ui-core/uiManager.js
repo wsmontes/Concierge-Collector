@@ -131,6 +131,12 @@ if (typeof window.UIManager === 'undefined') {
             this.formIsDirty = false;
             this.listScrollRestoreY = 0;
             this.shouldRestoreListScroll = false;
+            // Saved views (auditoria UX, ponto 20): flags de escopo dos
+            // presets sem controle físico (Unlinked/Recently added).
+            // My drafts é derivado dos selects (status+curator) — o id do
+            // curator ativado no preset fica para o chip saber se desliga.
+            this._savedViewFlags = { unlinked: false, recent: false };
+            this._savedViewCuratorId = null;
 
 
             // Initialize UI Utils module first to ensure availability of UI utility functions
@@ -646,6 +652,11 @@ if (typeof window.UIManager === 'undefined') {
                 city: pick('curation-city-filter'),
                 type: pick('curation-type-filter'),
                 q: (document.getElementById('curation-search')?.value?.trim() || null),
+                // Saved views sem controle físico (auditoria, ponto 20)
+                unlinked: !!this._savedViewFlags?.unlinked,
+                createdAfter: this._savedViewFlags?.recent
+                    ? new Date(Date.now() - 24 * 3600 * 1000).toISOString()
+                    : null,
             };
         }
 
@@ -662,18 +673,21 @@ if (typeof window.UIManager === 'undefined') {
                 });
             }
 
-            // Status filter (immediate)
+            // Status filter (immediate) — mudança manual pode desligar o
+            // preset My drafts (o chip deriva do estado dos controles)
             const statusFilter = document.getElementById('curation-status-filter');
             if (statusFilter) {
                 statusFilter.addEventListener('change', function() {
+                    self.updateSavedViewChips();
                     self._reloadOrFilterCurations();
                 });
             }
 
-            // Curator filter (immediate)
+            // Curator filter (immediate) — idem status
             const curatorFilter = document.getElementById('curation-curator-filter');
             if (curatorFilter) {
                 curatorFilter.addEventListener('change', function() {
+                    self.updateSavedViewChips();
                     self._reloadOrFilterCurations();
                 });
             }
@@ -708,6 +722,98 @@ if (typeof window.UIManager === 'undefined') {
                     }
                 });
             }
+
+            // Saved views (auditoria, ponto 20): presets de escopo —
+            // cada chip vira filtro real (selects ou flags de scope)
+            const savedViews = document.getElementById('curation-saved-views');
+            if (savedViews) {
+                savedViews.addEventListener('click', function(e) {
+                    const chip = e.target.closest('.saved-view-chip');
+                    if (!chip) return;
+                    self.toggleSavedView(chip.dataset.savedView);
+                });
+            }
+            this.updateSavedViewChips();
+        }
+
+        /**
+         * Saved views (auditoria, ponto 20): liga/desliga um preset.
+         * My drafts escreve nos selects (status=draft + curator atual);
+         * Unlinked/Recently added são flags de escopo enviadas ao
+         * /curations/search (unlinked, created_after com janela de 24h).
+         * @param {string} name - 'my-drafts' | 'unlinked' | 'recent'
+         */
+        async toggleSavedView(name) {
+            const chip = document.querySelector(`[data-saved-view="${name}"]`);
+            const isActive = chip && chip.classList.contains('is-active');
+
+            if (name === 'my-drafts') {
+                const statusEl = document.getElementById('curation-status-filter');
+                const curatorEl = document.getElementById('curation-curator-filter');
+                if (!isActive) {
+                    const currentCurator = await dataStorage.getCurrentCurator();
+                    if (statusEl) statusEl.value = 'draft';
+                    if (currentCurator && currentCurator.id) {
+                        this._setSelectOption(curatorEl, currentCurator.id, currentCurator.name || currentCurator.id);
+                        this._savedViewCuratorId = currentCurator.id;
+                    } else {
+                        this._savedViewCuratorId = null;
+                    }
+                } else {
+                    if (statusEl) statusEl.value = 'all';
+                    if (curatorEl) curatorEl.value = 'all';
+                    this._savedViewCuratorId = null;
+                }
+            } else if (name === 'unlinked' || name === 'recent') {
+                this._savedViewFlags[name] = !isActive;
+            }
+
+            this.updateSavedViewChips();
+            this._reloadOrFilterCurations();
+        }
+
+        /**
+         * Garante que um select tenha a option desejada (o preset de
+         * My drafts precisa do curator atual mesmo quando o select só
+         * lista curators presentes nos docs carregados).
+         */
+        _setSelectOption(selectEl, value, label) {
+            if (!selectEl) return;
+            const existing = Array.from(selectEl.options).find((o) => o.value === value);
+            if (existing) {
+                selectEl.value = value;
+                return;
+            }
+            const opt = document.createElement('option');
+            opt.value = value;
+            opt.textContent = label;
+            selectEl.appendChild(opt);
+            selectEl.value = value;
+        }
+
+        /**
+         * Sincroniza os chips com o estado real dos filtros — o chip de
+         * My drafts deriva dos selects (mudança manual desliga sozinha);
+         * Unlinked/Recent vêm das flags de escopo.
+         */
+        updateSavedViewChips() {
+            const chips = document.querySelectorAll('.saved-view-chip');
+            const statusVal = document.getElementById('curation-status-filter')?.value;
+            const curatorVal = document.getElementById('curation-curator-filter')?.value;
+            chips.forEach((chip) => {
+                const name = chip.dataset.savedView;
+                let active = false;
+                if (name === 'my-drafts') {
+                    active = statusVal === 'draft'
+                        && (!this._savedViewCuratorId || curatorVal === this._savedViewCuratorId);
+                } else if (name === 'unlinked') {
+                    active = !!this._savedViewFlags.unlinked;
+                } else if (name === 'recent') {
+                    active = !!this._savedViewFlags.recent;
+                }
+                chip.classList.toggle('is-active', active);
+                chip.setAttribute('aria-pressed', active ? 'true' : 'false');
+            });
         }
 
         /**
@@ -1031,7 +1137,7 @@ if (typeof window.UIManager === 'undefined') {
                 // Selects ficam com valor 'all' mesmo intocados — só conta
                 // como filtro ativo um valor real, diferente de 'all'.
                 const active = (v) => v && v !== 'all';
-                const hasActiveFilters = !!(active(scope.q) || active(scope.status) || active(scope.city) || active(scope.type) || active(scope.curatorId));
+                const hasActiveFilters = !!(active(scope.q) || active(scope.status) || active(scope.city) || active(scope.type) || active(scope.curatorId) || scope.unlinked || scope.createdAfter);
                 if (hasActiveFilters) {
                     // Busca server-side com filtro ativo que não achou nada —
                     // copy específico + ação para limpar os filtros.
@@ -1051,6 +1157,10 @@ if (typeof window.UIManager === 'undefined') {
                             var el = document.getElementById(id);
                             if (el) el.value = el.tagName === 'SELECT' ? 'all' : '';
                         });
+                        // Saved views também zeram (flags + chips)
+                        self._savedViewFlags = { unlinked: false, recent: false };
+                        self._savedViewCuratorId = null;
+                        self.updateSavedViewChips();
                         self._reloadOrFilterCurations();
                     });
                 } else {
@@ -1212,6 +1322,22 @@ if (typeof window.UIManager === 'undefined') {
                 });
             }
 
+            // Saved views (auditoria, ponto 20): Unlinked/Recently added
+            // também filtram no fallback local — órfã = entity_id ausente/
+            // vazio; recente = createdAt na janela de 24h (mesma do badge
+            // "novo" dos cards)
+            if (this._savedViewFlags?.unlinked) {
+                filtered = filtered.filter(function(c) { return !c.entity_id; });
+            }
+
+            if (this._savedViewFlags?.recent) {
+                var recentCutoff = Date.now() - 24 * 3600 * 1000;
+                filtered = filtered.filter(function(c) {
+                    var created = c.createdAt ? new Date(c.createdAt).getTime() : 0;
+                    return created >= recentCutoff;
+                });
+            }
+
             this.curationPagination.currentPage = 0;
 
             if (filtered.length === 0) {
@@ -1233,6 +1359,10 @@ if (typeof window.UIManager === 'undefined') {
                             var el = document.getElementById(id);
                             if (el) el.value = el.tagName === 'SELECT' ? 'all' : '';
                         });
+                        // Saved views também zeram (flags + chips)
+                        self._savedViewFlags = { unlinked: false, recent: false };
+                        self._savedViewCuratorId = null;
+                        self.updateSavedViewChips();
                         self.filterAndDisplayCurations();
                     });
                 }
