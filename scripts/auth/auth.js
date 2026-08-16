@@ -217,12 +217,17 @@ const AuthService = (function() {
      */
     function extractTokensFromURL() {
         const urlParams = new URLSearchParams(window.location.search);
-        
-        const accessToken = urlParams.get('token') || urlParams.get('access_token');
-        const refreshToken = urlParams.get('refresh_token');
-        const expiresIn = urlParams.get('expires_in');
-        const userEmail = urlParams.get('user_email');
-        const userName = urlParams.get('user_name');
+        // iOS Safari descarta Set-Cookie de redirect cross-site (Google →
+        // API): o callback same-site também entrega os tokens no FRAGMENT
+        // (?session=1#token=...). Fragment não vaza via Referer/logs.
+        const hashParams = new URLSearchParams((window.location.hash || '').replace(/^#/, ''));
+
+        const accessToken = urlParams.get('token') || urlParams.get('access_token')
+            || hashParams.get('token') || hashParams.get('access_token');
+        const refreshToken = urlParams.get('refresh_token') || hashParams.get('refresh_token');
+        const expiresIn = urlParams.get('expires_in') || hashParams.get('expires_in');
+        const userEmail = urlParams.get('user_email') || hashParams.get('user_email');
+        const userName = urlParams.get('user_name') || hashParams.get('user_name');
         const authError = urlParams.get('auth_error');
 
         console.log('[AuthService] Checking URL for tokens...');

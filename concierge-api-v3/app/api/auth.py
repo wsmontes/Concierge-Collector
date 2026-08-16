@@ -98,21 +98,28 @@ def _build_auth_redirect_url(
     user_name: str,
     same_site: bool,
 ) -> str:
-    """Redirect pós-login. Same-site → SEM tokens na URL (o cookie HttpOnly é
-    o portador; `?session=1` sinaliza o frontend para autenticar via cookie).
-    Cross-site legado (GitHub Pages) → tokens na URL, como antes (o cookie
+    """Redirect pós-login.
+
+    Same-site: cookies HttpOnly seguem setadas (browsers que as armazenam),
+    e o FRAGMENT leva os tokens como caminho alternativo — iOS Safari
+    descarta Set-Cookie vindo de redirect iniciado em outro site (Google →
+    API), então cookie-sozinho deixa o login em loop no iPhone. Fragment não
+    vaza via query/Referer/logs de request. `?session=1` mantém o fallback
+    de cookie para quem chega sem tokens.
+
+    Cross-site legado (GitHub Pages) → tokens na query, como antes (o cookie
     Lax não é enviado cross-site)."""
     base = f"{frontend_url.rstrip('/')}/"
-    if same_site:
-        return f"{base}?session=1"
-    return (
-        f"{base}"
-        f"?token={access_token}"
+    legacy_params = (
+        f"token={access_token}"
         f"&refresh_token={refresh_token}"
         f"&expires_in={settings.access_token_expire_minutes * 60}"
         f"&user_email={user_email}"
         f"&user_name={user_name}"
     )
+    if same_site:
+        return f"{base}?session=1#{legacy_params}"
+    return f"{base}?{legacy_params}"
 
 
 def _issue_refresh(db: Database, email: str) -> str:

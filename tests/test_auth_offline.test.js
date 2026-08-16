@@ -189,3 +189,27 @@ describe('AuthService — landing OAuth same-site (?session=1)', () => {
     expect(user).toBeNull();
   });
 });
+
+describe('AuthService — fragment tokens (Safari descarta cookie de redirect)', () => {
+  test('initialize com #token no fragment armazena e autentica via Bearer', async () => {
+    window.history.replaceState(
+      {},
+      '',
+      '/?session=1#token=fragtok&refresh_token=fragrtok&expires_in=3600&user_email=concierge@hotel.com&user_name=Ana%20Concierge'
+    );
+    const Auth = loadAuthService();
+    const calls = [];
+    global.fetch = (url, opts) => {
+      calls.push(opts);
+      return Promise.resolve({ ok: true, status: 200, json: () => Promise.resolve(PROFILE) });
+    };
+
+    const user = await Auth.initialize();
+
+    expect(user).toEqual(PROFILE);
+    expect(Auth.getToken()).toBe('fragtok'); // armazenado do fragment
+    expect(calls[0].headers.Authorization).toBe('Bearer fragtok'); // Bearer, não cookie
+    expect(window.location.search).toBe('');
+    expect(window.location.hash).toBe('');
+  });
+});
