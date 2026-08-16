@@ -407,8 +407,17 @@ async def get_restaurant_images(
         website_results.append(website_result)
         website_images.extend(website_result.images)
 
+    # Google Places é SEMPRE fallback (pedido do concierge, ago/2026):
+    # evita chamadas desnecessárias quando o site já entrega imagens
+    # válidas. Hero: só quando o site não tem nada OU o melhor candidato
+    # é fraco. Galeria: só quando o site não preencheu o limite pedido
+    # (completa a lacuna, nunca substitui o que o site já entregou).
     should_fetch_places = has_place and (
-        gallery or not website_images or max(image.score for image in website_images) < SITE_HERO_CONFIDENCE_SCORE
+        (
+            not gallery
+            and (not website_images or max(image.score for image in website_images) < SITE_HERO_CONFIDENCE_SCORE)
+        )
+        or (gallery and len(website_images) < target_limit)
     )
     places_candidates: List[ImageCandidate] = []
     if should_fetch_places:

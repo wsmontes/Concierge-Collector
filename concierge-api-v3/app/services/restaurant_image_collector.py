@@ -37,6 +37,14 @@ NEGATIVE_URL_MARKERS = (
     "sprite",
     "avatar",
     "default-image",
+    # identidade de terceiros/UI: badges de pagamento, botões de
+    # parceria e selos patrocinados costumam viver no rodapé dos sites
+    "badge",
+    "button",
+    "payment",
+    "partner",
+    "sponsor",
+    "cookie",
 )
 POSITIVE_URL_MARKERS = (
     "hero",
@@ -155,6 +163,9 @@ def prepare_image(
     quality: int = 82,
     min_dim: int = 100,
     max_aspect: float = 3.5,
+    # 20k px² = 200×100, o piso do contrato legado de resize (imagens
+    # "pequenas" válidas passam); abaixo disso é ícone/botão/selo
+    min_area: int = 20_000,
 ) -> CollectedImage:
     """Validate/decode one candidate, produce the cached JPEG and its score."""
     with Image.open(io.BytesIO(raw)) as opened:
@@ -162,6 +173,11 @@ def prepare_image(
         width, height = opened.size
         if min(width, height) < min_dim or max(width, height) / min(width, height) > max_aspect:
             raise ValueError(f"imagem fora do gate do card: {width}x{height}")
+        # Gate de área: um quadrado de 100×100 passa no min_dim, mas é
+        # ícone/logo de rodapé, não foto — a área mínima rejeita esses
+        # sem tocar em fotos reais (raro algo abaixo de 200×200).
+        if width * height < min_area:
+            raise ValueError(f"imagem pequena demais para foto: {width}x{height}")
 
         rgb = opened.convert("RGB")
         score, components = _score_candidate(candidate, rgb)

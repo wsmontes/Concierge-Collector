@@ -260,4 +260,176 @@ describe('EntityModule — showEntityDetails com os dois formatos de entity', ()
       expect(footer.innerHTML).not.toContain('btn-delete-entity');
     });
   });
+
+  describe('galeria ranqueada (API v2 do collector — /entities/{id}/images)', () => {
+    beforeEach(() => {
+      vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn(() => 'blob:gallery-1') });
+      window.ApiService = {
+        request: vi.fn((method, path) => {
+          if (String(path).includes('/images?limit=')) {
+            return Promise.resolve({
+              ok: true,
+              json: async () => ({
+                entity_id: 'entity-g1',
+                count: 2,
+                hero_rank: 0,
+                images: [
+                  { rank: 0, source: 'website_og', image_url: '/api/v3/entities/entity-g1/image?rank=0' },
+                  { rank: 1, source: 'google_places', image_url: '/api/v3/entities/entity-g1/image?rank=1' }
+                ]
+              })
+            });
+          }
+          return Promise.resolve({ ok: true, blob: async () => new Blob(['jpeg'], { type: 'image/jpeg' }) });
+        })
+      };
+    });
+
+    afterEach(() => {
+      window.ApiService = undefined;
+      vi.unstubAllGlobals();
+    });
+
+    test('monta a faixa de fotos com thumbs e resolve a primeira via ApiService', async () => {
+      const entityModule = makeModule();
+      await entityModule.showEntityDetails({ entity_id: 'entity-g1', name: 'Galeria Bar', data: {} });
+
+      const { content } = openSpy.mock.calls[0][0];
+      const strip = content.querySelector('.detail-gallery__strip');
+      expect(strip).toBeTruthy();
+
+      // a galeria carrega de forma fire-and-forget — espera o fetch
+      await vi.waitFor(() => {
+        expect(strip.querySelectorAll('.detail-gallery__thumb').length).toBe(2);
+      });
+      const thumbs = strip.querySelectorAll('.detail-gallery__thumb');
+
+      // jsdom não tem IntersectionObserver → resolução direta do primeiro
+      await vi.waitFor(() => {
+        expect(thumbs[0].querySelector('img')).toBeTruthy();
+      });
+      expect(thumbs[0].querySelector('img').src).toContain('blob:gallery-1');
+      // o image_url vem com /api/v3 — o request ao ApiService usa o path SEM o prefixo
+      expect(window.ApiService.request).toHaveBeenCalledWith('GET', '/entities/entity-g1/image?rank=0');
+      expect(window.ApiService.request).toHaveBeenCalledWith('GET', '/entities/entity-g1/images?limit=8');
+    });
+
+    test('clique no thumb troca a foto do herói e marca o ativo', async () => {
+      const entityModule = makeModule();
+      await entityModule.showEntityDetails({ entity_id: 'entity-g1', name: 'Galeria Bar', data: {} });
+
+      const { content } = openSpy.mock.calls[0][0];
+      // re-query dentro do waitFor: a lista de thumbs só existe pós-fetch
+      await vi.waitFor(() => {
+        expect(content.querySelectorAll('.detail-gallery__thumb').length).toBe(2);
+      });
+      const thumbs = content.querySelectorAll('.detail-gallery__thumb');
+      await vi.waitFor(() => {
+        expect(thumbs[1].querySelector('img')).toBeTruthy();
+      });
+
+      thumbs[1].click();
+      const veil = content.querySelector('.detail-hero .card-og-veil');
+      expect(veil.style.backgroundImage).toContain('blob:gallery-1');
+      expect(veil.classList.contains('card-og-veil--visible')).toBe(true);
+      expect(thumbs[1].classList.contains('is-active')).toBe(true);
+      expect(thumbs[0].classList.contains('is-active')).toBe(false);
+    });
+
+    test('404 do servidor remove a seção silenciosamente (modal como antes)', async () => {
+      window.ApiService = {
+        request: vi.fn().mockResolvedValue({ ok: false, status: 404 })
+      };
+      const entityModule = makeModule();
+      await entityModule.showEntityDetails({ entity_id: 'entity-g1', name: 'Galeria Bar', data: {} });
+
+      const { content } = openSpy.mock.calls[0][0];
+      await vi.waitFor(() => {
+        expect(content.querySelector('.detail-gallery')).toBeNull();
+      });
+    });
+  });
+
+  describe('picker de imagem no editor (data.image_rank)', () => {
+    beforeEach(() => {
+      const editor = document.createElement('div');
+      editor.id = 'entity-metadata-editor';
+      document.body.appendChild(editor);
+
+      vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn(() => 'blob:picker-1') });
+      window.ApiService = {
+        request: vi.fn((method, path) => {
+          if (String(path).includes('/images?limit=')) {
+            return Promise.resolve({
+              ok: true,
+              json: async () => ({
+                entity_id: 'entity-p1',
+                count: 2,
+                hero_rank: 0,
+                images: [
+                  { rank: 0, source: 'website_og', image_url: '/api/v3/entities/entity-p1/image?rank=0' },
+                  { rank: 1, source: 'google_places', image_url: '/api/v3/entities/entity-p1/image?rank=1' }
+                ]
+              })
+            });
+          }
+          return Promise.resolve({ ok: true, blob: async () => new Blob(['jpeg'], { type: 'image/jpeg' }) });
+        })
+      };
+    });
+
+    afterEach(() => {
+      window.ApiService = undefined;
+      vi.unstubAllGlobals();
+    });
+
+    test('escolha de foto vira data.image_rank no save', async () => {
+      const entityModule = makeModule();
+      entityModule.editingEntity = { entity_id: 'entity-p1', name: 'Picker Bar', data: {}, version: 1 };
+      entityModule.dataStore.updateEntity = vi.fn().mockResolvedValue(true);
+      entityModule.refresh = vi.fn().mockResolvedValue(true);
+      const nameInput = document.createElement('input');
+      nameInput.id = 'restaurant-name';
+      nameInput.value = 'Picker Bar';
+      document.body.appendChild(nameInput);
+
+      entityModule.populateEntityImagePicker(entityModule.editingEntity);
+      const section = document.querySelector('.entity-image-picker');
+      await vi.waitFor(() => {
+        expect(section.querySelectorAll('.detail-gallery__thumb').length).toBe(2);
+      });
+
+      const thumbs = section.querySelectorAll('.detail-gallery__thumb');
+      expect(thumbs[0].classList.contains('is-active')).toBe(true); // default = rank 0
+      thumbs[1].click();
+      expect(section.dataset.selectedRank).toBe('1');
+
+      const ok = await entityModule.saveEntityFromForm();
+      expect(ok).toBe(true);
+      const [, updates] = entityModule.dataStore.updateEntity.mock.calls[0];
+      expect(updates.data.image_rank).toBe(1);
+    });
+
+    test('sem escolha (default) o save NÃO grava image_rank', async () => {
+      const entityModule = makeModule();
+      entityModule.editingEntity = { entity_id: 'entity-p1', name: 'Picker Bar', data: {}, version: 1 };
+      entityModule.dataStore.updateEntity = vi.fn().mockResolvedValue(true);
+      entityModule.refresh = vi.fn().mockResolvedValue(true);
+      const nameInput = document.createElement('input');
+      nameInput.id = 'restaurant-name';
+      nameInput.value = 'Picker Bar';
+      document.body.appendChild(nameInput);
+
+      entityModule.populateEntityImagePicker(entityModule.editingEntity);
+      const section = document.querySelector('.entity-image-picker');
+      await vi.waitFor(() => {
+        expect(section.querySelectorAll('.detail-gallery__thumb').length).toBe(2);
+      });
+
+      const ok = await entityModule.saveEntityFromForm();
+      expect(ok).toBe(true);
+      const [, updates] = entityModule.dataStore.updateEntity.mock.calls[0];
+      expect(updates.data.image_rank).toBeUndefined();
+    });
+  });
 });

@@ -145,7 +145,7 @@
        card 36px, botão-nome de texto 0) — ficam fora do mínimo HIG
        genérico, que os inflava para 44px vencendo por especificidade
        (button:not(...) = 0,2,1 > classes de componente = 0,2,0). */
-    button:not(.checkbox):not(.radio):not(.saved-view-chip):not(.collection-pagination__btn):not(.card-link-btn):not(.card-edit-btn):not(.btn-more-curation):not(.collection-card__name-link),
+    button:not(.checkbox):not(.radio):not(.saved-view-chip):not(.collection-pagination__btn):not(.card-link-btn):not(.card-edit-btn):not(.btn-more-curation):not(.collection-card__name-link):not(.detail-gallery__thumb),
     a.btn {
         min-height: 44px;
         min-width: 44px;

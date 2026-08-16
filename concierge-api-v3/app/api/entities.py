@@ -134,7 +134,10 @@ def _extract_image_sources(doc: dict) -> tuple[Optional[str], Optional[str]]:
         or data.get("website")
         or None
     )
-    place_id = data.get("place_id") or None
+    # google_place_id é o shape de algumas entities bulk (37 sem
+    # data.place_id no acervo vivo) — sem ele o fallback Places não
+    # alcançava esses lugares.
+    place_id = data.get("place_id") or data.get("google_place_id") or None
     return website, place_id
 
 

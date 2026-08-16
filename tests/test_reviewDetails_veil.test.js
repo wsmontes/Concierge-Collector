@@ -111,4 +111,57 @@ describe('handleViewReviewDetails — véu OG da entity vinculada', () => {
         expect(html).not.toContain('data-og-source');
         expect(html).not.toContain('card-og-veil');
     });
+
+    test('curadoria vinculada monta o carrossel da entity (galeria v2)', async () => {
+        window.DataStore = {
+            db: {
+                entities: {
+                    where: () => ({
+                        equals: () => ({
+                            first: async () => makeEntity()
+                        })
+                    })
+                }
+            }
+        };
+        const galleryEl = document.createElement('section');
+        galleryEl.className = 'detail-panel detail-gallery';
+        galleryEl.innerHTML = '<div class="detail-gallery__strip"></div>';
+        window.entityModule = {
+            _renderEntityGallery: vi.fn((entity) => {
+                galleryEl.dataset.galleryFor = entity.entity_id;
+                return galleryEl;
+            })
+        };
+
+        await ui.handleViewReviewDetails(makeCuration());
+
+        expect(window.entityModule._renderEntityGallery).toHaveBeenCalledWith({
+            entity_id: 'entity_1',
+            name: 'Casa Véu'
+        });
+        // o host some e a galeria real toma o lugar no sheet
+        expect(capturedContent.querySelector('[data-entity-gallery-host]')).toBeNull();
+        expect(capturedContent.querySelector('.detail-gallery')).toBe(galleryEl);
+
+        window.entityModule = undefined;
+    });
+
+    test('curadoria vinculada SEM entityModule remove o host vazio', async () => {
+        window.entityModule = undefined;
+        window.DataStore = {
+            db: {
+                entities: {
+                    where: () => ({
+                        equals: () => ({
+                            first: async () => makeEntity()
+                        })
+                    })
+                }
+            }
+        };
+        await ui.handleViewReviewDetails(makeCuration());
+        expect(capturedContent.querySelector('[data-entity-gallery-host]')).toBeNull();
+        expect(capturedContent.querySelector('.detail-gallery')).toBeNull();
+    });
 });

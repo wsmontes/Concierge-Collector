@@ -23,6 +23,12 @@
  * e marca .is-loaded (fade); o fallback de gradiente pedra do markup
  * cobre os cards sem imagem. O véu continua suportado para o herói
  * dos detail sheets.
+ *
+ * Resolução (ago/2026): cards com data-entity-id usam o hero
+ * RANQUEADO server-side (GET /entities/{id}/image?rank=0 — o servidor
+ * resolve website/place_id da própria entity, sem URLs do cliente);
+ * 404/erro (entity local/pending) cai para o caminho legado por URL.
+ * Cache Storage e dedupe continuam, com chaves entity:<id>.
  */
 
 const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
@@ -81,28 +87,35 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
         const hasVeil = !!card.querySelector('.card-og-veil');
         if (!hasThumb && !hasVeil) return;
 
+        const entityId = (card.dataset && card.dataset.entityId) || '';
         const url = (card.dataset && card.dataset.ogSource) || '';
         const placeId = (card.dataset && card.dataset.ogPlaceId) || '';
+        // Hero escolhido pelo concierge no editor (data.image_rank)
+        const rank = parseInt(card.dataset && card.dataset.imageRank, 10) || 0;
         card.dataset.ogResolved = '1'; // processado — nunca duas vezes
 
-        // Sem NENHUMA fonte: no card com thumb o placeholder do markup
-        // (gradiente pedra + ícone do tipo, sempre renderizado sob o img
-        // vazio) já é o estado final — padrão feedmine "cards resolvidos
-        // antes de aparecer", sem rede. O véu legado recebe a classe de
-        // fallback como antes.
-        if (!url && !placeId) {
+        // Sem NENHUMA fonte (nem entity — o servidor resolve as fontes
+        // pela entity quando o card tem data-entity-id): no card com
+        // thumb o placeholder do markup (gradiente pedra + ícone do
+        // tipo, sempre renderizado sob o img vazio) já é o estado final
+        // — padrão feedmine "cards resolvidos antes de aparecer", sem
+        // rede. O véu legado recebe a classe de fallback como antes.
+        if (!entityId && !url && !placeId) {
             if (!hasThumb) {
                 this._applyFallback(card);
             }
             return;
         }
 
-        // chave de dedupe/cache: site quando existe; senão o lugar
-        const key = url || `place:${placeId}`;
+        // chave de dedupe/cache: entity (rank-aware — o hero escolhido
+        // não pode colidir com o default) ou site/lugar no legado
+        const key = entityId ? `entity:${entityId}:rank:${rank}` : (url || `place:${placeId}`);
 
         let promise = this._pending.get(key);
         if (!promise) {
-            promise = this._resolve(url, placeId, key);
+            promise = entityId
+                ? this._resolveEntityImage(entityId, rank, url, placeId, key)
+                : this._resolve(url, placeId, key);
             this._pending.set(key, promise);
         }
         promise.then((objectUrl) => {
@@ -126,10 +139,56 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
     }
 
     /**
+     * Resolve a imagem de um card COM data-entity-id: hero ranqueado
+     * server-side via GET /entities/{id}/image?rank=0 (o ApiService
+     * anexa o JWT). Entities locais/pending que ainda não existem no
+     * servidor (404/erro) caem para o caminho legado por URL — o card
+     * nunca perde imagem por identidade.
+     * @param {string} entityId - entity_id do card
+     * @param {string} url - website do card (fallback legado)
+     * @param {string} placeId - place_id do card (fallback legado)
+     * @param {string} key - chave de cache/dedupe (entity:<id>)
+     * @returns {Promise<string|null>} objectURL ou null
+     */
+    async _resolveEntityImage(entityId, rank, url, placeId, key) {
+        // 1) Cache Storage (persistência client-side — offline incluído)
+        const cached = await this._readCache(key);
+        if (cached) return cached;
+
+        // 2) Endpoint ranqueado por entity (rank 0 = hero default;
+        //    rank ≥1 = escolha do concierge no editor)
+        try {
+            const response = await window.ApiService.request(
+                'GET',
+                `/entities/${encodeURIComponent(entityId)}/image?rank=${rank}`
+            );
+            if (response && response.ok) {
+                const blob = await response.blob();
+                if (blob && blob.size > 0) {
+                    await this._writeCache(key, blob);
+                    return URL.createObjectURL(blob);
+                }
+            }
+        } catch (error) {
+            this.log.debug(`imagem por entity falhou para ${entityId}:`, error);
+        }
+
+        // 3) Fallback legado por URL (entity fora do servidor ainda)
+        if (!url && !placeId) return null;
+        try {
+            return await this._resolve(url, placeId, key);
+        } catch (error) {
+            this.log.debug(`og-image legado falhou para ${key}:`, error);
+            return null;
+        }
+    }
+
+    /**
      * Pré-resolve as imagens OG da PRÓXIMA página dos browsers
      * (CurationBrowser/EntityBrowser) via peekPage — espia SEM avançar
      * o cursor (openPage/nextPage mutariam a paginação). Padrão
-     * ImagePrefetcher do feedmine.
+     * ImagePrefetcher do feedmine. Items com entity_id pré-resolvem pelo
+     * hero ranqueado da entity; sem entity_id, pelo caminho legado.
      */
     _prefetchNextPage() {
         const targets = [
@@ -156,10 +215,14 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
                 for (const item of items || []) {
                     const d = item.data || {};
                     const url = d.contact?.website || d.contacts?.website || d.website || item.website || '';
-                    const placeId = d.place_id || item.place_id || '';
-                    const key = url || (placeId ? `place:${placeId}` : '');
+                    const placeId = d.place_id || d.google_place_id || item.place_id || '';
+                    const entityId = item.entity_id || d.entity_id || '';
+                    const key = entityId ? `entity:${entityId}:rank:0` : (url || (placeId ? `place:${placeId}` : ''));
                     if (key && !this._pending.has(key)) {
-                        this._pending.set(key, this._resolve(url, placeId, key));
+                        const promise = entityId
+                            ? this._resolveEntityImage(entityId, 0, url, placeId, key)
+                            : this._resolve(url, placeId, key);
+                        this._pending.set(key, promise);
                     }
                 }
             }).catch((error) => {

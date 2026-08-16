@@ -2273,6 +2273,7 @@ if (typeof window.UIManager === 'undefined') {
             // tolerante dos dois formatos que os cards usam
             let veilWebsite = '';
             let veilPlaceId = '';
+            let linkedEntityName = '';
             if (curation.entity_id && window.DataStore?.db) {
                 try {
                     const entity = await window.DataStore.db.entities
@@ -2284,6 +2285,7 @@ if (typeof window.UIManager === 'undefined') {
                             entity.website || '';
                         veilPlaceId = entity.data?.place_id ||
                             entity.data?.google_place_id || '';
+                        linkedEntityName = entity.name || '';
                     }
                 } catch (e) {
                     // lookup é melhor-esforço — o modal abre sem véu
@@ -2342,8 +2344,10 @@ if (typeof window.UIManager === 'undefined') {
 
             // ── Herói: véu OG da entity vinculada (mesma faixa dos
             // detalhes de entity e dos cards — ogImageModule pinta o
-            // slot observando data-og-source no DOM) ──
+            // slot observando data-og-source no DOM). data-entity-id:
+            // o módulo resolve o hero RANQUEADO server-side (rank=0). ──
             let heroAttrs = '';
+            if (curation.entity_id) heroAttrs += ` data-entity-id="${esc(curation.entity_id)}"`;
             if (veilWebsite) heroAttrs += ` data-og-source="${esc(veilWebsite)}"`;
             if (veilPlaceId) heroAttrs += ` data-og-place-id="${esc(veilPlaceId)}"`;
             if (heroAttrs) {
@@ -2370,6 +2374,15 @@ if (typeof window.UIManager === 'undefined') {
                             `).join('')}
                         </div>
                     </section>
+                `);
+            }
+
+            // ── Carrossel da entity vinculada (API v2 do collector):
+            // mesma galeria ranqueada do modal de entity — o clique no
+            // thumb troca a foto do herói deste sheet também. ──
+            if (isLinked && curation.entity_id) {
+                sections.push(`
+                    <section class="review-entity-gallery" data-entity-gallery-host="${esc(curation.entity_id)}"></section>
                 `);
             }
 
@@ -2453,6 +2466,23 @@ if (typeof window.UIManager === 'undefined') {
             `);
 
             content.innerHTML = sections.join('');
+
+            // ── Monta a galeria da entity vinculada no host (reuso do
+            // entityModule._renderEntityGallery — sem module/API a seção
+            // vazia é removida e o sheet segue como antes) ──
+            if (isLinked && curation.entity_id) {
+                const galleryHost = content.querySelector('[data-entity-gallery-host]');
+                if (galleryHost && window.entityModule && typeof window.entityModule._renderEntityGallery === 'function') {
+                    const gallery = window.entityModule._renderEntityGallery({
+                        entity_id: curation.entity_id,
+                        name: linkedEntityName || linkedName || 'This place'
+                    });
+                    if (gallery) galleryHost.replaceWith(gallery);
+                    else galleryHost.remove();
+                } else if (galleryHost) {
+                    galleryHost.remove();
+                }
+            }
 
             // ── Footer: ações reais + Close ──
             const footer = document.createElement('div');

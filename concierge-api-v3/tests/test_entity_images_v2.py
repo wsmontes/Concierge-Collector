@@ -112,3 +112,26 @@ def test_entity_image_rank_missing_returns_404():
 
     exc = asyncio.run(run())
     assert exc.status_code == 404
+
+
+def test_entity_image_hero_falls_back_to_google_place_id_when_place_id_missing():
+    # Regressão: 37 entities bulk do acervo vivo têm SÓ data.google_place_id
+    # — sem esse campo na cadeia, o fallback Places não as alcançava nem
+    # pelo endpoint agregado nem pelos cards (o frontend manda o place_id).
+    from app.api.entities import get_entity_image
+
+    db = _db_with_entity({"_id": "e1", "data": {"google_place_id": "ChIJgoogle"}})
+
+    async def run():
+        with patch("app.api.entities.get_og_image_bytes", new=AsyncMock()) as legacy:
+            with patch(
+                "app.api.entities.get_restaurant_image_bytes",
+                new=AsyncMock(return_value=(b"hero", "image/jpeg")),
+            ) as ranked:
+                response = await get_entity_image("e1", rank=1, db=db, auth={"role": "curator"})
+                return response, legacy, ranked
+
+    response, legacy, ranked = asyncio.run(run())
+    legacy.assert_not_awaited()
+    ranked.assert_awaited_once_with(page_url=None, place_id="ChIJgoogle", rank=1)
+    assert response.body == b"hero"

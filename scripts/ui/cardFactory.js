@@ -122,9 +122,18 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
         if (website) {
             card.dataset.ogSource = website;
         }
-        const placeId = entity.data?.place_id || entity.place_id || '';
+        // google_place_id é o shape de algumas entities bulk (37 no acervo
+        // vivo têm SÓ esse campo) — mesma cadeia do detail sheet da entity
+        const placeId = entity.data?.place_id || entity.data?.google_place_id || entity.place_id || '';
         if (placeId) {
             card.dataset.ogPlaceId = placeId;
+        }
+
+        // Hero escolhido pelo concierge no editor (data.image_rank ≥ 1):
+        // o ogImageModule pede ?rank=<escolhido> em vez do hero default
+        const imageRank = Number(entity.data?.image_rank) || 0;
+        if (imageRank > 0) {
+            card.dataset.imageRank = String(imageRank);
         }
 
         // Badge "novo" (padrão newBadge do feedmine): criado/atualizado

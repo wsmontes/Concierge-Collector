@@ -7,6 +7,7 @@ No network is involved here: discovery/download security remains covered by
 
 import io
 
+import pytest
 from PIL import Image
 
 from app.services.restaurant_image_collector import (
@@ -44,6 +45,23 @@ def test_og_photo_beats_body_image_when_quality_is_equal():
     )
     ranked = rank_and_dedupe([body, og], limit=2)
     assert ranked[0].source == "website_og"
+
+
+def test_prepare_image_rejects_tiny_square_icon_even_with_valid_aspect():
+    # min_dim 100 deixa passar um quadrado 100×100 — é ícone/selo de
+    # rodapé, não foto: o gate de ÁREA (40k px²) rejeita.
+    with pytest.raises(ValueError):
+        prepare_image(
+            _make_png(120, 120, (200, 200, 200)),
+            ImageCandidate("https://site/icon.png", "website_img", 0),
+        )
+
+
+def test_prepare_image_accepts_normal_square_photo_above_area_gate():
+    raw = _make_png(300, 300, (140, 90, 60))
+    image = prepare_image(raw, ImageCandidate("https://site/food.jpg", "website_img", 0))
+    assert image.width == 300
+    assert image.height == 300
 
 
 def test_prepare_image_rejects_thin_banner():

@@ -505,6 +505,115 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
         if (websiteInput) websiteInput.value = website;
         if (ratingInput) ratingInput.value = rating;
         if (priceLevelSelect) priceLevelSelect.value = String(priceLevel || 0);
+
+        // Picker de imagem (API v2): a foto que os cards vão usar
+        this.populateEntityImagePicker(entity);
+    }
+
+    /**
+     * Picker de imagem no editor de entity: galeria ranqueada
+     * (/entities/{id}/images) com a opção Default (rank 0, o hero do
+     * collector). A escolha vira data.image_rank no save. O picker é
+     * criado sob demanda dentro do #entity-metadata-editor — se a API
+     * falhar, a seção some e o editor segue como antes.
+     * @param {Object} entity - Entity em edição
+     */
+    populateEntityImagePicker(entity) {
+        const editor = document.getElementById('entity-metadata-editor');
+        if (!editor || !entity?.entity_id) return;
+
+        let section = editor.querySelector('.entity-image-picker');
+        if (!section) {
+            section = document.createElement('section');
+            section.className = 'entity-image-picker';
+            editor.appendChild(section);
+        }
+
+        const esc = (v) => this.escapeHtml(v);
+        const currentRank = Number(entity.data?.image_rank) || 0;
+        section.dataset.selectedRank = String(currentRank);
+        section.innerHTML = `
+            <h3 class="detail-eyebrow"><span class="material-icons" aria-hidden="true">image</span>Card photo</h3>
+            <p class="entity-image-picker__hint">Pick the photo shown on cards. Rank 0 is the automatic hero; the rest come from the entity website and Google Places.</p>
+            <div class="detail-gallery__strip entity-image-picker__strip" role="list" aria-label="Pick a card photo"></div>
+            <p class="entity-image-picker__status" aria-live="polite"></p>
+        `;
+
+        const strip = section.querySelector('.detail-gallery__strip');
+        this._loadEntityImagePicker(section, strip, entity, currentRank).catch(() => {
+            // sem galeria no servidor/offline — editor segue sem picker
+            section.remove();
+        });
+    }
+
+    /**
+     * Carrega a galeria no picker e aplica a semântica de ESCOLHA
+     * (clique marca a seleção; Default = rank 0). Resolução lazy dos
+     * thumbs compartilhada com o modal de detalhes (_resolveGalleryThumb).
+     */
+    async _loadEntityImagePicker(section, strip, entity, currentRank) {
+        if (!window.ApiService || typeof window.ApiService.request !== 'function') {
+            throw new Error('ApiService unavailable');
+        }
+        const response = await window.ApiService.request(
+            'GET',
+            `/entities/${encodeURIComponent(entity.entity_id)}/images?limit=8`
+        );
+        if (!response || !response.ok) throw new Error(`picker http ${response && response.status}`);
+        const payload = await response.json();
+        const images = Array.isArray(payload && payload.images) ? payload.images : [];
+        if (!images.length) throw new Error('empty gallery');
+
+        const observer = 'IntersectionObserver' in window
+            ? new IntersectionObserver((entries) => {
+                for (const entry of entries) {
+                    if (!entry.isIntersecting) continue;
+                    this._resolveGalleryThumb(entry.target, entity.entity_id);
+                    observer.unobserve(entry.target);
+                }
+            }, { root: null, rootMargin: '200px' })
+            : null;
+
+        images.forEach((image, index) => {
+            const thumb = document.createElement('button');
+            thumb.type = 'button';
+            thumb.className = 'detail-gallery__thumb';
+            thumb.setAttribute('role', 'listitem');
+            thumb.dataset.rank = String(index);
+            thumb.setAttribute(
+                'aria-label',
+                index === 0
+                    ? 'Default card photo (automatic hero)'
+                    : `Photo ${index + 1}${image.source ? ` (${image.source})` : ''}`
+            );
+            thumb.dataset.gallerySrc = typeof image.image_url === 'string' ? image.image_url : '';
+            thumb.innerHTML = '<span class="material-icons detail-gallery__thumb-placeholder" aria-hidden="true">image</span>';
+            if (!thumb.dataset.gallerySrc) {
+                thumb.disabled = true;
+            }
+            if (index === currentRank) thumb.classList.add('is-active');
+            thumb.addEventListener('click', () => {
+                const rank = Number(thumb.dataset.rank) || 0;
+                section.dataset.selectedRank = String(rank);
+                strip.querySelectorAll('.detail-gallery__thumb').forEach((t) => t.classList.remove('is-active'));
+                thumb.classList.add('is-active');
+                const status = section.querySelector('.entity-image-picker__status');
+                if (status) {
+                    status.textContent = rank === 0
+                        ? 'Using the automatic hero (rank 0).'
+                        : `Selected photo ${rank + 1}. Saved with the entity.`;
+                }
+            });
+            strip.appendChild(thumb);
+            if (observer && thumb.dataset.gallerySrc) observer.observe(thumb);
+            else if (!observer && thumb.dataset.gallerySrc) this._resolveGalleryThumb(thumb, entity.entity_id);
+        });
+
+        const first = strip.firstElementChild;
+        if (first && first.dataset.gallerySrc) {
+            if (observer) observer.unobserve(first);
+            this._resolveGalleryThumb(first, entity.entity_id);
+        }
     }
 
     /**
@@ -568,6 +677,18 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
 
             if (description) {
                 baseData.description = description;
+            }
+
+            // Picker de imagem: a escolha do concierge vira data.image_rank
+            // (0/ausente = hero automático do collector; ≥1 = foto escolhida)
+            const picker = document.querySelector('#entity-metadata-editor .entity-image-picker');
+            const chosenRank = picker && !picker.classList.contains('hidden')
+                ? (Number(picker.dataset.selectedRank) || 0)
+                : (Number(baseData.image_rank) || 0);
+            if (chosenRank > 0) {
+                baseData.image_rank = chosenRank;
+            } else {
+                delete baseData.image_rank;
             }
 
             const updates = {
@@ -733,11 +854,19 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
         // ── Herói: o MESMO véu OG dos cards (data-og-source é observado
         // pelo ogImageModule e pinta o slot .card-og-veil; sem website/
         // place_id o módulo aplica o véu de fallback por tom de status) +
-        // faixa de fatos que o concierge escaneia primeiro (rating/preço)
+        // faixa de fatos que o concierge escaneia primeiro (rating/preço).
+        // data-entity-id: o módulo resolve o hero RANQUEADO server-side
+        // (rank=0) — identidade da entity, sem URLs do cliente.
         const hero = document.createElement('div');
         hero.className = 'detail-hero';
+        hero.dataset.entityId = entity.entity_id;
         if (website) hero.dataset.ogSource = website;
         if (placeId) hero.dataset.ogPlaceId = placeId;
+        // Hero escolhido pelo concierge no editor (data.image_rank)
+        const heroRank = Number(data.image_rank) || 0;
+        if (heroRank > 0) {
+            hero.dataset.imageRank = String(heroRank);
+        }
         hero.innerHTML = `
             <div class="card-og-veil" aria-hidden="true">
                 <span class="card-og-veil__icon material-icons">${esc(typeIcon)}</span>
@@ -754,6 +883,14 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
             </div>
         `;
         content.appendChild(hero);
+
+        // ── Galeria ranqueada (API v2 do collector, /entities/{id}/images):
+        // faixa de fotos sob o hero. As URLs proxied exigem JWT — os
+        // thumbs resolvem via ApiService + objectURL (lazy, Intersection
+        // Observer) e o clique troca a foto do hero. 404/erro = seção
+        // some silenciosamente (modal como antes).
+        const gallery = this._renderEntityGallery(entity);
+        if (gallery) content.appendChild(gallery);
 
         // ── Localização: painel com ação real de mapa ──
         if (hasLocation) {
@@ -944,6 +1081,151 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
                 });
             }
         }, 0);
+    }
+
+    /**
+     * Galeria ranqueada da entity (API v2 do collector de imagens):
+     * monta a seção e dispara o load assíncrono. A seção é devolvida
+     * imediatamente (o modal não espera a rede); 404/erro/vazio a
+     * remove silenciosamente.
+     * @param {Object} entity - Entity do modal
+     * @returns {HTMLElement|null} Seção da galeria
+     */
+    _renderEntityGallery(entity) {
+        if (!entity || !entity.entity_id) return null;
+        const esc = (v) => this.escapeHtml(v);
+        const section = document.createElement('section');
+        section.className = 'detail-panel detail-gallery';
+        section.innerHTML = `
+            <h3 class="detail-eyebrow"><span class="material-icons" aria-hidden="true">photo_library</span>Photos</h3>
+            <div class="detail-gallery__strip" role="list" aria-label="Photos of ${esc(entity.name || 'this place')}"></div>
+        `;
+        this._loadEntityGallery(section, entity).catch(() => {
+            // sem galeria no servidor/offline — modal segue como antes
+            section.remove();
+        });
+        return section;
+    }
+
+    /**
+     * Busca /entities/{id}/images?limit=8 e monta os thumbs. As URLs
+     * proxied exigem o JWT do ApiService — cada thumb resolve quando
+     * fica visível (IntersectionObserver) e guarda o blob no Cache
+     * Storage do ogImageModule (chave entity:<id>:gallery:<path>).
+     * @param {HTMLElement} section - Seção .detail-gallery
+     * @param {Object} entity - Entity do modal
+     */
+    async _loadEntityGallery(section, entity) {
+        if (!window.ApiService || typeof window.ApiService.request !== 'function') {
+            throw new Error('ApiService unavailable');
+        }
+        const response = await window.ApiService.request(
+            'GET',
+            `/entities/${encodeURIComponent(entity.entity_id)}/images?limit=8`
+        );
+        if (!response || !response.ok) throw new Error(`gallery http ${response && response.status}`);
+        const payload = await response.json();
+        const images = Array.isArray(payload && payload.images) ? payload.images : [];
+        if (!images.length) throw new Error('empty gallery');
+
+        const strip = section.querySelector('.detail-gallery__strip');
+        if (!strip) return;
+
+        const observer = 'IntersectionObserver' in window
+            ? new IntersectionObserver((entries) => {
+                for (const entry of entries) {
+                    if (!entry.isIntersecting) continue;
+                    this._resolveGalleryThumb(entry.target, entity.entity_id);
+                    observer.unobserve(entry.target);
+                }
+            }, { root: null, rootMargin: '200px' })
+            : null;
+
+        images.forEach((image, index) => {
+            const thumb = document.createElement('button');
+            thumb.type = 'button';
+            thumb.className = 'detail-gallery__thumb';
+            thumb.setAttribute('role', 'listitem');
+            thumb.setAttribute(
+                'aria-label',
+                `Photo ${index + 1}${image.source ? ` (${image.source})` : ''}`
+            );
+            thumb.dataset.gallerySrc = typeof image.image_url === 'string' ? image.image_url : '';
+            thumb.innerHTML = '<span class="material-icons detail-gallery__thumb-placeholder" aria-hidden="true">image</span>';
+            if (!thumb.dataset.gallerySrc) {
+                thumb.disabled = true;
+            } else {
+                thumb.addEventListener('click', () => this._showGalleryImage(thumb));
+            }
+            strip.appendChild(thumb);
+            if (observer && thumb.dataset.gallerySrc) observer.observe(thumb);
+            else if (!observer && thumb.dataset.gallerySrc) this._resolveGalleryThumb(thumb, entity.entity_id);
+        });
+
+        // O hero (rank 0) resolve já — é a foto que o olho vê primeiro
+        const first = strip.firstElementChild;
+        if (first && first.dataset.gallerySrc) {
+            if (observer) observer.unobserve(first);
+            this._resolveGalleryThumb(first, entity.entity_id);
+        }
+    }
+
+    /**
+     * Resolve UM thumb: Cache Storage primeiro, ApiService (JWT) depois.
+     * O image_url do servidor vem com o prefixo /api/v3 — o ApiService
+     * já aplica a base, então o prefixo é removido antes do request.
+     * @param {HTMLElement} thumb - Botão do thumb
+     * @param {string} entityId - entity_id dona da galeria
+     */
+    async _resolveGalleryThumb(thumb, entityId) {
+        const src = thumb.dataset.gallerySrc;
+        if (!src || thumb.dataset.galleryResolved) return;
+        thumb.dataset.galleryResolved = '1';
+
+        const key = `entity:${entityId}:gallery:${src}`;
+        const og = window.OgImageModule;
+        try {
+            let objectUrl = og && typeof og._readCache === 'function' ? await og._readCache(key) : null;
+            if (!objectUrl) {
+                const path = src.startsWith('/api/v3/') ? src.slice('/api/v3'.length) : src;
+                const response = await window.ApiService.request('GET', path);
+                if (!response || !response.ok) return;
+                const blob = await response.blob();
+                if (!blob || blob.size === 0) return;
+                objectUrl = URL.createObjectURL(blob);
+                if (og && typeof og._writeCache === 'function') await og._writeCache(key, blob);
+            }
+            const img = document.createElement('img');
+            img.src = objectUrl;
+            img.alt = '';
+            img.loading = 'lazy';
+            img.className = 'detail-gallery__img';
+            thumb.replaceChildren(img);
+            thumb.dataset.galleryLoaded = '1';
+        } catch (error) {
+            this.log.debug('galeria: thumb falhou:', error);
+        }
+    }
+
+    /**
+     * Clique num thumb: troca a foto do HERÓI do modal pela imagem
+     * escolhida (sem modal aninhado — o herói é a vitrine da galeria).
+     * @param {HTMLElement} thumb - Thumb clicado
+     */
+    _showGalleryImage(thumb) {
+        const img = thumb.querySelector('img');
+        const sheet = thumb.closest('.detail-sheet');
+        const veil = sheet ? sheet.querySelector('.detail-hero .card-og-veil') : null;
+        if (veil && img && img.src) {
+            veil.classList.remove('card-og-veil--fallback');
+            veil.style.backgroundImage = `url("${img.src}")`;
+            veil.classList.add('card-og-veil--visible');
+        }
+        const strip = thumb.parentElement;
+        if (strip) {
+            strip.querySelectorAll('.detail-gallery__thumb').forEach((t) => t.classList.remove('is-active'));
+        }
+        thumb.classList.add('is-active');
     }
 
     /**

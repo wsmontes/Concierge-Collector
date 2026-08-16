@@ -87,6 +87,8 @@ async def test_hero_skips_places_when_structured_site_image_is_strong(monkeypatc
 
 @pytest.mark.asyncio
 async def test_gallery_combines_site_and_places(monkeypatch):
+    # Galeria com site INSUFICIENTE (1 imagem) completa com Places —
+    # Places é fallback, nunca a primeira fonte.
     from app.services.restaurant_image_discovery import SourcedImageURL
 
     async def resolve(_url):
@@ -107,6 +109,48 @@ async def test_gallery_combines_site_and_places(monkeypatch):
 
     images = await svc.get_restaurant_images("https://site.com", "P1", limit=8)
     assert {image.source for image in images} == {"website_og", "google_places"}
+
+
+@pytest.mark.asyncio
+async def test_gallery_skips_places_when_site_fills_the_limit(monkeypatch):
+    # Places é SEMPRE fallback (pedido do concierge, ago/2026): um site
+    # com imagens válidas suficientes para o limite não dispara NENHUMA
+    # chamada ao Places — evita custo/rate desnecessário.
+    from app.services.restaurant_image_discovery import SourcedImageURL
+
+    urls = [SourcedImageURL(f"https://site.com/p{i}.jpg", "website_img", i) for i in range(9)]
+
+    async def resolve(_url):
+        return urls
+
+    async def places(_place_id, max_photos=5):
+        raise AssertionError("Places não deveria ser consultado: o site preenche a galeria")
+
+    def _distinct_png(index):
+        # Retângulo em posição própria por index: imagens VISUALMENTE
+        # distintas (o dedupe por dhash colapsaria padrões idênticos)
+        img = Image.new("RGB", (1200, 800), (120, 140, 90))
+        draw = ImageDraw.Draw(img)
+        x = 20 + index * 110
+        draw.rectangle((x, 30, x + 200, 320), fill=(240, 240, 240))
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        return buf.getvalue()
+
+    async def download(url, timeout):
+        # basename 'pN.jpg' → N (split('/') e lstrip, não split('p') —
+        # 'https' também contém 'p')
+        index = int(url.split("/")[-1].lstrip("p").split(".")[0])
+        return _distinct_png(index)
+
+    monkeypatch.setattr(svc, "_resolve_og_image_candidates", resolve)
+    monkeypatch.setattr(svc, "_places_image_candidates", places)
+    monkeypatch.setattr(svc, "_download_bytes", download)
+    svc._image_catalog_cache.clear()
+
+    images = await svc.get_restaurant_images("https://site.com", "P1", limit=8)
+    assert len(images) == 8
+    assert {image.source for image in images} == {"website_img"}
 
 
 @pytest.mark.asyncio
