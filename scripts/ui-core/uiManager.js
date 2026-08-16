@@ -2304,7 +2304,7 @@ if (typeof window.UIManager === 'undefined') {
                 .slice(0, 4);
 
             const content = document.createElement('div');
-            content.className = 'space-y-5';
+            content.className = 'detail-sheet';
 
             // ── Meta (chips) ──
             const metaChips = [
@@ -2319,16 +2319,16 @@ if (typeof window.UIManager === 'undefined') {
             const sections = [];
 
             sections.push(`
-                <div class="flex flex-wrap gap-1.5">${metaChips.join('')}</div>
+                <div class="detail-hero__facts detail-hero__facts--meta">${metaChips.join('')}</div>
             `);
 
-            // ── Fotos ──
+            // ── Fotos: faixa horizontal do herói ──
             if (photos.length > 0) {
                 sections.push(`
-                    <section>
-                        <div class="grid grid-cols-4 gap-2">
+                    <section aria-label="Photos">
+                        <div class="detail-photos">
                             ${photos.map(p => `
-                                <img src="${esc(p)}" alt="" class="w-full h-20 object-cover rounded-lg border border-gray-200">
+                                <img src="${esc(p)}" alt="" loading="lazy" class="detail-photos__img">
                             `).join('')}
                         </div>
                     </section>
@@ -2339,16 +2339,15 @@ if (typeof window.UIManager === 'undefined') {
             if (transcription) {
                 const short = transcription.length > 320;
                 sections.push(`
-                    <section>
-                        <h3 class="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
-                            <span class="material-icons text-base text-gray-500" aria-hidden="true">record_voice_over</span>
-                            Transcription
+                    <section class="detail-panel">
+                        <h3 class="detail-eyebrow">
+                            <span class="material-icons" aria-hidden="true">record_voice_over</span>Transcription
                         </h3>
-                        <div class="bg-gray-50 p-4 rounded-lg border border-gray-200 text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">
+                        <div class="detail-transcript">
                             <span class="review-transcript-text">${esc(transcription)}</span>
                         </div>
                         ${short ? `
-                            <button class="review-transcript-toggle text-xs font-medium text-blue-600 hover:text-blue-700 mt-1.5">
+                            <button class="review-transcript-toggle detail-toggle">
                                 Show less
                             </button>
                         ` : ''}
@@ -2361,41 +2360,34 @@ if (typeof window.UIManager === 'undefined') {
                 const notesBlocks = [];
                 if (notesPublic) {
                     notesBlocks.push(`
-                        <div>
-                            <h3 class="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
-                                <span class="material-icons text-base text-gray-500" aria-hidden="true">visibility</span>
-                                Public Notes
+                        <section class="detail-panel detail-panel--notes">
+                            <h3 class="detail-eyebrow">
+                                <span class="material-icons" aria-hidden="true">visibility</span>Public Notes
                             </h3>
-                            <div class="bg-amber-50 p-4 rounded-lg border border-amber-100 text-sm text-gray-700 leading-relaxed whitespace-pre-wrap">
-                                ${esc(notesPublic)}
-                            </div>
-                        </div>
+                            <div class="detail-note detail-note--public">${esc(notesPublic)}</div>
+                        </section>
                     `);
                 }
                 if (notesPrivate) {
                     notesBlocks.push(`
-                        <div>
-                            <h3 class="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
-                                <span class="material-icons text-base text-gray-500" aria-hidden="true">visibility_off</span>
-                                Private Notes
+                        <section class="detail-panel detail-panel--notes">
+                            <h3 class="detail-eyebrow">
+                                <span class="material-icons" aria-hidden="true">visibility_off</span>Private Notes
                             </h3>
-                            <div class="bg-gray-50 p-4 rounded-lg border border-gray-200 text-sm text-gray-600 leading-relaxed whitespace-pre-wrap">
-                                ${esc(notesPrivate)}
-                            </div>
-                        </div>
+                            <div class="detail-note detail-note--private">${esc(notesPrivate)}</div>
+                        </section>
                     `);
                 }
-                sections.push(`<section class="space-y-3">${notesBlocks.join('')}</section>`);
+                sections.push(`${notesBlocks.join('')}`);
             }
 
             // ── Conceitos ──
             // Categorias grandes ganham cap de 8 chips + "show all" por categoria
             const CAP = 8;
             sections.push(`
-                <section>
-                    <h3 class="text-sm font-semibold text-gray-700 mb-2 flex items-center gap-1.5">
-                        <span class="material-icons text-base text-gray-500" aria-hidden="true">category</span>
-                        Extracted Concepts
+                <section class="detail-panel">
+                    <h3 class="detail-eyebrow">
+                        <span class="material-icons" aria-hidden="true">category</span>Extracted Concepts
                     </h3>
                     ${Object.keys(categories).length === 0
                         ? '<p class="text-sm text-gray-400 italic">No concepts extracted</p>'
@@ -2442,6 +2434,27 @@ if (typeof window.UIManager === 'undefined') {
                     window.modalManager.close(modalId);
                     this.handleLinkReviewToEntity(curation);
                 });
+            } else {
+                // Vínculo ativo: abre os detalhes da ENTITY vinculada
+                // (o mesmo modal dos cards de entity)
+                const viewBtn = document.createElement('button');
+                viewBtn.className = 'btn btn-ghost btn-md';
+                viewBtn.innerHTML = '<span class="material-icons text-base" aria-hidden="true">visibility</span>View Entity';
+                footer.insertBefore(viewBtn, closeBtn);
+                viewBtn.addEventListener('click', async () => {
+                    try {
+                        const entity = await window.DataStore?.db?.entities
+                            .where('entity_id').equals(curation.entity_id).first();
+                        if (entity && window.entityModule && typeof window.entityModule.showEntityDetails === 'function') {
+                            window.modalManager.close(modalId);
+                            window.entityModule.showEntityDetails(entity);
+                        } else {
+                            this.showNotification('Linked entity not found locally', 'error');
+                        }
+                    } catch (e) {
+                        this.showNotification('Failed to load linked entity', 'error');
+                    }
+                });
             }
 
             const editBtn = document.createElement('button');
@@ -2459,7 +2472,7 @@ if (typeof window.UIManager === 'undefined') {
                 title: displayName,
                 content,
                 footer,
-                size: 'md'
+                size: 'lg'
             });
 
             closeBtn.addEventListener('click', () => window.modalManager.close(modalId));
