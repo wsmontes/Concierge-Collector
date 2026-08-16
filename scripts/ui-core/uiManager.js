@@ -557,11 +557,12 @@ if (typeof window.UIManager === 'undefined') {
             });
 
             // Frase que ensina a diferença Curations × Entities no ponto
-            // da decisão — muda junto com a aba (learnability sem docs)
+            // da decisão — muda junto com a aba (learnability sem docs).
+            // A frase das curations foi removida a pedido do usuário.
             const tabSubtitle = document.getElementById('tab-subtitle');
             if (tabSubtitle) {
                 tabSubtitle.textContent = tabName === 'curations'
-                    ? 'Your reviews, notes and recommendations.'
+                    ? ''
                     : 'Places and their factual information.';
             }
 

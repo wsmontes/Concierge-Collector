@@ -87,6 +87,10 @@ window.FindEntityModal = class FindEntityModal {
                 width: 100%;
                 max-width: 56rem;
                 max-height: calc(100vh - 2rem);
+                /* dvh: viewport DINÂMICO (chrome do browser móvel não
+                   corta o rodapé do modal — 100vh no iOS cobre a área
+                   real e o fundo fica inacessível) */
+                max-height: calc(100dvh - 1rem);
                 overflow: hidden;
                 animation: slideInUp var(--transition-normal, 300ms) var(--ease-out, ease-out);
             }
@@ -218,6 +222,16 @@ window.FindEntityModal = class FindEntityModal {
             }
 
             @media (max-width: 640px) {
+                /* Ajuste ao tamanho da tela: folha quase full-bleed
+                   (padding mínimo + dvh) em vez de card flutuante —
+                   o modal usa a altura REAL visível do aparelho */
+                #find-entity-modal {
+                    padding: 0.5rem;
+                    align-items: stretch;
+                }
+                #find-entity-modal .fem-dialog {
+                    max-height: calc(100dvh - 0.5rem);
+                }
                 #find-entity-modal .fem-filters-row {
                     grid-template-columns: repeat(2, 1fr);
                 }
