@@ -61,12 +61,18 @@ async def test_hero_skips_places_when_structured_site_image_is_strong(monkeypatc
     from app.services.restaurant_image_discovery import SourcedImageURL
 
     async def resolve(_url):
-        return [SourcedImageURL("https://site.com/hero.jpg", "website_og", 0)]
+        return [
+            SourcedImageURL("https://site.com/hero.jpg", "website_og", 0),
+            SourcedImageURL("https://site.com/body.jpg", "website_img", 1),
+        ]
 
     async def places(_place_id, max_photos=5):
         raise AssertionError("Places should not be queried for a confident site hero")
 
+    downloads = {"n": 0}
+
     async def download(url, timeout):
+        downloads["n"] += 1
         return _make_png(1800, 1200, (80, 100, 140))
 
     monkeypatch.setattr(svc, "_resolve_og_image_candidates", resolve)
@@ -76,6 +82,7 @@ async def test_hero_skips_places_when_structured_site_image_is_strong(monkeypatc
 
     images = await svc.get_restaurant_images("https://site.com", "P1", limit=1)
     assert images[0].source == "website_og"
+    assert downloads["n"] == 1
 
 
 @pytest.mark.asyncio
