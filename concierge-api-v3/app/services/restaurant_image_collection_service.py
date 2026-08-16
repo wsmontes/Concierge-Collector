@@ -47,10 +47,14 @@ async def collect_candidates(
     semaphore = asyncio.Semaphore(max(1, max_concurrency))
 
     async def process(candidate: ImageCandidate) -> Optional[CollectedImage]:
-        # Downloader ValueError is security-significant (the legacy SSRF
-        # contract propagates it as HTTP 400), so do not swallow it here.
-        async with semaphore:
-            raw = await downloader(candidate)
+        try:
+            async with semaphore:
+                raw = await downloader(candidate)
+        except Exception:
+            # A discovered candidate can be broken, blocked by SSRF, or point
+            # to a failed redirect. Reject only that candidate; validation of
+            # the restaurant page URL happens before this collection layer.
+            return None
         if raw is None:
             return None
         try:
