@@ -100,3 +100,110 @@ describe('QuickActionModule - guard de curador no openQuickActions', () => {
         expect(modalEl.classList.contains('hidden')).toBe(false);
     });
 });
+
+describe('QuickActionModule — entradas route-first (M4 da spec F1)', () => {
+    let quickActionModule;
+    let mockUIManager;
+    let modalEl;
+    let navigationManager;
+    let startBtn;
+
+    beforeEach(() => {
+        modalEl = document.createElement('div');
+        modalEl.id = 'quick-action-modal';
+        modalEl.className = 'hidden';
+        document.body.appendChild(modalEl);
+
+        startBtn = document.createElement('button');
+        startBtn.id = 'start-record';
+        document.body.appendChild(startBtn);
+
+        mockUIManager = {
+            currentCurator: null,
+            quickActionModal: modalEl,
+            isEditingRestaurant: true, // prova de que as Quick Actions não
+            editingRestaurantId: 'ent_x', // mutam mais esses flags direto
+            currentLocation: null,
+            showRecordingSection: vi.fn(),
+            showRestaurantFormSection: vi.fn(),
+            beginNewCuration: vi.fn()
+        };
+
+        navigationManager = { goTo: vi.fn() };
+        window.navigationManager = navigationManager;
+
+        global.SafetyUtils = {
+            showNotification: vi.fn(),
+            showLoading: vi.fn(),
+            hideLoading: vi.fn(),
+            addEventListenerSafely: vi.fn(),
+            elementClassSafely: (el, action, cls) => { el.classList[action](cls); },
+            getElementByIdSafely: (id) => document.getElementById(id),
+            getCurrentPosition: vi.fn().mockResolvedValue({
+                coords: { latitude: 1.5, longitude: 2.5, accuracy: 10 }
+            }),
+            setInnerHTMLSafely: vi.fn()
+        };
+
+        global.CuratorProfile = { getCurrentCurator: vi.fn(() => null) };
+
+        quickActionModule = new (loadQuickActionModule())(mockUIManager);
+    });
+
+    afterEach(() => {
+        vi.clearAllMocks();
+        document.body.innerHTML = '';
+        delete window.navigationManager;
+        delete window.modalManager;
+        delete global.CuratorProfile;
+        delete global.SafetyUtils;
+    });
+
+    it('quickRecord navega para /new/record (route-first) e mantém o auto-click', () => {
+        const clickSpy = vi.spyOn(startBtn, 'click');
+
+        quickActionModule.quickRecord();
+
+        expect(navigationManager.goTo).toHaveBeenCalledWith(
+            '/new/record',
+            { replace: true, state: { title: 'Record Review' } }
+        );
+        expect(mockUIManager.showRecordingSection).not.toHaveBeenCalled();
+        expect(clickSpy).toHaveBeenCalled();
+    });
+
+    it('quickRecord sem navigationManager cai no showRecordingSection (fallback)', () => {
+        delete window.navigationManager;
+
+        quickActionModule.quickRecord();
+
+        expect(mockUIManager.showRecordingSection).toHaveBeenCalled();
+    });
+
+    it('quickLocation usa beginNewCuration e não muta flags de edição', async () => {
+        await quickActionModule.quickLocation();
+
+        expect(mockUIManager.beginNewCuration).toHaveBeenCalled();
+        expect(mockUIManager.showRestaurantFormSection).not.toHaveBeenCalled();
+        // As flags NÃO foram resetadas pela Quick Action (o reset mora no
+        // uiManager agora)
+        expect(mockUIManager.isEditingRestaurant).toBe(true);
+        expect(mockUIManager.editingRestaurantId).toBe('ent_x');
+    });
+
+    it('quickPhoto usa beginNewCuration (modal de opções segue depois)', () => {
+        window.modalManager = { open: vi.fn(() => 'photo-modal'), close: vi.fn() };
+
+        quickActionModule.quickPhoto();
+
+        expect(mockUIManager.beginNewCuration).toHaveBeenCalled();
+        expect(window.modalManager.open).toHaveBeenCalled();
+    });
+
+    it('quickManual usa beginNewCuration', () => {
+        quickActionModule.quickManual();
+
+        expect(mockUIManager.beginNewCuration).toHaveBeenCalled();
+        expect(mockUIManager.showRestaurantFormSection).not.toHaveBeenCalled();
+    });
+});

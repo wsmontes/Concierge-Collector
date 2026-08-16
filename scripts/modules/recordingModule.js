@@ -1646,12 +1646,20 @@ class RecordingModule {
                 let draftId = null;
                 if (window.DraftRestaurantManager && window.DraftRestaurantManager.currentDraftId) {
                     draftId = window.DraftRestaurantManager.currentDraftId;
-                } else if (this.uiManager && this.uiManager.currentCurator) {
-                    // Create or get draft for current curator
-                    if (window.DraftRestaurantManager) {
-                        draftId = await window.DraftRestaurantManager.getOrCreateCurrentDraft(
-                            this.uiManager.currentCurator.id
-                        );
+                } else {
+                    // Resolução de curador igual ao conceptModule.autoSaveDraft:
+                    // CuratorProfile/OAuth (curator_id = email) primeiro,
+                    // fallback no modelo LEGADO do selector local
+                    const authCurator = window.CuratorProfile &&
+                        typeof window.CuratorProfile.getCurrentCurator === 'function'
+                        ? window.CuratorProfile.getCurrentCurator()
+                        : null;
+                    const curatorId = authCurator?.curator_id ||
+                        this.uiManager?.currentCurator?.id ||
+                        null;
+
+                    if (curatorId && window.DraftRestaurantManager) {
+                        draftId = await window.DraftRestaurantManager.getOrCreateCurrentDraft(curatorId);
                     }
                 }
 

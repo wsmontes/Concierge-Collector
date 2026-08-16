@@ -682,7 +682,13 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                 editBtn.onclick = (e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    if (window.uiManager && typeof window.uiManager.editCuration === 'function') {
+                    // Entrada externa de edição é route-first (M4 da spec
+                    // F1): o handler da rota faz checkout + abre o editor;
+                    // sem navigationManager cai no caminho direto antigo
+                    const nm = window.navigationManager;
+                    if (nm && typeof nm.goTo === 'function' && curation?.curation_id) {
+                        nm.goTo(`/curation/${curation.curation_id}/edit`, { state: { curation } });
+                    } else if (window.uiManager && typeof window.uiManager.editCuration === 'function') {
                         window.uiManager.editCuration(curation);
                     }
                 };

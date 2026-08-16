@@ -184,8 +184,13 @@ class ConceptModule {
         const saveBtn = document.getElementById('save-restaurant');
         if (saveBtn) {
             saveBtn.addEventListener('click', async () => {
-                await this.saveRestaurant();
-                this.uiManager.formIsDirty = false; // Reset after save
+                // Dirty só é limpo quando o save realmente persistiu —
+                // os early returns de validação retornam false e mantêm
+                // o flag (o guard de navegação confia nele)
+                const saved = await this.saveRestaurant();
+                if (saved) {
+                    this.uiManager.formIsDirty = false;
+                }
             });
         }
 
@@ -314,16 +319,49 @@ class ConceptModule {
     }
 
     /**
+     * Resolve o ID do curador para rascunhos — mesma resolução do
+     * openQuickActions (quickActionModule): CuratorProfile/OAuth é a
+     * verdade de auth (curator_id = email); uiManager.currentCurator é o
+     * modelo LEGADO do selector local e fica null pra quem só logou via
+     * Google. Sem nenhum dos dois → null (caller pula silenciosamente).
+     * @returns {string|null} curator_id (email) ou id legado
+     */
+    resolveCuratorId() {
+        const authCurator = window.CuratorProfile &&
+            typeof window.CuratorProfile.getCurrentCurator === 'function'
+            ? window.CuratorProfile.getCurrentCurator()
+            : null;
+        if (authCurator?.curator_id) {
+            return authCurator.curator_id;
+        }
+        return this.uiManager?.currentCurator?.id || null;
+    }
+
+    /**
      * Auto-save draft restaurant data
      */
     async autoSaveDraft() {
         try {
-            if (!this.uiManager || !this.uiManager.currentCurator) {
-                return; // No curator selected, can't save draft
+            if (!this.uiManager) {
+                return;
             }
 
             // Don't auto-save if we're editing an existing saved restaurant
             if (this.uiManager.isEditingRestaurant && this.uiManager.editingRestaurantId) {
+                return;
+            }
+
+            // Degraded mode (IndexedDB indisponível): sem onde gravar, skip
+            // silencioso — o editor continua funcional em memória
+            const draftManager = window.DraftRestaurantManager;
+            if (!draftManager || !draftManager.dataStorage?.db) {
+                return;
+            }
+
+            // Curador autenticado (CuratorProfile/OAuth) OU curador legado;
+            // sem curador não gravar rascunho órfão (skip silencioso)
+            const curatorId = this.resolveCuratorId();
+            if (!curatorId) {
                 return;
             }
 
@@ -354,25 +392,86 @@ class ConceptModule {
                 return; // Nothing to save
             }
 
-            // DISABLED: DraftRestaurantManager uses old database schema
-            // Will be re-enabled after schema migration
-            /*
-            if (window.DraftRestaurantManager) {
-                const draftId = await window.DraftRestaurantManager.getOrCreateCurrentDraft(
-                    this.uiManager.currentCurator.id
-                );
-                
-                await window.DraftRestaurantManager.autoSaveDraft(draftId, draftData);
-                this.log.debug('Draft auto-saved');
-            }
-            */
+            const draftId = await draftManager.getOrCreateCurrentDraft(curatorId);
+            await draftManager.autoSaveDraft(draftId, draftData);
+            this.log.debug('Draft auto-saved');
         } catch (error) {
             this.log.error('Error auto-saving draft:', error);
             // Don't show error to user - auto-save should be silent
         }
     }
 
-    async discardRestaurant() {
+    /**
+     * Restaura o rascunho persistido no formulário, quando fizer sentido:
+     * somente em modo novo (nunca em edição de item existente), somente com
+     * formulário vazio (previne overwrite de digitação recente) e somente
+     * se o draft tiver dados. O draft É o estado salvo — restaura com
+     * formIsDirty = false (M3 da spec F1).
+     */
+    async restoreDraftIfPresent() {
+        try {
+            const draftManager = window.DraftRestaurantManager;
+            if (!draftManager || !draftManager.dataStorage?.db) {
+                return; // Degraded mode: sem onde ler
+            }
+
+            // Nunca restaurar por cima de uma edição de item existente
+            if (this.uiManager.isEditingRestaurant || this.uiManager.isEditingEntity) {
+                return;
+            }
+
+            // Formulário dirty = trabalho recente não persistido: o guard
+            // de navegação é a proteção; restore não sobrescreve
+            if (this.uiManager.formIsDirty) {
+                return;
+            }
+
+            const curatorId = this.resolveCuratorId();
+            if (!curatorId) {
+                return;
+            }
+
+            // Formulário com conteúdo = usuário já começou a digitar
+            const nameInput = document.getElementById('restaurant-name');
+            const transcriptionTextarea = document.getElementById('restaurant-transcription');
+            const descriptionInput = document.getElementById('restaurant-description');
+            const hasFormContent = !!(
+                (nameInput && nameInput.value.trim()) ||
+                (transcriptionTextarea && transcriptionTextarea.value.trim()) ||
+                (descriptionInput && descriptionInput.value.trim()) ||
+                (this.uiManager.currentConcepts && this.uiManager.currentConcepts.length > 0)
+            );
+            if (hasFormContent) {
+                return;
+            }
+
+            const draftId = await draftManager.getOrCreateCurrentDraft(curatorId);
+            const draft = await draftManager.getDraft(draftId);
+            if (!draft || !draftManager.hasData(draft)) {
+                return;
+            }
+
+            // Preenche o formulário com o estado salvo
+            if (nameInput) nameInput.value = draft.name || '';
+            if (transcriptionTextarea) transcriptionTextarea.value = draft.transcription || '';
+            if (descriptionInput) descriptionInput.value = draft.description || '';
+            this.uiManager.currentConcepts = draft.concepts || [];
+            this.uiManager.currentLocation = draft.location || null;
+            this.uiManager.currentPhotos = draft.photos || [];
+            this.uiManager.formIsDirty = false; // o draft É o estado salvo
+
+            SafetyUtils.showNotification('Draft restored', 'info');
+
+            // Render do estado restaurado (discreto — falha de render não
+            // desfaz o restore; o catch externo registra)
+            await this.renderConcepts();
+            this.updateDescriptionWordCount();
+        } catch (error) {
+            this.log.warn('Error restoring draft:', error);
+        }
+    }
+
+    async discardRestaurant({ keepDraft = false } = {}) {
         const entityModule = this.uiManager?.entityModule || window.entityModule;
         if (this.uiManager?.isEditingEntity && entityModule?.cancelEntityEdit) {
             await entityModule.cancelEntityEdit();
@@ -390,12 +489,16 @@ class ConceptModule {
                 if (entityId) {
                     await window.PendingAudioManager.deleteAudios({ restaurantId: entityId });
                 }
-                if (draftId) {
+                // keepDraft (saída sem dirty via guard): o áudio pendente
+                // associado ao draft sobrevive junto com o rascunho
+                if (draftId && !keepDraft) {
                     await window.PendingAudioManager.deleteAudios({ draftId });
                 }
             }
 
-            if (draftId && window.DraftRestaurantManager) {
+            // keepDraft preserva o rascunho — ele é a cópia de segurança
+            // entre sessões; Discard explícito e Save continuam deletando
+            if (draftId && !keepDraft && window.DraftRestaurantManager) {
                 await window.DraftRestaurantManager.deleteDraft(draftId);
             }
 
@@ -482,8 +585,7 @@ class ConceptModule {
     async saveRestaurant() {
         const entityModule = this.uiManager?.entityModule || window.entityModule;
         if (this.uiManager?.isEditingEntity && entityModule?.saveEntityFromForm) {
-            await entityModule.saveEntityFromForm();
-            return;
+            return await entityModule.saveEntityFromForm();
         }
 
         this.log.debug('Save/update restaurant button clicked');
@@ -498,12 +600,12 @@ class ConceptModule {
             const nameError = document.getElementById('restaurant-name-error');
             if (nameError) nameError.classList.remove('hidden');
             nameInput?.focus();
-            return;
+            return false;
         }
 
         if (!this.uiManager.currentConcepts || this.uiManager.currentConcepts.length === 0) {
             SafetyUtils.showNotification('Please add at least one concept', 'error');
-            return;
+            return false;
         }
 
         // Get transcription text
@@ -522,7 +624,7 @@ class ConceptModule {
                 `Description exceeds 30 words (${descriptionWordCount}). Please shorten it.`,
                 'error'
             );
-            return;
+            return false;
         }
 
         try {
@@ -788,10 +890,16 @@ class ConceptModule {
                     this.uiManager.loadTabData(this.uiManager.currentTab || 'curations');
                 }
             }
+
+            // Contrato booleano: true apenas quando a curadoria/entity foi
+            // realmente persistida — o handler do Save limpa o formIsDirty
+            // SÓ com este resultado (ver M2 da spec F1)
+            return true;
         } catch (error) {
             SafetyUtils.hideLoading();
             this.log.error('Error saving restaurant:', error);
             SafetyUtils.showNotification(`Error ${this.uiManager.isEditingRestaurant ? 'updating' : 'saving'} restaurant: ${error.message}`, 'error');
+            return false;
         }
     }
 

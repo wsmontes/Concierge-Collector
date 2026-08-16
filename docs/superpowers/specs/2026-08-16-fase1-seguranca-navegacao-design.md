@@ -1,7 +1,7 @@
 # Fase 1 — Segurança contra perda de trabalho + consistência de navegação
 
 **Data:** 2026-08-16
-**Status:** Aguardando review do usuário
+**Status:** Implementada e mergeada (M1–M5 + testes, 2026-08-16)
 **Ciclo:** Remediação dos 8 grupos da revisão UX (135 pontos → 8 tensões estruturais)
 
 ## Contexto

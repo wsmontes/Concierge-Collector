@@ -218,6 +218,8 @@ body:has(.toolbar-fixed-bottom:not(.hidden)) #app {
    no desktop permanece invisível mesmo sem a classe .hidden */
 #mobile-nav-context {
     display: none;
+    /* âncora do título centralizado na viewport (M5 da spec F1) */
+    position: relative;
 }
 
 @media (max-width: 639px) {
@@ -230,9 +232,12 @@ body:has(.toolbar-fixed-bottom:not(.hidden)) #app {
         align-items: center;
         gap: 0.5rem;
         padding: 0.25rem 0 0.75rem;
+        /* min-height implícita: o botão (44px) continua no fluxo */
     }
 
-    #mobile-nav-context .back-button {
+    /* O markup real é <button id="mobile-back-btn"> — o seletor antigo
+       (.back-button) não casava e o botão ficava com estilo de browser */
+    #mobile-back-btn {
         padding-left: 0;
         font-weight: var(--font-weight-medium, 500);
         color: var(--color-info, #3d5a80);
@@ -247,8 +252,11 @@ body:has(.toolbar-fixed-bottom:not(.hidden)) #app {
         overflow: hidden;
         text-overflow: ellipsis;
         white-space: nowrap;
-        flex: 1;
-        text-align: center;
+        /* centralizado na VIEWPORT (não no espaço restante após o botão) */
+        position: absolute;
+        left: 50%;
+        transform: translateX(-50%);
+        max-width: 60%;
     }
 }
 

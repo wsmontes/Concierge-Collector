@@ -140,14 +140,20 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
         if (this.uiManager.quickActionModal) {
             SafetyUtils.elementClassSafely(this.uiManager.quickActionModal, 'add', 'hidden', 'QuickActionModule');
         }
-        
-        // Safely show recording section
-        if (this.uiManager && typeof this.uiManager.showRecordingSection === 'function') {
+
+        // Route-first (M4 da spec F1): o handler de /new/record mostra a
+        // section — a URL e a tela descrevem o mesmo estado; replace como
+        // no showRecordingSection canônico (back volta para antes do fluxo);
+        // sem navigationManager, cai no caminho direto antigo
+        const nm = window.navigationManager;
+        if (nm && typeof nm.goTo === 'function') {
+            nm.goTo('/new/record', { replace: true, state: { title: 'Record Review' } });
+        } else if (this.uiManager && typeof this.uiManager.showRecordingSection === 'function') {
             this.uiManager.showRecordingSection();
         } else {
             this.log.warn('QuickActionModule: showRecordingSection not available');
         }
-        
+
         // Auto-click the start recording button if available.
         // O id REAL é start-record (start-recording não existe — o clique
         // nunca achava o botão e a ação parecia morta)
@@ -184,15 +190,12 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
             
             SafetyUtils.hideLoading();
             SafetyUtils.showNotification('Location saved successfully');
-            
-            // Reset editing state to ensure we're in "new restaurant" mode
-            if (this.uiManager) {
-                this.uiManager.isEditingRestaurant = false;
-                this.uiManager.editingRestaurantId = null;
-            }
-            
-            // Safely show restaurant form section
-            if (this.uiManager && typeof this.uiManager.showRestaurantFormSection === 'function') {
+
+            // Entrada de nova curadoria centralizada no uiManager (M4 da
+            // spec F1): sem mutação direta de flags de edição por aqui
+            if (this.uiManager && typeof this.uiManager.beginNewCuration === 'function') {
+                this.uiManager.beginNewCuration();
+            } else if (this.uiManager && typeof this.uiManager.showRestaurantFormSection === 'function') {
                 this.uiManager.showRestaurantFormSection();
             } else {
                 this.log.warn('QuickActionModule: showRestaurantFormSection not available');
@@ -225,15 +228,12 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
         if (this.uiManager.quickActionModal) {
             SafetyUtils.elementClassSafely(this.uiManager.quickActionModal, 'add', 'hidden', 'QuickActionModule');
         }
-        
-        // Reset editing state to ensure we're in "new restaurant" mode
-        if (this.uiManager) {
-            this.uiManager.isEditingRestaurant = false;
-            this.uiManager.editingRestaurantId = null;
-        }
-        
-        // Safely show restaurant form section
-        if (this.uiManager && typeof this.uiManager.showRestaurantFormSection === 'function') {
+
+        // Entrada de nova curadoria centralizada no uiManager (M4 da
+        // spec F1): sem mutação direta de flags de edição por aqui
+        if (this.uiManager && typeof this.uiManager.beginNewCuration === 'function') {
+            this.uiManager.beginNewCuration();
+        } else if (this.uiManager && typeof this.uiManager.showRestaurantFormSection === 'function') {
             this.uiManager.showRestaurantFormSection();
         } else {
             this.log.warn('QuickActionModule: showRestaurantFormSection not available');
@@ -290,15 +290,12 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
         if (this.uiManager.quickActionModal) {
             SafetyUtils.elementClassSafely(this.uiManager.quickActionModal, 'add', 'hidden', 'QuickActionModule');
         }
-        
-        // Reset editing state to ensure we're in "new restaurant" mode
-        if (this.uiManager) {
-            this.uiManager.isEditingRestaurant = false;
-            this.uiManager.editingRestaurantId = null;
-        }
-        
-        // Safely show restaurant form section
-        if (this.uiManager && typeof this.uiManager.showRestaurantFormSection === 'function') {
+
+        // Entrada de nova curadoria centralizada no uiManager (M4 da
+        // spec F1): sem mutação direta de flags de edição por aqui
+        if (this.uiManager && typeof this.uiManager.beginNewCuration === 'function') {
+            this.uiManager.beginNewCuration();
+        } else if (this.uiManager && typeof this.uiManager.showRestaurantFormSection === 'function') {
             this.uiManager.showRestaurantFormSection();
         } else {
             this.log.warn('QuickActionModule: showRestaurantFormSection not available');

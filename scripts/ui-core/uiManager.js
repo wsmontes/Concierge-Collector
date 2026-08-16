@@ -2651,14 +2651,43 @@ if (typeof window.UIManager === 'undefined') {
             this.switchView('concepts');
             window.scrollTo({ top: 0, behavior: 'auto' });
 
-            // Navegação explícita: modo novo ganha a rota #/new/edit
-            // (replace — o back do browser volta para antes do editor,
-            // não para estados intermediários do fluxo de criação)
+            // Restauração de rascunho SOMENTE em modo novo (nunca em
+            // edição de item existente) — o método só age com formulário
+            // vazio e sem dirty (M3 da spec F1)
+            if (!this.isEditingRestaurant && !this.isEditingEntity &&
+                this.conceptModule && typeof this.conceptModule.restoreDraftIfPresent === 'function') {
+                this.conceptModule.restoreDraftIfPresent();
+            }
+
+            // Navegação explícita por modo (replace — o back do browser
+            // volta para antes do editor, não para estados intermediários):
+            // toda transição de tela reflete a rota, também em edição
             const nm = window.navigationManager;
-            if (nm && typeof nm.goTo === 'function' &&
-                !this.isEditingRestaurant && !this.isEditingEntity &&
-                nm.getCurrentRoute?.()?.path !== '/new/edit') {
-                nm.goTo('/new/edit', { replace: true, state: { title: 'New Curation' } });
+            if (nm && typeof nm.goTo === 'function') {
+                const currentPath = nm.getCurrentRoute?.()?.path;
+
+                if (this.isEditingEntity) {
+                    // A entity em edição está disponível via restaurantModule
+                    // (startEntityEdit associa antes de chamar este método)
+                    const entity = this.restaurantModule?.currentEntity ||
+                        window.entityModule?.editingEntity ||
+                        null;
+                    const entityId = entity?.entity_id || this.editingRestaurantId;
+                    if (entityId && currentPath !== `/entity/${entityId}/edit`) {
+                        nm.goTo(`/entity/${entityId}/edit`, { replace: true, state: { entity, title: 'Edit Entity' } });
+                    }
+                } else if (this.isEditingRestaurant) {
+                    // A curation em edição está associada antes deste método
+                    // (restaurantModule.editCuration); sem objeto não há id
+                    // de curation confiável — preserva o comportamento antigo
+                    const curation = this.restaurantModule?.currentCuration || null;
+                    const curationId = curation?.curation_id;
+                    if (curationId && currentPath !== `/curation/${curationId}/edit`) {
+                        nm.goTo(`/curation/${curationId}/edit`, { replace: true, state: { curation, title: 'Edit Curation' } });
+                    }
+                } else if (currentPath !== '/new/edit') {
+                    nm.goTo('/new/edit', { replace: true, state: { title: 'New Curation' } });
+                }
             }
 
             // Update toolbar title based on mode
@@ -2683,6 +2712,17 @@ if (typeof window.UIManager === 'undefined') {
             if (this.conceptModule && typeof this.conceptModule.updateDescriptionWordCount === 'function') {
                 this.conceptModule.updateDescriptionWordCount();
             }
+        }
+
+        /**
+         * Entrada de "nova curadoria" para as Quick Actions: reseta as
+         * flags de edição (antes mutadas diretamente pelo quickActionModule)
+         * e abre o editor em modo novo com a rota correspondente.
+         */
+        beginNewCuration() {
+            this.isEditingRestaurant = false;
+            this.editingRestaurantId = null;
+            this.showRestaurantFormSection();
         }
 
         showRecordingSection() {

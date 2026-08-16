@@ -513,14 +513,14 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
     async saveEntityFromForm() {
         if (!this.editingEntity?.entity_id) {
             window.uiUtils?.showNotification?.('No entity selected for editing', 'error');
-            return;
+            return false;
         }
 
         const get = (id) => document.getElementById(id);
         const name = get('restaurant-name')?.value?.trim() || '';
         if (!name) {
             window.uiUtils?.showNotification?.('Entity name is required', 'error');
-            return;
+            return false;
         }
 
         try {
@@ -593,6 +593,10 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
             window.uiUtils?.showNotification?.('Entity metadata updated', 'success');
             await this.cancelEntityEdit(true);
             await this.refresh();
+
+            // Contrato booleano (M2 da spec F1): true só após persistir —
+            // o conceptModule propaga este resultado ao handler do Save
+            return true;
         } catch (error) {
             this.log.error('Failed to save entity metadata:', error);
             window.uiUtils?.showNotification?.('Failed to save entity: ' + error.message, 'error');

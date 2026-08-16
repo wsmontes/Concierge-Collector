@@ -875,7 +875,9 @@ function registerNavigationGuard(nm) {
         if (m.conceptModule && typeof m.conceptModule.discardRestaurant === 'function') {
             window.__leavingEdit = true;
             try {
-                await m.conceptModule.discardRestaurant();
+                // Sair sem dirty preserva o rascunho (cópia de segurança
+                // entre sessões); sair com dirty + confirm deleta
+                await m.conceptModule.discardRestaurant({ keepDraft: !dirty });
             } finally {
                 window.__leavingEdit = false;
             }
