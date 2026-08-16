@@ -233,44 +233,6 @@ window.uiUtils = {
             // Auto-focus the cancel button for safety
             modal.querySelector('#confirm-cancel').focus();
         });
-    },
-
-    /**
-     * Data relativa para feedback de UI ("2 hours ago", "3 days ago").
-     * Implementação canônica (padrão feedmine: RelativeTimeFormat
-     * cacheado) — sync activity e ConflictResolutionModal delegam
-     * aqui para não duplicar; acima de ~30 dias vira data absoluta.
-     * @param {string} dateStr - ISO timestamp
-     * @returns {string} - Data relativa ou absoluta
-     */
-    formatRelativeDate: function (dateStr) {
-        if (!dateStr) return 'Unknown';
-        const date = new Date(dateStr);
-        if (isNaN(date.getTime())) return dateStr;
-
-        const diffSec = Math.round((date.getTime() - Date.now()) / 1000);
-        const abs = Math.abs(diffSec);
-        let unit;
-        let value;
-        if (abs < 60) {
-            unit = 'second';
-            value = diffSec;
-        } else if (abs < 3600) {
-            unit = 'minute';
-            value = Math.round(diffSec / 60);
-        } else if (abs < 86400) {
-            unit = 'hour';
-            value = Math.round(diffSec / 3600);
-        } else if (abs < 86400 * 30) {
-            unit = 'day';
-            value = Math.round(diffSec / 86400);
-        } else {
-            return date.toLocaleString();
-        }
-        if (!uiUtils._relFormatter) {
-            uiUtils._relFormatter = new Intl.RelativeTimeFormat('en', { numeric: 'auto' });
-        }
-        return uiUtils._relFormatter.format(value, unit);
     }
 };
 

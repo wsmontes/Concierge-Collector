@@ -12,10 +12,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 function loadModal() {
   delete globalThis.ConflictResolutionModal;
-  // Ordem espelhando o index.html: uiUtils.js define o formatter
-  // canônico (formatRelativeDate) antes do modal delegar para ele
-  const uiUtilsSrc = readFileSync(path.resolve(__dirname, '../scripts/ui-core/uiUtils.js'), 'utf8');
-  new Function('window', `${uiUtilsSrc}\n;`)(window); // eslint-disable-line no-new-func
   const src = readFileSync(path.resolve(__dirname, '../scripts/ui/conflictResolutionModal.js'), 'utf8');
   new Function('window', `${src}\n;`)(window); // eslint-disable-line no-new-func
   // o tail do arquivo já expõe a INSTÂNCIA singleton

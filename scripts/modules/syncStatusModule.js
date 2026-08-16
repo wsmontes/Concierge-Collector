@@ -171,15 +171,13 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
                     </span>
                 `;
             }
-            // Show synced status — NORMAL É SILENCIOSO (auditoria, ponto 21):
-            // nada de verde permanente; o badge normal fica neutro e discreto.
-            // Verde/âmbar/vermelho são reservados para eventos que pedem ação.
+            // Show synced status
             else if (status.isOnline && status.lastSync && status.lastSync.push) {
                 const lastSyncTime = this.getTimeAgo(new Date(status.lastSync.push));
                 statusHtml = `
-                    <button
+                    <button 
                         id="btn-sync-details"
-                        class="flex items-center gap-1 text-xs sm:text-sm text-gray-500 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-400 rounded px-2 py-1.5 min-h-8"
+                        class="flex items-center gap-1 text-xs sm:text-sm text-green-600 hover:text-green-700 focus:outline-none focus:ring-2 focus:ring-green-500 rounded px-2 py-1.5 min-h-8"
                         title="Last synced: ${lastSyncTime}"
                     >
                         <span class="material-icons text-xl">cloud_done</span>
@@ -196,11 +194,10 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
                     </span>
                 `;
             }
-            // Default: show ready status — neutro como o estado synced
-            // (normal é silencioso; cor é para evento)
+            // Default: show ready status
             else {
                 statusHtml = `
-                    <span class="flex items-center gap-1 text-xs sm:text-sm text-gray-500" title="Ready">
+                    <span class="flex items-center gap-1 text-xs sm:text-sm text-green-600" title="Ready">
                         <span class="material-icons text-xl">cloud_done</span>
                         <span class="hidden sm:inline">Ready</span>
                     </span>
@@ -533,12 +530,15 @@ const SyncStatusModule = ModuleWrapper.defineClass('SyncStatusModule', class {
     }
 
     /**
-     * Get human-readable time ago — delega para o formatter canônico
-     * (uiUtils.formatRelativeDate): "2 hours ago" via
-     * Intl.RelativeTimeFormat, absoluto além de ~30 dias.
+     * Get human-readable time ago
      */
     getTimeAgo(date) {
-        return window.uiUtils.formatRelativeDate(date);
+        const seconds = Math.floor((new Date() - date) / 1000);
+
+        if (seconds < 60) return 'just now';
+        if (seconds < 3600) return `${Math.floor(seconds / 60)}m ago`;
+        if (seconds < 86400) return `${Math.floor(seconds / 3600)}h ago`;
+        return `${Math.floor(seconds / 86400)}d ago`;
     }
 
     /**

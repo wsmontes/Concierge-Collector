@@ -53,7 +53,8 @@ body {
   overflow-x: hidden;
   overflow-x: clip;
   /* Estabilização mobile: o browser NÃO captura overscroll horizontal
-     (pan lateral / back-swipe acidental) */
+     (pan lateral / back-swipe) — pré-requisito para gestos próprios
+     do app (swipe actions futuras) sem conflito */
   overscroll-behavior-x: none;
   overscroll-behavior-y: contain;
   min-height: 100%;
@@ -123,9 +124,34 @@ section {
   overflow: hidden; /* For ripple effect containment */
 }
 
-/* Ripple e hover removidos (ago/2026): seção estática não deve
-   reagir como clicável — elevation/hover ficam só para cards e
-   botões. O ::after de ripple também quebrava o sticky do editor. */
+/* Android ripple effect for sections */
+section::after {
+  content: '';
+  display: block;
+  position: absolute;
+  width: 100%;
+  height: 100%;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  background-image: radial-gradient(circle, rgba(0, 0, 0, 0.1) 10%, transparent 10.01%);
+  background-repeat: no-repeat;
+  background-position: 50%;
+  transform: scale(10, 10);
+  opacity: 0;
+  transition: transform 0.4s, opacity 0.8s;
+}
+
+section:active::after {
+  transform: scale(0, 0);
+  opacity: 0.3;
+  transition: 0s;
+}
+
+section:not(.hidden):hover {
+  box-shadow: var(--shadow-md);
+  border-color: rgba(230, 230, 240, 1);
+}
 
 /* Optimize animation performance for Android */
 @keyframes fade-slide-up {
@@ -241,6 +267,33 @@ input[type="file"] {
   padding: 0.625rem;
   background-color: var(--color-neutral-50);
   border: 1px dashed var(--color-neutral-300);
+}
+
+/* Custom file input styling */
+.file-input-container {
+  position: relative;
+  display: block;
+  padding: 1.25rem;
+  border: 1px dashed var(--color-neutral-300);
+  border-radius: var(--radius);
+  background-color: var(--color-neutral-50);
+  text-align: center;
+  cursor: pointer;
+  transition: background-color var(--transition-base);
+}
+
+.file-input-container:hover {
+  background-color: var(--color-neutral-100);
+}
+
+.file-input-container input[type="file"] {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
 }
 
 /* ===== Buttons ===== */
@@ -393,6 +446,37 @@ button:not([class]) .material-icons {
   animation: blink 1s infinite;
 }
 
+/* Pulsate animation for timer */
+@keyframes pulsate {
+    0% {
+        transform: scale(1);
+        opacity: 0.5;
+    }
+    50% {
+        transform: scale(1.05);
+        opacity: 0.7;
+    }
+    100% {
+        transform: scale(1);
+        opacity: 0.5;
+    }
+}
+
+.pulsate {
+    animation: pulsate 1.5s infinite ease-in-out;
+}
+
+/* Processing step styling */
+.processing-step {
+    display: flex;
+    align-items: center;
+    margin-bottom: 8px;
+}
+
+.processing-step .material-icons {
+    margin-right: 8px;
+}
+
 /* Processing states */
 .processing-step {
   padding: 0.5rem;
@@ -530,38 +614,56 @@ audio {
 .concept-card.food-style { border-left-color: #97722e; } /* bronze-escuro */
 .concept-card.drinks { border-left-color: #8fa075; } /* oliva-claro */
 
-/* Concept Tags — padrão CHIP do design system (ago/2026): os gradientes
-   Tailwind saturados (red-500→red-400 etc.) eram a única região neon do
-   app. Agora fundo suave + tinta escura da mesma família das bordas do
-   .concept-card acima — mesma linguagem das tags do resto da UI. */
+/* Concept Tags */
 .concept-tag {
   display: inline-block;
   padding: 0.25rem 0.75rem;
   font-size: 0.75rem;
   font-weight: 600;
   line-height: 1.25;
-  background: var(--chip-neutral-bg);
-  color: var(--chip-neutral-fg);
+  color: white;
   border-radius: var(--radius-full);
   margin: 0.125rem;
   transition: transform var(--transition-base);
+  box-shadow: var(--shadow-sm);
 }
 
 .concept-tag:hover {
   transform: translateY(-1px);
 }
 
-/* Concept Tag Colors — tons do tema concierge */
-.concept-tag.cuisine { background: var(--chip-danger-bg); color: var(--chip-danger-fg); }
-.concept-tag.menu { background: var(--chip-info-bg); color: var(--chip-info-fg); }
-.concept-tag.price-range { background: var(--chip-success-bg); color: var(--chip-success-fg); }
-.concept-tag.mood { background: var(--chip-accent-bg); color: var(--chip-accent-fg); }
-.concept-tag.setting { background: var(--chip-warning-bg); color: var(--chip-warning-fg); }
-.concept-tag.crowd { background: #f6e2df; color: #8a302b; }        /* tijolo-claro */
-.concept-tag.suitable-for { background: var(--color-primary-50); color: var(--color-primary-800); }
-.concept-tag.food-style { background: var(--chip-warning-bg); color: var(--chip-warning-fg); }
-.concept-tag.drinks { background: var(--color-primary-100); color: var(--color-primary-800); }
-.concept-tag.special-features { background: var(--chip-accent-bg); color: var(--chip-accent-fg); }
+/* Concept Tag Colors with Gradients */
+.concept-tag.cuisine { 
+  background: linear-gradient(135deg, #f87171, #ef4444); 
+}
+.concept-tag.menu { 
+  background: linear-gradient(135deg, #60a5fa, #3b82f6); 
+}
+.concept-tag.price-range { 
+  background: linear-gradient(135deg, #34d399, #10b981); 
+}
+.concept-tag.mood { 
+  background: linear-gradient(135deg, #a78bfa, #8b5cf6); 
+}
+.concept-tag.setting { 
+  background: linear-gradient(135deg, #fbbf24, #f59e0b); 
+}
+.concept-tag.crowd { 
+  background: linear-gradient(135deg, #f472b6, #ec4899); 
+}
+.concept-tag.suitable-for { 
+  background: linear-gradient(135deg, #2dd4bf, #14b8a6); 
+}
+.concept-tag.food-style { 
+  background: linear-gradient(135deg, #fb923c, #f97316); 
+}
+.concept-tag.drinks { 
+  background: linear-gradient(135deg, #4ade80, #22c55e); 
+}
+.concept-tag.special-features { 
+  background: linear-gradient(135deg, #818cf8, #6366f1); 
+  /* Indigo gradient - distinct from other categories */
+}
 
 /* Concept suggestions dropdown */
 #concept-suggestions {
@@ -649,6 +751,72 @@ audio {
     100% { opacity: 1; transform: translateY(0); }
 }
 
+/* ===== Restaurant Cards ===== */
+.restaurant-card {
+  position: relative;
+  padding: 1.25rem;
+  background-color: white;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-neutral-100);
+  box-shadow: var(--shadow-sm);
+  transition: all var(--transition-normal);
+  overflow: hidden;
+  animation: fade-up 400ms ease-out;
+}
+
+@keyframes fade-up {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.restaurant-card:hover {
+  transform: translateY(-4px);
+  box-shadow: var(--shadow-md);
+  border-color: var(--color-neutral-200);
+}
+
+.restaurant-card h3 {
+  font-size: 1.125rem;
+  font-weight: 700;
+  margin-bottom: 0.5rem;
+  color: var(--color-neutral-900);
+}
+
+.restaurant-card p {
+  color: var(--color-neutral-600);
+  font-size: 0.875rem;
+  margin-bottom: 0.5rem;
+}
+
+.restaurant-card .view-details {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  color: var(--color-primary);
+  font-weight: 600;
+  font-size: 0.875rem;
+  margin-top: 0.75rem;
+  text-decoration: none;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--color-primary-300);
+  border-radius: var(--radius);
+  transition: all var(--transition-base);
+  background-color: rgba(124, 58, 237, 0.05);
+}
+
+.restaurant-card .view-details:hover {
+  background-color: rgba(124, 58, 237, 0.1);
+  transform: translateY(-1px);
+  box-shadow: var(--shadow-sm);
+}
+
 /* ===== Location Display ===== */
 #location-display {
   background-color: var(--color-neutral-50);
@@ -699,7 +867,7 @@ audio {
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background-color: rgba(176, 67, 59, 0.9); /* tijolo — era o red-500 cru */
+  background-color: rgba(239, 68, 68, 0.9);
   color: white;
   display: flex;
   align-items: center;
@@ -715,7 +883,7 @@ audio {
 .photo-delete-btn:hover {
   opacity: 1;
   transform: scale(1.1);
-  background-color: var(--color-error-dark);
+  background-color: rgb(239, 68, 68);
 }
 
 .photo-delete-btn .material-icons {
@@ -761,9 +929,7 @@ audio {
 }
 
 #fab:hover {
-  /* rotate(45deg) removido (ago/2026): o "+" virar "×" no hover sugeria
-     "fechar" quando o botão ABRE — affordance enganosa */
-  transform: scale(1.1);
+  transform: scale(1.1) rotate(45deg);
   box-shadow: 0 15px 20px rgba(0, 0, 0, 0.2);
 }
 
@@ -898,6 +1064,36 @@ audio {
   }
 }
 
+/* ===== File Upload Container ===== */
+.file-input-container {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 1.5rem;
+  border: 2px dashed var(--color-neutral-300);
+  border-radius: var(--radius-md);
+  background-color: var(--color-neutral-50);
+  text-align: center;
+  cursor: pointer;
+  transition: all var(--transition-base);
+}
+
+.file-input-container:hover {
+  border-color: var(--color-primary-300);
+  background-color: rgba(92, 107, 74, 0.06); /* tint oliva — era roxo antigo */
+}
+
+.file-input-container input[type="file"] {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
 /* ===== Better Material Icons Alignment ===== */
 section h2 .material-icons {
   margin-right: 0.5rem;
@@ -967,6 +1163,10 @@ button:not([class]) .material-icons {
     padding: 0.5rem 1rem;
   }
   
+  .restaurant-card {
+    padding: 1rem;
+  }
+  
   #fab {
     bottom: 1rem;
     right: 1rem;
@@ -982,6 +1182,12 @@ button:not([class]) .material-icons {
    design-system em ago/2026. */
 
 /* Android WebView and Samsung Internet fixes for dark mode */
+@media all and (-ms-high-contrast: none), (-ms-high-contrast: active) {
+  .dark-mode-fix {
+    color-scheme: light dark;
+  }
+}
+
 /* Fix for inconsistent font rendering on Android */
 @media screen and (max-width: 768px) {
   body {
@@ -1029,6 +1235,71 @@ button:not([class]) .material-icons {
   transform: translateY(0);
 }
 
+/* ===== Image Preview Modal ===== */
+#image-preview-modal {
+  backdrop-filter: blur(5px);
+  -webkit-backdrop-filter: blur(5px);
+}
+
+#image-preview-modal .bg-white {
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-lg);
+  animation: modal-slide-in var(--transition-normal);
+}
+
+#image-preview-modal img {
+  object-fit: contain;
+  background: repeating-conic-gradient(#f3f4f6 0% 25%, white 0% 50%) 50% / 20px 20px;
+  max-height: 300px;
+  margin: 0 auto;
+  transition: transform var(--transition-normal);
+}
+
+#image-preview-modal img:hover {
+  transform: scale(1.02);
+}
+
+#image-preview-modal input[type="checkbox"] {
+  accent-color: var(--color-primary);
+  width: 16px;
+  height: 16px;
+}
+
+/* Navigation buttons in image preview */
+#image-preview-modal button[id^="prev-image"],
+#image-preview-modal button[id^="next-image"] {
+  opacity: 0.8;
+  transition: opacity 0.2s, background-color 0.2s;
+}
+
+#image-preview-modal button[id^="prev-image"]:hover:not([disabled]),
+#image-preview-modal button[id^="next-image"]:hover:not([disabled]) {
+  opacity: 1;
+  background-color: rgba(255, 255, 255, 0.9);
+}
+
+#image-preview-modal #close-preview-modal {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background-color: var(--color-neutral-100);
+  transition: background-color var(--transition-base);
+}
+
+#image-preview-modal #close-preview-modal:hover {
+  background-color: var(--color-neutral-200);
+}
+
+/* Pagination indicators */
+#image-preview-modal .bottom-2 {
+  padding: 5px;
+  background-color: rgba(255, 255, 255, 0.7);
+  border-radius: 12px;
+}
+
 /* Image Analysis Overlay Styles */
 #image-analysis-overlay {
   backdrop-filter: blur(5px);
@@ -1056,6 +1327,77 @@ button:not([class]) .material-icons {
   
   #analysis-preview-image {
     will-change: opacity; /* Optimize for animation */
+  }
+}
+
+/* Michelin Staging Modal Mobile Styles */
+#restaurant-staging-search-modal {
+  touch-action: manipulation;
+  -webkit-overflow-scrolling: touch;
+}
+
+#restaurant-staging-search-modal .collapse-on-mobile {
+  transition: all 0.2s ease-in-out;
+}
+
+/* Improve restaurant card layout */
+#staging-search-results .bg-white {
+  transition: transform 0.15s ease;
+}
+
+#staging-search-results .bg-white:hover {
+  transform: translateY(-2px);
+}
+
+/* Keep modal header in view */
+#restaurant-staging-search-modal .sticky {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+/* Pagination styles */
+#staging-pagination {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 1rem;
+  border-top: 1px solid #f0f0f0;
+  margin-top: 1rem;
+}
+
+#staging-pagination button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+#staging-pagination button:not(:disabled):hover {
+  background-color: #e5e5e5;
+}
+
+/* Responsive padding adjustments */
+@media (max-width: 640px) {
+  #restaurant-staging-search-modal {
+    padding: 0;
+  }
+  
+  #restaurant-staging-search-modal .bg-white {
+    border-radius: 0;
+    max-height: 100vh;
+    margin: 0;
+  }
+  
+  #staging-search-results {
+    margin-top: 0.5rem;
+  }
+  
+  #staging-search-results .bg-white {
+    padding: 0.75rem;
+  }
+  
+  #staging-pagination {
+    padding: 0.75rem 0;
   }
 }
 
@@ -1160,6 +1502,36 @@ gmp-place-autocomplete input:focus {
     overflow: visible !important;
 }
 
+/* Styling for Record Additional Review button */
+#record-additional-review {
+  transition: all 0.3s ease;
+  margin-top: 12px;
+  background-color: #9333ea;
+  color: white;
+  padding: 10px 16px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  font-weight: 500;
+}
+
+#record-additional-review:hover {
+  background-color: #7e22ce;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 6px rgba(0,0,0,0.15);
+}
+
+#record-additional-review.recording-active {
+  background-color: #ef4444;
+  animation: pulse-button 2s infinite;
+}
+
+.recording-pulse {
+  color: rgba(255,255,255,0.9);
+  animation: pulse-icon 1.5s infinite;
+}
+
 /* Additional Review Section styling */
 #additional-recording-section {
     transition: all 0.3s ease;
@@ -1194,14 +1566,13 @@ gmp-place-autocomplete input:focus {
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background-color: var(--color-error); /* tijolo — era o red-500 cru */
+    background-color: #ef4444;
     margin-right: 8px;
     animation: recording-pulse 1.5s infinite;
 }
 
 .recording-indicator.additional-recording {
-    background-color: var(--color-primary-600); /* oliva — segunda gravação
-        (unificado com mobile-enhancements.css; antes ameixa aqui e oliva lá) */
+    background-color: #7a5c8e; /* ameixa — era o roxo-600 antigo */
     animation: recording-pulse 1.5s infinite;
 }
 
@@ -1210,5 +1581,48 @@ gmp-place-autocomplete input:focus {
     0% { opacity: 1; transform: scale(1); }
     50% { opacity: 0.6; transform: scale(1.2); }
     100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes pulse-button {
+    0% { background-color: #ef4444; }
+    50% { background-color: #b91c1c; }
+    100% { background-color: #ef4444; }
+}
+
+@keyframes pulse-icon {
+    0% { opacity: 1; }
+    50% { opacity: 0.7; }
+    100% { opacity: 1; }
+}
+
+/* ===== Shared Restaurant Badge ===== */
+.shared-restaurant-badge {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 0.75rem;
+    line-height: 1rem;
+    color: #6b7280;
+    background-color: #f3f4f6;
+    padding: 4px 10px;
+    border-radius: 9999px;
+    margin-bottom: 8px;
+    font-weight: 500;
+}
+
+.shared-restaurant-badge .material-icons {
+    font-size: 14px;
+}
+
+/* Mobile optimization */
+@media (max-width: 640px) {
+    .shared-restaurant-badge {
+        font-size: 0.6875rem;
+        padding: 3px 8px;
+    }
+    
+    .shared-restaurant-badge .material-icons {
+        font-size: 12px;
+    }
 }
 

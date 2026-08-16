@@ -29,9 +29,7 @@ if (typeof window.UIManager === 'undefined') {
             this.editCuratorButton = document.getElementById('edit-curator');
 
             // Header elements (always visible)
-            // #sync-button-header não existe no DOM (cache órfão removido
-            // ago/2026) — o indicador real é #sync-status-header,
-            // populado pelo SyncStatusModule
+            this.syncButtonHeader = document.getElementById('sync-button-header');
             this.syncStatusHeader = document.getElementById('sync-status-header');
             this.userProfileHeader = document.getElementById('user-profile-header');
 
@@ -44,8 +42,12 @@ if (typeof window.UIManager === 'undefined') {
             this.quickPhoto = document.getElementById('quick-photo');
             this.quickManual = document.getElementById('quick-manual');
 
-            // Sidebar de sync removida do DOM (ago/2026) — o sync manual
-            // vive no chip do header (#btn-sync-details, SyncStatusModule)
+            // Sidebar elements (should be managed for visibility)
+            this.syncSidebarSection = document.getElementById('sync-sidebar-section');
+            this.syncButton = document.getElementById('sync-button');
+            this.syncStatus = document.getElementById('sync-status-sidebar');
+            // #open-sync-settings removido (ago/2026): o SyncSettingsManager
+            // foi desabilitado no Phase 1.3 e o botão ficou morto no DOM
 
             // Get restaurant list container
             this.restaurantsContainer = document.getElementById('restaurants-container');
@@ -129,12 +131,6 @@ if (typeof window.UIManager === 'undefined') {
             this.formIsDirty = false;
             this.listScrollRestoreY = 0;
             this.shouldRestoreListScroll = false;
-            // Saved views (auditoria UX, ponto 20): flags de escopo dos
-            // presets sem controle físico (Unlinked/Recently added).
-            // My drafts é derivado dos selects (status+curator) — o id do
-            // curator ativado no preset fica para o chip saber se desliga.
-            this._savedViewFlags = { unlinked: false, recent: false };
-            this._savedViewCuratorId = null;
 
 
             // Initialize UI Utils module first to ensure availability of UI utility functions
@@ -164,6 +160,19 @@ if (typeof window.UIManager === 'undefined') {
 
             if (!this.restaurantModule && typeof RestaurantModule !== 'undefined')
                 this.restaurantModule = new RestaurantModule(this);
+
+            if (!this.restaurantListModule && typeof RestaurantListModule !== 'undefined') {
+                this.restaurantListModule = new RestaurantListModule();
+                this.restaurantListModule.init({
+                    dataStorage: window.dataStorage,
+                    uiUtils: window.uiUtils
+                });
+                // Expose to window for debugging
+                window.restaurantListModule = this.restaurantListModule;
+            }
+
+            if (!this.exportImportModule && typeof ExportImportModule !== 'undefined')
+                this.exportImportModule = new ExportImportModule(this);
 
             // Initialize the quick action module safely
             if (!this.quickActionModule && typeof QuickActionModule !== 'undefined') {
@@ -203,41 +212,7 @@ if (typeof window.UIManager === 'undefined') {
             // Setup global sync/data events
             this.setupGlobalEvents();
 
-            // Editor por áreas: âncoras (desktop) + accordions (mobile)
-            this.setupEditorSectionNav();
-
             console.log('UIManager initialized');
-        }
-
-        /**
-         * Editor por áreas (Identity / Curation / Concepts / Source
-         * material): âncoras no desktop e accordions no mobile.
-         * As âncoras NÃO usam href="#id" — o hash é rota do
-         * NavigationManager; o scroll é feito via scrollIntoView.
-         */
-        setupEditorSectionNav() {
-            document.querySelectorAll('#edit-section-nav [data-edit-nav]').forEach((link) => {
-                link.addEventListener('click', (e) => {
-                    e.preventDefault();
-                    const target = document.getElementById(link.dataset.editNav);
-                    if (target) {
-                        target.scrollIntoView({ behavior: 'smooth', block: 'start' });
-                    }
-                });
-            });
-
-            document.querySelectorAll('.editor-section-toggle').forEach((toggle) => {
-                const area = toggle.closest('.editor-area');
-                toggle.addEventListener('click', () => {
-                    if (!area) return;
-                    const collapsed = area.classList.toggle('is-collapsed');
-                    toggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-                    toggle.setAttribute(
-                        'aria-label',
-                        collapsed ? 'Expand section' : 'Collapse section'
-                    );
-                });
-            });
         }
 
         /**
@@ -426,16 +401,12 @@ if (typeof window.UIManager === 'undefined') {
         }
 
         updateViewSummaryVisibility() {
-            // Só ESCONDE no mismatch de aba — nunca re-exibe: quem mostra
-            // é update*CountSummary (estados "Loading..." / vazio). O
-            // toggle antigo re-exibia o span com texto velho ao voltar
-            // da rota /data para a coleção.
-            if (this.curationsCountSummary && this.currentTab !== 'curations') {
-                this.curationsCountSummary.classList.add('hidden');
+            if (this.curationsCountSummary) {
+                this.curationsCountSummary.classList.toggle('hidden', this.currentTab !== 'curations');
             }
 
-            if (this.entitiesCountSummary && this.currentTab !== 'entities') {
-                this.entitiesCountSummary.classList.add('hidden');
+            if (this.entitiesCountSummary) {
+                this.entitiesCountSummary.classList.toggle('hidden', this.currentTab !== 'entities');
             }
         }
 
@@ -449,14 +420,9 @@ if (typeof window.UIManager === 'undefined') {
                 // instead of a misleading "Showing 0 of 0"
                 const browser = window.CurationBrowser;
                 this.curationsCountSummary.textContent = (browser && !browser.done) ? 'Loading curations...' : 'No curations yet';
-                this.curationsCountSummary.classList.remove('hidden');
                 return;
             }
-            // A contagem "Showing X of Y" já vive no header de paginação
-            // DENTRO da grade — repetí-la aqui duplicava a informação na
-            // mesma tela. O span só aparece para loading/vazio.
-            this.curationsCountSummary.textContent = '';
-            this.curationsCountSummary.classList.add('hidden');
+            this.curationsCountSummary.textContent = `Showing ${filtered} of ${displayTotal} curations`;
         }
 
         updateEntitiesCountSummary(total, filtered) {
@@ -464,13 +430,9 @@ if (typeof window.UIManager === 'undefined') {
             if (total === 0 && filtered === 0) {
                 // Avoid the misleading "Showing 0 of 0" while loading
                 this.entitiesCountSummary.textContent = 'No entities yet';
-                this.entitiesCountSummary.classList.remove('hidden');
                 return;
             }
-            // Contagem "Showing X of Y" vive no header de paginação da
-            // grade — span só para loading/vazio (sem duplicação).
-            this.entitiesCountSummary.textContent = '';
-            this.entitiesCountSummary.classList.add('hidden');
+            this.entitiesCountSummary.textContent = `Showing ${filtered} of ${total} entities`;
         }
 
         canMutateWhileSyncing() {
@@ -499,24 +461,11 @@ if (typeof window.UIManager === 'undefined') {
          * Manages tab state and view visibility.
          */
         initTabSystem() {
-            // Semântica ARIA de tabs (role/aria-selected/aria-controls) +
-            // navegação por setas para leitores de tela e teclado
-            const tabNames = Object.keys(this.tabs);
-            tabNames.forEach((tabName, index) => {
+            // Attach click handlers to all tabs
+            Object.keys(this.tabs).forEach(tabName => {
                 const tabButton = this.tabs[tabName];
                 if (tabButton) {
-                    tabButton.setAttribute('role', 'tab');
-                    tabButton.setAttribute('aria-controls', `${tabName}-view`);
-                    tabButton.setAttribute('aria-selected', 'false');
                     tabButton.addEventListener('click', () => this.switchTab(tabName));
-                    tabButton.addEventListener('keydown', (e) => {
-                        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
-                        e.preventDefault();
-                        const delta = e.key === 'ArrowRight' ? 1 : -1;
-                        const next = tabNames[(index + delta + tabNames.length) % tabNames.length];
-                        this.switchTab(next);
-                        this.tabs[next]?.focus();
-                    });
                 }
             });
 
@@ -543,27 +492,16 @@ if (typeof window.UIManager === 'undefined') {
             this.currentTab = tabName;
 
             // Update tab button states
-            // (ago/2026) As classes legadas border-blue-500/text-blue-600/
-            // border-transparent/text-gray-500 foram removidas: o estado
-            // visual vive em .view-tab.active (components.css) — o
-            // juggling antigo sobrevivia só pelo remap de paleta.
             Object.keys(this.tabs).forEach(name => {
                 const tab = this.tabs[name];
-                const isActive = name === tabName;
-                if (tab) {
-                    tab.classList.toggle('active', isActive);
-                    tab.setAttribute('aria-selected', isActive ? 'true' : 'false');
+                if (name === tabName) {
+                    tab.classList.add('active', 'border-blue-500', 'text-blue-600');
+                    tab.classList.remove('border-transparent', 'text-gray-500');
+                } else {
+                    tab.classList.remove('active', 'border-blue-500', 'text-blue-600');
+                    tab.classList.add('border-transparent', 'text-gray-500');
                 }
             });
-
-            // Frase que ensina a diferença Curations × Entities no ponto
-            // da decisão — muda junto com a aba (learnability sem docs)
-            const tabSubtitle = document.getElementById('tab-subtitle');
-            if (tabSubtitle) {
-                tabSubtitle.textContent = tabName === 'curations'
-                    ? 'Your reviews, notes and recommendations.'
-                    : 'Places and their factual information.';
-            }
 
             // Update view visibility
             Object.keys(this.views).forEach(name => {
@@ -621,8 +559,6 @@ if (typeof window.UIManager === 'undefined') {
          * client-side filtering when CurationBrowser is not available.
          */
         async _reloadOrFilterCurations() {
-            // Contador/chips dos refinamentos refletem o estado novo
-            this.updateCurationFilterState();
             const browser = window.CurationBrowser;
             if (browser && browser.nextPage) {
                 // Server-driven: reset scope and fetch fresh page 1
@@ -650,11 +586,6 @@ if (typeof window.UIManager === 'undefined') {
                 city: pick('curation-city-filter'),
                 type: pick('curation-type-filter'),
                 q: (document.getElementById('curation-search')?.value?.trim() || null),
-                // Saved views sem controle físico (auditoria, ponto 20)
-                unlinked: !!this._savedViewFlags?.unlinked,
-                createdAfter: this._savedViewFlags?.recent
-                    ? new Date(Date.now() - 24 * 3600 * 1000).toISOString()
-                    : null,
             };
         }
 
@@ -671,21 +602,18 @@ if (typeof window.UIManager === 'undefined') {
                 });
             }
 
-            // Status filter (immediate) — mudança manual pode desligar o
-            // preset My drafts (o chip deriva do estado dos controles)
+            // Status filter (immediate)
             const statusFilter = document.getElementById('curation-status-filter');
             if (statusFilter) {
                 statusFilter.addEventListener('change', function() {
-                    self.updateSavedViewChips();
                     self._reloadOrFilterCurations();
                 });
             }
 
-            // Curator filter (immediate) — idem status
+            // Curator filter (immediate)
             const curatorFilter = document.getElementById('curation-curator-filter');
             if (curatorFilter) {
                 curatorFilter.addEventListener('change', function() {
-                    self.updateSavedViewChips();
                     self._reloadOrFilterCurations();
                 });
             }
@@ -706,192 +634,6 @@ if (typeof window.UIManager === 'undefined') {
             if (typeFilter) {
                 typeFilter.addEventListener('change', function() {
                     self._reloadOrFilterCurations();
-                });
-            }
-
-            // "Filters" abre o bottom sheet dos refinamentos
-            // (Curator/City/Type) — a instância é criada pelo auto-init
-            // do bottomSheetManager (data-bottom-sheet no markup)
-            const filtersToggle = document.getElementById('curation-filters-toggle');
-            if (filtersToggle) {
-                filtersToggle.addEventListener('click', function() {
-                    if (window.bottomSheetManager && typeof window.bottomSheetManager.open === 'function') {
-                        window.bottomSheetManager.open('curation-filters-sheet');
-                    }
-                });
-            }
-
-            // Saved views (auditoria, ponto 20): presets de escopo —
-            // cada chip vira filtro real (selects ou flags de scope)
-            const savedViews = document.getElementById('curation-saved-views');
-            if (savedViews) {
-                savedViews.addEventListener('click', function(e) {
-                    const chip = e.target.closest('.saved-view-chip');
-                    if (!chip) return;
-                    self.toggleSavedView(chip.dataset.savedView);
-                });
-            }
-            this.updateSavedViewChips();
-        }
-
-        /**
-         * Saved views (auditoria, ponto 20): liga/desliga um preset.
-         * My drafts escreve nos selects (status=draft + curator atual);
-         * Unlinked/Recently added são flags de escopo enviadas ao
-         * /curations/search (unlinked, created_after com janela de 24h).
-         * @param {string} name - 'my-drafts' | 'unlinked' | 'recent'
-         */
-        async toggleSavedView(name) {
-            const chip = document.querySelector(`[data-saved-view="${name}"]`);
-            const isActive = chip && chip.classList.contains('is-active');
-
-            if (name === 'my-drafts') {
-                const statusEl = document.getElementById('curation-status-filter');
-                const curatorEl = document.getElementById('curation-curator-filter');
-                if (!isActive) {
-                    const currentCurator = await dataStorage.getCurrentCurator();
-                    if (statusEl) statusEl.value = 'draft';
-                    if (currentCurator && currentCurator.id) {
-                        this._setSelectOption(curatorEl, currentCurator.id, currentCurator.name || currentCurator.id);
-                        this._savedViewCuratorId = currentCurator.id;
-                    } else {
-                        this._savedViewCuratorId = null;
-                    }
-                } else {
-                    if (statusEl) statusEl.value = 'all';
-                    if (curatorEl) curatorEl.value = 'all';
-                    this._savedViewCuratorId = null;
-                }
-            } else if (name === 'unlinked' || name === 'recent') {
-                this._savedViewFlags[name] = !isActive;
-            }
-
-            this.updateSavedViewChips();
-            this._reloadOrFilterCurations();
-        }
-
-        /**
-         * Garante que um select tenha a option desejada (o preset de
-         * My drafts precisa do curator atual mesmo quando o select só
-         * lista curators presentes nos docs carregados).
-         */
-        _setSelectOption(selectEl, value, label) {
-            if (!selectEl) return;
-            const existing = Array.from(selectEl.options).find((o) => o.value === value);
-            if (existing) {
-                selectEl.value = value;
-                return;
-            }
-            const opt = document.createElement('option');
-            opt.value = value;
-            opt.textContent = label;
-            selectEl.appendChild(opt);
-            selectEl.value = value;
-        }
-
-        /**
-         * Sincroniza os chips com o estado real dos filtros — o chip de
-         * My drafts deriva dos selects (mudança manual desliga sozinha);
-         * Unlinked/Recent vêm das flags de escopo.
-         */
-        updateSavedViewChips() {
-            const chips = document.querySelectorAll('.saved-view-chip');
-            const statusVal = document.getElementById('curation-status-filter')?.value;
-            const curatorVal = document.getElementById('curation-curator-filter')?.value;
-            chips.forEach((chip) => {
-                const name = chip.dataset.savedView;
-                let active = false;
-                if (name === 'my-drafts') {
-                    active = statusVal === 'draft'
-                        && (!this._savedViewCuratorId || curatorVal === this._savedViewCuratorId);
-                } else if (name === 'unlinked') {
-                    active = !!this._savedViewFlags.unlinked;
-                } else if (name === 'recent') {
-                    active = !!this._savedViewFlags.recent;
-                }
-                chip.classList.toggle('is-active', active);
-                chip.setAttribute('aria-pressed', active ? 'true' : 'false');
-            });
-        }
-
-        /**
-         * Contador + chips dos filtros avançados de curations
-         * (Curator/City/Type). Chips limpam o próprio filtro.
-         */
-        updateCurationFilterState() {
-            this._renderFilterState({
-                countId: 'curation-filters-count',
-                chipsId: 'curation-filter-chips',
-                filters: [
-                    { id: 'curation-curator-filter', kind: 'select', label: 'Curator' },
-                    { id: 'curation-city-filter', kind: 'input', label: 'City' },
-                    { id: 'curation-type-filter', kind: 'select', label: 'Type' }
-                ],
-                onClear: () => this._reloadOrFilterCurations()
-            });
-        }
-
-        /**
-         * Contador + chips dos filtros avançados de entities (Type/City).
-         */
-        updateEntityFilterState() {
-            this._renderFilterState({
-                countId: 'entity-filters-count',
-                chipsId: 'entity-filter-chips',
-                filters: [
-                    { id: 'entity-type-filter', kind: 'select', label: 'Type' },
-                    { id: 'entity-city-filter', kind: 'input', label: 'City' }
-                ],
-                onClear: () => this._reloadOrFilterEntities()
-            });
-        }
-
-        /**
-         * Render genérico de estado de filtros avançados: contador no
-         * botão "Filters" + chips com × dentro do bottom sheet.
-         * Texto SEMPRE via textContent — o valor de city é digitado
-         * pelo usuário e nunca pode virar innerHTML.
-         */
-        _renderFilterState({ countId, chipsId, filters, onClear }) {
-            const countEl = document.getElementById(countId);
-            const chipsEl = document.getElementById(chipsId);
-            if (!countEl && !chipsEl) return;
-
-            const active = filters.filter((f) => {
-                const el = document.getElementById(f.id);
-                if (!el) return false;
-                const val = el.value || '';
-                return f.kind === 'select' ? (val && val !== 'all') : !!val.trim();
-            });
-
-            if (countEl) {
-                countEl.textContent = active.length;
-                countEl.classList.toggle('hidden', active.length === 0);
-            }
-
-            if (chipsEl) {
-                chipsEl.replaceChildren();
-                active.forEach((f) => {
-                    const el = document.getElementById(f.id);
-                    const display = f.kind === 'select'
-                        ? (el.selectedOptions?.[0]?.textContent || el.value)
-                        : el.value.trim();
-                    const chip = document.createElement('button');
-                    chip.type = 'button';
-                    chip.className = 'filters-chip';
-                    chip.setAttribute('aria-label', `Clear ${f.label} filter`);
-                    const labelSpan = document.createElement('span');
-                    labelSpan.textContent = display;
-                    const icon = document.createElement('span');
-                    icon.className = 'material-icons';
-                    icon.setAttribute('aria-hidden', 'true');
-                    icon.textContent = 'close';
-                    chip.append(labelSpan, icon);
-                    chip.addEventListener('click', () => {
-                        el.value = f.kind === 'select' ? 'all' : '';
-                        onClear();
-                    });
-                    chipsEl.appendChild(chip);
                 });
             }
         }
@@ -990,16 +732,6 @@ if (typeof window.UIManager === 'undefined') {
                     }, 300);
                 });
             }
-
-            // "Filters" abre o bottom sheet (Type/City)
-            const filtersToggle = document.getElementById('entity-filters-toggle');
-            if (filtersToggle) {
-                filtersToggle.addEventListener('click', function() {
-                    if (window.bottomSheetManager && typeof window.bottomSheetManager.open === 'function') {
-                        window.bottomSheetManager.open('entity-filters-sheet');
-                    }
-                });
-            }
         }
 
         /** Filtros da view Entities → scope do EntityBrowser (server-side).
@@ -1008,8 +740,6 @@ if (typeof window.UIManager === 'undefined') {
          *  existe para o load inicial; reaplicar aqui APAGAVA o scope
          *  recém-setado e a busca server-side nunca recebia os filtros). */
         async _reloadOrFilterEntities() {
-            // Contador/chips dos refinamentos refletem o estado novo
-            this.updateEntityFilterState();
             const browser = window.EntityBrowser;
             if (browser && browser.openPage) {
                 const scope = this._getCurrentEntityFilterScope();
@@ -1082,8 +812,8 @@ if (typeof window.UIManager === 'undefined') {
                 console.error('Failed to load curations:', error);
                 container.innerHTML = `
                     <div class="empty-state">
-                        <span class="empty-state-icon material-icons" style="color: var(--color-error)">error</span>
-                        <p class="empty-state-title">Failed to load curations</p>
+                        <span class="empty-state__icon material-icons" style="color: var(--color-error)">error</span>
+                        <p class="empty-state__title">Failed to load curations</p>
                     </div>
                 `;
             }
@@ -1135,14 +865,14 @@ if (typeof window.UIManager === 'undefined') {
                 // Selects ficam com valor 'all' mesmo intocados — só conta
                 // como filtro ativo um valor real, diferente de 'all'.
                 const active = (v) => v && v !== 'all';
-                const hasActiveFilters = !!(active(scope.q) || active(scope.status) || active(scope.city) || active(scope.type) || active(scope.curatorId) || scope.unlinked || scope.createdAfter);
+                const hasActiveFilters = !!(active(scope.q) || active(scope.status) || active(scope.city) || active(scope.type) || active(scope.curatorId));
                 if (hasActiveFilters) {
                     // Busca server-side com filtro ativo que não achou nada —
                     // copy específico + ação para limpar os filtros.
                     container.innerHTML = `
                         <div class="empty-state">
-                            <span class="empty-state-icon material-icons">search_off</span>
-                            <p class="empty-state-title">No curations match your filters</p>
+                            <span class="empty-state__icon material-icons">search_off</span>
+                            <p class="empty-state__title">No curations match your filters</p>
                             <button id="clear-curation-filters" class="btn btn-outline btn-sm mt-2">
                                 <span class="material-icons text-sm mr-1">clear_all</span>
                                 Clear filters
@@ -1155,10 +885,6 @@ if (typeof window.UIManager === 'undefined') {
                             var el = document.getElementById(id);
                             if (el) el.value = el.tagName === 'SELECT' ? 'all' : '';
                         });
-                        // Saved views também zeram (flags + chips)
-                        self._savedViewFlags = { unlinked: false, recent: false };
-                        self._savedViewCuratorId = null;
-                        self.updateSavedViewChips();
                         self._reloadOrFilterCurations();
                     });
                 } else {
@@ -1218,9 +944,9 @@ if (typeof window.UIManager === 'undefined') {
                 this.updateCurationsCountSummary(0, 0);
                 container.innerHTML = `
                     <div class="empty-state">
-                        <span class="empty-state-icon material-icons">rate_review</span>
-                        <p class="empty-state-title">No curations yet</p>
-                        <p class="empty-state-description">Start curating entities by clicking on them</p>
+                        <span class="empty-state__icon material-icons">rate_review</span>
+                        <p class="empty-state__title">No curations yet</p>
+                        <p class="empty-state__description">Start curating entities by clicking on them</p>
                     </div>
                 `;
                 return;
@@ -1233,28 +959,40 @@ if (typeof window.UIManager === 'undefined') {
         }
 
         populateCurationFilters(curations) {
-            // City é INPUT de texto livre (filtro server-side por regex no
-            // street) — o código antigo setava innerHTML de <option> num
-            // input (no-op silencioso). Nada a popular aqui.
+            const cityFilter = document.getElementById('curation-city-filter');
+            if (cityFilter) {
+                const cities = new Set();
+                curations.forEach(function(c) {
+                    var city = c.city || (c.location && c.location.city) || '';
+                    if (city) cities.add(city);
+                });
+                var currentVal = cityFilter.value;
+                cityFilter.innerHTML = '<option value="">All Cities</option>';
+                Array.from(cities).sort().forEach(function(city) {
+                    var opt = document.createElement('option');
+                    opt.value = city;
+                    opt.textContent = city;
+                    cityFilter.appendChild(opt);
+                });
+                cityFilter.value = currentVal || '';
+            }
+
             const typeFilter = document.getElementById('curation-type-filter');
             if (typeFilter) {
-                // Preserva as options estáticas do markup ("Restaurants",
-                // "Cafés"... com labels capitalizados) e só ADICIONA tipos
-                // que aparecem nos dados mas não existem no select — o
-                // código antigo sobrescrevia tudo com valores crus
-                // lowercase no fallback local.
-                const existing = new Set(Array.from(typeFilter.options).map(function (o) { return o.value; }));
                 const types = new Set();
                 curations.forEach(function(c) {
                     var t = c.type || (c.location && c.location.type) || '';
-                    if (t && !existing.has(t)) types.add(t);
+                    if (t) types.add(t);
                 });
+                var currentVal = typeFilter.value;
+                typeFilter.innerHTML = '<option value="all">All Types</option>';
                 Array.from(types).sort().forEach(function(t) {
                     var opt = document.createElement('option');
                     opt.value = t;
                     opt.textContent = t;
                     typeFilter.appendChild(opt);
                 });
+                typeFilter.value = currentVal || 'all';
             }
         }
 
@@ -1308,22 +1046,6 @@ if (typeof window.UIManager === 'undefined') {
                 });
             }
 
-            // Saved views (auditoria, ponto 20): Unlinked/Recently added
-            // também filtram no fallback local — órfã = entity_id ausente/
-            // vazio; recente = createdAt na janela de 24h (mesma do badge
-            // "novo" dos cards)
-            if (this._savedViewFlags?.unlinked) {
-                filtered = filtered.filter(function(c) { return !c.entity_id; });
-            }
-
-            if (this._savedViewFlags?.recent) {
-                var recentCutoff = Date.now() - 24 * 3600 * 1000;
-                filtered = filtered.filter(function(c) {
-                    var created = c.createdAt ? new Date(c.createdAt).getTime() : 0;
-                    return created >= recentCutoff;
-                });
-            }
-
             this.curationPagination.currentPage = 0;
 
             if (filtered.length === 0) {
@@ -1331,8 +1053,8 @@ if (typeof window.UIManager === 'undefined') {
                 if (container) {
                     container.innerHTML = `
                         <div class="empty-state">
-                            <span class="empty-state-icon material-icons">search_off</span>
-                            <p class="empty-state-title">No curations match your filters</p>
+                            <span class="empty-state__icon material-icons">search_off</span>
+                            <p class="empty-state__title">No curations match your filters</p>
                             <button id="clear-curation-filters" class="btn btn-outline btn-sm mt-2">
                                 <span class="material-icons text-sm mr-1">clear_all</span>
                                 Clear filters
@@ -1345,10 +1067,6 @@ if (typeof window.UIManager === 'undefined') {
                             var el = document.getElementById(id);
                             if (el) el.value = el.tagName === 'SELECT' ? 'all' : '';
                         });
-                        // Saved views também zeram (flags + chips)
-                        self._savedViewFlags = { unlinked: false, recent: false };
-                        self._savedViewCuratorId = null;
-                        self.updateSavedViewChips();
                         self.filterAndDisplayCurations();
                     });
                 }
@@ -1407,17 +1125,17 @@ if (typeof window.UIManager === 'undefined') {
             // no fallback pagina o cache local.
             {
                 var header = document.createElement('div');
-                header.className = 'col-span-full mb-4 p-4 bg-neutral-50 border border-neutral-200 rounded-lg flex items-center justify-between';
+                header.className = 'col-span-full mb-4 p-4 bg-blue-50 border border-blue-100 rounded-lg flex items-center justify-between';
                 header.innerHTML = `
                     <div class="text-sm text-gray-600">
                         Showing <span class="font-semibold">${start + 1}</span>&ndash;<span class="font-semibold">${end}</span> of <span class="font-semibold">${serverTotal}</span> curations
                     </div>
                     <div class="flex gap-2">
-                        <button id="curation-prev-page" aria-label="Previous page" class="px-3 h-10 flex items-center bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" ${cp.currentPage === 0 ? 'disabled' : ''}>
+                        <button id="curation-prev-page" class="px-3 py-1 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" ${cp.currentPage === 0 ? 'disabled' : ''}>
                             <span class="material-icons text-sm">chevron_left</span>
                         </button>
                         <div class="px-3 py-1 text-sm font-medium">Page ${cp.currentPage + 1} of ${totalPages}</div>
-                        <button id="curation-next-page" aria-label="Next page" class="px-3 h-10 flex items-center bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" ${cp.currentPage >= totalPages - 1 ? 'disabled' : ''}>
+                        <button id="curation-next-page" class="px-3 py-1 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" ${cp.currentPage >= totalPages - 1 ? 'disabled' : ''}>
                             <span class="material-icons text-sm">chevron_right</span>
                         </button>
                     </div>
@@ -1461,11 +1179,18 @@ if (typeof window.UIManager === 'undefined') {
                         // Regressão: o card de entity não tem handler de
                         // detalhes por padrão (só console.log) — o review
                         // card abre handleViewReviewDetails no click.
+                        // O guard de swipe evita que o click pós-gesto
+                        // dispare os detalhes junto com a ação do swipe.
                         onClick: () => {
+                            if (card.dataset.swipeActive) {
+                                delete card.dataset.swipeActive;
+                                return;
+                            }
                             self.handleViewReviewDetails(curation);
                         }
                     })
                     : self.createReviewCard(curation);
+                self._wireSwipeActions(card, curation);
                 frag.appendChild(card);
             });
 
@@ -1475,44 +1200,33 @@ if (typeof window.UIManager === 'undefined') {
         }
 
         /**
-         * Onboarding pós-auth (auditoria, ponto 22): faixa de boas-vindas
-         * na PRIMEIRA entrada real — flag por usuário no localStorage.
-         * Nomeia os verbos e ensina a diferença Curations × Entities em
-         * uma frase; "Record a review" dispara o fluxo principal.
-         * Dismiss marca para sempre (por usuário).
+         * Swipe actions nos cards de curadoria (mobile, via gestureManager
+         * — desbloqueado pela estabilização mobile: overscroll-x contido +
+         * touch-action pan-y nos cards fazem o vertical rolar nativo).
+         * Design conservador: swipe esquerda = EDITAR (não-destrutivo),
+         * swipe direita = detalhes. O click pós-gesto é suprimido pelo
+         * guard swipeActive (ver renderCurationsPage/createReviewCard).
+         * @param {HTMLElement} card - Card alvo
+         * @param {Object} curation - Curation do card
          */
-        _maybeShowOnboarding() {
-            try {
-                const strip = document.getElementById('onboarding-welcome');
-                if (!strip || !strip.classList.contains('hidden')) return;
-                let curatorId = null;
-                const cur = window.CuratorProfile?.getCurrentCurator?.();
-                if (cur && cur.id) curatorId = cur.id;
-                const key = `concierge_onboarded_v1${curatorId ? `_${curatorId}` : ''}`;
-                if (localStorage.getItem(key) === '1') return;
-                strip.classList.remove('hidden');
-                const done = () => {
-                    try {
-                        localStorage.setItem(key, '1');
-                    } catch (e) {
-                        // localStorage bloqueado não pode quebrar a coleção
+        _wireSwipeActions(card, curation) {
+            if (!window.gestureManager || typeof window.gestureManager.onSwipe !== 'function') return;
+            if (card.dataset.swipeWired) return;
+            card.dataset.swipeWired = '1';
+
+            window.gestureManager.onSwipe(card, {
+                threshold: 60,
+                onSwipeLeft: () => {
+                    card.dataset.swipeActive = '1';
+                    if (typeof this.editCuration === 'function') {
+                        this.editCuration(curation);
                     }
-                    strip.classList.add('hidden');
-                };
-                const dismissBtn = document.getElementById('onboarding-dismiss');
-                const recordBtn = document.getElementById('onboarding-record');
-                if (dismissBtn) dismissBtn.addEventListener('click', done);
-                if (recordBtn) {
-                    recordBtn.addEventListener('click', () => {
-                        done();
-                        if (this.quickActionModule && typeof this.quickActionModule.quickRecord === 'function') {
-                            this.quickActionModule.quickRecord();
-                        }
-                    });
+                },
+                onSwipeRight: () => {
+                    card.dataset.swipeActive = '1';
+                    this.handleViewReviewDetails(curation);
                 }
-            } catch (e) {
-                // guardas de ambiente não podem derrubar a navegação
-            }
+            });
         }
 
         /**
@@ -1574,6 +1288,76 @@ if (typeof window.UIManager === 'undefined') {
             }
 
             return map;
+        }
+
+        /** @deprecated */
+        async loadCurationsOld() {
+            console.log('Loading curations view...');
+
+            const container = this.containers.curations;
+            if (!container) {
+                console.warn('Curations container not found');
+                return;
+            }
+
+            try {
+                // Get current curator
+                const curator = window.CuratorProfile?.getCurrentCurator();
+                if (!curator) {
+                    window.emptyStateManager.show(container, 'no-curator');
+                    return;
+                }
+
+                // Get curations by current curator using centralized query logic
+                const curations = await window.DataStore.getCurations({
+                    curatorId: curator.curator_id,
+                    reverse: true,
+                    excludeDeleted: true
+                });
+
+                if (curations.length === 0) {
+                    window.emptyStateManager.show(container, 'no-curations');
+                    return;
+                }
+
+                // Get unique entity IDs from curations (filter out null/undefined)
+                const entityIds = [...new Set(curations.map(c => c.entity_id).filter(Boolean))];
+
+                // Fetch entities for curations that have entity_id
+                const entitiesMap = new Map();
+                if (entityIds.length > 0) {
+                    const entities = await window.DataStore.db.entities
+                        .where('entity_id')
+                        .anyOf(entityIds)
+                        .toArray();
+                    entities.forEach(entity => entitiesMap.set(entity.entity_id, entity));
+                }
+
+                // Display curations with entity info
+                container.innerHTML = '';
+                curations.forEach(curation => {
+                    const entity = curation.entity_id ? entitiesMap.get(curation.entity_id) : null;
+
+                    // If entity exists, show curation card, otherwise show review-style card
+                    if (entity) {
+                        const card = window.CardFactory.createCurationCard(entity, curation);
+                        container.appendChild(card);
+                    } else {
+                        // Orphaned curation (no entity link) - show as review
+                        const reviewCard = this.createReviewCard(curation);
+                        container.appendChild(reviewCard);
+                    }
+                });
+
+            } catch (error) {
+                console.error('Failed to load curations:', error);
+                container.innerHTML = `
+                    <div class="empty-state">
+                        <span class="empty-state__icon material-icons" style="color: var(--color-error)">error</span>
+                        <p class="empty-state__title">Failed to load curations</p>
+                    </div>
+                `;
+            }
         }
 
         /**
@@ -1656,8 +1440,8 @@ if (typeof window.UIManager === 'undefined') {
                     // Busca server-side com filtro ativo que não achou nada
                     container.innerHTML = `
                         <div class="empty-state">
-                            <span class="empty-state-icon material-icons">search_off</span>
-                            <p class="empty-state-title">No entities match your filters</p>
+                            <span class="empty-state__icon material-icons">search_off</span>
+                            <p class="empty-state__title">No entities match your filters</p>
                             <button id="clear-entity-filters" class="btn btn-outline btn-sm mt-2">
                                 <span class="material-icons text-sm mr-1">clear_all</span>
                                 Clear filters
@@ -1675,9 +1459,9 @@ if (typeof window.UIManager === 'undefined') {
                 } else {
                     container.innerHTML = `
                         <div class="empty-state">
-                            <span class="empty-state-icon material-icons">restaurant</span>
-                            <p class="empty-state-title">No entities yet</p>
-                            <p class="empty-state-description">Use Add a Place to import your first restaurant</p>
+                            <span class="empty-state__icon material-icons">restaurant</span>
+                            <p class="empty-state__title">No entities yet</p>
+                            <p class="empty-state__description">Use Find Entity to import your first restaurant</p>
                         </div>
                     `;
                 }
@@ -1758,9 +1542,9 @@ if (typeof window.UIManager === 'undefined') {
                 this.updateEntitiesCountSummary(0, 0);
                 container.innerHTML = `
                     <div class="empty-state">
-                        <span class="empty-state-icon material-icons">cloud_off</span>
-                        <p class="empty-state-title">Offline — no local entities</p>
-                        <p class="empty-state-description">Connect to browse the full catalog</p>
+                        <span class="empty-state__icon material-icons">cloud_off</span>
+                        <p class="empty-state__title">Offline — no local entities</p>
+                        <p class="empty-state__description">Connect to browse the full catalog</p>
                     </div>
                 `;
                 return;
@@ -1814,19 +1598,19 @@ if (typeof window.UIManager === 'undefined') {
 
             // Add pagination header
             const header = document.createElement('div');
-            header.className = 'col-span-full mb-4 p-4 bg-neutral-50 border border-neutral-200 rounded-lg flex items-center justify-between';
+            header.className = 'col-span-full mb-4 p-4 bg-blue-50 border border-blue-100 rounded-lg flex items-center justify-between';
             header.innerHTML = `
                 <div class="text-sm text-gray-600">
                     Showing <span class="font-semibold">${start + 1}</span>&ndash;<span class="font-semibold">${end}</span> of <span class="font-semibold">${serverTotal}</span> entities
                 </div>
                 <div class="flex gap-2">
-                    <button id="entity-prev-page" aria-label="Previous page" class="px-3 h-10 flex items-center bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" ${ep.currentPage === 0 ? 'disabled' : ''}>
+                    <button id="entity-prev-page" class="px-3 py-1 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" ${ep.currentPage === 0 ? 'disabled' : ''}>
                         <span class="material-icons text-sm">chevron_left</span>
                     </button>
                     <div class="px-3 py-1 text-sm font-medium">
                         Page ${ep.currentPage + 1} of ${totalPages}
                     </div>
-                    <button id="entity-next-page" aria-label="Next page" class="px-3 h-10 flex items-center bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" ${ep.currentPage >= totalPages - 1 ? 'disabled' : ''}>
+                    <button id="entity-next-page" class="px-3 py-1 bg-white border border-gray-300 rounded hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed" ${ep.currentPage >= totalPages - 1 ? 'disabled' : ''}>
                         <span class="material-icons text-sm">chevron_right</span>
                     </button>
                 </div>
@@ -1874,7 +1658,9 @@ if (typeof window.UIManager === 'undefined') {
                             return;
                         }
 
-                        this.navigateToEntityEdit(selectedEntity);
+                        if (window.entityModule?.startEntityEdit) {
+                            window.entityModule.startEntityEdit(selectedEntity);
+                        }
                     },
                     onSync: async () => {
                         if (!this.canMutateWhileSyncing()) {
@@ -1943,8 +1729,8 @@ if (typeof window.UIManager === 'undefined') {
                 if (container) {
                     container.innerHTML = `
                         <div class="empty-state">
-                            <span class="empty-state-icon material-icons">search_off</span>
-                            <p class="empty-state-title">No entities match your filters</p>
+                            <span class="empty-state__icon material-icons">search_off</span>
+                            <p class="empty-state__title">No entities match your filters</p>
                             <button id="clear-entity-filters" class="btn btn-outline btn-sm mt-2">
                                 <span class="material-icons text-sm mr-1">clear_all</span>
                                 Clear filters
@@ -1969,6 +1755,21 @@ if (typeof window.UIManager === 'undefined') {
             }
 
             this.renderEntitiesPage(filtered);
+        }
+
+        /**
+         * Get icon for entity type
+         * @deprecated Use CardFactory.getTypeIcon instead
+         */
+        getTypeIcon(type) {
+            const icons = {
+                restaurant: 'restaurant',
+                bar: 'local_bar',
+                hotel: 'hotel',
+                cafe: 'local_cafe',
+                bakery: 'bakery_dining'
+            };
+            return icons[type] || 'place';
         }
 
         /**
@@ -2091,33 +1892,36 @@ if (typeof window.UIManager === 'undefined') {
                     </div>
                 </div>
 
-                <!-- Actions Footer — MESMO padrão do curation card
-                     (cardFactory.js): vínculo à esquerda (.card-link-btn),
-                     editar + ⋯ à direita. Antes este card tinha pill azul
-                     sólido + trio de icon-btns — a terceira linguagem de
-                     rodapé na mesma grade. Unlink e Delete moram no ⋯. -->
-                <div class="mt-auto p-4 mx-1 border-t border-gray-100 bg-white z-20 relative space-y-3">
-                    <div class="grid grid-cols-3 gap-2 pt-1">
+                <!-- Actions Footer (Matching Linked Card style) -->
+                <div class="mt-auto p-4 mx-1 border-t border-gray-100 flex items-center justify-between bg-white z-20 relative">
+                     <div class="flex flex-col gap-1">
                         ${isLinked ? `
-                        <button class="btn-view-entity card-link-btn" title="View linked entity details" aria-label="View linked entity details">
-                            <span class="material-icons text-base">visibility</span>
-                            View Entity
-                        </button>
+                            <div class="flex items-center gap-1.5 text-xs text-green-700 bg-green-50 px-2.5 py-1.5 rounded-lg border border-green-200">
+                                <span class="material-icons text-sm">link</span>
+                                <span class="font-medium">${_escC(linkedEntityName) || 'Linked'}</span>
+                            </div>
                         ` : `
-                        <button class="btn-link-entity card-link-btn" title="Link this curation to an entity" aria-label="Link this curation to an entity">
-                            <span class="material-icons text-base">link</span>
-                            Link Entity
-                        </button>
+                            <button class="btn-link-entity px-3 py-1.5 text-xs h-8 flex items-center bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-1.5 shadow-sm">
+                                <span class="material-icons text-sm">link</span>
+                                <span class="font-bold uppercase tracking-wider">Link Entity</span>
+                            </button>
                         `}
-                        <button class="btn-edit-curation card-edit-btn" title="Edit Curation" aria-label="Edit curation">
-                            <span class="material-icons text-lg">edit</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        ${isLinked ? `
+                            <button class="btn-unlink-entity icon-btn text-amber-700 hover:bg-amber-100 hover:text-amber-800 hover:border-amber-200" title="Unlink from entity">
+                                <span class="material-icons text-lg">link_off</span>
+                            </button>
+                        ` : ''}
+                        <button class="btn-edit-curation icon-btn hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200" title="Edit Curation">
+                            <span class="material-icons text-xl">edit</span>
                         </button>
-                        <button class="btn-more-curation icon-btn w-full text-gray-500 hover:bg-gray-100 hover:border-gray-200" title="More actions" aria-label="More actions" aria-haspopup="menu">
-                            <span class="material-icons text-lg">more_horiz</span>
+                        <button class="btn-delete-curation icon-btn text-red-500 hover:bg-red-50 hover:text-red-700 hover:border-red-200" title="Delete Draft">
+                            <span class="material-icons text-xl">delete_outline</span>
                         </button>
                     </div>
                 </div>
-
+                
                 <!-- Hover overlay effect -->
                 <div class="card-veil"></div>
             `;
@@ -2125,7 +1929,7 @@ if (typeof window.UIManager === 'undefined') {
             // Add event listeners
             card.querySelector('.btn-edit-curation')?.addEventListener('click', (e) => {
                 e.stopPropagation();
-                this.navigateToCurationEdit(curation);
+                this.editCuration(curation);
             });
 
             card.querySelector('.btn-link-entity')?.addEventListener('click', (e) => {
@@ -2133,39 +1937,25 @@ if (typeof window.UIManager === 'undefined') {
                 this.handleLinkReviewToEntity(curation);
             });
 
-            // Vínculo ativo: abre o modal de detalhes da review (contém o
-            // vínculo, fotos, transcrição e notas — o "View Entity" deste
-            // card é a própria review, já que o entity completo não está
-            // resolvido aqui)
-            card.querySelector('.btn-view-entity')?.addEventListener('click', (e) => {
+            card.querySelector('.btn-unlink-entity')?.addEventListener('click', (e) => {
                 e.stopPropagation();
-                this.handleViewReviewDetails(curation);
+                this.confirmUnlinkCuration(curation);
             });
 
-            // Menu "⋯": source + unlink (linkado) + delete — o padrão
-            // único dos curation cards (cardFactory._openCardMenu)
-            card.querySelector('.btn-more-curation')?.addEventListener('click', (e) => {
+            card.querySelector('.btn-delete-curation')?.addEventListener('click', (e) => {
                 e.stopPropagation();
-                if (window.CardFactory && typeof window.CardFactory._openCardMenu === 'function') {
-                    window.CardFactory._openCardMenu(e.currentTarget, {
-                        sourceInfo: window.SourceUtils
-                            ? window.SourceUtils.detectSource(curation, null)
-                            : null,
-                        syncLabel: curation.sync?.status || 'unknown',
-                        items: isLinked ? [{
-                            icon: 'link_off',
-                            label: 'Unlink from entity',
-                            onClick: () => this.confirmUnlinkCuration(curation)
-                        }] : [],
-                        onDelete: () => this.confirmDeleteCuration(curation.curation_id)
-                    });
-                }
+                this.confirmDeleteCuration(curation.curation_id);
             });
 
             // Make whole card clickable for details (except buttons)
             card.addEventListener('click', (e) => {
                 // Don't trigger if clicked on buttons (handled by stopPropagation, but just in case)
                 if (e.target.closest('button')) return;
+                // Click pós-swipe: o gesto já tratou a ação — não reabrir
+                if (card.dataset.swipeActive) {
+                    delete card.dataset.swipeActive;
+                    return;
+                }
                 this.handleViewReviewDetails(curation);
             });
 
@@ -2429,13 +2219,13 @@ if (typeof window.UIManager === 'undefined') {
             footer.className = 'w-full flex items-center justify-end gap-2 flex-wrap';
 
             const closeBtn = document.createElement('button');
-            closeBtn.className = 'btn btn-muted btn-md';
+            closeBtn.className = 'btn btn-muted btn-sm';
             closeBtn.textContent = 'Close';
             footer.appendChild(closeBtn);
 
             if (!isLinked) {
                 const linkBtn = document.createElement('button');
-                linkBtn.className = 'btn btn-primary btn-md';
+                linkBtn.className = 'btn btn-primary btn-sm';
                 linkBtn.innerHTML = '<span class="material-icons text-base" aria-hidden="true">link</span>Link Entity';
                 footer.insertBefore(linkBtn, closeBtn);
                 linkBtn.addEventListener('click', () => {
@@ -2445,13 +2235,13 @@ if (typeof window.UIManager === 'undefined') {
             }
 
             const editBtn = document.createElement('button');
-            editBtn.className = 'btn btn-outline btn-md';
+            editBtn.className = 'btn btn-outline btn-sm';
             editBtn.innerHTML = '<span class="material-icons text-base" aria-hidden="true">edit</span>Edit';
             footer.insertBefore(editBtn, closeBtn);
             editBtn.addEventListener('click', () => {
                 window.modalManager.close(modalId);
-                if (typeof this.navigateToCurationEdit === 'function') {
-                    this.navigateToCurationEdit(curation);
+                if (typeof this.editCuration === 'function') {
+                    this.editCuration(curation);
                 }
             });
 
@@ -2515,33 +2305,27 @@ if (typeof window.UIManager === 'undefined') {
         }
 
         // View Configuration
-        // (ago/2026) Cada modo mostra SÓ a sua superfície — a lista
-        // exibia também a gravação e o Data Management empilhados
-        // (estrutura da era "todas as seções na página"). Recording vira
-        // modo próprio (rota /new/record) e Data Management ganha a
-        // rota /data. curatorSection/syncSidebarSection não existem no
-        // DOM desde o redesign do header — removidos das listas.
         get VIEW_CONFIG() {
             return {
                 list: {
-                    show: ['restaurantListSection', 'findEntityBtn'],
-                    hide: ['recordingSection', 'transcriptionSection', 'conceptsSection', 'exportImportSection', 'restaurantEditToolbar', 'curatorEditToolbar']
+                    show: ['restaurantListSection', 'curatorSection', 'exportImportSection', 'findEntityBtn', 'syncSidebarSection', 'recordingSection'],
+                    hide: ['transcriptionSection', 'conceptsSection', 'restaurantEditToolbar', 'curatorEditToolbar']
                 },
                 recording: {
-                    show: ['recordingSection'],
-                    hide: ['restaurantListSection', 'findEntityBtn', 'transcriptionSection', 'conceptsSection', 'exportImportSection', 'restaurantEditToolbar', 'curatorEditToolbar']
+                    show: ['curatorSection', 'recordingSection'],
+                    hide: ['restaurantListSection', 'exportImportSection', 'findEntityBtn', 'syncSidebarSection', 'transcriptionSection', 'conceptsSection', 'restaurantEditToolbar', 'curatorEditToolbar']
                 },
                 transcription: {
-                    show: ['transcriptionSection'],
-                    hide: ['restaurantListSection', 'findEntityBtn', 'recordingSection', 'conceptsSection', 'exportImportSection', 'restaurantEditToolbar', 'curatorEditToolbar']
+                    show: ['curatorSection', 'transcriptionSection'],
+                    hide: ['restaurantListSection', 'exportImportSection', 'findEntityBtn', 'syncSidebarSection', 'recordingSection', 'conceptsSection', 'restaurantEditToolbar', 'curatorEditToolbar']
                 },
                 concepts: {
-                    show: ['conceptsSection', 'restaurantEditToolbar'],
-                    hide: ['restaurantListSection', 'findEntityBtn', 'recordingSection', 'transcriptionSection', 'exportImportSection', 'curatorEditToolbar']
+                    show: ['curatorSection', 'conceptsSection', 'restaurantEditToolbar'],
+                    hide: ['restaurantListSection', 'exportImportSection', 'findEntityBtn', 'syncSidebarSection', 'recordingSection', 'transcriptionSection', 'curatorEditToolbar']
                 },
-                data: {
-                    show: ['exportImportSection'],
-                    hide: ['restaurantListSection', 'findEntityBtn', 'recordingSection', 'transcriptionSection', 'conceptsSection', 'restaurantEditToolbar', 'curatorEditToolbar']
+                editCurator: {
+                    show: ['curatorSection', 'curatorEditToolbar'],
+                    hide: ['restaurantListSection', 'exportImportSection', 'findEntityBtn', 'syncSidebarSection', 'recordingSection', 'transcriptionSection', 'conceptsSection', 'restaurantEditToolbar']
                 }
             };
         }
@@ -2565,12 +2349,6 @@ if (typeof window.UIManager === 'undefined') {
             this.currentView = viewName;
             console.log(`[UIManager] switchView → ${viewName} `);
 
-            // Onboarding pós-auth (auditoria, ponto 22): checagem barata
-            // em toda entrada na coleção — a flag de primeiro uso decide
-            if (viewName === 'list') {
-                this._maybeShowOnboarding();
-            }
-
             // Hide elements
             config.hide.forEach(elementName => {
                 const element = this[elementName];
@@ -2588,6 +2366,12 @@ if (typeof window.UIManager === 'undefined') {
             });
         }
 
+        hideAllSections() {
+            // Deprecated: forwarding to switchView('list') as safe default
+            console.warn('hideAllSections is deprecated. Forwarding to switchView("list").');
+            this.switchView('list');
+        }
+
         // Core UI visibility functions
         showRestaurantFormSection() {
             if (this.currentView === 'list') {
@@ -2597,16 +2381,6 @@ if (typeof window.UIManager === 'undefined') {
 
             this.switchView('concepts');
             window.scrollTo({ top: 0, behavior: 'auto' });
-
-            // Navegação explícita: modo novo ganha a rota #/new/edit
-            // (replace — o back do browser volta para antes do editor,
-            // não para estados intermediários do fluxo de criação)
-            const nm = window.navigationManager;
-            if (nm && typeof nm.goTo === 'function' &&
-                !this.isEditingRestaurant && !this.isEditingEntity &&
-                nm.getCurrentRoute?.()?.path !== '/new/edit') {
-                nm.goTo('/new/edit', { replace: true, state: { title: 'New Curation' } });
-            }
 
             // Update toolbar title based on mode
             if (this.restaurantEditToolbar) {
@@ -2624,35 +2398,10 @@ if (typeof window.UIManager === 'undefined') {
                 // Add blank concept container for manual entry
                 this.renderConcepts();
             }
-
-            // Contador de palavras da descrição inicia zerado (antes só
-            // aparecia depois do primeiro input — o label ficava órfão)
-            if (this.conceptModule && typeof this.conceptModule.updateDescriptionWordCount === 'function') {
-                this.conceptModule.updateDescriptionWordCount();
-            }
         }
 
         showRecordingSection() {
             this.switchView('recording');
-
-            // Navegação explícita: gravar também é rota (/new/record) —
-            // o back do browser volta para a coleção, não para um
-            // estado intermediário do fluxo.
-            const nm = window.navigationManager;
-            if (nm && typeof nm.goTo === 'function' &&
-                nm.getCurrentRoute?.()?.path !== '/new/record') {
-                nm.goTo('/new/record', { replace: true, state: { title: 'Record Review' } });
-            }
-        }
-
-        /**
-         * Data Management como página própria (rota /data) — antes a
-         * seção ficava empilhada no fim da Collection com os botões
-         * destrutivos (purge/reset) expostos no fluxo principal.
-         */
-        showDataManagementSection() {
-            this.switchView('data');
-            window.scrollTo({ top: 0, behavior: 'auto' });
         }
 
         showTranscriptionSection(transcription) {
@@ -2675,15 +2424,6 @@ if (typeof window.UIManager === 'undefined') {
         showConceptsSection() {
             this.switchView('concepts');
 
-            // Navegação explícita: o fim do fluxo de captura (gravação →
-            // conceitos) também é "novo registro" — mesma rota do modo novo
-            const nm = window.navigationManager;
-            if (nm && typeof nm.goTo === 'function' &&
-                !this.isEditingRestaurant && !this.isEditingEntity &&
-                nm.getCurrentRoute?.()?.path !== '/new/edit') {
-                nm.goTo('/new/edit', { replace: true, state: { title: 'New Curation' } });
-            }
-
             // Update toolbar title based on mode
             if (this.restaurantEditToolbar) {
                 const toolbarTitle = this.restaurantEditToolbar.querySelector('.toolbar-info-title');
@@ -2701,12 +2441,6 @@ if (typeof window.UIManager === 'undefined') {
             if (this.originalTranscription && !this.editingRestaurantId && transcriptionTextarea && !transcriptionTextarea.value) {
                 // Only update if the textarea is empty and we have a new transcription
                 transcriptionTextarea.value = this.originalTranscription;
-            }
-
-            // Transcrito recém-processado: os conceitos acabaram de ser
-            // extraídos do texto — nada pendente de reprocessar
-            if (this.conceptModule && typeof this.conceptModule.resetTranscriptionPending === 'function') {
-                this.conceptModule.resetTranscriptionPending();
             }
 
             // Render the extracted concepts
@@ -2869,48 +2603,6 @@ if (typeof window.UIManager === 'undefined') {
         }
 
         /**
-         * Entrada canônica para edição de curadoria via rota:
-         * #/curation/:id/edit com o objeto no state (o handler da rota faz
-         * o fallback de lookup local para deep links frios).
-         */
-        navigateToCurationEdit(curation) {
-            const id = curation?.curation_id ||
-                (curation?.entity_id && curation?.curator_id
-                    ? `${curation.entity_id}:${curation.curator_id}`
-                    : null);
-            const nm = window.navigationManager;
-            if (nm && typeof nm.goTo === 'function' && id) {
-                nm.goTo(`/curation/${encodeURIComponent(id)}/edit`, {
-                    state: {
-                        title: this.getCurationDisplayName(curation) || 'Curation',
-                        curation
-                    }
-                });
-                return;
-            }
-            // Fallback sem NavigationManager (testes/ambiente degradado)
-            this.editCuration(curation);
-        }
-
-        /**
-         * Entrada canônica para edição de entidade via rota:
-         * #/entity/:id/edit com o objeto no state.
-         */
-        navigateToEntityEdit(entity) {
-            const id = entity?.entity_id || entity?.id;
-            const nm = window.navigationManager;
-            if (nm && typeof nm.goTo === 'function' && id) {
-                nm.goTo(`/entity/${encodeURIComponent(id)}/edit`, {
-                    state: { title: entity?.name || 'Entity', entity }
-                });
-                return;
-            }
-            // Fallback sem NavigationManager (testes/ambiente degradado)
-            if (!this.canMutateWhileSyncing()) return;
-            window.entityModule?.startEntityEdit(entity);
-        }
-
-        /**
          * Edit a specific curation.
          * Checks out the curation first (pulls it into the local working set
          * if owned by another curator) before opening the editor.
@@ -3000,11 +2692,7 @@ if (typeof window.UIManager === 'undefined') {
          * @param {string} message - Optional custom message to display
          */
         updateProcessingStatus(step, status, message = null) {
-            // `${step}-status` SEM espaço (ago/2026): a versão anterior
-            // buscava "transcription -status" (com espaço) — nunca achava
-            // o elemento e os passos de processamento congelavam em
-            // "pending" para sempre.
-            const stepElement = document.getElementById(`${step}-status`);
+            const stepElement = document.getElementById(`${step} -status`);
             if (!stepElement) return;
 
             // Remove existing status classes
@@ -3055,9 +2743,48 @@ if (typeof window.UIManager === 'undefined') {
         // NOTE: showTranscriptionSection is defined at L1156 using switchView('transcription').
         // A legacy override that was here has been removed to prevent bypassing switchView.
 
-        /** refreshAfterSync() REMOVIDO (ago/2026): sem chamadores — a UI
-         * pós-sync é atualizada pelos eventos concierge:sync-* em
-         * setupGlobalEvents. Referenciava ids de sidebar removidos. */
+        /**
+         * Refreshes UI components after data synchronization
+         * @returns {Promise<void>}
+         */
+        async refreshAfterSync() {
+            console.log('Refreshing UI after synchronization...');
+
+            // Refresh curator selector if available
+            if (this.curatorModule && typeof this.curatorModule.initializeCuratorSelector === 'function') {
+                this.curatorModule.curatorSelectorInitialized = false;
+                await this.curatorModule.initializeCuratorSelector();
+                console.log('Curator selector refreshed');
+            }
+
+            // Refresh restaurant list if available
+            if (this.restaurantModule && typeof this.restaurantModule.loadRestaurantList === 'function') {
+                const currentCurator = await dataStorage.getCurrentCurator();
+                if (currentCurator) {
+                    const filterEnabled = this.restaurantModule.getCurrentFilterState();
+                    await this.restaurantModule.loadRestaurantList(currentCurator.id, filterEnabled);
+                    console.log('Restaurant list refreshed');
+                }
+            }
+
+            // Update any sync status indicators (header and sidebar)
+            const syncStatusElements = [
+                document.getElementById('sync-status-header'),
+                document.getElementById('sync-status-sidebar')
+            ].filter(Boolean);
+
+            if (syncStatusElements.length > 0) {
+                const lastSyncTime = await dataStorage.getLastSyncTime();
+                if (lastSyncTime) {
+                    const formattedTime = new Date(lastSyncTime).toLocaleString();
+                    syncStatusElements.forEach(el => {
+                        el.textContent = `Last sync: ${formattedTime} `;
+                    });
+                }
+            }
+
+            console.log('UI refresh after sync complete');
+        }
 
         /**
          * Confirm and delete a curation

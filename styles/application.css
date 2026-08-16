@@ -56,21 +56,16 @@
 
 /* Main container */
 #app {
-    /* Sem constraint de viewport: o chrome do browser móvel varia e o
-       min-height:100vh empurrava o layout — comportamento efetivo
-       preservado do override que vivia no mobile-enhancements */
-    min-height: 0;
+    min-height: 100vh;
     display: flex;
     flex-direction: column;
     background-color: var(--color-neutral-50);
-    padding-bottom: var(--spacing-4);
+    padding-bottom: var(--spacing-20); /* Add padding for fixed toolbars */
 }
 
-/* Padding extra quando a toolbar fixa está visível. O !important é
-   necessário: #app (id) vence body:has(...) #app sem ele e o conteúdo
-   ficava por trás da toolbar. */
+/* Add extra padding when fixed toolbars are visible */
 body:has(.toolbar-fixed-bottom:not(.hidden)) #app {
-    padding-bottom: 90px !important;
+    padding-bottom: 90px;
 }
 
 /* Content sections */
@@ -110,6 +105,152 @@ body:has(.toolbar-fixed-bottom:not(.hidden)) #app {
 }
 
 /* ===================================================================
+   RESTAURANT LIST SPECIFIC
+   =================================================================== */
+
+.restaurant-card {
+    background: white;
+    border: 1px solid var(--color-neutral-200);
+    border-radius: var(--radius-lg);
+    padding: var(--spacing-4);
+    margin-bottom: var(--spacing-3);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.restaurant-card:hover {
+    border-color: var(--color-primary-300);
+    box-shadow: var(--shadow-md);
+    transform: translateY(-2px);
+}
+
+.restaurant-card-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: var(--spacing-3);
+}
+
+.restaurant-card-title {
+    font-size: var(--text-base);
+    font-weight: var(--font-semibold);
+    color: var(--color-neutral-900);
+    margin: 0 0 var(--spacing-1) 0;
+}
+
+.restaurant-card-cuisine {
+    font-size: var(--text-sm);
+    color: var(--color-neutral-600);
+}
+
+.restaurant-card-badges {
+    display: flex;
+    gap: var(--spacing-2);
+    flex-wrap: wrap;
+    margin-top: var(--spacing-2);
+}
+
+/* ===================================================================
+   RECORDING SECTION SPECIFIC
+   =================================================================== */
+
+.recording-controls {
+    display: flex;
+    flex-direction: column;
+    gap: var(--spacing-4);
+    align-items: center;
+}
+
+.recording-button {
+    width: 80px;
+    height: 80px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 2rem;
+    transition: all var(--transition-normal);
+    box-shadow: var(--shadow-lg);
+}
+
+.recording-button:hover {
+    transform: scale(1.05);
+    box-shadow: var(--shadow-xl);
+}
+
+.recording-button:active {
+    transform: scale(0.95);
+}
+
+.recording-status {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-3);
+    padding: var(--spacing-4);
+    background: var(--color-neutral-50);
+    border-radius: var(--radius-lg);
+    font-size: var(--text-base);
+}
+
+.recording-timer {
+    font-family: var(--font-mono);
+    font-size: var(--text-2xl);
+    font-weight: var(--font-bold);
+    color: var(--color-error);
+}
+
+/* ===================================================================
+   AUDIO LIST SPECIFIC
+   =================================================================== */
+
+.audio-item {
+    display: flex;
+    align-items: center;
+    gap: var(--spacing-3);
+    padding: var(--spacing-3);
+    background: white;
+    border: 1px solid var(--color-neutral-200);
+    border-radius: var(--radius-md);
+    margin-bottom: var(--spacing-2);
+    transition: all var(--transition-fast);
+}
+
+.audio-item:hover {
+    border-color: var(--color-primary-300);
+    box-shadow: var(--shadow-sm);
+}
+
+.audio-item-icon {
+    font-size: 1.5rem;
+    color: var(--color-primary-500);
+}
+
+.audio-item-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.audio-item-title {
+    font-size: var(--text-sm);
+    font-weight: var(--font-medium);
+    color: var(--color-neutral-900);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.audio-item-meta {
+    font-size: var(--text-xs);
+    color: var(--color-neutral-500);
+    margin-top: var(--spacing-1);
+}
+
+.audio-item-actions {
+    display: flex;
+    gap: var(--spacing-2);
+}
+
+/* ===================================================================
    MOBILE OPTIMIZATIONS
    =================================================================== */
 
@@ -130,6 +271,10 @@ body:has(.toolbar-fixed-bottom:not(.hidden)) #app {
         justify-content: flex-start;
     }
 
+    .restaurant-card {
+        padding: var(--spacing-3);
+    }
+
     .sync-controls {
         flex-direction: column;
         align-items: stretch;
@@ -146,57 +291,29 @@ body:has(.toolbar-fixed-bottom:not(.hidden)) #app {
    prática não são usados pelo index.html atual. Removido em ago/2026. */
 
 /* ===================================================================
-   HEADER SYNC BUTTON — REMOVIDO (ago/2026): o id #sync-button-header
-   não existe no DOM (o indicador do header é o #sync-status-header do
-   SyncStatusModule). Era CSS morto.
+   HEADER SYNC BUTTON
    =================================================================== */
 
-/* ===================================================================
-   NAVIGATION CONTEXT (breadcrumbs desktop + back/título mobile)
-   =================================================================== */
-
-/* O NavigationManager injeta .breadcrumbs com display:flex — o toggle
-   .hidden do JS precisa vencer o estilo injetado (id+class > class) */
-#breadcrumbs.hidden {
-    display: none;
+#sync-button-header {
+    position: relative;
+    transition: all var(--transition-fast);
 }
 
-/* Contexto mobile (back + título do modo) — só existe abaixo de 640px;
-   no desktop permanece invisível mesmo sem a classe .hidden */
-#mobile-nav-context {
-    display: none;
+#sync-button-header:hover .material-icons {
+    color: var(--color-primary-600);
+    transform: scale(1.1);
 }
 
-@media (max-width: 639px) {
-    #breadcrumbs {
-        display: none !important;
-    }
+#sync-button-header:active .material-icons {
+    transform: scale(0.95);
+}
 
-    #mobile-nav-context:not(.hidden) {
-        display: flex;
-        align-items: center;
-        gap: 0.5rem;
-        padding: 0.25rem 0 0.75rem;
-    }
+#sync-button-header.syncing {
+    pointer-events: none;
+}
 
-    #mobile-nav-context .back-button {
-        padding-left: 0;
-        font-weight: var(--font-weight-medium, 500);
-        color: var(--color-info, #3d5a80);
-        min-height: 44px; /* touch target mínimo */
-    }
-
-    #mobile-nav-title {
-        font-family: var(--font-display, 'Cormorant Garamond', serif);
-        font-size: 1.25rem;
-        font-weight: 600;
-        color: var(--color-text-primary, #111827);
-        overflow: hidden;
-        text-overflow: ellipsis;
-        white-space: nowrap;
-        flex: 1;
-        text-align: center;
-    }
+#sync-button-header.syncing .material-icons {
+    color: var(--color-primary-500);
 }
 
 /* ===================================================================
@@ -215,6 +332,10 @@ body:has(.toolbar-fixed-bottom:not(.hidden)) #app {
     }
 
     .recording-controls {
+        display: none;
+    }
+
+    .audio-item-actions {
         display: none;
     }
 }

@@ -20,8 +20,8 @@ Fonte: memórias do projeto, auditoria de segurança, sessões de trabalho e est
 - [x] ~~Cards "somem e voltam" a cada refresh do sync~~ — RESOLVIDO: renderCurationsPage fazia innerHTML='' ANTES da resolução async das entities (janela em branco no data-changed/sync-success); agora monta em fragment e troca atomicamente (replaceChildren) — lista antiga visível até a nova pronta. Validado com resolução atrasada 600ms: container nunca esvazia.
 - [x] ~~Ruído de log: `Unhandled rejection: NotFoundError: objectStore not found`~~ — RESOLVIDO: hooks do DataStore disparavam `concierge:data-changed` SINCRONAMENTE dentro da transação (escopo travado); listeners liam outras tabelas → NotFoundError. Evento agora é deferido (setTimeout 0).
 - [x] ~~Click no card de curadoria linkada não abria detalhes~~ — RESOLVIDO: regressão do renderCurationsPage (createCurationCard sem onClick — o default é console.log); agora abre handleViewReviewDetails como o review card.
-- [x] ~~`dbg.tmp.mjs` na raiz (resto de debug do IndexedDB)~~ — RESOLVIDO: arquivo não existe mais no repo
-- [ ] Curadorias órfãs (53 no Mongo, ids `entity_curation_test_*`): review card sem véu — decidir: limpar lixo ou resolver por nome via EntityBrowser (a saved view "Unlinked" agora as expõe na UI — facilita a decisão)
+- [ ] `dbg.tmp.mjs` na raiz (resto de debug do IndexedDB) — apagar
+- [ ] Curadorias órfãs (53 no Mongo, ids `entity_curation_test_*`): review card sem véu — decidir: limpar lixo ou resolver por nome via EntityBrowser
 - [x] ~~Degraded mode: passe visual~~ ✓ — DOM audit no modo degradado (IndexedDB quebrado) mostra 100% do tema (limestone/oliva/tints remapeados); resquícios reais corrigidos: toast fatal usava #ef4444 → var(--color-error), e --color-danger não existia (7 usos caíam no vermelho velho) → alias criado. (O pixel-scan antigo dava falso positivo: tolerância ±10 confunde #fbf9f5 quente com #f9fafb frio.)
 
 ### Backend API
@@ -32,7 +32,7 @@ Fonte: memórias do projeto, auditoria de segurança, sessões de trabalho e est
 ### IA — CONCLUÍDO (ver docs/AI_MODERNIZATION_PLAN.md — 5 fases: modelos gpt-5.6, prompts com vocabulário forçado, validação+re-prompt, retries, pipeline DeepSeek)
 
 ### Auth/Segurança
-- [x] ~~OAuth: cookie HttpOnly~~ ✓ (ADITIVO — o Bearer continua o caminho principal): access_token também flui via cookie HttpOnly (SameSite=lax, Secure em prod) definido no callback/refresh/dev-login e limpo no logout; verify_auth aceita o cookie como fallback; apiService manda credentials:include. ⚠️ 2026-08-16: Safari descarta Set-Cookie de redirect cross-site (Google → API) — o login por cookie-sozinho quebrou no iPhone; o callback same-site agora também entrega os tokens no FRAGMENT (`?session=1#token=...`), que é o caminho confiável. Remover o localStorage NUNCA será viável para o login no Safari — o fragment+localStorage é load-bearing.
+- [x] ~~OAuth: cookie HttpOnly~~ ✓ (ADITIVO — o Bearer continua o caminho principal): access_token também flui via cookie HttpOnly (SameSite=lax, Secure em prod) definido no callback/refresh/dev-login e limpo no logout; verify_auth aceita o cookie como fallback; apiService manda credentials:include. Remover o localStorage fica pra próxima fase (quando a superfície 100% cookie for validada).
 - [ ] Rotação do client id/secret OAuth vazados em docs (usuário adiou — cobrar de novo)
 
 ### Sync/Offline
@@ -60,12 +60,11 @@ Fonte: memórias do projeto, auditoria de segurança, sessões de trabalho e est
 - [x] ~~Cache Storage: eviction LRU~~ ✓ — cap de ~200 entradas no _writeCache (remove as mais antigas por ordem de inserção)
 
 ### API
-- [x] ~~Endpoint agregado por entity (`/entities/{id}/image`) que encapsula og+places~~ ✓ — GET /api/v3/entities/{entity_id}/image resolve website/place_id da própria entity (mesma cadeia tolerante dos cards, `_extract_image_sources`) e devolve o JPEG via og_image_service; 404 sem entity/fonte, 400 URL rejeitada; 6 unit tests sem mongo
-- [x] ~~Docs OpenAPI com exemplos dos endpoints novos (og-image)~~ ✓ — examples em url/place_id do /og-image + docstring com o contrato de resposta
+- [ ] Endpoint agregado por entity (`/entities/{id}/image`) que encapsula og+places — hoje o frontend monta a consulta
+- [ ] Docs OpenAPI com exemplos dos endpoints novos (og-image)
 
 ### UX
-- [x] ~~Datas relativas nos demais lugares com timestamp (sync activity)~~ ✓ — formatter canônico em `uiUtils.formatRelativeDate` (Intl.RelativeTimeFormat cacheado, ~30 dias → absoluto); sync status mostra "Last sync: 2 hours ago" com absoluto no title; ConflictResolutionModal delega para a mesma implementação
-- [x] ~~Saved views (auditoria, ponto 20)~~ ✓ — chips "My drafts" (status=draft + curator atual), "Unlinked" (param novo `unlinked` no /curations/search) e "Recently added" (param `created_after`, janela 24h = badge "novo") na view de curations; toggle liga/desliga, My drafts deriva dos selects (mudança manual desliga o chip); fallback local também filtra. ⚠️ "Sync issues" (4º exemplo da auditoria) fica pendente — exige juntar estado local de fila/conflitos à listagem
+- [ ] Datas relativas nos demais lugares com timestamp (sync activity)
 - [x] ~~Empty states tipados por seção~~ ✓ — templates no-curations (rate_review), no-entities (storefront), no-curator (person_off) no emptyStateManager; 4 blocos inline do uiManager trocados pelos presets
 
 ## Cadência

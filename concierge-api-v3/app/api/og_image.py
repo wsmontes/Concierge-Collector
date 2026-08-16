@@ -33,29 +33,17 @@ async def og_image_stats(auth: dict = Depends(require_role("curator"))):
 
 @router.get("/og-image")
 async def get_og_image(
-    url: Optional[str] = Query(
-        None,
-        min_length=10,
-        max_length=2048,
-        description="URL do site do restaurante",
-        example="https://www.manimanioca.com.br",
-    ),
+    url: Optional[str] = Query(None, min_length=10, max_length=2048, description="URL do site do restaurante"),
     place_id: Optional[str] = Query(
         None,
         min_length=5,
         max_length=512,
         description="Google place_id — fallback quando o site não tem og:image",
-        example="ChIJR9vPqUpfzpQR9qTmaP7mN7E",
     ),
     auth: dict = Depends(require_role("curator")),
 ):
     """Devolve o JPEG redimensionado (og:image do site ou foto do
-    Google Places como fallback) — 404 quando nenhuma fonte tem imagem.
-
-    Fonte primária: og:image da URL. Sem resultado e com place_id,
-    cai para a primeira foto do Google Places. Resposta: imagem JPEG
-    com `Cache-Control: public, max-age=3600` (o cliente persiste em
-    Cache Storage e revalida por TTL)."""
+    Google Places como fallback) — 404 quando nenhuma fonte tem imagem."""
     try:
         result = await get_og_image_bytes(page_url=url, place_id=place_id)
     except ValueError as exc:

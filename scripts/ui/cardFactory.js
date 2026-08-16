@@ -303,11 +303,6 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
             const sourceLabel = entity.data?.source || entity.source || (entity.data?.google_place_id ? 'google_places' : 'manual');
             const sourceText = this.escapeHtml(String(sourceLabel).replace(/_/g, ' '));
 
-            // Sync silencioso quando normal: o chip só existe para
-            // estados que exigem atenção (pending/conflict/error) —
-            // "synced" é o normal e não merece peso visual
-            const showSyncChip = ['pending', 'conflict', 'error'].includes(syncStatus);
-
             actionsRow.innerHTML = `
                 <div class="space-y-2">
                     <div class="flex flex-wrap items-center gap-1.5">
@@ -318,26 +313,20 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                             <span class="material-icons text-sm">inventory_2</span>
                             <span>${sourceText}</span>
                         </div>
-                        ${showSyncChip ? `
                         <div class="inline-flex items-center gap-1 text-xs font-medium ${syncColor} bg-white border border-gray-100 rounded-full px-2 py-1" title="Sync Status: ${syncStatus}">
                             <span class="material-icons text-sm">${syncIcon}</span>
                             <span class="capitalize">${syncStatus}</span>
                         </div>
-                        ` : ''}
                     </div>
                 </div>
                 <div class="grid grid-cols-3 gap-2 pt-1">
-                    <button class="btn-entity-details icon-btn w-full text-gray-700 hover:bg-gray-100" title="Entity Details" aria-label="Entity details">
+                    <button class="btn-entity-details icon-btn w-full text-gray-700 hover:bg-gray-100" title="Entity Details">
                         <span class="material-icons text-lg">info</span>
                     </button>
-                    <!-- Sync deixa de ser âmbar permanente (âmbar = warning):
-                         ação rotineira, tom neutro de icon-btn. Estados de
-                         atenção continuam nos chips de sync (pending/
-                         conflict/error). -->
-                    <button class="btn-entity-sync icon-btn w-full text-gray-600" title="Sync Entity" aria-label="Sync entity">
+                    <button class="btn-entity-sync h-10 w-full flex items-center justify-center bg-gray-50 text-amber-700 hover:bg-amber-50 rounded-lg transition-all border border-gray-100 shadow-sm" title="Sync Entity">
                         <span class="material-icons text-lg">sync</span>
                     </button>
-                    <button class="btn-entity-edit card-edit-btn" title="Edit Entity" aria-label="Edit entity">
+                    <button class="btn-entity-edit card-edit-btn" title="Edit Entity">
                         <span class="material-icons text-lg">edit</span>
                     </button>
                 </div>
@@ -610,12 +599,6 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
 
             const syncLabel = syncStatus === 'pending' ? 'Syncing...' : syncStatus;
 
-            // Sync silencioso quando normal — o chip só existe para
-            // estados que exigem atenção (pending/conflito/erro).
-            // Source e Delete saem da linha visível: moram no menu "⋯"
-            // (nível operacional secundário, não protagonista)
-            const showSyncChip = ['pending', 'conflict', 'error'].includes(syncStatus);
-
             actionsRow.innerHTML = `
                 <div class="space-y-3">
                     <div class="flex flex-wrap items-center gap-1.5">
@@ -624,37 +607,39 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                             ${this.escapeHtml(status)}
                         </span>
                         ` : ''}
-                        ${showSyncChip ? `
+                        <div class="${sourceInfo.className}">
+                            <span class="material-icons">${this.escapeHtml(sourceInfo.icon)}</span>
+                            ${this.escapeHtml(sourceInfo.label)}
+                        </div>
                         <div class="inline-flex items-center gap-1 text-xs font-medium ${syncColor} ${syncStatus === 'conflict' ? 'sync-conflict-chip' : ''} bg-white border border-gray-100 rounded-full px-2 py-1"
                              title="${syncStatus === 'conflict' ? 'Click to resolve conflict' : `Sync Status: ${this.escapeHtml(syncLabel)}` }">
                             <span class="material-icons text-sm">${syncIcon}</span>
                             <span class="capitalize">${this.escapeHtml(syncLabel)}</span>
                         </div>
-                        ` : ''}
                     </div>
                 </div>
                 <div class="grid grid-cols-3 gap-2 pt-1">
+                    <button class="btn-delete-curation icon-btn w-full text-red-500 hover:bg-red-50 hover:text-red-700 hover:border-red-200" title="Delete Curation">
+                        <span class="material-icons text-lg">delete_outline</span>
+                    </button>
                     ${isLinkedCuration ? `
                     <!-- vínculo ativo: o botão ABRE a página de detalhes da
                          entity linkada (a tag "Linked" foi removida — este
                          botão é quem comunica o vínculo agora) -->
-                    <button class="btn-view-entity card-link-btn" title="View linked entity details" aria-label="View linked entity details">
+                    <button class="btn-view-entity card-link-btn" title="View linked entity details">
                         <span class="material-icons text-base">visibility</span>
                         View Entity
                     </button>
                     ` : `
                     <!-- sem vínculo: aqui mora o Link Entity (mesmo espaço,
                          mesma linguagem quieta — nada de azul sólido) -->
-                    <button class="btn-link-entity card-link-btn" title="Link this curation to an entity" aria-label="Link this curation to an entity">
+                    <button class="btn-link-entity card-link-btn" title="Link this curation to an entity">
                         <span class="material-icons text-base">link</span>
                         Link Entity
                     </button>
                     `}
-                    <button class="btn-edit-curation card-edit-btn" title="Edit Curation" aria-label="Edit curation">
+                    <button class="btn-edit-curation card-edit-btn" title="Edit Curation">
                         <span class="material-icons text-lg">edit</span>
-                    </button>
-                    <button class="btn-more-curation icon-btn w-full text-gray-500 hover:bg-gray-100 hover:border-gray-200" title="More actions" aria-label="More actions" aria-haspopup="menu">
-                        <span class="material-icons text-lg">more_horiz</span>
                     </button>
                 </div>
             `;
@@ -674,9 +659,9 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
 
             // Add event listeners to buttons
             const editBtn = actionsRow.querySelector('.btn-edit-curation');
+            const deleteBtn = actionsRow.querySelector('.btn-delete-curation');
             const viewEntityBtn = actionsRow.querySelector('.btn-view-entity');
             const linkEntityBtn = actionsRow.querySelector('.btn-link-entity');
-            const moreBtn = actionsRow.querySelector('.btn-more-curation');
 
             if (editBtn) {
                 editBtn.onclick = (e) => {
@@ -717,21 +702,13 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                 };
             }
 
-            // Menu "⋯": source/sync como detalhe + Delete (nível
-            // operacional secundário — o card fica editorial)
-            if (moreBtn) {
-                moreBtn.onclick = (e) => {
+            if (deleteBtn) {
+                deleteBtn.onclick = (e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    this._openCardMenu(moreBtn, {
-                        sourceInfo,
-                        syncLabel,
-                        onDelete: () => {
-                            if (window.uiManager && typeof window.uiManager.confirmDeleteCuration === 'function') {
-                                window.uiManager.confirmDeleteCuration(curation.curation_id);
-                            }
-                        }
-                    });
+                    if (window.uiManager && typeof window.uiManager.confirmDeleteCuration === 'function') {
+                        window.uiManager.confirmDeleteCuration(curation.curation_id);
+                    }
                 };
             }
 
@@ -742,106 +719,6 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
         }
 
         return card;
-    }
-
-    /**
-     * Fecha o menu "⋯" aberto (singleton global — um menu por vez).
-     */
-    _closeCardMenu() {
-        if (window.__cardMoreMenu) {
-            window.__cardMoreMenu.remove();
-            window.__cardMoreMenu = null;
-        }
-    }
-
-    /**
-     * Abre o menu "⋯" do card: source/sync como detalhe informativo e
-     * ações destrutivas (Delete Curation). Posicionado fixo sob o botão;
-     * fecha em clique fora (o listener de fora é anexado após o evento
-     * atual terminar de propagar, senão ele mesmo fecharia o menu).
-     * Conteúdo montado com textContent — nada de innerHTML com dados.
-     */
-    _openCardMenu(anchor, { sourceInfo, syncLabel, items = [], onDelete }) {
-        this._closeCardMenu();
-
-        const menu = document.createElement('div');
-        menu.className = 'card-more-menu';
-        menu.setAttribute('role', 'menu');
-
-        const sourceLine = document.createElement('div');
-        sourceLine.className = 'card-more-menu__item card-more-menu__info';
-        const sourceIcon = document.createElement('span');
-        sourceIcon.className = 'material-icons';
-        sourceIcon.setAttribute('aria-hidden', 'true');
-        sourceIcon.textContent = sourceInfo?.icon || 'inventory_2';
-        const sourceText = document.createElement('span');
-        sourceText.textContent = `Source: ${sourceInfo?.label || 'unknown'}`;
-        sourceLine.append(sourceIcon, sourceText);
-        menu.appendChild(sourceLine);
-
-        const syncLine = document.createElement('div');
-        syncLine.className = 'card-more-menu__item card-more-menu__info';
-        const syncIcon = document.createElement('span');
-        syncIcon.className = 'material-icons';
-        syncIcon.setAttribute('aria-hidden', 'true');
-        syncIcon.textContent = 'cloud';
-        const syncText = document.createElement('span');
-        syncText.textContent = `Sync: ${syncLabel || 'unknown'}`;
-        syncLine.append(syncIcon, syncText);
-        menu.appendChild(syncLine);
-
-        // Itens operacionais extras (ex.: Unlink no review card) — mesmo
-        // visual dos demais itens; conteúdo via textContent.
-        items.forEach((item) => {
-            const btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'card-more-menu__item';
-            btn.setAttribute('role', 'menuitem');
-            const icon = document.createElement('span');
-            icon.className = 'material-icons';
-            icon.setAttribute('aria-hidden', 'true');
-            icon.textContent = item.icon || 'more_horiz';
-            const label = document.createElement('span');
-            label.textContent = item.label || '';
-            btn.append(icon, label);
-            btn.addEventListener('click', () => {
-                this._closeCardMenu();
-                if (typeof item.onClick === 'function') item.onClick();
-            });
-            menu.appendChild(btn);
-        });
-
-        if (typeof onDelete === 'function') {
-            const deleteBtn = document.createElement('button');
-            deleteBtn.type = 'button';
-            deleteBtn.className = 'card-more-menu__item card-more-menu__danger';
-            deleteBtn.setAttribute('role', 'menuitem');
-            const delIcon = document.createElement('span');
-            delIcon.className = 'material-icons';
-            delIcon.setAttribute('aria-hidden', 'true');
-            delIcon.textContent = 'delete_outline';
-            const delText = document.createElement('span');
-            delText.textContent = 'Delete Curation';
-            deleteBtn.append(delIcon, delText);
-            deleteBtn.addEventListener('click', () => {
-                this._closeCardMenu();
-                onDelete();
-            });
-            menu.appendChild(deleteBtn);
-        }
-
-        document.body.appendChild(menu);
-        const rect = anchor.getBoundingClientRect();
-        menu.style.top = `${rect.bottom + 6}px`;
-        menu.style.right = `${Math.max(8, window.innerWidth - rect.right)}px`;
-
-        window.__cardMoreMenu = menu;
-        const onOutsideClick = (ev) => {
-            if (menu.contains(ev.target)) return;
-            this._closeCardMenu();
-            document.removeEventListener('click', onOutsideClick);
-        };
-        setTimeout(() => document.addEventListener('click', onOutsideClick), 0);
     }
 
     extractEntityAddress(entity) {
@@ -916,14 +793,14 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
         } = options;
 
         const container = document.createElement('div');
-        container.className = 'empty-state';
+        container.className = 'col-span-full text-center py-12';
 
         container.innerHTML = `
-            <span class="empty-state-icon material-icons">${this.escapeHtml(icon)}</span>
-            <p class="empty-state-title">${this.escapeHtml(title)}</p>
-            <p class="empty-state-description">${this.escapeHtml(message)}</p>
+            <span class="material-icons text-6xl text-gray-300 mb-4">${this.escapeHtml(icon)}</span>
+            <p class="text-gray-500 mb-2 font-medium">${this.escapeHtml(title)}</p>
+            <p class="text-sm text-gray-400">${this.escapeHtml(message)}</p>
             ${action ? `
-                <button class="empty-state-action btn btn-primary btn-sm">
+                <button class="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
                     ${this.escapeHtml(action.label)}
                 </button>
             ` : ''}

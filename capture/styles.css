@@ -413,7 +413,6 @@ button {
 .auth-panel__input {
   flex: 1;
   min-width: 12rem;
-  min-height: 44px; /* touch target (era 38px) */
   padding: 0.55rem 0.75rem;
   border: 1px solid var(--stone);
   border-radius: 8px;
@@ -428,7 +427,6 @@ button {
   border-color: var(--olive);
 }
 .auth-panel__btn {
-  min-height: 44px; /* touch target (era 36px) */
   padding: 0.55rem 1rem;
   border: none;
   border-radius: 8px;

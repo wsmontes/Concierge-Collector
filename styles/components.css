@@ -70,7 +70,7 @@
 .btn-md {
   padding: var(--spacing-2-5) var(--spacing-5);
   font-size: var(--text-sm);
-  min-height: 44px; /* 44px: o 40px antigo ficava 1px abaixo do alvo de toque */
+  min-height: 40px;
 }
 
 .btn-lg {
@@ -704,10 +704,40 @@
 
 /* ========================================================================
    EMPTY STATE (padrão único de estado vazio)
-   Variante BEM (.empty-state__*) removida (ago/2026): o emptyStateManager
-   e os templates usam o vocabulário hyphenated (.empty-state-icon etc.)
-   — as duas convenções coexistiam no mesmo CSS. Definição única abaixo.
-   ========================================================================
+   Antes cada view tinha seu bloco inline py-12 quase idêntico com
+   variações. Um componente: ícone grande, título, descrição, ação.
+   ======================================================================== */
+
+.empty-state {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  padding: 3rem 1.5rem;
+}
+
+.empty-state__icon {
+  font-size: 3.5rem;
+  color: var(--color-neutral-300);
+  margin-bottom: var(--spacing-4);
+  display: block;
+}
+
+.empty-state__title {
+  font-size: var(--text-base);
+  font-weight: var(--font-semibold);
+  color: var(--color-neutral-600);
+  margin-bottom: var(--spacing-1);
+}
+
+.empty-state__description {
+  font-size: var(--text-sm);
+  color: var(--color-neutral-400);
+  margin-bottom: var(--spacing-4);
+}
+
+/* ========================================================================
    ICON BUTTON (padrão único de botão de ícone nas ações dos cards)
    Antes cada card tinha botões próprios com paddings/tons variados.
    ======================================================================== */
@@ -934,8 +964,7 @@
   opacity: var(--opacity-100);
 }
 
-/* Alert Variants — bordas no tom do tema (ago/2026): os hex do Tailwind
-   antigo (#6ee7b7/#fcd34d/#fca5a5) eram os únicos pontos neon do sistema */
+/* Alert Variants */
 .alert-info {
   background-color: var(--color-info-light);
   border-color: var(--color-primary-300);
@@ -944,19 +973,19 @@
 
 .alert-success {
   background-color: var(--color-success-light);
-  border-color: var(--color-success-400);
+  border-color: #6ee7b7;
   color: var(--color-success-dark);
 }
 
 .alert-warning {
   background-color: var(--color-warning-light);
-  border-color: var(--color-warning-400);
+  border-color: #fcd34d;
   color: var(--color-warning-dark);
 }
 
 .alert-error {
   background-color: var(--color-error-light);
-  border-color: #d39891; /* tom de borda tijolo (border-red-300) */
+  border-color: #fca5a5;
   color: var(--color-error-dark);
 }
 
@@ -1238,41 +1267,92 @@
   align-items: center;
 }
 
-/* Responsive behavior: UMA linha no mobile — Cancel | Save lado a
-   lado. O título "Edit Restaurant" não ocupa mais linha própria: o
-   contexto do modo já vive no header (mobile-nav-title) e na rota */
+/* Responsive behavior */
 @media (max-width: 640px) {
   .toolbar-fixed-bottom {
-    padding: 0.5rem 0.75rem;
-    padding-bottom: calc(0.5rem + env(safe-area-inset-bottom, 0px));
+    padding: var(--spacing-3);
   }
-
+  
   .toolbar-container {
-    flex-direction: row;
-    align-items: center;
-    gap: 0.75rem;
+    flex-direction: column;
+    align-items: stretch;
   }
-
-  .toolbar-info {
-    display: none;
-  }
-
+  
   .toolbar-actions {
-    flex: 1;
-    gap: 0.75rem;
+    justify-content: stretch;
   }
-
+  
   .toolbar-actions .btn {
     flex: 1;
   }
 }
 
 /* ========================================================================
-   CURATION EDITOR MODAL — REMOVIDO (ago/2026)
-   O editor por áreas é INLINE (#concepts-section) desde o redesign;
-   o modal #curation-editor-modal não existe no DOM (zero referências).
-   O bloco tinha até propriedades CSS inválidas (ring:/ring-color:).
+   CURATION EDITOR MODAL
    ======================================================================== */
+
+#curation-editor-modal .modal-content {
+  position: relative;
+  max-height: 90vh;
+  overflow-y: auto;
+}
+
+#curation-editor-modal section {
+  scroll-margin-top: var(--spacing-4);
+}
+
+#curation-editor-modal h3 {
+  color: var(--color-neutral-900);
+  font-size: var(--text-lg);
+  font-weight: var(--font-semibold);
+}
+
+#curation-editor-modal input[type="text"],
+#curation-editor-modal input[type="tel"],
+#curation-editor-modal input[type="url"],
+#curation-editor-modal input[type="number"],
+#curation-editor-modal select,
+#curation-editor-modal textarea {
+  font-size: var(--text-sm);
+  transition: all var(--transition-fast);
+}
+
+#curation-editor-modal input:focus,
+#curation-editor-modal select:focus,
+#curation-editor-modal textarea:focus {
+  border-color: var(--color-primary);
+  ring: 2px;
+  ring-color: var(--color-primary);
+  ring-opacity: 0.2;
+}
+
+#curation-editor-modal label span.text-red-500 {
+  color: var(--color-error);
+}
+
+#curation-editor-modal label span.text-gray-500 {
+  color: var(--color-neutral-500);
+  font-weight: var(--font-normal);
+}
+
+#curation-editor-loading {
+  z-index: 10;
+}
+
+/* Make modal scrollable on mobile */
+@media (max-width: 768px) {
+  #curation-editor-modal .modal-content {
+    margin: var(--spacing-4);
+    max-height: calc(100vh - var(--spacing-8));
+    max-width: calc(100vw - var(--spacing-8));
+  }
+  
+  #curation-editor-modal .grid-cols-2,
+  #curation-editor-modal .md\\:grid-cols-2,
+  #curation-editor-modal .md\\:grid-cols-4 {
+    grid-template-columns: 1fr;
+  }
+}
 
 /* ========================================================================
    TAB NAVIGATION COMPONENTS
@@ -1363,13 +1443,11 @@
     0 14px 34px rgba(26, 24, 23, 0.07);
 }
 
-/* Logo da top bar — 48px mobile, 67px em >=640px. O 58px original
-   (auditoria, ponto 15) inflava o header sticky junto com o wordmark
-   centrado; 48px devolve ~10px de viewport ao editor no mobile.
-   Tailwind 2 CDN não tem utilitários arbitrários, então a altura
-   exata vive aqui. */
+/* Logo da top bar — 20% maior que o h-12/h-14 original (58px mobile,
+   67px em >=640px). Tailwind 2 CDN não tem utilitários arbitrários,
+   então a altura exata vive aqui. */
 .brand-logo {
-  height: 48px;
+  height: 58px;
   width: auto;
 }
 
@@ -1551,9 +1629,9 @@
   z-index: 1;
 }
 
-/* Estabilização mobile: cards rolam no eixo VERTICAL nativo — o pan
-   horizontal bloqueado evita o back-swipe acidental do browser sobre
-   os cards (o app não tem gestos horizontais próprios) */
+/* Estabilização mobile: cards só rolam no EIXO VERTICAL — o pan
+   horizontal fica livre para gestos próprios do app (swipe actions)
+   sem disputar com o scroll/back do browser */
 .restaurant-card,
 [data-entity-id],
 .review-card {
@@ -1573,6 +1651,14 @@
   background: var(--chip-info-bg);
   border-radius: var(--radius-full);
   padding: 0.125rem 0.5rem;
+}
+
+/* Feedback visual do swipe (classe .swiping aplicada pelo
+   gestureManager durante o gesto): tint oliva sutil que volta no
+   touchend — sem transform, sem risco de layout */
+[data-entity-id].swiping,
+.review-card.swiping {
+  background-color: var(--color-primary-50);
 }
 
 /* Véu de FALLBACK — princípio feedmine "cards resolvidos antes de
@@ -1623,62 +1709,31 @@
 /* Tons do fallback por status (mesmo mapeamento semântico do tema:
    draft=bronze, linked=aço, active=garrafa, archived=pedra,
    deleted=tijolo) */
-/* Fallback do véu: NEUTRO (pedra) para todos os status — o estado do
-   workflow já vive na borda (card-accent-*) e no chip; o fallback da
-   imagem é conteúdo, não status. Uma cor só, mais calmo. */
-.card-og-veil--fallback {
-  --og-fallback-a: rgba(126, 120, 108, 0.13); /* pedra */
-  --og-fallback-b: rgba(126, 120, 108, 0.02);
-  --og-fallback-fg: #8a8377;
+.card-accent-draft .card-og-veil--fallback,
+.card-accent-pending .card-og-veil--fallback {
+  --og-fallback-a: rgba(176, 137, 59, 0.16); /* bronze */
+  --og-fallback-b: rgba(176, 137, 59, 0.03);
+  --og-fallback-fg: #b0893b;
 }
-
-/* Menu "⋯" dos cards (source/sync + Delete) — nível operacional
-   secundário; posicionado fixo via JS sob o botão */
-.card-more-menu {
-  position: fixed;
-  z-index: 1060;
-  min-width: 12rem;
-  background: #fff;
-  border: 1px solid var(--color-border, #e5e7eb);
-  border-radius: 0.75rem;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.12);
-  padding: 0.375rem;
+.card-accent-linked .card-og-veil--fallback {
+  --og-fallback-a: rgba(61, 90, 128, 0.14); /* aço */
+  --og-fallback-b: rgba(61, 90, 128, 0.03);
+  --og-fallback-fg: #3d5a80;
 }
-
-.card-more-menu__item {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  width: 100%;
-  padding: 0.5rem 0.625rem;
-  font-size: 0.8125rem;
-  border-radius: 0.5rem;
-  border: none;
-  background: none;
-  cursor: pointer;
-  color: var(--color-text-primary, #111827);
-  text-align: left;
+.card-accent-active .card-og-veil--fallback {
+  --og-fallback-a: rgba(74, 124, 89, 0.14); /* garrafa */
+  --og-fallback-b: rgba(74, 124, 89, 0.03);
+  --og-fallback-fg: #4a7c59;
 }
-
-.card-more-menu__info {
-  color: var(--color-text-secondary, #6b7280);
-  cursor: default;
+.card-accent-archived .card-og-veil--fallback {
+  --og-fallback-a: rgba(126, 120, 108, 0.15); /* pedra */
+  --og-fallback-b: rgba(126, 120, 108, 0.03);
+  --og-fallback-fg: #7e786c;
 }
-
-.card-more-menu__info .material-icons {
-  font-size: 1rem;
-}
-
-.card-more-menu__danger {
-  color: var(--color-error, #b0433b);
-}
-
-.card-more-menu__danger:hover {
-  background: var(--color-error-light, #f6e2df);
-}
-
-.card-more-menu__item:hover:not(.card-more-menu__info) {
-  background: var(--color-bg-secondary, #f3f4f6);
+.card-accent-deleted .card-og-veil--fallback {
+  --og-fallback-a: rgba(176, 67, 59, 0.15); /* tijolo */
+  --og-fallback-b: rgba(176, 67, 59, 0.03);
+  --og-fallback-fg: #b0433b;
 }
 
 /* Read-state do feedmine: cards arquivados/deletados ficam atenuados
@@ -1691,376 +1746,4 @@
 .card-accent-archived:hover,
 .card-accent-deleted:hover {
   opacity: 1;
-}
-
-/* ===================================================================
-   EDITOR POR ÁREAS (UX: Identity / Curation / Concepts / Source material)
-   ===================================================================
-   Mobile: uma coluna, accordions na ordem natural do fluxo.
-   Desktop (≥1024px): 2 colunas — editorial (Curation+Concepts) à
-   esquerda, contexto factual (Identity+Sources) à direita — e uma
-   faixa de âncoras sticky sob o header. */
-
-/* O style.css legado dá overflow:hidden + ripple ::after às sections —
-   o overflow quebra o sticky das âncoras do editor; aqui o editor pede
-   overflow visível e sem ripple */
-#concepts-section {
-  overflow: visible;
-}
-
-#concepts-section::after {
-  display: none;
-}
-
-.editor-grid {
-  display: flex;
-  flex-direction: column;
-  gap: 1.25rem;
-}
-
-/* No mobile as colunas somem e as áreas viram itens diretos (a ordem
-   visual é controlada pelos .editor-area--* abaixo) */
-.editor-col-main,
-.editor-col-context {
-  display: contents;
-}
-
-.editor-area {
-  scroll-margin-top: 8rem;
-}
-
-.editor-area--identity { order: 1; }
-.editor-area--curation { order: 2; }
-.editor-area--concepts { order: 3; }
-.editor-area--sources { order: 4; }
-
-.editor-section-heading {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-family: var(--font-sans, 'DM Sans', sans-serif);
-  font-size: 0.75rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  font-weight: 700;
-  color: var(--color-text-secondary, #6b7280);
-  padding-bottom: 0.5rem;
-  margin-bottom: 1rem;
-  border-bottom: 1px solid var(--color-border, #e5e7eb);
-}
-
-.editor-section-heading > .material-icons {
-  font-size: 1rem;
-  color: var(--color-primary, #6f8256);
-}
-
-/* Botão do accordion (mobile) — desktop esconde, mas o estado
-   colapsado sobrevive à rotação */
-.editor-section-toggle {
-  margin-left: auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 2.25rem;
-  height: 2.25rem;
-  min-height: 44px; /* touch target mínimo */
-  border: none;
-  background: transparent;
-  border-radius: 0.375rem;
-  color: var(--color-text-secondary, #6b7280);
-  cursor: pointer;
-}
-
-.editor-section-toggle:hover {
-  background: var(--color-bg-secondary, #f3f4f6);
-}
-
-.editor-section-toggle .material-icons {
-  transition: transform 0.2s ease;
-}
-
-.editor-area.is-collapsed .editor-section-toggle .material-icons {
-  transform: rotate(180deg);
-}
-
-.editor-area.is-collapsed .editor-section-body {
-  display: none;
-}
-
-/* Faixa de âncoras do editor (desktop apenas) */
-#edit-section-nav {
-  display: none;
-  align-items: center;
-  gap: 0.25rem;
-  padding: 0.25rem 0 0.5rem;
-  margin-bottom: 1rem;
-  border-bottom: 1px solid var(--color-border, #e5e7eb);
-  position: sticky;
-  top: 4.25rem;
-  background: var(--color-bg-primary, #ffffff);
-  z-index: 30;
-}
-
-.edit-nav-link {
-  font-size: 0.8125rem;
-  font-weight: 600;
-  color: var(--color-text-secondary, #6b7280);
-  padding: 0.375rem 0.625rem;
-  border-radius: 0.375rem;
-  text-decoration: none;
-  white-space: nowrap;
-}
-
-.edit-nav-link:hover {
-  color: var(--color-text-primary, #111827);
-  background: var(--color-bg-secondary, #f3f4f6);
-}
-
-@media (min-width: 1024px) {
-  #edit-section-nav {
-    display: flex;
-  }
-
-  .editor-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 1.62fr) minmax(0, 1fr);
-    gap: 1.5rem;
-    align-items: start;
-  }
-
-  .editor-col-main {
-    display: block;
-    grid-column: 1;
-    grid-row: 1;
-  }
-
-  .editor-col-context {
-    display: block;
-    grid-column: 2;
-    grid-row: 1;
-  }
-
-  .editor-section-toggle {
-    display: none;
-  }
-
-  /* Estado colapsado no mobile não pode esconder conteúdo no desktop */
-  .editor-area.is-collapsed .editor-section-body {
-    display: block;
-  }
-}
-
-/* Contador de palavras da descrição (o limite de verdade é por
-   palavras; bronze quando estoura) */
-.description-word-count {
-  margin-left: 0.5rem;
-  font-size: 0.75rem;
-  font-weight: 500;
-  /* neutral-500 (AA): o text-tertiary/neutral-400 antigo ficava em
-     ~2.6:1 sobre branco — ilegível no contador */
-  color: var(--color-neutral-500, #6f6a64);
-}
-
-.description-word-count--over {
-  color: var(--color-warning, #9a5b1f);
-  font-weight: 700;
-}
-
-/* ===================================================================
-   FILTROS DA COLEÇÃO (Search + Status visíveis; refinamentos em
-   bottom sheet com chips)
-   =================================================================== */
-
-.filters-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.75rem;
-  align-items: center;
-}
-
-.filters-bar__search {
-  flex: 1 1 14rem;
-  min-width: 0;
-}
-
-.filters-bar__status {
-  flex: 0 0 auto;
-  min-width: 8rem;
-}
-
-.filters-toggle {
-  flex: 0 0 auto;
-}
-
-.filters-count {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 1.25rem;
-  height: 1.25rem;
-  padding: 0 0.25rem;
-  margin-left: 0.25rem;
-  border-radius: 999px;
-  background: var(--color-primary, #6f8256);
-  color: #fff;
-  font-size: 0.6875rem;
-  font-weight: 700;
-}
-
-.filters-sheet-label {
-  display: block;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--color-text-secondary, #6b7280);
-  margin-bottom: 0.25rem;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.filters-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.375rem;
-  margin-bottom: 1rem;
-}
-
-.filters-chips:empty {
-  display: none;
-}
-
-.filters-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--color-info, #3d5a80);
-  background: var(--color-info-light, #e3eaf2);
-  border: 1px solid transparent;
-  padding: 0.25rem 0.5rem 0.25rem 0.625rem;
-  border-radius: 999px;
-  cursor: pointer;
-}
-
-.filters-chip:hover {
-  border-color: var(--color-info, #3d5a80);
-}
-
-.filters-chip .material-icons {
-  font-size: 0.875rem;
-}
-
-/* Saved views (auditoria UX, ponto 20): presets de escopo para operação
-   em volume — chips neutros que marcam o ativo com oliva (a cor da ação
-   principal), nunca um arco-íris de estados. */
-.saved-views {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.375rem;
-}
-
-.saved-view-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.25rem;
-  font-size: 0.75rem;
-  font-weight: 600;
-  color: var(--color-text-secondary, #6b7280);
-  background: transparent;
-  border: 1px solid var(--color-border, #e5e7eb);
-  padding: 0.25rem 0.625rem;
-  border-radius: 999px;
-  cursor: pointer;
-  transition:
-    color var(--transition-fast) var(--ease-out),
-    border-color var(--transition-fast) var(--ease-out),
-    background-color var(--transition-fast) var(--ease-out);
-}
-
-.saved-view-chip:hover {
-  border-color: var(--color-text-secondary, #6b7280);
-}
-
-.saved-view-chip:focus-visible {
-  outline: 2px solid var(--color-primary-500, #6f8256);
-  outline-offset: 2px;
-}
-
-.saved-view-chip.is-active {
-  color: #fff;
-  background: var(--color-primary, #6f8256);
-  border-color: var(--color-primary, #6f8256);
-}
-
-/* Onboarding pós-auth (auditoria UX, ponto 22): faixa de boas-vindas da
-   primeira entrada — papel limestone com fio oliva à esquerda; some
-   para sempre no dismiss. Não é wizard: só nomes de verbos. */
-.onboarding-welcome {
-  margin-bottom: 1.5rem;
-  background: var(--color-bg-secondary, #faf8f4);
-  border: 1px solid var(--color-border, #e5e7eb);
-  border-left: 3px solid var(--color-primary, #6f8256);
-  border-radius: 0.75rem;
-  padding: 1rem 1.25rem;
-}
-
-.onboarding-welcome__inner {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.75rem 1.5rem;
-}
-
-.onboarding-welcome__title {
-  font-family: var(--font-display);
-  font-weight: 600;
-  font-size: 1.125rem;
-  color: var(--color-neutral-900);
-  margin-bottom: 0.125rem;
-}
-
-.onboarding-welcome__text {
-  font-size: 0.875rem;
-  color: var(--color-text-secondary, #6b7280);
-  max-width: 52ch;
-}
-
-.onboarding-welcome__actions {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-  flex-shrink: 0;
-}
-
-/* Entrada de nova curadoria por plataforma: "+ New Curation" no header
-   (desktop); o FAB flutuante fica só no mobile, onde corresponde ao
-   ambiente de uso (gravou/fotografou no restaurante) */
-#new-curation-btn {
-  display: none;
-}
-
-@media (min-width: 641px) {
-  #new-curation-btn {
-    display: inline-flex;
-    align-items: center;
-  }
-
-  #fab {
-    display: none !important;
-  }
-}
-
-/* Variante desktop do bottom sheet de filtros: painel flutuante no
-   canto inferior direito, não folha de tela cheia */
-@media (min-width: 1024px) {
-  .bottom-sheet {
-    left: auto;
-    right: 1.5rem;
-    bottom: 1.5rem;
-    width: 24rem;
-    max-height: 70vh;
-    border-radius: var(--radius-xl, 1rem);
-    box-shadow: 0 8px 30px rgba(0, 0, 0, 0.14);
-  }
 }

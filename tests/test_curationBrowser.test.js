@@ -85,37 +85,3 @@ describe('CurationBrowser', () => {
     expect(api.listCurations).toHaveBeenCalledWith(expect.objectContaining({ city: 'São Paulo', type: 'bar', q: 'pizza', limit: 25 }));
   });
 });
-
-describe('CurationBrowser — saved views (ponto 20)', () => {
-  test('openScope propaga unlinked/created_after para a API', async () => {
-    const api = { listCurations: vi.fn(async () => ({ items: [] })) };
-    const br = new CurationBrowser({ apiService: api, pageSize: 25 });
-    br.openScope({ unlinked: true, createdAfter: '2026-08-15T00:00:00.000Z' });
-    await br.nextPage();
-    expect(api.listCurations).toHaveBeenCalledWith(
-      expect.objectContaining({ unlinked: true, created_after: '2026-08-15T00:00:00.000Z', limit: 25 })
-    );
-  });
-
-  test('scope não propaga flags desligadas', async () => {
-    const api = { listCurations: vi.fn(async () => ({ items: [] })) };
-    const br = new CurationBrowser({ apiService: api, pageSize: 25 });
-    br.openScope({ unlinked: false, createdAfter: null });
-    await br.nextPage();
-    const params = api.listCurations.mock.calls[0][0];
-    expect(params.unlinked).toBeUndefined();
-    expect(params.created_after).toBeUndefined();
-  });
-
-  test('alternar unlinked reseta o cursor (mudança de escopo)', async () => {
-    const api = { listCurations: vi.fn(async () => ({ items: [{ _id: 'a' }] })) };
-    const br = new CurationBrowser({ apiService: api, pageSize: 25 });
-    br.openScope({});
-    await br.nextPage();
-    expect(br.items).toHaveLength(1);
-
-    br.openScope({ unlinked: true });
-    expect(br.cursor).toBe(null);
-    expect(br.items).toEqual([]);
-  });
-});

@@ -2383,17 +2383,13 @@ class RecordingModule {
                 statusElement.classList.remove('hidden');
                 statusElement.innerHTML = `
                     <span class="material-icons text-green-500 mr-1">check_circle</span>
-                    ${type === 'transcription'
-                        ? 'Transcription complete'
-                        : 'Draft created. Review what AI extracted.'}
+                    ${type === 'transcription' ? 'Transcription complete' : 'Analysis complete'}
                 `;
 
-                // A frase final estabelece a autoria (a IA preparou um
-                // draft, o curador é o autor) e precisa de mais tempo de
-                // leitura que "Analysis complete" — 6s para analysis.
+                // Hide after 3 seconds
                 setTimeout(() => {
                     statusElement.classList.add('hidden');
-                }, type === 'analysis' ? 6000 : 3000);
+                }, 3000);
             } else if (status === 'error') {
                 statusElement.classList.remove('hidden');
                 statusElement.innerHTML = `
