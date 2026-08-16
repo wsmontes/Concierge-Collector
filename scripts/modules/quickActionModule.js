@@ -32,18 +32,19 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
         // FAB button to open quick action modal
         if (this.uiManager.fab) {
             SafetyUtils.addEventListenerSafely(this.uiManager.fab, 'click', () => {
-                // Only show quick actions if a curator is logged in
-                if (!this.uiManager.currentCurator) {
-                    SafetyUtils.showNotification('Please set up curator information first', 'error');
-                    return;
-                }
-                
-                if (this.uiManager.quickActionModal) {
-                    SafetyUtils.elementClassSafely(this.uiManager.quickActionModal, 'remove', 'hidden', 'QuickActionModule');
-                }
+                this.openQuickActions();
             }, {}, 'QuickActionModule');
         } else {
             this.log.warn('QuickActionModule: FAB button element not found');
+        }
+
+        // "+ New Curation" (desktop): mesma entrada do FAB, linguagem do
+        // desktop — e a rota #/new também cai aqui
+        const newCurationBtn = document.getElementById('new-curation-btn');
+        if (newCurationBtn) {
+            SafetyUtils.addEventListenerSafely(newCurationBtn, 'click', () => {
+                this.openQuickActions();
+            }, {}, 'QuickActionModule');
         }
         
         // Close modal button
@@ -105,6 +106,22 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
         }
         
         this.log.debug('QuickActionModule: Events set up successfully');
+    }
+
+    /**
+     * Abre as quick actions — entrada única para o FAB (mobile), o botão
+     * "+ New Curation" (desktop) e a rota #/new. Exige curador logado.
+     */
+    openQuickActions() {
+        // Only show quick actions if a curator is logged in
+        if (!this.uiManager.currentCurator) {
+            SafetyUtils.showNotification('Please set up curator information first', 'error');
+            return;
+        }
+
+        if (this.uiManager.quickActionModal) {
+            SafetyUtils.elementClassSafely(this.uiManager.quickActionModal, 'remove', 'hidden', 'QuickActionModule');
+        }
     }
 
     /**

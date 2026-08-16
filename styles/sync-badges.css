@@ -2,51 +2,15 @@
  * Styles for sync status badges and enhanced curator UI
  */
 
-/* Sync button animation - all sync buttons */
-#sync-with-server,
-#sync-with-server-compact,
-#sync-with-server-selector {
-    position: relative;
-    overflow: hidden;
-}
-
-#sync-with-server:active .material-icons,
-#sync-with-server-compact:active .material-icons,
-#sync-with-server-selector:active .material-icons {
-    animation: spin 1s linear infinite;
-}
-
-#sync-with-server.syncing .material-icons,
-#sync-with-server-compact.syncing .material-icons,
-#sync-with-server-selector.syncing .material-icons {
-    animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-    from {
-        transform: rotate(0deg);
-    }
-    to {
-        transform: rotate(360deg);
-    }
-}
-
+/* Blocos #sync-with-server* removidos (ago/2026): ids mortos — o sync
+   manual vive no chip do header (#btn-sync-details, SyncStatusModule).
+   Ficam os estilos de curator abaixo (curatorModule renderiza os ids
+   dinamicamente). */
 /* Data origin badges removidos — dead CSS: o SourceUtils emite o padrão
    único .chip chip--{tone} (components.css + tokens do design-system). Ago/2026. */
 
-/* Restaurant cards with sync status */
-.restaurant-card {
-    position: relative;
-    transition: all 0.2s ease-in-out;
-}
-
-.restaurant-card.restaurant-local {
-    border-left: 3px solid var(--color-warning-400);
-}
-
-.restaurant-card.restaurant-remote {
-    border-left: 3px solid var(--color-success-400);
-}
+/* .restaurant-card removido (ago/2026): zero referências — o status
+   visual dos cards vive no .card-accent-* (components.css). */
 
 /* Curator selector styles */
 #curator-selector-container {
@@ -69,17 +33,6 @@
     display: flex;
     gap: 0.5rem;
     flex-wrap: wrap;
-}
-
-/* Restaurant sync button */
-.sync-restaurant {
-    padding: 0.25rem 0.5rem;
-    border-radius: 0.25rem;
-    transition: all 0.2s;
-}
-
-.sync-restaurant:hover {
-    background-color: rgba(74, 124, 89, 0.1);
 }
 
 /* Curator filter toggle */

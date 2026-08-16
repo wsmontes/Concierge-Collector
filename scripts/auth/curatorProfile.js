@@ -190,6 +190,14 @@ const CuratorProfile = (function() {
 
                         <!-- Menu Items -->
                         <button
+                            id="user-data-mgmt-btn"
+                            class="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors"
+                            role="menuitem"
+                        >
+                            <span class="material-icons text-gray-400 text-lg">settings</span>
+                            Data Management
+                        </button>
+                        <button
                             id="user-logout-btn"
                             class="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors"
                             role="menuitem"
@@ -237,6 +245,7 @@ const CuratorProfile = (function() {
                 const button = document.getElementById('user-profile-button');
                 const dropdown = document.getElementById('user-profile-dropdown');
                 const logoutBtn = document.getElementById('user-logout-btn');
+                const dataMgmtBtn = document.getElementById('user-data-mgmt-btn');
 
                 if (button && dropdown) {
                     // Toggle dropdown
@@ -245,6 +254,19 @@ const CuratorProfile = (function() {
                         const isHidden = dropdown.classList.contains('hidden');
                         dropdown.classList.toggle('hidden');
                         button.setAttribute('aria-expanded', !isHidden);
+                    });
+                }
+
+                if (dataMgmtBtn) {
+                    dataMgmtBtn.addEventListener('click', () => {
+                        dropdown?.classList.add('hidden');
+                        button?.setAttribute('aria-expanded', 'false');
+                        const nm = window.navigationManager;
+                        if (nm && typeof nm.goTo === 'function') {
+                            nm.goTo('/data');
+                        } else {
+                            window.uiManager?.showDataManagementSection?.();
+                        }
                     });
                 }
 

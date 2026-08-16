@@ -19,14 +19,14 @@ class CurationBrowser {
     this.total = -1; // -1 = unknown (cursor mode on subsequent pages)
   }
 
-  openScope({ curatorId = null, status = null, city = null, type = null, q = null } = {}) {
-    if (this._scopeChanged({ curatorId, status, city, type, q })) {
+  openScope({ curatorId = null, status = null, city = null, type = null, q = null, unlinked = false, createdAfter = null } = {}) {
+    if (this._scopeChanged({ curatorId, status, city, type, q, unlinked, createdAfter })) {
       this.cursor = null;
       this.done = false;
       this.items = [];
       this.total = -1;
     }
-    this.scope = { curatorId, status, city, type, q };
+    this.scope = { curatorId, status, city, type, q, unlinked, createdAfter };
   }
 
   _scopeChanged(next) {
@@ -35,7 +35,9 @@ class CurationBrowser {
       || prev.status !== next.status
       || prev.city !== next.city
       || prev.type !== next.type
-      || prev.q !== next.q;
+      || prev.q !== next.q
+      || !!prev.unlinked !== !!next.unlinked
+      || (prev.createdAfter || null) !== (next.createdAfter || null);
   }
 
   _params(afterId) {
@@ -49,6 +51,9 @@ class CurationBrowser {
     if (this.scope.city) p.city = this.scope.city;
     if (this.scope.type && this.scope.type !== 'all') p.type = this.scope.type;
     if (this.scope.q) p.q = this.scope.q;
+    // Saved views (auditoria UX, ponto 20): órfãs e janela de criação
+    if (this.scope.unlinked) p.unlinked = true;
+    if (this.scope.createdAfter) p.created_after = this.scope.createdAfter;
     return p;
   }
 

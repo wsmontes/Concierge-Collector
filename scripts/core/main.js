@@ -317,6 +317,12 @@ async function initializeApp() {
         window.uiManager = new UIManager();
         window.uiManager.init();
 
+        // Navegação explícita (Collection ↔ Editor ↔ New Curation):
+        // registra rotas hash, breadcrumbs, back mobile e o guard de
+        // mudanças não salvas. Roda DEPOIS do uiManager.init() — o
+        // dispatch inicial do NavigationManager precisa dos módulos vivos.
+        initializeNavigation();
+
         // Verify recording module is properly initialized
         console.log('🔍 Verifying RecordingModule initialization:', {
             RecordingModuleClassExists: typeof RecordingModule !== 'undefined',
@@ -425,120 +431,10 @@ function ensureBaseStructureExists() {
 }
 
 /**
- * Setup manual sync button to use V3 SyncManager
+ * Setup manual sync button — REMOVIDO (ago/2026): o botão vivia na
+ * sidebar que não existe mais (hidden) e o sync manual é acessível
+ * pelo chip do header (#btn-sync-details → modal Sync details).
  */
-function setupManualSyncButton() {
-    // Try both button locations (header and sidebar)
-    const syncButton = document.getElementById('sync-button-header') || document.getElementById('sync-button');
-    if (!syncButton) {
-        console.warn('⚠️ Sync button not found');
-        return;
-    }
-
-    console.log('🔧 V3: Configuring manual sync button...');
-
-    // Remove existing listeners (clone and replace)
-    const newButton = syncButton.cloneNode(true);
-    syncButton.parentNode.replaceChild(newButton, syncButton);
-
-    // Add click handler using V3 SyncManager
-    newButton.addEventListener('click', async () => {
-        console.log('🔄 V3: Manual sync triggered');
-
-        // window.SyncManager é a instância real (main.js:249); V3SyncManager/
-        // window.syncManager nunca são atribuídos em lugar nenhum
-        const syncManager = window.SyncManager;
-        if (!syncManager) {
-            console.error('❌ V3: SyncManager not available');
-            if (window.uiUtils?.showNotification) {
-                window.uiUtils.showNotification('V3 Sync service not available', 'error');
-            }
-            return;
-        }
-
-        // Disable button and add syncing state
-        newButton.disabled = true;
-        newButton.classList.add('syncing');
-
-        // Animate icon (rotate) if it's the header button
-        const icon = newButton.querySelector('.material-icons');
-        if (icon) {
-            icon.style.animation = 'spin 1s linear infinite';
-        }
-
-        // Get button text element (for sidebar button)
-        const buttonText = newButton.querySelector('.btn-text') || newButton.childNodes[newButton.childNodes.length - 1];
-        const originalText = buttonText?.textContent;
-        if (buttonText && buttonText.textContent && !buttonText.textContent.includes('sync')) {
-            buttonText.textContent = 'Syncing...';
-        }
-
-        try {
-            let syncResults;
-            // SyncManagerV3 expõe fullSync/syncAll/quickSync —
-            // performComprehensiveSync nunca existiu nessa classe
-            if (typeof syncManager.fullSync === 'function') {
-                syncResults = await syncManager.fullSync();
-            } else {
-                throw new Error('No compatible sync method available');
-            }
-
-            console.log('✅ V3: Manual sync completed from sidebar');
-            console.log('V3: Sync results:', syncResults);
-
-            // Show success notification with results
-            if (window.uiUtils?.showNotification) {
-                if (syncResults && typeof syncResults === 'object') {
-                    const added = syncResults.entitiesAdded || syncResults.added || 0;
-                    const updated = syncResults.entitiesUpdated || syncResults.updated || 0;
-                    const message = `V3 Sync complete: ${added} added, ${updated} updated`;
-                    window.uiUtils.showNotification(message, 'success');
-                } else {
-                    window.uiUtils.showNotification('V3 Sync completed successfully', 'success');
-                }
-            }
-
-            // Refresh entity list if available
-            if (window.entityModule) {
-                await window.entityModule.refresh();
-            }
-
-            // Refresh UI components
-            if (window.uiManager) {
-                // Refresh curator selector if available
-                if (window.uiManager.curatorModule &&
-                    typeof window.uiManager.curatorModule.initializeCuratorSelector === 'function') {
-                    window.uiManager.curatorModule.curatorSelectorInitialized = false;
-                    await window.uiManager.curatorModule.initializeCuratorSelector();
-                }
-            }
-
-        } catch (error) {
-            console.error('❌ V3: Manual sync error:', error);
-            if (window.uiUtils?.showNotification) {
-                window.uiUtils.showNotification(`V3 Sync failed: ${error.message}`, 'error');
-            }
-        } finally {
-            // Re-enable button and restore state
-            newButton.disabled = false;
-            newButton.classList.remove('syncing');
-
-            // Stop icon animation
-            const icon = newButton.querySelector('.material-icons');
-            if (icon) {
-                icon.style.animation = '';
-            }
-
-            // Restore text for sidebar button
-            if (buttonText && originalText) {
-                buttonText.textContent = originalText;
-            }
-        }
-    });
-
-    console.log('✅ V3: Manual sync button configured (using V3SyncManager)');
-}
-
 /**
  * Initializes background services with proper error handling
  */
@@ -555,14 +451,8 @@ function initializeBackgroundServices() {
     // PHASE 1.3: AutoSync DISABLED - using SyncManager only
     // Previously: AutoSync periodic sync every 30min
     // Now: SyncManager handles all sync (60s retry + manual comprehensive sync)
-    // Manual sync via sync-button → syncManager.performComprehensiveSync()
-    setTimeout(() => {
-        console.log('⚠️ AutoSync periodic sync disabled (Phase 1.3)');
-        console.log('✅ Using SyncManager for all sync operations');
-
-        // Setup manual sync button to use SyncManager's comprehensive sync
-        setupManualSyncButton();
-    }, 3000);
+    console.log('⚠️ AutoSync periodic sync disabled (Phase 1.3)');
+    console.log('✅ Using SyncManager for all sync operations');
 
     // PHASE 1.3: SyncSettingsManager DISABLED (no longer needed)
     // Previously: Managed AutoSync interval settings
@@ -589,6 +479,7 @@ function cleanupBrowserData() {
             'oauth_access_token',  // CRITICAL: Preserve OAuth access token
             'oauth_refresh_token',  // CRITICAL: Preserve OAuth refresh token
             'oauth_token_expiry',  // CRITICAL: Preserve OAuth token expiry
+            'oauth_user_profile',  // perfil do usuário offline-first (curatorProfile)
             'concierge_db_recovery_needed',  // CRITICAL: lido por ensureHealthyIndexedDB DEPOIS do cleanup
             'needsInitialSync',  // CRITICAL: sync inicial pós-import (importManager.js)
             'api_key',  // credencial do app de capture (mesma origin via /capture)
@@ -599,11 +490,21 @@ function cleanupBrowserData() {
             'migration_v3_complete'  // flag de migração V2→V3 (importManager)
         ];
 
+        // Prefixo one-time (ago/2026): o onboarding de primeira entrada
+        // (concierge_onboarded_v1[_curator]) morava em keys fora da lista
+        // e era APAGADO a cada boot — a feature reaparecia em TODO reload.
+        // O prefixo sobrevive à limpeza. (A dica de swipe — swipe_hint_seen
+        // — morreu junto com os swipe actions dos cards: a key legada cai
+        // na limpeza normal deste bloco.)
+        const preservePrefixes = [
+            'concierge_onboarded_'
+        ];
+
         // Clean localStorage (preserve only essential keys)
         const keysToRemove = [];
         for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
-            if (!preserveKeys.includes(key)) {
+            if (!preserveKeys.includes(key) && !preservePrefixes.some((p) => key.startsWith(p))) {
                 keysToRemove.push(key);
             }
         }
@@ -798,147 +699,243 @@ function triggerInitialSync() {
     }, 1000); // reduced from 3000ms: 1s is enough for UI to settle
 }
 
-/**
- * Initialize all modules
- */
-function initializeModules() {
-    console.log('Initializing all modules...');
+// ============================================================================
+// Navegação explícita (Collection ↔ Editor ↔ New Curation)
+// ============================================================================
+// O NavigationManager existia dormente desde 2024; daqui para baixo ele é
+// integrado de verdade: rotas hash com estado, breadcrumbs no desktop,
+// back + título no mobile e proteção de mudanças não salvas.
 
-    // Load the PlacesModule (not PlacesSearchModule which doesn't exist)
-    // Remove references to placesSearchModule and placesInlineSearchModule
+/** Busca uma curation no IndexedDB pelo curation_id (ou id local). */
+async function findLocalCuration(id) {
     try {
-        // The Places module is loaded directly via script tag,
-        // so we don't need to load it here.
-        // Check if it's already registered globally
-        if (window.placesModule) {
-            console.log('Places module already loaded and registered');
-        } else {
-            console.warn('Places module not found, dynamically loading...');
-            loadPlacesModule();
-        }
+        const db = window.DataStore?.db;
+        if (!db?.curations) return null;
+        const byId = await db.curations.get(id);
+        if (byId) return byId;
+        return (await db.curations.where('curation_id').equals(id).first()) || null;
     } catch (e) {
-        console.error('Error initializing Places module:', e);
+        console.warn('findLocalCuration failed:', e);
+        return null;
     }
 }
 
-/**
- * Load Places module
- */
-function loadPlacesModule() {
-    // Load the single consolidated Places module instead of the separate modules
-    const script = document.createElement('script');
-    script.src = 'scripts/modules/placesModule.js';
-
-    script.onload = function () {
-        console.log('Places module loaded successfully');
-    };
-
-    script.onerror = function () {
-        console.error('Failed to load Places module script');
-    };
-
-    document.head.appendChild(script);
-}
-
-// Sprint 2, Day 4: Setup Quick Import Nearby button handler
-document.addEventListener('DOMContentLoaded', () => {
-    const importNearbyBtn = document.getElementById('import-nearby-btn');
-    if (importNearbyBtn) {
-        importNearbyBtn.addEventListener('click', handleQuickImportNearby);
-    }
-});
-
-/**
- * Sprint 2, Day 4: Handle "Import 20 Nearby" button click
- * Imports restaurants from Google Places in user's vicinity
- */
-async function handleQuickImportNearby() {
-    const logger = Logger.module('QuickImport');
-    logger.info('🚀 Quick Import Nearby initiated');
-
-    const button = document.getElementById('import-nearby-btn');
-    const originalText = button.innerHTML;
-
+/** Busca uma entity no IndexedDB por id local ou entity_id. */
+async function findLocalEntity(id) {
     try {
-        // Disable button during operation
-        button.disabled = true;
-        button.innerHTML = '<span class="material-icons text-sm mr-1 animate-spin">refresh</span> Importing...';
-
-        // Initialize PlacesAutomation if not already done
-        if (!window.placesAutomation) {
-            window.placesAutomation = new PlacesAutomation();
-        }
-
-        // 1. Get user location
-        logger.debug('📍 Getting user location...');
-        const location = await window.placesAutomation.getUserLocation();
-        logger.debug(`✅ Location: ${location.lat}, ${location.lng}`);
-
-        // 2. Search Google Places via Backend API
-        logger.debug('🔍 Searching Google Places via backend...');
-        const radius = 5000; // 5km
-        const maxResults = 20;
-
-        // Call backend /api/v3/places/nearby endpoint
-        const backendUrl = `${AppConfig.api.backend.baseUrl}/places/nearby`;
-        const params = new URLSearchParams({
-            latitude: location.lat.toString(),
-            longitude: location.lng.toString(),
-            radius: radius.toString(),
-            place_type: 'restaurant',
-            max_results: maxResults.toString()
-        });
-
-        const response = await fetch(`${backendUrl}?${params.toString()}`, {
-            // /places/nearby exige OAuth Bearer (config.js documenta o
-            // contrato) — antes ia SEM header e 401/403 em produção
-            headers: window.ApiService?.getAuthHeaders?.() || {}
-        });
-
-        if (!response.ok) {
-            throw new Error(`Backend API error: ${response.status} ${response.statusText}`);
-        }
-
-        const data = await response.json();
-
-        if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
-            throw new Error(`Google Places API error: ${data.error_message || data.status}`);
-        }
-
-        const places = data.results || [];
-
-        logger.debug(`✅ Found ${places.length} places`);
-
-        // Limit to 20 results
-        const limitedPlaces = places.slice(0, maxResults);
-
-        // 3. Import as entities (automated)
-        logger.debug('💾 Importing entities...');
-        const imported = await window.placesAutomation.autoImportEntities(limitedPlaces);
-
-        logger.info(`✅ Import complete: ${imported.count} imported, ${imported.duplicates} duplicates`);
-
-        // 4. Show success notification
-        if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
-            window.uiUtils.showNotification(`Imported ${imported.count} restaurants. Skipped ${imported.duplicates} duplicates.`, 'success', 5000);
-        }
-
-        // 5. Refresh UI (if entity list exists)
-        if (window.uiManager && window.uiManager.refreshEntityList) {
-            await window.uiManager.refreshEntityList();
-        }
-
-    } catch (error) {
-        logger.error('❌ Import failed:', error);
-
-        // Show error notification
-        if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
-            window.uiUtils.showNotification('Import failed: ' + error.message, 'error', 5000);
-        }
-
-    } finally {
-        // Re-enable button
-        button.disabled = false;
-        button.innerHTML = originalText;
+        const db = window.DataStore?.db;
+        if (!db?.entities) return null;
+        const byId = await db.entities.get(id);
+        if (byId) return byId;
+        return (await db.entities.where('entity_id').equals(id).first()) || null;
+    } catch (e) {
+        console.warn('findLocalEntity failed:', e);
+        return null;
     }
 }
+
+/**
+ * Registra as rotas do app. Handlers só delegam para os métodos existentes
+ * do uiManager/entityModule — nenhuma lógica nova de view aqui.
+ */
+function registerNavigationRoutes(nm) {
+    // Coleção (lista)
+    nm.register('/', {
+        breadcrumb: 'Collection',
+        handler: () => {
+            const m = window.uiManager;
+            // No startup o uiManager.init já mostrou a lista — re-chamar
+            // aqui reintroduzia a corrida com o fetch inicial do servidor.
+            if (m && m.currentView !== 'list') m.showRestaurantListSection();
+        }
+    });
+
+    // Nova curadoria (quick actions) — entrada desktop (item 5)
+    nm.register('/new', {
+        breadcrumb: 'New Curation',
+        handler: () => {
+            window.uiManager?.quickActionModule?.openQuickActions?.();
+        }
+    });
+
+    // Editor em modo novo (gravou/importou/manual — rota de substituição
+    // atribuída por showRestaurantFormSection/showConceptsSection)
+    nm.register('/new/edit', {
+        breadcrumb: 'New Curation',
+        handler: () => {
+            const m = window.uiManager;
+            if (m && m.currentView !== 'concepts') m.showRestaurantFormSection();
+        }
+    });
+
+    // Gravação (rota de substituição atribuída por showRecordingSection)
+    nm.register('/new/record', {
+        breadcrumb: 'Record Review',
+        handler: () => {
+            const m = window.uiManager;
+            if (m && m.currentView !== 'recording') m.showRecordingSection();
+        }
+    });
+
+    // Gerenciamento de dados (página própria — antes ficava empilhada no
+    // fim da Collection com os botões destrutivos expostos)
+    nm.register('/data', {
+        breadcrumb: 'Data Management',
+        handler: () => {
+            window.uiManager?.showDataManagementSection();
+        }
+    });
+
+    // Segmentos intermediários (só dão rótulo ao breadcrumb — o título
+    // real vem do state da navegação; crumb vazio some do breadcrumb)
+    nm.register('/curation', {
+        breadcrumb: (params, state) => state?.title || 'Curation',
+        handler: () => {}
+    });
+    nm.register('/curation/:id', {
+        breadcrumb: () => null,
+        handler: () => {}
+    });
+    nm.register('/entity', {
+        breadcrumb: (params, state) => state?.title || 'Entity',
+        handler: () => {}
+    });
+    nm.register('/entity/:id', {
+        breadcrumb: () => null,
+        handler: () => {}
+    });
+
+    // Edição de curadoria
+    nm.register('/curation/:id/edit', {
+        breadcrumb: 'Edit Curation',
+        handler: async (params, state) => {
+            const m = window.uiManager;
+            if (!m) return;
+            let curation = state?.curation || null;
+            if (!curation) curation = await findLocalCuration(params.id);
+            if (!curation) {
+                m.showNotification('This curation is not available locally', 'info');
+                nm.goTo('/', { replace: true });
+                return;
+            }
+            await m.editCuration(curation);
+        }
+    });
+
+    // Edição de entidade
+    nm.register('/entity/:id/edit', {
+        breadcrumb: 'Edit Entity',
+        handler: async (params, state) => {
+            const m = window.uiManager;
+            if (!m) return;
+            let entity = state?.entity || null;
+            if (!entity) entity = await findLocalEntity(params.id);
+            if (!entity) {
+                m.showNotification('This entity is not available locally', 'info');
+                nm.goTo('/', { replace: true });
+                return;
+            }
+            if (!m.canMutateWhileSyncing()) {
+                nm.goTo('/', { replace: true });
+                return;
+            }
+            window.entityModule?.startEntityEdit(entity);
+        }
+    });
+}
+
+/**
+ * Guard de navegação: sair de uma rota de edição com mudanças não salvas
+ * pede confirmação e limpa o estado de edição (mesmo caminho do Discard).
+ */
+function registerNavigationGuard(nm) {
+    nm.addGuard(async (fromPath, toPath) => {
+        const m = window.uiManager;
+        if (!m) return true;
+
+        const editing = !!(m.isEditingRestaurant || m.isEditingEntity);
+        if (!editing || !fromPath || !String(fromPath).includes('/edit')) return true;
+
+        // Navegação originada pelo próprio discard/save (estado já limpo)
+        if (window.__leavingEdit) return true;
+
+        const dirty = m.formIsDirty === true;
+        if (dirty) {
+            // confirmDialog do app (mesmo padrão de delete/unlink) — o
+            // window.confirm nativo destoava de todos os outros diálogos
+            const proceed = await window.uiUtils.confirmDialog(
+                'Discard unsaved changes?',
+                'Your edits will be lost if you leave this screen.',
+                'Discard',
+                'cancel'
+            );
+            if (!proceed) return false;
+        }
+
+        if (m.conceptModule && typeof m.conceptModule.discardRestaurant === 'function') {
+            window.__leavingEdit = true;
+            try {
+                await m.conceptModule.discardRestaurant();
+            } finally {
+                window.__leavingEdit = false;
+            }
+        }
+        return true;
+    });
+}
+
+/**
+ * Contexto de navegação visível: breadcrumbs no desktop (escondidos na
+ * rota raiz) e, no mobile, back + título do modo.
+ */
+function setupNavigationContext(nm) {
+    const breadcrumbs = document.getElementById('breadcrumbs');
+    const context = document.getElementById('mobile-nav-context');
+    const titleEl = document.getElementById('mobile-nav-title');
+    const labelEl = document.getElementById('mobile-back-label');
+
+    nm.addNavigateCallback(() => {
+        const route = nm.getCurrentRoute();
+        const path = route?.path || '/';
+
+        if (breadcrumbs) breadcrumbs.classList.toggle('hidden', path === '/');
+        if (context) context.classList.toggle('hidden', path === '/');
+
+        if (path !== '/' && titleEl) {
+            const crumbs = nm.generateBreadcrumbs();
+            const current = crumbs[crumbs.length - 1];
+            const parent = crumbs.length > 1 ? crumbs[crumbs.length - 2] : null;
+            if (labelEl) labelEl.textContent = parent?.label || 'Collection';
+            titleEl.textContent = current?.label || '';
+        }
+    });
+
+    const backBtn = document.getElementById('mobile-back-btn');
+    if (backBtn) {
+        backBtn.addEventListener('click', () => {
+            if (nm.getHistory().length > 1) {
+                nm.goBack();
+            } else {
+                nm.goTo('/', { replace: true });
+            }
+        });
+    }
+}
+
+/**
+ * Liga o NavigationManager de verdade (auto-init estava desativado desde
+ * 2024 — ver navigationManager.js). Chamado uma vez, no boot.
+ */
+function initializeNavigation() {
+    const nm = window.navigationManager;
+    if (!nm || typeof nm.register !== 'function') {
+        console.warn('NavigationManager unavailable — navigation context disabled');
+        return;
+    }
+
+    registerNavigationRoutes(nm);
+    registerNavigationGuard(nm);
+    setupNavigationContext(nm);
+    nm.init();
+}
+

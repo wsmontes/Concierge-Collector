@@ -45,7 +45,6 @@ Esta pasta contém todos os scripts JavaScript do frontend, organizados por resp
 - `modalManager.js` - Sistema de modais
 - `navigationManager.js` - Navegação entre views
 - `bottomSheet.js` - Bottom sheets mobile
-- `gestureManager.js` - Gestos touch
 - `skeletonLoader.js` - Loading skeletons
 - `lazyLoader.js` - Lazy loading de imagens
 - `optimisticUI.js` - Updates otimistas

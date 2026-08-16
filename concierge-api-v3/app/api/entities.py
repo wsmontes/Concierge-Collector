@@ -4,7 +4,7 @@ Entity endpoints - CRUD operations
 
 import re
 
-from fastapi import APIRouter, HTTPException, Header, Query, Depends, Request
+from fastapi import APIRouter, HTTPException, Header, Query, Depends, Request, Response
 from typing import Optional
 from datetime import datetime, timezone
 from bson import ObjectId
@@ -30,6 +30,7 @@ from app.core.security import (
     require_role,
 )
 from app.services.entity_service import upsert_entity
+from app.services.og_image_service import get_og_image_bytes
 
 logger = logging.getLogger(__name__)
 
@@ -115,6 +116,56 @@ def get_entity(entity_id: str, db: Database = Depends(get_database)):
         raise HTTPException(status_code=404, detail=f"Entity {entity_id} not found")
 
     return Entity(**result)
+
+
+def _extract_image_sources(doc: dict) -> tuple[Optional[str], Optional[str]]:
+    """Website + place_id da entity com a MESMA cadeia tolerante dos cards
+    (v3 singular + bulk plural) — endpoint agregado não pode divergir do
+    frontend no que considera fonte de imagem."""
+    data = doc.get("data") or {}
+    website = (
+        (data.get("contact") or {}).get("website")
+        or (data.get("contacts") or {}).get("website")
+        or data.get("website")
+        or None
+    )
+    place_id = data.get("place_id") or None
+    return website, place_id
+
+
+@router.get("/{entity_id}/image")
+async def get_entity_image(
+    entity_id: str,
+    db: Database = Depends(get_database),
+    auth: dict = Depends(require_role("curator")),
+):
+    """Imagem agregada da entity (véu dos cards sem o frontend montar a
+    consulta): resolve website/place_id da própria entity e devolve o JPEG
+    via og_image_service (og:image do site com fallback de foto do Places).
+    404 quando a entity não existe ou nenhuma fonte tem imagem; 400 quando
+    o serviço rejeita uma URL (mesmo contrato do /og-image)."""
+    result = find_entity(db, entity_id)
+    if not result:
+        raise HTTPException(status_code=404, detail=f"Entity {entity_id} not found")
+
+    website, place_id = _extract_image_sources(result)
+    if not website and not place_id:
+        raise HTTPException(status_code=404, detail="entity sem website nem place_id (sem fonte de imagem)")
+
+    try:
+        image = await get_og_image_bytes(page_url=website, place_id=place_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    if image is None:
+        raise HTTPException(status_code=404, detail="imagem não encontrada (og:image e Places sem resultado)")
+
+    image_data, content_type = image
+    return Response(
+        content=image_data,
+        media_type=content_type,
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
 
 
 @router.patch("/{entity_id}", response_model=Entity)

@@ -294,6 +294,76 @@ def create_curation(
     return create_curation_doc(db, curation, auth)
 
 
+def _parse_iso_param(name: str, raw: str) -> datetime:
+    """Parse de timestamp ISO de query param — 400 no formato inválido
+    (mesmo contrato do since; compartilhado por since/created_after)."""
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except ValueError:
+        raise HTTPException(status_code=400, detail=f"Invalid {name} timestamp format. Use ISO 8601.")
+
+
+def build_search_query(
+    *,
+    entity_id: Optional[str] = None,
+    curator_id: Optional[str] = None,
+    status: Optional[CurationStatus] = None,
+    include_deleted: bool = False,
+    since: Optional[str] = None,
+    created_after: Optional[str] = None,
+    city: Optional[str] = None,
+    type: Optional[str] = None,
+    q: Optional[str] = None,
+    unlinked: bool = False,
+) -> dict:
+    """Monta o filtro Mongo do /curations/search — função pura (sem I/O),
+    unit-testável sem banco. Regras:
+    - q vira grupo $or de regex; unlinked vira condição de órfã e compõe
+      por $and com esse grupo (AND entre texto e vínculo, nunca OR)
+    - unlinked: entity_id ausente/None/string vazia — $in: [None, ""]
+      já cobre as três formas (Mongo trata chave ausente como null)
+    - sem status explícito e sem include_deleted, 'deleted' é excluído
+    """
+    query = {}
+    if entity_id:
+        query["entity_id"] = entity_id
+    if curator_id:
+        query["curator.id"] = curator_id
+    if city:
+        query["city"] = city
+    if type:
+        query["type"] = type
+    if q:
+        sanitized = q.strip()[:200]
+        if sanitized:
+            escaped = re.escape(sanitized)
+            query["$or"] = [
+                {"restaurant_name": {"$regex": escaped, "$options": "i"}},
+                {"notes.public": {"$regex": escaped, "$options": "i"}},
+                {"curator.name": {"$regex": escaped, "$options": "i"}},
+            ]
+
+    if since:
+        query["updatedAt"] = {"$gte": _parse_iso_param("since", since)}
+
+    if created_after:
+        query["createdAt"] = {"$gte": _parse_iso_param("created_after", created_after)}
+
+    if unlinked:
+        unlinked_cond = {"entity_id": {"$in": [None, ""]}}
+        if "$or" in query:
+            query = {"$and": [query, unlinked_cond]}
+        else:
+            query["entity_id"] = unlinked_cond["entity_id"]
+
+    if status:
+        query["status"] = status
+    elif not include_deleted:
+        query["status"] = {"$ne": "deleted"}
+
+    return query
+
+
 @router.get("/search", response_model=PaginatedResponse)
 def search_curations(
     entity_id: Optional[str] = Query(None),
@@ -304,9 +374,17 @@ def search_curations(
         None,
         description="ISO timestamp - only return curations updated after this time",
     ),
+    created_after: Optional[str] = Query(
+        None,
+        description="ISO timestamp - only return curations created after this time (saved view 'Recently added')",
+    ),
     city: Optional[str] = Query(None),
     type: Optional[str] = Query(None),
     q: Optional[str] = Query(None, description="Busca por texto em restaurant_name"),
+    unlinked: bool = Query(
+        False,
+        description="Apenas curadorias órfãs (entity_id ausente/vazio) — saved view 'Unlinked'",
+    ),
     limit: int = Query(50, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     after_id: Optional[str] = Query(
@@ -329,37 +407,21 @@ def search_curations(
     - **Offset-based** (?offset=N): legacy compatible, degrades at high offsets.
 
     Supports incremental sync via ?since (updatedAt >= since).
+    Saved views (auditoria UX, ponto 20): ?unlinked=true (órfãs) e
+    ?created_after=<ISO> (recém-criadas, janela de 24h no frontend).
     """
-    query = {}
-    if entity_id:
-        query["entity_id"] = entity_id
-    if curator_id:
-        query["curator.id"] = curator_id
-    if city:
-        query["city"] = city
-    if type:
-        query["type"] = type
-    if q:
-        sanitized = q.strip()[:200]
-        if sanitized:
-            escaped = re.escape(sanitized)
-            query["$or"] = [
-                {"restaurant_name": {"$regex": escaped, "$options": "i"}},
-                {"notes.public": {"$regex": escaped, "$options": "i"}},
-                {"curator.name": {"$regex": escaped, "$options": "i"}},
-            ]
-
-    if since:
-        try:
-            since_dt = datetime.fromisoformat(since.replace("Z", "+00:00"))
-            query["updatedAt"] = {"$gte": since_dt}
-        except ValueError:
-            raise HTTPException(status_code=400, detail="Invalid since timestamp format. Use ISO 8601.")
-
-    if status:
-        query["status"] = status
-    elif not include_deleted:
-        query["status"] = {"$ne": "deleted"}
+    query = build_search_query(
+        entity_id=entity_id,
+        curator_id=curator_id,
+        status=status,
+        include_deleted=include_deleted,
+        since=since,
+        created_after=created_after,
+        city=city,
+        type=type,
+        q=q,
+        unlinked=unlinked,
+    )
 
     if after_id:
         # Cursor por _id com TRANSIÇÃO DE SEGMENTO (mesmo hazard de entities:
