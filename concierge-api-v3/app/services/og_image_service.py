@@ -1,182 +1,73 @@
 """
-Resolução em real-time de og:image dos sites dos restaurantes.
+Restaurant image resolution and ranked collection.
 
-O frontend exibe um véu degradê nos cards usando a imagem OG do site do
-restaurante (metadados: data.contact.website / data.website). O browser
-não consegue buscar o HTML de domínios arbitrários (CORS), então o
-servidor faz o fetch, parseia as meta tags, baixa a imagem E a
-redimensiona em real-time (thumbnail JPEG — sites servem originais de
-megabytes; o card só precisa de ~768px) antes de devolver os bytes.
-
-RESILIÊNCIA / FLEXIBILIDADE (ago/2026):
-- Candidatas em CASCATA por prioridade: og:image → og:image:secure_url
-  → og:image:url → twitter:image → twitter:image:src → link image_src
-  → schema.org itemprop=image. Todas as ocorrências de cada grupo são
-  coletadas; o download tenta cada uma até uma decodificar (sites com
-  og:image quebrada caem para a twitter:image, etc.).
-- `<base href>` do HTML é respeitado na resolução de URLs relativas.
-- O content-type do servidor NÃO é confiado: HTML com header errado é
-  aceito se o corpo tem cara de HTML (sniff); imagens com header
-  errado são tentadas de qualquer forma — quem decide é o decodificador.
-- 1 retry com backoff em falha transitória de download (nunca em
-  destino bloqueado — ValueError do SSRF guard propaga).
-
-Segurança (padrões do openai_service):
-- Mesmo SSRF guard (`_validate_image_request_hook` como event hook) —
-  valida a URL inicial E cada redirect da cadeia, no HTML e na imagem.
-- Limite de bytes DURANTE o streaming (400KB de HTML, 20MB de imagem)
-  e timeouts (6s HTML, 30s imagem).
-- Cache em memória com TTL de 1h — N cards do mesmo site compartilham
-  uma única busca (instância única no Render, sem Redis).
+Legacy callers still receive one resized JPEG through `get_og_image_bytes`.
+Internally the service now discovers multiple website candidates, optionally
+adds Google Places photos, validates them through the existing SSRF-safe
+network boundary, scores/deduplicates the decoded images and caches the ranked
+catalog in memory.
 """
 
+from __future__ import annotations
+
 import asyncio
-import html as html_lib
-import io
+from collections import OrderedDict
 import logging
 import re
 import time
 from typing import Dict, List, Optional, Tuple
-from urllib.parse import urljoin
 
 import httpx
-from PIL import Image
 
 from app.core.config import settings
 from app.services.openai_service import _validate_image_request_hook
+from app.services.restaurant_image_collection_service import collect_candidates
+from app.services.restaurant_image_collector import (
+    CollectedImage,
+    ImageCandidate,
+    prepare_image,
+    rank_and_dedupe,
+)
+from app.services.restaurant_image_discovery import discover_image_urls
 
 logger = logging.getLogger(__name__)
 
-# HTML de páginas reais raramente passa de 400KB até as meta tags;
-# o cap evita baixar páginas gigantes inteiras.
 MAX_HTML_BYTES = 400 * 1024
 FETCH_TIMEOUT_SECONDS = 6.0
 IMAGE_FETCH_TIMEOUT_SECONDS = 30.0
-MAX_IMAGE_BYTES = 20 * 1024 * 1024  # mesmo cap do openai_service
+MAX_IMAGE_BYTES = 20 * 1024 * 1024
 OG_CACHE_TTL_SECONDS = 3600
-# Misses (site sem imagem/down) re-tentam mais cedo — padrão de
-# backoff do feedmine (ImageCache.misses): falha transitória não fica
-# presa 1h no cache negativo.
 OG_MISS_TTL_SECONDS = 600
 OG_CACHE_MAX_ENTRIES = 2000
-DOWNLOAD_ATTEMPTS = 2  # tentativa inicial + 1 retry
+DOWNLOAD_ATTEMPTS = 2
 RETRY_BACKOFF_SECONDS = 0.4
 
-# Redimensionamento: thumbnail até 768px na maior dimensão (o véu do
-# card não precisa de mais), JPEG qualidade 82 — ~60-120KB por imagem.
 OG_IMAGE_MAX_DIM = 768
 OG_IMAGE_QUALITY = 82
-# Cache dos BYTES redimensionados (mais caros que a URL): cap menor
-# para não segurar centenas de JPEGs em memória (~30MB no pior caso).
 OG_BYTES_CACHE_MAX_ENTRIES = 300
+CARD_IMAGE_MIN_DIM = 100
+CARD_IMAGE_MAX_ASPECT = 3.5
 
-# Candidatas por grupo de prioridade — a ordem da lista define a ordem
-# de tentativa do download. Cada grupo cobre as duas ordens possíveis
-# de atributos na tag meta.
-_META_PATTERN_GROUPS: List[Tuple[str, List[re.Pattern]]] = [
-    (
-        "og:image",
-        [
-            re.compile(rb'<meta[^>]+property=["\']og:image["\'][^>]*content=["\']([^"\']+)["\']', re.I),
-            re.compile(rb'<meta[^>]+content=["\']([^"\']+)["\'][^>]*property=["\']og:image["\']', re.I),
-        ],
-    ),
-    (
-        "og:image:secure_url",
-        [
-            re.compile(rb'<meta[^>]+property=["\']og:image:secure_url["\'][^>]*content=["\']([^"\']+)["\']', re.I),
-            re.compile(rb'<meta[^>]+content=["\']([^"\']+)["\'][^>]*property=["\']og:image:secure_url["\']', re.I),
-        ],
-    ),
-    (
-        "og:image:url",
-        [
-            re.compile(rb'<meta[^>]+property=["\']og:image:url["\'][^>]*content=["\']([^"\']+)["\']', re.I),
-            re.compile(rb'<meta[^>]+content=["\']([^"\']+)["\'][^>]*property=["\']og:image:url["\']', re.I),
-        ],
-    ),
-    (
-        "twitter:image",
-        [
-            re.compile(rb'<meta[^>]+(?:name|property)=["\']twitter:image["\'][^>]*content=["\']([^"\']+)["\']', re.I),
-            re.compile(rb'<meta[^>]+content=["\']([^"\']+)["\'][^>]*(?:name|property)=["\']twitter:image["\']', re.I),
-        ],
-    ),
-    (
-        "twitter:image:src",
-        [
-            re.compile(
-                rb'<meta[^>]+(?:name|property)=["\']twitter:image:src["\'][^>]*content=["\']([^"\']+)["\']',
-                re.I,
-            ),
-            re.compile(
-                rb'<meta[^>]+content=["\']([^"\']+)["\'][^>]*(?:name|property)=["\']twitter:image:src["\']',
-                re.I,
-            ),
-        ],
-    ),
-    (
-        "link image_src",
-        [re.compile(rb'<link[^>]+rel=["\']image_src["\'][^>]*href=["\']([^"\']+)["\']', re.I)],
-    ),
-    (
-        "schema.org itemprop=image",
-        [
-            re.compile(rb'<meta[^>]+itemprop=["\']image["\'][^>]*content=["\']([^"\']+)["\']', re.I),
-            re.compile(rb'<meta[^>]+content=["\']([^"\']+)["\'][^>]*itemprop=["\']image["\']', re.I),
-        ],
-    ),
-]
+COLLECTOR_MAX_IMAGES = 8
+COLLECTOR_WEBSITE_CANDIDATES = 8
+COLLECTOR_PLACES_CANDIDATES = 5
+COLLECTOR_MAX_CONCURRENCY = 4
+COLLECTOR_CACHE_MAX_ENTRIES = 300
+SITE_HERO_CONFIDENCE_SCORE = 55.0
 
-_BASE_HREF = re.compile(rb'<base[^>]+href=["\']([^"\']+)["\']', re.I)
-# Corpo com cara de HTML mesmo quando o content-type mente
 _HTML_SNIFF = re.compile(rb"<(html|head|meta|body|!doctype)\b", re.I)
 
-# ── Extração de imagem nível feedmine (padrões portados do projeto
-#    feedmine do usuário, ImageCache.articleImageURLs) ──
-# JSON-LD (schema.org): sites Wix/Squarespace/modernos declaram a
-# imagem no bloco application/ld+json mesmo sem meta og:.
-_LD_JSON_BLOCK = re.compile(rb'<script[^>]+type=["\']application/ld\+json["\'][^>]*>(.*?)</script>', re.I | re.S)
-_LD_IMAGE_KEY = re.compile(rb'"image"\s*:\s*"([^"\\]*(?:\\.[^"\\]*)*)"', re.I)
-# <img> do corpo: último recurso (WordPress SEM plugin de SEO não tem
-# meta og: nenhuma). Atributos lazy primeiro — data-lazy-src/data-src
-# carregam a foto real só depois do JS; o src seria um placeholder.
-_PLAIN_IMG_TAG = re.compile(rb"<img\b[^>]*>", re.I)
-_IMG_ATTR = re.compile(rb'([a-zA-Z0-9_-]+)\s*=\s*["\']([^"\']+)["\']', re.I)
-_IMG_SRC_ATTRS = ("data-lazy-src", "data-original", "data-src", "data-echo", "src")
-# Imagens decorativas/de identidade que NUNCA devem virar véu —
-# marcadores estreitos (feedmine: "logo" sozinho é agressivo demais)
-_DECORATIVE_MARKERS = (
-    "favicon",
-    "sprite",
-    "avatar",
-    "emoji",
-    "tracking",
-    "spacer",
-    "pixel.gif",
-    "count.gif",
-    "doubleclick",
-    "analytics",
-    "site-logo",
-    "header-logo",
-    "footer-logo",
-    "nav-logo",
-    "apple-touch-icon",
-    "/icons/",
-    "icon-",
-)
-
-# url do site -> (candidatas ou None, expires_at)
-_og_cache: dict[str, tuple[Optional[List[str]], float]] = {}
+# page URL -> (candidate URLs or None, expires_at)
+_og_cache: "OrderedDict[str, tuple[Optional[List[str]], float]]" = OrderedDict()
 
 
 def _cache_get(url: str) -> Optional[tuple[Optional[List[str]], float]]:
-    """Consulta o cache podando entradas expiradas (TTL 1h)."""
     now = time.monotonic()
-    for key in [k for k, (_, exp) in _og_cache.items() if exp < now]:
+    for key in [key for key, (_, expires_at) in _og_cache.items() if expires_at < now]:
         _og_cache.pop(key, None)
     hit = _og_cache.get(url)
     if hit and hit[1] >= now:
+        _og_cache.move_to_end(url)
         return hit
     if hit:
         _og_cache.pop(url, None)
@@ -184,110 +75,25 @@ def _cache_get(url: str) -> Optional[tuple[Optional[List[str]], float]]:
 
 
 def _cache_put(url: str, candidates: Optional[List[str]]) -> None:
-    if len(_og_cache) >= OG_CACHE_MAX_ENTRIES:
-        _og_cache.clear()
+    if url in _og_cache:
+        _og_cache.pop(url, None)
+    while len(_og_cache) >= OG_CACHE_MAX_ENTRIES:
+        _og_cache.popitem(last=False)
     ttl = OG_CACHE_TTL_SECONDS if candidates else OG_MISS_TTL_SECONDS
     _og_cache[url] = (candidates, time.monotonic() + ttl)
 
 
-def _jsonld_image_urls(raw: bytes, base_url: str) -> List[str]:
-    """Imagens do bloco application/ld+json (schema.org ImageObject).
-
-    Cobre sites Wix/Squarespace/modernos que declararam a imagem só no
-    JSON-LD. Unescape de \\/ e entidades HTML; ignora data:/blob:.
-    """
-    out: List[str] = []
-    for block in _LD_JSON_BLOCK.findall(raw):
-        for match in _LD_IMAGE_KEY.finditer(block):
-            value = match.group(1).decode("utf-8", errors="replace")
-            value = html_lib.unescape(value.replace(r"\/", "/")).strip()
-            absolute = urljoin(base_url, value)
-            if absolute.startswith(("http://", "https://")):
-                out.append(absolute)
-    return out
-
-
-def _plain_image_urls(raw: bytes, base_url: str) -> List[str]:
-    """Imagens de tags <img> do corpo — último recurso.
-
-    Atributos lazy primeiro (data-lazy-src/data-original/data-src/
-    data-echo): em sites WordPress com lazy-load, o src é placeholder
-    1px e a foto real só aparece no atributo data-*.
-    """
-    out: List[str] = []
-    for tag in _PLAIN_IMG_TAG.findall(raw):
-        attrs: dict = {}
-        for match in _IMG_ATTR.finditer(tag):
-            attrs[match.group(1).decode("ascii", errors="ignore").lower()] = match.group(2).decode(
-                "utf-8", errors="replace"
-            )
-        value = next((attrs[name] for name in _IMG_SRC_ATTRS if attrs.get(name)), None)
-        if not value:
-            continue
-        absolute = urljoin(base_url, html_lib.unescape(value.strip()))
-        if absolute.startswith(("http://", "https://")):
-            out.append(absolute)
-    return out
-
-
-def _is_decorative_image(url: str) -> bool:
-    """True para imagens de identidade/rastreio que não servem de véu."""
-    value = url.lower()
-    return any(marker in value for marker in _DECORATIVE_MARKERS)
-
-
 def _parse_og_images(raw: bytes, final_url: str) -> List[str]:
-    """TODAS as imagens candidatas do HTML, em ordem de prioridade.
-
-    Ordem (a primeira que decodificar vence no pipeline): meta og: em
-    cascata → JSON-LD (schema.org) → <img> do corpo. Respeita
-    `<base href>` para URLs relativas; ignora data:/blob:, filtra
-    imagens decorativas (favicon/logo/tracking) e deduplica
-    preservando a ordem.
-    """
-    base_url = final_url
-    base_match = _BASE_HREF.search(raw)
-    if base_match:
-        base_candidate = html_lib.unescape(base_match.group(1).decode("utf-8", errors="replace").strip())
-        resolved_base = urljoin(final_url, base_candidate)
-        if resolved_base.startswith(("http://", "https://")):
-            base_url = resolved_base
-
-    candidates: List[str] = []
-    for _label, patterns in _META_PATTERN_GROUPS:
-        for pattern in patterns:
-            for match in pattern.finditer(raw):
-                candidate = match.group(1).decode("utf-8", errors="replace").strip()
-                if not candidate:
-                    continue
-                candidate = html_lib.unescape(candidate)
-                absolute = urljoin(base_url, candidate)
-                if absolute.startswith(("http://", "https://")):
-                    candidates.append(absolute)
-
-    # caps de sanidade: página de galeria com dezenas de <img> não pode
-    # virar dezenas de tentativas de download na cascata
-    candidates.extend(_jsonld_image_urls(raw, base_url)[:5])
-    candidates.extend(_plain_image_urls(raw, base_url)[:10])
-
-    filtered = [url for url in candidates if not _is_decorative_image(url)]
-    return list(dict.fromkeys(filtered))
+    """Compatibility parser; returned values remain string-compatible."""
+    return discover_image_urls(raw, final_url)
 
 
 def _parse_og_image(raw: bytes, final_url: str) -> Optional[str]:
-    """Compat: primeira candidata (usada por testes/consumidores diretos)."""
     candidates = _parse_og_images(raw, final_url)
     return candidates[0] if candidates else None
 
 
 async def _resolve_og_image_candidates(page_url: str) -> Optional[List[str]]:
-    """Busca o HTML de `page_url` e devolve as candidatas (ou None).
-
-    ValueError: URL inválida/credenciais/rede interna (SSRF guard).
-    Falha de rede/status não-2xx vira None. Content-type do servidor é
-    tratado com desconfiança: se o corpo tiver cara de HTML (sniff),
-    parseamos mesmo com header errado.
-    """
     if not isinstance(page_url, str) or not page_url.strip():
         raise ValueError("url é obrigatória")
 
@@ -299,14 +105,11 @@ async def _resolve_og_image_candidates(page_url: str) -> Optional[List[str]]:
         async with httpx.AsyncClient(
             follow_redirects=True,
             timeout=FETCH_TIMEOUT_SECONDS,
-            # Mesmo guard SSRF do download de imagens — valida cada
-            # request da cadeia de redirects (importado, não duplicado).
             event_hooks={"request": [_validate_image_request_hook]},
             headers={"User-Agent": "ConciergeCollector/1.0 (+https://concierge-collector.onrender.com)"},
         ) as client:
             async with client.stream("GET", page_url) as response:
                 response.raise_for_status()
-
                 content_type = response.headers.get("content-type", "")
                 chunks: list[bytes] = []
                 total = 0
@@ -317,16 +120,14 @@ async def _resolve_og_image_candidates(page_url: str) -> Optional[List[str]]:
                     chunks.append(chunk)
                 raw = b"".join(chunks)
 
-                # leniência de content-type: só descarta quando o header
-                # nega HTML E o corpo não parece HTML
-                nao_e_html_header = content_type and not content_type.startswith(("text/html", "application/xhtml"))
-                if nao_e_html_header and not _HTML_SNIFF.search(raw):
+                not_html_header = content_type and not content_type.startswith(("text/html", "application/xhtml"))
+                if not_html_header and not _HTML_SNIFF.search(raw):
                     candidates = None
                 else:
                     candidates = _parse_og_images(raw, str(response.url)) or None
     except ValueError:
         raise
-    except Exception as exc:  # httpx.HTTPError + status != 2xx
+    except Exception as exc:
         logger.debug("og:image indisponível para %s: %s", page_url, exc)
         candidates = None
 
@@ -335,57 +136,31 @@ async def _resolve_og_image_candidates(page_url: str) -> Optional[List[str]]:
 
 
 async def fetch_og_image(page_url: str) -> Optional[str]:
-    """Compat: primeira candidata de og:image do site (ou None)."""
     candidates = await _resolve_og_image_candidates(page_url)
     return candidates[0] if candidates else None
 
 
-# ---------------------------------------------------------------------------
-# ---------------------------------------------------------------------------
-# Bytes redimensionados (o que o endpoint devolve)
-# ---------------------------------------------------------------------------
-
-# Google Places (New) media URL — mesmo padrão do proxy /places/photo
 PLACES_API_PHOTO_MEDIA_URL = "https://places.googleapis.com/v1/{photo_name}/media"
 
-# url do site (ou chave 'place:<id>') -> (jpeg_bytes, expires_at)
-_og_bytes_cache: dict[str, tuple[Tuple[bytes, str], float]] = {}
-
-
-# Gate de aceitabilidade (padrão feedmine: dimensões reais decidem):
-# o primeiro <img> do corpo costuma ser banner/faixa (635×62, 10:1) ou
-# logo — o véu de card precisa de FOTO. Min-dim 100px + aspect ≤ 3.5:1
-# (fotos panorâmicas até ~3.5:1 ainda funcionam no cover do card).
-CARD_IMAGE_MIN_DIM = 100
-CARD_IMAGE_MAX_ASPECT = 3.5
+# Legacy final-JPEG cache: cache key -> ((bytes, content_type), expires_at)
+_og_bytes_cache: "OrderedDict[str, tuple[Tuple[bytes, str], float]]" = OrderedDict()
 
 
 def _resize_to_card_jpeg(raw: bytes) -> Tuple[bytes, str]:
-    """Converte a imagem original para JPEG thumbnail até 768px.
-
-    Falha de decodificação (formato exótico/corrompido) e imagem fora
-    do gate de aceitabilidade (banner/faixa/logo: min-dim < 100px ou
-    aspect > 3.5:1) propagam Exception — o chamador trata como "sem
-    imagem" e tenta a próxima candidata.
-    """
-    with Image.open(io.BytesIO(raw)) as img:
-        width, height = img.size
-        if min(width, height) < CARD_IMAGE_MIN_DIM or max(width, height) / min(width, height) > CARD_IMAGE_MAX_ASPECT:
-            raise ValueError(f"imagem fora do gate do card: {width}x{height}")
-        img = img.convert("RGB")  # JPEG não tem alpha; achata transparência
-        img.thumbnail((OG_IMAGE_MAX_DIM, OG_IMAGE_MAX_DIM))
-        out = io.BytesIO()
-        img.save(out, format="JPEG", quality=OG_IMAGE_QUALITY, optimize=True)
-        return out.getvalue(), "image/jpeg"
+    """Legacy resize API backed by the same validation as the collector."""
+    image = prepare_image(
+        raw,
+        ImageCandidate("https://legacy.local/image", "website_og", 0),
+        max_dim=OG_IMAGE_MAX_DIM,
+        quality=OG_IMAGE_QUALITY,
+        min_dim=CARD_IMAGE_MIN_DIM,
+        max_aspect=CARD_IMAGE_MAX_ASPECT,
+    )
+    return image.jpeg_bytes, "image/jpeg"
 
 
 async def _download_bytes(url: str, timeout: float) -> Optional[bytes]:
-    """Download com cap de bytes + 1 retry em falha transitória.
-
-    ValueError (URL inválida/rede interna do SSRF guard) propaga sem
-    retry — nunca re-tentamos um destino que o guard bloqueou.
-    O content-type NÃO é validado: quem decide é o decodificador.
-    """
+    """Download with byte cap and one transient retry; SSRF ValueError propagates."""
     for attempt in range(DOWNLOAD_ATTEMPTS):
         try:
             async with httpx.AsyncClient(
@@ -401,7 +176,7 @@ async def _download_bytes(url: str, timeout: float) -> Optional[bytes]:
                     async for chunk in response.aiter_bytes():
                         total += len(chunk)
                         if total > MAX_IMAGE_BYTES:
-                            return None  # "imagem monstro" — acima do cap
+                            return None
                         chunks.append(chunk)
                     return b"".join(chunks)
         except ValueError:
@@ -413,50 +188,59 @@ async def _download_bytes(url: str, timeout: float) -> Optional[bytes]:
     return None
 
 
-async def _places_photo_bytes(place_id: str) -> Optional[Tuple[bytes, str]]:
-    """Fallback de cobertura: primeira foto do Google Places do lugar.
-
-    Muitos sites de restaurantes não têm og:image (~metade do acervo) —
-    as entities bulk têm place_id, então a foto do Places preenche o
-    véu quando o site não tem. Metadata via LLMPlaceService (chave
-    server-side) → media bytes direto do Google (skipHttpRedirect,
-    SSRF-guarded como os outros downloads) → resize. Falha em qualquer
-    etapa = None (card sem véu, como antes).
-    """
+async def _places_image_candidates(
+    place_id: str,
+    max_photos: int = COLLECTOR_PLACES_CANDIDATES,
+) -> List[ImageCandidate]:
+    """Resolve Google Places photo metadata without exposing the API key to clients."""
     if not settings.google_places_api_key:
-        return None
+        return []
     try:
         from app.services.llm_place_service import LLMPlaceService
 
-        photos = LLMPlaceService().fetch_google_place_photos(place_id, max_photos=1) or []
+        photos = LLMPlaceService().fetch_google_place_photos(place_id, max_photos=max_photos) or []
     except Exception as exc:
         logger.debug("Places photos metadata falhou para %s: %s", place_id, exc)
-        return None
+        return []
 
+    candidates: List[ImageCandidate] = []
     for photo in photos:
         name = photo.get("name") if isinstance(photo, dict) else None
         if not name or not name.startswith("places/"):
             continue
-        # SEM skipHttpRedirect: a API responde 302 para o CDN do Google
-        # (URL já com a largura aplicada) e o httpx segue o redirect
-        # (follow_redirects=True) — o skipHttpRedirect=true devolvia
-        # JSON-eco em vez dos bytes com a chave atual.
         media_url = PLACES_API_PHOTO_MEDIA_URL.format(photo_name=name)
         media_url += f"?key={settings.google_places_api_key}&maxWidthPx={OG_IMAGE_MAX_DIM}"
-        raw = await _download_bytes(media_url, IMAGE_FETCH_TIMEOUT_SECONDS)
-        if raw is None:
-            continue
-        try:
-            return _resize_to_card_jpeg(raw)
-        except Exception as exc:
-            logger.debug("foto do Places indecodificável %s: %s", name, exc)
-            continue
-    return None
+        candidates.append(ImageCandidate(media_url, "google_places", len(candidates)))
+        if len(candidates) >= max_photos:
+            break
+    return candidates
 
 
-# Métricas de cobertura (observabilidade — GET /og-image/stats):
-# quantos véus resolvem por fonte (og vs places) e quantos cards ficam
-# sem imagem. Em memória: instância única no Render, sem Redis.
+async def _places_photo_bytes(place_id: str) -> Optional[Tuple[bytes, str]]:
+    """Legacy helper: first valid ranked Places image."""
+    candidates = await _places_image_candidates(place_id, max_photos=1)
+    if not candidates:
+        return None
+
+    async def downloader(candidate: ImageCandidate) -> Optional[bytes]:
+        return await _download_bytes(candidate.url, IMAGE_FETCH_TIMEOUT_SECONDS)
+
+    result = await collect_candidates(
+        candidates,
+        downloader,
+        limit=1,
+        max_concurrency=1,
+        max_dim=OG_IMAGE_MAX_DIM,
+        quality=OG_IMAGE_QUALITY,
+        min_dim=CARD_IMAGE_MIN_DIM,
+        max_aspect=CARD_IMAGE_MAX_ASPECT,
+    )
+    if not result.images:
+        return None
+    return result.images[0].jpeg_bytes, "image/jpeg"
+
+
+# Legacy metrics contract: do not add/remove keys here; callers/tests rely on it.
 _og_stats: Dict[str, int] = {
     "requests": 0,
     "cache_hits_bytes": 0,
@@ -465,69 +249,211 @@ _og_stats: Dict[str, int] = {
     "no_image": 0,
 }
 
+_collector_stats: Dict[str, int] = {
+    "requests": 0,
+    "cache_hits": 0,
+    "candidates_discovered": 0,
+    "candidates_accepted": 0,
+    "candidates_rejected": 0,
+    "duplicates_removed": 0,
+    "selected_website": 0,
+    "selected_places": 0,
+}
+
 
 def get_og_stats() -> Dict[str, int]:
-    """Snapshot das métricas de cobertura do véu."""
     return dict(_og_stats)
+
+
+def get_image_collector_stats() -> Dict[str, int]:
+    return dict(_collector_stats)
+
+
+# (page URL + place id + hero/gallery mode) -> (ranked images, expires_at)
+_image_catalog_cache: "OrderedDict[str, tuple[List[CollectedImage], float]]" = OrderedDict()
+
+
+def _catalog_key(page_url: Optional[str], place_id: Optional[str], gallery: bool) -> str:
+    return f"{(page_url or '').strip()}|{(place_id or '').strip()}|{'gallery' if gallery else 'hero'}"
+
+
+def _catalog_cache_get(key: str) -> Optional[List[CollectedImage]]:
+    now = time.monotonic()
+    hit = _image_catalog_cache.get(key)
+    if not hit:
+        return None
+    if hit[1] < now:
+        _image_catalog_cache.pop(key, None)
+        return None
+    _image_catalog_cache.move_to_end(key)
+    return hit[0]
+
+
+def _catalog_cache_put(key: str, images: List[CollectedImage]) -> None:
+    if key in _image_catalog_cache:
+        _image_catalog_cache.pop(key, None)
+    while len(_image_catalog_cache) >= COLLECTOR_CACHE_MAX_ENTRIES:
+        _image_catalog_cache.popitem(last=False)
+    ttl = OG_CACHE_TTL_SECONDS if images else OG_MISS_TTL_SECONDS
+    _image_catalog_cache[key] = (images, time.monotonic() + ttl)
+
+
+async def _collect_candidate_group(candidates: List[ImageCandidate]):
+    if not candidates:
+        return None
+
+    async def downloader(candidate: ImageCandidate) -> Optional[bytes]:
+        return await _download_bytes(candidate.url, IMAGE_FETCH_TIMEOUT_SECONDS)
+
+    return await collect_candidates(
+        candidates,
+        downloader,
+        limit=max(len(candidates), 1),
+        max_concurrency=COLLECTOR_MAX_CONCURRENCY,
+        max_dim=OG_IMAGE_MAX_DIM,
+        quality=OG_IMAGE_QUALITY,
+        min_dim=CARD_IMAGE_MIN_DIM,
+        max_aspect=CARD_IMAGE_MAX_ASPECT,
+    )
+
+
+async def get_restaurant_images(
+    page_url: Optional[str] = None,
+    place_id: Optional[str] = None,
+    *,
+    limit: int = COLLECTOR_MAX_IMAGES,
+) -> List[CollectedImage]:
+    """Return ranked restaurant images from website + Google Places.
+
+    Hero mode (limit=1) avoids a Places metadata call when a structured site
+    image scores confidently. Gallery mode always merges Places candidates so
+    the result is diverse and not tied to HTML order.
+    """
+    has_url = isinstance(page_url, str) and bool(page_url.strip())
+    has_place = isinstance(place_id, str) and bool(place_id.strip())
+    if not has_url and not has_place:
+        raise ValueError("url ou place_id é obrigatória")
+
+    requested_limit = max(1, min(int(limit), COLLECTOR_MAX_IMAGES))
+    gallery = requested_limit > 1
+    cache_key = _catalog_key(page_url if has_url else None, place_id if has_place else None, gallery)
+    cached = _catalog_cache_get(cache_key)
+    if cached is not None:
+        _collector_stats["cache_hits"] += 1
+        return cached[:requested_limit]
+
+    _collector_stats["requests"] += 1
+    target_limit = COLLECTOR_MAX_IMAGES if gallery else 1
+
+    website_candidates: List[ImageCandidate] = []
+    if has_url:
+        urls = await _resolve_og_image_candidates(page_url)
+        for index, url in enumerate((urls or [])[:COLLECTOR_WEBSITE_CANDIDATES]):
+            website_candidates.append(
+                ImageCandidate(
+                    str(url),
+                    getattr(url, "source", "website"),
+                    getattr(url, "source_index", index),
+                )
+            )
+
+    website_result = await _collect_candidate_group(website_candidates)
+    website_images = website_result.images if website_result else []
+
+    should_fetch_places = has_place and (
+        gallery or not website_images or website_images[0].score < SITE_HERO_CONFIDENCE_SCORE
+    )
+    places_candidates: List[ImageCandidate] = []
+    if should_fetch_places:
+        raw_places = await _places_image_candidates(place_id, max_photos=COLLECTOR_PLACES_CANDIDATES)
+        offset = len(website_candidates)
+        places_candidates = [
+            ImageCandidate(candidate.url, candidate.source, offset + index)
+            for index, candidate in enumerate(raw_places)
+        ]
+    places_result = await _collect_candidate_group(places_candidates)
+    places_images = places_result.images if places_result else []
+
+    combined = website_images + places_images
+    unique = rank_and_dedupe(combined, limit=max(len(combined), 1)) if combined else []
+    cross_duplicates = len(combined) - len(unique)
+    ranked = unique[:target_limit]
+
+    for result in (website_result, places_result):
+        if result:
+            _collector_stats["candidates_discovered"] += result.discovered
+            _collector_stats["candidates_accepted"] += result.accepted
+            _collector_stats["candidates_rejected"] += result.rejected
+            _collector_stats["duplicates_removed"] += result.duplicates_removed
+    _collector_stats["duplicates_removed"] += cross_duplicates
+    if ranked:
+        if ranked[0].source == "google_places":
+            _collector_stats["selected_places"] += 1
+        else:
+            _collector_stats["selected_website"] += 1
+
+    _catalog_cache_put(cache_key, ranked)
+    return ranked[:requested_limit]
+
+
+async def get_restaurant_image_bytes(
+    page_url: Optional[str] = None,
+    place_id: Optional[str] = None,
+    *,
+    rank: int = 0,
+) -> Optional[Tuple[bytes, str]]:
+    """Return one ranked JPEG by gallery rank without exposing origin URLs."""
+    if rank < 0 or rank >= COLLECTOR_MAX_IMAGES:
+        return None
+    images = await get_restaurant_images(page_url, place_id, limit=max(rank + 1, 1))
+    if rank >= len(images):
+        return None
+    return images[rank].jpeg_bytes, "image/jpeg"
+
+
+def _bytes_cache_put(key: str, result: Tuple[bytes, str]) -> None:
+    if key in _og_bytes_cache:
+        _og_bytes_cache.pop(key, None)
+    while len(_og_bytes_cache) >= OG_BYTES_CACHE_MAX_ENTRIES:
+        _og_bytes_cache.popitem(last=False)
+    _og_bytes_cache[key] = (result, time.monotonic() + OG_CACHE_TTL_SECONDS)
 
 
 async def get_og_image_bytes(
     page_url: Optional[str] = None,
     place_id: Optional[str] = None,
 ) -> Optional[Tuple[bytes, str]]:
-    """Devolve (bytes JPEG redimensionados, content_type) ou None.
-
-    Pipeline real-time em cascata: HTML do site → candidatas de imagem
-    → download de cada candidata até uma decodificar → resize; SEM
-    resultado e com place_id, cai para a primeira foto do Google Places.
-    ValueError para URL inválida/credenciais/rede interna; None para
-    nenhuma fonte utilizável (card fica sem véu).
-    """
-    has_url = isinstance(page_url, str) and page_url.strip()
-    has_place = isinstance(place_id, str) and place_id.strip()
+    """Legacy best-image API, now backed by the ranked collector."""
+    has_url = isinstance(page_url, str) and bool(page_url.strip())
+    has_place = isinstance(place_id, str) and bool(place_id.strip())
     if not has_url and not has_place:
         raise ValueError("url ou place_id é obrigatória")
 
-    # chave de cache: url do site quando existe; senão o lugar
     cache_key = page_url if has_url else f"place:{place_id}"
-
     now = time.monotonic()
     hit = _og_bytes_cache.get(cache_key)
     if hit and hit[1] >= now:
+        _og_bytes_cache.move_to_end(cache_key)
         _og_stats["cache_hits_bytes"] += 1
         return hit[0]
     if hit:
         _og_bytes_cache.pop(cache_key, None)
 
     _og_stats["requests"] += 1
-    result: Optional[Tuple[bytes, str]] = None
-    source = "no_image"
-
-    if has_url:
-        candidates = await _resolve_og_image_candidates(page_url)
-        if candidates:
-            for image_url in candidates:
-                raw = await _download_bytes(image_url, IMAGE_FETCH_TIMEOUT_SECONDS)
-                if raw is None:
-                    continue
-                try:
-                    result = _resize_to_card_jpeg(raw)
-                    source = "source_og"
-                except Exception as exc:
-                    logger.debug("candidata indecodificável %s para %s: %s", image_url, page_url, exc)
-                    continue
-                break
-
-    if result is None and has_place:
-        result = await _places_photo_bytes(place_id)
-        if result is not None:
-            source = "source_places"
-
-    if result is not None:
-        if len(_og_bytes_cache) >= OG_BYTES_CACHE_MAX_ENTRIES:
-            _og_bytes_cache.clear()
-        _og_bytes_cache[cache_key] = (result, time.monotonic() + OG_CACHE_TTL_SECONDS)
-    else:
+    images = await get_restaurant_images(
+        page_url if has_url else None,
+        place_id if has_place else None,
+        limit=1,
+    )
+    if not images:
         _og_stats["no_image"] += 1
-    _og_stats[source] += 1
+        return None
+
+    selected = images[0]
+    result = (selected.jpeg_bytes, "image/jpeg")
+    _bytes_cache_put(cache_key, result)
+    if selected.source == "google_places":
+        _og_stats["source_places"] += 1
+    else:
+        _og_stats["source_og"] += 1
     return result
