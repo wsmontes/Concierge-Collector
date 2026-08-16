@@ -407,7 +407,7 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
         if (!db || !db.isOpen()) {
             try {
                 const tmp = new Dexie(this.dbName);
-                tmp.version(this.currentVersion).stores({
+                tmp.version(await this._resolveDeclaredVersion()).stores({
                     entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt, etag, sync.status, lastAccessedAt, source',
                     curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt, updatedAt, etag, sync.status, lastAccessedAt, source',
                     curators: '++id, curator_id, name, email, status, createdAt, lastActive',
@@ -467,6 +467,49 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
             // localStorage may be full or unavailable — non-critical
             this.log.warn('Failed to persist schema sentinel:', e);
         }
+    }
+
+    /**
+     * Versão REAL (física) do IndexedDB. Dexie abre pedindo verno×10 —
+     * um banco criado pelo layer legado em verno 133 está em 1330.
+     * O _meta pode estar DESINCRONIZADO dela (o upgrade legado gravava
+     * _meta = currentVersion num banco que acabava de virar atual+1 —
+     * ver teste "REPRO brick"), então quem declara schema precisa casar
+     * com ESTA versão, não com o _meta.
+     */
+    async _getRawIdbVersion() {
+        try {
+            const raw = await new Promise((resolve, reject) => {
+                const req = indexedDB.open(this.dbName);
+                req.onsuccess = () => resolve(req.result);
+                req.onerror = () => reject(req.error);
+            });
+            const version = raw.version;
+            raw.close();
+            return version;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    /**
+     * Versão Dexie a DECLARAR ao abrir o banco existente. Regra: quando
+     * o IDB real é MAIS NOVO que o código (raw > currentVersion×10), a
+     * declaração casa com a versão real (raw/10) — declarar a do código
+     * num banco mais novo é VersionError "requested 920 < existing 1330"
+     * PARA SEMPRE (brick). Quando o IDB é mais antigo ou igual, usa a
+     * versão do código (caminho normal de migração/upgrade).
+     */
+    async _resolveDeclaredVersion() {
+        const raw = await this._getRawIdbVersion();
+        if (raw !== null && raw > Math.round(this.currentVersion * 10)) {
+            this.log.warn(
+                `_meta diz v${this.currentVersion} mas o IDB real é v${raw} ` +
+                `— declarando schema na versão real (${raw / 10}) para não brickar`
+            );
+            return raw / 10;
+        }
+        return this.currentVersion;
     }
 
     _getSentinelVersion() {
@@ -578,7 +621,7 @@ const DatabaseManager = ModuleWrapper.defineClass('DatabaseManager', class {
     async openDatabase() {
         this.db = new Dexie(this.dbName);
 
-        this.db.version(this.currentVersion).stores({
+        this.db.version(await this._resolveDeclaredVersion()).stores({
             // Core V3 Tables with sync.status indexed + v92 cache indexes
             entities: '++id, entity_id, type, name, status, createdBy, createdAt, updatedAt, etag, sync.status, lastAccessedAt, source',
             curations: '++id, curation_id, entity_id, curator_id, category, concept, createdAt, updatedAt, etag, sync.status, lastAccessedAt, source',
