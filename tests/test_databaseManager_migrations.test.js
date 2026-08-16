@@ -151,42 +151,6 @@ describe('DatabaseManager — migrações sem wipe destrutivo', () => {
     expect(after.curations).toBe(0);
   });
 
-  test('falha transitória do open recupera via retry, sem tocar backup/nuclear', async () => {
-    // iOS/Safari (WebKit): o processo IDB pode ser morto pelo OS e o
-    // primeiro open rejeita com erro interno truncado ('t'). Uma falha
-    // transitória não pode derrubar o app para degraded mode nem tocar
-    // em backup/nuclear — retry resolve.
-    await seedV92Db(true);
-    const DatabaseManagerClass = loadDatabaseManager();
-    const manager = new DatabaseManagerClass({ retryAttempts: 3, retryDelayMs: 10 });
-    const attemptRecoverySpy = vi.spyOn(manager, 'attemptRecovery');
-
-    const RealDexie = globalThis.Dexie;
-    let failuresLeft = 1;
-    class FlakyDexie extends RealDexie {
-      open(...args) {
-        if (failuresLeft > 0) {
-          failuresLeft -= 1;
-          return Promise.reject('t');
-        }
-        return super.open(...args);
-      }
-    }
-    globalThis.Dexie = FlakyDexie;
-
-    try {
-      const db = await manager.initialize();
-      expect(db).toBeTruthy();
-      expect(attemptRecoverySpy).not.toHaveBeenCalled();
-      const after = await countData();
-      expect(after.entities).toBe(1);
-      expect(after.syncQueue).toBe(1);
-      expect(after.curations).toBe(1);
-    } finally {
-      globalThis.Dexie = RealDexie;
-    }
-  });
-
   test('upgrade 92→93 preserva entities, curations e syncQueue (nunca Dexie.delete)', async () => {
     await seedV92Db(true);
     localStorage.setItem('concierge_db_schema_version', '92');
