@@ -195,7 +195,10 @@ def rank_and_dedupe(
     ranked = sorted(images, key=lambda image: (-image.score, image.source_index, image.source))
     selected: List[CollectedImage] = []
     for image in ranked:
-        if any(_hamming_distance(image.perceptual_hash, kept.perceptual_hash) <= duplicate_distance for kept in selected):
+        if any(
+            _hamming_distance(image.perceptual_hash, kept.perceptual_hash) <= duplicate_distance
+            for kept in selected
+        ):
             continue
         selected.append(image)
         if len(selected) >= limit:
