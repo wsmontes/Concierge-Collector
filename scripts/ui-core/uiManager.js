@@ -1405,7 +1405,7 @@ if (typeof window.UIManager === 'undefined') {
             // no fallback pagina o cache local.
             {
                 var header = document.createElement('div');
-                header.className = 'col-span-full mb-4 p-4 bg-neutral-50 border border-neutral-200 rounded-lg flex items-center justify-between pagination-header';
+                header.className = 'col-span-full mb-4 p-4 bg-neutral-50 rounded-lg flex items-center justify-between pagination-header';
                 header.innerHTML = `
                     <div class="text-sm text-gray-600">
                         Showing <span class="font-semibold">${start + 1}</span>&ndash;<span class="font-semibold">${end}</span> of <span class="font-semibold">${serverTotal}</span> curations
@@ -1812,7 +1812,7 @@ if (typeof window.UIManager === 'undefined') {
 
             // Add pagination header
             const header = document.createElement('div');
-            header.className = 'col-span-full mb-4 p-4 bg-neutral-50 border border-neutral-200 rounded-lg flex items-center justify-between pagination-header';
+            header.className = 'col-span-full mb-4 p-4 bg-neutral-50 rounded-lg flex items-center justify-between pagination-header';
             header.innerHTML = `
                 <div class="text-sm text-gray-600">
                     Showing <span class="font-semibold">${start + 1}</span>&ndash;<span class="font-semibold">${end}</span> of <span class="font-semibold">${serverTotal}</span> entities
