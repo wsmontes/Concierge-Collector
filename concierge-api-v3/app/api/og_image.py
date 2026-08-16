@@ -17,7 +17,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from fastapi.responses import Response
 
 from app.core.security import require_role
-from app.services.og_image_service import get_og_image_bytes, get_og_stats
+from app.services.og_image_service import get_image_collector_stats, get_og_image_bytes, get_og_stats
 
 logger = logging.getLogger(__name__)
 
@@ -26,9 +26,18 @@ router = APIRouter()
 
 @router.get("/og-image/stats")
 async def og_image_stats(auth: dict = Depends(require_role("curator"))):
-    """Métricas de cobertura do véu: quantos resolvem por fonte
-    (og vs places), cache hits e cards sem imagem (em memória)."""
+    """Métricas legadas de cobertura do véu.
+
+    O contrato permanece com as mesmas cinco chaves para compatibilidade.
+    Métricas detalhadas do collector ficam em /og-image/stats/collector.
+    """
     return get_og_stats()
+
+
+@router.get("/og-image/stats/collector")
+async def og_image_collector_stats(auth: dict = Depends(require_role("curator"))):
+    """Métricas detalhadas do collector: discovery, rejeições e dedupe."""
+    return get_image_collector_stats()
 
 
 @router.get("/og-image")
@@ -52,10 +61,10 @@ async def get_og_image(
     """Devolve o JPEG redimensionado (og:image do site ou foto do
     Google Places como fallback) — 404 quando nenhuma fonte tem imagem.
 
-    Fonte primária: og:image da URL. Sem resultado e com place_id,
-    cai para a primeira foto do Google Places. Resposta: imagem JPEG
-    com `Cache-Control: public, max-age=3600` (o cliente persiste em
-    Cache Storage e revalida por TTL)."""
+    O contrato de resposta permanece compatível com o endpoint legado; a
+    seleção da hero agora é feita pelo collector ranqueado internamente.
+    Resposta: imagem JPEG com `Cache-Control: public, max-age=3600`.
+    """
     try:
         result = await get_og_image_bytes(page_url=url, place_id=place_id)
     except ValueError as exc:
