@@ -34,22 +34,22 @@
 
     <!-- Custom CSS - New Architecture -->
     <!-- 1. Design System Foundation (FIRST - design tokens, base styles) -->
-    <link rel="stylesheet" href="styles/design-system.css?v=20260814-3">
+    <link rel="stylesheet" href="styles/design-system.css?v=20260816-1">
 
     <!-- 2. Component Library (reusable components) -->
-    <link rel="stylesheet" href="styles/components.css?v=20260814-11">
+    <link rel="stylesheet" href="styles/components.css?v=20260816-1">
 
     <!-- 3. Application-specific Styles -->
-    <link rel="stylesheet" href="styles/application.css?v=20260813-1">
+    <link rel="stylesheet" href="styles/application.css?v=20260816-1">
 
     <!-- 4. Feature-specific Styles -->
-    <link rel="stylesheet" href="styles/places-section.css?v=20260814-1">
+    <link rel="stylesheet" href="styles/places-section.css?v=20260816-1">
     <link rel="stylesheet" href="styles/access-control.css?v=20260814-1">
-    <link rel="stylesheet" href="styles/sync-badges.css?v=20260814-1">
-    <link rel="stylesheet" href="styles/mobile-enhancements.css?v=20260814-2">
+    <link rel="stylesheet" href="styles/sync-badges.css?v=20260816-1">
+    <link rel="stylesheet" href="styles/mobile-enhancements.css?v=20260816-1">
 
     <!-- 5. Legacy Support (will be deprecated after migration) -->
-    <link rel="stylesheet" href="styles/style.css?v=20260814-4">
+    <link rel="stylesheet" href="styles/style.css?v=20260816-1">
 
     <!-- Centralized Configuration (MUST load first) -->
     <script src="scripts/core/config.js?v=20260814-1"></script>
@@ -112,7 +112,7 @@
 
 <body>
     <div id="app" class="container mx-auto px-4 sm:px-6">
-        <header class="mb-6 bg-white py-3 -mx-4 px-4 sm:mx-0 sm:px-0 border-b border-gray-200 sticky top-0 z-40">
+        <header class="mb-6 bg-white py-2 sm:py-3 -mx-4 px-4 sm:mx-0 sm:px-0 border-b border-gray-200 sticky top-0 z-40">
             <!-- Logo, Title, Controls and User Profile - All horizontally aligned -->
             <div class="flex items-center justify-between gap-2 sm:gap-4">
                 <!-- Left: Logo and Title -->
@@ -121,8 +121,14 @@
                     <h1 class="brand-wordmark">Collector</h1>
                 </div>
 
-                <!-- Right: Sync Status and User Profile -->
+                <!-- Right: New Curation (desktop) + Sync Status + User Profile -->
                 <div class="flex items-center gap-2 sm:gap-4 flex-shrink-0">
+                    <!-- Ação principal do desktop (o FAB fica só no mobile):
+                         mesma entrada das quick actions, linguagem do lugar -->
+                    <button id="new-curation-btn" type="button" class="btn btn-primary btn-md">
+                        <span class="material-icons mr-1" aria-hidden="true">add</span>
+                        New Curation
+                    </button>
                     <!-- Sync Status (populated by SyncStatusModule) -->
                     <div id="sync-status-header"></div>
                     <!-- User Profile Section (populated by CuratorProfile.js) -->
@@ -131,6 +137,40 @@
             </div>
         </header>
 
+        <!-- Onboarding pós-auth (auditoria, ponto 22): só na primeira
+             entrada real (flag por usuário no localStorage). Nomeia os
+             verbos e ensina a diferença Curations × Entities em uma
+             frase — learnability sem wizard. Exibido pelo uiManager
+             (_maybeShowOnboarding). -->
+        <div id="onboarding-welcome" class="onboarding-welcome hidden" role="region" aria-label="Welcome to Collector">
+            <div class="onboarding-welcome__inner">
+                <div class="onboarding-welcome__copy">
+                    <p class="onboarding-welcome__title">Welcome to Collector</p>
+                    <p class="onboarding-welcome__text">Record a review, add a place, or browse your collection.
+                        Curations are your reviews and notes; entities are the places behind them.</p>
+                </div>
+                <div class="onboarding-welcome__actions">
+                    <button id="onboarding-record" type="button" class="btn btn-primary btn-md">
+                        <span class="material-icons text-base mr-1" aria-hidden="true">mic</span>
+                        Record a review
+                    </button>
+                    <button id="onboarding-dismiss" type="button" class="btn btn-outline btn-md">Got it</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Navegação de contexto (UX "lugares definidos"): desktop mostra
+             breadcrumbs (Collection › Ritz › Edit Curation), preenchidos
+             pelo NavigationManager via main.js; mobile (<640px) mostra
+             back + título do modo no #mobile-nav-context -->
+        <nav id="breadcrumbs" class="hidden" aria-label="Breadcrumb"></nav>
+        <div id="mobile-nav-context" class="hidden">
+            <button id="mobile-back-btn" type="button" aria-label="Go back">
+                <span class="material-icons" aria-hidden="true">arrow_back</span>
+                <span id="mobile-back-label">Collection</span>
+            </button>
+            <span id="mobile-nav-title"></span>
+        </div>
 
 
         <!-- Audio Recording Section -->
@@ -199,7 +239,7 @@
                     <span class="material-icons mr-1" aria-hidden="true">arrow_back</span>
                     Back
                 </button>
-                <button id="extract-concepts" class="btn btn-success btn-md">
+                <button id="extract-concepts" class="btn btn-primary btn-md">
                     <span class="material-icons mr-1" aria-hidden="true">category</span>
                     Extract Concepts
                 </button>
@@ -209,9 +249,34 @@
         <!-- Concepts Section -->
         <section id="concepts-section" class="panel mb-8 p-6 hidden">
             <h2 class="section-heading">
-                <span class="material-icons">category</span>
-                Restaurant Concepts
+                <span class="material-icons">edit_note</span>
+                Curation
             </h2>
+
+            <!-- Navegação de seções do editor (desktop) — no mobile as
+                 mesmas áreas viram accordions -->
+            <nav id="edit-section-nav" aria-label="Editor sections">
+                <a href="#" data-edit-nav="edit-section-identity" class="edit-nav-link">Identity</a>
+                <a href="#" data-edit-nav="edit-section-curation" class="edit-nav-link">Curation</a>
+                <a href="#" data-edit-nav="edit-section-concepts" class="edit-nav-link">Concepts</a>
+                <a href="#" data-edit-nav="edit-section-sources" class="edit-nav-link">Source material</a>
+            </nav>
+
+            <!-- Editor por áreas conceituais: Identity / Curation / Concepts
+                 / Source material. Desktop: 2 colunas (editorial à esquerda,
+                 contexto factual à direita). Mobile: accordions. -->
+            <div class="editor-grid">
+                <div class="editor-col-context">
+                    <div id="edit-section-identity" class="editor-area editor-area--identity">
+                        <h3 class="editor-section-heading">
+                            <span class="material-icons" aria-hidden="true">storefront</span>
+                            Identity
+                            <button type="button" class="editor-section-toggle" aria-expanded="true"
+                                aria-controls="edit-section-identity-body" aria-label="Collapse Identity section">
+                                <span class="material-icons" aria-hidden="true">expand_less</span>
+                            </button>
+                        </h3>
+                        <div id="edit-section-identity-body" class="editor-section-body">
             <div class="mb-6">
                 <label for="restaurant-name" class="label label-required">
                     Restaurant Name:
@@ -220,22 +285,27 @@
                     <div class="flex-grow relative">
                         <input type="text" id="restaurant-name" class="input input-md" placeholder="Restaurant Name">
                     </div>
-                    <button id="places-lookup-btn" type="button" class="btn btn-primary btn-sm"
+                    <button id="places-lookup-btn" type="button" class="btn btn-secondary btn-sm"
                         title="Get from Google Places">
                         <span class="material-icons mr-1" aria-hidden="true">travel_explore</span>
                         Places
                     </button>
                 </div>
                 <div id="places-autocomplete-inline-container" class="mb-2 hidden"></div>
-                <p class="helper-text error">This field is required</p>
+                <!-- Erro de validação INLINE do nome: nasce escondido e só
+                     aparece quando o save roda sem nome (conceptModule).
+                     Antes ficava visível permanentemente no editor. -->
+                <p id="restaurant-name-error" class="helper-text error hidden">This field is required</p>
             </div>
 
             <div class="mb-6">
-                <label class="block mb-2 font-medium flex items-center">
+                <!-- .label do design system (antes label crua com Tailwind —
+                     dois estilos de label no mesmo formulário) -->
+                <label class="label flex items-center">
                     <span class="material-icons mr-2">location_on</span>
                     Location:
                 </label>
-                <button id="get-location" class="btn btn-primary btn-md">
+                <button id="get-location" class="btn btn-secondary btn-md">
                     <span class="material-icons mr-2" aria-hidden="true">my_location</span>
                     Get Current Location
                 </button>
@@ -287,28 +357,43 @@
                     </div>
                     <div>
                         <label for="entity-edit-price-level" class="label">Price Level</label>
+                        <!-- € como nos cards (cardFactory renderiza '€'.repeat) —
+                             antes o select mostrava $ e o card € -->
                         <select id="entity-edit-price-level" class="input input-md">
                             <option value="0">Not informed</option>
-                            <option value="1">$</option>
-                            <option value="2">$$</option>
-                            <option value="3">$$$</option>
-                            <option value="4">$$$$</option>
+                            <option value="1">€</option>
+                            <option value="2">€€</option>
+                            <option value="3">€€€</option>
+                            <option value="4">€€€€</option>
                         </select>
                     </div>
                 </div>
             </div>
+                    </div>
+                </div>
+
+                <div id="edit-section-sources" class="editor-area editor-area--sources">
+                    <h3 class="editor-section-heading">
+                        <span class="material-icons" aria-hidden="true">inventory_2</span>
+                        Source material
+                        <button type="button" class="editor-section-toggle" aria-expanded="true"
+                            aria-controls="edit-section-sources-body" aria-label="Collapse Source material section">
+                            <span class="material-icons" aria-hidden="true">expand_less</span>
+                        </button>
+                    </h3>
+                    <div id="edit-section-sources-body" class="editor-section-body">
 
             <div class="mb-6">
-                <label class="block mb-2 font-medium flex items-center">
+                <label class="label flex items-center">
                     <span class="material-icons mr-2">photo_camera</span>
                     Photos:
                 </label>
                 <div class="photo-buttons-container">
-                    <button type="button" id="take-photo" class="btn btn-success btn-md mr-2">
+                    <button type="button" id="take-photo" class="btn btn-secondary btn-md mr-2">
                         <span class="material-icons mr-1" aria-hidden="true">photo_camera</span>
                         Take Photo
                     </button>
-                    <button type="button" id="gallery-photo" class="btn btn-primary btn-md">
+                    <button type="button" id="gallery-photo" class="btn btn-secondary btn-md">
                         <span class="material-icons mr-1" aria-hidden="true">photo_library</span>
                         Gallery
                     </button>
@@ -331,23 +416,40 @@
                 </label>
                 <textarea id="restaurant-transcription" class="input input-md h-32"
                     placeholder="No transcription available" spellcheck="true"></textarea>
+                <p class="helper-text">Changes to the transcription won't affect concepts until you reprocess.</p>
                 <div class="mt-2 flex justify-end">
                     <button id="reprocess-concepts" class="btn btn-secondary btn-md">
                         <span class="material-icons mr-1" aria-hidden="true">refresh</span>
-                        Reprocess Concepts
+                        <span class="reprocess-label">Reprocess Concepts</span>
                     </button>
                 </div>
             </div>
+
+                    </div>
+                </div>
+            </div>
+            <div class="editor-col-main">
+                <div id="edit-section-curation" class="editor-area editor-area--curation">
+                    <h3 class="editor-section-heading">
+                        <span class="material-icons" aria-hidden="true">edit_note</span>
+                        Curation
+                        <button type="button" class="editor-section-toggle" aria-expanded="true"
+                            aria-controls="edit-section-curation-body" aria-label="Collapse Curation section">
+                            <span class="material-icons" aria-hidden="true">expand_less</span>
+                        </button>
+                    </h3>
+                    <div id="edit-section-curation-body" class="editor-section-body">
 
             <!-- Restaurant Description -->
             <div class="mb-6">
                 <label for="restaurant-description" class="label">
                     Description (30 words max):
+                    <span id="description-word-count" class="description-word-count" aria-live="polite"></span>
                 </label>
                 <textarea id="restaurant-description" class="input input-md h-20"
                     placeholder="Short restaurant description" maxlength="200"></textarea>
                 <div class="mt-2 flex justify-end">
-                    <button id="generate-description" class="btn btn-warning btn-md">
+                    <button id="generate-description" class="btn btn-secondary btn-md">
                         <span class="material-icons mr-1" aria-hidden="true">auto_awesome</span>
                         Generate Description
                     </button>
@@ -384,7 +486,26 @@
                 </div>
             </div>
 
+                    </div>
+                </div>
+
+                <div id="edit-section-concepts" class="editor-area editor-area--concepts">
+                    <h3 class="editor-section-heading">
+                        <span class="material-icons" aria-hidden="true">category</span>
+                        Concepts
+                        <button type="button" class="editor-section-toggle" aria-expanded="true"
+                            aria-controls="edit-section-concepts-body" aria-label="Collapse Concepts section">
+                            <span class="material-icons" aria-hidden="true">expand_less</span>
+                        </button>
+                    </h3>
+                    <div id="edit-section-concepts-body" class="editor-section-body">
+
             <div id="concepts-container" class="mb-6"></div>
+
+                    </div>
+                </div>
+            </div>
+        </div>
 
             <div id="curation-edit-footer" class="mt-8 pt-4 border-t border-gray-200 hidden">
                 <div class="flex items-center justify-end gap-2">
@@ -400,11 +521,13 @@
             </div>
     </section>
 
-    <!-- Find Entity Button (starts hidden, revealed by switchView('list')) -->
+    <!-- Add a Place Button (starts hidden, revealed by switchView('list'))
+         — linguagem de tarefa: o usuário quer ADICIONAR um lugar, não
+         "encontrar uma entidade" (entidade é arquitetura do modelo) -->
     <div class="mb-6">
         <button id="find-entity-btn" class="btn btn-primary btn-lg w-full mb-4 hidden">
             <span class="material-icons mr-2" aria-hidden="true">search</span>
-            <span class="font-medium">Find Entity</span>
+            <span class="font-medium">Add a Place</span>
         </button>
     </div>
 
@@ -423,17 +546,22 @@
         </div>
 
         <!-- Tab Navigation -->
-        <div class="mb-6 border-b border-gray-200">
-            <nav class="flex space-x-8" aria-label="View modes">
-                <button id="tab-curations" class="view-tab active" data-tab="curations">
+        <div class="mb-3 border-b border-gray-200">
+            <nav class="flex space-x-8" role="tablist" aria-label="View modes">
+                <button id="tab-curations" class="view-tab active" role="tab" aria-selected="true"
+                    aria-controls="curations-view" data-tab="curations">
                     <span class="material-icons text-sm align-middle mr-1">edit_note</span>
                     Curations
                 </button>
-                <button id="tab-entities" class="view-tab" data-tab="entities">
+                <button id="tab-entities" class="view-tab" role="tab" aria-selected="false"
+                    aria-controls="entities-view" data-tab="entities">
                     <span class="material-icons text-sm align-middle mr-1">restaurant</span>
                     Entities
                 </button>
             </nav>
+            <!-- Uma frase que ensina a diferença Curations × Entities sem
+                 exigir documentação — muda junto com a aba ativa -->
+            <p id="tab-subtitle" class="text-xs text-gray-500 mb-4"></p>
         </div>
 
         <div class="mb-4 flex items-center justify-between text-sm text-gray-600">
@@ -443,50 +571,90 @@
 
         <!-- Curations View -->
         <div id="curations-view" class="view-content">
-            <!-- Search and Filters -->
-            <div class="mb-4 grid grid-cols-1 md:grid-cols-6 gap-3">
-                <!-- Search -->
-                <div class="md:col-span-2">
-                    <div class="relative">
-                        <input type="text" id="curation-search" placeholder="Search curations..."
-                            class="input input-md" />
+            <!-- Hierarquia de filtros: Search e Status ficam sempre
+                 visíveis (frequência alta); Curator/City/Type são
+                 refinamentos atrás de "Filters" — bottom sheet no
+                 mobile, painel flutuante no desktop -->
+            <div class="mb-4">
+                <div class="filters-bar">
+                    <!-- Search -->
+                    <div class="filters-bar__search">
+                        <div class="relative">
+                            <input type="text" id="curation-search" placeholder="Search curations..."
+                                class="input input-md" />
+                        </div>
                     </div>
+
+                    <!-- Status Filter -->
+                    <div class="filters-bar__status">
+                        <select id="curation-status-filter" class="select input-md" aria-label="Filter by status">
+                            <option value="all">All Status</option>
+                            <option value="draft">Draft</option>
+                            <option value="linked">Linked</option>
+                            <option value="active">Active</option>
+                            <option value="archived">Archived</option>
+                            <option value="deleted">Deleted</option>
+                        </select>
+                    </div>
+
+                    <button id="curation-filters-toggle" type="button" class="btn btn-outline btn-md filters-toggle"
+                        aria-haspopup="dialog" aria-controls="curation-filters-sheet">
+                        <span class="material-icons mr-1" aria-hidden="true">tune</span>
+                        Filters
+                        <span id="curation-filters-count" class="filters-count hidden" aria-label="active filters">0</span>
+                    </button>
                 </div>
 
-                <!-- Status Filter -->
-                <div>
-                    <select id="curation-status-filter" class="select input-md">
-                        <option value="all">All Status</option>
-                        <option value="draft">Draft</option>
-                        <option value="linked">Linked</option>
-                        <option value="active">Active</option>
-                        <option value="archived">Archived</option>
-                        <option value="deleted">Deleted</option>
-                    </select>
+                <!-- Saved views (auditoria UX, ponto 20): presets de escopo
+                     para operação em volume. Cada chip vira filtro real nos
+                     controles (estado visível, sem filtro fantasma);
+                     toggle desliga. Estado gerenciado no uiManager. -->
+                <div id="curation-saved-views" class="saved-views" role="group" aria-label="Saved views">
+                    <button type="button" class="saved-view-chip" data-saved-view="my-drafts"
+                        aria-pressed="false">My drafts</button>
+                    <button type="button" class="saved-view-chip" data-saved-view="unlinked"
+                        aria-pressed="false">Unlinked</button>
+                    <button type="button" class="saved-view-chip" data-saved-view="recent"
+                        aria-pressed="false">Recently added</button>
                 </div>
+            </div>
 
-                <!-- Curator Filter -->
-                <div>
-                    <select id="curation-curator-filter" class="select input-md">
-                        <option value="all">All Curators</option>
-                    </select>
+            <!-- Filtros avançados (bottom sheet — mobile) -->
+            <div id="curation-filters-sheet" class="bottom-sheet" data-bottom-sheet data-height="auto">
+                <div class="bottom-sheet-handle"></div>
+                <div class="bottom-sheet-header">
+                    <h3 class="bottom-sheet-title">Filters</h3>
                 </div>
+                <div class="bottom-sheet-body">
+                    <div id="curation-filter-chips" class="filters-chips"></div>
+                    <div class="space-y-4">
+                        <!-- Curator Filter -->
+                        <div>
+                            <label for="curation-curator-filter" class="filters-sheet-label">Curator</label>
+                            <select id="curation-curator-filter" class="select input-md">
+                                <option value="all">All Curators</option>
+                            </select>
+                        </div>
 
-                <!-- City Filter -->
-                <div>
-                    <input type="text" id="curation-city-filter" placeholder="Filter by city..."
-                        class="input input-md" />
-                </div>
+                        <!-- City Filter -->
+                        <div>
+                            <label for="curation-city-filter" class="filters-sheet-label">City</label>
+                            <input type="text" id="curation-city-filter" placeholder="Filter by city..."
+                                class="input input-md" />
+                        </div>
 
-                <!-- Type Filter -->
-                <div>
-                    <select id="curation-type-filter" class="select input-md">
-                        <option value="all">All Types</option>
-                        <option value="restaurant">Restaurants</option>
-                        <option value="bar">Bars</option>
-                        <option value="hotel">Hotels</option>
-                        <option value="cafe">Cafés</option>
-                    </select>
+                        <!-- Type Filter -->
+                        <div>
+                            <label for="curation-type-filter" class="filters-sheet-label">Type</label>
+                            <select id="curation-type-filter" class="select input-md">
+                                <option value="all">All Types</option>
+                                <option value="restaurant">Restaurants</option>
+                                <option value="bar">Bars</option>
+                                <option value="hotel">Hotels</option>
+                                <option value="cafe">Cafés</option>
+                            </select>
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -496,32 +664,56 @@
 
         <!-- Entities View -->
         <div id="entities-view" class="view-content hidden">
-            <!-- Search and Filters -->
-            <div class="mb-4 grid grid-cols-1 md:grid-cols-4 gap-3">
-                <!-- Search -->
-                <div class="md:col-span-2">
-                    <div class="relative">
-                        <input type="text" id="entity-search" placeholder="Search entities..."
-                            class="input input-md" />
+            <!-- Mesma hierarquia das curations: Search sempre visível;
+                 Type/City atrás de "Filters" (bottom sheet) -->
+            <div class="mb-4">
+                <div class="filters-bar">
+                    <!-- Search -->
+                    <div class="filters-bar__search">
+                        <div class="relative">
+                            <input type="text" id="entity-search" placeholder="Search entities..."
+                                class="input input-md" />
+                        </div>
                     </div>
-                </div>
 
-                <!-- Type Filter -->
-                <div>
-                    <select id="entity-type-filter" class="select input-md">
-                        <option value="all">All Types</option>
-                        <option value="restaurant">Restaurants</option>
-                        <option value="bar">Bars</option>
-                        <option value="hotel">Hotels</option>
-                        <option value="cafe">Cafés</option>
-                    </select>
+                    <button id="entity-filters-toggle" type="button" class="btn btn-outline btn-md filters-toggle"
+                        aria-haspopup="dialog" aria-controls="entity-filters-sheet">
+                        <span class="material-icons mr-1" aria-hidden="true">tune</span>
+                        Filters
+                        <span id="entity-filters-count" class="filters-count hidden" aria-label="active filters">0</span>
+                    </button>
                 </div>
+            </div>
 
-                <!-- City Filter (texto livre — regex server-side no street;
-                     o bulk import guarda a cidade dentro do endereço) -->
-                <div>
-                    <input type="text" id="entity-city-filter" placeholder="Filter by city..."
-                        class="input input-md" />
+            <!-- Filtros avançados de entities (bottom sheet) -->
+            <div id="entity-filters-sheet" class="bottom-sheet" data-bottom-sheet data-height="auto">
+                <div class="bottom-sheet-handle"></div>
+                <div class="bottom-sheet-header">
+                    <h3 class="bottom-sheet-title">Filters</h3>
+                </div>
+                <div class="bottom-sheet-body">
+                    <div id="entity-filter-chips" class="filters-chips"></div>
+                    <div class="space-y-4">
+                        <!-- Type Filter -->
+                        <div>
+                            <label for="entity-type-filter" class="filters-sheet-label">Type</label>
+                            <select id="entity-type-filter" class="select input-md">
+                                <option value="all">All Types</option>
+                                <option value="restaurant">Restaurants</option>
+                                <option value="bar">Bars</option>
+                                <option value="hotel">Hotels</option>
+                                <option value="cafe">Cafés</option>
+                            </select>
+                        </div>
+
+                        <!-- City Filter (texto livre — regex server-side no street;
+                             o bulk import guarda a cidade dentro do endereço) -->
+                        <div>
+                            <label for="entity-city-filter" class="filters-sheet-label">City</label>
+                            <input type="text" id="entity-city-filter" placeholder="Filter by city..."
+                                class="input input-md" />
+                        </div>
+                    </div>
                 </div>
             </div>
 
@@ -546,7 +738,7 @@
                     Export / Import
                 </h3>
                 <div class="space-y-4">
-                    <button id="export-data" class="btn btn-primary btn-md w-full">
+                    <button id="export-data" class="btn btn-primary btn-md w-full" aria-label="Export all data">
                         <span class="material-icons mr-1" aria-hidden="true">file_download</span>
                         Export All Data
                     </button>
@@ -555,7 +747,7 @@
                         <label for="import-file" class="block text-sm font-medium text-gray-600 mb-2">Import from
                             JSON</label>
                         <input type="file" id="import-file" accept=".json" class="text-sm w-full mb-2">
-                        <button id="import-data" class="btn btn-success btn-sm w-full">
+                        <button id="import-data" class="btn btn-secondary btn-sm w-full" aria-label="Import file">
                             <span class="material-icons text-sm mr-1">file_upload</span>
                             Import File
                         </button>
@@ -580,7 +772,7 @@
                         </div>
 
                         <button id="purge-audio-btn"
-                            class="btn btn-secondary btn-sm w-full bg-purple-600 hover:bg-purple-700 border-none">
+                            class="btn btn-secondary btn-sm w-full">
                             <span class="material-icons text-sm mr-1">cleaning_services</span>
                             Purge Processed Audio
                         </button>
@@ -602,31 +794,35 @@
     </section>
 
     <!-- Quick Action Modal -->
-    <div id="quick-action-modal"
+    <div id="quick-action-modal" role="dialog" aria-modal="true" aria-label="Quick actions"
         class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
         <div class="bg-white p-6 rounded-2xl max-w-sm w-full shadow-xl border border-gray-100">
             <div class="flex items-center mb-6">
                 <span class="material-icons mr-2">add_circle</span>
                 <h3 class="text-xl font-semibold">Quick Actions</h3>
-                <button id="close-quick-modal" aria-label="Close quick actions" class="ml-auto text-gray-500 hover:text-gray-800 text-xl leading-none h-8 w-8 flex items-center justify-center rounded hover:bg-gray-100 transition-colors">&times;</button>
+                <!-- .modal-close: mesmo botão de fechar dos modais do
+                     modalManager (antes era &times; com medidas próprias) -->
+                <button id="close-quick-modal" class="modal-close ml-auto" aria-label="Close quick actions">
+                    <span class="material-icons" aria-hidden="true">close</span>
+                </button>
             </div>
             <div class="grid grid-cols-1 gap-4">
-                <button id="quick-record" class="btn btn-danger btn-lg">
+                <button id="quick-record" class="btn btn-primary btn-lg" aria-label="Record review">
                     <span class="material-icons mr-2" aria-hidden="true">mic</span>
                     Record Review
                 </button>
 
-                <button id="quick-location" class="btn btn-primary btn-lg">
+                <button id="quick-location" class="btn btn-secondary btn-lg" aria-label="Get location">
                     <span class="material-icons mr-2" aria-hidden="true">location_on</span>
                     Get Location
                 </button>
 
-                <button id="quick-photo" class="btn btn-success btn-lg">
+                <button id="quick-photo" class="btn btn-secondary btn-lg" aria-label="Take photos">
                     <span class="material-icons mr-2" aria-hidden="true">photo_camera</span>
                     Take Photos
                 </button>
 
-                <button id="quick-manual" class="btn btn-secondary btn-lg">
+                <button id="quick-manual" class="btn btn-secondary btn-lg" aria-label="Manual entry">
                     <span class="material-icons mr-2" aria-hidden="true">edit</span>
                     Manual Entry
                 </button>
@@ -640,25 +836,19 @@
         <span class="material-icons text-2xl" aria-hidden="true">add</span>
     </button>
 
-    <!-- Add these elements to your sidebar/menu navigation section -->
-    <div id="sync-sidebar-section" class="mb-4 border-t pt-4 hidden">
-        <h3 class="text-sm font-semibold uppercase text-gray-500 pl-4 mb-2">Synchronization</h3>
-
-        <div class="px-4">
-            <button id="sync-button" class="btn btn-primary btn-md w-full mb-2">
-                <span class="material-icons mr-2" aria-hidden="true">sync</span>
-                Sync Data
-            </button>
-            <div id="sync-status-sidebar" class="text-xs text-center text-gray-500">Last sync: Never</div>
-        </div>
-    </div>
+    <!-- Seção "Synchronization" da sidebar removida (ago/2026): o layout
+         de sidebar não existe desde o redesign do header; o botão ficava
+         inalcançável (hidden) e o sync manual vive no chip do header
+         (#btn-sync-details → modal Sync details, SyncStatusModule). -->
 
     </div>
 
     <!-- Update the loading overlay to include a message element -->
     <div id="loading-overlay" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
         <div class="bg-white p-6 rounded-lg flex flex-col items-center">
-            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
+            <!-- .spinner do design system (borda oliva, topo transparente) —
+                 antes um anel border-blue-500 do Tailwind antigo -->
+            <div class="spinner spinner-xl mb-4"></div>
             <p class="loading-message text-gray-700 font-medium"></p>
         </div>
     </div>
@@ -670,11 +860,11 @@
                 <span class="toolbar-info-title">Edit Restaurant</span>
             </div>
             <div class="toolbar-actions">
-                <button id="discard-restaurant" class="btn btn-outline btn-md">
+                <button id="discard-restaurant" class="btn btn-outline btn-md" aria-label="Discard changes">
                     <span class="material-icons" aria-hidden="true">close</span>
                     <span>Discard</span>
                 </button>
-                <button id="save-restaurant" class="btn btn-success btn-md">
+                <button id="save-restaurant" class="btn btn-primary btn-md" aria-label="Save restaurant">
                     <span class="material-icons" aria-hidden="true">check</span>
                     <span>Save</span>
                 </button>
@@ -689,11 +879,11 @@
                 <span class="toolbar-info-title">Edit Curator</span>
             </div>
             <div class="toolbar-actions">
-                <button id="cancel-curator-compact" class="btn btn-outline btn-md">
+                <button id="cancel-curator-compact" class="btn btn-outline btn-md" aria-label="Cancel">
                     <span class="material-icons" aria-hidden="true">close</span>
                     <span>Cancel</span>
                 </button>
-                <button id="save-curator-compact" class="btn btn-primary btn-md">
+                <button id="save-curator-compact" class="btn btn-primary btn-md" aria-label="Save curator">
                     <span class="material-icons" aria-hidden="true">check</span>
                     <span>Save</span>
                 </button>
@@ -723,13 +913,12 @@
     <script src="scripts/ui-core/modalManager.js?v=20260813-2"></script>
     <script src="scripts/managers/stateStore.js"></script>
     <script src="scripts/managers/progressManager.js"></script>
-    <script src="scripts/ui-core/navigationManager.js"></script>
+    <script src="scripts/ui-core/navigationManager.js?v=20260816-1"></script>
     <script src="scripts/managers/errorManager.js"></script>
     <script src="scripts/managers/formManager.js"></script>
 
     <!-- Phase 3-4: Mobile, Performance & UX Enhancements -->
     <script src="scripts/ui-core/bottomSheet.js?v=20260813-1"></script>
-    <script src="scripts/ui-core/gestureManager.js?v=20260815-1"></script>
     <script src="scripts/ui-core/skeletonLoader.js"></script>
     <script src="scripts/ui-core/lazyLoader.js?v=20260813-2"></script>
     <script src="scripts/ui-core/optimisticUI.js"></script>
@@ -747,7 +936,7 @@
     <script src="scripts/sync/importManager.js?v=20260813-3"></script>
 
     <!-- UI Components -->
-    <script src="scripts/ui/cardFactory.js?v=20260814-7"></script>
+    <script src="scripts/ui/cardFactory.js?v=20260816-1"></script>
     <script src="scripts/ui/conflictResolutionModal.js?v=20260813-4"></script>
 
     <!-- Compatibility Layer for Legacy UI Modules -->
@@ -756,7 +945,7 @@
     <!-- Application modules - keeping essential ones -->
     <script src="scripts/services/promptTemplate.js?v=20260814-1"></script>
     <script src="scripts/services/conceptMatcher.js"></script>
-    <script src="scripts/ui-core/uiManager.js?v=20260814-13"></script>
+    <script src="scripts/ui-core/uiManager.js?v=20260816-1"></script>
 
     <!-- Module implementations - V3 Compatible -->
     <script src="scripts/modules/safetyUtils.js?v=20260813-1"></script>
@@ -770,7 +959,7 @@
     <script src="scripts/modules/curatorModule.js"></script>
     <script src="scripts/modules/recordingModule.js?v=20260814-1"></script>
     <script src="scripts/modules/transcriptionModule.js"></script>
-    <script src="scripts/modules/conceptModule.js?v=20260813-1"></script>
+    <script src="scripts/modules/conceptModule.js?v=20260816-1"></script>
     <script src="scripts/modules/restaurantModule.js?v=20260813-1"></script>
     <script src="scripts/modules/entityModule.js?v=20260814-3"></script>
     <script src="scripts/modules/syncStatusModule.js?v=20260813-3"></script>
@@ -801,7 +990,7 @@
     <script src="scripts/auth/auth.js"></script>
 
     <!-- Curator Profile Module (must load after auth.js) -->
-    <script src="scripts/auth/curatorProfile.js?v=20260813-2"></script>
+    <script src="scripts/auth/curatorProfile.js?v=20260816-1"></script>
 
     <!-- Find Entity Modal (Google Places search interface) -->
     <script src="scripts/services/findEntityModal.js?v=20260814-1"></script>
@@ -810,7 +999,7 @@
     <script src="scripts/auth/accessControl.js?v=20260813-1"></script>
 
     <!-- Core application scripts -->
-    <script src="scripts/core/main.js?v=20260813-3"></script>
+    <script src="scripts/core/main.js?v=20260816-1"></script>
 </body>
 
 </html>

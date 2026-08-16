@@ -19,6 +19,14 @@ const src = readFileSync(
 
 function loadSyncStatusModule() {
   delete globalThis.SyncStatusModule;
+  // Ordem espelhando o index.html: uiUtils.js define o formatter
+  // canônico (formatRelativeDate) antes do módulo delegar para ele
+  const uiUtilsSrc = readFileSync(
+    path.resolve(__dirname, '../scripts/ui-core/uiUtils.js'),
+    'utf8'
+  );
+  // eslint-disable-next-line no-new-func
+  new Function('window', `${uiUtilsSrc}\n;`)(window);
   // eslint-disable-next-line no-new-func
   const fn = new Function('window', `${src}\nreturn window.SyncStatusModule;`);
   return fn(window);

@@ -23,6 +23,10 @@ class ConceptModule {
         // New property to handle the queue of images for AI processing
         this.imageProcessingQueue = [];
         this.isProcessingQueue = false;
+        // Transcrição editada mas ainda não reprocessada (o botão
+        // Reprocess sinaliza "changes pending" até os conceitos serem
+        // recalculados)
+        this.transcriptionPendingReprocess = false;
     }
 
     /**
@@ -57,6 +61,12 @@ class ConceptModule {
         if (nameInput) {
             nameInput.addEventListener('input', () => {
                 this.uiManager.formIsDirty = true;
+                // Digitar de novo limpa o erro inline do campo (o erro
+                // só reaparece se o save rodar com nome vazio)
+                const nameError = document.getElementById('restaurant-name-error');
+                if (nameError && !nameError.classList.contains('hidden') && nameInput.value.trim()) {
+                    nameError.classList.add('hidden');
+                }
                 this.autoSaveDraft();
             });
         }
@@ -66,6 +76,10 @@ class ConceptModule {
         if (transcriptionTextarea) {
             transcriptionTextarea.addEventListener('input', () => {
                 this.uiManager.formIsDirty = true;
+                // Relação causal explícita: editar a transcrição não
+                // altera conceitos até reprocessar — o botão avisa
+                this.transcriptionPendingReprocess = true;
+                this.updateReprocessButton();
                 this.autoSaveDraft();
             });
         }
@@ -75,6 +89,7 @@ class ConceptModule {
         if (descriptionInput) {
             descriptionInput.addEventListener('input', () => {
                 this.uiManager.formIsDirty = true;
+                this.updateDescriptionWordCount();
                 this.autoSaveDraft();
             });
         }
@@ -444,9 +459,19 @@ class ConceptModule {
         const privateNotes = document.getElementById('curation-notes-private');
         if (privateNotes) privateNotes.value = '';
 
+        // Estados de microcopy voltam ao neutro com o formulário limpo
+        this.transcriptionPendingReprocess = false;
+        this.updateReprocessButton();
+        this.updateDescriptionWordCount();
+
         // Navigate back to the main view (Home)
-        // This shows both the recording section and the restaurant list
-        this.uiManager.showRestaurantListSection();
+        // Rota canônica (replace): o back do browser volta para antes da
+        // edição, não para o estado intermediário de discard
+        if (window.navigationManager && typeof window.navigationManager.goTo === 'function') {
+            await window.navigationManager.goTo('/', { replace: true });
+        } else {
+            this.uiManager.showRestaurantListSection();
+        }
 
         // If we were editing, refresh the list to make sure it's clean
         if (wasEditingId) {
@@ -468,6 +493,11 @@ class ConceptModule {
 
         if (!name) {
             SafetyUtils.showNotification('Please enter a restaurant name', 'error');
+            // Erro INLINE no campo (nasce hidden no markup — antes a
+            // mensagem ficava visível permanentemente no editor)
+            const nameError = document.getElementById('restaurant-name-error');
+            if (nameError) nameError.classList.remove('hidden');
+            nameInput?.focus();
             return;
         }
 
@@ -483,6 +513,17 @@ class ConceptModule {
         // Get description text
         const descriptionInput = document.getElementById('restaurant-description');
         const description = descriptionInput ? descriptionInput.value.trim() : '';
+
+        // O label promete "30 words max" — o limite de verdade é por
+        // palavras (o maxlength=200 é só teto de segurança)
+        const descriptionWordCount = description ? description.split(/\s+/).length : 0;
+        if (descriptionWordCount > 30) {
+            SafetyUtils.showNotification(
+                `Description exceeds 30 words (${descriptionWordCount}). Please shorten it.`,
+                'error'
+            );
+            return;
+        }
 
         try {
             SafetyUtils.showLoading(this.uiManager.isEditingRestaurant ? 'Updating restaurant...' : 'Saving curation...');
@@ -733,7 +774,14 @@ class ConceptModule {
             }
 
             // Navigate to main screen (restaurant list) after successful save
-            if (this.uiManager && typeof this.uiManager.showRestaurantListSection === 'function') {
+            // Rota canônica (replace): o back do browser volta para antes da
+            // edição; a lista é re-carregada para o card novo aparecer
+            if (window.navigationManager && typeof window.navigationManager.goTo === 'function') {
+                await window.navigationManager.goTo('/', { replace: true });
+                if (typeof this.uiManager.loadTabData === 'function') {
+                    this.uiManager.loadTabData(this.uiManager.currentTab || 'curations');
+                }
+            } else if (this.uiManager && typeof this.uiManager.showRestaurantListSection === 'function') {
                 this.uiManager.showRestaurantListSection();
                 // Reload curations data so the newly saved card appears
                 if (typeof this.uiManager.loadTabData === 'function') {
@@ -1431,6 +1479,46 @@ class ConceptModule {
         );
     }
 
+    /**
+     * Microcopy/estado do botão Reprocess Concepts: enquanto a
+     * transcrição mudou e os conceitos não foram recalculados, o botão
+     * sinaliza "changes pending" (bronze = atenção de verdade).
+     */
+    updateReprocessButton() {
+        const btn = document.getElementById('reprocess-concepts');
+        if (!btn) return;
+        const pending = this.transcriptionPendingReprocess === true;
+        const labelSpan = btn.querySelector('.reprocess-label');
+        if (labelSpan) {
+            labelSpan.textContent = pending
+                ? 'Reprocess Concepts • changes pending'
+                : 'Reprocess Concepts';
+        }
+        btn.classList.toggle('btn-warning', pending);
+        btn.classList.toggle('btn-secondary', !pending);
+    }
+
+    /** Zera a pendência de reprocessamento (form recarregado/salvo). */
+    resetTranscriptionPending() {
+        this.transcriptionPendingReprocess = false;
+        this.updateReprocessButton();
+    }
+
+    /**
+     * Contador real de palavras da descrição — o label promete
+     * "30 words max"; o maxlength=200 é só teto de segurança de
+     * caracteres. O limite de verdade é validado no save.
+     */
+    updateDescriptionWordCount() {
+        const input = document.getElementById('restaurant-description');
+        const counter = document.getElementById('description-word-count');
+        if (!counter) return;
+        const text = input ? input.value.trim() : '';
+        const words = text ? text.split(/\s+/).length : 0;
+        counter.textContent = `${words} / 30 words`;
+        counter.classList.toggle('description-word-count--over', words > 30);
+    }
+
     // New function to reprocess concepts from edited transcription
     async reprocessConcepts() {
         this.log.debug('Reprocessing concepts...');
@@ -1454,6 +1542,12 @@ class ConceptModule {
             // Explicitly generate description after extracting concepts
             // This step was missing or not working properly
             await this.generateDescription(transcription);
+
+            // Conceitos recalculados — a pendência acaba (e o contador
+            // da descrição reflete o texto recém-gerado)
+            this.transcriptionPendingReprocess = false;
+            this.updateReprocessButton();
+            this.updateDescriptionWordCount();
 
             SafetyUtils.hideLoading();
             SafetyUtils.showNotification('Concepts and description updated successfully');

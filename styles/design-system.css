@@ -80,7 +80,11 @@
   --color-neutral-200: #e7e1d7;
   --color-neutral-300: #d9d2c6;
   --color-neutral-400: #a9a193;
-  --color-neutral-500: #7e786c;
+  /* neutral-500 escurecido para #6f6a64 (ago/2026): o #7e786c antigo
+     ficava em 4.38:1 sobre branco — abaixo de AA (4.5:1) para texto
+     12–14px (tab-subtitle, saved-view chips, labels de filtro).
+     Mesmo valor do --muted do capture/: 5.36:1 sobre branco. */
+  --color-neutral-500: #6f6a64;
   --color-neutral-600: #5f5a4f;
   --color-neutral-700: #45413a;
   --color-neutral-800: #2e2b26;
@@ -674,56 +678,33 @@ img {
    Purpose: Extended utility classes for consistent spacing and typography
    ======================================================================== */
 
-/* Enhanced Typography Scale (Type Scale: 1.250 - Major Third) */
+/* Vocabulário ÚNICO de tokens (consolidação ago/2026):
+   --text-* (tipografia), --spacing-* (espaçamento) e --font-<peso>
+   são os canônicos. Os pares legados (--font-size-*, --font-weight-*)
+   viram aliases; --space-* e --line-height-* não existem mais.
+   ATENÇÃO: as utilities .m-*/.p-*/.gap-* abaixo APONTAM para o
+   vocabulário canônico --spacing-* — a versão anterior referenciava
+   os tokens --space-* removidos e, com !important, ZERAVA todo o
+   espaçamento do Tailwind (painéis sem padding, seções coladas). */
 :root {
-    /* Enhanced font size scale */
-    --font-size-base: 1rem; /* 16px */
-    --font-size-xs: 0.75rem;    /* 12px */
-    --font-size-sm: 0.875rem;   /* 14px */
-    --font-size-md: 1rem;        /* 16px - base */
-    --font-size-lg: 1.125rem;    /* 18px */
-    --font-size-xl: 1.25rem;     /* 20px */
-    --font-size-2xl: 1.5rem;     /* 24px */
-    --font-size-3xl: 1.875rem;   /* 30px */
-    --font-size-4xl: 2.25rem;    /* 36px */
-    --font-size-5xl: 3rem;       /* 48px */
-    
-    /* Enhanced Line Heights */
-    --line-height-tight: 1.25;
-    --line-height-normal: 1.5;
-    --line-height-relaxed: 1.75;
-    
-    /* Font Weights */
-    --font-weight-normal: 400;
-    --font-weight-medium: 500;
-    --font-weight-semibold: 600;
-    --font-weight-bold: 700;
-    --font-weight-extrabold: 800;
-}
+    /* Aliases do vocabulário canônico --text-* */
+    --font-size-base: var(--text-base);
+    --font-size-xs: var(--text-xs);
+    --font-size-sm: var(--text-sm);
+    --font-size-md: var(--text-base); /* base */
+    --font-size-lg: var(--text-lg);
+    --font-size-xl: var(--text-xl);
+    --font-size-2xl: var(--text-2xl);
+    --font-size-3xl: var(--text-3xl);
+    --font-size-4xl: var(--text-4xl);
+    --font-size-5xl: var(--text-5xl);
 
-/* Enhanced Spacing Scale (8px base) */
-:root {
-    --space-0: 0;
-    --space-px: 1px;
-    --space-0\.5: 0.125rem;  /* 2px */
-    --space-1: 0.25rem;      /* 4px */
-    --space-1\.5: 0.375rem;  /* 6px */
-    --space-2: 0.5rem;       /* 8px - base */
-    --space-2\.5: 0.625rem;  /* 10px */
-    --space-3: 0.75rem;      /* 12px */
-    --space-3\.5: 0.875rem;  /* 14px */
-    --space-4: 1rem;         /* 16px */
-    --space-5: 1.25rem;      /* 20px */
-    --space-6: 1.5rem;       /* 24px */
-    --space-7: 1.75rem;      /* 28px */
-    --space-8: 2rem;         /* 32px */
-    --space-9: 2.25rem;      /* 36px */
-    --space-10: 2.5rem;      /* 40px */
-    --space-12: 3rem;        /* 48px */
-    --space-14: 3.5rem;      /* 56px */
-    --space-16: 4rem;        /* 64px */
-    --space-20: 5rem;        /* 80px */
-    --space-24: 6rem;        /* 96px */
+    /* Aliases do vocabulário canônico --font-<peso> */
+    --font-weight-normal: var(--font-normal);
+    --font-weight-medium: var(--font-medium);
+    --font-weight-semibold: var(--font-semibold);
+    --font-weight-bold: var(--font-bold);
+    --font-weight-extrabold: var(--font-extrabold);
 }
 
 /* Container Widths */
@@ -740,103 +721,103 @@ img {
    ======================================================================== */
 
 /* Margin utilities */
-.m-0 { margin: var(--space-0) !important; }
-.m-1 { margin: var(--space-1) !important; }
-.m-2 { margin: var(--space-2) !important; }
-.m-3 { margin: var(--space-3) !important; }
-.m-4 { margin: var(--space-4) !important; }
-.m-5 { margin: var(--space-5) !important; }
-.m-6 { margin: var(--space-6) !important; }
-.m-8 { margin: var(--space-8) !important; }
+.m-0 { margin: var(--spacing-0) !important; }
+.m-1 { margin: var(--spacing-1) !important; }
+.m-2 { margin: var(--spacing-2) !important; }
+.m-3 { margin: var(--spacing-3) !important; }
+.m-4 { margin: var(--spacing-4) !important; }
+.m-5 { margin: var(--spacing-5) !important; }
+.m-6 { margin: var(--spacing-6) !important; }
+.m-8 { margin: var(--spacing-8) !important; }
 .m-auto { margin: auto !important; }
 
 /* Margin-top */
-.mt-0 { margin-top: var(--space-0) !important; }
-.mt-1 { margin-top: var(--space-1) !important; }
-.mt-2 { margin-top: var(--space-2) !important; }
-.mt-3 { margin-top: var(--space-3) !important; }
-.mt-4 { margin-top: var(--space-4) !important; }
-.mt-5 { margin-top: var(--space-5) !important; }
-.mt-6 { margin-top: var(--space-6) !important; }
-.mt-8 { margin-top: var(--space-8) !important; }
+.mt-0 { margin-top: var(--spacing-0) !important; }
+.mt-1 { margin-top: var(--spacing-1) !important; }
+.mt-2 { margin-top: var(--spacing-2) !important; }
+.mt-3 { margin-top: var(--spacing-3) !important; }
+.mt-4 { margin-top: var(--spacing-4) !important; }
+.mt-5 { margin-top: var(--spacing-5) !important; }
+.mt-6 { margin-top: var(--spacing-6) !important; }
+.mt-8 { margin-top: var(--spacing-8) !important; }
 .mt-auto { margin-top: auto !important; }
 
 /* Margin-bottom */
-.mb-0 { margin-bottom: var(--space-0) !important; }
-.mb-1 { margin-bottom: var(--space-1) !important; }
-.mb-2 { margin-bottom: var(--space-2) !important; }
-.mb-3 { margin-bottom: var(--space-3) !important; }
-.mb-4 { margin-bottom: var(--space-4) !important; }
-.mb-5 { margin-bottom: var(--space-5) !important; }
-.mb-6 { margin-bottom: var(--space-6) !important; }
-.mb-8 { margin-bottom: var(--space-8) !important; }
+.mb-0 { margin-bottom: var(--spacing-0) !important; }
+.mb-1 { margin-bottom: var(--spacing-1) !important; }
+.mb-2 { margin-bottom: var(--spacing-2) !important; }
+.mb-3 { margin-bottom: var(--spacing-3) !important; }
+.mb-4 { margin-bottom: var(--spacing-4) !important; }
+.mb-5 { margin-bottom: var(--spacing-5) !important; }
+.mb-6 { margin-bottom: var(--spacing-6) !important; }
+.mb-8 { margin-bottom: var(--spacing-8) !important; }
 .mb-auto { margin-bottom: auto !important; }
 
 /* Margin-left */
-.ml-0 { margin-left: var(--space-0) !important; }
-.ml-1 { margin-left: var(--space-1) !important; }
-.ml-2 { margin-left: var(--space-2) !important; }
-.ml-3 { margin-left: var(--space-3) !important; }
-.ml-4 { margin-left: var(--space-4) !important; }
+.ml-0 { margin-left: var(--spacing-0) !important; }
+.ml-1 { margin-left: var(--spacing-1) !important; }
+.ml-2 { margin-left: var(--spacing-2) !important; }
+.ml-3 { margin-left: var(--spacing-3) !important; }
+.ml-4 { margin-left: var(--spacing-4) !important; }
 .ml-auto { margin-left: auto !important; }
 
 /* Margin-right */
-.mr-0 { margin-right: var(--space-0) !important; }
-.mr-1 { margin-right: var(--space-1) !important; }
-.mr-2 { margin-right: var(--space-2) !important; }
-.mr-3 { margin-right: var(--space-3) !important; }
-.mr-4 { margin-right: var(--space-4) !important; }
+.mr-0 { margin-right: var(--spacing-0) !important; }
+.mr-1 { margin-right: var(--spacing-1) !important; }
+.mr-2 { margin-right: var(--spacing-2) !important; }
+.mr-3 { margin-right: var(--spacing-3) !important; }
+.mr-4 { margin-right: var(--spacing-4) !important; }
 .mr-auto { margin-right: auto !important; }
 
 /* Padding utilities */
-.p-0 { padding: var(--space-0) !important; }
-.p-1 { padding: var(--space-1) !important; }
-.p-2 { padding: var(--space-2) !important; }
-.p-3 { padding: var(--space-3) !important; }
-.p-4 { padding: var(--space-4) !important; }
-.p-5 { padding: var(--space-5) !important; }
-.p-6 { padding: var(--space-6) !important; }
-.p-8 { padding: var(--space-8) !important; }
+.p-0 { padding: var(--spacing-0) !important; }
+.p-1 { padding: var(--spacing-1) !important; }
+.p-2 { padding: var(--spacing-2) !important; }
+.p-3 { padding: var(--spacing-3) !important; }
+.p-4 { padding: var(--spacing-4) !important; }
+.p-5 { padding: var(--spacing-5) !important; }
+.p-6 { padding: var(--spacing-6) !important; }
+.p-8 { padding: var(--spacing-8) !important; }
 
 /* Padding-top */
-.pt-0 { padding-top: var(--space-0) !important; }
-.pt-1 { padding-top: var(--space-1) !important; }
-.pt-2 { padding-top: var(--space-2) !important; }
-.pt-3 { padding-top: var(--space-3) !important; }
-.pt-4 { padding-top: var(--space-4) !important; }
-.pt-6 { padding-top: var(--space-6) !important; }
+.pt-0 { padding-top: var(--spacing-0) !important; }
+.pt-1 { padding-top: var(--spacing-1) !important; }
+.pt-2 { padding-top: var(--spacing-2) !important; }
+.pt-3 { padding-top: var(--spacing-3) !important; }
+.pt-4 { padding-top: var(--spacing-4) !important; }
+.pt-6 { padding-top: var(--spacing-6) !important; }
 
 /* Padding-bottom */
-.pb-0 { padding-bottom: var(--space-0) !important; }
-.pb-1 { padding-bottom: var(--space-1) !important; }
-.pb-2 { padding-bottom: var(--space-2) !important; }
-.pb-3 { padding-bottom: var(--space-3) !important; }
-.pb-4 { padding-bottom: var(--space-4) !important; }
-.pb-6 { padding-bottom: var(--space-6) !important; }
+.pb-0 { padding-bottom: var(--spacing-0) !important; }
+.pb-1 { padding-bottom: var(--spacing-1) !important; }
+.pb-2 { padding-bottom: var(--spacing-2) !important; }
+.pb-3 { padding-bottom: var(--spacing-3) !important; }
+.pb-4 { padding-bottom: var(--spacing-4) !important; }
+.pb-6 { padding-bottom: var(--spacing-6) !important; }
 
 /* Padding-left */
-.pl-0 { padding-left: var(--space-0) !important; }
-.pl-1 { padding-left: var(--space-1) !important; }
-.pl-2 { padding-left: var(--space-2) !important; }
-.pl-3 { padding-left: var(--space-3) !important; }
-.pl-4 { padding-left: var(--space-4) !important; }
+.pl-0 { padding-left: var(--spacing-0) !important; }
+.pl-1 { padding-left: var(--spacing-1) !important; }
+.pl-2 { padding-left: var(--spacing-2) !important; }
+.pl-3 { padding-left: var(--spacing-3) !important; }
+.pl-4 { padding-left: var(--spacing-4) !important; }
 
 /* Padding-right */
-.pr-0 { padding-right: var(--space-0) !important; }
-.pr-1 { padding-right: var(--space-1) !important; }
-.pr-2 { padding-right: var(--space-2) !important; }
-.pr-3 { padding-right: var(--space-3) !important; }
-.pr-4 { padding-right: var(--space-4) !important; }
+.pr-0 { padding-right: var(--spacing-0) !important; }
+.pr-1 { padding-right: var(--spacing-1) !important; }
+.pr-2 { padding-right: var(--spacing-2) !important; }
+.pr-3 { padding-right: var(--spacing-3) !important; }
+.pr-4 { padding-right: var(--spacing-4) !important; }
 
 /* Gap utilities (for flexbox/grid) */
-.gap-0 { gap: var(--space-0) !important; }
-.gap-1 { gap: var(--space-1) !important; }
-.gap-2 { gap: var(--space-2) !important; }
-.gap-3 { gap: var(--space-3) !important; }
-.gap-4 { gap: var(--space-4) !important; }
-.gap-5 { gap: var(--space-5) !important; }
-.gap-6 { gap: var(--space-6) !important; }
-.gap-8 { gap: var(--space-8) !important; }
+.gap-0 { gap: var(--spacing-0) !important; }
+.gap-1 { gap: var(--spacing-1) !important; }
+.gap-2 { gap: var(--spacing-2) !important; }
+.gap-3 { gap: var(--spacing-3) !important; }
+.gap-4 { gap: var(--spacing-4) !important; }
+.gap-5 { gap: var(--spacing-5) !important; }
+.gap-6 { gap: var(--spacing-6) !important; }
+.gap-8 { gap: var(--spacing-8) !important; }
 
 /* ========================================================================
    TYPOGRAPHY UTILITIES
@@ -861,9 +842,9 @@ img {
 .font-extrabold { font-weight: var(--font-weight-extrabold) !important; }
 
 /* Line heights */
-.leading-tight { line-height: var(--line-height-tight) !important; }
-.leading-normal { line-height: var(--line-height-normal) !important; }
-.leading-relaxed { line-height: var(--line-height-relaxed) !important; }
+.leading-tight { line-height: var(--leading-tight) !important; }
+.leading-normal { line-height: var(--leading-normal) !important; }
+.leading-relaxed { line-height: var(--leading-relaxed) !important; }
 
 /* Text alignment */
 .text-left { text-align: left !important; }
@@ -889,8 +870,8 @@ img {
 
 /* Standard section spacing */
 .section {
-    margin-bottom: var(--space-8);
-    padding: var(--space-6);
+    margin-bottom: var(--spacing-8);
+    padding: var(--spacing-6);
     background: white;
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-md);
@@ -901,8 +882,8 @@ img {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: var(--space-6);
-    padding-bottom: var(--space-4);
+    margin-bottom: var(--spacing-6);
+    padding-bottom: var(--spacing-4);
     border-bottom: 1px solid var(--color-neutral-200);
 }
 
@@ -912,7 +893,7 @@ img {
     color: var(--color-neutral-900);
     display: flex;
     align-items: center;
-    gap: var(--space-2);
+    gap: var(--spacing-2);
 }
 
 .section-title .material-icons {
@@ -921,7 +902,7 @@ img {
 
 .section-actions {
     display: flex;
-    gap: var(--space-2);
+    gap: var(--spacing-2);
     align-items: center;
 }
 
@@ -930,57 +911,15 @@ img {
 }
 
 .section-footer {
-    margin-top: var(--space-6);
-    padding-top: var(--space-4);
+    margin-top: var(--spacing-6);
+    padding-top: var(--spacing-4);
     border-top: 1px solid var(--color-neutral-200);
 }
 
-/* Card spacing */
-.card {
-    padding: var(--space-4);
-    border-radius: var(--radius-md);
-    background: white;
-    border: 1px solid var(--color-neutral-200);
-    transition: all 0.2s ease;
-}
-
-.card:hover {
-    box-shadow: var(--shadow-lg);
-    border-color: var(--color-primary-300);
-}
-
-.card-header {
-    margin-bottom: var(--space-3);
-    padding-bottom: var(--space-3);
-    border-bottom: 1px solid var(--color-neutral-200);
-}
-
-.card-title {
-    font-size: var(--font-size-lg);
-    font-weight: var(--font-weight-medium);
-    color: var(--color-neutral-900);
-}
-
-.card-subtitle {
-    font-size: var(--font-size-sm);
-    color: var(--color-neutral-500);
-    margin-top: var(--space-1);
-}
-
-.card-body {
-    /* Standardized card content */
-}
-
-.card-footer {
-    margin-top: var(--space-4);
-    padding-top: var(--space-4);
-    border-top: 1px solid var(--color-neutral-200);
-    display: flex;
-    justify-content: flex-end;
-    gap: var(--space-2);
-}
-
-/* ========================================================================
+/* Bloco .card/.card-header/.card-title/.card-subtitle/.card-footer
+   removido (ago/2026): definição duplicada com components.css (padding
+   1rem/radius-md aqui vs 1.5rem/radius-xl lá — componentes carregam
+   depois e vencem). Fonte única: components.css. *//* ========================================================================
    PALETA "CONCIERGE" — REMAP DAS UTILITIES DE COR DO TAILWIND (v2 CDN)
    ========================================================================
 
@@ -1016,8 +955,12 @@ img {
 .hover\:bg-gray-800:hover { background-color: #2e2b26; }
 .hover\:bg-gray-900:hover { background-color: #1a1817; }
 .text-gray-300 { color: #d9d2c6; }
-.text-gray-400 { color: #a9a193; }
-.text-gray-500 { color: #7e786c; }
+/* gray-400/500 escurecidos (ago/2026) para acompanhar o novo neutral-500:
+   os hex antigos (#a9a193/#7e786c) deixavam texto 12–14px em 2.6–4.4:1
+   sobre branco — abaixo de AA. Como o remap usa LITERAIS (não var()), a
+   troca do token não bastava. */
+.text-gray-400 { color: #7e786c; }
+.text-gray-500 { color: #6f6a64; }
 .text-gray-600 { color: #5f5a4f; }
 .text-gray-700 { color: #45413a; }
 .text-gray-800 { color: #2e2b26; }
