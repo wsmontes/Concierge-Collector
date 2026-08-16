@@ -2537,8 +2537,12 @@ if (typeof window.UIManager === 'undefined') {
         get VIEW_CONFIG() {
             return {
                 list: {
-                    show: ['restaurantListSection', 'findEntityBtn'],
-                    hide: ['recordingSection', 'transcriptionSection', 'conceptsSection', 'exportImportSection', 'restaurantEditToolbar', 'curatorEditToolbar']
+                    // recordingSection NA home: o gravador sempre morou
+                    // acima da coleção (comportamento pré-auditoria, que o
+                    // usuário validou em prod — tirá-lo da home foi o
+                    // "sumiu o gravador" do mobile)
+                    show: ['restaurantListSection', 'findEntityBtn', 'recordingSection'],
+                    hide: ['transcriptionSection', 'conceptsSection', 'exportImportSection', 'restaurantEditToolbar', 'curatorEditToolbar']
                 },
                 recording: {
                     show: ['recordingSection'],
