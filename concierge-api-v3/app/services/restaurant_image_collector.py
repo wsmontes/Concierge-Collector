@@ -17,7 +17,6 @@ from urllib.parse import urlsplit
 
 from PIL import Image, ImageStat
 
-
 SOURCE_WEIGHTS: Dict[str, float] = {
     "website_og": 40.0,
     "google_places": 38.0,
@@ -94,7 +93,9 @@ class CollectedImage:
 def _dhash(img: Image.Image) -> int:
     """64-bit difference hash; robust enough to collapse CDN/resized copies."""
     gray = img.convert("L").resize((9, 8), Image.Resampling.LANCZOS)
-    pixels = list(gray.get_flattened_data())
+    # get_flattened_data() foi removido no Pillow 10+ — getdata() é o
+    # equivalente estável para imagens "L" (lista plana de valores).
+    pixels = list(gray.getdata())
     value = 0
     for row in range(8):
         offset = row * 9
@@ -196,8 +197,7 @@ def rank_and_dedupe(
     selected: List[CollectedImage] = []
     for image in ranked:
         if any(
-            _hamming_distance(image.perceptual_hash, kept.perceptual_hash) <= duplicate_distance
-            for kept in selected
+            _hamming_distance(image.perceptual_hash, kept.perceptual_hash) <= duplicate_distance for kept in selected
         ):
             continue
         selected.append(image)

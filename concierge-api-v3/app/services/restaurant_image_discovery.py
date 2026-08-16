@@ -145,9 +145,7 @@ def _jsonld_urls(raw: bytes, base_url: str) -> Iterable[str]:
 def _media_urls(raw: bytes, base_url: str) -> Iterable[str]:
     for tag in _MEDIA_TAG.findall(raw):
         attrs = {
-            match.group(1).decode("ascii", errors="ignore").lower(): match.group(2).decode(
-                "utf-8", errors="replace"
-            )
+            match.group(1).decode("ascii", errors="ignore").lower(): match.group(2).decode("utf-8", errors="replace")
             for match in _ATTR.finditer(tag)
         }
         value = None

@@ -218,10 +218,7 @@ async def _places_image_candidates(
         from app.services.llm_place_service import LLMPlaceService
 
         service = LLMPlaceService()
-        photos = (
-            await asyncio.to_thread(service.fetch_google_place_photos, place_id, max_photos=max_photos)
-            or []
-        )
+        photos = await asyncio.to_thread(service.fetch_google_place_photos, place_id, max_photos=max_photos) or []
     except Exception as exc:
         logger.debug("Places photos metadata falhou para %s: %s", place_id, exc)
         return []
