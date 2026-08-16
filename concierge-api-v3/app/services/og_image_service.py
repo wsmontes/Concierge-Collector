@@ -440,11 +440,7 @@ async def get_og_image_bytes(
         _og_bytes_cache.pop(cache_key, None)
 
     _og_stats["requests"] += 1
-    images = await get_restaurant_images(
-        page_url if has_url else None,
-        place_id if has_place else None,
-        limit=1,
-    )
+    images = await get_restaurant_images(page_url if has_url else None, place_id if has_place else None, limit=1)
     if not images:
         _og_stats["no_image"] += 1
         return None
