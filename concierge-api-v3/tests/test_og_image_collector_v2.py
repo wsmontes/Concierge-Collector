@@ -127,3 +127,14 @@ def test_candidate_cache_evicts_least_recently_used_entry(monkeypatch):
     assert "https://a.example" in svc._og_cache
     assert "https://c.example" in svc._og_cache
     assert "https://b.example" not in svc._og_cache
+
+
+@pytest.mark.asyncio
+async def test_collector_still_propagates_invalid_restaurant_page_url(monkeypatch):
+    async def resolve(_url):
+        raise ValueError("destino de imagem não permitido (rede interna)")
+
+    monkeypatch.setattr(svc, "_resolve_og_image_candidates", resolve)
+    svc._image_catalog_cache.clear()
+    with pytest.raises(ValueError, match="rede interna"):
+        await svc.get_restaurant_images("http://127.0.0.1/private", None, limit=1)
