@@ -16,6 +16,7 @@ import logging
 import re
 import time
 from typing import Dict, List, Optional, Tuple
+from urllib.parse import urlsplit, urlunsplit
 
 import httpx
 
@@ -31,6 +32,18 @@ from app.services.restaurant_image_collector import (
 from app.services.restaurant_image_discovery import discover_image_urls
 
 logger = logging.getLogger(__name__)
+
+
+def _safe_log_url(url: str) -> str:
+    """Strip query/fragment so signed URLs and API keys never reach logs."""
+    try:
+        parts = urlsplit(url)
+        if not parts.scheme or not parts.netloc:
+            return "<redacted-url>"
+        return urlunsplit((parts.scheme, parts.netloc, parts.path, "", ""))
+    except Exception:
+        return "<redacted-url>"
+
 
 MAX_HTML_BYTES = 400 * 1024
 FETCH_TIMEOUT_SECONDS = 6.0
@@ -128,7 +141,7 @@ async def _resolve_og_image_candidates(page_url: str) -> Optional[List[str]]:
     except ValueError:
         raise
     except Exception as exc:
-        logger.debug("og:image indisponível para %s: %s", page_url, exc)
+        logger.debug("og:image indisponível para %s: %s", _safe_log_url(page_url), exc)
         candidates = None
 
     _cache_put(page_url, candidates)
@@ -182,7 +195,13 @@ async def _download_bytes(url: str, timeout: float) -> Optional[bytes]:
         except ValueError:
             raise
         except Exception as exc:
-            logger.debug("download (tentativa %d/%d) falhou para %s: %s", attempt + 1, DOWNLOAD_ATTEMPTS, url, exc)
+            logger.debug(
+                "download (tentativa %d/%d) falhou para %s: %s",
+                attempt + 1,
+                DOWNLOAD_ATTEMPTS,
+                _safe_log_url(url),
+                exc,
+            )
             if attempt + 1 < DOWNLOAD_ATTEMPTS:
                 await asyncio.sleep(RETRY_BACKOFF_SECONDS * (attempt + 1))
     return None
