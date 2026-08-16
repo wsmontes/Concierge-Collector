@@ -2040,7 +2040,11 @@
   display: none;
 }
 
-@media (min-width: 641px) {
+/* Desktop de VERDADE = largura + ponteiro fino. Esconder o FAB só por
+   largura "mistura as bolas" em touch devices largos (iPad, iPhone
+   deitado): o aparelho via o botão desktop e perdia o FAB/gravador.
+   Touch device (pointer coarse) mantém o FAB mesmo ≥641px. */
+@media (min-width: 641px) and (hover: hover) and (pointer: fine) {
   #new-curation-btn {
     display: inline-flex;
     align-items: center;
