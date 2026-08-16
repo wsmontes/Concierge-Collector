@@ -80,7 +80,11 @@
   --color-neutral-200: #e7e1d7;
   --color-neutral-300: #d9d2c6;
   --color-neutral-400: #a9a193;
-  --color-neutral-500: #7e786c;
+  /* neutral-500 escurecido para #6f6a64 (ago/2026): o #7e786c antigo
+     ficava em 4.38:1 sobre branco — abaixo de AA (4.5:1) para texto
+     12–14px (tab-subtitle, saved-view chips, labels de filtro).
+     Mesmo valor do --muted do capture/: 5.36:1 sobre branco. */
+  --color-neutral-500: #6f6a64;
   --color-neutral-600: #5f5a4f;
   --color-neutral-700: #45413a;
   --color-neutral-800: #2e2b26;
@@ -677,8 +681,11 @@ img {
 /* Vocabulário ÚNICO de tokens (consolidação ago/2026):
    --text-* (tipografia), --spacing-* (espaçamento) e --font-<peso>
    são os canônicos. Os pares legados (--font-size-*, --font-weight-*)
-   viram aliases; --space-* e --line-height-* foram removidos
-   (zero usos) — dois vocabulários equivalentes era dívida de UI. */
+   viram aliases; --space-* e --line-height-* não existem mais.
+   ATENÇÃO: as utilities .m-*/.p-*/.gap-* abaixo APONTAM para o
+   vocabulário canônico --spacing-* — a versão anterior referenciava
+   os tokens --space-* removidos e, com !important, ZERAVA todo o
+   espaçamento do Tailwind (painéis sem padding, seções coladas). */
 :root {
     /* Aliases do vocabulário canônico --text-* */
     --font-size-base: var(--text-base);
@@ -714,103 +721,103 @@ img {
    ======================================================================== */
 
 /* Margin utilities */
-.m-0 { margin: var(--space-0) !important; }
-.m-1 { margin: var(--space-1) !important; }
-.m-2 { margin: var(--space-2) !important; }
-.m-3 { margin: var(--space-3) !important; }
-.m-4 { margin: var(--space-4) !important; }
-.m-5 { margin: var(--space-5) !important; }
-.m-6 { margin: var(--space-6) !important; }
-.m-8 { margin: var(--space-8) !important; }
+.m-0 { margin: var(--spacing-0) !important; }
+.m-1 { margin: var(--spacing-1) !important; }
+.m-2 { margin: var(--spacing-2) !important; }
+.m-3 { margin: var(--spacing-3) !important; }
+.m-4 { margin: var(--spacing-4) !important; }
+.m-5 { margin: var(--spacing-5) !important; }
+.m-6 { margin: var(--spacing-6) !important; }
+.m-8 { margin: var(--spacing-8) !important; }
 .m-auto { margin: auto !important; }
 
 /* Margin-top */
-.mt-0 { margin-top: var(--space-0) !important; }
-.mt-1 { margin-top: var(--space-1) !important; }
-.mt-2 { margin-top: var(--space-2) !important; }
-.mt-3 { margin-top: var(--space-3) !important; }
-.mt-4 { margin-top: var(--space-4) !important; }
-.mt-5 { margin-top: var(--space-5) !important; }
-.mt-6 { margin-top: var(--space-6) !important; }
-.mt-8 { margin-top: var(--space-8) !important; }
+.mt-0 { margin-top: var(--spacing-0) !important; }
+.mt-1 { margin-top: var(--spacing-1) !important; }
+.mt-2 { margin-top: var(--spacing-2) !important; }
+.mt-3 { margin-top: var(--spacing-3) !important; }
+.mt-4 { margin-top: var(--spacing-4) !important; }
+.mt-5 { margin-top: var(--spacing-5) !important; }
+.mt-6 { margin-top: var(--spacing-6) !important; }
+.mt-8 { margin-top: var(--spacing-8) !important; }
 .mt-auto { margin-top: auto !important; }
 
 /* Margin-bottom */
-.mb-0 { margin-bottom: var(--space-0) !important; }
-.mb-1 { margin-bottom: var(--space-1) !important; }
-.mb-2 { margin-bottom: var(--space-2) !important; }
-.mb-3 { margin-bottom: var(--space-3) !important; }
-.mb-4 { margin-bottom: var(--space-4) !important; }
-.mb-5 { margin-bottom: var(--space-5) !important; }
-.mb-6 { margin-bottom: var(--space-6) !important; }
-.mb-8 { margin-bottom: var(--space-8) !important; }
+.mb-0 { margin-bottom: var(--spacing-0) !important; }
+.mb-1 { margin-bottom: var(--spacing-1) !important; }
+.mb-2 { margin-bottom: var(--spacing-2) !important; }
+.mb-3 { margin-bottom: var(--spacing-3) !important; }
+.mb-4 { margin-bottom: var(--spacing-4) !important; }
+.mb-5 { margin-bottom: var(--spacing-5) !important; }
+.mb-6 { margin-bottom: var(--spacing-6) !important; }
+.mb-8 { margin-bottom: var(--spacing-8) !important; }
 .mb-auto { margin-bottom: auto !important; }
 
 /* Margin-left */
-.ml-0 { margin-left: var(--space-0) !important; }
-.ml-1 { margin-left: var(--space-1) !important; }
-.ml-2 { margin-left: var(--space-2) !important; }
-.ml-3 { margin-left: var(--space-3) !important; }
-.ml-4 { margin-left: var(--space-4) !important; }
+.ml-0 { margin-left: var(--spacing-0) !important; }
+.ml-1 { margin-left: var(--spacing-1) !important; }
+.ml-2 { margin-left: var(--spacing-2) !important; }
+.ml-3 { margin-left: var(--spacing-3) !important; }
+.ml-4 { margin-left: var(--spacing-4) !important; }
 .ml-auto { margin-left: auto !important; }
 
 /* Margin-right */
-.mr-0 { margin-right: var(--space-0) !important; }
-.mr-1 { margin-right: var(--space-1) !important; }
-.mr-2 { margin-right: var(--space-2) !important; }
-.mr-3 { margin-right: var(--space-3) !important; }
-.mr-4 { margin-right: var(--space-4) !important; }
+.mr-0 { margin-right: var(--spacing-0) !important; }
+.mr-1 { margin-right: var(--spacing-1) !important; }
+.mr-2 { margin-right: var(--spacing-2) !important; }
+.mr-3 { margin-right: var(--spacing-3) !important; }
+.mr-4 { margin-right: var(--spacing-4) !important; }
 .mr-auto { margin-right: auto !important; }
 
 /* Padding utilities */
-.p-0 { padding: var(--space-0) !important; }
-.p-1 { padding: var(--space-1) !important; }
-.p-2 { padding: var(--space-2) !important; }
-.p-3 { padding: var(--space-3) !important; }
-.p-4 { padding: var(--space-4) !important; }
-.p-5 { padding: var(--space-5) !important; }
-.p-6 { padding: var(--space-6) !important; }
-.p-8 { padding: var(--space-8) !important; }
+.p-0 { padding: var(--spacing-0) !important; }
+.p-1 { padding: var(--spacing-1) !important; }
+.p-2 { padding: var(--spacing-2) !important; }
+.p-3 { padding: var(--spacing-3) !important; }
+.p-4 { padding: var(--spacing-4) !important; }
+.p-5 { padding: var(--spacing-5) !important; }
+.p-6 { padding: var(--spacing-6) !important; }
+.p-8 { padding: var(--spacing-8) !important; }
 
 /* Padding-top */
-.pt-0 { padding-top: var(--space-0) !important; }
-.pt-1 { padding-top: var(--space-1) !important; }
-.pt-2 { padding-top: var(--space-2) !important; }
-.pt-3 { padding-top: var(--space-3) !important; }
-.pt-4 { padding-top: var(--space-4) !important; }
-.pt-6 { padding-top: var(--space-6) !important; }
+.pt-0 { padding-top: var(--spacing-0) !important; }
+.pt-1 { padding-top: var(--spacing-1) !important; }
+.pt-2 { padding-top: var(--spacing-2) !important; }
+.pt-3 { padding-top: var(--spacing-3) !important; }
+.pt-4 { padding-top: var(--spacing-4) !important; }
+.pt-6 { padding-top: var(--spacing-6) !important; }
 
 /* Padding-bottom */
-.pb-0 { padding-bottom: var(--space-0) !important; }
-.pb-1 { padding-bottom: var(--space-1) !important; }
-.pb-2 { padding-bottom: var(--space-2) !important; }
-.pb-3 { padding-bottom: var(--space-3) !important; }
-.pb-4 { padding-bottom: var(--space-4) !important; }
-.pb-6 { padding-bottom: var(--space-6) !important; }
+.pb-0 { padding-bottom: var(--spacing-0) !important; }
+.pb-1 { padding-bottom: var(--spacing-1) !important; }
+.pb-2 { padding-bottom: var(--spacing-2) !important; }
+.pb-3 { padding-bottom: var(--spacing-3) !important; }
+.pb-4 { padding-bottom: var(--spacing-4) !important; }
+.pb-6 { padding-bottom: var(--spacing-6) !important; }
 
 /* Padding-left */
-.pl-0 { padding-left: var(--space-0) !important; }
-.pl-1 { padding-left: var(--space-1) !important; }
-.pl-2 { padding-left: var(--space-2) !important; }
-.pl-3 { padding-left: var(--space-3) !important; }
-.pl-4 { padding-left: var(--space-4) !important; }
+.pl-0 { padding-left: var(--spacing-0) !important; }
+.pl-1 { padding-left: var(--spacing-1) !important; }
+.pl-2 { padding-left: var(--spacing-2) !important; }
+.pl-3 { padding-left: var(--spacing-3) !important; }
+.pl-4 { padding-left: var(--spacing-4) !important; }
 
 /* Padding-right */
-.pr-0 { padding-right: var(--space-0) !important; }
-.pr-1 { padding-right: var(--space-1) !important; }
-.pr-2 { padding-right: var(--space-2) !important; }
-.pr-3 { padding-right: var(--space-3) !important; }
-.pr-4 { padding-right: var(--space-4) !important; }
+.pr-0 { padding-right: var(--spacing-0) !important; }
+.pr-1 { padding-right: var(--spacing-1) !important; }
+.pr-2 { padding-right: var(--spacing-2) !important; }
+.pr-3 { padding-right: var(--spacing-3) !important; }
+.pr-4 { padding-right: var(--spacing-4) !important; }
 
 /* Gap utilities (for flexbox/grid) */
-.gap-0 { gap: var(--space-0) !important; }
-.gap-1 { gap: var(--space-1) !important; }
-.gap-2 { gap: var(--space-2) !important; }
-.gap-3 { gap: var(--space-3) !important; }
-.gap-4 { gap: var(--space-4) !important; }
-.gap-5 { gap: var(--space-5) !important; }
-.gap-6 { gap: var(--space-6) !important; }
-.gap-8 { gap: var(--space-8) !important; }
+.gap-0 { gap: var(--spacing-0) !important; }
+.gap-1 { gap: var(--spacing-1) !important; }
+.gap-2 { gap: var(--spacing-2) !important; }
+.gap-3 { gap: var(--spacing-3) !important; }
+.gap-4 { gap: var(--spacing-4) !important; }
+.gap-5 { gap: var(--spacing-5) !important; }
+.gap-6 { gap: var(--spacing-6) !important; }
+.gap-8 { gap: var(--spacing-8) !important; }
 
 /* ========================================================================
    TYPOGRAPHY UTILITIES
@@ -835,9 +842,9 @@ img {
 .font-extrabold { font-weight: var(--font-weight-extrabold) !important; }
 
 /* Line heights */
-.leading-tight { line-height: var(--line-height-tight) !important; }
-.leading-normal { line-height: var(--line-height-normal) !important; }
-.leading-relaxed { line-height: var(--line-height-relaxed) !important; }
+.leading-tight { line-height: var(--leading-tight) !important; }
+.leading-normal { line-height: var(--leading-normal) !important; }
+.leading-relaxed { line-height: var(--leading-relaxed) !important; }
 
 /* Text alignment */
 .text-left { text-align: left !important; }
@@ -863,8 +870,8 @@ img {
 
 /* Standard section spacing */
 .section {
-    margin-bottom: var(--space-8);
-    padding: var(--space-6);
+    margin-bottom: var(--spacing-8);
+    padding: var(--spacing-6);
     background: white;
     border-radius: var(--radius-lg);
     box-shadow: var(--shadow-md);
@@ -875,8 +882,8 @@ img {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: var(--space-6);
-    padding-bottom: var(--space-4);
+    margin-bottom: var(--spacing-6);
+    padding-bottom: var(--spacing-4);
     border-bottom: 1px solid var(--color-neutral-200);
 }
 
@@ -886,7 +893,7 @@ img {
     color: var(--color-neutral-900);
     display: flex;
     align-items: center;
-    gap: var(--space-2);
+    gap: var(--spacing-2);
 }
 
 .section-title .material-icons {
@@ -895,7 +902,7 @@ img {
 
 .section-actions {
     display: flex;
-    gap: var(--space-2);
+    gap: var(--spacing-2);
     align-items: center;
 }
 
@@ -904,57 +911,15 @@ img {
 }
 
 .section-footer {
-    margin-top: var(--space-6);
-    padding-top: var(--space-4);
+    margin-top: var(--spacing-6);
+    padding-top: var(--spacing-4);
     border-top: 1px solid var(--color-neutral-200);
 }
 
-/* Card spacing */
-.card {
-    padding: var(--space-4);
-    border-radius: var(--radius-md);
-    background: white;
-    border: 1px solid var(--color-neutral-200);
-    transition: all 0.2s ease;
-}
-
-.card:hover {
-    box-shadow: var(--shadow-lg);
-    border-color: var(--color-primary-300);
-}
-
-.card-header {
-    margin-bottom: var(--space-3);
-    padding-bottom: var(--space-3);
-    border-bottom: 1px solid var(--color-neutral-200);
-}
-
-.card-title {
-    font-size: var(--font-size-lg);
-    font-weight: var(--font-weight-medium);
-    color: var(--color-neutral-900);
-}
-
-.card-subtitle {
-    font-size: var(--font-size-sm);
-    color: var(--color-neutral-500);
-    margin-top: var(--space-1);
-}
-
-.card-body {
-    /* Standardized card content */
-}
-
-.card-footer {
-    margin-top: var(--space-4);
-    padding-top: var(--space-4);
-    border-top: 1px solid var(--color-neutral-200);
-    display: flex;
-    justify-content: flex-end;
-    gap: var(--space-2);
-}
-
-/* ========================================================================
+/* Bloco .card/.card-header/.card-title/.card-subtitle/.card-footer
+   removido (ago/2026): definição duplicada com components.css (padding
+   1rem/radius-md aqui vs 1.5rem/radius-xl lá — componentes carregam
+   depois e vencem). Fonte única: components.css. *//* ========================================================================
    PALETA "CONCIERGE" — REMAP DAS UTILITIES DE COR DO TAILWIND (v2 CDN)
    ========================================================================
 
@@ -990,8 +955,12 @@ img {
 .hover\:bg-gray-800:hover { background-color: #2e2b26; }
 .hover\:bg-gray-900:hover { background-color: #1a1817; }
 .text-gray-300 { color: #d9d2c6; }
-.text-gray-400 { color: #a9a193; }
-.text-gray-500 { color: #7e786c; }
+/* gray-400/500 escurecidos (ago/2026) para acompanhar o novo neutral-500:
+   os hex antigos (#a9a193/#7e786c) deixavam texto 12–14px em 2.6–4.4:1
+   sobre branco — abaixo de AA. Como o remap usa LITERAIS (não var()), a
+   troca do token não bastava. */
+.text-gray-400 { color: #7e786c; }
+.text-gray-500 { color: #6f6a64; }
 .text-gray-600 { color: #5f5a4f; }
 .text-gray-700 { color: #45413a; }
 .text-gray-800 { color: #2e2b26; }

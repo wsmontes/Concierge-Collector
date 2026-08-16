@@ -61,6 +61,12 @@ class ConceptModule {
         if (nameInput) {
             nameInput.addEventListener('input', () => {
                 this.uiManager.formIsDirty = true;
+                // Digitar de novo limpa o erro inline do campo (o erro
+                // só reaparece se o save rodar com nome vazio)
+                const nameError = document.getElementById('restaurant-name-error');
+                if (nameError && !nameError.classList.contains('hidden') && nameInput.value.trim()) {
+                    nameError.classList.add('hidden');
+                }
                 this.autoSaveDraft();
             });
         }
@@ -487,6 +493,11 @@ class ConceptModule {
 
         if (!name) {
             SafetyUtils.showNotification('Please enter a restaurant name', 'error');
+            // Erro INLINE no campo (nasce hidden no markup — antes a
+            // mensagem ficava visível permanentemente no editor)
+            const nameError = document.getElementById('restaurant-name-error');
+            if (nameError) nameError.classList.remove('hidden');
+            nameInput?.focus();
             return;
         }
 

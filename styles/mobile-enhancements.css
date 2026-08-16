@@ -286,46 +286,6 @@
     }
 }
 
-/* Swipe gestures helper */
-.swipeable {
-    touch-action: pan-y;
-    user-select: none;
-}
-
-.swipeable.swiping {
-    transition: none;
-}
-
-/* Pull-to-refresh indicator */
-.pull-to-refresh {
-    position: absolute;
-    top: -60px;
-    left: 50%;
-    transform: translateX(-50%);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    width: 40px;
-    height: 40px;
-    border-radius: 50%;
-    background: white;
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
-    transition: top 0.3s ease;
-}
-
-.pull-to-refresh.active {
-    top: 20px;
-}
-
-.pull-to-refresh .material-icons {
-    animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-    from { transform: rotate(0deg); }
-    to { transform: rotate(360deg); }
-}
-
 /* Mobile-specific modal behavior */
 @media (max-width: 640px) {
     .modal-container {
@@ -345,88 +305,19 @@
 }
 
 /* ========================================================================
-   MOBILE BUTTON SIZE ADJUSTMENTS
-   Added: October 19, 2025
-   Purpose: Prevent oversized buttons on mobile for better UX
-   IMPORTANT: These rules override components.css mobile touch target rules
+   MOBILE BUTTON SIZE ADJUSTMENTS (consolidado ago/2026)
+   ========================================================================
+   Os blocos per-id com !important (quick-record, sync-button, take-photo,
+   export-data, save-restaurant, modal buttons...) repetiam os MESMOS
+   valores das regras genéricas .btn abaixo — e metade dos ids já não
+   existia no DOM (#manual-sync, #save-sync-settings, #transcribe-audio).
+   A margem extra .flex.gap-2 button { margin-right } somava espaçamento
+   dentro de layouts que já usam gap (espaçamento duplo). Restaram as
+   regras genéricas + o bloco icon-only <400px.
    ======================================================================== */
 
 /* Target both viewport width AND touch devices for maximum compatibility */
 @media (max-width: 768px), (hover: none) and (pointer: coarse) {
-    /* Quick action buttons (FAB menu) - reduce from lg to md */
-    #quick-record,
-    #quick-location,
-    #quick-photo {
-        padding: 0.625rem 1rem !important;
-        font-size: 0.875rem !important;
-        min-height: 44px !important;
-    }
-    
-    /* Restaurant list action buttons - these are btn-sm but need to meet 44px touch target */
-    #sync-button,
-    #manual-sync {
-        padding: 0.625rem 1rem !important;
-        font-size: 0.875rem !important;
-        min-height: 44px !important;
-        line-height: 1.25 !important;
-    }
-    
-    /* Photo and location buttons in concepts section */
-    #take-photo,
-    #gallery-photo,
-    #get-location {
-        padding: 0.5rem 1rem !important;
-        font-size: 0.875rem !important;
-        min-height: 44px !important;
-    }
-    
-    /* Concept processing buttons */
-    #extract-concepts,
-    #reprocess-concepts,
-    #generate-description,
-    #transcribe-audio,
-    #discard-recording,
-    #discard-transcription {
-        padding: 0.5rem 1rem !important;
-        font-size: 0.875rem !important;
-        min-height: 44px !important;
-    }
-    
-    /* Import/Export buttons */
-    #export-data,
-    #import-data {
-        padding: 0.5rem 1rem !important;
-        font-size: 0.875rem !important;
-        min-height: 44px !important;
-    }
-    
-    /* Save buttons in toolbars and forms */
-    #save-restaurant,
-    #save-curator-compact,
-    #save-sync-settings,
-    #discard-restaurant,
-    #cancel-curator-compact {
-        padding: 0.5rem 1rem !important;
-        font-size: 0.875rem !important;
-        min-height: 44px !important;
-    }
-    
-    /* Toolbar buttons - ensure they're appropriately sized */
-    .toolbar-fixed-bottom .btn,
-    .toolbar-actions .btn {
-        padding: 0.5rem 0.75rem !important;
-        font-size: 0.875rem !important;
-        min-height: 44px !important;
-    }
-    
-    /* Modal buttons */
-    .modal .btn,
-    [id*="modal"] .btn {
-        padding: 0.5rem 1rem !important;
-        font-size: 0.875rem !important;
-        min-height: 44px !important;
-    }
-    
     /* Global rule for all btn-lg buttons on mobile */
     .btn.btn-lg,
     button.btn-lg,
@@ -463,13 +354,6 @@
     .btn-sm.w-full {
         padding-left: 1rem !important;
         padding-right: 1rem !important;
-    }
-    
-    /* Reduce spacing in button groups on mobile to prevent overflow */
-    .flex.gap-2 button,
-    .flex.gap-3 button,
-    .flex.space-x-4 button {
-        margin-right: 0.25rem !important;
     }
     
     /* Icon-only buttons can be slightly smaller but still meet touch target */
@@ -512,12 +396,7 @@
         display: none;
     }
 
-    #sync-button span:not(.material-icons) {
-        display: none;
-    }
-
     /* Ensure buttons maintain square aspect ratio when icon-only */
-    #sync-button,
     #quick-record,
     #quick-location,
     #quick-photo,
@@ -537,7 +416,6 @@
     }
 
     /* Keep the icon centered - remove margin */
-    #sync-button .material-icons,
     #quick-record .material-icons,
     #quick-location .material-icons,
     #quick-photo .material-icons,

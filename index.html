@@ -34,22 +34,22 @@
 
     <!-- Custom CSS - New Architecture -->
     <!-- 1. Design System Foundation (FIRST - design tokens, base styles) -->
-    <link rel="stylesheet" href="styles/design-system.css?v=20260814-3">
+    <link rel="stylesheet" href="styles/design-system.css?v=20260816-1">
 
     <!-- 2. Component Library (reusable components) -->
-    <link rel="stylesheet" href="styles/components.css?v=20260814-11">
+    <link rel="stylesheet" href="styles/components.css?v=20260816-1">
 
     <!-- 3. Application-specific Styles -->
-    <link rel="stylesheet" href="styles/application.css?v=20260813-1">
+    <link rel="stylesheet" href="styles/application.css?v=20260816-1">
 
     <!-- 4. Feature-specific Styles -->
-    <link rel="stylesheet" href="styles/places-section.css?v=20260814-1">
+    <link rel="stylesheet" href="styles/places-section.css?v=20260816-1">
     <link rel="stylesheet" href="styles/access-control.css?v=20260814-1">
-    <link rel="stylesheet" href="styles/sync-badges.css?v=20260814-1">
-    <link rel="stylesheet" href="styles/mobile-enhancements.css?v=20260814-2">
+    <link rel="stylesheet" href="styles/sync-badges.css?v=20260816-1">
+    <link rel="stylesheet" href="styles/mobile-enhancements.css?v=20260816-1">
 
     <!-- 5. Legacy Support (will be deprecated after migration) -->
-    <link rel="stylesheet" href="styles/style.css?v=20260814-4">
+    <link rel="stylesheet" href="styles/style.css?v=20260816-1">
 
     <!-- Centralized Configuration (MUST load first) -->
     <script src="scripts/core/config.js?v=20260814-1"></script>
@@ -150,11 +150,11 @@
                         Curations are your reviews and notes; entities are the places behind them.</p>
                 </div>
                 <div class="onboarding-welcome__actions">
-                    <button id="onboarding-record" type="button" class="btn btn-primary btn-sm">
+                    <button id="onboarding-record" type="button" class="btn btn-primary btn-md">
                         <span class="material-icons text-base mr-1" aria-hidden="true">mic</span>
                         Record a review
                     </button>
-                    <button id="onboarding-dismiss" type="button" class="btn btn-outline btn-sm">Got it</button>
+                    <button id="onboarding-dismiss" type="button" class="btn btn-outline btn-md">Got it</button>
                 </div>
             </div>
         </div>
@@ -292,11 +292,16 @@
                     </button>
                 </div>
                 <div id="places-autocomplete-inline-container" class="mb-2 hidden"></div>
-                <p class="helper-text error">This field is required</p>
+                <!-- Erro de validação INLINE do nome: nasce escondido e só
+                     aparece quando o save roda sem nome (conceptModule).
+                     Antes ficava visível permanentemente no editor. -->
+                <p id="restaurant-name-error" class="helper-text error hidden">This field is required</p>
             </div>
 
             <div class="mb-6">
-                <label class="block mb-2 font-medium flex items-center">
+                <!-- .label do design system (antes label crua com Tailwind —
+                     dois estilos de label no mesmo formulário) -->
+                <label class="label flex items-center">
                     <span class="material-icons mr-2">location_on</span>
                     Location:
                 </label>
@@ -352,12 +357,14 @@
                     </div>
                     <div>
                         <label for="entity-edit-price-level" class="label">Price Level</label>
+                        <!-- € como nos cards (cardFactory renderiza '€'.repeat) —
+                             antes o select mostrava $ e o card € -->
                         <select id="entity-edit-price-level" class="input input-md">
                             <option value="0">Not informed</option>
-                            <option value="1">$</option>
-                            <option value="2">$$</option>
-                            <option value="3">$$$</option>
-                            <option value="4">$$$$</option>
+                            <option value="1">€</option>
+                            <option value="2">€€</option>
+                            <option value="3">€€€</option>
+                            <option value="4">€€€€</option>
                         </select>
                     </div>
                 </div>
@@ -377,7 +384,7 @@
                     <div id="edit-section-sources-body" class="editor-section-body">
 
             <div class="mb-6">
-                <label class="block mb-2 font-medium flex items-center">
+                <label class="label flex items-center">
                     <span class="material-icons mr-2">photo_camera</span>
                     Photos:
                 </label>
@@ -765,7 +772,7 @@
                         </div>
 
                         <button id="purge-audio-btn"
-                            class="btn btn-secondary btn-sm w-full bg-purple-600 hover:bg-purple-700 border-none">
+                            class="btn btn-secondary btn-sm w-full">
                             <span class="material-icons text-sm mr-1">cleaning_services</span>
                             Purge Processed Audio
                         </button>
@@ -787,13 +794,17 @@
     </section>
 
     <!-- Quick Action Modal -->
-    <div id="quick-action-modal"
+    <div id="quick-action-modal" role="dialog" aria-modal="true" aria-label="Quick actions"
         class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
         <div class="bg-white p-6 rounded-2xl max-w-sm w-full shadow-xl border border-gray-100">
             <div class="flex items-center mb-6">
                 <span class="material-icons mr-2">add_circle</span>
                 <h3 class="text-xl font-semibold">Quick Actions</h3>
-                <button id="close-quick-modal" aria-label="Close quick actions" class="ml-auto text-gray-500 hover:text-gray-800 text-xl leading-none h-8 w-8 flex items-center justify-center rounded hover:bg-gray-100 transition-colors">&times;</button>
+                <!-- .modal-close: mesmo botão de fechar dos modais do
+                     modalManager (antes era &times; com medidas próprias) -->
+                <button id="close-quick-modal" class="modal-close ml-auto" aria-label="Close quick actions">
+                    <span class="material-icons" aria-hidden="true">close</span>
+                </button>
             </div>
             <div class="grid grid-cols-1 gap-4">
                 <button id="quick-record" class="btn btn-primary btn-lg" aria-label="Record review">
@@ -825,25 +836,19 @@
         <span class="material-icons text-2xl" aria-hidden="true">add</span>
     </button>
 
-    <!-- Add these elements to your sidebar/menu navigation section -->
-    <div id="sync-sidebar-section" class="mb-4 border-t pt-4 hidden">
-        <h3 class="text-sm font-semibold uppercase text-gray-500 pl-4 mb-2">Synchronization</h3>
-
-        <div class="px-4">
-            <button id="sync-button" class="btn btn-primary btn-md w-full mb-2" aria-label="Sync data">
-                <span class="material-icons mr-2" aria-hidden="true">sync</span>
-                Sync Data
-            </button>
-            <div id="sync-status-sidebar" class="text-xs text-center text-gray-500">Last sync: Never</div>
-        </div>
-    </div>
+    <!-- Seção "Synchronization" da sidebar removida (ago/2026): o layout
+         de sidebar não existe desde o redesign do header; o botão ficava
+         inalcançável (hidden) e o sync manual vive no chip do header
+         (#btn-sync-details → modal Sync details, SyncStatusModule). -->
 
     </div>
 
     <!-- Update the loading overlay to include a message element -->
     <div id="loading-overlay" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
         <div class="bg-white p-6 rounded-lg flex flex-col items-center">
-            <div class="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mb-4"></div>
+            <!-- .spinner do design system (borda oliva, topo transparente) —
+                 antes um anel border-blue-500 do Tailwind antigo -->
+            <div class="spinner spinner-xl mb-4"></div>
             <p class="loading-message text-gray-700 font-medium"></p>
         </div>
     </div>
@@ -908,13 +913,12 @@
     <script src="scripts/ui-core/modalManager.js?v=20260813-2"></script>
     <script src="scripts/managers/stateStore.js"></script>
     <script src="scripts/managers/progressManager.js"></script>
-    <script src="scripts/ui-core/navigationManager.js"></script>
+    <script src="scripts/ui-core/navigationManager.js?v=20260816-1"></script>
     <script src="scripts/managers/errorManager.js"></script>
     <script src="scripts/managers/formManager.js"></script>
 
     <!-- Phase 3-4: Mobile, Performance & UX Enhancements -->
     <script src="scripts/ui-core/bottomSheet.js?v=20260813-1"></script>
-    <script src="scripts/ui-core/gestureManager.js?v=20260815-1"></script>
     <script src="scripts/ui-core/skeletonLoader.js"></script>
     <script src="scripts/ui-core/lazyLoader.js?v=20260813-2"></script>
     <script src="scripts/ui-core/optimisticUI.js"></script>
@@ -932,7 +936,7 @@
     <script src="scripts/sync/importManager.js?v=20260813-3"></script>
 
     <!-- UI Components -->
-    <script src="scripts/ui/cardFactory.js?v=20260814-7"></script>
+    <script src="scripts/ui/cardFactory.js?v=20260816-1"></script>
     <script src="scripts/ui/conflictResolutionModal.js?v=20260813-4"></script>
 
     <!-- Compatibility Layer for Legacy UI Modules -->
@@ -941,7 +945,7 @@
     <!-- Application modules - keeping essential ones -->
     <script src="scripts/services/promptTemplate.js?v=20260814-1"></script>
     <script src="scripts/services/conceptMatcher.js"></script>
-    <script src="scripts/ui-core/uiManager.js?v=20260814-13"></script>
+    <script src="scripts/ui-core/uiManager.js?v=20260816-1"></script>
 
     <!-- Module implementations - V3 Compatible -->
     <script src="scripts/modules/safetyUtils.js?v=20260813-1"></script>
@@ -955,7 +959,7 @@
     <script src="scripts/modules/curatorModule.js"></script>
     <script src="scripts/modules/recordingModule.js?v=20260814-1"></script>
     <script src="scripts/modules/transcriptionModule.js"></script>
-    <script src="scripts/modules/conceptModule.js?v=20260813-1"></script>
+    <script src="scripts/modules/conceptModule.js?v=20260816-1"></script>
     <script src="scripts/modules/restaurantModule.js?v=20260813-1"></script>
     <script src="scripts/modules/entityModule.js?v=20260814-3"></script>
     <script src="scripts/modules/syncStatusModule.js?v=20260813-3"></script>
@@ -986,7 +990,7 @@
     <script src="scripts/auth/auth.js"></script>
 
     <!-- Curator Profile Module (must load after auth.js) -->
-    <script src="scripts/auth/curatorProfile.js?v=20260813-2"></script>
+    <script src="scripts/auth/curatorProfile.js?v=20260816-1"></script>
 
     <!-- Find Entity Modal (Google Places search interface) -->
     <script src="scripts/services/findEntityModal.js?v=20260814-1"></script>
@@ -995,7 +999,7 @@
     <script src="scripts/auth/accessControl.js?v=20260813-1"></script>
 
     <!-- Core application scripts -->
-    <script src="scripts/core/main.js?v=20260813-3"></script>
+    <script src="scripts/core/main.js?v=20260816-1"></script>
 </body>
 
 </html>

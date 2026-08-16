@@ -431,120 +431,10 @@ function ensureBaseStructureExists() {
 }
 
 /**
- * Setup manual sync button to use V3 SyncManager
+ * Setup manual sync button — REMOVIDO (ago/2026): o botão vivia na
+ * sidebar que não existe mais (hidden) e o sync manual é acessível
+ * pelo chip do header (#btn-sync-details → modal Sync details).
  */
-function setupManualSyncButton() {
-    // Try both button locations (header and sidebar)
-    const syncButton = document.getElementById('sync-button-header') || document.getElementById('sync-button');
-    if (!syncButton) {
-        console.warn('⚠️ Sync button not found');
-        return;
-    }
-
-    console.log('🔧 V3: Configuring manual sync button...');
-
-    // Remove existing listeners (clone and replace)
-    const newButton = syncButton.cloneNode(true);
-    syncButton.parentNode.replaceChild(newButton, syncButton);
-
-    // Add click handler using V3 SyncManager
-    newButton.addEventListener('click', async () => {
-        console.log('🔄 V3: Manual sync triggered');
-
-        // window.SyncManager é a instância real (main.js:249); V3SyncManager/
-        // window.syncManager nunca são atribuídos em lugar nenhum
-        const syncManager = window.SyncManager;
-        if (!syncManager) {
-            console.error('❌ V3: SyncManager not available');
-            if (window.uiUtils?.showNotification) {
-                window.uiUtils.showNotification('V3 Sync service not available', 'error');
-            }
-            return;
-        }
-
-        // Disable button and add syncing state
-        newButton.disabled = true;
-        newButton.classList.add('syncing');
-
-        // Animate icon (rotate) if it's the header button
-        const icon = newButton.querySelector('.material-icons');
-        if (icon) {
-            icon.style.animation = 'spin 1s linear infinite';
-        }
-
-        // Get button text element (for sidebar button)
-        const buttonText = newButton.querySelector('.btn-text') || newButton.childNodes[newButton.childNodes.length - 1];
-        const originalText = buttonText?.textContent;
-        if (buttonText && buttonText.textContent && !buttonText.textContent.includes('sync')) {
-            buttonText.textContent = 'Syncing...';
-        }
-
-        try {
-            let syncResults;
-            // SyncManagerV3 expõe fullSync/syncAll/quickSync —
-            // performComprehensiveSync nunca existiu nessa classe
-            if (typeof syncManager.fullSync === 'function') {
-                syncResults = await syncManager.fullSync();
-            } else {
-                throw new Error('No compatible sync method available');
-            }
-
-            console.log('✅ V3: Manual sync completed from sidebar');
-            console.log('V3: Sync results:', syncResults);
-
-            // Show success notification with results
-            if (window.uiUtils?.showNotification) {
-                if (syncResults && typeof syncResults === 'object') {
-                    const added = syncResults.entitiesAdded || syncResults.added || 0;
-                    const updated = syncResults.entitiesUpdated || syncResults.updated || 0;
-                    const message = `V3 Sync complete: ${added} added, ${updated} updated`;
-                    window.uiUtils.showNotification(message, 'success');
-                } else {
-                    window.uiUtils.showNotification('V3 Sync completed successfully', 'success');
-                }
-            }
-
-            // Refresh entity list if available
-            if (window.entityModule) {
-                await window.entityModule.refresh();
-            }
-
-            // Refresh UI components
-            if (window.uiManager) {
-                // Refresh curator selector if available
-                if (window.uiManager.curatorModule &&
-                    typeof window.uiManager.curatorModule.initializeCuratorSelector === 'function') {
-                    window.uiManager.curatorModule.curatorSelectorInitialized = false;
-                    await window.uiManager.curatorModule.initializeCuratorSelector();
-                }
-            }
-
-        } catch (error) {
-            console.error('❌ V3: Manual sync error:', error);
-            if (window.uiUtils?.showNotification) {
-                window.uiUtils.showNotification(`V3 Sync failed: ${error.message}`, 'error');
-            }
-        } finally {
-            // Re-enable button and restore state
-            newButton.disabled = false;
-            newButton.classList.remove('syncing');
-
-            // Stop icon animation
-            const icon = newButton.querySelector('.material-icons');
-            if (icon) {
-                icon.style.animation = '';
-            }
-
-            // Restore text for sidebar button
-            if (buttonText && originalText) {
-                buttonText.textContent = originalText;
-            }
-        }
-    });
-
-    console.log('✅ V3: Manual sync button configured (using V3SyncManager)');
-}
-
 /**
  * Initializes background services with proper error handling
  */
@@ -561,14 +451,8 @@ function initializeBackgroundServices() {
     // PHASE 1.3: AutoSync DISABLED - using SyncManager only
     // Previously: AutoSync periodic sync every 30min
     // Now: SyncManager handles all sync (60s retry + manual comprehensive sync)
-    // Manual sync via sync-button → syncManager.performComprehensiveSync()
-    setTimeout(() => {
-        console.log('⚠️ AutoSync periodic sync disabled (Phase 1.3)');
-        console.log('✅ Using SyncManager for all sync operations');
-
-        // Setup manual sync button to use SyncManager's comprehensive sync
-        setupManualSyncButton();
-    }, 3000);
+    console.log('⚠️ AutoSync periodic sync disabled (Phase 1.3)');
+    console.log('✅ Using SyncManager for all sync operations');
 
     // PHASE 1.3: SyncSettingsManager DISABLED (no longer needed)
     // Previously: Managed AutoSync interval settings
@@ -595,6 +479,7 @@ function cleanupBrowserData() {
             'oauth_access_token',  // CRITICAL: Preserve OAuth access token
             'oauth_refresh_token',  // CRITICAL: Preserve OAuth refresh token
             'oauth_token_expiry',  // CRITICAL: Preserve OAuth token expiry
+            'oauth_user_profile',  // perfil do usuário offline-first (curatorProfile)
             'concierge_db_recovery_needed',  // CRITICAL: lido por ensureHealthyIndexedDB DEPOIS do cleanup
             'needsInitialSync',  // CRITICAL: sync inicial pós-import (importManager.js)
             'api_key',  // credencial do app de capture (mesma origin via /capture)
@@ -605,11 +490,21 @@ function cleanupBrowserData() {
             'migration_v3_complete'  // flag de migração V2→V3 (importManager)
         ];
 
+        // Prefixo one-time (ago/2026): o onboarding de primeira entrada
+        // (concierge_onboarded_v1[_curator]) morava em keys fora da lista
+        // e era APAGADO a cada boot — a feature reaparecia em TODO reload.
+        // O prefixo sobrevive à limpeza. (A dica de swipe — swipe_hint_seen
+        // — morreu junto com os swipe actions dos cards: a key legada cai
+        // na limpeza normal deste bloco.)
+        const preservePrefixes = [
+            'concierge_onboarded_'
+        ];
+
         // Clean localStorage (preserve only essential keys)
         const keysToRemove = [];
         for (let i = 0; i < localStorage.length; i++) {
             const key = localStorage.key(i);
-            if (!preserveKeys.includes(key)) {
+            if (!preserveKeys.includes(key) && !preservePrefixes.some((p) => key.startsWith(p))) {
                 keysToRemove.push(key);
             }
         }
@@ -873,6 +768,24 @@ function registerNavigationRoutes(nm) {
         }
     });
 
+    // Gravação (rota de substituição atribuída por showRecordingSection)
+    nm.register('/new/record', {
+        breadcrumb: 'Record Review',
+        handler: () => {
+            const m = window.uiManager;
+            if (m && m.currentView !== 'recording') m.showRecordingSection();
+        }
+    });
+
+    // Gerenciamento de dados (página própria — antes ficava empilhada no
+    // fim da Collection com os botões destrutivos expostos)
+    nm.register('/data', {
+        breadcrumb: 'Data Management',
+        handler: () => {
+            window.uiManager?.showDataManagementSection();
+        }
+    });
+
     // Segmentos intermediários (só dão rótulo ao breadcrumb — o título
     // real vem do state da navegação; crumb vazio some do breadcrumb)
     nm.register('/curation', {
@@ -947,7 +860,17 @@ function registerNavigationGuard(nm) {
         if (window.__leavingEdit) return true;
 
         const dirty = m.formIsDirty === true;
-        if (dirty && !window.confirm('Discard unsaved changes?')) return false;
+        if (dirty) {
+            // confirmDialog do app (mesmo padrão de delete/unlink) — o
+            // window.confirm nativo destoava de todos os outros diálogos
+            const proceed = await window.uiUtils.confirmDialog(
+                'Discard unsaved changes?',
+                'Your edits will be lost if you leave this screen.',
+                'Discard',
+                'cancel'
+            );
+            if (!proceed) return false;
+        }
 
         if (m.conceptModule && typeof m.conceptModule.discardRestaurant === 'function') {
             window.__leavingEdit = true;
@@ -1016,147 +939,3 @@ function initializeNavigation() {
     nm.init();
 }
 
-/**
- * Initialize all modules
- */
-function initializeModules() {
-    console.log('Initializing all modules...');
-
-    // Load the PlacesModule (not PlacesSearchModule which doesn't exist)
-    // Remove references to placesSearchModule and placesInlineSearchModule
-    try {
-        // The Places module is loaded directly via script tag,
-        // so we don't need to load it here.
-        // Check if it's already registered globally
-        if (window.placesModule) {
-            console.log('Places module already loaded and registered');
-        } else {
-            console.warn('Places module not found, dynamically loading...');
-            loadPlacesModule();
-        }
-    } catch (e) {
-        console.error('Error initializing Places module:', e);
-    }
-}
-
-/**
- * Load Places module
- */
-function loadPlacesModule() {
-    // Load the single consolidated Places module instead of the separate modules
-    const script = document.createElement('script');
-    script.src = 'scripts/modules/placesModule.js';
-
-    script.onload = function () {
-        console.log('Places module loaded successfully');
-    };
-
-    script.onerror = function () {
-        console.error('Failed to load Places module script');
-    };
-
-    document.head.appendChild(script);
-}
-
-// Sprint 2, Day 4: Setup Quick Import Nearby button handler
-document.addEventListener('DOMContentLoaded', () => {
-    const importNearbyBtn = document.getElementById('import-nearby-btn');
-    if (importNearbyBtn) {
-        importNearbyBtn.addEventListener('click', handleQuickImportNearby);
-    }
-});
-
-/**
- * Sprint 2, Day 4: Handle "Import 20 Nearby" button click
- * Imports restaurants from Google Places in user's vicinity
- */
-async function handleQuickImportNearby() {
-    const logger = Logger.module('QuickImport');
-    logger.info('🚀 Quick Import Nearby initiated');
-
-    const button = document.getElementById('import-nearby-btn');
-    const originalText = button.innerHTML;
-
-    try {
-        // Disable button during operation
-        button.disabled = true;
-        button.innerHTML = '<span class="material-icons text-sm mr-1 animate-spin">refresh</span> Importing...';
-
-        // Initialize PlacesAutomation if not already done
-        if (!window.placesAutomation) {
-            window.placesAutomation = new PlacesAutomation();
-        }
-
-        // 1. Get user location
-        logger.debug('📍 Getting user location...');
-        const location = await window.placesAutomation.getUserLocation();
-        logger.debug(`✅ Location: ${location.lat}, ${location.lng}`);
-
-        // 2. Search Google Places via Backend API
-        logger.debug('🔍 Searching Google Places via backend...');
-        const radius = 5000; // 5km
-        const maxResults = 20;
-
-        // Call backend /api/v3/places/nearby endpoint
-        const backendUrl = `${AppConfig.api.backend.baseUrl}/places/nearby`;
-        const params = new URLSearchParams({
-            latitude: location.lat.toString(),
-            longitude: location.lng.toString(),
-            radius: radius.toString(),
-            place_type: 'restaurant',
-            max_results: maxResults.toString()
-        });
-
-        const response = await fetch(`${backendUrl}?${params.toString()}`, {
-            // /places/nearby exige OAuth Bearer (config.js documenta o
-            // contrato) — antes ia SEM header e 401/403 em produção
-            headers: window.ApiService?.getAuthHeaders?.() || {}
-        });
-
-        if (!response.ok) {
-            throw new Error(`Backend API error: ${response.status} ${response.statusText}`);
-        }
-
-        const data = await response.json();
-
-        if (data.status !== 'OK' && data.status !== 'ZERO_RESULTS') {
-            throw new Error(`Google Places API error: ${data.error_message || data.status}`);
-        }
-
-        const places = data.results || [];
-
-        logger.debug(`✅ Found ${places.length} places`);
-
-        // Limit to 20 results
-        const limitedPlaces = places.slice(0, maxResults);
-
-        // 3. Import as entities (automated)
-        logger.debug('💾 Importing entities...');
-        const imported = await window.placesAutomation.autoImportEntities(limitedPlaces);
-
-        logger.info(`✅ Import complete: ${imported.count} imported, ${imported.duplicates} duplicates`);
-
-        // 4. Show success notification
-        if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
-            window.uiUtils.showNotification(`Imported ${imported.count} restaurants. Skipped ${imported.duplicates} duplicates.`, 'success', 5000);
-        }
-
-        // 5. Refresh UI (if entity list exists)
-        if (window.uiManager && window.uiManager.refreshEntityList) {
-            await window.uiManager.refreshEntityList();
-        }
-
-    } catch (error) {
-        logger.error('❌ Import failed:', error);
-
-        // Show error notification
-        if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
-            window.uiUtils.showNotification('Import failed: ' + error.message, 'error', 5000);
-        }
-
-    } finally {
-        // Re-enable button
-        button.disabled = false;
-        button.innerHTML = originalText;
-    }
-}

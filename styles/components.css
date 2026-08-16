@@ -70,7 +70,7 @@
 .btn-md {
   padding: var(--spacing-2-5) var(--spacing-5);
   font-size: var(--text-sm);
-  min-height: 40px;
+  min-height: 44px; /* 44px: o 40px antigo ficava 1px abaixo do alvo de toque */
 }
 
 .btn-lg {
@@ -704,40 +704,10 @@
 
 /* ========================================================================
    EMPTY STATE (padrão único de estado vazio)
-   Antes cada view tinha seu bloco inline py-12 quase idêntico com
-   variações. Um componente: ícone grande, título, descrição, ação.
-   ======================================================================== */
-
-.empty-state {
-  grid-column: 1 / -1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  text-align: center;
-  padding: 3rem 1.5rem;
-}
-
-.empty-state__icon {
-  font-size: 3.5rem;
-  color: var(--color-neutral-300);
-  margin-bottom: var(--spacing-4);
-  display: block;
-}
-
-.empty-state__title {
-  font-size: var(--text-base);
-  font-weight: var(--font-semibold);
-  color: var(--color-neutral-600);
-  margin-bottom: var(--spacing-1);
-}
-
-.empty-state__description {
-  font-size: var(--text-sm);
-  color: var(--color-neutral-400);
-  margin-bottom: var(--spacing-4);
-}
-
-/* ========================================================================
+   Variante BEM (.empty-state__*) removida (ago/2026): o emptyStateManager
+   e os templates usam o vocabulário hyphenated (.empty-state-icon etc.)
+   — as duas convenções coexistiam no mesmo CSS. Definição única abaixo.
+   ========================================================================
    ICON BUTTON (padrão único de botão de ícone nas ações dos cards)
    Antes cada card tinha botões próprios com paddings/tons variados.
    ======================================================================== */
@@ -964,7 +934,8 @@
   opacity: var(--opacity-100);
 }
 
-/* Alert Variants */
+/* Alert Variants — bordas no tom do tema (ago/2026): os hex do Tailwind
+   antigo (#6ee7b7/#fcd34d/#fca5a5) eram os únicos pontos neon do sistema */
 .alert-info {
   background-color: var(--color-info-light);
   border-color: var(--color-primary-300);
@@ -973,19 +944,19 @@
 
 .alert-success {
   background-color: var(--color-success-light);
-  border-color: #6ee7b7;
+  border-color: var(--color-success-400);
   color: var(--color-success-dark);
 }
 
 .alert-warning {
   background-color: var(--color-warning-light);
-  border-color: #fcd34d;
+  border-color: var(--color-warning-400);
   color: var(--color-warning-dark);
 }
 
 .alert-error {
   background-color: var(--color-error-light);
-  border-color: #fca5a5;
+  border-color: #d39891; /* tom de borda tijolo (border-red-300) */
   color: var(--color-error-dark);
 }
 
@@ -1297,71 +1268,11 @@
 }
 
 /* ========================================================================
-   CURATION EDITOR MODAL
+   CURATION EDITOR MODAL — REMOVIDO (ago/2026)
+   O editor por áreas é INLINE (#concepts-section) desde o redesign;
+   o modal #curation-editor-modal não existe no DOM (zero referências).
+   O bloco tinha até propriedades CSS inválidas (ring:/ring-color:).
    ======================================================================== */
-
-#curation-editor-modal .modal-content {
-  position: relative;
-  max-height: 90vh;
-  overflow-y: auto;
-}
-
-#curation-editor-modal section {
-  scroll-margin-top: var(--spacing-4);
-}
-
-#curation-editor-modal h3 {
-  color: var(--color-neutral-900);
-  font-size: var(--text-lg);
-  font-weight: var(--font-semibold);
-}
-
-#curation-editor-modal input[type="text"],
-#curation-editor-modal input[type="tel"],
-#curation-editor-modal input[type="url"],
-#curation-editor-modal input[type="number"],
-#curation-editor-modal select,
-#curation-editor-modal textarea {
-  font-size: var(--text-sm);
-  transition: all var(--transition-fast);
-}
-
-#curation-editor-modal input:focus,
-#curation-editor-modal select:focus,
-#curation-editor-modal textarea:focus {
-  border-color: var(--color-primary);
-  ring: 2px;
-  ring-color: var(--color-primary);
-  ring-opacity: 0.2;
-}
-
-#curation-editor-modal label span.text-red-500 {
-  color: var(--color-error);
-}
-
-#curation-editor-modal label span.text-gray-500 {
-  color: var(--color-neutral-500);
-  font-weight: var(--font-normal);
-}
-
-#curation-editor-loading {
-  z-index: 10;
-}
-
-/* Make modal scrollable on mobile */
-@media (max-width: 768px) {
-  #curation-editor-modal .modal-content {
-    margin: var(--spacing-4);
-    max-height: calc(100vh - var(--spacing-8));
-    max-width: calc(100vw - var(--spacing-8));
-  }
-  
-  #curation-editor-modal .grid-cols-2,
-  #curation-editor-modal .md\\:grid-cols-2,
-  #curation-editor-modal .md\\:grid-cols-4 {
-    grid-template-columns: 1fr;
-  }
-}
 
 /* ========================================================================
    TAB NAVIGATION COMPONENTS
@@ -1640,9 +1551,9 @@
   z-index: 1;
 }
 
-/* Estabilização mobile: cards só rolam no EIXO VERTICAL — o pan
-   horizontal fica livre para gestos próprios do app (swipe actions)
-   sem disputar com o scroll/back do browser */
+/* Estabilização mobile: cards rolam no eixo VERTICAL nativo — o pan
+   horizontal bloqueado evita o back-swipe acidental do browser sobre
+   os cards (o app não tem gestos horizontais próprios) */
 .restaurant-card,
 [data-entity-id],
 .review-card {
@@ -1662,14 +1573,6 @@
   background: var(--chip-info-bg);
   border-radius: var(--radius-full);
   padding: 0.125rem 0.5rem;
-}
-
-/* Feedback visual do swipe (classe .swiping aplicada pelo
-   gestureManager durante o gesto): tint oliva sutil que volta no
-   touchend — sem transform, sem risco de layout */
-[data-entity-id].swiping,
-.review-card.swiping {
-  background-color: var(--color-primary-50);
 }
 
 /* Véu de FALLBACK — princípio feedmine "cards resolvidos antes de
@@ -1953,7 +1856,9 @@
   margin-left: 0.5rem;
   font-size: 0.75rem;
   font-weight: 500;
-  color: var(--color-text-tertiary, #9ca3af);
+  /* neutral-500 (AA): o text-tertiary/neutral-400 antigo ficava em
+     ~2.6:1 sobre branco — ilegível no contador */
+  color: var(--color-neutral-500, #6f6a64);
 }
 
 .description-word-count--over {

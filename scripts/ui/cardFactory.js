@@ -330,7 +330,11 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                     <button class="btn-entity-details icon-btn w-full text-gray-700 hover:bg-gray-100" title="Entity Details" aria-label="Entity details">
                         <span class="material-icons text-lg">info</span>
                     </button>
-                    <button class="btn-entity-sync h-10 w-full flex items-center justify-center bg-gray-50 text-amber-700 hover:bg-amber-50 rounded-lg transition-all border border-gray-100 shadow-sm" title="Sync Entity" aria-label="Sync entity">
+                    <!-- Sync deixa de ser âmbar permanente (âmbar = warning):
+                         ação rotineira, tom neutro de icon-btn. Estados de
+                         atenção continuam nos chips de sync (pending/
+                         conflict/error). -->
+                    <button class="btn-entity-sync icon-btn w-full text-gray-600" title="Sync Entity" aria-label="Sync entity">
                         <span class="material-icons text-lg">sync</span>
                     </button>
                     <button class="btn-entity-edit card-edit-btn" title="Edit Entity" aria-label="Edit entity">
@@ -757,7 +761,7 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
      * atual terminar de propagar, senão ele mesmo fecharia o menu).
      * Conteúdo montado com textContent — nada de innerHTML com dados.
      */
-    _openCardMenu(anchor, { sourceInfo, syncLabel, onDelete }) {
+    _openCardMenu(anchor, { sourceInfo, syncLabel, items = [], onDelete }) {
         this._closeCardMenu();
 
         const menu = document.createElement('div');
@@ -785,6 +789,27 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
         syncText.textContent = `Sync: ${syncLabel || 'unknown'}`;
         syncLine.append(syncIcon, syncText);
         menu.appendChild(syncLine);
+
+        // Itens operacionais extras (ex.: Unlink no review card) — mesmo
+        // visual dos demais itens; conteúdo via textContent.
+        items.forEach((item) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'card-more-menu__item';
+            btn.setAttribute('role', 'menuitem');
+            const icon = document.createElement('span');
+            icon.className = 'material-icons';
+            icon.setAttribute('aria-hidden', 'true');
+            icon.textContent = item.icon || 'more_horiz';
+            const label = document.createElement('span');
+            label.textContent = item.label || '';
+            btn.append(icon, label);
+            btn.addEventListener('click', () => {
+                this._closeCardMenu();
+                if (typeof item.onClick === 'function') item.onClick();
+            });
+            menu.appendChild(btn);
+        });
 
         if (typeof onDelete === 'function') {
             const deleteBtn = document.createElement('button');
@@ -891,14 +916,14 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
         } = options;
 
         const container = document.createElement('div');
-        container.className = 'col-span-full text-center py-12';
+        container.className = 'empty-state';
 
         container.innerHTML = `
-            <span class="material-icons text-6xl text-gray-300 mb-4">${this.escapeHtml(icon)}</span>
-            <p class="text-gray-500 mb-2 font-medium">${this.escapeHtml(title)}</p>
-            <p class="text-sm text-gray-400">${this.escapeHtml(message)}</p>
+            <span class="empty-state-icon material-icons">${this.escapeHtml(icon)}</span>
+            <p class="empty-state-title">${this.escapeHtml(title)}</p>
+            <p class="empty-state-description">${this.escapeHtml(message)}</p>
             ${action ? `
-                <button class="mt-4 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">
+                <button class="empty-state-action btn btn-primary btn-sm">
                     ${this.escapeHtml(action.label)}
                 </button>
             ` : ''}

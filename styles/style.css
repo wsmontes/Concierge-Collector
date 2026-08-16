@@ -53,8 +53,7 @@ body {
   overflow-x: hidden;
   overflow-x: clip;
   /* Estabilização mobile: o browser NÃO captura overscroll horizontal
-     (pan lateral / back-swipe) — pré-requisito para gestos próprios
-     do app (swipe actions futuras) sem conflito */
+     (pan lateral / back-swipe acidental) */
   overscroll-behavior-x: none;
   overscroll-behavior-y: contain;
   min-height: 100%;
@@ -531,56 +530,38 @@ audio {
 .concept-card.food-style { border-left-color: #97722e; } /* bronze-escuro */
 .concept-card.drinks { border-left-color: #8fa075; } /* oliva-claro */
 
-/* Concept Tags */
+/* Concept Tags — padrão CHIP do design system (ago/2026): os gradientes
+   Tailwind saturados (red-500→red-400 etc.) eram a única região neon do
+   app. Agora fundo suave + tinta escura da mesma família das bordas do
+   .concept-card acima — mesma linguagem das tags do resto da UI. */
 .concept-tag {
   display: inline-block;
   padding: 0.25rem 0.75rem;
   font-size: 0.75rem;
   font-weight: 600;
   line-height: 1.25;
-  color: white;
+  background: var(--chip-neutral-bg);
+  color: var(--chip-neutral-fg);
   border-radius: var(--radius-full);
   margin: 0.125rem;
   transition: transform var(--transition-base);
-  box-shadow: var(--shadow-sm);
 }
 
 .concept-tag:hover {
   transform: translateY(-1px);
 }
 
-/* Concept Tag Colors with Gradients */
-.concept-tag.cuisine { 
-  background: linear-gradient(135deg, #f87171, #ef4444); 
-}
-.concept-tag.menu { 
-  background: linear-gradient(135deg, #60a5fa, #3b82f6); 
-}
-.concept-tag.price-range { 
-  background: linear-gradient(135deg, #34d399, #10b981); 
-}
-.concept-tag.mood { 
-  background: linear-gradient(135deg, #a78bfa, #8b5cf6); 
-}
-.concept-tag.setting { 
-  background: linear-gradient(135deg, #fbbf24, #f59e0b); 
-}
-.concept-tag.crowd { 
-  background: linear-gradient(135deg, #f472b6, #ec4899); 
-}
-.concept-tag.suitable-for { 
-  background: linear-gradient(135deg, #2dd4bf, #14b8a6); 
-}
-.concept-tag.food-style { 
-  background: linear-gradient(135deg, #fb923c, #f97316); 
-}
-.concept-tag.drinks { 
-  background: linear-gradient(135deg, #4ade80, #22c55e); 
-}
-.concept-tag.special-features { 
-  background: linear-gradient(135deg, #818cf8, #6366f1); 
-  /* Indigo gradient - distinct from other categories */
-}
+/* Concept Tag Colors — tons do tema concierge */
+.concept-tag.cuisine { background: var(--chip-danger-bg); color: var(--chip-danger-fg); }
+.concept-tag.menu { background: var(--chip-info-bg); color: var(--chip-info-fg); }
+.concept-tag.price-range { background: var(--chip-success-bg); color: var(--chip-success-fg); }
+.concept-tag.mood { background: var(--chip-accent-bg); color: var(--chip-accent-fg); }
+.concept-tag.setting { background: var(--chip-warning-bg); color: var(--chip-warning-fg); }
+.concept-tag.crowd { background: #f6e2df; color: #8a302b; }        /* tijolo-claro */
+.concept-tag.suitable-for { background: var(--color-primary-50); color: var(--color-primary-800); }
+.concept-tag.food-style { background: var(--chip-warning-bg); color: var(--chip-warning-fg); }
+.concept-tag.drinks { background: var(--color-primary-100); color: var(--color-primary-800); }
+.concept-tag.special-features { background: var(--chip-accent-bg); color: var(--chip-accent-fg); }
 
 /* Concept suggestions dropdown */
 #concept-suggestions {
@@ -718,7 +699,7 @@ audio {
   width: 24px;
   height: 24px;
   border-radius: 50%;
-  background-color: rgba(239, 68, 68, 0.9);
+  background-color: rgba(176, 67, 59, 0.9); /* tijolo — era o red-500 cru */
   color: white;
   display: flex;
   align-items: center;
@@ -734,7 +715,7 @@ audio {
 .photo-delete-btn:hover {
   opacity: 1;
   transform: scale(1.1);
-  background-color: rgb(239, 68, 68);
+  background-color: var(--color-error-dark);
 }
 
 .photo-delete-btn .material-icons {
@@ -780,7 +761,9 @@ audio {
 }
 
 #fab:hover {
-  transform: scale(1.1) rotate(45deg);
+  /* rotate(45deg) removido (ago/2026): o "+" virar "×" no hover sugeria
+     "fechar" quando o botão ABRE — affordance enganosa */
+  transform: scale(1.1);
   box-shadow: 0 15px 20px rgba(0, 0, 0, 0.2);
 }
 
@@ -1211,13 +1194,14 @@ gmp-place-autocomplete input:focus {
     width: 8px;
     height: 8px;
     border-radius: 50%;
-    background-color: #ef4444;
+    background-color: var(--color-error); /* tijolo — era o red-500 cru */
     margin-right: 8px;
     animation: recording-pulse 1.5s infinite;
 }
 
 .recording-indicator.additional-recording {
-    background-color: #7a5c8e; /* ameixa — era o roxo-600 antigo */
+    background-color: var(--color-primary-600); /* oliva — segunda gravação
+        (unificado com mobile-enhancements.css; antes ameixa aqui e oliva lá) */
     animation: recording-pulse 1.5s infinite;
 }
 

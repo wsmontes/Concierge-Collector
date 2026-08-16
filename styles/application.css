@@ -146,30 +146,10 @@ body:has(.toolbar-fixed-bottom:not(.hidden)) #app {
    prática não são usados pelo index.html atual. Removido em ago/2026. */
 
 /* ===================================================================
-   HEADER SYNC BUTTON
+   HEADER SYNC BUTTON — REMOVIDO (ago/2026): o id #sync-button-header
+   não existe no DOM (o indicador do header é o #sync-status-header do
+   SyncStatusModule). Era CSS morto.
    =================================================================== */
-
-#sync-button-header {
-    position: relative;
-    transition: all var(--transition-fast);
-}
-
-#sync-button-header:hover .material-icons {
-    color: var(--color-primary-600);
-    transform: scale(1.1);
-}
-
-#sync-button-header:active .material-icons {
-    transform: scale(0.95);
-}
-
-#sync-button-header.syncing {
-    pointer-events: none;
-}
-
-#sync-button-header.syncing .material-icons {
-    color: var(--color-primary-500);
-}
 
 /* ===================================================================
    NAVIGATION CONTEXT (breadcrumbs desktop + back/título mobile)

@@ -149,13 +149,13 @@ const AppConfig = {
     apiVersion: {
         // Current API version
         current: 'v3',
-        
+
         // Migration settings
         migration: {
             enabled: true,
             notes: [
                 'V3 API features:',
-                '- X-API-Key authentication (no JWT)',
+                '- OAuth Bearer (JWT) — não X-API-Key (notas corrigidas ago/2026; diziam o contrário do que roda)',
                 '- Entity IDs: entity_id (UUIDs)',
                 '- Curation IDs: curation_id (UUIDs)',
                 '- Version: integer for optimistic locking',
@@ -166,15 +166,15 @@ const AppConfig = {
                 '- Places integration: search and details'
             ]
         },
-        
+
         // API features
         features: {
             optimisticLocking: true,     // Via version field + If-Match header
             partialUpdates: true,        // PATCH supported
             flexibleQuery: true,         // Filter-based queries
             entityCurations: true,       // Entity-curation model
-            authentication: true,        // X-API-Key required for writes
-            authType: 'api-key',         // API key (not JWT)
+            authentication: true,        // JWT Bearer required for writes
+            authType: 'oauth-bearer',    // OAuth Bearer (alinhado com api.backend.features)
             pagination: true,            // All list endpoints paginated
             aiServices: true,            // AI transcription and concept extraction
             placesIntegration: true      // Google Places integration
@@ -224,7 +224,9 @@ const AppConfig = {
      * V3 Format: Entity-Curation model with local storage for offline capabilities
      */
     database: {
-        name: 'ConciergeCollectorV3',  // V3 database name
+        name: 'ConciergeCollector',  // V3 database name — o nome real aberto
+        // por databaseManager.js (main.js deleta/recupera esse mesmo nome;
+        // o 'ConciergeCollectorV3' antigo divergia dos dois)
         version: 1,  // V3 schema version (fresh start)
         tables: {
             entities: 'entity_id, type, name, status, externalId, version, [sync.status], updatedAt',

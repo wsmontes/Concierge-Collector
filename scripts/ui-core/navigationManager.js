@@ -304,7 +304,11 @@ window.NavigationManager = (function() {
         }
 
         // Notify subscribers (e.g. mobile back button / header title)
-        this.navigateCallbacks.forEach((callback) => {
+        // navigateCallbacks é variável de CLOSURE (let, topo do arquivo) —
+        // this.navigateCallbacks nunca existiu e o forEach lançava
+        // "Cannot read properties of undefined" em TODA navegação,
+        // matando os breadcrumbs e o contexto mobile (ago/2026).
+        navigateCallbacks.forEach((callback) => {
             try {
                 callback(path, match.params);
             } catch (callbackError) {
