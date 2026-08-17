@@ -37,7 +37,7 @@
     <link rel="stylesheet" href="styles/design-system.css?v=20260816-2">
 
     <!-- 2. Component Library (reusable components) -->
-    <link rel="stylesheet" href="styles/components.css?v=20260816-6">
+    <link rel="stylesheet" href="styles/components.css?v=20260816-7">
 
     <!-- 3. Application-specific Styles -->
     <link rel="stylesheet" href="styles/application.css?v=20260816-1">
@@ -594,7 +594,9 @@
                         <select id="curation-status-filter" class="select input-md" aria-label="Filter by status">
                             <option value="all">All Status</option>
                             <option value="draft">Draft</option>
-                            <option value="linked">Linked</option>
+                            <!-- "Linked" NÃO é status (ago/2026): o vínculo
+                                 é derivado do entity_id — o atalho
+                                 Unlinked cobre o outro lado -->
                             <option value="active">Active</option>
                             <option value="archived">Archived</option>
                             <option value="deleted">Deleted</option>
@@ -954,7 +956,7 @@
     <script src="scripts/sync/importManager.js?v=20260813-3"></script>
 
     <!-- UI Components -->
-    <script src="scripts/ui/cardFactory.js?v=20260816-2"></script>
+    <script src="scripts/ui/cardFactory.js?v=20260816-3"></script>
     <script src="scripts/ui/conflictResolutionModal.js?v=20260813-4"></script>
 
     <!-- Compatibility Layer for Legacy UI Modules -->
@@ -963,7 +965,7 @@
     <!-- Application modules - keeping essential ones -->
     <script src="scripts/services/promptTemplate.js?v=20260814-1"></script>
     <script src="scripts/services/conceptMatcher.js"></script>
-    <script src="scripts/ui-core/uiManager.js?v=20260816-5"></script>
+    <script src="scripts/ui-core/uiManager.js?v=20260816-6"></script>
 
     <!-- Module implementations - V3 Compatible -->
     <script src="scripts/modules/safetyUtils.js?v=20260813-1"></script>

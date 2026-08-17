@@ -2135,11 +2135,15 @@ if (typeof window.UIManager === 'undefined') {
                 '';
             const transcriptionSnippet = transcription.length > 100 ? transcription.substring(0, 100) + '...' : transcription;
 
-            // Determine badge from curation status
-            const rawStatus = (curation.status || 'draft').toLowerCase();
+            // Determine badge from curation status.
+            // LINKED NÃO É STATUS (ago/2026): o vínculo é derivado do
+            // entity_id; a tag mostra o WORKFLOW real (draft/active/
+            // archived/deleted) e é clicável para trocar
+            let rawStatus = (curation.status || 'draft').toLowerCase();
+            if (rawStatus === 'linked') rawStatus = 'draft';
             let badgeText, badgeClass;
-            if (rawStatus === 'linked' || rawStatus === 'active') {
-                badgeText = 'Linked';
+            if (rawStatus === 'active') {
+                badgeText = 'Active';
                 badgeClass = 'chip chip--success';
             } else if (rawStatus === 'done') {
                 badgeText = 'Done';
@@ -2147,6 +2151,12 @@ if (typeof window.UIManager === 'undefined') {
             } else if (rawStatus === 'published') {
                 badgeText = 'Published';
                 badgeClass = 'chip chip--accent';
+            } else if (rawStatus === 'archived') {
+                badgeText = 'Archived';
+                badgeClass = 'chip chip--neutral';
+            } else if (rawStatus === 'deleted') {
+                badgeText = 'Deleted';
+                badgeClass = 'chip chip--danger';
             } else {
                 badgeText = 'Draft';
                 badgeClass = 'chip chip--warning';
@@ -2186,7 +2196,8 @@ if (typeof window.UIManager === 'undefined') {
                         </div>
 
                         <div class="collection-card__review-row">
-                            <span class="${badgeClass}">${badgeText}</span>
+                            <button type="button" class="${badgeClass} collection-card__status-chip"
+                                title="Change curation status" aria-label="Change curation status" aria-haspopup="menu">${badgeText}</button>
                             <span class="collection-card__review-date">${date}</span>
                         </div>
 
@@ -2242,6 +2253,16 @@ if (typeof window.UIManager === 'undefined') {
                     </div>
                 </div>
             `;
+
+            // Tag de status clicável (mesmo menu de workflow dos cards
+            // de curation — via CardFactory._openStatusMenu)
+            card.querySelector('.collection-card__status-chip')?.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (window.CardFactory && typeof window.CardFactory._openStatusMenu === 'function') {
+                    window.CardFactory._openStatusMenu(e.currentTarget, curation, rawStatus);
+                }
+            });
 
             // Nome + card inteiro abrem os detalhes da review (card órfão
             // não tem entity para abrir — os detalhes SÃO o alvo).
@@ -2301,6 +2322,49 @@ if (typeof window.UIManager === 'undefined') {
             return card;
         }
 
+        /**
+         * Muda o status de WORKFLOW de uma curadoria (tag clicável do
+         * card). "linked" não entra aqui — é derivado do entity_id.
+         * Otimista: grava local + PATCH com If-Match + sync + re-render.
+         * @param {string} curationId - curation_id da curadoria
+         * @param {string} status - draft | active | archived | deleted
+         */
+        async updateCurationStatus(curationId, status) {
+            try {
+                const local = await window.DataStore.db.curations
+                    .where('curation_id').equals(curationId).first();
+                const currentVersion = (local && (local.version || 1)) || 1;
+                const updates = {
+                    status: status,
+                    updated_at: new Date().toISOString(),
+                    updatedAt: new Date().toISOString(),
+                    version: currentVersion + 1,
+                    sync: {
+                        ...((local && local.sync) || {}),
+                        status: 'pending',
+                        lastModified: Date.now()
+                    }
+                };
+                await window.DataStore.db.curations.update(local.id, updates);
+
+                // PATCH server-side (If-Match) — falha não derruba o
+                // estado local; o sync reconcilia depois
+                if (window.ApiService && typeof window.ApiService.updateCuration === 'function') {
+                    window.ApiService.updateCuration(curationId, { status: status }, updates.version)
+                        .catch((error) => this.log.warn('PATCH de status falhou (reconcilia no sync):', error));
+                }
+                if (window.SyncManager && typeof window.SyncManager.syncAll === 'function') {
+                    window.SyncManager.syncAll().catch((error) => this.log.warn('sync pós-status falhou:', error));
+                }
+
+                await this.refreshCurrentTabDataLocal();
+                this.showNotification(`Status changed to ${status}`, 'success');
+            } catch (error) {
+                this.log.error('updateCurationStatus falhou:', error);
+                this.showNotification('Could not change status: ' + error.message, 'error');
+            }
+        }
+
         getCurationDisplayName(curation) {
             return curation?.restaurant_name ||
                 curation?.name ||
@@ -2349,11 +2413,15 @@ if (typeof window.UIManager === 'undefined') {
             try {
                 this.showLoading('Linking review to entity...');
 
-                // 1. Update the curation object
+                // 1. Update the curation object.
+                // LINKAR NÃO MUDA STATUS (ago/2026): 'linked' não é um
+                // estado de workflow — é DERIVADO do entity_id. Draft
+                // continua draft; o status só muda pelo curador (tag
+                // clicável no card ou editor).
                 const updatedCuration = {
                     ...curation,
                     entity_id: entity.entity_id,
-                    status: 'linked', // Update status to reflect linking
+                    status: curation.status === 'linked' ? 'draft' : (curation.status || 'draft'),
                     updated_at: new Date().toISOString(),
                     sync: {
                         ...curation.sync,

@@ -477,10 +477,14 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
         }
 
         if (curation) {
-            // Determine status with proper fallback
+            // Determine status with proper fallback.
+            // LINKED NÃO É STATUS (ago/2026): o vínculo (entity_id) é
+            // informação derivada do sistema; o status é workflow do
+            // curador (draft/active/archived/deleted). Dados legados com
+            // 'linked' exibem como draft (migrados no servidor).
             let status = curation.status;
-            if (!status) {
-                status = curation.entity_id ? 'linked' : 'draft';
+            if (!status || status === 'linked') {
+                status = 'draft';
             }
 
             // O accent do card reflete o status da CURATION (não o da entity)
@@ -566,11 +570,10 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
             actionsRow.className = 'collection-card__footer';
             actionsRow.innerHTML = `
                 <div class="collection-card__status">
-                    ${status !== 'linked' ? `
-                    <span class="${badgeClass} uppercase tracking-wider">
+                    <button type="button" class="${badgeClass} collection-card__status-chip uppercase tracking-wider"
+                        title="Change curation status" aria-label="Change curation status" aria-haspopup="menu">
                         ${this.escapeHtml(status)}
-                    </span>
-                    ` : ''}
+                    </button>
                     ${showSyncChip ? `
                     <div class="inline-flex items-center gap-1 text-xs font-medium ${syncColor} ${syncStatus === 'conflict' ? 'sync-conflict-chip' : ''} bg-white border border-gray-100 rounded-full px-2 py-1"
                          title="${syncStatus === 'conflict' ? 'Click to resolve conflict' : `Sync Status: ${this.escapeHtml(syncLabel)}` }">
@@ -604,6 +607,18 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                     </button>
                 </div>
             `;
+
+            // Tag de status SEMPRE visível e CLICÁVEL: abre o menu de
+            // workflow (draft/active/archived/deleted) — linkar não muda
+            // status; só o curador muda
+            const statusChip = actionsRow.querySelector('.collection-card__status-chip');
+            if (statusChip) {
+                statusChip.addEventListener('click', (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    this._openStatusMenu(statusChip, curation, status);
+                });
+            }
 
             // Chip de conflito: listener real (nunca inline onclick — o
             // curation_id vem do servidor e não pode ser interpolado em
@@ -691,6 +706,62 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
         }
 
         return card;
+    }
+
+    /**
+     * Menu de STATUS do card: workflow do curador (draft/active/
+     * archived/deleted). "Linked" NÃO é opção — o vínculo é derivado
+     * do entity_id e não se escolhe manualmente. Reusa o visual do
+     * menu "⋯"; a mudança em si é do uiManager.updateCurationStatus.
+     * @param {HTMLElement} anchor - Chip clicado
+     * @param {Object} curation - Curadoria do card
+     * @param {string} currentStatus - Status atual exibido
+     */
+    _openStatusMenu(anchor, curation, currentStatus) {
+        this._closeCardMenu();
+
+        const menu = document.createElement('div');
+        menu.className = 'card-more-menu';
+        menu.setAttribute('role', 'menu');
+        menu.setAttribute('aria-label', 'Change curation status');
+
+        ['draft', 'active', 'archived', 'deleted'].forEach((status) => {
+            const btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'card-more-menu__item';
+            btn.setAttribute('role', 'menuitem');
+            const icon = document.createElement('span');
+            icon.className = 'material-icons';
+            icon.setAttribute('aria-hidden', 'true');
+            icon.textContent = status === currentStatus ? 'check' : 'radio_button_unchecked';
+            const label = document.createElement('span');
+            label.textContent = status.charAt(0).toUpperCase() + status.slice(1);
+            btn.append(icon, label);
+            if (status === currentStatus) {
+                btn.classList.add('card-more-menu__current');
+            }
+            btn.addEventListener('click', () => {
+                this._closeCardMenu();
+                if (status === currentStatus) return;
+                if (window.uiManager && typeof window.uiManager.updateCurationStatus === 'function') {
+                    window.uiManager.updateCurationStatus(curation.curation_id, status);
+                }
+            });
+            menu.appendChild(btn);
+        });
+
+        document.body.appendChild(menu);
+        const rect = anchor.getBoundingClientRect();
+        menu.style.top = `${rect.bottom + 6}px`;
+        menu.style.left = `${Math.max(8, Math.min(rect.left, window.innerWidth - 220))}px`;
+
+        window.__cardMoreMenu = menu;
+        const onOutsideClick = (ev) => {
+            if (menu.contains(ev.target)) return;
+            this._closeCardMenu();
+            document.removeEventListener('click', onOutsideClick);
+        };
+        setTimeout(() => document.addEventListener('click', onOutsideClick), 0);
     }
 
     /**

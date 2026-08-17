@@ -1681,6 +1681,12 @@
   background: var(--color-bg-secondary, #f3f4f6);
 }
 
+/* Item ATUAL no menu de status (check à esquerda) */
+.card-more-menu__current {
+  color: var(--color-primary-700);
+  font-weight: var(--font-semibold);
+}
+
 /* Read-state do feedmine: cards arquivados/deletados ficam atenuados
    (opacity 0.78) e voltam ao hover — escaneabilidade da lista sem
    perder o conteúdo. */
@@ -3044,6 +3050,24 @@
   align-items: center;
   gap: 0.375rem;
   min-width: 0;
+}
+
+/* Tag de status é um BOTÃO (menu de workflow: draft/active/archived/
+   deleted) — visual de chip, affordance de clique */
+.collection-card__status-chip {
+  cursor: pointer;
+  transition: box-shadow var(--transition-fast) var(--ease-out),
+    filter var(--transition-fast) var(--ease-out);
+}
+
+.collection-card__status-chip:hover {
+  filter: brightness(0.96);
+  box-shadow: 0 0 0 2px var(--color-primary-100);
+}
+
+.collection-card__status-chip:focus-visible {
+  outline: var(--focus-ring-width) solid var(--focus-ring-color);
+  outline-offset: var(--focus-ring-offset);
 }
 
 /* Rodapé: chips à esquerda, ações à direita com hierarquia

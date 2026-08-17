@@ -129,6 +129,50 @@ describe('CardFactory — véu OG (data-og-source)', () => {
     expect(card.querySelector('.collection-card__thumb')).toBeTruthy();
   });
 
+  test('curadoria linkada mostra a tag DRAFT (linked não é status) e a tag é clicável', () => {
+    const factory = loadCardFactory();
+    window.SourceUtils = { detectSource: () => ({ className: 'chip', icon: 'public', label: 'openai' }) };
+    window.uiManager = { updateCurationStatus: vi.fn() };
+
+    const curation = { curation_id: 'c_linked_draft', entity_id: 'ent_og', status: 'linked', sync: { status: 'synced' } };
+    const card = factory.createCurationCard(entityComSite, curation, {});
+    document.body.appendChild(card);
+
+    const chip = card.querySelector('.collection-card__status-chip');
+    expect(chip).toBeTruthy();
+    expect(chip.textContent.toLowerCase()).toContain('draft'); // legado 'linked' → draft
+    expect(chip.tagName).toBe('BUTTON');
+
+    // clique abre o menu de workflow; escolher Active chama o uiManager
+    chip.click();
+    const menu = document.querySelector('.card-more-menu');
+    expect(menu).toBeTruthy();
+    const items = [...menu.querySelectorAll('[role="menuitem"]')];
+    // textContent do item inclui a ligature do ícone — o label é o span final
+    expect(items.map((i) => i.querySelector('span:last-child').textContent)).toEqual(['Draft', 'Active', 'Archived', 'Deleted']);
+    // item atual marcado com check
+    expect(items[0].querySelector('.material-icons').textContent).toBe('check');
+
+    items[1].click();
+    expect(window.uiManager.updateCurationStatus).toHaveBeenCalledWith('c_linked_draft', 'active');
+    expect(document.querySelector('.card-more-menu')).toBeNull(); // fecha
+
+    window.uiManager = undefined;
+  });
+
+  test('curadoria sem status também mostra Draft (sem derivar do vínculo)', () => {
+    const factory = loadCardFactory();
+    window.SourceUtils = { detectSource: () => ({ className: 'chip', icon: 'public', label: 'openai' }) };
+    const card = factory.createCurationCard(entityComSite, {
+      curation_id: 'c_nostatus',
+      entity_id: 'ent_og',
+      sync: { status: 'synced' }
+    }, {});
+    const chip = card.querySelector('.collection-card__status-chip');
+    expect(chip).toBeTruthy();
+    expect(chip.textContent.toLowerCase()).toContain('draft');
+  });
+
   test('inversão dos links: card/nome abrem a ENTITY; "Details" abre a curadoria', () => {
     const factory = loadCardFactory();
     window.SourceUtils = { detectSource: () => ({ className: 'chip', icon: 'public', label: 'openai' }) };
