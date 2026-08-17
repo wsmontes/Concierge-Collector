@@ -3365,6 +3365,15 @@ h3 .collection-card__name-link {
   display: block;
 }
 
+/* Viewer modal (sheets sem hero — ex.: detalhes da review) */
+.detail-gallery__viewer-img {
+  width: 100%;
+  max-height: 70vh;
+  object-fit: contain;
+  border-radius: var(--radius-input);
+  display: block;
+}
+
 /* ── Picker de imagem do editor de entity (data.image_rank) ── */
 
 .entity-image-picker {

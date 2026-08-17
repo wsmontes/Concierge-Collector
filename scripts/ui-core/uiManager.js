@@ -1457,11 +1457,12 @@ if (typeof window.UIManager === 'undefined') {
                 var entity = curation.entity_id ? entitiesMap.get(curation.entity_id) : null;
                 var card = entity
                     ? window.CardFactory.createCurationCard(entity, curation, {
-                        // Regressão: o card de entity não tem handler de
-                        // detalhes por padrão (só console.log) — o review
-                        // card abre handleViewReviewDetails no click.
+                        // Inversão dos links (ago/2026): card/nome abrem a
+                        // ENTITY; o botão "Details" do card abre a curadoria
                         onClick: () => {
-                            self.handleViewReviewDetails(curation);
+                            if (window.entityModule && typeof window.entityModule.showEntityDetails === 'function') {
+                                window.entityModule.showEntityDetails(entity);
+                            }
                         }
                     })
                     : self.createReviewCard(curation);
@@ -2103,7 +2104,7 @@ if (typeof window.UIManager === 'undefined') {
                         ${isLinked ? `
                         <button class="btn-view-entity card-link-btn" title="View curation details" aria-label="View curation details">
                             <span class="material-icons" aria-hidden="true">visibility</span>
-                            <span>View Entity</span>
+                            <span>Details</span>
                         </button>
                         ` : `
                         <button class="btn-link-entity card-link-btn" title="Link this curation to an entity" aria-label="Link this curation to an entity">
@@ -2122,10 +2123,18 @@ if (typeof window.UIManager === 'undefined') {
                 </div>
             `;
 
-            // Nome = único alvo de clique (abre os detalhes da review)
+            // Nome + card inteiro abrem os detalhes da review (card órfão
+            // não tem entity para abrir — os detalhes SÃO o alvo).
+            // Botões/links param a propagação.
             card.querySelector('.collection-card__name-link')?.addEventListener('click', (e) => {
                 e.preventDefault();
                 e.stopPropagation();
+                this.handleViewReviewDetails(curation);
+            });
+
+            card.classList.add('collection-card--clickable');
+            card.addEventListener('click', (e) => {
+                if (e.target.closest('button, a')) return;
                 this.handleViewReviewDetails(curation);
             });
 
@@ -2268,27 +2277,19 @@ if (typeof window.UIManager === 'undefined') {
                 return;
             }
 
-            // Véu OG (mesmo pipeline dos cards): para curadoria VINCULADA,
-            // website/place_id vêm da entity local — a mesma cadeia
-            // tolerante dos dois formatos que os cards usam
-            let veilWebsite = '';
-            let veilPlaceId = '';
+            // Nome da entity vinculada (título do carrossel da galeria).
+            // O banner de imagem do sheet foi REMOVIDO (ago/2026) — o véu
+            // OG não funcionava bem aqui; a galeria assume a visualização.
             let linkedEntityName = '';
             if (curation.entity_id && window.DataStore?.db) {
                 try {
                     const entity = await window.DataStore.db.entities
                         .where('entity_id').equals(curation.entity_id).first();
                     if (entity) {
-                        veilWebsite = entity.data?.contact?.website ||
-                            entity.data?.contacts?.website ||
-                            entity.data?.website ||
-                            entity.website || '';
-                        veilPlaceId = entity.data?.place_id ||
-                            entity.data?.google_place_id || '';
                         linkedEntityName = entity.name || '';
                     }
                 } catch (e) {
-                    // lookup é melhor-esforço — o modal abre sem véu
+                    // lookup é melhor-esforço — o modal abre sem galeria
                 }
             }
 
@@ -2342,24 +2343,10 @@ if (typeof window.UIManager === 'undefined') {
 
             const sections = [];
 
-            // ── Herói: véu OG da entity vinculada (mesma faixa dos
-            // detalhes de entity e dos cards — ogImageModule pinta o
-            // slot observando data-og-source no DOM). data-entity-id:
-            // o módulo resolve o hero RANQUEADO server-side (rank=0). ──
-            let heroAttrs = '';
-            if (curation.entity_id) heroAttrs += ` data-entity-id="${esc(curation.entity_id)}"`;
-            if (veilWebsite) heroAttrs += ` data-og-source="${esc(veilWebsite)}"`;
-            if (veilPlaceId) heroAttrs += ` data-og-place-id="${esc(veilPlaceId)}"`;
-            if (heroAttrs) {
-                sections.push(`
-                    <section class="detail-hero"${heroAttrs}>
-                        <div class="card-og-veil" aria-hidden="true">
-                            <span class="card-og-veil__icon material-icons">restaurant</span>
-                        </div>
-                    </section>
-                `);
-            }
-
+            // ── Banner de imagem REMOVIDO (ago/2026): o véu OG não
+            // funcionava bem no sheet da review — a visualização fica
+            // com o carrossel da galeria da entity vinculada. Os chips
+            // de meta continuam como a primeira linha do sheet. ──
             sections.push(`
                 <div class="detail-hero__facts detail-hero__facts--meta">${metaChips.join('')}</div>
             `);

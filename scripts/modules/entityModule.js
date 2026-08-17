@@ -1210,16 +1210,25 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
     /**
      * Clique num thumb: troca a foto do HERÓI do modal pela imagem
      * escolhida (sem modal aninhado — o herói é a vitrine da galeria).
+     * Sem herói no sheet (ex.: detalhes da review, que não tem banner),
+     * abre a foto num modal viewer (o modalManager empilha).
      * @param {HTMLElement} thumb - Thumb clicado
      */
     _showGalleryImage(thumb) {
         const img = thumb.querySelector('img');
+        if (!img || !img.src) return;
         const sheet = thumb.closest('.detail-sheet');
         const veil = sheet ? sheet.querySelector('.detail-hero .card-og-veil') : null;
-        if (veil && img && img.src) {
+        if (veil) {
             veil.classList.remove('card-og-veil--fallback');
             veil.style.backgroundImage = `url("${img.src}")`;
             veil.classList.add('card-og-veil--visible');
+        } else if (window.modalManager && typeof window.modalManager.open === 'function') {
+            const viewer = document.createElement('img');
+            viewer.src = img.src;
+            viewer.alt = '';
+            viewer.className = 'detail-gallery__viewer-img';
+            window.modalManager.open({ title: 'Photo', content: viewer });
         }
         const strip = thumb.parentElement;
         if (strip) {

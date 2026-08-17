@@ -458,14 +458,23 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
      * @returns {HTMLElement} Card element
      */
     createCurationCard(entity, curation, options = {}) {
-        // clickTarget 'name': o card NÃO é clicável por inteiro — o nome
-        // é o único alvo (ver detalhes da curadoria). Edit/View/Links têm
-        // cada um o seu affordance, sem áreas sobrepostas.
+        // clickTarget 'name': o NOME vira botão (a11y). O card INTEIRO
+        // também abre os detalhes da ENTITY (pedido ago/2026: clicar no
+        // card ou no nome puxa a entity — a curadoria tem o botão
+        // próprio "Details"). Botões/links param a propagação.
         const card = this.createEntityCard(entity, {
             ...options,
             clickTarget: 'name',
             showEntityActions: false
         });
+
+        if (options.onClick) {
+            card.classList.add('collection-card--clickable');
+            card.addEventListener('click', (e) => {
+                if (e.target.closest('button, a')) return;
+                options.onClick(entity);
+            });
+        }
 
         if (curation) {
             // Determine status with proper fallback
@@ -572,12 +581,11 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                 </div>
                 <div class="collection-card__actions">
                     ${isLinkedCuration ? `
-                    <!-- vínculo ativo: o botão ABRE a página de detalhes da
-                         entity linkada (a tag "Linked" foi removida — este
-                         botão é quem comunica o vínculo agora) -->
-                    <button class="btn-view-entity card-link-btn" title="View linked entity details" aria-label="View linked entity details">
+                    <!-- Inversão dos links (ago/2026): o card/nome abre a
+                         ENTITY; este botão abre os DETALHES DA CURADORIA -->
+                    <button class="btn-view-entity card-link-btn" title="View curation details" aria-label="View curation details">
                         <span class="material-icons" aria-hidden="true">visibility</span>
-                        <span>View Entity</span>
+                        <span>Details</span>
                     </button>
                     ` : `
                     <!-- sem vínculo: aqui mora o Link Entity (mesmo espaço,
@@ -637,14 +645,14 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                 link.addEventListener('click', (e) => e.stopPropagation());
             });
 
-            // Vínculo ativo: abre os detalhes da entity linkada (o botão
-            // substitui a antiga tag "Linked" + o unlink icônico)
+            // "Details": abre os detalhes DA CURADORIA (o card/nome abre
+            // a entity — inversão dos links, ago/2026)
             if (viewEntityBtn) {
                 viewEntityBtn.onclick = (e) => {
                     e.preventDefault();
                     e.stopPropagation();
-                    if (window.entityModule && typeof window.entityModule.showEntityDetails === 'function') {
-                        window.entityModule.showEntityDetails(entity);
+                    if (window.uiManager && typeof window.uiManager.handleViewReviewDetails === 'function') {
+                        window.uiManager.handleViewReviewDetails(curation);
                     }
                 };
             }

@@ -1,12 +1,11 @@
 /**
  * File: test_reviewDetails_veil.test.js
- * Purpose: Véu OG no modal de detalhes da review (handleViewReviewDetails).
+ * Purpose: Detalhes da review (handleViewReviewDetails) — sem banner.
  *
- * Pedido do usuário (2026-08-16): a imagem OG dos cards deve aparecer
- * TAMBÉM nos detalhes de curation (não só no modal de entity). Para
- * curadoria VINCULADA, o website/place_id vem da entity local (mesma
- * cadeia tolerante dos dois formatos que os cards usam); o ogImageModule
- * pinta o slot .card-og-veil via data-og-source observado no DOM.
+ * O banner de imagem (véu OG) do sheet da review foi REMOVIDO
+ * (ago/2026): não funcionava bem e a visualização ficou com o carrossel
+ * da galeria da entity vinculada. Este arquivo garante a ausência do
+ * banner, os chips de meta como primeira linha e o host da galeria.
  */
 import { readFileSync } from 'fs';
 import path from 'path';
@@ -78,8 +77,8 @@ function makeCuration(overrides = {}) {
     };
 }
 
-describe('handleViewReviewDetails — véu OG da entity vinculada', () => {
-    test('curadoria vinculada renderiza o herói com data-og-source da entity', async () => {
+describe('handleViewReviewDetails — sheet da review sem banner', () => {
+    test('curadoria vinculada NÃO renderiza o banner de imagem (removido)', async () => {
         window.DataStore = {
             db: {
                 entities: {
@@ -96,13 +95,17 @@ describe('handleViewReviewDetails — véu OG da entity vinculada', () => {
 
         expect(capturedContent).toBeTruthy();
         const html = capturedContent.innerHTML;
-        expect(html).toContain('detail-hero');
-        expect(html).toContain('data-og-source="https://casaveu.com.br"');
-        expect(html).toContain('data-og-place-id="ChIJ-veil"');
-        expect(html).toContain('card-og-veil');
+        // banner removido: nenhuma SECTION detail-hero nem slot de véu
+        expect(capturedContent.querySelector('section.detail-hero')).toBeNull();
+        expect(html).not.toContain('card-og-veil');
+        expect(html).not.toContain('data-og-source');
+        // chips de meta continuam como primeira linha (classe --meta
+        // é só a faixa de fatos, sem imagem)
+        expect(html).toContain('detail-hero__facts--meta');
+        expect(html).toContain('Linked');
     });
 
-    test('curadoria sem vínculo não renderiza herói de véu', async () => {
+    test('curadoria sem vínculo também segue sem banner', async () => {
         window.DataStore = { db: { entities: { where: () => ({ equals: () => ({ first: async () => null }) }) } } };
 
         await ui.handleViewReviewDetails(makeCuration({ entity_id: null }));

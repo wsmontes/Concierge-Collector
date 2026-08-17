@@ -128,6 +128,53 @@ describe('CardFactory — véu OG (data-og-source)', () => {
     expect(card.dataset.ogSource).toBe('https://casa.example.com');
     expect(card.querySelector('.collection-card__thumb')).toBeTruthy();
   });
+
+  test('inversão dos links: card/nome abrem a ENTITY; "Details" abre a curadoria', () => {
+    const factory = loadCardFactory();
+    window.SourceUtils = { detectSource: () => ({ className: 'chip', icon: 'public', label: 'openai' }) };
+    const entityClicks = [];
+    window.entityModule = { showEntityDetails: (e) => entityClicks.push(e) };
+    const curationClicks = [];
+    window.uiManager = { handleViewReviewDetails: (c) => curationClicks.push(c) };
+
+    const curation = {
+      curation_id: 'c_2',
+      entity_id: 'ent_og',
+      status: 'linked',
+      sync: { status: 'synced' }
+    };
+    const card = factory.createCurationCard(entityComSite, curation, {
+      onClick: (e) => window.entityModule.showEntityDetails(e)
+    });
+    document.body.appendChild(card);
+
+    // 1) clique no NOME → entity details
+    card.querySelector('.collection-card__name-link').click();
+    expect(entityClicks.length).toBe(1);
+    expect(entityClicks[0].entity_id).toBe('ent_og');
+
+    // 2) clique no CARD (área neutra) → entity details
+    card.querySelector('.collection-card__body').click();
+    expect(entityClicks.length).toBe(2);
+
+    // 3) botão "Details" → detalhes DA CURADORIA
+    const detailsBtn = card.querySelector('.btn-view-entity');
+    expect(detailsBtn.textContent).toContain('Details');
+    detailsBtn.click();
+    expect(curationClicks.length).toBe(1);
+    expect(curationClicks[0].curation_id).toBe('c_2');
+    expect(entityClicks.length).toBe(2); // stopPropagation: não reabre a entity
+
+    // 4) links de contato não abrem nada (stopPropagation)
+    const websiteLink = card.querySelector('.collection-card__website');
+    if (websiteLink) {
+      websiteLink.click();
+      expect(entityClicks.length).toBe(2);
+    }
+
+    window.entityModule = undefined;
+    window.uiManager = undefined;
+  });
 });
 
 describe('OgImageModule — resolução, cache e aplicação do véu', () => {

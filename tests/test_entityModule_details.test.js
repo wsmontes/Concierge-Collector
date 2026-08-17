@@ -336,6 +336,26 @@ describe('EntityModule — showEntityDetails com os dois formatos de entity', ()
       expect(thumbs[0].classList.contains('is-active')).toBe(false);
     });
 
+    test('thumb fora de sheet (sem hero) abre o viewer modal', async () => {
+      const entityModule = makeModule();
+      const thumb = document.createElement('button');
+      thumb.className = 'detail-gallery__thumb';
+      const img = document.createElement('img');
+      img.src = 'blob:viewer-1';
+      thumb.appendChild(img);
+      // fora de qualquer .detail-sheet: sem véu → viewer via modalManager
+      document.body.appendChild(thumb);
+
+      entityModule._showGalleryImage(thumb);
+
+      expect(openSpy).toHaveBeenCalledTimes(1);
+      const { title, content } = openSpy.mock.calls[0][0];
+      expect(title).toBe('Photo');
+      expect(content.className).toContain('detail-gallery__viewer-img');
+      expect(content.src).toContain('blob:viewer-1');
+      expect(thumb.classList.contains('is-active')).toBe(true);
+    });
+
     test('404 do servidor remove a seção silenciosamente (modal como antes)', async () => {
       window.ApiService = {
         request: vi.fn().mockResolvedValue({ ok: false, status: 404 })
