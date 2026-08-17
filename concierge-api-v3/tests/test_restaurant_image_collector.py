@@ -18,7 +18,24 @@ from app.services.restaurant_image_collector import (
 
 
 def _make_png(width=1200, height=800, color=(160, 80, 40)):
-    img = Image.new("RGB", (width, height), color)
+    # Textura determinística (padrão pequeno redimensionado): passa no
+    # gate de DETALHE do prepare_image (imagem SÓLIDA é rejeitada como
+    # branco/fundo) e cores diferentes geram dhashes diferentes.
+    r, g, b = color
+    phase = (r * 7 + g * 13 + b * 29) % 256
+    small = Image.new("RGB", (32, 32))
+    small.putdata(
+        [
+            (
+                (r + (x * 7 + y * 11 + phase)) % 256,
+                (g + (x * 3 + y * 5 + phase)) % 256,
+                (b + (x * 13 + y * 7 + phase)) % 256,
+            )
+            for y in range(32)
+            for x in range(32)
+        ]
+    )
+    img = small.resize((width, height), Image.Resampling.BILINEAR)
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return buf.getvalue()
@@ -45,6 +62,38 @@ def test_og_photo_beats_body_image_when_quality_is_equal():
     )
     ranked = rank_and_dedupe([body, og], limit=2)
     assert ranked[0].source == "website_og"
+
+
+def test_icon_like_brand_color_image_scores_below_real_photo():
+    # Regressão Arturito: o og:image era o ÍCONE do WhatsApp (77% dos
+    # pixels em verde saturado, CDN sem nome semântico na URL). A
+    # heurística de paleta pune a cor de marca dominante — o ícone
+    # perde o hero, mas continua na galeria.
+    from PIL import ImageDraw
+
+    icon = Image.new("RGB", (600, 600), (37, 211, 102))  # verde WhatsApp
+    draw = ImageDraw.Draw(icon)
+    draw.ellipse((210, 210, 390, 390), fill=(255, 255, 255))  # glifo branco
+    icon_buf = io.BytesIO()
+    icon.save(icon_buf, format="PNG")
+
+    icon_img = prepare_image(icon_buf.getvalue(), ImageCandidate("https://cdn.example/og.png", "website_og", 0))
+    photo = prepare_image(_make_png(1200, 800, (90, 70, 50)), ImageCandidate("https://site/food.jpg", "website_img", 1))
+
+    assert icon_img.score < photo.score
+    assert icon_img.score_components.get("palette", 0) < -10  # penalidade aplicada
+
+
+def test_prepare_image_rejects_solid_white_blank():
+    # Regressão Ryo Gastronomia: um 1080×1080 BRANCO (stddev 0) passava
+    # em todos os gates dimensionais e pontuava ACIMA de fotos reais no
+    # ranking — o card mostrava um retângulo branco. O gate de DETALHE
+    # rejeita imagens sólidas/quase-sólidas.
+    solid = Image.new("RGB", (1080, 1080), (255, 255, 255))
+    buf = io.BytesIO()
+    solid.save(buf, format="PNG")
+    with pytest.raises(ValueError):
+        prepare_image(buf.getvalue(), ImageCandidate("https://site/blank.jpg", "website_og", 0))
 
 
 def test_prepare_image_rejects_tiny_square_icon_even_with_valid_aspect():

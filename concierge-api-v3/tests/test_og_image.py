@@ -140,8 +140,24 @@ def test_parse_og_tem_prioridade_sobre_img_corpo():
 # ---------------------------------------------------------------------------
 
 
-def _make_png(width: int, height: int) -> bytes:
-    img = Image.new("RGB", (width, height), (180, 60, 40))
+def _make_png(width=1200, height=800, color=(180, 60, 40)):
+    # Textura determinística (padrão pequeno redimensionado): passa no
+    # gate de DETALHE do prepare_image (imagem SÓLIDA é rejeitada).
+    r, g, b = color
+    phase = (r * 7 + g * 13 + b * 29) % 256
+    small = Image.new("RGB", (32, 32))
+    small.putdata(
+        [
+            (
+                (r + (x * 7 + y * 11 + phase)) % 256,
+                (g + (x * 3 + y * 5 + phase)) % 256,
+                (b + (x * 13 + y * 7 + phase)) % 256,
+            )
+            for y in range(32)
+            for x in range(32)
+        ]
+    )
+    img = small.resize((width, height), Image.Resampling.BILINEAR)
     buf = io.BytesIO()
     img.save(buf, format="PNG")
     return buf.getvalue()

@@ -17,13 +17,17 @@ from urllib.parse import urlsplit
 
 from PIL import Image, ImageStat
 
+# Pesos de fonte (rebalanceio ago/2026): og:image recebia 40 pontos de
+# confiança cega — sites usam o og para logo/ícone/placeholder (casos
+# reais: Ryo branco, Arturito com ícone de WhatsApp). Fotos de conteúdo
+# do site (website_img) subiram para competir com as do Places.
 SOURCE_WEIGHTS: Dict[str, float] = {
-    "website_og": 40.0,
-    "google_places": 38.0,
-    "website_twitter": 34.0,
-    "website_schema": 32.0,
-    "website_jsonld": 30.0,
-    "website_img": 20.0,
+    "website_og": 34.0,
+    "google_places": 34.0,
+    "website_twitter": 30.0,
+    "website_schema": 28.0,
+    "website_jsonld": 26.0,
+    "website_img": 26.0,
     "website": 24.0,
 }
 
@@ -45,6 +49,12 @@ NEGATIVE_URL_MARKERS = (
     "partner",
     "sponsor",
     "cookie",
+    # ícones de redes sociais (quando a URL os nomeia; CDNs sem nome
+    # semântico caem na heurística de paleta)
+    "whatsapp",
+    "wpp",
+    "social",
+    "share-icon",
 )
 POSITIVE_URL_MARKERS = (
     "hero",
@@ -98,6 +108,53 @@ class CollectedImage:
         }
 
 
+# Desvio-padrão mínimo do luminance: uma imagem SÓLIDA (branco absoluto,
+# cor chapada, placeholder de fundo) nunca é foto de card — o gate de
+# tamanho/aspecto não pega esses casos (um 1080×1080 branco é quadrado
+# "perfeito" e pontuava ACIMA de fotos reais no ranking).
+MIN_PHOTO_DETAIL = 8.0
+
+
+def _detail_stddev(img: Image.Image) -> float:
+    """Desvio-padrão do luminance em miniatura 64px — proxy de detalhe."""
+    thumb = img.convert("L").resize((64, 64), Image.Resampling.BILINEAR)
+    return float(ImageStat.Stat(thumb).stddev[0])
+
+
+# Heurística de "cor de marca" (caso real: Arturito — o og:image do site
+# é o ÍCONE do WhatsApp: 77% dos pixels num verde saturado; URLs de CDN
+# sem nome semântico escapam dos marcadores de URL). Ícones/logos cobrem
+# a imagem com UMA cor saturada dominante; fotos reais têm paleta
+# distribuída. Penalidade suave no score — o ícone perde a disputa do
+# hero, mas continua disponível na galeria.
+ICON_PALETTE_DOMINANCE = 0.60
+ICON_PALETTE_SATURATION = 0.35
+ICON_PALETTE_PENALTY = 24.0
+
+
+def _palette_signal(img: Image.Image) -> float:
+    """Penalidade (0..ICON_PALETTE_PENALTY) para paleta dominada por uma
+    única cor saturada — assinatura de ícone/logo de marca."""
+    small = img.resize((16, 16), Image.Resampling.BILINEAR)
+    quantized = small.quantize(colors=12, method=Image.Quantize.MEDIANCUT)
+    colors = quantized.getcolors()
+    if not colors:
+        return 0.0
+    dominant_count, dominant_index = max(colors, key=lambda pair: pair[0])
+    share = dominant_count / (16 * 16)
+    if share < ICON_PALETTE_DOMINANCE:
+        return 0.0
+    palette = quantized.getpalette() or []
+    r = palette[dominant_index * 3]
+    g = palette[dominant_index * 3 + 1]
+    b = palette[dominant_index * 3 + 2]
+    mx, mn = max(r, g, b), min(r, g, b)
+    saturation = (mx - mn) / mx if mx else 0.0
+    if saturation < ICON_PALETTE_SATURATION:
+        return 0.0
+    return ICON_PALETTE_PENALTY * min(1.0, share / 0.85)
+
+
 def _dhash(img: Image.Image) -> int:
     """64-bit difference hash; robust enough to collapse CDN/resized copies."""
     gray = img.convert("L").resize((9, 8), Image.Resampling.LANCZOS)
@@ -133,8 +190,7 @@ def _score_candidate(candidate: ImageCandidate, img: Image.Image) -> tuple[float
 
     # Low-variance assets are commonly logos/placeholders. This is a small
     # signal only; source + dimensions remain more important.
-    thumb = img.convert("L").resize((64, 64), Image.Resampling.BILINEAR)
-    stddev = float(ImageStat.Stat(thumb).stddev[0])
+    stddev = _detail_stddev(img)
     detail = min(stddev / 64.0, 1.0) * 8.0
 
     path = urlsplit(candidate.url).path.lower()
@@ -144,6 +200,8 @@ def _score_candidate(candidate: ImageCandidate, img: Image.Image) -> tuple[float
     if any(marker in path for marker in POSITIVE_URL_MARKERS):
         url_signal += 3.0
 
+    palette_penalty = _palette_signal(img)
+
     components = {
         "source": source_score,
         "source_order": source_order,
@@ -151,6 +209,7 @@ def _score_candidate(candidate: ImageCandidate, img: Image.Image) -> tuple[float
         "aspect": aspect_score,
         "detail": detail,
         "url_signal": url_signal,
+        "palette": -palette_penalty,
     }
     return sum(components.values()), components
 
@@ -180,6 +239,14 @@ def prepare_image(
             raise ValueError(f"imagem pequena demais para foto: {width}x{height}")
 
         rgb = opened.convert("RGB")
+
+        # Gate de detalhe: imagem sólida/quase-sólida (branco absoluto,
+        # fundo chapado) passa em todos os gates dimensionais e ainda
+        # pontuava alto no ranking — nunca é foto de card. O stddev do
+        # luminance em miniatura é o discriminador barato e confiável.
+        if _detail_stddev(rgb) < MIN_PHOTO_DETAIL:
+            raise ValueError("imagem sem detalhe (branco/sólido) — não é foto")
+
         score, components = _score_candidate(candidate, rgb)
         perceptual_hash = _dhash(rgb)
 
