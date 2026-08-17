@@ -436,6 +436,90 @@ describe('OgImageModule — resolução, cache e aplicação do véu', () => {
     expect(card.querySelector('.collection-card__thumb').classList.contains('is-loaded')).toBe(false);
   });
 
+  test('escalonador limita a concorrência de downloads (max 4 em voo)', async () => {
+    const OgImageModuleClass = loadOgImageModule();
+    vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn(() => 'blob:conc-1') });
+
+    let inFlight = 0;
+    let maxInFlight = 0;
+    const request = vi.fn(async () => {
+      inFlight++;
+      maxInFlight = Math.max(maxInFlight, inFlight);
+      await new Promise((r) => setTimeout(r, 30));
+      inFlight--;
+      return { ok: true, blob: async () => new Blob(['j'], { type: 'image/jpeg' }) };
+    });
+    window.ApiService = { request };
+
+    const module = new OgImageModuleClass();
+    await module.init();
+
+    for (let i = 0; i < 10; i++) {
+      const card = document.createElement('div');
+      card.dataset.entityId = `ent_conc_${i}`;
+      card.innerHTML = '<div class="collection-card__media"><img class="collection-card__thumb" loading="lazy" alt=""><div class="collection-card__thumb-fallback"></div></div>';
+      document.body.appendChild(card);
+      module._queue(card);
+    }
+
+    await vi.waitFor(() => {
+      expect(request).toHaveBeenCalledTimes(10);
+    });
+    // cap de 4: nunca mais de 4 downloads de imagem em paralelo —
+    // a paginação/API fica com conexões livres na pool do browser
+    expect(maxInFlight).toBeLessThanOrEqual(4);
+  });
+
+  test('prioridade: ao trocar de página, cards novos pulam a frente dos ANTIGOS que esperam na fila', async () => {
+    const OgImageModuleClass = loadOgImageModule();
+    vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn(() => 'blob:prio-1') });
+
+    const order = [];
+    const request = vi.fn(async (method, path) => {
+      order.push(path);
+      if (path.includes('ent_old_a')) {
+        await new Promise((r) => setTimeout(r, 50)); // já estava em voo na troca
+      }
+      return { ok: true, blob: async () => new Blob(['j'], { type: 'image/jpeg' }) };
+    });
+    window.ApiService = { request };
+
+    const module = new OgImageModuleClass();
+    module._maxConcurrent = 1; // serializa: a ordem = prioridade no pop
+    await module.init();
+
+    const makeCard = (id) => {
+      const card = document.createElement('div');
+      card.dataset.entityId = id;
+      card.innerHTML = '<div class="collection-card__media"><img class="collection-card__thumb" loading="lazy" alt=""><div class="collection-card__thumb-fallback"></div></div>';
+      return card;
+    };
+
+    // Página A ativa: dois cards conectados, o primeiro começa (lento)
+    const oldA = makeCard('ent_old_a');
+    document.body.appendChild(oldA);
+    module._queue(oldA);
+    const oldB = makeCard('ent_old_b');
+    document.body.appendChild(oldB);
+    module._queue(oldB);
+
+    // Troca de página: cards antigos saem do DOM; a nova página entra
+    oldA.remove();
+    oldB.remove();
+    const curCard = makeCard('ent_cur');
+    document.body.appendChild(curCard);
+    module._queue(curCard);
+
+    await vi.waitFor(() => {
+      expect(request).toHaveBeenCalledTimes(3);
+    });
+    // old_a já estava EM VOO (não preempta) → cur (página atual) pula
+    // na frente do old_b, que ainda esperava na fila
+    expect(order[0]).toContain('ent_old_a');
+    expect(order[1]).toContain('ent_cur');
+    expect(order[2]).toContain('ent_old_b');
+  });
+
   test('prefetch da próxima página com entity_id resolve pelo hero da entity', async () => {
     const OgImageModuleClass = loadOgImageModule();
     vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn(() => 'blob:prefetch-ent-1') });

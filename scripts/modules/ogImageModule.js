@@ -46,6 +46,17 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
         // prefetch da próxima página (padrão ImagePrefetcher do feedmine)
         this._prefetchedPages = new Set();
         this._prefetchTimer = null;
+        // Escalonador de downloads (ago/2026): sem cap, cada página
+        // visitada disparava ~25 downloads em paralelo e SEGURAVA as 6
+        // conexões do navegador — a paginação ficava travada atrás das
+        // imagens. Fila com prioridade avaliada NA HORA do pop:
+        //   0 = card visível no viewport (página atual, acima da dobra)
+        //   1 = card no DOM (página atual, abaixo da dobra)
+        //   2 = card fora do DOM (páginas já navegadas — populam depois)
+        //   3 = prefetch da próxima página (último da fila)
+        this._waiting = [];
+        this._active = 0;
+        this._maxConcurrent = 4; // deixa folga para API/sync na pool do browser
     }
 
     /**
@@ -121,31 +132,87 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
         // não pode colidir com o default) ou site/lugar no legado
         const key = entityId ? `entity:${entityId}:rank:${rank}` : (url || `place:${placeId}`);
 
-        let promise = this._pending.get(key);
-        if (!promise) {
-            promise = entityId
-                ? this._resolveEntityImage(entityId, rank, url, placeId, key)
-                : this._resolve(url, placeId, key);
-            this._pending.set(key, promise);
-        }
-        promise.then((objectUrl) => {
-            if (!objectUrl) {
-                // sem imagem em nenhuma fonte — véu de fallback
-                this._applyFallback(card);
-                return;
+        // Enfileira — o ESCALONADOR decide a ordem (viewport > página
+        // atual > páginas já navegadas > prefetch) e limita a
+        // concorrência; a resolução em si é deduplicada por chave.
+        this._waiting.push({
+            card: card,
+            key: key,
+            start: () => {
+                let promise = this._pending.get(key);
+                if (!promise) {
+                    promise = entityId
+                        ? this._resolveEntityImage(entityId, rank, url, placeId, key)
+                        : this._resolve(url, placeId, key);
+                    this._pending.set(key, promise);
+                }
+                return promise;
             }
-            this._applyVeil(card, objectUrl);
-        }).catch(() => {
-            // falha de rede/api — véu de fallback, card nunca fica cru
-            this._applyFallback(card);
-            card.dataset.ogFailed = '1';
         });
+        this._drain();
 
         // Prefetch da próxima página (debounce): depois que a página
         // atual terminou de enfileirar, pré-resolve as imagens da página
         // seguinte — o clique em "next" encontra o véu pronto.
         clearTimeout(this._prefetchTimer);
         this._prefetchTimer = setTimeout(() => this._prefetchNextPage(), 1500);
+    }
+
+    /**
+     * Prioridade do item NA HORA do pop (não no enfileiramento):
+     * a troca de página remove os cards antigos do DOM — eles afundam
+     * para a prioridade 2 sozinhos, e a página nova assume a frente.
+     * @param {HTMLElement|null} card - Card alvo (null = prefetch)
+     */
+    _cardPriority(card) {
+        if (!card || typeof card.isConnected === 'undefined') return 3;
+        if (!card.isConnected) return 2;
+        const rect = card.getBoundingClientRect();
+        if (rect && rect.top < window.innerHeight && rect.bottom > 0) return 0;
+        return 1;
+    }
+
+    /**
+     * Escalonador: mantém até _maxConcurrent resoluções em voo e
+     * escolhe sempre o item de MAIOR prioridade entre os enfileirados
+     * (viewport > página atual > páginas navegadas > prefetch).
+     */
+    _drain() {
+        while (this._active < this._maxConcurrent && this._waiting.length > 0) {
+            let bestIndex = 0;
+            let bestPriority = Infinity;
+            for (let i = 0; i < this._waiting.length; i++) {
+                const priority = this._cardPriority(this._waiting[i].card);
+                if (priority < bestPriority) {
+                    bestPriority = priority;
+                    bestIndex = i;
+                }
+            }
+            const [item] = this._waiting.splice(bestIndex, 1);
+            this._active++;
+            item.start()
+                .then((objectUrl) => {
+                    if (!item.card) return; // prefetch: só aquece o cache
+                    if (!objectUrl) {
+                        // sem imagem em nenhuma fonte — véu de fallback
+                        this._applyFallback(item.card);
+                        return;
+                    }
+                    this._applyVeil(item.card, objectUrl);
+                })
+                .catch(() => {
+                    if (!item.card) return;
+                    // falha de rede/api — véu de fallback, card nunca fica cru
+                    this._applyFallback(item.card);
+                    if (item.card.dataset) {
+                        item.card.dataset.ogFailed = '1';
+                    }
+                })
+                .finally(() => {
+                    this._active--;
+                    this._drain();
+                });
+        }
     }
 
     /**
@@ -228,11 +295,24 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
                     const placeId = d.place_id || d.google_place_id || item.place_id || '';
                     const entityId = item.entity_id || d.entity_id || '';
                     const key = entityId ? `entity:${entityId}:rank:0` : (url || (placeId ? `place:${placeId}` : ''));
-                    if (key && !this._pending.has(key)) {
-                        const promise = entityId
-                            ? this._resolveEntityImage(entityId, 0, url, placeId, key)
-                            : this._resolve(url, placeId, key);
-                        this._pending.set(key, promise);
+                    if (key && !this._pending.has(key) && !this._waiting.some((w) => w.key === key)) {
+                        // Prefetch entra no escalonador na prioridade MAIS
+                        // baixa — nunca disputa conexão com a página atual
+                        this._waiting.push({
+                            card: null,
+                            key: key,
+                            start: () => {
+                                let promise = this._pending.get(key);
+                                if (!promise) {
+                                    promise = entityId
+                                        ? this._resolveEntityImage(entityId, 0, url, placeId, key)
+                                        : this._resolve(url, placeId, key);
+                                    this._pending.set(key, promise);
+                                }
+                                return promise;
+                            }
+                        });
+                        this._drain();
                     }
                 }
             }).catch((error) => {
