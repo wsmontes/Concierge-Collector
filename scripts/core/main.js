@@ -533,14 +533,6 @@ function cleanupBrowserData() {
 
         console.log('Browser data cleanup complete');
 
-        // Show notification if uiUtils is available
-        if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
-            // Slight delay to ensure notification system is ready
-            setTimeout(() => {
-                window.uiUtils.showNotification('Browser data cleaned up successfully', 'info');
-            }, 1000);
-        }
-
     } catch (error) {
         console.error('Error during browser data cleanup:', error);
     }
