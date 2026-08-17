@@ -434,6 +434,28 @@ if (typeof window.UIManager === 'undefined') {
         }
 
         /**
+         * Ids de curadorias soft-deletadas LOCALMENTE (tombstones): o
+         * DELETE ainda não foi empurrado pelo sync — a página do servidor
+         * segue trazendo o card e ele "não sumia" ao apagar (2026-08-16).
+         * O fetch server-driven filtra esses ids antes de montar o cache.
+         * @returns {Promise<Set<string>>}
+         */
+        async _localDeletedCurationIds() {
+            const ids = new Set();
+            if (!window.DataStore?.db) return ids;
+            try {
+                const rows = await window.DataStore.db.curations
+                    .where('status').equals('deleted').toArray();
+                for (const row of rows) {
+                    if (row?.curation_id) ids.add(row.curation_id);
+                }
+            } catch (error) {
+                console.warn('Falha ao ler tombstones locais:', error);
+            }
+            return ids;
+        }
+
+        /**
          * Re-renderiza a partir do CACHE LOCAL — eventos concierge:data-changed
          * vêm de escrita local; buscar o servidor aqui criava um loop de
          * fetch+render a cada rajada do sync (tempestade de re-render).
@@ -457,7 +479,7 @@ if (typeof window.UIManager === 'undefined') {
                                 if (window.DataStore?.db) {
                                     pending = (await window.DataStore.db.curations
                                         .where('sync.status').equals('pending').toArray())
-                                        .filter(c => !serverIds.has(c.curation_id));
+                                        .filter(c => !serverIds.has(c.curation_id) && c.status !== 'deleted');
                                 }
                             } catch (error) {
                                 console.warn('Falha ao mesclar pendências locais:', error);
@@ -1307,6 +1329,14 @@ if (typeof window.UIManager === 'undefined') {
                 // sobre a antiga — página 1 com 50 cards). openPage
                 // SUBSTITUI items e não depende de cursor.
                 const { items } = await browser.openPage(page);
+                // Tombstones locais: curadoria soft-deletada AQUI não pode
+                // voltar da página do servidor (o push do DELETE só roda no
+                // próximo ciclo de sync) — o card "não sumia" ao apagar.
+                // browser.items é o que o merge/render consomem abaixo.
+                const deletedIds = await this._localDeletedCurationIds();
+                if (deletedIds.size) {
+                    browser.items = items.filter((c) => !deletedIds.has(c.curation_id));
+                }
             } catch (error) {
                 console.warn('Server curations unavailable — usando cache local:', error);
                 // Header de paginação usa browser.total quando > 0 — sem o
@@ -1379,7 +1409,7 @@ if (typeof window.UIManager === 'undefined') {
                     if (window.DataStore?.db) {
                         localPending = (await window.DataStore.db.curations
                             .where('sync.status').equals('pending').toArray())
-                            .filter(c => !serverIds.has(c.curation_id));
+                            .filter(c => !serverIds.has(c.curation_id) && c.status !== 'deleted');
                     }
                 } catch (error) {
                     console.warn('Falha ao mesclar pendências locais:', error);
