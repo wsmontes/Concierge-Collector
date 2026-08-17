@@ -274,6 +274,42 @@ describe('OgImageModule — resolução, cache e aplicação do véu', () => {
     expect(thumb.classList.contains('is-loaded')).toBe(false);
   });
 
+  test('card com SÓ data-entity-id (sem website local) é enfileirado pelo scan do init', async () => {
+    // Regressão de produção: o registro local da entity pode não ter
+    // website (IndexedDB desatualizado) — sem data-og-source o card
+    // ficava FORA da fila e nunca ganhava imagem (galeria funcionava,
+    // card não).
+    const OgImageModuleClass = loadOgImageModule();
+    vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn(() => 'blob:entity-only-1') });
+
+    const request = vi.fn().mockResolvedValue({
+      ok: true,
+      blob: async () => new Blob(['entity-jpeg'], { type: 'image/jpeg' })
+    });
+    window.ApiService = { request };
+
+    // Card ANTES do init: o scan inicial precisa alcançá-lo
+    const card = document.createElement('div');
+    card.dataset.entityId = 'ent_no_website';
+    card.innerHTML = `
+      <div class="collection-card__media">
+        <img class="collection-card__thumb" loading="lazy" alt="" />
+        <div class="collection-card__thumb-fallback"></div>
+      </div>
+    `;
+    document.body.appendChild(card);
+
+    const module = new OgImageModuleClass();
+    await module.init();
+
+    await vi.waitFor(() => {
+      const thumb = card.querySelector('.collection-card__thumb');
+      expect(thumb.src).toContain('blob:entity-only-1');
+      expect(thumb.classList.contains('is-loaded')).toBe(true);
+    });
+    expect(request).toHaveBeenCalledWith('GET', '/entities/ent_no_website/image?rank=0');
+  });
+
   test('card com data-entity-id resolve pelo hero ranqueado da entity (rank=0)', async () => {
     const OgImageModuleClass = loadOgImageModule();
     vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn(() => 'blob:entity-1') });

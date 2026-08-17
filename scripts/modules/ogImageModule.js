@@ -52,19 +52,24 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
             return;
         }
 
-        // Cards já renderizados antes do init
-        document.querySelectorAll('[data-og-source]').forEach((card) => this._queue(card));
+        // Cards já renderizados antes do init. ATENÇÃO: o seletor inclui
+        // data-entity-id — um card cujo registro local não tem website
+        // (IndexedDB desatualizado) NÃO ganha data-og-source, mas o
+        // servidor resolve as fontes pela entity; sem o seletor, esses
+        // cards nunca entravam na fila (galeria funcionava, card não).
+        const IMAGE_SLOTS = '[data-og-source], [data-og-place-id], [data-entity-id]';
+        document.querySelectorAll(IMAGE_SLOTS).forEach((card) => this._queue(card));
 
         // Cards renderizados depois (listas/paginação/import)
         this.observer = new MutationObserver((mutations) => {
             for (const mutation of mutations) {
                 for (const node of mutation.addedNodes) {
                     if (node.nodeType !== 1) continue;
-                    if (node.matches && node.matches('[data-og-source]')) {
+                    if (node.matches && node.matches(IMAGE_SLOTS)) {
                         this._queue(node);
                     }
                     if (node.querySelectorAll) {
-                        node.querySelectorAll('[data-og-source]').forEach((card) => this._queue(card));
+                        node.querySelectorAll(IMAGE_SLOTS).forEach((card) => this._queue(card));
                     }
                 }
             }
