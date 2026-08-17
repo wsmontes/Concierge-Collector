@@ -28,6 +28,22 @@ class TestCurationEndpoints:
         data = response.json()
         assert data["limit"] == 10
 
+    def test_search_curations_sort_by_last_modified_default(self, client, auth_headers):
+        """Últimas modificações primeiro é o padrão do modo offset (ago/2026)"""
+        response = client.get(
+            "/api/v3/curations/search?limit=50&sort_by=updated_at&sort_order=desc",
+            headers=auth_headers,
+        )
+        assert response.status_code == 200
+        items = response.json()["items"]
+        if len(items) >= 2:
+            updated = [(item.get("updated_at") or item.get("updatedAt") or "") for item in items]
+            assert updated == sorted(updated, reverse=True)
+
+    def test_search_curations_invalid_sort_order_rejected(self, client, auth_headers):
+        response = client.get("/api/v3/curations/search?sort_order=sideways", headers=auth_headers)
+        assert response.status_code == 422
+
     def test_search_curations_filter_by_status(self, client, auth_headers):
         """Test filtering curations by status"""
         response = client.get("/api/v3/curations/search?status=draft", headers=auth_headers)

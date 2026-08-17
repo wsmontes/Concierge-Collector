@@ -43,6 +43,10 @@ class CurationBrowser {
   _params(afterId) {
     const p = { limit: this.pageSize };
     if (afterId != null) p.after_id = afterId;
+    // Ordenação padrão: últimas modificações primeiro (server-side —
+    // a paginação offset depende da ordem estável do servidor)
+    p.sort_by = this.scope.sortBy || 'updated_at';
+    p.sort_order = this.scope.sortOrder || 'desc';
     if (this.scope.curatorId) p.curator_id = this.scope.curatorId;
     // 'all' é o placeholder dos selects intocados — NUNCA vira filtro
     // (mesmo guard do entityBrowser; latente: mudar outro filtro com o

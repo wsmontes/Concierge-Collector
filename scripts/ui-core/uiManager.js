@@ -735,21 +735,25 @@ if (typeof window.UIManager === 'undefined') {
 
         /**
          * Saved views (auditoria, ponto 20): liga/desliga um preset.
-         * My drafts escreve nos selects (status=draft + curator atual);
-         * Unlinked/Recently added são flags de escopo enviadas ao
-         * /curations/search (unlinked, created_after com janela de 24h).
-         * @param {string} name - 'my-drafts' | 'unlinked' | 'recent'
+         * 'my-curation' escreve no select de curator (tudo que é meu);
+         * 'drafts' escreve no select de status — os DOIS juntos = meus
+         * rascunhos. Unlinked/Recently added são flags de escopo
+         * enviadas ao /curations/search.
+         * @param {string} name - 'my-curation' | 'drafts' | 'unlinked' | 'recent'
          */
         async toggleSavedView(name) {
             const chip = document.querySelector(`[data-saved-view="${name}"]`);
             const isActive = chip && chip.classList.contains('is-active');
 
-            if (name === 'my-drafts') {
+            if (name === 'drafts') {
                 const statusEl = document.getElementById('curation-status-filter');
+                if (statusEl) {
+                    statusEl.value = isActive ? 'all' : 'draft';
+                }
+            } else if (name === 'my-curation') {
                 const curatorEl = document.getElementById('curation-curator-filter');
                 if (!isActive) {
                     const currentCurator = await dataStorage.getCurrentCurator();
-                    if (statusEl) statusEl.value = 'draft';
                     if (currentCurator && currentCurator.id) {
                         this._setSelectOption(curatorEl, currentCurator.id, currentCurator.name || currentCurator.id);
                         this._savedViewCuratorId = currentCurator.id;
@@ -757,7 +761,6 @@ if (typeof window.UIManager === 'undefined') {
                         this._savedViewCuratorId = null;
                     }
                 } else {
-                    if (statusEl) statusEl.value = 'all';
                     if (curatorEl) curatorEl.value = 'all';
                     this._savedViewCuratorId = null;
                 }
@@ -800,9 +803,10 @@ if (typeof window.UIManager === 'undefined') {
             chips.forEach((chip) => {
                 const name = chip.dataset.savedView;
                 let active = false;
-                if (name === 'my-drafts') {
-                    active = statusVal === 'draft'
-                        && (!this._savedViewCuratorId || curatorVal === this._savedViewCuratorId);
+                if (name === 'drafts') {
+                    active = statusVal === 'draft';
+                } else if (name === 'my-curation') {
+                    active = !!this._savedViewCuratorId && curatorVal === this._savedViewCuratorId;
                 } else if (name === 'unlinked') {
                     active = !!this._savedViewFlags.unlinked;
                 } else if (name === 'recent') {
@@ -1322,6 +1326,14 @@ if (typeof window.UIManager === 'undefined') {
                     return created >= recentCutoff;
                 });
             }
+
+            // Ordenação padrão: últimas modificações primeiro (paridade
+            // com o servidor — sort_by=updated_at&sort_order=desc)
+            filtered.sort(function(a, b) {
+                var ta = new Date(a.updatedAt || a.updated_at || 0).getTime() || 0;
+                var tb = new Date(b.updatedAt || b.updated_at || 0).getTime() || 0;
+                return tb - ta;
+            });
 
             this.curationPagination.currentPage = 0;
 

@@ -2640,23 +2640,10 @@
   }
 }
 
-/* Search com ícone real dentro do campo */
+/* Search — a lupinha foi REMOVIDA (ago/2026): ficava por cima do
+   placeholder em algumas larguras; o campo limpo lê melhor */
 .search-field {
   position: relative;
-}
-
-.search-field__icon {
-  position: absolute;
-  left: 0.75rem;
-  top: 50%;
-  transform: translateY(-50%);
-  font-size: 1.125rem;
-  color: var(--color-neutral-400);
-  pointer-events: none;
-}
-
-.search-field__input {
-  padding-left: 2.5rem;
 }
 
 .search-field__input::placeholder {

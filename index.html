@@ -37,7 +37,7 @@
     <link rel="stylesheet" href="styles/design-system.css?v=20260816-2">
 
     <!-- 2. Component Library (reusable components) -->
-    <link rel="stylesheet" href="styles/components.css?v=20260816-5">
+    <link rel="stylesheet" href="styles/components.css?v=20260816-6">
 
     <!-- 3. Application-specific Styles -->
     <link rel="stylesheet" href="styles/application.css?v=20260816-1">
@@ -587,9 +587,8 @@
                     <!-- Search (ícone real dentro do campo) -->
                     <div class="filters-bar__search">
                         <div class="search-field">
-                            <span class="material-icons search-field__icon" aria-hidden="true">search</span>
                             <input type="text" id="curation-search" placeholder="Search curations..."
-                                class="input input-md search-field__input" aria-label="Search curations" />
+                                class="input input-md" aria-label="Search curations" />
                         </div>
                     </div>
 
@@ -618,10 +617,15 @@
                      controles (estado visível, sem filtro fantasma);
                      toggle desliga. Estado gerenciado no uiManager. -->
                 <div id="curation-saved-views" class="saved-views" role="group" aria-label="Saved views">
-                    <button type="button" class="saved-view-chip" data-saved-view="my-drafts"
+                    <button type="button" class="saved-view-chip" data-saved-view="my-curation"
                         aria-pressed="false">
-                        <span class="material-icons" aria-hidden="true">description</span>
-                        <span>My drafts</span>
+                        <span class="material-icons" aria-hidden="true">person</span>
+                        <span>My curation</span>
+                    </button>
+                    <button type="button" class="saved-view-chip" data-saved-view="drafts"
+                        aria-pressed="false">
+                        <span class="material-icons" aria-hidden="true">drafts</span>
+                        <span>Drafts</span>
                     </button>
                     <button type="button" class="saved-view-chip" data-saved-view="unlinked"
                         aria-pressed="false">
@@ -688,9 +692,8 @@
                     <!-- Search (ícone real dentro do campo) -->
                     <div class="filters-bar__search">
                         <div class="search-field">
-                            <span class="material-icons search-field__icon" aria-hidden="true">search</span>
                             <input type="text" id="entity-search" placeholder="Search entities..."
-                                class="input input-md search-field__input" aria-label="Search entities" />
+                                class="input input-md" aria-label="Search entities" />
                         </div>
                     </div>
 
@@ -948,7 +951,7 @@
     <script src="scripts/storage/databaseDiagnostics.js"></script>
     <script src="scripts/storage/dataStore.js"></script>
     <script src="scripts/services/apiService.js?v=20260814-3"></script>
-    <script src="scripts/services/curationBrowser.js?v=20260813-2"></script>
+    <script src="scripts/services/curationBrowser.js?v=20260816-1"></script>
     <script src="scripts/services/entityBrowser.js?v=20260814-3"></script>
     <script src="scripts/sync/syncManagerV3.js"></script>
     <script src="scripts/sync/importManager.js?v=20260813-3"></script>
@@ -963,7 +966,7 @@
     <!-- Application modules - keeping essential ones -->
     <script src="scripts/services/promptTemplate.js?v=20260814-1"></script>
     <script src="scripts/services/conceptMatcher.js"></script>
-    <script src="scripts/ui-core/uiManager.js?v=20260816-3"></script>
+    <script src="scripts/ui-core/uiManager.js?v=20260816-4"></script>
 
     <!-- Module implementations - V3 Compatible -->
     <script src="scripts/modules/safetyUtils.js?v=20260813-1"></script>

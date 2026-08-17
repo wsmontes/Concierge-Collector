@@ -385,6 +385,15 @@ def search_curations(
         False,
         description="Apenas curadorias órfãs (entity_id ausente/vazio) — saved view 'Unlinked'",
     ),
+    sort_by: str = Query(
+        "updated_at",
+        description="Campo de ordenação do modo offset: updated_at (padrão) ou created_at",
+    ),
+    sort_order: str = Query(
+        "desc",
+        pattern="^(asc|desc)$",
+        description="Direção da ordenação do modo offset: desc (padrão) ou asc",
+    ),
     limit: int = Query(50, ge=1, le=1000),
     offset: int = Query(0, ge=0),
     after_id: Optional[str] = Query(
@@ -448,7 +457,18 @@ def search_curations(
         return PaginatedResponse(items=items[:limit], total=total, limit=limit, offset=offset)
 
     total = db.curations.count_documents(query)
-    cursor = db.curations.find(query, CURATION_RESPONSE_PROJECTION).sort("_id", 1).skip(offset).limit(limit)
+    # Ordenação do modo offset: últimas modificações por padrão (pedido
+    # do concierge, ago/2026 — a lista abria em ordem de inserção).
+    # _id como desempate garante paginação estável com updatedAt iguais.
+    _SORT_FIELDS = {"updated_at": "updatedAt", "created_at": "createdAt"}
+    sort_field = _SORT_FIELDS.get(sort_by, "updatedAt")
+    sort_dir = 1 if sort_order == "asc" else -1
+    cursor = (
+        db.curations.find(query, CURATION_RESPONSE_PROJECTION)
+        .sort([(sort_field, sort_dir), ("_id", 1)])
+        .skip(offset)
+        .limit(limit)
+    )
 
     items = []
     for doc in cursor:
