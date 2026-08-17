@@ -15,7 +15,7 @@ import math
 from typing import Dict, Iterable, List
 from urllib.parse import urlsplit
 
-from PIL import Image, ImageStat
+from PIL import Image, ImageFilter, ImageStat
 
 # Pesos de fonte (rebalanceio ago/2026): og:image recebia 40 pontos de
 # confiança cega — sites usam o og para logo/ícone/placeholder (casos
@@ -155,6 +155,34 @@ def _palette_signal(img: Image.Image) -> float:
     return ICON_PALETTE_PENALTY * min(1.0, share / 0.85)
 
 
+# Bônus de "cara de fotografia" (caso real: Arturito — o site publica o
+# ÍCONE do WhatsApp em 600 E 1920px como imagem de conteúdo; o ícone
+# grande ganhava do hero pela RESOLUÇÃO). Fotografias têm textura
+# distribuída (energia de borda alta em toda a miniatura) e entropia de
+# histograma alta; logos/ícones têm áreas chapadas (grad baixo) e
+# paleta pobre (entropia baixa). Calibrado nos candidatos reais do
+# site do Arturito: ícones grad≈28/ent≈6.4; fotos grad 32–51/ent 7.3+.
+PHOTO_TEXTURE_FLOOR = 26.0
+PHOTO_TEXTURE_FULL = 52.0
+PHOTO_ENTROPY_FLOOR = 6.5
+PHOTO_BONUS = 20.0
+
+
+def _photo_likeness(img: Image.Image) -> float:
+    """Score 0..PHOTO_BONUS: privilégio para fotografias sobre logos."""
+    thumb = img.convert("L").resize((64, 64), Image.Resampling.BILINEAR)
+    edges = thumb.filter(ImageFilter.FIND_EDGES)
+    grad = float(ImageStat.Stat(edges).mean[0])
+    raw = max(0.0, min((grad - PHOTO_TEXTURE_FLOOR) / (PHOTO_TEXTURE_FULL - PHOTO_TEXTURE_FLOOR), 1.0))
+    total = 64 * 64
+    hist = thumb.histogram()
+    probs = [h / total for h in hist]
+    entropy = -sum(p * math.log2(p) for p in probs if p > 0)
+    if entropy < PHOTO_ENTROPY_FLOOR:
+        raw *= 0.25
+    return raw * PHOTO_BONUS
+
+
 def _dhash(img: Image.Image) -> int:
     """64-bit difference hash; robust enough to collapse CDN/resized copies."""
     gray = img.convert("L").resize((9, 8), Image.Resampling.LANCZOS)
@@ -201,6 +229,7 @@ def _score_candidate(candidate: ImageCandidate, img: Image.Image) -> tuple[float
         url_signal += 3.0
 
     palette_penalty = _palette_signal(img)
+    photo_bonus = _photo_likeness(img)
 
     components = {
         "source": source_score,
@@ -210,6 +239,7 @@ def _score_candidate(candidate: ImageCandidate, img: Image.Image) -> tuple[float
         "detail": detail,
         "url_signal": url_signal,
         "palette": -palette_penalty,
+        "photo": photo_bonus,
     }
     return sum(components.values()), components
 
