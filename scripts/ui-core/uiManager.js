@@ -274,7 +274,14 @@ if (typeof window.UIManager === 'undefined') {
                 } else {
                     this.updateSyncActivityIndicator('Synced successfully', 'success');
                 }
-                this.scheduleDataRefresh('sync-complete', 80);
+                // Quick sync vazio (ciclo de 60s sem nada empurrado) não
+                // justifica re-render: o rebuild completo da lista recriava
+                // todos os cards e re-aplicava as imagens com fade — "imagens
+                // piscando" a cada minuto (2026-08-16). Full sync (sem
+                // `mode:'quick'`) continua refrescando: ele puxa do servidor.
+                if (!(e?.detail?.mode === 'quick' && e?.detail?.changed === false)) {
+                    this.scheduleDataRefresh('sync-complete', 80);
+                }
             });
 
             window.addEventListener('concierge:sync-start', (e) => {

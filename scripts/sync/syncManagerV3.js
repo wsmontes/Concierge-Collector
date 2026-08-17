@@ -802,7 +802,11 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                 stats: this.stats,
                 failed: this.stats.failed,
                 pending: pendingAfter,
-                mode: 'quick'
+                mode: 'quick',
+                // Ciclo vazio (60s sem nada pendente) não muda nada no banco —
+                // o uiManager usa a flag para NÃO re-renderizar a lista
+                // (rebuild re-aplicava todas as imagens → piscada a cada minuto)
+                changed: this.stats.attempted > 0 || this.stats.failed > 0
             });
         } catch (error) {
             this.log.warn('Quick sync failed:', error.message);
