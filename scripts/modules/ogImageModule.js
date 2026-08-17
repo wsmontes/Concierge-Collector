@@ -37,7 +37,12 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
         this.observer = null;
         // url do site -> Promise<objectURL|null> (dedupe de cards do mesmo site)
         this._pending = new Map();
-        this._cacheName = 'og-images-v1';
+        // v2: namespace novo (ago/2026) — entradas da v1 não têm TTL e
+        // ficariam servindo imagens antigas (brancos/ícones) para sempre
+        this._cacheName = 'og-images-v2';
+        // TTL client-side: o ranking SERVER-SIDE muda com as heurísticas
+        // (1h no servidor) — sem TTL o blob velho venceria o ranking novo
+        this._clientCacheTtlMs = 24 * 3600 * 1000;
         // prefetch da próxima página (padrão ImagePrefetcher do feedmine)
         this._prefetchedPages = new Set();
         this._prefetchTimer = null;
@@ -292,6 +297,16 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
             const cache = await caches.open(this._cacheName);
             const hit = await cache.match(url);
             if (!hit) return null;
+            // TTL client-side: entradas antigas não podem vencer um
+            // ranking server-side novo (caso Ryo/Arturito — o navegador
+            // guardava o blob branco/ícone com a mesma chave). Entradas
+            // legadas sem o header ficam como "frescas" (compat).
+            const headers = hit.headers;
+            const cachedAt = Number(headers && headers.get ? headers.get('x-cached-at') : 0) || 0;
+            if (cachedAt && Date.now() - cachedAt > this._clientCacheTtlMs) {
+                await cache.delete(url);
+                return null;
+            }
             const blob = await hit.blob();
             return blob && blob.size > 0 ? URL.createObjectURL(blob) : null;
         } catch (error) {
@@ -309,7 +324,15 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
         if (!window.caches) return;
         try {
             const cache = await caches.open(this._cacheName);
-            await cache.put(url, new Response(blob, { headers: { 'Content-Type': blob.type } }));
+            await cache.put(
+                url,
+                new Response(blob, {
+                    headers: {
+                        'Content-Type': blob.type,
+                        'x-cached-at': String(Date.now())
+                    }
+                })
+            );
             // LRU manual: o browser decide a cota, mas ~200 imagens (60-120KB)
             // são suficientes para o acervo local — além disso, remove as
             // entradas mais antigas em ordem de inserção (feedmine

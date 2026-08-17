@@ -463,6 +463,43 @@ describe('OgImageModule — resolução, cache e aplicação do véu', () => {
     });
   });
 
+  test('entrada de cache com TTL vencido (24h) vira miss e é apagada', async () => {
+    // Regressão Ryo/Arturito: o navegador guardava o blob BRANCO/ícone
+    // com a chave entity:<id>:rank:0 — sem TTL, o card mostraria a
+    // imagem velha mesmo com o ranking server-side corrigido.
+    const OgImageModuleClass = loadOgImageModule();
+    const oldBlob = new Blob(['old-bytes'], { type: 'image/jpeg' });
+    const staleHeaders = new Headers({ 'x-cached-at': String(Date.now() - 25 * 3600 * 1000) });
+    const fakeCache = {
+      match: vi.fn().mockResolvedValue({ blob: async () => oldBlob, headers: staleHeaders }),
+      put: vi.fn().mockResolvedValue(undefined),
+      delete: vi.fn().mockResolvedValue(true)
+    };
+    window.caches = { open: vi.fn().mockResolvedValue(fakeCache) };
+
+    const module = new OgImageModuleClass();
+    const url = await module._readCache('entity:e1:rank:0');
+    expect(url).toBeNull();
+    expect(fakeCache.delete).toHaveBeenCalledWith('entity:e1:rank:0');
+  });
+
+  test('entrada de cache FRESCA (com x-cached-at recente) é reusada', async () => {
+    const OgImageModuleClass = loadOgImageModule();
+    vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn(() => 'blob:fresh-1') });
+    const freshHeaders = new Headers({ 'x-cached-at': String(Date.now()) });
+    const fakeCache = {
+      match: vi.fn().mockResolvedValue({ blob: async () => new Blob(['f'], { type: 'image/jpeg' }), headers: freshHeaders }),
+      put: vi.fn().mockResolvedValue(undefined),
+      delete: vi.fn()
+    };
+    window.caches = { open: vi.fn().mockResolvedValue(fakeCache) };
+
+    const module = new OgImageModuleClass();
+    const url = await module._readCache('entity:e1:rank:0');
+    expect(url).toContain('blob:fresh-1');
+    expect(fakeCache.delete).not.toHaveBeenCalled();
+  });
+
   test('cache quente no Cache Storage dispensa a API', async () => {
     const OgImageModuleClass = loadOgImageModule();
     vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn(() => 'blob:cached-1') });
