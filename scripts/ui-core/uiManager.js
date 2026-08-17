@@ -290,6 +290,41 @@ if (typeof window.UIManager === 'undefined') {
                 this.updateSyncActivityIndicator('Syncing data... Changes may be delayed until sync completes.', 'syncing');
             });
 
+            // Resize muda as colunas do grid → pageSize muda (colunas × 10).
+            // Rebusca a página 0 com o tamanho novo — o offset do servidor
+            // e a paginação client-side precisam bater com o grid.
+            let gridResizeDebounce = null;
+            window.addEventListener('resize', () => {
+                clearTimeout(gridResizeDebounce);
+                gridResizeDebounce = setTimeout(() => {
+                    const tab = this.currentTab === 'entities' ? 'entities' : 'curations';
+                    const before = tab === 'entities'
+                        ? (this.entityPagination && this.entityPagination.pageSize)
+                        : (this.curationPagination && this.curationPagination.pageSize);
+                    this._applyGridPageSize(tab);
+                    const after = tab === 'entities'
+                        ? this.entityPagination.pageSize
+                        : this.curationPagination.pageSize;
+                    if (before === after) return; // mesma coluna: nada a fazer
+
+                    if (tab === 'entities') {
+                        this.entityPagination.currentPage = 0;
+                        if (!this._entitiesLocalMode && window.EntityBrowser && window.EntityBrowser.openPage) {
+                            this._loadEntitiesFromServer(this.containers.entities, { page: 0 });
+                        } else {
+                            this.refreshCurrentTabDataLocal();
+                        }
+                        return;
+                    }
+                    this.curationPagination.currentPage = 0;
+                    if (!this._curationsLocalMode && window.CurationBrowser && window.CurationBrowser.openPage) {
+                        this._loadCurationsFromServer(this.containers.curations, { page: 0 });
+                    } else {
+                        this.refreshCurrentTabDataLocal();
+                    }
+                }, 200);
+            });
+
             window.addEventListener('concierge:sync-error', (e) => {
                 console.log('UI: Sync error...', e.detail);
                 this.isSyncInProgress = false;
@@ -352,6 +387,50 @@ if (typeof window.UIManager === 'undefined') {
                     console.warn("[uiManager] Data refresh failed:", err?.message || err);
                 });
             }, delayMs);
+        }
+
+        /**
+         * Colunas do grid ativo — espelha os breakpoints do
+         * .collection-grid em components.css: 1 → 2 (768px) → 3 (1280px);
+         * a aba Entities ganha 4ª coluna em ≥1536px.
+         * @param {string} tab - 'curations' | 'entities'
+         * @returns {number} 1-4
+         */
+        _computeGridColumns(tab) {
+            const matches = (q) => !!(window.matchMedia && window.matchMedia(q).matches);
+            if (tab === 'entities' && matches('(min-width: 1536px)')) return 4;
+            if (matches('(min-width: 1280px)')) return 3;
+            if (matches('(min-width: 768px)')) return 2;
+            return 1;
+        }
+
+        /**
+         * Page size alinhado ao grid: colunas × 10 (3 colunas → 30) — a
+         * última linha da página fecha completa, sem card órfão embaixo.
+         * @param {string} tab - 'curations' | 'entities'
+         * @returns {number}
+         */
+        _pageSizeForTab(tab) {
+            return this._computeGridColumns(tab) * 10;
+        }
+
+        /**
+         * Propaga o pageSize calculado para o estado de paginação e para
+         * o browser (o offset do servidor usa browser.pageSize).
+         * @param {string} tab - 'curations' | 'entities'
+         */
+        _applyGridPageSize(tab) {
+            const size = this._pageSizeForTab(tab);
+            if (tab === 'entities') {
+                if (!this.entityPagination) {
+                    this.entityPagination = { currentPage: 0, pageSize: size, hasMore: true };
+                }
+                this.entityPagination.pageSize = size;
+                if (window.EntityBrowser) window.EntityBrowser.pageSize = size;
+                return;
+            }
+            this.curationPagination.pageSize = size;
+            if (window.CurationBrowser) window.CurationBrowser.pageSize = size;
         }
 
         /**
@@ -1214,6 +1293,9 @@ if (typeof window.UIManager === 'undefined') {
         async _loadCurationsFromServer(container, { resetScope = false, page = 0 } = {}) {
             const browser = window.CurationBrowser;
             this._curationsLocalMode = false;
+            // pageSize dinâmico ANTES do fetch: múltiplo das colunas do
+            // grid (30 no desktop 3-col) — browser e estado juntos
+            this._applyGridPageSize('curations');
             try {
                 // resetScope=true só no load inicial: o openScope({}) incondicional
                 // que havia aqui apagava o escopo definido por _reloadOrFilterCurations
@@ -1317,6 +1399,7 @@ if (typeof window.UIManager === 'undefined') {
 
         /** Renderiza a lista a partir do cache local (offline/fallback). */
         async _loadCurationsFromLocal(container) {
+            this._applyGridPageSize('curations');
             // Modo local: o renderCurationsPage passa a paginar client-side
             // sobre o cache INTEIRO (igual entities) — sem isso o dump
             // pós-sync renderizava tudo numa página só em produção.
@@ -1748,6 +1831,8 @@ if (typeof window.UIManager === 'undefined') {
         async _loadEntitiesFromServer(container, { resetScope = false, page = 0 } = {}) {
             const browser = window.EntityBrowser;
             this._entitiesLocalMode = false;
+            // pageSize dinâmico ANTES do fetch (mesma régua das curations)
+            this._applyGridPageSize('entities');
             try {
                 // resetScope=true só no load inicial: o openScope({})
                 // incondicional apagaria o escopo definido por
