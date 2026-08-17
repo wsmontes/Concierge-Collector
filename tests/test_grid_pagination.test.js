@@ -169,3 +169,109 @@ describe('resize re-aplica o pageSize e refaz a página 0', () => {
     expect(loadSpy).not.toHaveBeenCalled();
   });
 });
+
+describe('barra de paginação dupla (topo + fim da lista)', () => {
+  test('entities: barra no topo E no fim, com o rodapé depois dos cards', () => {
+    document.body.innerHTML = '<div id="entities-container"></div>';
+    ui.containers.entities = document.getElementById('entities-container');
+    ui._entitiesLocalMode = false;
+    ui.entityPagination = { currentPage: 0, pageSize: 30 };
+    window.EntityBrowser = { openPage: vi.fn(), total: 60, pageSize: 30 };
+    window.CardFactory = {
+      createEntityCard: () => {
+        const d = document.createElement('div');
+        d.className = 'test-card';
+        return d;
+      }
+    };
+
+    ui.renderEntitiesPage([{ entity_id: 'e1' }, { entity_id: 'e2' }]);
+
+    const bars = ui.containers.entities.querySelectorAll('.collection-pagination');
+    expect(bars.length).toBe(2);
+    // o rodapé vem DEPOIS dos cards (último filho do container)
+    const children = [...ui.containers.entities.children];
+    expect(children[0].classList.contains('collection-pagination')).toBe(true);
+    expect(children[children.length - 1].classList.contains('collection-pagination')).toBe(true);
+    // ids próprios no rodapé (sem duplicar ids no DOM)
+    expect(ui.containers.entities.querySelector('#entity-next-page')).toBeTruthy();
+    expect(ui.containers.entities.querySelector('#entity-next-page-bottom')).toBeTruthy();
+  });
+
+  test('entities: next do rodapé busca a página 1 no servidor', () => {
+    document.body.innerHTML = '<div id="entities-container"></div>';
+    ui.containers.entities = document.getElementById('entities-container');
+    ui._entitiesLocalMode = false;
+    ui.entityPagination = { currentPage: 0, pageSize: 30 };
+    window.EntityBrowser = { openPage: vi.fn(), total: 60, pageSize: 30 };
+    window.CardFactory = { createEntityCard: () => document.createElement('div') };
+    const loadSpy = vi.spyOn(ui, '_loadEntitiesFromServer').mockResolvedValue(undefined);
+
+    ui.renderEntitiesPage([{ entity_id: 'e1' }]);
+    ui.containers.entities.querySelector('#entity-next-page-bottom').click();
+
+    expect(ui.entityPagination.currentPage).toBe(1);
+    expect(loadSpy).toHaveBeenCalledWith(ui.containers.entities, { page: 1 });
+  });
+
+  test('curations: barra no topo E no fim (modo server-driven)', async () => {
+    document.body.innerHTML = '<div id="curations-container"></div>';
+    ui.containers.curations = document.getElementById('curations-container');
+    ui._curationsLocalMode = false;
+    ui.curationPagination = { currentPage: 0, pageSize: 30 };
+    window.CurationBrowser = { nextPage: () => {}, total: 60, pageSize: 30 };
+    window.DataStore = {
+      db: {
+        entities: {
+          where: () => ({
+            anyOf: (chunk) => ({
+              toArray: async () => chunk.map((id) => ({ entity_id: id }))
+            })
+          })
+        }
+      }
+    };
+    window.CardFactory = {
+      createCurationCard: () => {
+        const d = document.createElement('div');
+        d.className = 'test-card';
+        return d;
+      }
+    };
+
+    await ui.renderCurationsPage([{ curation_id: 'c1', entity_id: 'e1' }]);
+
+    const bars = ui.containers.curations.querySelectorAll('.collection-pagination');
+    expect(bars.length).toBe(2);
+    const children = [...ui.containers.curations.children];
+    expect(children[children.length - 1].classList.contains('collection-pagination')).toBe(true);
+    expect(ui.containers.curations.querySelector('#curation-next-page-bottom')).toBeTruthy();
+  });
+
+  test('curations: next do rodapé busca a página 1 no servidor', async () => {
+    document.body.innerHTML = '<div id="curations-container"></div>';
+    ui.containers.curations = document.getElementById('curations-container');
+    ui._curationsLocalMode = false;
+    ui.curationPagination = { currentPage: 0, pageSize: 30 };
+    window.CurationBrowser = { nextPage: () => {}, total: 60, pageSize: 30 };
+    window.DataStore = {
+      db: {
+        entities: {
+          where: () => ({
+            anyOf: (chunk) => ({
+              toArray: async () => chunk.map((id) => ({ entity_id: id }))
+            })
+          })
+        }
+      }
+    };
+    window.CardFactory = { createCurationCard: () => document.createElement('div') };
+    const loadSpy = vi.spyOn(ui, '_loadCurationsFromServer').mockResolvedValue(undefined);
+
+    await ui.renderCurationsPage([{ curation_id: 'c1', entity_id: 'e1' }]);
+    ui.containers.curations.querySelector('#curation-next-page-bottom').click();
+
+    expect(ui.curationPagination.currentPage).toBe(1);
+    expect(loadSpy).toHaveBeenCalledWith(ui.containers.curations, { page: 1 });
+  });
+});

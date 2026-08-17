@@ -1614,26 +1614,28 @@ if (typeof window.UIManager === 'undefined') {
             // Entities): "Showing X–Y of N" + prev/next + "Page X of Y".
             // No modo server-driven o prev/next busca a página no servidor;
             // no fallback pagina o cache local.
-            {
-                var header = document.createElement('div');
-                header.className = 'col-span-full collection-pagination';
-                header.innerHTML = `
+            // Barra de paginação dupla (topo E fim — a do fim evita o
+            // scroll de volta ao topo para trocar de página). O sufixo
+            // de id evita ids duplicados entre as duas barras.
+            var makeBar = function (idSuffix) {
+                var bar = document.createElement('div');
+                bar.className = 'col-span-full collection-pagination';
+                bar.innerHTML = `
                     <span class="collection-pagination__summary">
                         Showing <strong>${start + 1}</strong>&ndash;<strong>${end}</strong> of <strong>${serverTotal}</strong> curations
                     </span>
                     <span class="collection-pagination__controls">
-                        <button id="curation-prev-page" aria-label="Previous page" class="collection-pagination__btn" ${cp.currentPage === 0 ? 'disabled' : ''}>
+                        <button id="curation-prev-page${idSuffix}" aria-label="Previous page" class="collection-pagination__btn" ${cp.currentPage === 0 ? 'disabled' : ''}>
                             <span class="material-icons" aria-hidden="true">chevron_left</span>
                         </button>
                         <span class="collection-pagination__page">Page ${cp.currentPage + 1} of ${totalPages}</span>
-                        <button id="curation-next-page" aria-label="Next page" class="collection-pagination__btn" ${cp.currentPage >= totalPages - 1 ? 'disabled' : ''}>
+                        <button id="curation-next-page${idSuffix}" aria-label="Next page" class="collection-pagination__btn" ${cp.currentPage >= totalPages - 1 ? 'disabled' : ''}>
                             <span class="material-icons" aria-hidden="true">chevron_right</span>
                         </button>
                     </span>
                 `;
-                frag.appendChild(header);
 
-                header.querySelector('#curation-prev-page')?.addEventListener('click', function() {
+                bar.querySelector('#curation-prev-page' + idSuffix)?.addEventListener('click', function() {
                     self.curationPagination.currentPage--;
                     if (isServerDriven) {
                         // Busca a página no servidor (offset)
@@ -1643,7 +1645,7 @@ if (typeof window.UIManager === 'undefined') {
                         self.renderCurationsPage(allCurations);
                     }
                 });
-                header.querySelector('#curation-next-page')?.addEventListener('click', function() {
+                bar.querySelector('#curation-next-page' + idSuffix)?.addEventListener('click', function() {
                     self.curationPagination.currentPage++;
                     if (isServerDriven) {
                         self.curationsCache = [];
@@ -1652,7 +1654,9 @@ if (typeof window.UIManager === 'undefined') {
                         self.renderCurationsPage(allCurations);
                     }
                 });
-            }
+                return bar;
+            };
+            frag.appendChild(makeBar(''));
 
             // Resolução entity↔curation: curadoria linkada renderiza o
             // card COMPLETO da entity (nome, contato, véu OG, ações);
@@ -1678,6 +1682,9 @@ if (typeof window.UIManager === 'undefined') {
                     : self.createReviewCard(curation);
                 frag.appendChild(card);
             });
+
+            // rodapé: mesma barra de paginação no fim da lista
+            frag.appendChild(makeBar('-bottom'));
 
             // troca atômica: a lista anterior fica visível até a nova
             // estar pronta (sem janela em branco)
@@ -2024,46 +2031,50 @@ if (typeof window.UIManager === 'undefined') {
             // Clear container
             container.innerHTML = '';
 
-            // Add pagination header
-            const header = document.createElement('div');
-            header.className = 'col-span-full collection-pagination';
-            header.innerHTML = `
-                <span class="collection-pagination__summary">
-                    Showing <strong>${start + 1}</strong>&ndash;<strong>${end}</strong> of <strong>${serverTotal}</strong> entities
-                </span>
-                <span class="collection-pagination__controls">
-                    <button id="entity-prev-page" aria-label="Previous page" class="collection-pagination__btn" ${ep.currentPage === 0 ? 'disabled' : ''}>
-                        <span class="material-icons" aria-hidden="true">chevron_left</span>
-                    </button>
-                    <span class="collection-pagination__page">Page ${ep.currentPage + 1} of ${totalPages}</span>
-                    <button id="entity-next-page" aria-label="Next page" class="collection-pagination__btn" ${ep.currentPage >= totalPages - 1 ? 'disabled' : ''}>
-                        <span class="material-icons" aria-hidden="true">chevron_right</span>
-                    </button>
-                </span>
-            `;
-            container.appendChild(header);
-
-            // Add pagination controls
+            // Barra de paginação dupla (topo E fim — a do fim evita o
+            // scroll de volta ao topo para trocar de página). O sufixo
+            // de id evita ids duplicados entre as duas barras.
             const self = this;
-            header.querySelector('#entity-prev-page')?.addEventListener('click', function() {
-                self.entityPagination.currentPage--;
-                if (isServerDriven) {
-                    self.entitiesCache = [];
-                    self._loadEntitiesFromServer(container, { page: self.entityPagination.currentPage });
-                } else {
-                    self.renderEntitiesPage(allEntities);
-                }
-            });
+            const makeBar = (idSuffix) => {
+                const bar = document.createElement('div');
+                bar.className = 'col-span-full collection-pagination';
+                bar.innerHTML = `
+                    <span class="collection-pagination__summary">
+                        Showing <strong>${start + 1}</strong>&ndash;<strong>${end}</strong> of <strong>${serverTotal}</strong> entities
+                    </span>
+                    <span class="collection-pagination__controls">
+                        <button id="entity-prev-page${idSuffix}" aria-label="Previous page" class="collection-pagination__btn" ${ep.currentPage === 0 ? 'disabled' : ''}>
+                            <span class="material-icons" aria-hidden="true">chevron_left</span>
+                        </button>
+                        <span class="collection-pagination__page">Page ${ep.currentPage + 1} of ${totalPages}</span>
+                        <button id="entity-next-page${idSuffix}" aria-label="Next page" class="collection-pagination__btn" ${ep.currentPage >= totalPages - 1 ? 'disabled' : ''}>
+                            <span class="material-icons" aria-hidden="true">chevron_right</span>
+                        </button>
+                    </span>
+                `;
 
-            header.querySelector('#entity-next-page')?.addEventListener('click', function() {
-                self.entityPagination.currentPage++;
-                if (isServerDriven) {
-                    self.entitiesCache = [];
-                    self._loadEntitiesFromServer(container, { page: self.entityPagination.currentPage });
-                } else {
-                    self.renderEntitiesPage(allEntities);
-                }
-            });
+                bar.querySelector('#entity-prev-page' + idSuffix)?.addEventListener('click', function() {
+                    self.entityPagination.currentPage--;
+                    if (isServerDriven) {
+                        self.entitiesCache = [];
+                        self._loadEntitiesFromServer(container, { page: self.entityPagination.currentPage });
+                    } else {
+                        self.renderEntitiesPage(allEntities);
+                    }
+                });
+
+                bar.querySelector('#entity-next-page' + idSuffix)?.addEventListener('click', function() {
+                    self.entityPagination.currentPage++;
+                    if (isServerDriven) {
+                        self.entitiesCache = [];
+                        self._loadEntitiesFromServer(container, { page: self.entityPagination.currentPage });
+                    } else {
+                        self.renderEntitiesPage(allEntities);
+                    }
+                });
+                return bar;
+            };
+            container.appendChild(makeBar(''));
 
             // Display entities for this page
             pageEntities.forEach(entity => {
@@ -2099,6 +2110,9 @@ if (typeof window.UIManager === 'undefined') {
                 });
                 container.appendChild(card);
             });
+
+            // rodapé: mesma barra de paginação no fim da lista
+            container.appendChild(makeBar('-bottom'));
         }
 
         populateEntityFilters(entities) {
