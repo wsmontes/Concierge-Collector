@@ -31,6 +31,41 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
     init(dataStorage) {
         this.dataStorage = dataStorage;
         this.log.debug('PendingAudioManager initialized');
+        // Retenção local (ago/2026): o IndexedDB não pode crescer
+        // indefinidamente com áudio bruto — poda antigas no boot
+        this.prune().catch((error) => this.log.warn('prune no init falhou:', error));
+    }
+
+    /**
+     * Retenção local: mantém as gravações mais recentes dentro de um
+     * limite razoável de TEMPO (7 dias) e NÚMERO (30) — o áudio bruto
+     * no IndexedDB é o maior consumidor de espaço local.
+     * @param {number} options.maxCount - Número máximo de gravações
+     * @param {number} options.maxAgeDays - Idade máxima em dias
+     */
+    async prune({ maxCount = 30, maxAgeDays = 7 } = {}) {
+        try {
+            const audios = await this.getAudios();
+            const cutoff = Date.now() - maxAgeDays * 24 * 3600 * 1000;
+            const sorted = audios
+                .filter((audio) => audio && audio.id != null)
+                .sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
+            const toDelete = [];
+            sorted.forEach((audio, index) => {
+                const age = new Date(audio.timestamp || 0).getTime();
+                if (age < cutoff || index >= maxCount) {
+                    toDelete.push(audio.id);
+                }
+            });
+            for (const id of toDelete) {
+                await this.deleteAudio(id).catch(() => {});
+            }
+            if (toDelete.length) {
+                this.log.debug(`Retenção de áudio: ${toDelete.length} gravações antigas removidas`);
+            }
+        } catch (error) {
+            this.log.error('Prune de áudios pendentes falhou:', error);
+        }
     }
 
     /**
@@ -66,6 +101,10 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
 
             const id = await this.dataStorage.db.pendingAudio.add(audioData);
             this.log.debug(`Pending audio saved with ID: ${id}`);
+
+            // Poda pós-save (fire-and-forget): toda gravação nova passa
+            // pela retenção de tempo/número
+            this.prune().catch((error) => this.log.warn('prune pós-save falhou:', error));
 
             return id;
         } catch (error) {

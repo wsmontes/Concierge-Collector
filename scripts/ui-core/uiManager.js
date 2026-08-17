@@ -194,7 +194,15 @@ if (typeof window.UIManager === 'undefined') {
             this.showRestaurantListSection({ refresh: false });
 
             // Initialize tab system
+            // Restaura filtros/aba salvos ANTES do primeiro load de dados
+            this.restoreFilterState();
             this.initTabSystem();
+            // initTabSystem abre 'curations' por padrão — a aba salva
+            // (se outra) assume depois do primeiro switch
+            if (this._restoredTab && this._restoredTab !== 'curations') {
+                this.switchTab(this._restoredTab);
+            }
+            this._restoredTab = null;
 
             // Setup global curation filters
             this.setupCurationEvents();
@@ -541,6 +549,8 @@ if (typeof window.UIManager === 'undefined') {
 
             // Update current tab state
             this.currentTab = tabName;
+            // Filtros + aba persistem (voltar da Entities não perde nada)
+            this.saveFilterState();
 
             // Update tab button states
             // (ago/2026) As classes legadas border-blue-500/text-blue-600/
@@ -622,6 +632,7 @@ if (typeof window.UIManager === 'undefined') {
         async _reloadOrFilterCurations() {
             // Contador/chips dos refinamentos refletem o estado novo
             this.updateCurationFilterState();
+            this.saveFilterState();
             const browser = window.CurationBrowser;
             if (browser && browser.nextPage) {
                 // Server-driven: reset scope and fetch fresh page 1
@@ -753,10 +764,27 @@ if (typeof window.UIManager === 'undefined') {
             } else if (name === 'my-curation') {
                 const curatorEl = document.getElementById('curation-curator-filter');
                 if (!isActive) {
-                    const currentCurator = await dataStorage.getCurrentCurator();
-                    if (currentCurator && currentCurator.id) {
-                        this._setSelectOption(curatorEl, currentCurator.id, currentCurator.name || currentCurator.id);
-                        this._savedViewCuratorId = currentCurator.id;
+                    // Resolução OAuth-first (mesma cadeia do processRecording):
+                    // as curadorias do servidor guardam curator.id = EMAIL
+                    // OAuth — o dataStorage.getCurrentCurator() é o modelo
+                    // LEGADO local e fica null para quem só logou por OAuth
+                    // (o chip My curation "não funcionava")
+                    const authCurator = window.CuratorProfile &&
+                        typeof window.CuratorProfile.getCurrentCurator === 'function'
+                        ? window.CuratorProfile.getCurrentCurator()
+                        : null;
+                    let curatorId = authCurator && (authCurator.curator_id || authCurator.id) || null;
+                    let curatorName = authCurator && authCurator.name || null;
+                    if (!curatorId) {
+                        const currentCurator = await dataStorage.getCurrentCurator();
+                        if (currentCurator && currentCurator.id) {
+                            curatorId = currentCurator.id;
+                            curatorName = currentCurator.name || currentCurator.id;
+                        }
+                    }
+                    if (curatorId) {
+                        this._setSelectOption(curatorEl, String(curatorId), String(curatorName || curatorId));
+                        this._savedViewCuratorId = String(curatorId);
                     } else {
                         this._savedViewCuratorId = null;
                     }
@@ -815,6 +843,77 @@ if (typeof window.UIManager === 'undefined') {
                 chip.classList.toggle('is-active', active);
                 chip.setAttribute('aria-pressed', active ? 'true' : 'false');
             });
+        }
+
+        /**
+         * Persistência das configurações de filtro (ago/2026): sobrevive
+         * a trocas de aba, navegação por rotas e reloads. O restore roda
+         * no init ANTES do primeiro load — filtragem nunca se perde e a
+         * volta de uma aba não apaga o escopo.
+         */
+        saveFilterState() {
+            try {
+                const pick = (id) => document.getElementById(id)?.value || '';
+                const curatorValue = pick('curation-curator-filter');
+                localStorage.setItem(
+                    'collector.filters.v1',
+                    JSON.stringify({
+                        q: pick('curation-search').trim(),
+                        status: pick('curation-status-filter'),
+                        curatorValue: curatorValue && curatorValue !== 'all' ? curatorValue : '',
+                        savedCuratorId: this._savedViewCuratorId || '',
+                        city: pick('curation-city-filter').trim(),
+                        type: pick('curation-type-filter'),
+                        unlinked: !!this._savedViewFlags?.unlinked,
+                        recent: !!this._savedViewFlags?.recent,
+                        entityQ: pick('entity-search').trim(),
+                        entityType: pick('entity-type-filter'),
+                        entityCity: pick('entity-city-filter').trim(),
+                        tab: this.currentTab || 'curations'
+                    })
+                );
+            } catch (error) {
+                console.warn('[uiManager] filtros não persistiram:', error);
+            }
+        }
+
+        /**
+         * Restaura filtros/aba salvos ANTES do primeiro load (init).
+         * Estado corrompido/ausente é ignorado silenciosamente.
+         */
+        restoreFilterState() {
+            let state = null;
+            try {
+                state = JSON.parse(localStorage.getItem('collector.filters.v1') || 'null');
+            } catch (error) {
+                state = null;
+            }
+            if (!state || typeof state !== 'object') return;
+
+            const setVal = (id, value) => {
+                if (!value) return;
+                const el = document.getElementById(id);
+                if (el) el.value = value;
+            };
+            setVal('curation-search', state.q);
+            setVal('curation-status-filter', state.status);
+            setVal('curation-city-filter', state.city);
+            setVal('curation-type-filter', state.type);
+            setVal('entity-search', state.entityQ);
+            setVal('entity-type-filter', state.entityType);
+            setVal('entity-city-filter', state.entityCity);
+
+            this._savedViewFlags = { unlinked: !!state.unlinked, recent: !!state.recent };
+            this._savedViewCuratorId = state.savedCuratorId || null;
+            if (state.curatorValue) {
+                this._setSelectOption(
+                    document.getElementById('curation-curator-filter'),
+                    state.curatorValue,
+                    state.curatorValue
+                );
+            }
+            this.updateSavedViewChips();
+            this._restoredTab = state.tab || 'curations';
         }
 
         /**
@@ -1013,6 +1112,7 @@ if (typeof window.UIManager === 'undefined') {
         async _reloadOrFilterEntities() {
             // Contador/chips dos refinamentos refletem o estado novo
             this.updateEntityFilterState();
+            this.saveFilterState();
             const browser = window.EntityBrowser;
             if (browser && browser.openPage) {
                 const scope = this._getCurrentEntityFilterScope();
@@ -1060,7 +1160,15 @@ if (typeof window.UIManager === 'undefined') {
                 // Server-driven: use CurationBrowser when available (scalable to 100k+ items).
                 // Falls back to local DataStore when CurationBrowser is not loaded.
                 if (window.CurationBrowser && window.CurationBrowser.nextPage) {
-                    await this._loadCurationsFromServer(container, { resetScope: true });
+                    // VOLTAR da aba Entities NÃO pode resetar o escopo: o
+                    // resetScope=true que havia aqui apagava o filtro ativo
+                    // (o input ainda mostrava o texto, mas a lista vinha
+                    // sem filtro — "a lista quebra"). O escopo SEMPRE vem
+                    // dos controles (que persistem no DOM/localStorage).
+                    const scope = this._getCurrentFilterScope();
+                    window.CurationBrowser.openScope(scope);
+                    this.curationsCache = [];
+                    await this._loadCurationsFromServer(container);
                     return;
                 }
 

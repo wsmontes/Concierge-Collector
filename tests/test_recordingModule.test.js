@@ -593,3 +593,57 @@ describe('RecordingModule — Discard do player de áudio', () => {
     expect(window.PendingAudioManager.deleteAudio).toHaveBeenCalledWith('audio-456');
   });
 });
+
+describe('RecordingModule — player só em falha (Reprocess/Discard)', () => {
+  let RecordingModuleClass;
+
+  beforeEach(() => {
+    document.body.innerHTML = `
+      <div id="audio-preview" class="hidden">
+        <audio id="recorded-audio"></audio>
+        <button id="transcribe-recording">Transcribe</button>
+        <button id="analyze-recording">Analyze</button>
+        <div id="transcription-status" class="hidden"></div>
+      </div>
+    `;
+    window.PendingAudioManager = {
+      getAudio: vi.fn().mockResolvedValue({ audioBlob: new Blob(['a'], { type: 'audio/webm' }) }),
+      updateAudio: vi.fn().mockResolvedValue(undefined)
+    };
+    window.URL.createObjectURL = vi.fn(() => 'blob:retry-1');
+    window.uiUtils = { showNotification: vi.fn() };
+    RecordingModuleClass = loadRecordingModule();
+  });
+
+  afterEach(() => {
+    window.PendingAudioManager = undefined;
+    window.uiUtils = undefined;
+    vi.clearAllMocks();
+  });
+
+  it('falha final expõe o player com Reprocess + Discard e define o currentAudioId', async () => {
+    const instance = new RecordingModuleClass({});
+    await instance.showManualRetryUI('audio-99');
+
+    const preview = document.getElementById('audio-preview');
+    expect(preview.classList.contains('hidden')).toBe(false);
+    expect(document.getElementById('recorded-audio').src).toContain('blob:retry-1');
+    expect(document.getElementById('transcribe-recording').textContent).toContain('Reprocess');
+    expect(document.getElementById('analyze-recording').textContent).toContain('Discard');
+    expect(document.getElementById('transcription-status').textContent).toContain('failed');
+    expect(instance.currentAudioId).toBe('audio-99');
+  });
+
+  it('Reprocess refaz o processamento com o blob salvo e esconde o player no sucesso', async () => {
+    const instance = new RecordingModuleClass({});
+    instance.processRecording = vi.fn().mockResolvedValue(undefined);
+    await instance.showManualRetryUI('audio-99');
+
+    document.getElementById('transcribe-recording').click();
+    await new Promise((resolve) => setTimeout(resolve, 50));
+
+    expect(window.PendingAudioManager.updateAudio).toHaveBeenCalledWith('audio-99', expect.objectContaining({ status: 'pending' }));
+    expect(instance.processRecording).toHaveBeenCalled();
+    expect(document.getElementById('audio-preview').classList.contains('hidden')).toBe(true);
+  });
+});

@@ -198,6 +198,14 @@ const CuratorProfile = (function() {
                             Refresh photos
                         </button>
                         <button
+                            id="user-recordings-btn"
+                            class="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors"
+                            role="menuitem"
+                        >
+                            <span class="material-icons text-gray-400 text-lg">mic</span>
+                            Recordings
+                        </button>
+                        <button
                             id="user-data-mgmt-btn"
                             class="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors"
                             role="menuitem"
@@ -255,6 +263,7 @@ const CuratorProfile = (function() {
                 const logoutBtn = document.getElementById('user-logout-btn');
                 const dataMgmtBtn = document.getElementById('user-data-mgmt-btn');
                 const refreshPhotosBtn = document.getElementById('user-refresh-photos-btn');
+                const recordingsBtn = document.getElementById('user-recordings-btn');
 
                 if (button && dropdown) {
                     // Toggle dropdown
@@ -275,6 +284,28 @@ const CuratorProfile = (function() {
                             nm.goTo('/data');
                         } else {
                             window.uiManager?.showDataManagementSection?.();
+                        }
+                    });
+                }
+
+                // "Recordings": as gravações locais acumuladas (com
+                // retenção de 7 dias/30 itens) ficam acessíveis SOMENTE
+                // por este modal dedicado do menu do perfil
+                if (recordingsBtn) {
+                    recordingsBtn.addEventListener('click', async () => {
+                        dropdown?.classList.add('hidden');
+                        button?.setAttribute('aria-expanded', 'false');
+                        try {
+                            if (!window.PendingAudioModal) {
+                                window.uiUtils?.showNotification?.('Recordings unavailable', 'error');
+                                return;
+                            }
+                            if (!window.__pendingAudioModal) {
+                                window.__pendingAudioModal = new window.PendingAudioModal();
+                            }
+                            await window.__pendingAudioModal.open();
+                        } catch (error) {
+                            window.uiUtils?.showNotification?.('Could not open recordings: ' + error.message, 'error');
                         }
                     });
                 }

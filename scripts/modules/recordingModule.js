@@ -431,10 +431,11 @@ class RecordingModule {
             // First try direct event attachment
             let foundButtons = this.attachMainRecordingEvents();
 
-            // If buttons weren't found, try using event delegation as fallback
-            if (!foundButtons) {
-                this.setupEventDelegation();
-            }
+            // Delegação SEMPRE registrada (idempotente): os botões do
+            // template dinâmico (timer circular, discard-recording)
+            // nascem DEPOIS do attach direto — sem a delegação eles
+            // ficavam mortos (o Discard "não funcionava")
+            this.setupEventDelegation();
 
             // Additional recording buttons (may not exist yet)
             this.attachAdditionalRecordingEvents();
@@ -973,11 +974,15 @@ class RecordingModule {
                             this.mediaStream.getTracks().forEach(track => track.stop());
                         }
 
-                        // Display audio preview without waiting for MP3 conversion
-                        this.displayAudioPreview(audioBlob);
-
+                        // O player NÃO aparece aqui (ago/2026): expor o
+                        // áudio só quando a transcrição FALHA — sucesso
+                        // entrega o draft direto, sem reprodutor.
                         // Process the recording
                         await this.processRecording(audioBlob);
+                        // Sucesso: garante player oculto (falha mostra via
+                        // showManualRetryUI)
+                        const previewEl = document.getElementById('audio-preview');
+                        if (previewEl) previewEl.classList.add('hidden');
 
                         // Update processing status
                         this.updateProcessingStatus('transcription', 'done');
@@ -2313,6 +2318,48 @@ class RecordingModule {
     }
 
     /**
+     * Confirmação de descarte: modalManager quando disponível (o
+     * confirm() nativo é bloqueado em webviews/contextos embarcados),
+     * confirm() como fallback.
+     * @returns {Promise<boolean>}
+     */
+    _confirmDiscard() {
+        return new Promise((resolve) => {
+            if (window.modalManager && typeof window.modalManager.open === 'function') {
+                const content = document.createElement('p');
+                content.className = 'text-sm text-gray-700';
+                content.textContent = 'This recording will be permanently removed from this device. This action cannot be undone.';
+                const footer = document.createElement('div');
+                footer.className = 'w-full flex justify-end gap-2';
+                const cancelBtn = document.createElement('button');
+                cancelBtn.type = 'button';
+                cancelBtn.className = 'btn btn-outline btn-md';
+                cancelBtn.textContent = 'Cancel';
+                const discardBtn = document.createElement('button');
+                discardBtn.type = 'button';
+                discardBtn.className = 'btn btn-danger btn-md';
+                discardBtn.textContent = 'Discard';
+                footer.append(cancelBtn, discardBtn);
+                const modalId = window.modalManager.open({
+                    title: 'Discard recording?',
+                    content: content,
+                    footer: footer
+                });
+                cancelBtn.addEventListener('click', () => {
+                    window.modalManager.close(modalId);
+                    resolve(false);
+                });
+                discardBtn.addEventListener('click', () => {
+                    window.modalManager.close(modalId);
+                    resolve(true);
+                });
+                return;
+            }
+            resolve(window.confirm('Discard this recording? This action cannot be undone.'));
+        });
+    }
+
+    /**
      * Descarta a gravação atual a partir do botão Discard do player.
      * Mesmo contrato do delete do modal de áudios pendentes: confirm,
      * deleteAudio no IndexedDB, limpeza do player e notificação.
@@ -2321,9 +2368,12 @@ class RecordingModule {
      */
     async discardCurrentRecording() {
         try {
-            if (!confirm('Discard this recording? This action cannot be undone.')) {
-                return;
-            }
+            // Confirmação pelo modalManager (o confirm() nativo é
+            // bloqueado em alguns contextos embarcados — e era um dos
+            // motivos do Discard "não funcionar"); sem modalManager,
+            // cai no confirm() clássico
+            const ok = await this._confirmDiscard();
+            if (!ok) return;
 
             this.discardRequested = true;
 
@@ -2333,14 +2383,18 @@ class RecordingModule {
                     .catch((error) => this.log.warn('Error deleting audio from IndexedDB:', error));
             }
 
-            // Para e limpa o player do preview
-            const audioElement = document.getElementById('recorded-audio');
-            if (audioElement) {
-                audioElement.pause();
-                audioElement.removeAttribute('src');
-                if (typeof audioElement.load === 'function') {
-                    audioElement.load();
+            // Para e limpa o player do preview — o cleanup NÃO pode
+            // derrubar o descarte (jsdom/browsers antigos não
+            // implementam pause/load e lançavam "Not implemented")
+            try {
+                const audioElement = document.getElementById('recorded-audio');
+                if (audioElement) {
+                    if (typeof audioElement.pause === 'function') audioElement.pause();
+                    audioElement.removeAttribute('src');
+                    if (typeof audioElement.load === 'function') audioElement.load();
                 }
+            } catch (error) {
+                this.log.debug('cleanup do player falhou (inofensivo):', error);
             }
             if (this.currentAudioUrl) {
                 URL.revokeObjectURL(this.currentAudioUrl);
@@ -2468,113 +2522,89 @@ class RecordingModule {
     }
 
     /**
-     * Show manual retry UI for failed transcriptions
+     * UI de falha de transcrição (ago/2026): o PLAYER de áudio aparece
+     * com Reprocess e Discard — handlers diretos (sem delegação), botão
+     * de Discard funcional de verdade. O áudio continua no IndexedDB
+     * (PendingAudioManager) e também é acessível pelo modal do menu.
      * @param {number} audioId - Pending audio ID
      */
-    showManualRetryUI(audioId) {
+    async showManualRetryUI(audioId) {
         try {
-            // Find the recording section or transcription textarea
-            const recordingSection = document.getElementById('recording-section');
-            const transcriptionContainer = document.getElementById('restaurant-transcription')?.parentElement;
-            const targetContainer = recordingSection || transcriptionContainer;
-
-            if (!targetContainer) {
-                this.log.warn('Cannot show manual retry UI - container not found');
+            const preview = document.getElementById('audio-preview');
+            const audioElement = document.getElementById('recorded-audio');
+            if (!preview || !audioElement) {
+                this.log.warn('Cannot show retry UI - preview elements not found');
                 return;
             }
 
-            // Remove existing retry UI if any
-            const existingRetryUI = document.getElementById('manual-retry-ui');
-            if (existingRetryUI) {
-                existingRetryUI.remove();
+            this.currentAudioId = audioId;
+
+            // Player com o blob salvo (fonte da verdade no IndexedDB)
+            let audioUrl = null;
+            if (window.PendingAudioManager) {
+                const saved = await window.PendingAudioManager.getAudio(audioId).catch(() => null);
+                if (saved && saved.audioBlob) {
+                    audioUrl = URL.createObjectURL(saved.audioBlob);
+                }
+            }
+            if (audioUrl) {
+                audioElement.src = audioUrl;
+                this.currentAudioUrl = audioUrl;
             }
 
-            // Create retry UI
-            const retryUI = document.createElement('div');
-            retryUI.id = 'manual-retry-ui';
-            retryUI.className = 'bg-yellow-50 border-l-4 border-yellow-400 p-4 mb-4 rounded';
-            retryUI.innerHTML = `
-                <div class="flex items-start">
-                    <div class="flex-shrink-0">
-                        <span class="material-icons text-yellow-600">warning</span>
-                    </div>
-                    <div class="ml-3 flex-1">
-                        <h3 class="text-sm font-medium text-yellow-800">Transcription Failed</h3>
-                        <p class="mt-1 text-sm text-yellow-700">
-                            The audio recording could not be transcribed after multiple attempts. 
-                            The audio has been saved and you can retry or delete it.
-                        </p>
-                        <div class="mt-3 flex gap-2">
-                            <button id="retry-transcription-btn" data-audio-id="${audioId}" 
-                                class="bg-yellow-600 hover:bg-yellow-700 text-white px-4 py-2 rounded text-sm flex items-center">
-                                <span class="material-icons text-sm mr-1">refresh</span>
-                                Retry Transcription
-                            </button>
-                            <button id="delete-failed-audio-btn" data-audio-id="${audioId}"
-                                class="bg-red-600 hover:bg-red-700 text-white px-4 py-2 rounded text-sm flex items-center">
-                                <span class="material-icons text-sm mr-1">delete</span>
-                                Delete Audio
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            `;
+            preview.classList.remove('hidden');
 
-            // Insert at the top of the container
-            targetContainer.insertBefore(retryUI, targetContainer.firstChild);
+            // Botões do preview viram Reprocess + Discard (falha final —
+            // o auto-retry já esgotou)
+            const transcribeBtn = document.getElementById('transcribe-recording');
+            const analyzeBtn = document.getElementById('analyze-recording');
+            const statusEl = document.getElementById('transcription-status');
+            if (statusEl) {
+                statusEl.classList.remove('hidden');
+                statusEl.innerHTML = `
+                    <span class="material-icons text-red-500 mr-2 text-sm">error_outline</span>
+                    Transcription failed after retries. You can reprocess or discard.
+                `;
+            }
 
-            // Add event listeners
-            const retryBtn = retryUI.querySelector('#retry-transcription-btn');
-            const deleteBtn = retryUI.querySelector('#delete-failed-audio-btn');
-
-            if (retryBtn) {
-                retryBtn.addEventListener('click', async () => {
-                    retryBtn.disabled = true;
-                    retryBtn.innerHTML = '<span class="material-icons text-sm mr-1 animate-spin">refresh</span> Retrying...';
-
+            if (transcribeBtn) {
+                transcribeBtn.className = 'flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl shadow-md transition-all text-base font-medium flex justify-center items-center';
+                transcribeBtn.innerHTML = '<span class="material-icons mr-2">refresh</span>Reprocess';
+                transcribeBtn.onclick = async () => {
+                    transcribeBtn.disabled = true;
+                    transcribeBtn.innerHTML = '<span class="material-icons mr-2 animate-spin">sync</span>Reprocessing...';
                     try {
-                        const audio = await window.PendingAudioManager.getAudio(audioId);
-                        if (audio && audio.audioBlob) {
-                            // Reset retry count for manual retry
-                            await window.PendingAudioManager.updateAudio(audioId, {
-                                retryCount: 0,
-                                status: 'pending',
-                                lastError: null
-                            });
-
-                            await this.processRecording(audio.audioBlob, audioId);
-
-                            // Remove retry UI on success
-                            retryUI.remove();
+                        const saved = await window.PendingAudioManager.getAudio(audioId);
+                        if (!saved || !saved.audioBlob) {
+                            throw new Error('Recording no longer available');
                         }
+                        await window.PendingAudioManager.updateAudio(audioId, {
+                            retryCount: 0,
+                            status: 'pending',
+                            lastError: null
+                        });
+                        await this.processRecording(saved.audioBlob, audioId);
+                        // Sucesso: player some de novo
+                        preview.classList.add('hidden');
+                        if (statusEl) statusEl.classList.add('hidden');
                     } catch (error) {
-                        this.log.error('Manual retry failed:', error);
-                        retryBtn.disabled = false;
-                        retryBtn.innerHTML = '<span class="material-icons text-sm mr-1">refresh</span> Retry Transcription';
-                    }
-                });
-            }
-
-            if (deleteBtn) {
-                deleteBtn.addEventListener('click', async () => {
-                    if (confirm('Are you sure you want to delete this audio recording? This action cannot be undone.')) {
-                        try {
-                            await window.PendingAudioManager.deleteAudio(audioId);
-                            retryUI.remove();
-
-                            if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
-                                window.uiUtils.showNotification('Audio recording deleted', 'success');
-                            }
-                        } catch (error) {
-                            this.log.error('Error deleting audio:', error);
-                            if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
-                                window.uiUtils.showNotification('Error deleting audio', 'error');
-                            }
+                        this.log.error('Reprocess failed:', error);
+                        transcribeBtn.disabled = false;
+                        transcribeBtn.innerHTML = '<span class="material-icons mr-2">refresh</span>Reprocess';
+                        if (window.uiUtils && typeof window.uiUtils.showNotification === 'function') {
+                            window.uiUtils.showNotification('Reprocess failed: ' + error.message, 'error');
                         }
                     }
-                });
+                };
             }
 
+            if (analyzeBtn) {
+                analyzeBtn.className = 'flex-1 px-4 py-3 bg-red-600 hover:bg-red-700 text-white rounded-xl shadow-md transition-all text-base font-medium flex justify-center items-center';
+                analyzeBtn.innerHTML = '<span class="material-icons mr-2">delete</span>Discard';
+                analyzeBtn.onclick = async () => {
+                    await this.discardCurrentRecording();
+                };
+            }
         } catch (error) {
             this.log.error('Error showing manual retry UI:', error);
         }
