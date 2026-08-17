@@ -328,12 +328,21 @@ describe('EntityModule — showEntityDetails com os dois formatos de entity', ()
         expect(thumbs[1].querySelector('img')).toBeTruthy();
       });
 
+      // dip-fade (2026-08-16): o herói esvanece antes da troca da foto
+      vi.useFakeTimers();
       thumbs[1].click();
       const veil = content.querySelector('.detail-hero .card-og-veil');
+      expect(veil.style.opacity).toBe('0'); // fade-out imediato
+      expect(veil.style.backgroundImage).not.toContain('blob:gallery-1');
+      expect(veil.classList.contains('card-og-veil--fallback')).toBe(false);
+
+      vi.advanceTimersByTime(260);
       expect(veil.style.backgroundImage).toContain('blob:gallery-1');
+      expect(veil.style.opacity).toBe(''); // volta ao opacity da classe (herói = 1)
       expect(veil.classList.contains('card-og-veil--visible')).toBe(true);
       expect(thumbs[1].classList.contains('is-active')).toBe(true);
       expect(thumbs[0].classList.contains('is-active')).toBe(false);
+      vi.useRealTimers();
     });
 
     test('thumb fora de sheet (sem hero) abre o viewer modal', async () => {

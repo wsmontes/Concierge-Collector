@@ -1221,8 +1221,15 @@ const EntityModule = ModuleWrapper.defineClass('EntityModule', class {
         const veil = sheet ? sheet.querySelector('.detail-hero .card-og-veil') : null;
         if (veil) {
             veil.classList.remove('card-og-veil--fallback');
-            veil.style.backgroundImage = `url("${img.src}")`;
-            veil.classList.add('card-og-veil--visible');
+            // dip-fade (2026-08-16): o herói esvanece antes da troca e a
+            // foto nova surge suave — o inline opacity some no fim para a
+            // opacidade voltar à classe (herói = 1, cards = 0.38).
+            veil.style.opacity = '0';
+            setTimeout(() => {
+                veil.style.backgroundImage = `url("${img.src}")`;
+                veil.classList.add('card-og-veil--visible');
+                veil.style.opacity = '';
+            }, 250);
         } else if (window.modalManager && typeof window.modalManager.open === 'function') {
             const viewer = document.createElement('img');
             viewer.src = img.src;
