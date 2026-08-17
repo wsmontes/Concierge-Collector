@@ -436,6 +436,43 @@ describe('OgImageModule — resolução, cache e aplicação do véu', () => {
     expect(card.querySelector('.collection-card__thumb').classList.contains('is-loaded')).toBe(false);
   });
 
+  test('hard reset (Cmd+Shift+R) marca o cache para limpeza no próximo load', async () => {
+    const OgImageModuleClass = loadOgImageModule();
+    window.ApiService = { request: vi.fn() };
+    const module = new OgImageModuleClass();
+    await module.init();
+
+    sessionStorage.removeItem('og-images-hard-reset');
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'r', metaKey: true, shiftKey: true }));
+    expect(sessionStorage.getItem('og-images-hard-reset')).toBe('1');
+
+    // reload NORMAL (sem shift) não marca nada
+    sessionStorage.removeItem('og-images-hard-reset');
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: 'r', metaKey: true, shiftKey: false }));
+    expect(sessionStorage.getItem('og-images-hard-reset')).toBeNull();
+  });
+
+  test('flag de hard reset limpa o Cache Storage UMA vez no init', async () => {
+    const OgImageModuleClass = loadOgImageModule();
+    window.ApiService = { request: vi.fn() };
+    const deleteSpy = vi.fn().mockResolvedValue(true);
+    window.caches = { open: vi.fn(), delete: deleteSpy };
+
+    sessionStorage.setItem('og-images-hard-reset', '1');
+    const module = new OgImageModuleClass();
+    await module.init();
+
+    expect(deleteSpy).toHaveBeenCalledTimes(1);
+    expect(deleteSpy).toHaveBeenCalledWith('og-images-v2');
+    expect(sessionStorage.getItem('og-images-hard-reset')).toBeNull();
+
+    // init SEM flag não limpa nada
+    const module2 = new OgImageModuleClass();
+    await module2.init();
+    expect(deleteSpy).toHaveBeenCalledTimes(1);
+    sessionStorage.removeItem('og-images-hard-reset');
+  });
+
   test('escalonador limita a concorrência de downloads (max 4 em voo)', async () => {
     const OgImageModuleClass = loadOgImageModule();
     vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn(() => 'blob:conc-1') });

@@ -57,6 +57,14 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
         this._waiting = [];
         this._active = 0;
         this._maxConcurrent = 4; // deixa folga para API/sync na pool do browser
+        // Hard reset de imagens (Cmd+Shift+R): o keydown é visto antes
+        // do reload nos browsers principais; a flag vira UMA limpeza do
+        // Cache Storage no próximo init — reload normal NÃO toca o cache
+        this._flushCacheOnInit = false;
+        if (typeof sessionStorage !== 'undefined' && sessionStorage.getItem('og-images-hard-reset') === '1') {
+            sessionStorage.removeItem('og-images-hard-reset');
+            this._flushCacheOnInit = true;
+        }
     }
 
     /**
@@ -66,6 +74,31 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
         if (!window.ApiService) {
             this.log.warn('ApiService indisponível — véu OG desativado');
             return;
+        }
+
+        // Detecta o ATALHO do hard reset para o PRÓXIMO load (o reload
+        // deste atalho acontece depois do keydown; a flag sobrevive no
+        // sessionStorage, que persiste entre reloads da mesma aba)
+        document.addEventListener('keydown', (event) => {
+            if ((event.metaKey || event.ctrlKey) && event.shiftKey && (event.key === 'r' || event.key === 'R')) {
+                try {
+                    sessionStorage.setItem('og-images-hard-reset', '1');
+                } catch (error) {
+                    this.log.debug('hard-reset flag falhou:', error);
+                }
+            }
+        });
+
+        // Hard reset pedido no load anterior: limpa o cache UMA vez —
+        // as imagens serão repopuladas pelo ranking atual do servidor
+        if (this._flushCacheOnInit && window.caches) {
+            this._flushCacheOnInit = false;
+            try {
+                await caches.delete(this._cacheName);
+                this.log.debug('Cache de imagens limpo por hard reset');
+            } catch (error) {
+                this.log.debug('limpeza do cache falhou:', error);
+            }
         }
 
         // Cards já renderizados antes do init. ATENÇÃO: o seletor inclui
