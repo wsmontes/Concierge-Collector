@@ -2918,19 +2918,21 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  background: linear-gradient(
-    135deg,
-    rgba(126, 120, 108, 0.16),
-    rgba(126, 120, 108, 0.03) 55%,
-    rgba(126, 120, 108, 0.1)
-  );
+  /* Placeholder oficial (ago/2026): imagem da marca em vez do gradiente
+     pedra + ícone do tipo — cobre TODA ausência de imagem no card. O
+     img real da foto (ogImageModule) cobre este fundo quando carrega. */
+  background-image: url('../images/placeholder_card.jpeg');
+  background-size: cover;
+  background-position: center;
   color: var(--color-neutral-400);
   transition: opacity 300ms var(--ease-out);
 }
 
+/* O ícone do tipo virou decoração inerte — o placeholder oficial
+   substitui o glyph; mantido no DOM por compatibilidade dos testes */
 .collection-card__thumb-fallback .material-icons {
   font-size: 2rem;
-  opacity: 0.55;
+  opacity: 0;
 }
 
 .collection-card__thumb.is-loaded ~ .collection-card__thumb-fallback {
@@ -3282,14 +3284,12 @@ h3 .collection-card__name-link {
   font-size: 0.875rem;
 }
 
-/* Mídia fantasma da review: nota sobre o gradiente padrão */
+/* Mídia fantasma da review (curadoria órfã): MESMO placeholder oficial
+   do fallback padrão — identidade única para toda ausência de imagem */
 .collection-card__media--note .collection-card__thumb-fallback {
-  background: linear-gradient(
-    135deg,
-    rgba(92, 107, 74, 0.12),
-    rgba(92, 107, 74, 0.02) 55%,
-    rgba(92, 107, 74, 0.08)
-  );
+  background-image: url('../images/placeholder_card.jpeg');
+  background-size: cover;
+  background-position: center;
   color: var(--color-primary-600);
 }
 
