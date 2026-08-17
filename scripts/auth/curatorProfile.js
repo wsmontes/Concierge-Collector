@@ -190,6 +190,14 @@ const CuratorProfile = (function() {
 
                         <!-- Menu Items -->
                         <button
+                            id="user-refresh-photos-btn"
+                            class="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors"
+                            role="menuitem"
+                        >
+                            <span class="material-icons text-gray-400 text-lg">photo_library</span>
+                            Refresh photos
+                        </button>
+                        <button
                             id="user-data-mgmt-btn"
                             class="w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50 flex items-center gap-2 transition-colors"
                             role="menuitem"
@@ -246,6 +254,7 @@ const CuratorProfile = (function() {
                 const dropdown = document.getElementById('user-profile-dropdown');
                 const logoutBtn = document.getElementById('user-logout-btn');
                 const dataMgmtBtn = document.getElementById('user-data-mgmt-btn');
+                const refreshPhotosBtn = document.getElementById('user-refresh-photos-btn');
 
                 if (button && dropdown) {
                     // Toggle dropdown
@@ -266,6 +275,32 @@ const CuratorProfile = (function() {
                             nm.goTo('/data');
                         } else {
                             window.uiManager?.showDataManagementSection?.();
+                        }
+                    });
+                }
+
+                // "Refresh photos": o hard reset de IMAGENS em mobile —
+                // limpa o Cache Storage e re-renderiza a tela atual para
+                // repopular com o ranking do servidor (equivalente de
+                // menu do Cmd+Shift+R do desktop)
+                if (refreshPhotosBtn) {
+                    refreshPhotosBtn.addEventListener('click', async () => {
+                        dropdown?.classList.add('hidden');
+                        button?.setAttribute('aria-expanded', 'false');
+                        try {
+                            if (window.ogImageModule && typeof window.ogImageModule.clearImageCache === 'function') {
+                                await window.ogImageModule.clearImageCache();
+                            }
+                            // Re-render LOCAL preserva a página atual (o
+                            // refresh server-driven resetaria pra página 1)
+                            if (window.uiManager && typeof window.uiManager.refreshCurrentTabDataLocal === 'function') {
+                                await window.uiManager.refreshCurrentTabDataLocal();
+                            } else {
+                                window.uiManager?.refreshCurrentView?.();
+                            }
+                            window.uiUtils?.showNotification?.('Photos refreshed — re-fetching from the server', 'success');
+                        } catch (error) {
+                            window.uiUtils?.showNotification?.('Could not refresh photos: ' + error.message, 'error');
                         }
                     });
                 }

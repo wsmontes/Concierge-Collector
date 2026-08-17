@@ -462,6 +462,22 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
     }
 
     /**
+     * Hard reset manual de imagens (menu do usuário — o equivalente
+     * mobile do Cmd+Shift+R): apaga o namespace do Cache Storage; as
+     * resoluções em voo terminam e regravam conteúdo FRESCO. O caller
+     * re-renderiza a tela para os cards re-enfileirarem.
+     */
+    async clearImageCache() {
+        if (!window.caches) return;
+        try {
+            await caches.delete(this._cacheName);
+            this.log.debug('Cache de imagens limpo manualmente');
+        } catch (error) {
+            this.log.debug('limpeza manual do cache falhou:', error);
+        }
+    }
+
+    /**
      * Aplica a imagem no card: thumbnail (img com src) quando o card da
      * coleção tem o slot novo; véu legado (background + classe --visible)
      * nos detail sheets.

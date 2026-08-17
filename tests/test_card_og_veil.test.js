@@ -452,6 +452,19 @@ describe('OgImageModule — resolução, cache e aplicação do véu', () => {
     expect(sessionStorage.getItem('og-images-hard-reset')).toBeNull();
   });
 
+  test('clearImageCache (menu mobile) apaga o namespace manualmente', async () => {
+    const OgImageModuleClass = loadOgImageModule();
+    window.ApiService = { request: vi.fn() };
+    const deleteSpy = vi.fn().mockResolvedValue(true);
+    window.caches = { open: vi.fn(), delete: deleteSpy };
+
+    const module = new OgImageModuleClass();
+    await module.clearImageCache();
+
+    expect(deleteSpy).toHaveBeenCalledTimes(1);
+    expect(deleteSpy).toHaveBeenCalledWith('og-images-v2');
+  });
+
   test('flag de hard reset limpa o Cache Storage UMA vez no init', async () => {
     const OgImageModuleClass = loadOgImageModule();
     window.ApiService = { request: vi.fn() };
