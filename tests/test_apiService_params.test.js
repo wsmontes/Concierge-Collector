@@ -73,3 +73,53 @@ describe('ApiService.listEntities — query params', () => {
     expect(decodeURIComponent(url)).toContain('ids=a1,b2');
   });
 });
+
+describe('ApiService.request — opção silent (2026-08-16)', () => {
+  // O OgImageModule usa silent:true — falha de imagem é ESPERADA
+  // (404 sem og:meta é o caso comum) e não pode logar como erro no
+  // console. O contrato do throw (error.status) permanece.
+
+  function mock404() {
+    window.fetch = vi.fn().mockResolvedValue({
+      ok: false,
+      status: 404,
+      json: vi.fn().mockRejectedValue(new Error('no body'))
+    });
+  }
+
+  test('404 com silent:true não loga erro, mas ainda lança com status', async () => {
+    mock404();
+    const svc = loadApiService();
+    const errorSpy = vi.spyOn(svc.log, 'error');
+
+    await expect(svc.request('GET', 'info', { silent: true })).rejects.toMatchObject({ status: 404 });
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  test('404 sem silent continua logando (regressão)', async () => {
+    mock404();
+    const svc = loadApiService();
+    const errorSpy = vi.spyOn(svc.log, 'error');
+
+    await expect(svc.request('GET', 'info')).rejects.toMatchObject({ status: 404 });
+    expect(errorSpy).toHaveBeenCalled();
+  });
+
+  test('erro de rede com silent:true também não loga', async () => {
+    window.fetch = vi.fn().mockRejectedValue(new TypeError('Failed to fetch'));
+    const svc = loadApiService();
+    const errorSpy = vi.spyOn(svc.log, 'error');
+
+    await expect(svc.request('GET', 'info', { silent: true })).rejects.toBeTruthy();
+    expect(errorSpy).not.toHaveBeenCalled();
+  });
+
+  test('silent não vaza para o fetch (opção interna)', async () => {
+    window.fetch = vi.fn().mockResolvedValue({ ok: true, status: 200, json: vi.fn().mockResolvedValue({}) });
+    const svc = loadApiService();
+    await svc.request('GET', 'info', { silent: true });
+
+    const init = window.fetch.mock.calls[0][1];
+    expect(init.silent).toBeUndefined();
+  });
+});

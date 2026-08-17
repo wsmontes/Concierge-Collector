@@ -106,7 +106,7 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
             headers['Content-Type'] = 'application/json';
         }
 
-        const { headers: _customHeaders, ...restOptions } = options;
+        const { headers: _customHeaders, silent, ...restOptions } = options;
         const fetchOptions = {
     method,
     headers,
@@ -121,7 +121,7 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         try {
             const response = await fetch(url, fetchOptions);
             if (!response.ok) {
-                const shouldRetry = await this.handleErrorResponse(response);
+                const shouldRetry = await this.handleErrorResponse(response, { silent });
                 if (shouldRetry) {
                     // Token was refreshed, retry with new token
                     this.log.debug('Retrying request with refreshed token...');
@@ -143,7 +143,7 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
                     const retryFetchOptions = { method, headers: retryHeaders, ...restOptions };
                     const retryResponse = await fetch(url, retryFetchOptions);
                     if (!retryResponse.ok) {
-                        await this.handleErrorResponse(retryResponse);
+                        await this.handleErrorResponse(retryResponse, { silent });
                         // refresh "sucedeu" mas o recurso ainda rejeita: LANÇA
                         // com .status (o contrato vale para TODOS os throws) —
                         // devolver o response faria getCuration parsear
@@ -157,12 +157,14 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
             }
             return response;
         } catch (error) {
-            this.log.error(`Request failed: ${method} ${url}`, error);
+            // silent: falha ESPERADA (ex.: imagem OG 404) não vira log de erro
+            if (!silent) this.log.error(`Request failed: ${method} ${url}`, error);
             throw error;
         }
     }
 
-    async handleErrorResponse(response) {
+    async handleErrorResponse(response, options = {}) {
+        const silent = !!options.silent;
         let errorMessage = `HTTP ${response.status}: ${response.statusText}`;
 
         // Check for 401 FIRST, before reading the body
@@ -188,7 +190,7 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
                     }
                 }
             }
-            this.log.error(errorMessage);
+            if (!silent) this.log.error(errorMessage);
             // status anexado também no caminho de 401 sem refresh — o
             // contrato error.status vale para TODOS os throws
             const err401 = new Error(errorMessage);
@@ -211,7 +213,7 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
             case 409: errorMessage = 'Version conflict - data was modified by another user'; break;
             case 422:
                 // Log full validation error for debugging
-                if (errorDetails) {
+                if (errorDetails && !silent) {
                     console.error('🔴 Validation error details:', JSON.stringify(errorDetails, null, 2));
                     this.log.error('Validation error details:', JSON.stringify(errorDetails, null, 2));
                 }
@@ -228,7 +230,7 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
                 break;
         }
 
-        this.log.error(errorMessage);
+        if (!silent) this.log.error(errorMessage);
         // status ANEXADO ao erro — consumidores checam error.status === 404
         // em vez de grepar mensagens reescritas (três sites divergiam)
         const err = new Error(errorMessage);

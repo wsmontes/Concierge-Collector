@@ -26,16 +26,32 @@ function loadCardFactory() {
   return window.CardFactory;
 }
 
+// Instâncias vivas do módulo — o timer de prefetch (1500ms) vazava do
+// teste anterior e re-disparava _prefetchNextPage contra stubs alheios
+const _liveTestModules = [];
+
 function loadOgImageModule() {
   delete globalThis.OgImageModule;
   loadScript('scripts/modules/ogImageModule.js');
+  const Klass = window.OgImageModule;
+  window.OgImageModule = class extends Klass {
+    constructor() {
+      super();
+      _liveTestModules.push(this);
+    }
+  };
   return window.OgImageModule;
 }
 
 afterEach(() => {
+  _liveTestModules.forEach((m) => clearTimeout(m._prefetchTimer));
+  _liveTestModules.length = 0;
   document.body.innerHTML = '';
   window.ApiService = undefined;
   window.caches = undefined;
+  window.CurationBrowser = undefined;
+  window.EntityBrowser = undefined;
+  window.uiManager = undefined;
   vi.restoreAllMocks();
 });
 
@@ -351,7 +367,7 @@ describe('OgImageModule — resolução, cache e aplicação do véu', () => {
       expect(thumb.src).toContain('blob:entity-only-1');
       expect(thumb.classList.contains('is-loaded')).toBe(true);
     });
-    expect(request).toHaveBeenCalledWith('GET', '/entities/ent_no_website/image?rank=0');
+    expect(request).toHaveBeenCalledWith('GET', '/entities/ent_no_website/image?rank=0', { silent: true });
   });
 
   test('card com data-entity-id resolve pelo hero ranqueado da entity (rank=0)', async () => {
@@ -385,7 +401,7 @@ describe('OgImageModule — resolução, cache e aplicação do véu', () => {
       expect(thumb.src).toContain('blob:entity-1');
       expect(thumb.classList.contains('is-loaded')).toBe(true);
     });
-    expect(request).toHaveBeenCalledWith('GET', '/entities/ent_ranked/image?rank=0');
+    expect(request).toHaveBeenCalledWith('GET', '/entities/ent_ranked/image?rank=0', { silent: true });
   });
 
   test('entity 404 cai para o caminho legado por URL (card nunca perde imagem)', async () => {
@@ -417,7 +433,7 @@ describe('OgImageModule — resolução, cache e aplicação do véu', () => {
       expect(thumb.src).toContain('blob:legacy-1');
       expect(thumb.classList.contains('is-loaded')).toBe(true);
     });
-    expect(request).toHaveBeenNthCalledWith(1, 'GET', '/entities/ent_pending/image?rank=0');
+    expect(request).toHaveBeenNthCalledWith(1, 'GET', '/entities/ent_pending/image?rank=0', { silent: true });
     expect(request.mock.calls[1][0]).toBe('GET');
     expect(request.mock.calls[1][1]).toContain('ogImage?');
     expect(request.mock.calls[1][1]).toContain('url=https%3A%2F%2Fsite.example.com');
@@ -452,7 +468,7 @@ describe('OgImageModule — resolução, cache e aplicação do véu', () => {
       const thumb = card.querySelector('.collection-card__thumb');
       expect(thumb.src).toContain('blob:rank-3');
     });
-    expect(request).toHaveBeenCalledWith('GET', '/entities/ent_chosen/image?rank=3');
+    expect(request).toHaveBeenCalledWith('GET', '/entities/ent_chosen/image?rank=3', { silent: true });
   });
 
   test('entity 404 SEM url/place_id não dispara o legado (placeholder fica)', async () => {
@@ -637,7 +653,7 @@ describe('OgImageModule — resolução, cache e aplicação do véu', () => {
       expect(peekPage).toHaveBeenCalledWith(1);
     });
     await vi.waitFor(() => {
-      expect(request).toHaveBeenCalledWith('GET', '/entities/ent_next/image?rank=0');
+      expect(request).toHaveBeenCalledWith('GET', '/entities/ent_next/image?rank=0', { silent: true });
     });
   });
 
@@ -828,5 +844,114 @@ describe('CardFactory — badge "novo" (feedmine newBadge)', () => {
     const none = factory.createEntityCard(base, { showEntityActions: false });
     expect(old.querySelector('.card-new-badge')).toBeNull();
     expect(none.querySelector('.card-new-badge')).toBeNull();
+  });
+});
+
+describe('OgImageModule — negativo em cache (2026-08-16)', () => {
+  // Regressão do ruído: cada reload re-dispareava dezenas de requests
+  // 404/400 de imagem (sites sem og:meta, entities sem fonte no
+  // servidor). Falha DEFINITIVA (404/400) agora é persistida como
+  // negativo no Cache Storage (TTL 24h) — o reload seguinte não refaz
+  // a rede. Erro de rede (offline) NÃO vira negativo.
+
+  test('_readCache devolve false para negativo fresco', async () => {
+    const OgImageModuleClass = loadOgImageModule();
+    const fakeCache = {
+      match: vi.fn().mockResolvedValue({
+        blob: async () => new Blob([], { type: 'text/plain' }),
+        headers: new Headers({ 'x-no-image': '1', 'x-cached-at': String(Date.now()) })
+      }),
+      put: vi.fn().mockResolvedValue(undefined),
+      delete: vi.fn()
+    };
+    window.caches = { open: vi.fn().mockResolvedValue(fakeCache) };
+
+    const module = new OgImageModuleClass();
+    const result = await module._readCache('entity:e1:rank:0');
+    expect(result).toBe(false);
+    expect(fakeCache.delete).not.toHaveBeenCalled();
+  });
+
+  test('negativo com TTL vencido é apagado e vira miss', async () => {
+    const OgImageModuleClass = loadOgImageModule();
+    const fakeCache = {
+      match: vi.fn().mockResolvedValue({
+        blob: async () => new Blob([], { type: 'text/plain' }),
+        headers: new Headers({ 'x-no-image': '1', 'x-cached-at': String(Date.now() - 25 * 3600 * 1000) })
+      }),
+      put: vi.fn().mockResolvedValue(undefined),
+      delete: vi.fn().mockResolvedValue(true)
+    };
+    window.caches = { open: vi.fn().mockResolvedValue(fakeCache) };
+
+    const module = new OgImageModuleClass();
+    const result = await module._readCache('entity:e1:rank:0');
+    expect(result).toBeNull();
+    expect(fakeCache.delete).toHaveBeenCalledWith('entity:e1:rank:0');
+  });
+
+  test('404 grava negativo no Cache Storage', async () => {
+    const OgImageModuleClass = loadOgImageModule();
+    const fakeCache = {
+      match: vi.fn().mockResolvedValue(undefined),
+      put: vi.fn().mockResolvedValue(undefined),
+      delete: vi.fn()
+    };
+    window.caches = { open: vi.fn().mockResolvedValue(fakeCache) };
+    window.ApiService = { request: vi.fn().mockResolvedValue({ ok: false, status: 404 }) };
+
+    const module = new OgImageModuleClass();
+    const result = await module._resolve('https://sem-og.example.com', '', 'url:sem-og');
+    expect(result).toBeNull();
+    expect(fakeCache.put).toHaveBeenCalledTimes(1);
+    const [putUrl, putResponse] = fakeCache.put.mock.calls[0];
+    expect(putUrl).toBe('url:sem-og');
+    expect(putResponse.headers.get('x-no-image')).toBe('1');
+  });
+
+  test('negativo fresco dispensa a API (módulo novo = reload)', async () => {
+    const OgImageModuleClass = loadOgImageModule();
+    const fakeCache = {
+      match: vi.fn().mockResolvedValue({
+        blob: async () => new Blob([], { type: 'text/plain' }),
+        headers: new Headers({ 'x-no-image': '1', 'x-cached-at': String(Date.now()) })
+      }),
+      put: vi.fn().mockResolvedValue(undefined),
+      delete: vi.fn()
+    };
+    window.caches = { open: vi.fn().mockResolvedValue(fakeCache) };
+    window.ApiService = { request: vi.fn() };
+
+    const module = new OgImageModuleClass();
+    const result = await module._resolve('https://sem-og.example.com', '', 'url:sem-og');
+    expect(result).toBeNull();
+    expect(window.ApiService.request).not.toHaveBeenCalled();
+  });
+
+  test('erro de rede NÃO grava negativo', async () => {
+    const OgImageModuleClass = loadOgImageModule();
+    const fakeCache = {
+      match: vi.fn().mockResolvedValue(undefined),
+      put: vi.fn().mockResolvedValue(undefined)
+    };
+    window.caches = { open: vi.fn().mockResolvedValue(fakeCache) };
+    window.ApiService = { request: vi.fn().mockRejectedValue(new TypeError('Failed to fetch')) };
+
+    const module = new OgImageModuleClass();
+    await expect(module._resolve('https://offline.example.com', '', 'url:off')).rejects.toBeTruthy();
+    expect(fakeCache.put).not.toHaveBeenCalled();
+  });
+
+  test('resolução por entity chama o ApiService com silent:true', async () => {
+    const OgImageModuleClass = loadOgImageModule();
+    window.ApiService = { request: vi.fn().mockResolvedValue({ ok: false, status: 404 }) };
+
+    const module = new OgImageModuleClass();
+    await module._resolveEntityImage('ent_sem_servidor', 0, '', '', 'entity:ent_sem_servidor:rank:0');
+    expect(window.ApiService.request).toHaveBeenCalledWith(
+      'GET',
+      '/entities/ent_sem_servidor/image?rank=0',
+      { silent: true }
+    );
   });
 });

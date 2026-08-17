@@ -263,14 +263,17 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
     async _resolveEntityImage(entityId, rank, url, placeId, key) {
         // 1) Cache Storage (persistência client-side — offline incluído)
         const cached = await this._readCache(key);
+        if (cached === false) return null; // negativo fresco: sem rede
         if (cached) return cached;
 
         // 2) Endpoint ranqueado por entity (rank 0 = hero default;
         //    rank ≥1 = escolha do concierge no editor)
+        let entityDefinitive = false;
         try {
             const response = await window.ApiService.request(
                 'GET',
-                `/entities/${encodeURIComponent(entityId)}/image?rank=${rank}`
+                `/entities/${encodeURIComponent(entityId)}/image?rank=${rank}`,
+                { silent: true } // entity local/pending 404 é esperada — sem log de erro
             );
             if (response && response.ok) {
                 const blob = await response.blob();
@@ -278,13 +281,22 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
                     await this._writeCache(key, blob);
                     return URL.createObjectURL(blob);
                 }
+                entityDefinitive = true; // 200 mas vazio: sem imagem
+            } else if (response) {
+                entityDefinitive = true; // 404/400 do servidor: sem imagem
             }
         } catch (error) {
+            // erro de REDE não é definitivo — não grava negativo
             this.log.debug(`imagem por entity falhou para ${entityId}:`, error);
         }
 
         // 3) Fallback legado por URL (entity fora do servidor ainda)
-        if (!url && !placeId) return null;
+        if (!url && !placeId) {
+            // servidor sem imagem E sem fonte legada → negativo persistido
+            // (o reload não re-dispareava mais o 404 desta chave)
+            if (entityDefinitive) await this._writeNoImage(key);
+            return null;
+        }
         try {
             return await this._resolve(url, placeId, key);
         } catch (error) {
@@ -375,6 +387,7 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
     async _resolve(url, placeId, key) {
         // 1) Cache Storage (persistência client-side — sem rede)
         const cached = await this._readCache(key);
+        if (cached === false) return null; // negativo fresco: sem rede
         if (cached) return cached;
 
         // 2) API — devolve o JPEG redimensionado; o backend tenta
@@ -385,15 +398,23 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
         try {
             const response = await window.ApiService.request(
                 'GET',
-                `ogImage?${params.toString()}`
+                `ogImage?${params.toString()}`,
+                { silent: true } // falha esperada (sem og:meta) — sem log de erro
             );
-            if (!response || !response.ok) return null;
+            if (!response || !response.ok) {
+                await this._writeNoImage(key); // 404/400 definitivo
+                return null;
+            }
             const blob = await response.blob();
-            if (!blob || blob.size === 0) return null;
+            if (!blob || blob.size === 0) {
+                await this._writeNoImage(key);
+                return null;
+            }
 
             await this._writeCache(key, blob);
             return URL.createObjectURL(blob);
         } catch (error) {
+            // erro de REDE não é definitivo — não grava negativo
             this.log.debug(`og-image falhou para ${key}:`, error);
             throw error;
         }
@@ -420,6 +441,11 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
                 await cache.delete(url);
                 return null;
             }
+            // Negativo persistido (404/400 já visto nesta chave): false
+            // sinaliza "sem imagem conhecida" SEM refazer a rede — sem
+            // isso cada reload re-dispareava a enxurrada de 404 (2026-08-16)
+            const noImage = !!(headers && headers.get && headers.get('x-no-image'));
+            if (noImage) return false;
             const blob = await hit.blob();
             return blob && blob.size > 0 ? URL.createObjectURL(blob) : null;
         } catch (error) {
@@ -458,6 +484,33 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
             }
         } catch (error) {
             this.log.debug('escrita no Cache Storage falhou:', error);
+        }
+    }
+
+    /**
+     * Persiste um NEGATIVO no Cache Storage: esta chave já foi resolvida
+     * e NÃO tem imagem (404/400 definitivo do servidor). Com o negativo,
+     * o próximo load do card pula a rede direto para o fallback — sem a
+     * enxurrada de requests 404 no console a cada reload. Falha de rede
+     * NÃO grava negativo: offline não pode congelar o card por 24h.
+     * @param {string} url - chave do cache
+     */
+    async _writeNoImage(url) {
+        if (!window.caches) return;
+        try {
+            const cache = await caches.open(this._cacheName);
+            await cache.put(
+                url,
+                new Response('', {
+                    headers: {
+                        'Content-Type': 'text/plain',
+                        'x-no-image': '1',
+                        'x-cached-at': String(Date.now())
+                    }
+                })
+            );
+        } catch (error) {
+            this.log.debug('escrita do negativo no Cache Storage falhou:', error);
         }
     }
 
