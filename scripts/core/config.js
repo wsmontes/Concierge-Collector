@@ -8,12 +8,27 @@
  * All other files must import from this configuration.
  * 
  * Supports both localhost and GitHub Pages deployment with automatic detection.
+ *
+ * Alvos de produção (detectados por hostname):
+ *   concierge-collector.com / www.*  -> Collector (static site do Render)
+ *   api.concierge-collector.com      -> API v3
+ *   capture.concierge-collector.com  -> app de captura (mesmo web service da API)
+ *   *.onrender.com e *.github.io     -> hosts legados, seguem na API .onrender.com
  */
+
+// Domínio próprio de produção. O apex e o www servem o Collector (static site
+// do Render); a API vive no subdomínio api.*, e o app de captura no capture.*.
+const CUSTOM_DOMAIN = 'concierge-collector.com';
 
 // Detect environment
 const isGitHubPages = window.location.hostname.includes('github.io');
 const isLocalhost = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
 const isRenderProduction = window.location.hostname.includes('onrender.com');
+// Casamento exato (apex) ou por sufixo com ponto — nunca por substring solta,
+// senão um host de terceiro como "concierge-collector.com.attacker.net"
+// seria tratado como produção nossa.
+const isCustomDomain = window.location.hostname === CUSTOM_DOMAIN ||
+    window.location.hostname.endsWith('.' + CUSTOM_DOMAIN);
 
 // Determine API base URL based on environment.
 // O ramo PythonAnywhere foi removido: wsmontes.pythonanywhere.com não existe
@@ -22,6 +37,11 @@ const getApiBaseUrl = () => {
     if (isLocalhost) {
         // Local development
         return 'http://localhost:8000/api/v3';
+    }
+    if (isCustomDomain) {
+        // Produção no domínio próprio — mesmo web service do Render, mas
+        // acessado pelo hostname api.* (o apex é o static site do Collector).
+        return 'https://api.' + CUSTOM_DOMAIN + '/api/v3';
     }
     // Production - Render.com API (inclui github.io legado)
     return 'https://concierge-collector.onrender.com/api/v3';
@@ -32,7 +52,7 @@ const AppConfig = {
      * Environment Detection
      */
     environment: {
-        isProduction: isGitHubPages || isRenderProduction,
+        isProduction: isGitHubPages || isRenderProduction || isCustomDomain,
         isDev: isLocalhost,
         hostname: window.location.hostname,
         protocol: window.location.protocol
