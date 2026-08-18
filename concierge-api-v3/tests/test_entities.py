@@ -15,9 +15,9 @@ def _req():
 class TestEntityEndpoints:
     """Test entity CRUD operations"""
 
-    def test_list_entities_default(self, client):
+    def test_list_entities_default(self, client, auth_headers):
         """Test listing entities with default params"""
-        response = client.get("/api/v3/entities")
+        response = client.get("/api/v3/entities", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -29,26 +29,26 @@ class TestEntityEndpoints:
         assert data["limit"] == 50
         assert data["offset"] == 0
 
-    def test_list_entities_with_limit(self, client):
+    def test_list_entities_with_limit(self, client, auth_headers):
         """Test listing entities with custom limit"""
-        response = client.get("/api/v3/entities?limit=10")
+        response = client.get("/api/v3/entities?limit=10", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
         assert len(data["items"]) <= 10
         assert data["limit"] == 10
 
-    def test_list_entities_with_offset(self, client):
+    def test_list_entities_with_offset(self, client, auth_headers):
         """Test listing entities with offset"""
-        response = client.get("/api/v3/entities?offset=5")
+        response = client.get("/api/v3/entities?offset=5", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
         assert data["offset"] == 5
 
-    def test_list_entities_filter_by_type(self, client):
+    def test_list_entities_filter_by_type(self, client, auth_headers):
         """Test filtering entities by type"""
-        response = client.get("/api/v3/entities?type=restaurant")
+        response = client.get("/api/v3/entities?type=restaurant", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
@@ -56,23 +56,23 @@ class TestEntityEndpoints:
         for item in data["items"]:
             assert item["type"] == "restaurant"
 
-    def test_list_entities_filter_by_name(self, client):
+    def test_list_entities_filter_by_name(self, client, auth_headers):
         """Test filtering entities by name (regex)"""
-        response = client.get("/api/v3/entities?name=test")
+        response = client.get("/api/v3/entities?name=test", headers=auth_headers)
 
         assert response.status_code == 200
         data = response.json()
         # Should filter by name case-insensitive
         assert isinstance(data["items"], list)
 
-    def test_list_entities_pagination_limits(self, client):
+    def test_list_entities_pagination_limits(self, client, auth_headers):
         """Test pagination limits"""
         # Max limit
-        response = client.get("/api/v3/entities?limit=1000")
+        response = client.get("/api/v3/entities?limit=1000", headers=auth_headers)
         assert response.status_code == 200
 
         # Over max should fail
-        response = client.get("/api/v3/entities?limit=1001")
+        response = client.get("/api/v3/entities?limit=1001", headers=auth_headers)
         assert response.status_code == 422
 
     def test_create_entity_without_auth(self, client, sample_entity):
@@ -82,24 +82,24 @@ class TestEntityEndpoints:
         # Must fail with 401 Unauthorized
         assert response.status_code == 401
 
-    def test_get_entity_not_found(self, client):
+    def test_get_entity_not_found(self, client, auth_headers):
         """Test getting non-existent entity"""
-        response = client.get("/api/v3/entities/nonexistent_id")
+        response = client.get("/api/v3/entities/nonexistent_id", headers=auth_headers)
 
         assert response.status_code == 404
         data = response.json()
         assert "not found" in data["detail"].lower()
 
-    def test_get_existing_entity(self, client):
+    def test_get_existing_entity(self, client, auth_headers):
         """Test getting an existing entity"""
         # First get list to find an entity
-        list_response = client.get("/api/v3/entities?limit=1")
+        list_response = client.get("/api/v3/entities?limit=1", headers=auth_headers)
         entities = list_response.json()["items"]
 
         if entities:
             # Try both _id and entity_id for lookup
             entity_id = entities[0].get("_id") or entities[0]["entity_id"]
-            response = client.get(f"/api/v3/entities/{entity_id}")
+            response = client.get(f"/api/v3/entities/{entity_id}", headers=auth_headers)
 
             # May fail if MongoDB uses different ID field
             assert response.status_code in [200, 404]
@@ -152,14 +152,14 @@ class TestEntityValidation:
         # Without auth, expects 401 before validation
         assert response.status_code == 401
 
-    def test_list_entities_invalid_limit(self, client):
-        """Test listing with invalid limit"""
-        response = client.get("/api/v3/entities?limit=-1")
+    def test_list_entities_invalid_limit(self, client, auth_headers):
+        """Test listing with invalid limit (auth corre antes da validação)"""
+        response = client.get("/api/v3/entities?limit=-1", headers=auth_headers)
         assert response.status_code == 422
 
-    def test_list_entities_invalid_offset(self, client):
-        """Test listing with invalid offset"""
-        response = client.get("/api/v3/entities?offset=-1")
+    def test_list_entities_invalid_offset(self, client, auth_headers):
+        """Test listing with invalid offset (auth corre antes da validação)"""
+        response = client.get("/api/v3/entities?offset=-1", headers=auth_headers)
         assert response.status_code == 422
 
 
@@ -190,7 +190,7 @@ class TestAuth:
 
 
 @pytest.mark.mongo
-def test_list_entities_ids_filter(client, test_db, clean_test_entities):
+def test_list_entities_ids_filter(client, test_db, clean_test_entities, auth_headers):
     """GET /entities?ids= busca SÓ as entidades pedidas (string + hex
     ObjectId + slug) — o fast-path do pull do collector depende disso."""
     test_db.entities.insert_many(
@@ -222,7 +222,7 @@ def test_list_entities_ids_filter(client, test_db, clean_test_entities):
         ]
     )
 
-    r = client.get("/api/v3/entities", params={"ids": "ids_slug_ent,ids_hex_ent", "limit": 50})
+    r = client.get("/api/v3/entities", params={"ids": "ids_slug_ent,ids_hex_ent", "limit": 50}, headers=auth_headers)
     assert r.status_code == 200
     items = r.json()["items"]
     ids = {i.get("entity_id") or i.get("_id") for i in items}
@@ -243,14 +243,14 @@ def test_list_entities_ids_filter(client, test_db, clean_test_entities):
             "updatedAt": "2026-08-13T00:00:00Z",
         }
     )
-    r2 = client.get("/api/v3/entities", params={"ids": "507f1f77bcf86cd799439011", "limit": 50})
+    r2 = client.get("/api/v3/entities", params={"ids": "507f1f77bcf86cd799439011", "limit": 50}, headers=auth_headers)
     assert r2.status_code == 200
     r2_ids = [i.get("entity_id") or i.get("_id") for i in r2.json()["items"]]
     assert any(str(i) == "507f1f77bcf86cd799439011" for i in r2_ids) or "hex-oid-slug" in r2_ids
 
 
 @pytest.mark.mongo
-def test_list_entities_filter_by_city_street_regex(client, clean_test_entities, test_db):
+def test_list_entities_filter_by_city_street_regex(client, clean_test_entities, test_db, auth_headers):
     """city filtra via regex no address.street (bulk) e address.city (v3)"""
     from datetime import datetime, timezone
 
@@ -301,24 +301,24 @@ def test_list_entities_filter_by_city_street_regex(client, clean_test_entities, 
         ]
     )
     # cidade no street do bulk (case-insensitive)
-    response = client.get("/api/v3/entities?city=sao+paulo")
+    response = client.get("/api/v3/entities?city=sao+paulo", headers=auth_headers)
     assert response.status_code == 200
     names = {i["name"] for i in response.json()["items"] if i["name"].startswith("Cafe")}
     assert names == {"Cafe Beta"}
 
     # cidade no campo city do formato v3
-    response = client.get("/api/v3/entities?city=victoria")
+    response = client.get("/api/v3/entities?city=victoria", headers=auth_headers)
     names = {i["name"] for i in response.json()["items"] if i["name"].startswith("Cafe")}
     assert "Cafe Alpha" in names
 
     # regex escapado: caracteres especiais não podem derrubar nem vazar
-    response = client.get("/api/v3/entities?city=%28")
+    response = client.get("/api/v3/entities?city=%28", headers=auth_headers)
     assert response.status_code == 200
     assert response.json()["items"] == []
 
 
 @pytest.mark.mongo
-def test_list_entities_q_alias_of_name(client, clean_test_entities, test_db):
+def test_list_entities_q_alias_of_name(client, clean_test_entities, test_db, auth_headers):
     """q funciona como o name (regex no nome), e name continua funcionando"""
     from datetime import datetime, timezone
 
@@ -346,13 +346,13 @@ def test_list_entities_q_alias_of_name(client, clean_test_entities, test_db):
             },
         ]
     )
-    response = client.get("/api/v3/entities?q=quesadilla")
+    response = client.get("/api/v3/entities?q=quesadilla", headers=auth_headers)
     assert response.status_code == 200
     names = [i["name"] for i in response.json()["items"]]
     assert "Quesadilla House" in names
     assert "Other Place" not in names
 
-    response = client.get("/api/v3/entities?name=quesadilla")
+    response = client.get("/api/v3/entities?name=quesadilla", headers=auth_headers)
     names = [i["name"] for i in response.json()["items"]]
     assert "Quesadilla House" in names
     assert "Other Place" not in names
@@ -449,7 +449,7 @@ class TestDeleteEntityAccess:
 
 
 @pytest.mark.mongo
-def test_list_entities_ids_accepts_more_than_500(client):
+def test_list_entities_ids_accepts_more_than_500(client, auth_headers):
     """Contrato do fast path: o servidor aplica o cap de 500 sem erro.
 
     O cliente faz chunking dos ids (bug 2026-08-15: o parâmetro era
@@ -457,7 +457,7 @@ def test_list_entities_ids_accepts_more_than_500(client):
     aceitar listas longas e limitar internamente.
     """
     ids = ",".join(f"ent_nonexistent_{i}" for i in range(505))
-    r = client.get(f"/api/v3/entities?ids={ids}")
+    r = client.get(f"/api/v3/entities?ids={ids}", headers=auth_headers)
     assert r.status_code == 200
     data = r.json()
     assert "items" in data

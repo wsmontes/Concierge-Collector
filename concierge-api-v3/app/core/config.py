@@ -111,39 +111,54 @@ class Settings(BaseSettings):
 
     @property
     def jwt_secret(self) -> str:
-        """Segredo de assinatura dos JWTs — JWT_SIGNING_SECRET com fallback
-        no API_SECRET_KEY legado (warn na transição)."""
+        """Segredo de assinatura dos JWTs — JWT_SIGNING_SECRET.
+
+        O fallback legado no API_SECRET_KEY (poder duplo: quem tem a chave
+        forja JWT de admin) agora só existe em development — achado #7 da
+        auditoria 2026-08-18. Em produção, faltar JWT_SIGNING_SECRET é
+        RuntimeError → 500 fail-closed (verificado no Render em 2026-08-18:
+        a var está setada)."""
         if self.jwt_signing_secret:
             return self.jwt_signing_secret
-        logger.warning(
-            "JWT_SIGNING_SECRET não configurado — usando API_SECRET_KEY como "
-            "fallback (transição; separar no Render para remover o poder duplo)"
-        )
-        return self.api_secret_key
+        if self.environment == "development":
+            logger.warning(
+                "JWT_SIGNING_SECRET não configurado — usando API_SECRET_KEY como "
+                "fallback (SOMENTE development; em produção isso é erro)"
+            )
+            return self.api_secret_key
+        raise RuntimeError("JWT_SIGNING_SECRET não configurado em produção — configure no dashboard do Render")
 
     @property
     def admin_api_key_list(self) -> List[str]:
-        """Lista de chaves válidas do X-API-Key — ADMIN_API_KEYS (CSV) com
-        fallback no API_SECRET_KEY legado."""
+        """Lista de chaves válidas do X-API-Key — ADMIN_API_KEYS (CSV).
+
+        Fallback no API_SECRET_KEY só em development; em produção a lista
+        fica vazia e get_admin_api_keys devolve 500 (fail-closed)."""
         if self.admin_api_keys:
             return [k.strip() for k in self.admin_api_keys.split(",") if k.strip()]
-        logger.warning(
-            "ADMIN_API_KEYS não configurado — usando API_SECRET_KEY como " "chave única (transição; separar no Render)"
-        )
-        return [self.api_secret_key] if self.api_secret_key else []
+        if self.environment == "development":
+            logger.warning(
+                "ADMIN_API_KEYS não configurado — usando API_SECRET_KEY como " "chave única (SOMENTE development)"
+            )
+            return [self.api_secret_key] if self.api_secret_key else []
+        logger.error("ADMIN_API_KEYS não configurado em produção — X-API-Key " "desabilitado (fail-closed)")
+        return []
 
     def is_admin_email(self, email: str) -> bool:
-        """ADMIN_EMAILS (allowlist explícita) substitui a regra legada de
-        domínio @lotier.com — o domínio do Google Workspace deixou de ser
-        security boundary automática."""
+        """ADMIN_EMAILS (allowlist explícita) é a única fonte de admin.
+
+        A regra legada de domínio @lotier.com só existe em development
+        (achado #7 da auditoria 2026-08-18) — em produção, sem allowlist
+        configurada, NINGUÉM é admin por domínio (fail-closed; verificado:
+        ADMIN_EMAILS está setada no Render)."""
         if self.admin_emails:
             allowlist = {e.strip().lower() for e in self.admin_emails.split(",") if e.strip()}
             return (email or "").lower() in allowlist
-        logger.warning(
-            "ADMIN_EMAILS não configurado — usando regra legada @lotier.com "
-            "(transição; documentar a decisão de boundary)"
-        )
-        return bool(email) and email.lower().endswith("@lotier.com")
+        if self.environment == "development":
+            logger.warning("ADMIN_EMAILS não configurado — usando regra legada @lotier.com " "(SOMENTE development)")
+            return bool(email) and email.lower().endswith("@lotier.com")
+        logger.error("ADMIN_EMAILS não configurado em produção — nenhum email é admin " "por domínio (fail-closed)")
+        return False
 
     @property
     def trusted_callback_origins_list(self) -> List[str]:

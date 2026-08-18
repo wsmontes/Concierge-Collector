@@ -141,6 +141,46 @@ def test_testing_bypass_only_works_in_development():
             os.environ.pop("TESTING", None)
 
 
+def test_oauth_init_rejeita_localhost_em_producao(client):
+    """Origins localhost hardcoded NÃO valem em produção (achado #6 da
+    auditoria 2026-08-18) — um processo escutando na porta 3000/5500 da
+    máquina da vítima não pode receber os tokens do login.
+
+    A lista de config é zerada no teste (o .env de dev já lista todos os
+    localhosts e sombrearia o bloco hardcoded)."""
+    from app.core.config import settings
+
+    with (
+        patch.object(settings, "trusted_callback_origins", "[]"),
+        patch.object(settings, "frontend_url", "http://dev.example.com"),
+        patch.object(settings, "frontend_url_production", "https://concierge-collector-web.onrender.com"),
+        patch.object(settings, "environment", "production"),
+    ):
+        response = client.get(
+            "/api/v3/auth/google?callback_url=http://localhost:5500",
+            follow_redirects=False,
+        )
+    assert response.status_code == 400
+
+
+def test_oauth_init_aceita_localhost_em_development(client):
+    """Em development, os origins localhost de dev seguem aceitos (mesmo com
+    a lista de config vazia — o bloco dev é o que os libera)."""
+    from app.core.config import settings
+
+    with (
+        patch.object(settings, "trusted_callback_origins", "[]"),
+        patch.object(settings, "frontend_url", "http://dev.example.com"),
+        patch.object(settings, "frontend_url_production", "https://concierge-collector-web.onrender.com"),
+        patch.object(settings, "environment", "development"),
+    ):
+        response = client.get(
+            "/api/v3/auth/google?callback_url=http://localhost:5500",
+            follow_redirects=False,
+        )
+    assert response.status_code == 307
+
+
 def test_oauth_init_rejects_untrusted_callback_url(client):
     """callback_url deve ser validado contra allowlist de origens confiáveis."""
 
@@ -340,8 +380,10 @@ def test_auth_redirect_same_site_tokens_no_fragment():
     assert "token=acc" not in url.split("#")[0]
 
 
-def test_auth_redirect_cross_site_mantem_tokens_na_url():
-    """Cross-site legado (GitHub Pages): tokens na URL como antes."""
+def test_auth_redirect_cross_site_tokens_apenas_no_fragment():
+    """Cross-site legado (GitHub Pages): tokens NO FRAGMENT, nunca na query
+    (achado #8 da auditoria 2026-08-18 — query vazava via Referer/histórico;
+    o fragment é lido pelo auth.js e não sai do browser)."""
     from app.api.auth import _build_auth_redirect_url
 
     url = _build_auth_redirect_url(
@@ -352,8 +394,35 @@ def test_auth_redirect_cross_site_mantem_tokens_na_url():
         user_name="A",
         same_site=False,
     )
-    assert "token=acc" in url
-    assert "refresh_token=ref" in url
+    base, fragment = url.split("#")
+    assert "token=acc" in fragment
+    assert "refresh_token=ref" in fragment
+    # nada de token na QUERY (log de request/Referer não vêem)
+    assert "token=acc" not in base
+    assert "refresh_token=ref" not in base
+
+
+def test_dev_login_bloqueado_no_render_mesmo_em_development(client, monkeypatch):
+    """Defesa em profundidade (achado #4): ENVIRONMENT=development com
+    RENDER_SERVICE_NAME setado NÃO libera o dev-login — um deploy do Render
+    com a env errada não vira backdoor de admin público."""
+    from app.core.config import settings
+
+    monkeypatch.setenv("RENDER_SERVICE_NAME", "concierge-collector")
+    with patch.object(settings, "environment", "development"):
+        resp = client.get("/api/v3/auth/dev-login")
+    assert resp.status_code == 403
+
+
+def test_dev_login_sem_render_service_name_continua_ok(client, monkeypatch):
+    """Sem RENDER_SERVICE_NAME (dev local), o dev-login segue funcionando
+    em development — a regra dupla não quebra o fluxo local."""
+    from app.core.config import settings
+
+    monkeypatch.delenv("RENDER_SERVICE_NAME", raising=False)
+    with patch.object(settings, "environment", "development"):
+        resp = client.get("/api/v3/auth/dev-login")
+    assert resp.status_code == 200
 
 
 # ============================================================================

@@ -6,8 +6,11 @@ interna — todas as rotas de leitura exigem autenticação (verify_auth), mas
 SEM redação por dono: usuário logado vê o documento completo (zero mudança
 de payload, zero impacto no sync offline-first).
 
-Permaneceram públicas apenas as rotas sem PII: /entities, /places/photo
-(proxy <img>), /health e /info.
+A partir de 2026-08-18 (achado #5), /entities também exige auth — o
+login-gate de leitura agora cobre entities E curations.
+
+Permaneceram públicas apenas: /health, /ready, /info, /concepts e
+/places/photo (proxy <img>).
 """
 
 

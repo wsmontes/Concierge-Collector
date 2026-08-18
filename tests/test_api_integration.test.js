@@ -111,9 +111,11 @@ describe('API Integration - Entities', () => {
   test('should get entity by ID from API', async (t) => {
     if (!apiAvailable || !createdEntityId) { t.skip(apiUnavailableReason); return; }
     
-    const response = await fetch(`${API_BASE}/entities/${createdEntityId}`);
+    const response = await fetch(`${API_BASE}/entities/${createdEntityId}`, {
+      headers: { 'X-API-Key': API_KEY }
+    });
     expect(response.ok).toBe(true);
-    
+
     const entity = await response.json();
     expect(entity.entity_id).toBe(createdEntityId);
     expect(entity.name).toBe('Test Restaurant API');
@@ -122,9 +124,11 @@ describe('API Integration - Entities', () => {
   test('should list entities from API', async (t) => {
     if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
     
-    const response = await fetch(`${API_BASE}/entities`);
+    const response = await fetch(`${API_BASE}/entities`, {
+      headers: { 'X-API-Key': API_KEY }
+    });
     expect(response.ok).toBe(true);
-    
+
     const result = await response.json();
     expect(result).toHaveProperty('items');
     expect(Array.isArray(result.items)).toBe(true);
@@ -135,7 +139,9 @@ describe('API Integration - Entities', () => {
     if (!apiAvailable || !createdEntityId) { t.skip(apiUnavailableReason); return; }
     
     // First get current version
-    const getResponse = await fetch(`${API_BASE}/entities/${createdEntityId}`);
+    const getResponse = await fetch(`${API_BASE}/entities/${createdEntityId}`, {
+      headers: { 'X-API-Key': API_KEY }
+    });
     const current = await getResponse.json();
     
     // Update with If-Match header
@@ -169,8 +175,10 @@ describe('API Integration - Entities', () => {
 
     expect(response.ok).toBe(true);
     
-    // Verify deleted
-    const getResponse = await fetch(`${API_BASE}/entities/${createdEntityId}`);
+    // Verify deleted (com auth: 404; sem auth seria 401)
+    const getResponse = await fetch(`${API_BASE}/entities/${createdEntityId}`, {
+      headers: { 'X-API-Key': API_KEY }
+    });
     expect(getResponse.status).toBe(404);
   });
 });
@@ -280,7 +288,9 @@ describe('API Integration - Error Handling', () => {
   test('should return 404 for non-existent entity', async (t) => {
     if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
     
-    const response = await fetch(`${API_BASE}/entities/nonexistent_id_123`);
+    const response = await fetch(`${API_BASE}/entities/nonexistent_id_123`, {
+      headers: { 'X-API-Key': API_KEY }
+    });
     expect(response.status).toBe(404);
   });
 

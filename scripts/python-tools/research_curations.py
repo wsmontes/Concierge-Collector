@@ -10,6 +10,13 @@ Uso:
     # Piloto: 30 entidades do Rio, gera data/rio_curations_research.json
     ./concierge-api-v3/venv/bin/python scripts/python-tools/research_curations.py \
         --city Rio --limit 30 --output data/rio_curations_research.json
+
+SEGURANÇA (risco aceito — achado #10 da auditoria 2026-08-18): este script
+conecta DIRETO no MongoDB Atlas com o MONGODB_URL do .env (que é gitignored)
+em vez de passar pela auth da API. O .env desta máquina é credencial TOTAL
+do banco — o risco aceito é inerente ao pipeline local: o script não roda no
+servidor e só existe na máquina do dev. Quem obtiver o .env contorna toda a
+autenticação da API (o mesmo vale para o backfill de embeddings).
 """
 from __future__ import annotations
 

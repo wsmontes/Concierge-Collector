@@ -18,6 +18,7 @@ import hashlib
 import base64
 from typing import Optional
 import logging
+import os
 
 from app.core.config import settings
 from app.core.database import get_database
@@ -107,8 +108,9 @@ def _build_auth_redirect_url(
     vaza via query/Referer/logs de request. `?session=1` mantém o fallback
     de cookie para quem chega sem tokens.
 
-    Cross-site legado (GitHub Pages) → tokens na query, como antes (o cookie
-    Lax não é enviado cross-site)."""
+    Cross-site legado (GitHub Pages) → tokens TAMBÉM no fragment (achado #8
+    da auditoria 2026-08-18: a query vazava tokens via Referer/histórico/logs
+    de request; o auth.js lê o fragment nos dois casos)."""
     base = f"{frontend_url.rstrip('/')}/"
     legacy_params = (
         f"token={access_token}"
@@ -117,9 +119,7 @@ def _build_auth_redirect_url(
         f"&user_email={user_email}"
         f"&user_name={user_name}"
     )
-    if same_site:
-        return f"{base}?session=1#{legacy_params}"
-    return f"{base}?{legacy_params}"
+    return f"{base}?session=1#{legacy_params}"
 
 
 def _issue_refresh(db: Database, email: str) -> str:
@@ -344,16 +344,19 @@ def google_oauth_init(callback_url: Optional[str] = None, request: Request = Non
 
     # Validate frontend_redirect_url against config-driven trusted origins
     trusted_origins = set(settings.trusted_callback_origins_list)
-    # Also accept localhost dev URLs (not stored in production config)
-    trusted_origins.update(
-        {
-            "http://localhost:3000",
-            "http://localhost:5500",
-            "http://127.0.0.1:5500",
-            "http://127.0.0.1:5501",
-            "http://localhost:8080",
-        }
-    )
+    # Also accept localhost dev URLs — SÓ em development (achado #6 da
+    # auditoria 2026-08-18: em produção, um processo local na porta 3000/5500
+    # da máquina da vítima podia receber os tokens do login).
+    if settings.environment == "development":
+        trusted_origins.update(
+            {
+                "http://localhost:3000",
+                "http://localhost:5500",
+                "http://127.0.0.1:5500",
+                "http://127.0.0.1:5501",
+                "http://localhost:8080",
+            }
+        )
     if frontend_redirect_url not in trusted_origins:
         logger.warning(f"[OAuth] Untrusted callback_url rejected: {frontend_redirect_url}")
         raise HTTPException(
@@ -804,9 +807,12 @@ def dev_login(response: Response, db: Database = Depends(get_database)):
     from app.core.security import create_access_token
     from datetime import timedelta
 
-    # 🔒 CRITICAL: Only available in development
-    if settings.environment != "development":
-        logger.warning(f"[DevLogin] ⛔ Blocked in production (ENVIRONMENT={settings.environment})")
+    # 🔒 CRITICAL: Only available in development. Defesa em profundidade
+    # (achado #4 da auditoria 2026-08-18): mesmo com ENVIRONMENT=development,
+    # o Render injeta RENDER_SERVICE_NAME em todo serviço — um deploy com a
+    # env errada NÃO pode virar backdoor de admin público.
+    if settings.environment != "development" or os.getenv("RENDER_SERVICE_NAME"):
+        logger.warning(f"[DevLogin] ⛔ Blocked (ENVIRONMENT={settings.environment})")
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Dev login only available in development environment",

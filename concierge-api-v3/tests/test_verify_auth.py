@@ -331,16 +331,64 @@ class TestSecretSeparation:
         assert settings.is_admin_email("someone@lotier.com") is False
 
     def test_jwt_secret_falls_back_to_api_secret_key(self):
-        """Sem JWT_SIGNING_SECRET, o fallback legado mantém tudo funcionando."""
+        """Sem JWT_SIGNING_SECRET, o fallback legado mantém tudo funcionando
+        (em development — o .env de dev não tem a var nova)."""
         from app.core.config import settings
 
         assert settings.jwt_secret == settings.api_secret_key
 
     def test_admin_api_key_list_falls_back_to_api_secret_key(self):
-        """Sem ADMIN_API_KEYS, a lista é [API_SECRET_KEY] (comportamento legado)."""
+        """Sem ADMIN_API_KEYS, a lista é [API_SECRET_KEY] (comportamento legado,
+        development)."""
         from app.core.config import settings
 
         assert settings.admin_api_key_list[0] == settings.api_secret_key
+
+    def test_jwt_secret_fail_closed_em_producao(self, monkeypatch):
+        """Achado #7 (auditoria 2026-08-18): em PRODUÇÃO, sem
+        JWT_SIGNING_SECRET o fallback deixa de existir — RuntimeError
+        (500 fail-closed) em vez de poder duplo com a API key."""
+        import pytest
+        from app.core.config import settings
+
+        monkeypatch.setattr(settings, "jwt_signing_secret", "")
+        monkeypatch.setattr(settings, "environment", "production")
+        with pytest.raises(RuntimeError):
+            _ = settings.jwt_secret
+
+    def test_jwt_secret_fallback_segue_em_development(self, monkeypatch):
+        from app.core.config import settings
+
+        monkeypatch.setattr(settings, "jwt_signing_secret", "")
+        monkeypatch.setattr(settings, "environment", "development")
+        assert settings.jwt_secret == settings.api_secret_key
+
+    def test_admin_key_list_fail_closed_em_producao(self, monkeypatch):
+        """Sem ADMIN_API_KEYS em produção → lista vazia (get_admin_api_keys
+        devolve 500 em vez de aceitar a chave legada)."""
+        from app.core.config import settings
+
+        monkeypatch.setattr(settings, "admin_api_keys", "")
+        monkeypatch.setattr(settings, "environment", "production")
+        assert settings.admin_api_key_list == []
+
+    def test_is_admin_email_fail_closed_em_producao_sem_allowlist(self, monkeypatch):
+        """Sem ADMIN_EMAILS em produção, NINGUÉM é admin por domínio —
+        a regra @lotier.com é só legado de development."""
+        from app.core.config import settings
+
+        monkeypatch.setattr(settings, "admin_emails", "")
+        monkeypatch.setattr(settings, "environment", "production")
+        assert settings.is_admin_email("anyone@lotier.com") is False
+        assert settings.is_admin_email("wagner@lotier.com") is False
+
+    def test_is_admin_email_legado_lotier_so_em_development(self, monkeypatch):
+        from app.core.config import settings
+
+        monkeypatch.setattr(settings, "admin_emails", "")
+        monkeypatch.setattr(settings, "environment", "development")
+        assert settings.is_admin_email("anyone@lotier.com") is True
+        assert settings.is_admin_email("outsider@x.com") is False
 
 
 class TestRequireRole:

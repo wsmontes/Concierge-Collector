@@ -108,11 +108,12 @@ async def resolve_image_input(image: str) -> str:
     """Normaliza a entrada de imagem para o formato que a OpenAI consegue
     consumir SEM download remoto: data URL (base64).
 
-    URLs http(s) — inclusive as do proxy /places/photo (302 → Google) — são
-    baixadas AQUI (server-side); o downloader da OpenAI não segue o redirect
-    do proxy e falhava com "Error while downloading https://...". Data URLs
-    passam direto. Base64 cru (contrato documentado do image_file) é
-    convertido para data URL com o mime detectado pelos magic bytes."""
+    URLs http(s) — inclusive as do proxy /places/photo (desde 2026-08-18 o
+    proxy devolve os bytes em streaming; antes era 302 → Google, que o
+    downloader da OpenAI não seguia e falhava com "Error while downloading
+    https://...") — são baixadas AQUI (server-side). Data URLs passam
+    direto. Base64 cru (contrato documentado do image_file) é convertido
+    para data URL com o mime detectado pelos magic bytes."""
     if isinstance(image, str) and image.startswith("data:"):
         return image
 
