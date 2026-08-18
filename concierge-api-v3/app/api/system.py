@@ -52,10 +52,13 @@ def readiness_check(db: Database = Depends(get_database)):
 
 
 @router.get("/info", response_model=APIInfo)
-def get_info():
-    """Get API information"""
+def get_info(db: Database = Depends(get_database)):
+    """Get API information — inclui o nome do banco (não a URL): o guard
+    de integração do frontend usa o campo para recusar testes contra o
+    banco de produção (2026-08-18)."""
     return APIInfo(
         name="Concierge Collector API",
         version=__version__,
         description="Professional FastAPI implementation with MongoDB",
+        database=db.name,
     )

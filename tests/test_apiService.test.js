@@ -12,8 +12,11 @@
 
 import { describe, test, expect, beforeAll, afterAll } from 'vitest';
 import {
-  cleanupTestEntities,
+  trackTestEntity,
+  trackTestCuration,
+  cleanupRegisteredTestData,
   isApiAvailable,
+  apiUnavailableReason,
   TEST_API_BASE,
   TEST_API_KEY
 } from './helpers.js';
@@ -40,13 +43,14 @@ beforeAll(async () => {
   apiAvailable = await isApiAvailable();
   devToken = await getDevToken();
   if (!apiAvailable) {
-    console.warn('⚠️  API not available - skipping ApiService tests');
+    console.warn('⚠️  ApiService tests skipped:', apiUnavailableReason);
+    console.warn('   Start the API with: cd concierge-api-v3 && ./run_local.sh --test-db');
   }
 });
 
 afterAll(async () => {
   if (apiAvailable) {
-    await cleanupTestEntities();
+    await cleanupRegisteredTestData();
   }
 });
 
@@ -55,8 +59,8 @@ afterAll(async () => {
 // ============================================================================
 
 describe('ApiService - Initialization', () => {
-  test('should connect to API successfully', async () => {
-    if (!apiAvailable) return;
+  test('should connect to API successfully', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
     
     const response = await fetch(`${API_BASE}/info`);
     expect(response.ok).toBe(true);
@@ -75,8 +79,8 @@ describe('ApiService - Initialization', () => {
 // ============================================================================
 
 describe('ApiService - Authentication', () => {
-  test('should accept valid API key', async () => {
-    if (!apiAvailable) return;
+  test('should accept valid API key', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
     
     const entity = {
       entity_id: `entity_auth_test_${Date.now()}`,
@@ -103,8 +107,8 @@ describe('ApiService - Authentication', () => {
     });
   });
 
-  test('should reject requests without API key', async () => {
-    if (!apiAvailable) return;
+  test('should reject requests without API key', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
     
     const entity = {
       entity_id: 'test',
@@ -121,8 +125,8 @@ describe('ApiService - Authentication', () => {
     expect([401, 403]).toContain(response.status);
   });
 
-  test('should reject invalid API key', async () => {
-    if (!apiAvailable) return;
+  test('should reject invalid API key', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
     
     const entity = {
       entity_id: 'test',
@@ -142,8 +146,8 @@ describe('ApiService - Authentication', () => {
     expect([401, 403]).toContain(response.status);
   });
 
-  test('should allow GET requests without API key', async () => {
-    if (!apiAvailable) return;
+  test('should allow GET requests without API key', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
     
     const response = await fetch(`${API_BASE}/entities`);
     expect(response.ok).toBe(true);
@@ -157,8 +161,8 @@ describe('ApiService - Authentication', () => {
 describe('ApiService - Entity Operations', () => {
   let testEntityId = null;
 
-  test('should create entity', async () => {
-    if (!apiAvailable) return;
+  test('should create entity', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
     
     const entity = {
       entity_id: `entity_test_${Date.now()}`,
@@ -182,7 +186,7 @@ describe('ApiService - Entity Operations', () => {
 
     expect(response.ok).toBe(true);
     const created = await response.json();
-    
+    trackTestEntity(created.entity_id);
     expect(created.entity_id).toBe(entity.entity_id);
     expect(created.name).toBe('Test Restaurant');
     expect(created.type).toBe('restaurant');
@@ -191,8 +195,8 @@ describe('ApiService - Entity Operations', () => {
     testEntityId = created.entity_id;
   });
 
-  test('should get entity by ID', async () => {
-    if (!apiAvailable || !testEntityId) return;
+  test('should get entity by ID', async (t) => {
+    if (!apiAvailable || !testEntityId) { t.skip(apiUnavailableReason); return; }
     
     const response = await fetch(`${API_BASE}/entities/${testEntityId}`);
     expect(response.ok).toBe(true);
@@ -202,8 +206,8 @@ describe('ApiService - Entity Operations', () => {
     expect(entity.name).toBe('Test Restaurant');
   });
 
-  test('should list all entities', async () => {
-    if (!apiAvailable) return;
+  test('should list all entities', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
     
     const response = await fetch(`${API_BASE}/entities`);
     expect(response.ok).toBe(true);
@@ -215,8 +219,8 @@ describe('ApiService - Entity Operations', () => {
     expect(result.total).toBeGreaterThan(0);
   });
 
-  test('should filter entities by type', async () => {
-    if (!apiAvailable) return;
+  test('should filter entities by type', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
     
     const response = await fetch(`${API_BASE}/entities?type=restaurant`);
     expect(response.ok).toBe(true);
@@ -226,8 +230,8 @@ describe('ApiService - Entity Operations', () => {
     expect(result.items.every(e => e.type === 'restaurant')).toBe(true);
   });
 
-  test('should filter entities by status', async () => {
-    if (!apiAvailable) return;
+  test('should filter entities by status', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
     
     const response = await fetch(`${API_BASE}/entities?status=active`);
     expect(response.ok).toBe(true);
@@ -237,8 +241,8 @@ describe('ApiService - Entity Operations', () => {
     expect(result.items.every(e => e.status === 'active')).toBe(true);
   });
 
-  test('should update entity with version control', async () => {
-    if (!apiAvailable || !testEntityId) return;
+  test('should update entity with version control', async (t) => {
+    if (!apiAvailable || !testEntityId) { t.skip(apiUnavailableReason); return; }
     
     // Get current version
     const getResponse = await fetch(`${API_BASE}/entities/${testEntityId}`);
@@ -263,8 +267,8 @@ describe('ApiService - Entity Operations', () => {
     expect(updated.version).toBeGreaterThan(current.version);
   });
 
-  test('should reject update without version', async () => {
-    if (!apiAvailable || !testEntityId) return;
+  test('should reject update without version', async (t) => {
+    if (!apiAvailable || !testEntityId) { t.skip(apiUnavailableReason); return; }
     
     const response = await fetch(`${API_BASE}/entities/${testEntityId}`, {
       method: 'PATCH',
@@ -281,8 +285,8 @@ describe('ApiService - Entity Operations', () => {
     expect(response.ok).toBe(false);
   });
 
-  test('should delete entity', async () => {
-    if (!apiAvailable || !testEntityId) return;
+  test('should delete entity', async (t) => {
+    if (!apiAvailable || !testEntityId) { t.skip(apiUnavailableReason); return; }
     
     const response = await fetch(`${API_BASE}/entities/${testEntityId}`, {
       method: 'DELETE',
@@ -304,15 +308,15 @@ describe('ApiService - Entity Operations', () => {
 // ============================================================================
 
 describe('ApiService - Error Handling', () => {
-  test('should return 404 for non-existent entity', async () => {
-    if (!apiAvailable) return;
+  test('should return 404 for non-existent entity', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
     
     const response = await fetch(`${API_BASE}/entities/nonexistent_id_xyz`);
     expect(response.status).toBe(404);
   });
 
-  test('should return 401 or 403 for unauthorized create', async () => {
-    if (!apiAvailable) return;
+  test('should return 401 or 403 for unauthorized create', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
     
     const response = await fetch(`${API_BASE}/entities`, {
       method: 'POST',
@@ -323,8 +327,8 @@ describe('ApiService - Error Handling', () => {
     expect([401, 403]).toContain(response.status);
   });
 
-  test('should return error for version conflict', async () => {
-    if (!apiAvailable) return;
+  test('should return error for version conflict', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
     
     // Create entity
     const entity = {
@@ -344,7 +348,7 @@ describe('ApiService - Error Handling', () => {
     });
 
     const created = await createResponse.json();
-
+    trackTestEntity(created.entity_id);
     // Try to update with wrong version
     const updateResponse = await fetch(`${API_BASE}/entities/${created.entity_id}`, {
       method: 'PATCH',
@@ -365,8 +369,8 @@ describe('ApiService - Error Handling', () => {
     });
   });
 
-  test('should handle malformed JSON', async () => {
-    if (!apiAvailable) return;
+  test('should handle malformed JSON', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
     
     const response = await fetch(`${API_BASE}/entities`, {
       method: 'POST',
@@ -380,8 +384,8 @@ describe('ApiService - Error Handling', () => {
     expect(response.ok).toBe(false);
   });
 
-  test('should handle missing required fields', async () => {
-    if (!apiAvailable) return;
+  test('should handle missing required fields', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
     
     const response = await fetch(`${API_BASE}/entities`, {
       method: 'POST',
@@ -404,8 +408,8 @@ describe('ApiService - Error Handling', () => {
 // ============================================================================
 
 describe('ApiService - Request Format', () => {
-  test('should send proper headers for POST', async () => {
-    if (!apiAvailable) return;
+  test('should send proper headers for POST', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
     
     const entity = {
       entity_id: `entity_headers_${Date.now()}`,
@@ -432,8 +436,8 @@ describe('ApiService - Request Format', () => {
     });
   });
 
-  test('should handle query parameters', async () => {
-    if (!apiAvailable) return;
+  test('should handle query parameters', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
     
     const response = await fetch(`${API_BASE}/entities?type=restaurant&limit=5`);
     expect(response.ok).toBe(true);
@@ -442,8 +446,8 @@ describe('ApiService - Request Format', () => {
     expect(result.items.length).toBeLessThanOrEqual(5);
   });
 
-  test('should handle pagination', async () => {
-    if (!apiAvailable) return;
+  test('should handle pagination', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
     
     const response = await fetch(`${API_BASE}/entities?limit=10&offset=0`);
     expect(response.ok).toBe(true);
@@ -485,7 +489,7 @@ describe('ApiService - Curation Operations', () => {
     });
 
     const created = await response.json();
-    testEntityId = created.entity_id;
+    trackTestEntity(created.entity_id);
   });
 
   afterAll(async () => {
@@ -513,8 +517,8 @@ describe('ApiService - Curation Operations', () => {
     });
   });
 
-  test('should create curation for entity', async () => {
-    if (!apiAvailable || !testEntityId) return;
+  test('should create curation for entity', async (t) => {
+    if (!apiAvailable || !testEntityId) { t.skip(apiUnavailableReason); return; }
 
     const curation = {
       curation_id: `curation_test_${Date.now()}`,
@@ -547,7 +551,7 @@ describe('ApiService - Curation Operations', () => {
 
     expect(response.ok).toBe(true);
     const created = await response.json();
-    
+    trackTestCuration(created.curation_id);
     expect(created.curation_id).toBe(curation.curation_id);
     expect(created.entity_id).toBe(testEntityId);
     expect(created.curator_id).toBe('test_curator');
@@ -557,8 +561,8 @@ describe('ApiService - Curation Operations', () => {
     testCurationId = created.curation_id;
   });
 
-  test('should get curation by ID', async () => {
-    if (!apiAvailable || !testCurationId) return;
+  test('should get curation by ID', async (t) => {
+    if (!apiAvailable || !testCurationId) { t.skip(apiUnavailableReason); return; }
 
     const response = await fetch(`${API_BASE}/curations/${testCurationId}`, {
       headers: { 'X-API-Key': API_KEY }
@@ -570,8 +574,8 @@ describe('ApiService - Curation Operations', () => {
     expect(curation.curator_id).toBe('test_curator');
   });
 
-  test('should list all curations', async () => {
-    if (!apiAvailable) return;
+  test('should list all curations', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
 
     const response = await fetch(`${API_BASE}/curations/search`, {
       headers: { 'X-API-Key': API_KEY }
@@ -584,8 +588,8 @@ describe('ApiService - Curation Operations', () => {
     expect(result).toHaveProperty('total');
   });
 
-  test('should filter curations by entity_id', async () => {
-    if (!apiAvailable || !testEntityId) return;
+  test('should filter curations by entity_id', async (t) => {
+    if (!apiAvailable || !testEntityId) { t.skip(apiUnavailableReason); return; }
 
     const response = await fetch(`${API_BASE}/curations/search?entity_id=${testEntityId}`, {
       headers: { 'X-API-Key': API_KEY }
@@ -597,8 +601,8 @@ describe('ApiService - Curation Operations', () => {
     expect(result.items.every(c => c.entity_id === testEntityId)).toBe(true);
   });
 
-  test('should filter curations by status', async () => {
-    if (!apiAvailable) return;
+  test('should filter curations by status', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
 
     const response = await fetch(`${API_BASE}/curations/search?status=draft`, {
       headers: { 'X-API-Key': API_KEY }
@@ -609,8 +613,8 @@ describe('ApiService - Curation Operations', () => {
     expect(Array.isArray(result.items)).toBe(true);
   });
 
-  test('should filter curations by curator_id', async () => {
-    if (!apiAvailable) return;
+  test('should filter curations by curator_id', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
 
     const response = await fetch(`${API_BASE}/curations/search?curator_id=test_curator`, {
       headers: { 'X-API-Key': API_KEY }
@@ -623,8 +627,8 @@ describe('ApiService - Curation Operations', () => {
     }
   });
 
-  test('should update curation with version control', async () => {
-    if (!apiAvailable || !testCurationId) return;
+  test('should update curation with version control', async (t) => {
+    if (!apiAvailable || !testCurationId) { t.skip(apiUnavailableReason); return; }
 
     // Get current version
     const getResponse = await fetch(`${API_BASE}/curations/${testCurationId}`, {
@@ -653,8 +657,8 @@ describe('ApiService - Curation Operations', () => {
     expect(updated.version).toBeGreaterThan(current.version);
   });
 
-  test('should create multiple curations for same entity', async () => {
-    if (!apiAvailable || !testEntityId) return;
+  test('should create multiple curations for same entity', async (t) => {
+    if (!apiAvailable || !testEntityId) { t.skip(apiUnavailableReason); return; }
 
     const curations = [
       {
@@ -706,8 +710,8 @@ describe('ApiService - Curation Operations', () => {
     expect(result.items.length).toBeGreaterThanOrEqual(3); // Including the first one
   });
 
-  test('should delete curation', async () => {
-    if (!apiAvailable || !testCurationId) return;
+  test('should delete curation', async (t) => {
+    if (!apiAvailable || !testCurationId) { t.skip(apiUnavailableReason); return; }
 
     const response = await fetch(`${API_BASE}/curations/${testCurationId}`, {
       method: 'DELETE',
@@ -731,8 +735,8 @@ describe('ApiService - Curation Operations', () => {
     }
   });
 
-  test('should validate required curation fields', async () => {
-    if (!apiAvailable) return;
+  test('should validate required curation fields', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
 
     const response = await fetch(`${API_BASE}/curations`, {
       method: 'POST',
@@ -749,8 +753,8 @@ describe('ApiService - Curation Operations', () => {
     expect(response.status).toBe(422);
   });
 
-  test('should reject curation for non-existent entity', async () => {
-    if (!apiAvailable) return;
+  test('should reject curation for non-existent entity', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
 
     const curation = {
       curation_id: `curation_invalid_${Date.now()}`,
@@ -786,8 +790,8 @@ describe('ApiService - Curation Operations', () => {
 describe.skip('ApiService - Curator Operations', () => {
   let testCuratorId = null;
 
-  test('should create curator profile', async () => {
-    if (!apiAvailable) return;
+  test('should create curator profile', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
 
     const curator = {
       curator_id: `curator_test_${Date.now()}`,
@@ -811,7 +815,7 @@ describe.skip('ApiService - Curator Operations', () => {
 
     expect(response.ok).toBe(true);
     const created = await response.json();
-    
+    trackTestCuration(created.curation_id);
     expect(created.curator_id).toBe(curator.curator_id);
     expect(created.name).toBe('Test Curator');
     expect(created.email).toBe('test@example.com');
@@ -820,8 +824,8 @@ describe.skip('ApiService - Curator Operations', () => {
     testCuratorId = created.curator_id;
   });
 
-  test('should get curator by ID', async () => {
-    if (!apiAvailable || !testCuratorId) return;
+  test('should get curator by ID', async (t) => {
+    if (!apiAvailable || !testCuratorId) { t.skip(apiUnavailableReason); return; }
 
     const response = await fetch(`${API_BASE}/curators/${testCuratorId}`);
     expect(response.ok).toBe(true);
@@ -831,8 +835,8 @@ describe.skip('ApiService - Curator Operations', () => {
     expect(curator.name).toBe('Test Curator');
   });
 
-  test('should list all curators', async () => {
-    if (!apiAvailable) return;
+  test('should list all curators', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
 
     const response = await fetch(`${API_BASE}/curators`);
     expect(response.ok).toBe(true);
@@ -843,8 +847,8 @@ describe.skip('ApiService - Curator Operations', () => {
     expect(result.total).toBeGreaterThan(0);
   });
 
-  test('should filter curators by status', async () => {
-    if (!apiAvailable) return;
+  test('should filter curators by status', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
 
     const response = await fetch(`${API_BASE}/curators?status=active`);
     expect(response.ok).toBe(true);
@@ -855,8 +859,8 @@ describe.skip('ApiService - Curator Operations', () => {
     }
   });
 
-  test('should update curator profile', async () => {
-    if (!apiAvailable || !testCuratorId) return;
+  test('should update curator profile', async (t) => {
+    if (!apiAvailable || !testCuratorId) { t.skip(apiUnavailableReason); return; }
 
     // Get current version
     const getResponse = await fetch(`${API_BASE}/curators/${testCuratorId}`);
@@ -885,8 +889,8 @@ describe.skip('ApiService - Curator Operations', () => {
     expect(updated.version).toBeGreaterThan(current.version);
   });
 
-  test('should update curator last active timestamp', async () => {
-    if (!apiAvailable || !testCuratorId) return;
+  test('should update curator last active timestamp', async (t) => {
+    if (!apiAvailable || !testCuratorId) { t.skip(apiUnavailableReason); return; }
 
     // Get current curator
     const getResponse = await fetch(`${API_BASE}/curators/${testCuratorId}`);
@@ -910,8 +914,8 @@ describe.skip('ApiService - Curator Operations', () => {
     expect(updated.last_active).toBeDefined();
   });
 
-  test('should get curator statistics', async () => {
-    if (!apiAvailable || !testCuratorId) return;
+  test('should get curator statistics', async (t) => {
+    if (!apiAvailable || !testCuratorId) { t.skip(apiUnavailableReason); return; }
 
     // This endpoint might not exist yet, but we're testing the concept
     const response = await fetch(`${API_BASE}/curators/${testCuratorId}/stats`);
@@ -924,8 +928,8 @@ describe.skip('ApiService - Curator Operations', () => {
     }
   });
 
-  test('should delete curator', async () => {
-    if (!apiAvailable || !testCuratorId) return;
+  test('should delete curator', async (t) => {
+    if (!apiAvailable || !testCuratorId) { t.skip(apiUnavailableReason); return; }
 
     const response = await fetch(`${API_BASE}/curators/${testCuratorId}`, {
       method: 'DELETE',
@@ -941,8 +945,8 @@ describe.skip('ApiService - Curator Operations', () => {
     expect(getResponse.status).toBe(404);
   });
 
-  test('should validate curator email format', async () => {
-    if (!apiAvailable) return;
+  test('should validate curator email format', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
 
     const curator = {
       curator_id: `curator_invalid_${Date.now()}`,
@@ -964,8 +968,8 @@ describe.skip('ApiService - Curator Operations', () => {
     expect([400, 422]).toContain(response.status);
   });
 
-  test('should prevent duplicate curator emails', async () => {
-    if (!apiAvailable) return;
+  test('should prevent duplicate curator emails', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
 
     const email = `duplicate_${Date.now()}@example.com`;
 
@@ -1021,8 +1025,8 @@ describe.skip('ApiService - Curator Operations', () => {
 // ============================================================================
 
 describe('ApiService - Advanced Entity Operations', () => {
-  test('should support entity data field for flexible storage', async () => {
-    if (!apiAvailable) return;
+  test('should support entity data field for flexible storage', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
 
     const entity = {
       entity_id: `entity_data_test_${Date.now()}`,
@@ -1061,7 +1065,7 @@ describe('ApiService - Advanced Entity Operations', () => {
 
     expect(response.ok).toBe(true);
     const created = await response.json();
-    
+    trackTestEntity(created.entity_id);
     expect(created.data).toBeDefined();
     expect(created.data.address).toBe('123 Test Street');
     expect(created.data.features).toEqual(['wifi', 'parking', 'outdoor_seating']);
@@ -1074,8 +1078,8 @@ describe('ApiService - Advanced Entity Operations', () => {
     });
   });
 
-  test('should support partial updates', async () => {
-    if (!apiAvailable) return;
+  test('should support partial updates', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
 
     // Create entity
     const entity = {
@@ -1099,7 +1103,7 @@ describe('ApiService - Advanced Entity Operations', () => {
     });
 
     const created = await createResponse.json();
-
+    trackTestEntity(created.entity_id);
     // Update only status
     const updateResponse = await fetch(`${API_BASE}/entities/${created.entity_id}`, {
       method: 'PATCH',
@@ -1130,8 +1134,8 @@ describe('ApiService - Advanced Entity Operations', () => {
     });
   });
 
-  test('should support entity search by name', async () => {
-    if (!apiAvailable) return;
+  test('should support entity search by name', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
 
     // Create test entities
     const timestamp = Date.now();
@@ -1177,8 +1181,8 @@ describe('ApiService - Advanced Entity Operations', () => {
     }
   });
 
-  test('should support entity sorting', async () => {
-    if (!apiAvailable) return;
+  test('should support entity sorting', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
 
     // Test sorting by name
     const response = await fetch(`${API_BASE}/entities?sort_by=name&sort_order=asc&limit=10`);
@@ -1188,8 +1192,8 @@ describe('ApiService - Advanced Entity Operations', () => {
     expect(Array.isArray(result.items)).toBe(true);
   });
 
-  test('should support pagination with correct metadata', async () => {
-    if (!apiAvailable) return;
+  test('should support pagination with correct metadata', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
 
     const limit = 5;
     const offset = 0;
@@ -1205,8 +1209,8 @@ describe('ApiService - Advanced Entity Operations', () => {
     expect(result.total).toBeGreaterThanOrEqual(result.items.length);
   });
 
-  test('should handle entity status transitions', async () => {
-    if (!apiAvailable) return;
+  test('should handle entity status transitions', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
 
     // Create entity
     const entity = {
@@ -1226,7 +1230,7 @@ describe('ApiService - Advanced Entity Operations', () => {
     });
 
     const created = await createResponse.json();
-
+    trackTestEntity(created.entity_id);
     // Transition to inactive
     const inactiveResponse = await fetch(`${API_BASE}/entities/${created.entity_id}`, {
       method: 'PATCH',
@@ -1273,8 +1277,8 @@ describe('ApiService - Advanced Entity Operations', () => {
 // ============================================================================
 
 describe('ApiService - Optimistic Locking', () => {
-  test('should prevent lost updates with version control', async () => {
-    if (!apiAvailable) return;
+  test('should prevent lost updates with version control', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
 
     // Create entity
     const entity = {
@@ -1294,7 +1298,7 @@ describe('ApiService - Optimistic Locking', () => {
     });
 
     const created = await createResponse.json();
-
+    trackTestEntity(created.entity_id);
     // Simulate concurrent update 1
     const update1Response = await fetch(`${API_BASE}/entities/${created.entity_id}`, {
       method: 'PATCH',
@@ -1336,8 +1340,8 @@ describe('ApiService - Optimistic Locking', () => {
     });
   });
 
-  test('should increment version on each update', async () => {
-    if (!apiAvailable) return;
+  test('should increment version on each update', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
 
     // Create entity
     const entity = {
@@ -1357,7 +1361,7 @@ describe('ApiService - Optimistic Locking', () => {
     });
 
     const created = await createResponse.json();
-    expect(created.version).toBe(1);
+    trackTestEntity(created.entity_id);
 
     // First update
     const update1Response = await fetch(`${API_BASE}/entities/${created.entity_id}`, {

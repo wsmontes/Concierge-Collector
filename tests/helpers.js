@@ -27,6 +27,66 @@ if (!TEST_API_KEY) {
 }
 
 // ============================================================================
+// Guard de banco de produção (2026-08-18)
+// ============================================================================
+// Os testes de integração escrevem na API local (localhost:8000), que usa o
+// MESMO .env — se o MONGODB_DB_NAME não for um banco de teste, os testes
+// criavam lixo no Atlas de PRODUÇÃO (resíduo recorrente de entity_test_/
+// curation_test_ no banco vivo). Por padrão a integração SÓ roda contra
+// *-test; TEST_API_ALLOW_PROD=1 é opt-in explícito para depuração pontual.
+const configuredDbName = process.env.MONGODB_DB_NAME || 'concierge-collector';
+export const API_IS_TEST_DB = configuredDbName.endsWith('-test') || !!process.env.TEST_API_ALLOW_PROD;
+export let apiUnavailableReason = '';
+
+// ============================================================================
+// Registro de teardown (2026-08-18)
+// ============================================================================
+// Substitui o sweep paginado por substring: os testes REGISTRAM os ids que
+// criaram e o afterAll deleta por id (404 ignorado). O sweep antigo varria
+// só a primeira página do servidor e perdia a maior parte do lixo — a raiz
+// do resíduo recorrente no banco de produção.
+const createdTestIds = { entities: new Set(), curations: new Set() };
+
+/**
+ * Registra um entity_id criado pelo teste para deleção no teardown.
+ * @param {string} entityId
+ */
+export function trackTestEntity(entityId) {
+  if (entityId) createdTestIds.entities.add(String(entityId));
+}
+
+/**
+ * Registra um curation_id criado pelo teste para deleção no teardown.
+ * @param {string} curationId
+ */
+export function trackTestCuration(curationId) {
+  if (curationId) createdTestIds.curations.add(String(curationId));
+}
+
+async function deleteById(collectionPath, id) {
+  try {
+    await fetch(`${TEST_API_BASE}/${collectionPath}/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+      headers: { 'X-API-Key': TEST_API_KEY }
+    });
+  } catch (error) {
+    console.debug('Cleanup error (ignored):', error.message);
+  }
+}
+
+/**
+ * Deleta TUDO que os testes registraram (por id, sem varrer listas).
+ * Curadorias primeiro: o DELETE de entity é admin-only com 409 quando
+ * ainda há curadorias ativas vinculadas.
+ */
+export async function cleanupRegisteredTestData() {
+  for (const id of createdTestIds.curations) await deleteById('curations', id);
+  for (const id of createdTestIds.entities) await deleteById('entities', id);
+  createdTestIds.entities.clear();
+  createdTestIds.curations.clear();
+}
+
+// ============================================================================
 // Entity Fixtures
 // ============================================================================
 
@@ -149,31 +209,6 @@ export function setupMockDB(entities = [], curations = []) {
   return mockDb;
 }
 
-/**
- * Setup mock API responses
- * NOTE: For integration tests, prefer using real API calls instead of mocks
- */
-export function setupMockApi(responses = {}) {
-  console.warn('setupMockApi is deprecated - use real API calls instead');
-  // Kept for backward compatibility but not recommended
-}
-
-/**
- * Setup mock API error
- * NOTE: For integration tests, the real API will return real errors
- */
-export function setupMockApiError(status = 500, message = 'Internal Server Error') {
-  console.warn('setupMockApiError is deprecated - use real API instead');
-}
-
-/**
- * Setup mock API network failure
- * NOTE: For integration tests, use real network conditions
- */
-export function setupMockApiNetworkFailure() {
-  console.warn('setupMockApiNetworkFailure is deprecated');
-}
-
 // ============================================================================
 // Assertion Helpers
 // ============================================================================
@@ -229,66 +264,38 @@ export function createMockLocalStorage() {
 // ============================================================================
 
 /**
- * Clean up test entities from the API
- * Call this in afterEach to ensure clean state between tests
- */
-export async function cleanupTestEntities() {
-  try {
-    // Get all entities
-    const response = await fetch(`${TEST_API_BASE}/entities`);
-    if (!response.ok) return;
-    
-    const result = await response.json();
-    const entities = result.items || result || [];
-    
-    // Delete test entities (those starting with 'ent_test_' or 'entity_test_')
-    for (const entity of entities) {
-      if (entity.entity_id?.includes('test')) {
-        await fetch(`${TEST_API_BASE}/entities/${entity.entity_id}`, {
-          method: 'DELETE',
-          headers: { 'X-API-Key': TEST_API_KEY }
-        });
-      }
-    }
-  } catch (error) {
-    // Ignore cleanup errors
-    console.debug('Cleanup error (ignored):', error.message);
-  }
-}
-
-/**
- * Clean up test curations from the API
- */
-export async function cleanupTestCurations() {
-  try {
-    const response = await fetch(`${TEST_API_BASE}/curations/search`);
-    if (!response.ok) return;
-    
-    const result = await response.json();
-    const curations = result.items || result || [];
-    
-    // Delete test curations
-    for (const curation of curations) {
-      if (curation.curation_id?.includes('test')) {
-        await fetch(`${TEST_API_BASE}/curations/${curation.curation_id}`, {
-          method: 'DELETE',
-          headers: { 'X-API-Key': TEST_API_KEY }
-        });
-      }
-    }
-  } catch (error) {
-    console.debug('Cleanup error (ignored):', error.message);
-  }
-}
-
-/**
- * Check if API is available
+ * API local disponível E segura para integração (banco *-test).
+ * O processo da API reporta o próprio banco no /info (campo `database`,
+ * 2026-08-18) — fonte mais confiável que o .env do teste, que não reflete
+ * MONGODB_DB_NAME sobrescrito no boot (run_local.sh --test-db). Sem o
+ * campo (API antiga), cai no check do .env (API_IS_TEST_DB).
+ * O motivo da indisponibilidade fica em apiUnavailableReason para o
+ * t.skip() honesto dos testes (skip visível, não pass silencioso).
  */
 export async function isApiAvailable() {
   try {
-    const response = await fetch(`${TEST_API_BASE}/info`, { timeout: 2000 });
-    return response.ok;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 2000);
+    const response = await fetch(`${TEST_API_BASE}/info`, { signal: controller.signal });
+    clearTimeout(timer);
+    if (!response.ok) {
+      apiUnavailableReason = `API local respondeu ${response.status} em /info`;
+      return false;
+    }
+    const info = await response.json();
+    const apiDb = typeof info.database === 'string' ? info.database : '';
+    const safe = apiDb ? apiDb.endsWith('-test') || !!process.env.TEST_API_ALLOW_PROD : API_IS_TEST_DB;
+    if (!safe) {
+      apiUnavailableReason =
+        `API local usa o banco '${apiDb || configuredDbName}' (produção) — ` +
+        'integração desativada. Suba a API com ./run_local.sh --test-db ' +
+        'ou, para depuração pontual, TEST_API_ALLOW_PROD=1.';
+      return false;
+    }
+    apiUnavailableReason = '';
+    return true;
   } catch (error) {
+    apiUnavailableReason = `API local indisponível em ${TEST_API_BASE}`;
     return false;
   }
 }

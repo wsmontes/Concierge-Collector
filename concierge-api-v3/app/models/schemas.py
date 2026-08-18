@@ -281,6 +281,11 @@ class APIInfo(BaseModel):
     name: str
     version: str
     description: str
+    # Nome do banco (2026-08-18): o guard de integração do frontend
+    # (tests/helpers.js) consulta este campo para recusar testes contra
+    # o banco de produção — sem ele o guard dependia do .env do teste,
+    # que não reflete MONGODB_DB_NAME sobrescrito no processo da API.
+    database: str
 
 
 class ErrorResponse(BaseModel):

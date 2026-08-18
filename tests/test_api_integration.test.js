@@ -9,11 +9,11 @@
 
 import { describe, test, expect, beforeAll, afterAll } from 'vitest';
 import {
-  createTestEntity,
-  createTestCuration,
-  cleanupTestEntities,
-  cleanupTestCurations,
+  trackTestEntity,
+  trackTestCuration,
+  cleanupRegisteredTestData,
   isApiAvailable,
+  apiUnavailableReason,
   TEST_API_BASE,
   TEST_API_KEY
 } from './helpers.js';
@@ -21,21 +21,21 @@ import {
 const API_BASE = TEST_API_BASE;
 const API_KEY = TEST_API_KEY;
 
-// Skip all tests if API is not available
+// Skip all tests if API is not available (ou apontando para banco de
+// produção — o guard do helpers.js desativa a integração nesse caso)
 let apiAvailable = false;
 
 beforeAll(async () => {
   apiAvailable = await isApiAvailable();
   if (!apiAvailable) {
-    console.warn('⚠️  API not available at http://localhost:8000 - skipping integration tests');
-    console.warn('   Start the API with: cd concierge-api-v3 && ./run_local.sh');
+    console.warn('⚠️  Integration tests skipped:', apiUnavailableReason);
+    console.warn('   Start the API with: cd concierge-api-v3 && ./run_local.sh --test-db');
   }
 });
 
 afterAll(async () => {
   if (apiAvailable) {
-    await cleanupTestEntities();
-    await cleanupTestCurations();
+    await cleanupRegisteredTestData();
   }
 });
 
@@ -44,8 +44,8 @@ afterAll(async () => {
 // ============================================================================
 
 describe('API Integration - Health', () => {
-  test('should connect to API', async () => {
-    if (!apiAvailable) return; // Skip if API not available
+  test('should connect to API', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
     
     const response = await fetch(`${API_BASE}/info`);
     expect(response.ok).toBe(true);
@@ -55,8 +55,8 @@ describe('API Integration - Health', () => {
     expect(info.name).toContain('Concierge');
   });
 
-  test('should validate API structure', async () => {
-    if (!apiAvailable) return;
+  test('should validate API structure', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
     
     const response = await fetch(`${API_BASE}/info`);
     const info = await response.json();
@@ -74,8 +74,8 @@ describe('API Integration - Health', () => {
 describe('API Integration - Entities', () => {
   let createdEntityId = null;
 
-  test('should create entity via API', async () => {
-    if (!apiAvailable) return;
+  test('should create entity via API', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
     
     const entity = {
       entity_id: `entity_test_${Date.now()}`,
@@ -105,10 +105,11 @@ describe('API Integration - Entities', () => {
     expect(created.type).toBe('restaurant');
     
     createdEntityId = created.entity_id;
+    trackTestEntity(createdEntityId);
   });
 
-  test('should get entity by ID from API', async () => {
-    if (!apiAvailable || !createdEntityId) return;
+  test('should get entity by ID from API', async (t) => {
+    if (!apiAvailable || !createdEntityId) { t.skip(apiUnavailableReason); return; }
     
     const response = await fetch(`${API_BASE}/entities/${createdEntityId}`);
     expect(response.ok).toBe(true);
@@ -118,8 +119,8 @@ describe('API Integration - Entities', () => {
     expect(entity.name).toBe('Test Restaurant API');
   });
 
-  test('should list entities from API', async () => {
-    if (!apiAvailable) return;
+  test('should list entities from API', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
     
     const response = await fetch(`${API_BASE}/entities`);
     expect(response.ok).toBe(true);
@@ -130,8 +131,8 @@ describe('API Integration - Entities', () => {
     expect(result).toHaveProperty('total');
   });
 
-  test('should update entity via API', async () => {
-    if (!apiAvailable || !createdEntityId) return;
+  test('should update entity via API', async (t) => {
+    if (!apiAvailable || !createdEntityId) { t.skip(apiUnavailableReason); return; }
     
     // First get current version
     const getResponse = await fetch(`${API_BASE}/entities/${createdEntityId}`);
@@ -156,8 +157,8 @@ describe('API Integration - Entities', () => {
     expect(updated.version).toBeGreaterThan(current.version);
   });
 
-  test('should delete entity via API', async () => {
-    if (!apiAvailable || !createdEntityId) return;
+  test('should delete entity via API', async (t) => {
+    if (!apiAvailable || !createdEntityId) { t.skip(apiUnavailableReason); return; }
     
     const response = await fetch(`${API_BASE}/entities/${createdEntityId}`, {
       method: 'DELETE',
@@ -182,8 +183,8 @@ describe('API Integration - Curations', () => {
   let testEntityId = null;
   let testCurationId = null;
 
-  test('should create entity and curation', async () => {
-    if (!apiAvailable) return;
+  test('should create entity and curation', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
     
     // Create entity first
     const entity = {
@@ -204,6 +205,7 @@ describe('API Integration - Curations', () => {
 
     const createdEntity = await entityResponse.json();
     testEntityId = createdEntity.entity_id;
+    trackTestEntity(testEntityId);
 
     // Create curation
     const curation = {
@@ -245,10 +247,11 @@ describe('API Integration - Curations', () => {
     expect(createdCuration.curator.name).toBe('Test Curator');
     
     testCurationId = createdCuration.curation_id;
+    trackTestCuration(testCurationId);
   });
 
-  test('should get curations for entity', async () => {
-    if (!apiAvailable || !testEntityId || !testCurationId) return;
+  test('should get curations for entity', async (t) => {
+    if (!apiAvailable || !testEntityId || !testCurationId) { t.skip(apiUnavailableReason); return; }
     
     // Use search endpoint with entity_id filter instead of entity/{id}/curations
     const response = await fetch(`${API_BASE}/curations/search?entity_id=${testEntityId}`, {
@@ -274,15 +277,15 @@ describe('API Integration - Curations', () => {
 // ============================================================================
 
 describe('API Integration - Error Handling', () => {
-  test('should return 404 for non-existent entity', async () => {
-    if (!apiAvailable) return;
+  test('should return 404 for non-existent entity', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
     
     const response = await fetch(`${API_BASE}/entities/nonexistent_id_123`);
     expect(response.status).toBe(404);
   });
 
-  test('should return 401 or 403 for missing API key', async () => {
-    if (!apiAvailable) return;
+  test('should return 401 or 403 for missing API key', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
     
     const entity = {
       entity_id: 'test_entity',
@@ -302,8 +305,8 @@ describe('API Integration - Error Handling', () => {
     expect([401, 403]).toContain(response.status);
   });
 
-  test('should return 409 or 403 for version conflict', async () => {
-    if (!apiAvailable) return;
+  test('should return 409 or 403 for version conflict', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
     
     // Create entity
     const entity = {
@@ -323,6 +326,7 @@ describe('API Integration - Error Handling', () => {
     });
 
     const created = await createResponse.json();
+    trackTestEntity(created.entity_id);
 
     // Try to update with wrong version
     const updateResponse = await fetch(`${API_BASE}/entities/${created.entity_id}`, {

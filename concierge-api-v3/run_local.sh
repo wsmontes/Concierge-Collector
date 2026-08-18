@@ -3,7 +3,10 @@
 ###############################################################################
 # File: run_local.sh
 # Purpose: Start the Concierge API V3 backend locally for development
-# Usage: ./run_local.sh
+# Usage: ./run_local.sh [--test-db]
+#   --test-db: roda contra concierge-collector-test — libera os testes de
+#              integração do frontend (tests/helpers.js exige banco *-test
+#              para não escrever no Atlas de produção, 2026-08-18)
 ###############################################################################
 
 # Colors for output
@@ -83,8 +86,17 @@ echo -e "${GREEN}   Health:${NC} http://localhost:8000/api/v3/health"
 echo -e "${BLUE}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
 echo ""
 
+# --test-db: banco descartável para rodar a integração do npm test sem
+# escrever no Atlas de produção (o guard de tests/helpers.js consulta o
+# /info da API e só libera quando o banco termina em -test)
+DB_ENV_PREFIX=""
+if [ "$1" = "--test-db" ]; then
+    DB_ENV_PREFIX="MONGODB_DB_NAME=concierge-collector-test "
+    echo -e "${YELLOW}🧪 Modo test-db: banco concierge-collector-test (integração segura)${NC}"
+fi
+
 # Start the server using venv python in background
-venv/bin/python3 -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload > uvicorn.log 2>&1 &
+env ${DB_ENV_PREFIX}venv/bin/python3 -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload > uvicorn.log 2>&1 &
 SERVER_PID=$!
 echo $SERVER_PID > .server.pid
 

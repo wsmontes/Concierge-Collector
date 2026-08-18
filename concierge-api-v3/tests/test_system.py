@@ -28,6 +28,11 @@ class TestSystemEndpoints:
         assert data["name"] == "Concierge Collector API"
         assert data["version"] == "3.0.0"
         assert "description" in data
+        # (2026-08-18) o /info expõe o nome do banco — o guard de
+        # integração do frontend (tests/helpers.js) usa esse campo para
+        # recusar testes contra o banco de PRODUÇÃO
+        assert "database" in data
+        assert data["database"].endswith("-test")
 
     def test_ready_reports_ready_when_healthy(self, client, monkeypatch):
         """/ready: 200 quando Mongo conectado e nenhum índice falhou no startup.

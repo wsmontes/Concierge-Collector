@@ -12,8 +12,10 @@
 
 import { describe, test, expect, beforeAll, afterAll } from 'vitest';
 import {
-  cleanupTestEntities,
+  trackTestEntity,
+  cleanupRegisteredTestData,
   isApiAvailable,
+  apiUnavailableReason,
   TEST_API_BASE,
   TEST_API_KEY
 } from './helpers.js';
@@ -26,13 +28,14 @@ let apiAvailable = false;
 beforeAll(async () => {
   apiAvailable = await isApiAvailable();
   if (!apiAvailable) {
-    console.warn('⚠️  API not available - skipping integration tests');
+    console.warn('⚠️  Integration tests skipped:', apiUnavailableReason);
+    console.warn('   Start the API with: cd concierge-api-v3 && ./run_local.sh --test-db');
   }
 });
 
 afterAll(async () => {
   if (apiAvailable) {
-    await cleanupTestEntities();
+    await cleanupRegisteredTestData();
   }
 });
 
@@ -41,8 +44,8 @@ afterAll(async () => {
 // ============================================================================
 
 describe('Integration - Entity Lifecycle', () => {
-  test('should create entity in API and store locally', async () => {
-    if (!apiAvailable) return;
+  test('should create entity in API and store locally', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
     
     const entity = {
       entity_id: `entity_lifecycle_${Date.now()}`,
@@ -69,6 +72,7 @@ describe('Integration - Entity Lifecycle', () => {
     const created = await createResponse.json();
     expect(created.entity_id).toBe(entity.entity_id);
     expect(created.version).toBe(1);
+    trackTestEntity(created.entity_id);
 
     // 2. Read from API
     const getResponse = await fetch(`${API_BASE}/entities/${entity.entity_id}`);
@@ -107,8 +111,8 @@ describe('Integration - Entity Lifecycle', () => {
     expect(verifyResponse.status).toBe(404);
   });
 
-  test('should handle offline-first workflow', async () => {
-    if (!apiAvailable) return;
+  test('should handle offline-first workflow', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
     
     const entity = {
       entity_id: `entity_offline_${Date.now()}`,
@@ -141,6 +145,7 @@ describe('Integration - Entity Lifecycle', () => {
 
     expect(syncResponse.ok).toBe(true);
     const synced = await syncResponse.json();
+    trackTestEntity(synced.entity_id || entity.entity_id);
     
     // 3. Update local entity with sync status
     localEntity.sync = {
@@ -165,8 +170,8 @@ describe('Integration - Entity Lifecycle', () => {
 // ============================================================================
 
 describe('Integration - Version Conflicts', () => {
-  test('should detect and handle version conflicts', async () => {
-    if (!apiAvailable) return;
+  test('should detect and handle version conflicts', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
     
     // Create entity
     const entity = {
@@ -186,6 +191,7 @@ describe('Integration - Version Conflicts', () => {
     });
 
     const created = await createResponse.json();
+    trackTestEntity(created.entity_id);
 
     // Simulate two clients updating simultaneously
     
@@ -243,8 +249,8 @@ describe('Integration - Version Conflicts', () => {
     });
   });
 
-  test('should merge local changes with server changes', async () => {
-    if (!apiAvailable) return;
+  test('should merge local changes with server changes', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
     
     // Create entity on server
     const entity = {
@@ -268,6 +274,7 @@ describe('Integration - Version Conflicts', () => {
     });
 
     const created = await createResponse.json();
+    trackTestEntity(created.entity_id);
 
     // Simulate local changes (only address updated locally, phone unchanged)
     const localChanges = {
@@ -335,8 +342,8 @@ describe('Integration - Version Conflicts', () => {
 // ============================================================================
 
 describe('Integration - Error Recovery', () => {
-  test('should recover from network failures', async () => {
-    if (!apiAvailable) return;
+  test('should recover from network failures', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
     
     const entity = {
       entity_id: `entity_recovery_${Date.now()}`,
@@ -370,6 +377,7 @@ describe('Integration - Error Recovery', () => {
     expect(retryRequest.ok).toBe(true);
     const recovered = await retryRequest.json();
     expect(recovered.entity_id).toBe(entity.entity_id);
+    trackTestEntity(recovered.entity_id);
 
     // Cleanup
     await fetch(`${API_BASE}/entities/${entity.entity_id}`, {
@@ -378,8 +386,8 @@ describe('Integration - Error Recovery', () => {
     });
   });
 
-  test('should handle authentication errors gracefully', async () => {
-    if (!apiAvailable) return;
+  test('should handle authentication errors gracefully', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
     
     const entity = {
       entity_id: `entity_auth_error_${Date.now()}`,
@@ -413,6 +421,7 @@ describe('Integration - Error Recovery', () => {
     expect(retryAuth.ok).toBe(true);
     const recovered = await retryAuth.json();
     expect(recovered.entity_id).toBe(entity.entity_id);
+    trackTestEntity(recovered.entity_id);
 
     // Cleanup
     await fetch(`${API_BASE}/entities/${entity.entity_id}`, {
@@ -421,8 +430,8 @@ describe('Integration - Error Recovery', () => {
     });
   });
 
-  test('should handle validation errors with proper feedback', async () => {
-    if (!apiAvailable) return;
+  test('should handle validation errors with proper feedback', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
     
     // Try to create entity with missing required fields
     const invalidEntity = {
@@ -462,6 +471,7 @@ describe('Integration - Error Recovery', () => {
     });
 
     expect(validRequest.ok).toBe(true);
+    trackTestEntity(validEntity.entity_id);
 
     // Cleanup
     await fetch(`${API_BASE}/entities/${validEntity.entity_id}`, {
@@ -476,8 +486,8 @@ describe('Integration - Error Recovery', () => {
 // ============================================================================
 
 describe('Integration - Sync Queue', () => {
-  test('should process sync queue sequentially', async () => {
-    if (!apiAvailable) return;
+  test('should process sync queue sequentially', async (t) => {
+    if (!apiAvailable) { t.skip(apiUnavailableReason); return; }
     
     const entities = [
       {
@@ -514,6 +524,7 @@ describe('Integration - Sync Queue', () => {
 
       expect(response.ok).toBe(true);
       const created = await response.json();
+      trackTestEntity(created.entity_id);
       results.push(created);
     }
 
