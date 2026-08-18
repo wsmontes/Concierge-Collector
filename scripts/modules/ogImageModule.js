@@ -37,6 +37,15 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
         this.observer = null;
         // url do site -> Promise<objectURL|null> (dedupe de cards do mesmo site)
         this._pending = new Map();
+        // Mapa quente chave → objectURL (2026-08-18): o re-render
+        // pós-sync recriava TODOS os cards e a resolução assíncrona
+        // re-aplicava cada foto com fade de 500ms ("piscando" a cada
+        // ciclo). Com o mapa, um card cuja chave já foi resolvida nesta
+        // sessão recebe o src SÍNCRONO no _queue — sem placeholder, sem
+        // fade. _freshFromNetwork marca os objectURLs recém-baixados
+        // (a única situação em que o fade faz sentido).
+        this._resolvedUrls = new Map();
+        this._freshFromNetwork = new Set();
         // v2: namespace novo (ago/2026) — entradas da v1 não têm TTL e
         // ficariam servindo imagens antigas (brancos/ícones) para sempre
         this._cacheName = 'og-images-v2';
@@ -165,6 +174,15 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
         // não pode colidir com o default) ou site/lugar no legado
         const key = entityId ? `entity:${entityId}:rank:${rank}` : (url || `place:${placeId}`);
 
+        // Chave já resolvida nesta sessão: aplica o objectURL agora
+        // mesmo (no MESMO task da inserção do card) — nada de
+        // placeholder nem fade para imagem conhecida (2026-08-18)
+        const warmUrl = this._resolvedUrls.get(key);
+        if (warmUrl) {
+            this._applyVeil(card, warmUrl, true);
+            return;
+        }
+
         // Enfileira — o ESCALONADOR decide a ordem (viewport > página
         // atual > páginas já navegadas > prefetch) e limita a
         // concorrência; a resolução em si é deduplicada por chave.
@@ -231,7 +249,11 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
                         this._applyFallback(item.card);
                         return;
                     }
-                    this._applyVeil(item.card, objectUrl);
+                    // Fade só para imagem recém-baixada da rede
+                    // (primeira resolução); cache/mapa quente = instantâneo
+                    const instant = !this._freshFromNetwork.has(item.key);
+                    this._freshFromNetwork.delete(item.key);
+                    this._applyVeil(item.card, objectUrl, instant);
                 })
                 .catch(() => {
                     if (!item.card) return;
@@ -279,7 +301,7 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
                 const blob = await response.blob();
                 if (blob && blob.size > 0) {
                     await this._writeCache(key, blob);
-                    return URL.createObjectURL(blob);
+                    return this._freshObjectUrl(key, blob);
                 }
                 entityDefinitive = true; // 200 mas vazio: sem imagem
             } else if (response) {
@@ -412,7 +434,7 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
             }
 
             await this._writeCache(key, blob);
-            return URL.createObjectURL(blob);
+            return this._freshObjectUrl(key, blob);
         } catch (error) {
             // erro de REDE não é definitivo — não grava negativo
             this.log.debug(`og-image falhou para ${key}:`, error);
@@ -447,7 +469,7 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
             const noImage = !!(headers && headers.get && headers.get('x-no-image'));
             if (noImage) return false;
             const blob = await hit.blob();
-            return blob && blob.size > 0 ? URL.createObjectURL(blob) : null;
+            return blob && blob.size > 0 ? this._objectUrlFor(url, blob) : null;
         } catch (error) {
             this.log.debug('leitura do Cache Storage falhou:', error);
             return null;
@@ -515,12 +537,74 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
     }
 
     /**
+     * objectURL para um blob, reaproveitando o mapa quente da sessão:
+     * a mesma chave devolve SEMPRE o mesmo URL — o browser não
+     * re-decoda o blob e os objectURLs não vazam (o eviction revoga o
+     * descartado; antes cada _readCache criava um URL novo por re-render).
+     * @param {string} key - chave de cache/dedupe
+     * @param {Blob} blob - imagem persistida
+     * @returns {string} objectURL
+     */
+    _objectUrlFor(key, blob) {
+        const existing = this._resolvedUrls.get(key);
+        if (existing) return existing;
+        const url = URL.createObjectURL(blob);
+        this._resolvedUrls.set(key, url);
+        this._trimResolvedUrls();
+        return url;
+    }
+
+    /**
+     * objectURL de imagem RECÉM-BAIXADA da rede: entra no mapa quente e
+     * ganha a marca _freshFromNetwork — o fade de 500ms só faz sentido
+     * na primeira aparição (o .then do escalonador consome a marca).
+     * @param {string} key - chave de cache/dedupe
+     * @param {Blob} blob - imagem baixada
+     * @returns {string} objectURL
+     */
+    _freshObjectUrl(key, blob) {
+        const url = this._objectUrlFor(key, blob);
+        this._freshFromNetwork.add(key);
+        return url;
+    }
+
+    /**
+     * LRU do mapa quente (mesmo teto do Cache Storage): além de ~200
+     * chaves, a mais antiga sai e o objectURL é revogado — sem revoke
+     * os blobs de páginas antigas acumulavam para sempre (leak a cada
+     * rebuild de lista).
+     */
+    _trimResolvedUrls() {
+        if (this._resolvedUrls.size <= 200) return;
+        const oldestKey = this._resolvedUrls.keys().next().value;
+        const url = this._resolvedUrls.get(oldestKey);
+        this._resolvedUrls.delete(oldestKey);
+        this._freshFromNetwork.delete(oldestKey);
+        try {
+            URL.revokeObjectURL(url);
+        } catch (error) {
+            this.log.debug('revoke do objectURL evictado falhou:', error);
+        }
+    }
+
+    /**
      * Hard reset manual de imagens (menu do usuário — o equivalente
      * mobile do Cmd+Shift+R): apaga o namespace do Cache Storage; as
      * resoluções em voo terminam e regravam conteúdo FRESCO. O caller
      * re-renderiza a tela para os cards re-enfileirarem.
      */
     async clearImageCache() {
+        // Mapa quente de objectURLs: revoga tudo antes do reset — os
+        // cards re-renderizados pelo caller re-enfileiram e re-resolvem
+        for (const url of this._resolvedUrls.values()) {
+            try {
+                URL.revokeObjectURL(url);
+            } catch (error) {
+                this.log.debug('revoke no clearImageCache falhou:', error);
+            }
+        }
+        this._resolvedUrls.clear();
+        this._freshFromNetwork.clear();
         if (!window.caches) return;
         try {
             await caches.delete(this._cacheName);
@@ -536,8 +620,11 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
      * nos detail sheets.
      * @param {HTMLElement} card - Card alvo
      * @param {string} objectUrl - objectURL gerado pelo módulo (blob:)
+     * @param {boolean} instant - imagem já conhecida (mapa quente/cache):
+     *        pula o fade — a transição de 500ms sobre blob já decodificado
+     *        virava "piscada" a cada re-render (2026-08-18)
      */
-    _applyVeil(card, objectUrl) {
+    _applyVeil(card, objectUrl, instant = false) {
         // objectURLs são gerados por URL.createObjectURL — nunca entram
         // markup alheio; o teste de sanidade só afasta lixo.
         if (typeof objectUrl !== 'string' || !objectUrl.startsWith('blob:')) return;
@@ -546,6 +633,7 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
         if (thumb) {
             thumb.src = objectUrl;
             thumb.classList.add('is-loaded');
+            if (instant) thumb.classList.add('is-loaded--instant');
             return;
         }
 
@@ -553,5 +641,6 @@ const OgImageModule = ModuleWrapper.defineClass('OgImageModule', class {
         if (!veil) return;
         veil.style.backgroundImage = `url("${objectUrl}")`;
         veil.classList.add('card-og-veil--visible');
+        if (instant) veil.classList.add('card-og-veil--instant');
     }
 });

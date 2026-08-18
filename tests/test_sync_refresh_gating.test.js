@@ -136,6 +136,70 @@ describe('quickSync — detail.changed (2026-08-16)', () => {
 });
 
 // ============================================================================
+// fullSync — detail.changed (2026-08-18)
+// ============================================================================
+
+describe('fullSync — detail.changed (2026-08-18)', () => {
+  test('fullSync sem push, sem pull, sem falha → mode full + changed:false', async () => {
+    const sm = makeSyncManager();
+    sm.saveSyncMetadata = vi.fn(async () => {});
+    sm.pushCurations = vi.fn(async () => {});
+    sm.pushEntities = vi.fn(async () => {});
+    sm.pullCurations = vi.fn(async () => {});
+    sm.pullLinkedEntities = vi.fn(async () => {});
+    sm._countPendingAfter = vi.fn(async () => 0);
+    const events = [];
+    window.addEventListener('concierge:sync-complete', (e) => events.push(e.detail));
+
+    await sm.fullSync();
+
+    const detail = events[events.length - 1];
+    expect(detail.mode).toBe('full');
+    expect(detail.changed).toBe(false);
+  });
+
+  test('fullSync com pull aplicado → changed:true', async () => {
+    const sm = makeSyncManager();
+    sm.saveSyncMetadata = vi.fn(async () => {});
+    sm.pushCurations = vi.fn(async () => {});
+    sm.pushEntities = vi.fn(async () => {});
+    sm.pullCurations = vi.fn(async () => {
+      sm.stats.curationsPulled = 3;
+    });
+    sm.pullLinkedEntities = vi.fn(async () => {
+      sm.stats.entitiesPulled = 1;
+    });
+    sm._countPendingAfter = vi.fn(async () => 0);
+    const events = [];
+    window.addEventListener('concierge:sync-complete', (e) => events.push(e.detail));
+
+    await sm.fullSync();
+
+    const detail = events[events.length - 1];
+    expect(detail.changed).toBe(true);
+  });
+
+  test('fullSync com push pendente → changed:true', async () => {
+    const sm = makeSyncManager();
+    sm.saveSyncMetadata = vi.fn(async () => {});
+    sm.pushCurations = vi.fn(async () => {
+      sm.stats.attempted = 2;
+    });
+    sm.pushEntities = vi.fn(async () => {});
+    sm.pullCurations = vi.fn(async () => {});
+    sm.pullLinkedEntities = vi.fn(async () => {});
+    sm._countPendingAfter = vi.fn(async () => 0);
+    const events = [];
+    window.addEventListener('concierge:sync-complete', (e) => events.push(e.detail));
+
+    await sm.fullSync();
+
+    const detail = events[events.length - 1];
+    expect(detail.changed).toBe(true);
+  });
+});
+
+// ============================================================================
 // uiManager — gate do scheduleDataRefresh no sync-complete
 // ============================================================================
 
@@ -216,5 +280,57 @@ describe('uiManager — refresh só quando o sync mudou algo (2026-08-16)', () =
 
     expect(spy).toHaveBeenCalledTimes(1);
     expect(spy).toHaveBeenCalledWith('sync-complete', 80);
+  });
+
+  test('full sync vazio (changed:false) NÃO agenda refresh (2026-08-18)', () => {
+    const spy = vi.spyOn(ui, 'scheduleDataRefresh');
+
+    dispatchSyncComplete({ mode: 'full', changed: false, status: 'success', failed: 0, pending: 0 });
+
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  test('sync vazio com escrita local DURANTE o sync agenda refresh mesmo assim', () => {
+    // O data-changed durante o sync marca _refreshAfterSync — o
+    // sync-complete precisa consumir a flag e forçar UM re-render,
+    // senão a edição feita durante o pull só aparece no próximo evento.
+    ui._refreshAfterSync = true;
+    const spy = vi.spyOn(ui, 'scheduleDataRefresh');
+
+    dispatchSyncComplete({ mode: 'quick', changed: false, status: 'success', failed: 0, pending: 0 });
+
+    expect(spy).toHaveBeenCalledTimes(1);
+    expect(spy).toHaveBeenCalledWith('sync-complete', 80);
+    expect(ui._refreshAfterSync).toBe(false);
+  });
+});
+
+describe('uiManager — cascata de rebuild por ação (2026-08-18)', () => {
+  test('updateCurationStatus NÃO chama refresh direto (data-changed + sync-complete bastam)', async () => {
+    // A escrita no Dexie dispara concierge:data-changed (agenda o refresh
+    // debounced) e o syncAll dispara sync-complete — o refresh direto era
+    // o 3º rebuild do mesmo clique ("cards reconstruindo 3x").
+    window.DataStore = {
+      db: {
+        curations: {
+          where: () => ({
+            equals: () => ({
+              first: async () => ({ id: 1, version: 2, sync: { status: 'synced' } })
+            })
+          }),
+          update: vi.fn(async () => 1)
+        }
+      }
+    };
+    window.ApiService = { updateCuration: vi.fn(async () => ({})) };
+    window.SyncManager = { syncAll: vi.fn(async () => ({ status: 'success' })) };
+    const refreshSpy = vi.spyOn(ui, 'refreshCurrentTabDataLocal').mockResolvedValue(undefined);
+    const notifSpy = vi.spyOn(ui, 'showNotification').mockImplementation(() => {});
+
+    await ui.updateCurationStatus('c1', 'draft');
+
+    expect(window.DataStore.db.curations.update).toHaveBeenCalledTimes(1);
+    expect(refreshSpy).not.toHaveBeenCalled();
+    expect(notifSpy).toHaveBeenCalled();
   });
 });

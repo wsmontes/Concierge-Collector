@@ -61,6 +61,11 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             entitiesPushed: 0,
             curationsPulled: 0,
             curationsPushed: 0,
+            // Ids tombstoned pelo pull no ciclo corrente (server-deleted →
+            // linha local removida) — o uiManager filtra esses ids do
+            // curationsCache para o fantasma não voltar no re-render
+            // pós-sync (2026-08-18).
+            curationsDeletedThisCycle: [],
             conflicts: 0,
             // Contadores do ÚLTIMO ciclo (zerados a cada fullSync/quickSync) —
             // alimentam o status 'partial' do sync-complete (2026-08-15).
@@ -83,6 +88,7 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
         this.stats.skipped = 0;
         this.stats.cycleConflicts = 0;
         this.stats.pendingAfter = 0;
+        this.stats.curationsDeletedThisCycle = [];
     }
 
     /**
@@ -705,13 +711,21 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                 pendingAfter
             };
             const status = this.stats.failed > 0 || pendingAfter > 0 ? 'partial' : 'success';
+            // Ciclo vazio (sem push aplicado, sem pull aplicado, sem falha)
+            // não muda nada localmente — o uiManager usa a flag para NÃO
+            // re-renderizar a lista (rebuild re-aplicava todas as imagens →
+            // piscada). fullSync conta push E pull (2026-08-18).
+            const changed = this.stats.attempted > 0 || this.stats.failed > 0
+                || this.stats.curationsPulled > 0 || this.stats.entitiesPulled > 0;
 
             this.log.info(`✅ Full sync complete (${status})`, this.stats);
             this.emitSyncEvent('sync-complete', {
                 status,
                 stats: this.stats,
                 failed: this.stats.failed,
-                pending: pendingAfter
+                pending: pendingAfter,
+                mode: 'full',
+                changed
             });
 
             return {
@@ -1266,6 +1280,10 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
                 // If server says it's deleted, remove it locally
                 if (serverCuration.status === 'deleted') {
                     await window.DataStore.db.curations.delete(localCuration.id);
+                    this.stats.curationsDeletedThisCycle = this.stats.curationsDeletedThisCycle || [];
+                    if (!this.stats.curationsDeletedThisCycle.includes(serverCuration.curation_id)) {
+                        this.stats.curationsDeletedThisCycle.push(serverCuration.curation_id);
+                    }
                     this.log.debug(`Deleted local curation (server mark as deleted): ${serverCuration.curation_id}`);
                     return PULL_RESULT.APPLIED;
                 }

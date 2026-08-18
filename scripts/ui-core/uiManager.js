@@ -274,12 +274,19 @@ if (typeof window.UIManager === 'undefined') {
                 } else {
                     this.updateSyncActivityIndicator('Synced successfully', 'success');
                 }
-                // Quick sync vazio (ciclo de 60s sem nada empurrado) não
-                // justifica re-render: o rebuild completo da lista recriava
-                // todos os cards e re-aplicava as imagens com fade — "imagens
-                // piscando" a cada minuto (2026-08-16). Full sync (sem
-                // `mode:'quick'`) continua refrescando: ele puxa do servidor.
-                if (!(e?.detail?.mode === 'quick' && e?.detail?.changed === false)) {
+                // Ciclo de sync vazio (quick de 60s sem nada empurrado, ou
+                // fullSync sem push/pull aplicado) não justifica re-render:
+                // o rebuild completo da lista recriava todos os cards e
+                // re-aplicava as imagens com fade — "imagens piscando" a
+                // cada minuto (2026-08-16, estendido ao fullSync em
+                // 2026-08-18). Exceção: escrita local DURANTE o sync marca
+                // _refreshAfterSync — o flag força UM re-render para a
+                // edição não esperar o próximo evento. Sync sem o campo
+                // `changed` (legado) segue refrescando.
+                const changed = e?.detail?.changed;
+                const refreshForced = this._refreshAfterSync === true;
+                this._refreshAfterSync = false;
+                if (!(changed === false && !refreshForced)) {
                     this.scheduleDataRefresh('sync-complete', 80);
                 }
             });
@@ -355,8 +362,9 @@ if (typeof window.UIManager === 'undefined') {
                 // Durante o sync, o pull escreve em RAJADA — re-renderizar a
                 // cada escrita causava a tempestade: fetch completo do
                 // servidor + rebuild da lista a cada ~2s (o "modal piscando"
-                // e a UI travada). Um único refresh local roda no
-                // concierge:sync-success.
+                // e a UI travada). A flag _refreshAfterSync marca que houve
+                // escrita durante o sync — o handler de sync-complete agenda
+                // então UM refresh (mesmo em ciclo vazio).
                 if (window.SyncManager && window.SyncManager.isSyncing) {
                     this._refreshAfterSync = true;
                     return;
@@ -364,13 +372,6 @@ if (typeof window.UIManager === 'undefined') {
 
                 // Keep list fresh without requiring tab switch (cache LOCAL)
                 this.scheduleDataRefresh(`data-changed:${e?.detail?.table || 'unknown'}`, 150);
-            });
-
-            // Refresh ÚNICO pós-sync (local, sem fetch — o pull já gravou tudo)
-            window.addEventListener('concierge:sync-success', () => {
-                if (this.currentView !== 'list') return;
-                this._refreshAfterSync = false;
-                this.scheduleDataRefresh('sync-success', 100);
             });
         }
 
@@ -472,8 +473,18 @@ if (typeof window.UIManager === 'undefined') {
                         // N(local)" ao voltar do editor (bug: Edit → Cancel
                         // → Page 1 of 1 até algum clique re-buscar do servidor).
                         if (this.curationPagination.currentPage === 0) {
+                            // Fantasmas (2026-08-18): além dos tombstones
+                            // locais (status deleted no Dexie), o pull pode
+                            // ter REMOVIDO linhas tombstoned server-side —
+                            // o SyncManager registra esses ids por ciclo e
+                            // o cache precisa excluí-los antes do re-render.
+                            const deletedIds = await this._localDeletedCurationIds();
+                            const cycleDeleted = window.SyncManager?.stats?.curationsDeletedThisCycle || [];
+                            for (const cid of cycleDeleted) deletedIds.add(cid);
                             const serverIds = new Set(this.curationsCache.map(c => c.curation_id));
-                            const baseItems = this.curationsCache.filter(c => c.sync?.status !== 'pending');
+                            const baseItems = this.curationsCache.filter(
+                                c => c.sync?.status !== 'pending' && !deletedIds.has(c.curation_id)
+                            );
                             let pending = [];
                             try {
                                 if (window.DataStore?.db) {
@@ -2461,7 +2472,10 @@ if (typeof window.UIManager === 'undefined') {
         /**
          * Muda o status de WORKFLOW de uma curadoria (tag clicável do
          * card). "linked" não entra aqui — é derivado do entity_id.
-         * Otimista: grava local + PATCH com If-Match + sync + re-render.
+         * Otimista: grava local + PATCH com If-Match + sync. O re-render
+         * vem de graça: a escrita local dispara concierge:data-changed
+         * (refresh debounced) e o syncAll dispara sync-complete — um
+         * refresh direto aqui era o 3º rebuild do mesmo clique (2026-08-18).
          * @param {string} curationId - curation_id da curadoria
          * @param {string} status - draft | active | archived | deleted
          */
@@ -2493,7 +2507,6 @@ if (typeof window.UIManager === 'undefined') {
                     window.SyncManager.syncAll().catch((error) => this.log.warn('sync pós-status falhou:', error));
                 }
 
-                await this.refreshCurrentTabDataLocal();
                 this.showNotification(`Status changed to ${status}`, 'success');
             } catch (error) {
                 this.log.error('updateCurationStatus falhou:', error);

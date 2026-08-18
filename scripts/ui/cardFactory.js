@@ -92,7 +92,11 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
 
         const card = document.createElement('div');
         card.className = 'collection-card group';
-        card.dataset.entityId = entity.entity_id;
+        // Entities legadas (bulk com ObjectId _id) podem não ter
+        // entity_id — cairia "null"/"undefined" no data-entity-id e o
+        // OgImageModule disparava um 404 para a chave "entity:null"
+        // a cada primeiro render (2026-08-18)
+        card.dataset.entityId = entity.entity_id || entity.id || '';
         this._applyStatusAccent(card, entity.status || 'active');
 
         const name = entity.name || 'Unknown';

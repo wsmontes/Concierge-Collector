@@ -955,3 +955,142 @@ describe('OgImageModule — negativo em cache (2026-08-16)', () => {
     );
   });
 });
+
+describe('OgImageModule — re-render sem piscada (2026-08-18)', () => {
+  const thumbHtml = `
+    <div class="collection-card__media">
+      <img class="collection-card__thumb" loading="lazy" alt="" />
+      <div class="collection-card__thumb-fallback" aria-hidden="true"></div>
+    </div>
+  `;
+
+  test('chave já resolvida re-aplica src SÍNCRONO com is-loaded--instant (sem fade)', async () => {
+    const OgImageModuleClass = loadOgImageModule();
+    vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn(() => 'blob:warm-1') });
+
+    const request = vi.fn().mockResolvedValue({
+      ok: true,
+      blob: async () => new Blob(['jpeg-bytes'], { type: 'image/jpeg' })
+    });
+    window.ApiService = { request };
+
+    const module = new OgImageModuleClass();
+    await module.init();
+
+    // Primeira resolução (rede): fade normal, objectURL guardado
+    const card1 = document.createElement('div');
+    card1.dataset.ogSource = 'https://site.example.com/w';
+    card1.innerHTML = thumbHtml;
+    document.body.appendChild(card1);
+    module._queue(card1);
+    await vi.waitFor(() => {
+      expect(card1.querySelector('.collection-card__thumb').classList.contains('is-loaded')).toBe(true);
+    });
+    expect(card1.querySelector('.collection-card__thumb').classList.contains('is-loaded--instant')).toBe(false);
+
+    // Re-render (novo DOM): _queue aplica NA HORA, sem placeholder/fade
+    const card2 = document.createElement('div');
+    card2.dataset.ogSource = 'https://site.example.com/w';
+    card2.innerHTML = thumbHtml;
+    document.body.appendChild(card2);
+    module._queue(card2);
+
+    const thumb2 = card2.querySelector('.collection-card__thumb');
+    expect(thumb2.src).toContain('blob:warm-1');
+    expect(thumb2.classList.contains('is-loaded')).toBe(true);
+    expect(thumb2.classList.contains('is-loaded--instant')).toBe(true);
+    expect(request).toHaveBeenCalledTimes(1); // re-render não refaz rede
+  });
+
+  test('re-render reusa o MESMO objectURL (createObjectURL uma vez só)', async () => {
+    const OgImageModuleClass = loadOgImageModule();
+    const createSpy = vi.fn(() => 'blob:same-1');
+    vi.stubGlobal('URL', { ...URL, createObjectURL: createSpy });
+
+    const request = vi.fn().mockResolvedValue({
+      ok: true,
+      blob: async () => new Blob(['jpeg-bytes'], { type: 'image/jpeg' })
+    });
+    window.ApiService = { request };
+
+    const module = new OgImageModuleClass();
+    await module.init();
+
+    const card1 = document.createElement('div');
+    card1.dataset.ogSource = 'https://site.example.com/s';
+    card1.innerHTML = thumbHtml;
+    document.body.appendChild(card1);
+    module._queue(card1);
+    await vi.waitFor(() => {
+      expect(card1.querySelector('.collection-card__thumb').classList.contains('is-loaded')).toBe(true);
+    });
+
+    const card2 = document.createElement('div');
+    card2.dataset.ogSource = 'https://site.example.com/s';
+    card2.innerHTML = thumbHtml;
+    document.body.appendChild(card2);
+    module._queue(card2);
+
+    expect(createSpy).toHaveBeenCalledTimes(1);
+  });
+
+  test('hit de Cache Storage aplica sem fade (warm, sem transição)', async () => {
+    // Page reload simulado: módulo novo, cache persistido. O hit não é
+    // imagem nova — nada de fade de 500ms sobre blob já conhecido.
+    const OgImageModuleClass = loadOgImageModule();
+    vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn(() => 'blob:cached-1') });
+
+    const fakeCache = {
+      match: vi.fn().mockResolvedValue(
+        new Response(new Blob(['jpeg-bytes'], { type: 'image/jpeg' }), {
+          headers: { 'x-cached-at': String(Date.now()) }
+        })
+      ),
+      put: vi.fn().mockResolvedValue(undefined),
+      delete: vi.fn().mockResolvedValue(true),
+      keys: vi.fn().mockResolvedValue([])
+    };
+    window.caches = { open: vi.fn().mockResolvedValue(fakeCache), delete: vi.fn().mockResolvedValue(true) };
+
+    const module = new OgImageModuleClass();
+    await module.init();
+
+    const card = document.createElement('div');
+    card.dataset.ogSource = 'https://site.example.com/c';
+    card.innerHTML = thumbHtml;
+    document.body.appendChild(card);
+    module._queue(card);
+
+    await vi.waitFor(() => {
+      expect(card.querySelector('.collection-card__thumb').src).toContain('blob:cached-1');
+    });
+    expect(card.querySelector('.collection-card__thumb').classList.contains('is-loaded--instant')).toBe(true);
+  });
+
+  test('evicção do mapa quente revoga o objectURL descartado', () => {
+    const OgImageModuleClass = loadOgImageModule();
+    const revokeSpy = vi.fn();
+    vi.stubGlobal('URL', { ...URL, createObjectURL: vi.fn(), revokeObjectURL: revokeSpy });
+
+    const module = new OgImageModuleClass();
+    for (let i = 0; i < 201; i++) {
+      module._resolvedUrls.set(`k${i}`, `blob:evict-${i}`);
+    }
+    module._trimResolvedUrls();
+
+    expect(module._resolvedUrls.size).toBe(200);
+    expect(module._resolvedUrls.has('k0')).toBe(false);
+    expect(revokeSpy).toHaveBeenCalledWith('blob:evict-0');
+  });
+});
+
+describe('CardFactory — data-entity-id de entity legada (2026-08-18)', () => {
+  test('entity com id e SEM entity_id não gera chave "null"/"undefined"', () => {
+    const factory = loadCardFactory();
+    const card = factory.createEntityCard(
+      { id: 'obj-legacy-123', name: 'Legado', type: 'restaurant', status: 'active', data: {} },
+      { showEntityActions: false }
+    );
+    expect(card.dataset.entityId).toBe('obj-legacy-123');
+  });
+});

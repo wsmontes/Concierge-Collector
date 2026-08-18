@@ -169,4 +169,41 @@ describe('tombstones locais no fetch server-driven', () => {
     expect(ui.curationsCache.map((c) => c.curation_id)).toEqual(['c_ok']);
     expect(renderSpy.mock.calls[0][0].map((c) => c.curation_id)).toEqual(['c_ok']);
   });
+
+  test('refreshCurrentTabDataLocal NÃO re-renderiza tombstone do cache (2026-08-18)', async () => {
+    // Janela do fantasma: item soft-deletado SERVER-SIDE (outro device ou
+    // cleanup de teste) ainda está no curationsCache — o re-render local
+    // pós-sync o trazia de volta a cada ciclo. O filtro de tombstones
+    // existia só no _loadCurationsFromServer; o cache precisa re-filtrar.
+    document.body.innerHTML += '<div id="curations-container"></div>';
+    ui.containers.curations = document.getElementById('curations-container');
+    ui.currentTab = 'curations';
+    ui._curationsLocalMode = false;
+    ui.curationPagination = { currentPage: 0, pageSize: 30 };
+    ui.curationsCache = [
+      { curation_id: 'c_ok', sync: { status: 'synced' } },
+      { curation_id: 'c_deleted', sync: { status: 'synced' } }
+    ];
+    window.DataStore = {
+      db: {
+        curations: {
+          where: (field) => ({
+            equals: (v) => ({
+              toArray: async () =>
+                field === 'status' && v === 'deleted'
+                  ? [{ curation_id: 'c_deleted' }]
+                  : []
+            })
+          })
+        }
+      }
+    };
+    const renderSpy = vi.spyOn(ui, 'renderCurationsPage').mockResolvedValue(undefined);
+    const summarySpy = vi.spyOn(ui, 'updateViewSummaryVisibility').mockImplementation(() => {});
+
+    await ui.refreshCurrentTabDataLocal();
+
+    expect(renderSpy.mock.calls[0][0].map((c) => c.curation_id)).toEqual(['c_ok']);
+    expect(summarySpy).toHaveBeenCalled();
+  });
 });

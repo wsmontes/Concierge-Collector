@@ -1545,6 +1545,12 @@
   opacity: 0.38;
 }
 
+/* Véu de imagem já conhecida (mapa quente/cache): sem transição — o
+   herói do modal re-aplicava o fade de 700ms a cada abertura */
+.card-og-veil--instant {
+  transition: none;
+}
+
 /* Conteúdo do card acima do véu OG (z-0) e abaixo do véu de hover (z-2) */
 .entity-card-main {
   position: relative;
@@ -1735,10 +1741,12 @@
   scroll-margin-top: 8rem;
 }
 
+/* Ferramentas automatizadas (fotos, transcrição, extração) ficam ACIMA
+   das listas grandes — a lista de conceitos é a última área do fluxo */
 .editor-area--identity { order: 1; }
-.editor-area--curation { order: 2; }
-.editor-area--concepts { order: 3; }
-.editor-area--sources { order: 4; }
+.editor-area--sources { order: 2; }
+.editor-area--curation { order: 3; }
+.editor-area--concepts { order: 4; }
 
 .editor-section-heading {
   display: flex;
@@ -2931,6 +2939,12 @@
 
 .collection-card__thumb.is-loaded {
   opacity: 1;
+}
+
+/* Imagem já conhecida (mapa quente/cache): sem transição de 500ms —
+   o fade sobre blob reutilizado virava piscada a cada re-render */
+.collection-card__thumb.is-loaded--instant {
+  transition: none;
 }
 
 .collection-card__thumb-fallback {
