@@ -20,6 +20,25 @@ const AccessControl = (function() {
     let appInitialized = false;
 
     /**
+     * Libera o shell autenticado, que nasce invisível por causa da classe
+     * `auth-pending` no <html> (index.html + styles/access-control.css).
+     * Chamado SÓ quando há sessão válida — é isso que impede a top bar de
+     * piscar para quem está deslogado antes do redirect para o Google.
+     */
+    function revealShell() {
+        document.documentElement.classList.remove('auth-pending');
+    }
+
+    /**
+     * Limite de espera pelo AuthService (100 × 50ms = 5s). Sem o gate, um
+     * AuthService que nunca carrega deixava um shell inerte na tela; com o
+     * gate, deixaria a tela em branco para sempre. O limite converte esse
+     * caso na tela de login, que é o estado seguro.
+     */
+    let authServiceWaitAttempts = 0;
+    const MAX_AUTH_SERVICE_WAIT_ATTEMPTS = 100;
+
+    /**
      * Ícone do Google usado no botão de sign-in — definido uma vez;
      * antes o SVG inteiro era duplicado no template e no estado de erro
      */
@@ -183,6 +202,11 @@ const AccessControl = (function() {
         
         // Wait for AuthService to be available
         if (typeof AuthService === 'undefined') {
+            if (++authServiceWaitAttempts > MAX_AUTH_SERVICE_WAIT_ATTEMPTS) {
+                console.error('[AccessControl] ✗ AuthService never became available — falling back to login');
+                showLoginPrompt('Could not load the authentication module. Please reload the page.');
+                return;
+            }
             console.log('[AccessControl] ⏳ Waiting for AuthService...');
             setTimeout(checkAccess, 50);
             return;
@@ -207,7 +231,13 @@ const AccessControl = (function() {
                     console.log('[AccessControl] Initializing Curator Profile...');
                     await CuratorProfile.initialize();
                 }
-                
+
+                // Shell liberado só aqui, e depois do CuratorProfile: o avatar
+                // já entra desenhado no primeiro paint, em vez de aparecer
+                // depois. (O título não se desloca mais de qualquer forma —
+                // ver .header-bar__brand/__actions em components.css.)
+                revealShell();
+
                 initializeApp();
             } else {
                 console.log('[AccessControl] ✗ No valid authentication');

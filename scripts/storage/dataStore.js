@@ -376,11 +376,11 @@ const DataStore = ModuleWrapper.defineClass('DataStore', class {
             const CRITICAL_THRESHOLD = 95;
 
             if (usedPct >= CRITICAL_THRESHOLD) {
-                const msg = `⚠️ Armazenamento local crítico: ${usedPct}% usado (${usedMB} MB de ${quotaMB} MB). Sincronize e libere espaço para evitar perda de dados.`;
+                const msg = `⚠️ Local storage critical: ${usedPct}% used (${usedMB} MB of ${quotaMB} MB). Sync and free up space to avoid data loss.`;
                 this.log.error(msg);
                 this._notifyStorageQuota(msg, 'critical');
             } else if (usedPct >= WARN_THRESHOLD) {
-                const msg = `⚠️ Armazenamento local: ${usedPct}% usado (${usedMB} MB de ${quotaMB} MB). Considere sincronizar os dados com o servidor.`;
+                const msg = `⚠️ Local storage: ${usedPct}% used (${usedMB} MB of ${quotaMB} MB). Consider syncing your data with the server.`;
                 this.log.warn(msg);
                 this._notifyStorageQuota(msg, 'warning');
             }
