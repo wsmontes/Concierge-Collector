@@ -59,13 +59,15 @@ describe('tombstones locais no fetch server-driven', () => {
     window.DataStore = {
       db: {
         curations: {
-          where: (field) => ({
-            equals: (v) => ({
-              toArray: async () =>
-                field === 'status' && v === 'deleted'
-                  ? [{ curation_id: 'c_x' }, { curation_id: 'c_y' }]
-                  : []
-            })
+          // filter() e não where('status'): o schema real não indexa
+          // 'status' no store curations (regressão 2026-08-18)
+          filter: (predicate) => ({
+            toArray: async () =>
+              [
+                { curation_id: 'c_x', status: 'deleted' },
+                { curation_id: 'c_y', status: 'deleted' },
+                { curation_id: 'c_viva', status: 'draft' }
+              ].filter(predicate)
           })
         }
       }
@@ -97,13 +99,9 @@ describe('tombstones locais no fetch server-driven', () => {
     window.DataStore = {
       db: {
         curations: {
-          where: (field) => ({
-            equals: (v) => ({
-              toArray: async () =>
-                field === 'status' && v === 'deleted'
-                  ? [{ curation_id: 'c_deleted' }]
-                  : []
-            })
+          filter: (predicate) => ({
+            toArray: async () =>
+              [{ curation_id: 'c_deleted', status: 'deleted' }].filter(predicate)
           })
         }
       }
@@ -143,18 +141,21 @@ describe('tombstones locais no fetch server-driven', () => {
     window.DataStore = {
       db: {
         curations: {
+          // where('sync.status') segue usado pelo merge de pendências
+          // (índice REAL do schema); o tombstone usa filter()
           where: (field) => ({
             equals: (v) => ({
               toArray: async () => {
                 if (field === 'sync.status' && v === 'pending') {
                   return [{ curation_id: 'c_deleted', status: 'deleted', sync: { status: 'pending' } }];
                 }
-                if (field === 'status' && v === 'deleted') {
-                  return [{ curation_id: 'c_deleted' }];
-                }
                 return [];
               }
             })
+          }),
+          filter: (predicate) => ({
+            toArray: async () =>
+              [{ curation_id: 'c_deleted', status: 'deleted' }].filter(predicate)
           })
         }
       }
@@ -187,13 +188,9 @@ describe('tombstones locais no fetch server-driven', () => {
     window.DataStore = {
       db: {
         curations: {
-          where: (field) => ({
-            equals: (v) => ({
-              toArray: async () =>
-                field === 'status' && v === 'deleted'
-                  ? [{ curation_id: 'c_deleted' }]
-                  : []
-            })
+          filter: (predicate) => ({
+            toArray: async () =>
+              [{ curation_id: 'c_deleted', status: 'deleted' }].filter(predicate)
           })
         }
       }

@@ -440,3 +440,64 @@ describe('DatabaseManager — recovery (repairEntity/duplicatas/export)', () => 
     db.close();
   });
 });
+
+describe('uiManager — filtro de tombstones no schema real (sem índice status)', () => {
+  // Regressão 2026-08-18: _localDeletedCurationIds usava .where('status')
+  // no store curations, mas NENHUM schema do DatabaseManager indexa 'status'
+  // ali (só sync.status) — Dexie SchemaError em todo load de curadorias no
+  // perfil real do usuário. Os testes antigos mockavam .where('status') e
+  // nunca tocavam o schema real — por isso o erro passou.
+  beforeEach(() => {
+    localStorage.clear();
+    delete globalThis.DataStore;
+    delete globalThis.UIManager;
+    // O source do uiManager chama createInstance no fim (instanciaria o
+    // constructor inteiro, que não existe fora do browser) — aqui só
+    // precisamos da CLASSE para chamar o método direto no prototype.
+    globalThis.ModuleWrapper.createInstance = () => undefined;
+  });
+
+  afterEach(async () => {
+    await Dexie.delete('ConciergeCollector').catch(() => {});
+    delete globalThis.DataStore;
+    localStorage.clear();
+  });
+
+  const uiSrc = readFileSync(
+    path.resolve(__dirname, '../scripts/ui-core/uiManager.js'),
+    'utf8'
+  );
+
+  function loadUIManager() {
+    // eslint-disable-next-line no-new-func
+    const fn = new Function('window', `${uiSrc}\nreturn window.UIManager;`);
+    return fn(globalThis);
+  }
+
+  test('_localDeletedCurationIds devolve ids deleted no schema real v92', async () => {
+    const db = new Dexie('ConciergeCollector');
+    db.version(92).stores(SCHEMA_92);
+    await db.open();
+    await db.curations.put({
+      curation_id: 'c_del_local',
+      entity_id: 'e1',
+      status: 'deleted',
+      sync: { status: 'pending' },
+    });
+    await db.curations.put({
+      curation_id: 'c_viva',
+      entity_id: 'e1',
+      status: 'draft',
+      sync: { status: 'synced' },
+    });
+    globalThis.DataStore = { db };
+
+    const UIManager = loadUIManager();
+    // Object.create: sem constructor (o método só usa window.DataStore)
+    const ids = await Object.create(UIManager.prototype)._localDeletedCurationIds();
+
+    expect(ids.has('c_del_local')).toBe(true);
+    expect(ids.has('c_viva')).toBe(false);
+    db.close();
+  });
+});

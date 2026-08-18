@@ -445,8 +445,13 @@ if (typeof window.UIManager === 'undefined') {
             const ids = new Set();
             if (!window.DataStore?.db) return ids;
             try {
+                // filter() e NÃO where('status'): o store curations não tem
+                // índice 'status' no schema (só sync.status) — where() dava
+                // Dexie SchemaError em todo load e o filtro voltava vazio
+                // (regressão 2026-08-18). filter() roda sem índice; o volume
+                // local de curadorias é pequeno.
                 const rows = await window.DataStore.db.curations
-                    .where('status').equals('deleted').toArray();
+                    .filter((row) => row.status === 'deleted').toArray();
                 for (const row of rows) {
                     if (row?.curation_id) ids.add(row.curation_id);
                 }
