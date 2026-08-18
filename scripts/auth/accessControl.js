@@ -296,6 +296,17 @@ const AccessControl = (function() {
     };
 })();
 
+// Expose globally
+// curatorProfile.js:339 só adiciona o listener de clique do botão Logout
+// quando `window.AccessControl.logout` é função. O módulo é declarado como
+// `const AccessControl = ...` e, em script clássico, `const` no escopo global
+// NÃO cria propriedade em window — sem esta linha o guard falhava em silêncio
+// (sem erro, sem log) e o Logout ficava sem handler nenhum. Mesmo padrão de
+// export dos módulos irmãos: window.AuthService, window.CuratorProfile.
+if (typeof window !== 'undefined') {
+    window.AccessControl = AccessControl;
+}
+
 // Auto-check access when script loads
 console.log('[AccessControl] ========================================');
 console.log('[AccessControl] Script loaded');
