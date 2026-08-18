@@ -121,7 +121,13 @@ const PlacesAutomation = ModuleWrapper.defineClass('PlacesAutomation', class {
         if (place.photos && place.photos.length > 0) {
             place.photos.forEach(photo => {
                 if (photo.getUrl) {
-                    photos.push(photo.getUrl({ maxWidth: 800, maxHeight: 600 }));
+                    try {
+                        photos.push(photo.getUrl({ maxWidth: 800, maxHeight: 600 }));
+                    } catch (error) {
+                        // uma foto quebrada não pode derrubar o transform
+                        // inteiro da entidade (2026-08-18)
+                        console.debug('Place photo falhou, pulada:', error);
+                    }
                 }
             });
         }
@@ -346,10 +352,9 @@ const PlacesAutomation = ModuleWrapper.defineClass('PlacesAutomation', class {
     extractCountry(address) {
         // Country is usually the last component
         const parts = address.split(',').map(p => p.trim());
-        if (parts.length > 0) {
-            return parts[parts.length - 1];
-        }
-        return 'Unknown';
+        // (2026-08-18) split(',') sempre devolve >= 1 parte — o fallback
+        // 'Unknown' era inalcançável e string vazia virava ''
+        return parts[parts.length - 1] || 'Unknown';
     }
 
     /**

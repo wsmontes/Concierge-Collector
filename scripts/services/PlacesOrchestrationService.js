@@ -316,8 +316,9 @@ const PlacesOrchestrationService = (function () {
          * @param {Object} data - Response data
          */
         setCache(key, data) {
-            // Limit cache size
-            if (this.cache.size > 100) {
+            // Limit cache size — o check roda com o cache CHEIO (2026-08-18:
+            // `> 100` antes do set dava teto real de 101, off-by-one)
+            if (this.cache.size >= 100) {
                 const firstKey = this.cache.keys().next().value;
                 this.cache.delete(firstKey);
             }

@@ -719,8 +719,9 @@ def test_index_specs_are_the_shared_source():
     from app.core.index_specs import INDEX_SPECS as SHARED
 
     assert db_rebuild.INDEX_SPECS is SHARED
-    assert len(SHARED) == 21
+    assert len(SHARED) == 23
     assert sum(1 for s in SHARED if s[0] == "capture_sessions") == 1
+    assert ("auth_sessions", "jti", {"unique": True}) in SHARED
 
 
 # ── Wipe ───────────────────────────────────────────────────────────────────

@@ -274,10 +274,15 @@ export function createMockLocalStorage() {
  */
 export async function isApiAvailable() {
   try {
-    const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 2000);
-    const response = await fetch(`${TEST_API_BASE}/info`, { signal: controller.signal });
-    clearTimeout(timer);
+    // Timeout via Promise.race (não AbortController): no jsdom o
+    // AbortController vem do realm do jsdom e o fetch NATIVO do Node
+    // rejeita o signal ("Expected signal to be an instance of
+    // AbortSignal") — falha instantânea que desativava a integração
+    // mesmo com a API saudável (2026-08-18)
+    const timeout = new Promise((_, reject) =>
+      setTimeout(() => reject(new Error('timeout')), 2000)
+    );
+    const response = await Promise.race([fetch(`${TEST_API_BASE}/info`), timeout]);
     if (!response.ok) {
       apiUnavailableReason = `API local respondeu ${response.status} em /info`;
       return false;

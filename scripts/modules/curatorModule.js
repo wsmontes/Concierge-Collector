@@ -342,25 +342,29 @@ class CuratorModule {
 
         if (!curatorSection || !selectorSection) return;
 
-        // Create a click handler for document
-        const handleClickOutside = (event) => {
-            // Check if selector is visible
-            if (selectorSection.classList.contains('hidden')) return;
-
-            // Check if click is outside curator section
-            if (!curatorSection.contains(event.target)) {
-                // Close the selector and return to compact display
-                this.closeCuratorSelector();
-            }
-        };
+        // Handler ESTÁVEL por instância (2026-08-18): cada setupEvents()
+        // criava um closure novo e registrava mais um listener no
+        // document (nunca removido) — re-setups acumulavam handlers que
+        // fechavam o selector com referências obsoletas. O addEventListener
+        // do navegador deduplica por referência: mesmo handler, um
+        // listener só. Os elementos são re-lidos DENTRO do handler para
+        // nunca segurar refs velhas.
+        if (!this.clickOutsideHandler) {
+            this.clickOutsideHandler = (event) => {
+                const sel = document.getElementById('curator-selector-compact');
+                const sec = document.getElementById('curator-section');
+                if (!sel || sel.classList.contains('hidden')) return;
+                if (!sec || !sec.contains(event.target)) {
+                    this.closeCuratorSelector();
+                }
+            };
+        }
 
         // Add event listener with slight delay to prevent immediate closing
-        setTimeout(() => {
-            document.addEventListener('click', handleClickOutside);
+        clearTimeout(this.clickOutsideTimer);
+        this.clickOutsideTimer = setTimeout(() => {
+            document.addEventListener('click', this.clickOutsideHandler);
         }, 100);
-
-        // Store reference to remove listener if needed
-        this.clickOutsideHandler = handleClickOutside;
     }
 
     /**
@@ -452,17 +456,21 @@ class CuratorModule {
 
     /**
      * Initialize filter toggle from settings
+     * @param {HTMLElement} [filterToggle] - toggle alvo (compacto ou legado);
+     *        sem parâmetro cai no legado #filter-by-curator
      */
-    async initializeFilterToggle() {
+    async initializeFilterToggle(filterToggle) {
         try {
-            const filterToggle = document.getElementById('filter-by-curator');
-            if (!filterToggle) return;
+            // (2026-08-18) o parâmetro era ignorado — o toggle COMPACTO
+            // nunca recebia o estado salvo dos settings
+            const toggle = filterToggle || document.getElementById('filter-by-curator');
+            if (!toggle) return;
 
             // Get filter setting from database (default to true)
             const filterEnabled = await dataStorage.getSetting('filterByActiveCurator', true);
 
             // Set toggle state
-            filterToggle.checked = filterEnabled;
+            toggle.checked = filterEnabled;
         } catch (error) {
             this.log.error('Error initializing filter toggle:', error);
         }
@@ -910,26 +918,6 @@ class CuratorModule {
         editForm.classList.remove('hidden');
         if (editToolbar) {
             editToolbar.classList.remove('hidden');
-
-            // Enhanced debugging
-            const computedStyle = window.getComputedStyle(editToolbar);
-            this.log.debug('Toolbar visibility after removing hidden class:', {
-                hasHiddenClass: editToolbar.classList.contains('hidden'),
-                computedDisplay: computedStyle.display,
-                computedPosition: computedStyle.position,
-                computedZIndex: computedStyle.zIndex,
-                computedBottom: computedStyle.bottom,
-                computedVisibility: computedStyle.visibility,
-                computedOpacity: computedStyle.opacity,
-                boundingRect: editToolbar.getBoundingClientRect(),
-                offsetParent: editToolbar.offsetParent,
-                className: editToolbar.className
-            });
-
-            // Force a reflow to ensure styles are applied
-            editToolbar.offsetHeight;
-
-            console.warn('🚨 TOOLBAR DEBUG: Should be visible now! Check element in DevTools:', editToolbar);
         } else {
             this.log.error('editToolbar element not found!');
         }

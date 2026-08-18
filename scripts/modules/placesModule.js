@@ -52,7 +52,16 @@ if (typeof window.PlacesModule === 'undefined') {
             this.dropdownObserver = null;
             this.repositionTimer = null;
             this.searchThrottle = null;
-            
+
+            // Cache/throttle (2026-08-18): os campos eram LIDOS sem nunca
+            // ser inicializados — TTL de sugestões/fotos nunca batia
+            // (NaN nas comparações) e o throttle de API nunca segurava
+            this.cacheExpiry = 5 * 60 * 1000; // 5min, alinhado ao PlacesCache
+            this.photoCache = new Map();
+            this.minApiInterval = 2000; // ms entre chamadas (rate limit)
+            this.retryDelay = 500;       // base do backoff exponencial
+            this.lastApiCall = 0;
+
             // API key management
             this.apiKey = '';
             this.apiLoaded = false;
@@ -99,32 +108,6 @@ if (typeof window.PlacesModule === 'undefined') {
             } catch (error) {
                 this.log.error('Error initializing Places module:', error);
                 this.showNotification('Error initializing Places module. Some features may not work correctly.', 'warning');
-            }
-        }
-        
-        /**
-         * Load API key and initialize services
-         */
-        async loadApiKey() {
-            try {
-                // Try to load from localStorage
-                const savedKey = this.safeGetStorageItem('googlePlacesApiKey');
-                
-                if (savedKey && savedKey.trim() !== '') {
-                    this.apiKey = savedKey;
-                    
-                    // Initialize PlacesService with the API key
-                    await this.placesService.initialize(this.apiKey);
-                    this.apiLoaded = true;
-                    
-                    this.debugLog('API key loaded and service initialized');
-                    this.showNotification('Google Places API loaded successfully', 'success');
-                } else {
-                    this.debugLog('No API key found in storage');
-                }
-            } catch (error) {
-                this.log.error('Error loading API key:', error);
-                this.showNotification('Error loading API key: ' + error.message, 'error');
             }
         }
         
@@ -1503,16 +1486,27 @@ if (typeof window.PlacesModule === 'undefined') {
                     this.displaySuggestions(cached.data);
                     return;
                 }
-                
+
                 // Make API request for suggestions if not cached
                 this.performanceMetrics.cacheMisses++;
                 // For now, we'll rely on the autocomplete widget's built-in suggestions
                 // Future enhancement: implement custom suggestion display
-                
+
             } catch (error) {
                 this.log.error('Error handling autocomplete suggestions:', error);
                 this.performanceMetrics.errors++;
             }
+        }
+
+        /**
+         * Exibição customizada de sugestões (reservada): o widget nativo do
+         * Autocomplete cobre a exibição hoje. O branch de cache-hit chamava
+         * este método sem ele existir (2026-08-18) — o no-op documenta o
+         * contrato para quando uma fonte de sugestões passar a escrever cache.
+         * @param {Array} suggestions - Sugestões cacheadas
+         */
+        displaySuggestions(suggestions) {
+            this.debugLog(`displaySuggestions: exibição coberta pelo widget nativo (${suggestions?.length || 0} itens em cache)`);
         }
         
         /**
@@ -2031,7 +2025,7 @@ if (typeof window.PlacesModule === 'undefined') {
                         this.debugLog(`✅ Search completed: ${response.total_results} results`);
                         
                         this.searchResults = response.results || [];
-                        this.displaySearchResults(this.searchResults);
+                        this.displayEnhancedSearchResults(this.searchResults);
                         
                     } catch (apiError) {
                         this.hideLoading();
@@ -2068,7 +2062,7 @@ if (typeof window.PlacesModule === 'undefined') {
                         this.hideLoading();
                         this.isLoading = false;
                         this.searchResults = results.results || results || [];
-                        this.displaySearchResults(this.searchResults);
+                        this.displayEnhancedSearchResults(this.searchResults);
                     } catch (error) {
                         this.hideLoading();
                         this.isLoading = false;
