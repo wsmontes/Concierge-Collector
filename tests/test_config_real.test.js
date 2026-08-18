@@ -41,6 +41,42 @@ describe('config.js real — environment detection', () => {
   });
 });
 
+describe('config.js real — domínio custom concierge-collector.com', () => {
+  // O apex serve o Collector (static site do Render) e chama a API pelo
+  // subdomínio api.*. Sem isso o domínio novo caía num limbo: isProduction
+  // ficava false e a baseUrl seguia hardcoded no .onrender.com.
+  test('apex usa a API em api.concierge-collector.com', () => {
+    const cfg = loadConfig('concierge-collector.com');
+    expect(cfg.api.backend.baseUrl).toBe('https://api.concierge-collector.com/api/v3');
+    expect(cfg.environment.isProduction).toBe(true);
+    expect(cfg.environment.isDev).toBe(false);
+  });
+
+  test('www redireciona pro apex mas resolve igual se carregado direto', () => {
+    const cfg = loadConfig('www.concierge-collector.com');
+    expect(cfg.api.backend.baseUrl).toBe('https://api.concierge-collector.com/api/v3');
+    expect(cfg.environment.isProduction).toBe(true);
+  });
+
+  test('subdomínios do domínio custom também são produção', () => {
+    const cfg = loadConfig('capture.concierge-collector.com');
+    expect(cfg.api.backend.baseUrl).toBe('https://api.concierge-collector.com/api/v3');
+    expect(cfg.environment.isProduction).toBe(true);
+  });
+
+  // Guarda contra detecção por substring ingênua (hostname.includes).
+  test('domínio parecido de terceiro NÃO é tratado como o domínio custom', () => {
+    const cfg = loadConfig('evil-concierge-collector.com.attacker.net');
+    expect(cfg.api.backend.baseUrl).toBe('https://concierge-collector.onrender.com/api/v3');
+  });
+
+  test('os hosts .onrender.com continuam apontando para a API do Render', () => {
+    const web = loadConfig('concierge-collector-web.onrender.com');
+    expect(web.api.backend.baseUrl).toBe('https://concierge-collector.onrender.com/api/v3');
+    expect(web.environment.isProduction).toBe(true);
+  });
+});
+
 describe('config.js real — endpoints casam com a API v3', () => {
   test('entityCurations usa a rota real /curations/entities/{id}/curations', () => {
     const cfg = loadConfig('localhost');
