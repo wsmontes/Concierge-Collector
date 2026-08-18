@@ -41,6 +41,19 @@ window.FormManager = (function() {
     let autoSaveTimers = new Map();
     let autoSaveDelay = 2000; // 2 seconds
 
+    /**
+     * Escapa texto para interpolação em innerHTML (XSS — achado #11 da
+     * auditoria 2026-08-18): mensagens de erro podem vir de validators
+     * customizados; nunca interpolar cru no markup.
+     * @param {string} value - Texto a escapar
+     * @returns {string} HTML-escaped
+     */
+    function escapeHtml(value) {
+        const div = document.createElement('div');
+        div.textContent = String(value ?? '');
+        return div.innerHTML;
+    }
+
     // Built-in validators
     const VALIDATORS = {
         required: (value) => {
@@ -499,7 +512,7 @@ window.FormManager = (function() {
             errorDiv.className = 'field-error';
             errorDiv.innerHTML = `
                 <span class="material-icons">error</span>
-                <span>${fieldData.errors[0]}</span>
+                <span>${escapeHtml(fieldData.errors[0])}</span>
             `;
             fieldData.element.parentNode.appendChild(errorDiv);
         } else if (fieldData.element.value && fieldData.element.value !== fieldData.initialValue) {

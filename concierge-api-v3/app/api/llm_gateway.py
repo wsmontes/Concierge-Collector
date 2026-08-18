@@ -22,7 +22,7 @@ from app.models.llm_models import (
 )
 from app.models.llm_tools import get_all_tools, get_tools_manifest
 from app.core.rate_limit import limiter
-from app.core.security import verify_auth
+from app.core.security import require_role, verify_auth
 from app.services.llm_place_service import LLMPlaceService
 from app.core.database import get_database
 
@@ -43,7 +43,10 @@ def search_restaurants(
     request: Request,
     body: LLMSearchRestaurantsRequest,
     service: LLMPlaceService = Depends(get_llm_service),
-    auth: dict = Depends(verify_auth),  # Support both API key and JWT
+    # require_role("curator") e não verify_auth: o serviço auto-cria/atualiza
+    # documents em `entities` (achado #2 da auditoria 2026-08-18 — viewer
+    # disparava escrita no Mongo). API key segue passando (admin).
+    auth: dict = Depends(require_role("curator")),
 ):
     """
     Search for restaurants by name or query.
@@ -96,7 +99,9 @@ def get_restaurant_snapshot(
     request: Request,
     body: LLMGetRestaurantSnapshotRequest,
     service: LLMPlaceService = Depends(get_llm_service),
-    auth: dict = Depends(verify_auth),  # Support both API key and JWT
+    # Mesma regra de search-restaurants: snapshot dispara escrita em
+    # `entities` (auto-create/update via Google) — exige role >= curator.
+    auth: dict = Depends(require_role("curator")),
 ):
     """
     Get complete restaurant snapshot with all available data.
@@ -241,12 +246,15 @@ async def health_check():
 
 
 @router.get("/tools")
-def get_tools():
+def get_tools(auth: dict = Depends(verify_auth)):
     """
     Get MCP tool definitions.
 
     Returns the JSON Schema definitions for all available tools.
     This endpoint is used by MCP clients to discover available tools.
+
+    Requer auth (achado #9 da auditoria 2026-08-18): o schema das
+    ferramentas expunha a superfície interna do gateway a qualquer um.
 
     Returns:
         List of tool schemas in MCP format
@@ -255,7 +263,7 @@ def get_tools():
 
 
 @router.get("/tools-manifest")
-def get_manifest():
+def get_manifest(auth: dict = Depends(verify_auth)):
     """
     Get complete MCP tools manifest with metadata.
 
@@ -264,6 +272,8 @@ def get_manifest():
     - Service metadata
     - API endpoints
     - Data sources
+
+    Requer auth pelo mesmo motivo de /llm/tools.
 
     Returns:
         Complete manifest dictionary

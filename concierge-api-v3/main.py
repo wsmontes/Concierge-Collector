@@ -14,8 +14,20 @@ from slowapi.middleware import SlowAPIMiddleware
 from app.core.config import settings
 from app.core.lifespan import lifespan
 from app.core.rate_limit import limiter
-from app.api import entities, curations, system, places, ai, concepts, auth, llm_gateway, openai_compat, capture, curators, og_image
-
+from app.api import (
+    entities,
+    curations,
+    system,
+    places,
+    ai,
+    concepts,
+    auth,
+    llm_gateway,
+    openai_compat,
+    capture,
+    curators,
+    og_image,
+)
 
 # Create FastAPI application
 app = FastAPI(
@@ -26,7 +38,7 @@ app = FastAPI(
     docs_url="/api/v3/docs",  # Swagger UI
     redoc_url="/api/v3/redoc",  # ReDoc
     openapi_url="/api/v3/openapi.json",  # OpenAPI schema
-    redirect_slashes=False  # CRITICAL: Disable automatic trailing slash redirects for OAuth
+    redirect_slashes=False,  # CRITICAL: Disable automatic trailing slash redirects for OAuth
 )
 
 # Attach rate limiter to app state and register its exception handler
@@ -34,14 +46,35 @@ app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
 
+
+def _cors_origins_safe(origins=None):
+    """Origins com validação fail-fast (achado #3 da auditoria 2026-08-18):
+    allow_credentials=True combinado com '*' na lista faz o Starlette
+    refletir QUALQUER origin com credenciais — session riding clássico
+    (site malicioso usa os cookies HttpOnly da vítima contra a API).
+    Config errada derruba o boot em vez de abrir a porta.
+
+    `origins` é injetável nos testes; em runtime usa settings.cors_origins_list.
+    """
+    if origins is None:
+        origins = settings.cors_origins_list
+    if "*" in origins:
+        raise RuntimeError(
+            "CORS_ORIGINS contém '*' — inseguro com allow_credentials=True; "
+            "liste origins explícitas (ou vazio para API-only)"
+        )
+    return origins
+
+
 # Configure CORS
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins_list,
+    allow_origins=_cors_origins_safe(),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
 
 # Global exception handler: log the exception, return a generic 500 message.
 # No manual CORS headers here — CORSMiddleware already adds them to every
@@ -52,6 +85,7 @@ async def global_exception_handler(request: Request, exc: Exception):
     """Return a generic 500 without leaking internal details to the client."""
     from fastapi.responses import JSONResponse
     import logging
+
     logger = logging.getLogger(__name__)
 
     logger.error(f"[Global Exception Handler] {type(exc).__name__}: {str(exc)}", exc_info=True)
@@ -60,6 +94,7 @@ async def global_exception_handler(request: Request, exc: Exception):
         status_code=500,
         content={"detail": "Internal server error"},
     )
+
 
 # Include routers with /api/v3 prefix
 app.include_router(system.router, prefix="/api/v3")
@@ -75,10 +110,12 @@ app.include_router(capture.router, prefix="/api/v3")
 app.include_router(curators.router, prefix="/api/v3")
 app.include_router(og_image.router, prefix="/api/v3")
 
+
 # ── Root redirects to Capture ─────────────────────────────────────────────
 @app.get("/", include_in_schema=False)
 async def root():
     from fastapi.responses import RedirectResponse
+
     return RedirectResponse(url="/capture/")
 
 
@@ -91,10 +128,6 @@ if _CAPTURE_DIR.is_dir():
 if __name__ == "__main__":
     import uvicorn
     import os
+
     port = int(os.environ.get("PORT", 8000))
-    uvicorn.run(
-        "main:app",
-        host="0.0.0.0",
-        port=port,
-        reload=False
-    )
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)

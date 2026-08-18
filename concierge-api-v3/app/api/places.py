@@ -11,9 +11,8 @@ Uses the modern Places API (New) with HTTP requests.
 
 from fastapi import APIRouter, HTTPException, Query, Request, Depends
 import re
-from urllib.parse import urlencode
 
-from fastapi.responses import RedirectResponse
+from fastapi.responses import StreamingResponse
 
 from app.services.llm_place_service import LLMPlaceService
 from app.core.database import get_database
@@ -644,6 +643,10 @@ async def get_place_details(
 # server-side e responde 302 para o Google (o <img> segue o redirect).
 PLACES_API_PHOTO_MEDIA_URL = "https://places.googleapis.com/v1/{photo_name}/media"
 
+# Teto do streaming server-side: protege o egress do Render contra abuso
+# (o rate limit de 60/min já limita por IP; o teto limita por request).
+_MAX_PHOTO_BYTES = 20 * 1024 * 1024  # 20MB
+
 _PHOTO_REFERENCE_RE = re.compile(r"^places/[A-Za-z0-9_\-]+/photos/[A-Za-z0-9_\-]+$")
 
 
@@ -668,14 +671,16 @@ async def proxy_place_photo(
     Proxy de fotos do Google Places (sem autenticação de propósito).
 
     Sem autenticação: <img> tags não carregam headers, então o browser precisa
-    de uma URL nua. O rate limit (60/min por IP) protege o custo/abuso. A chave
-    da API é adicionada AQUI no servidor e o cliente recebe um 302 para o
-    Google — a chave nunca aparece em URLs armazenadas, bundles ou payloads;
-    só existe transitoriamente no Location do 302 (impossível em redirect
-    server-side; o <img> segue e a chave nunca vira artefato persistido).
+    de uma URL nua. O rate limit (60/min por IP) protege o custo/abuso.
+
+    Desde 2026-08-18 (achado #1 da auditoria de segurança): a foto é baixada
+    SERVER-SIDE e devolvida em streaming — a chave do Google NUNCA sai do
+    servidor. Antes, o proxy devolvia 302 com `key=` no Location, legível por
+    qualquer um com curl -i (o comentário antigo afirmava o contrário,
+    incorreto: o Location É entregue ao cliente).
     """
     # Validar formato ANTES de montar a URL — o reference vai para o path da
-    # URL do Google; sem a validação seria um open-redirect com a chave anexada.
+    # URL do Google; sem a validação seria SSRF/open-redirect com a chave.
     if not _PHOTO_REFERENCE_RE.fullmatch(reference):
         raise HTTPException(
             status_code=400,
@@ -684,8 +689,8 @@ async def proxy_place_photo(
 
     params = [("key", settings.google_places_api_key)]
     # A API moderna do Google REJEITA a URL sem dimensão ('At least one of
-    # max_height_px or max_width_px must be specified') — sem default o alvo
-    # do 302 sempre 400, quebrando <img> no browser e downloads server-side.
+    # max_height_px or max_width_px must be specified') — o default segue
+    # aplicado, agora na requisição server-side.
     if not max_width and not max_height:
         max_width = 1200
     if max_width:
@@ -696,7 +701,50 @@ async def proxy_place_photo(
         params.append(("skipHttpRedirect", "true"))
 
     media_url = PLACES_API_PHOTO_MEDIA_URL.format(photo_name=reference)
-    return RedirectResponse(url=f"{media_url}?{urlencode(params)}", status_code=302)
+
+    # SSRF guard reutilizado do serviço de imagens: cada request da cadeia de
+    # redirects (Google → storage CDN) passa pela validação de host.
+    from app.services.openai_service import _validate_image_request_hook
+
+    client = httpx.AsyncClient(
+        follow_redirects=True,
+        timeout=30.0,
+        event_hooks={"request": [_validate_image_request_hook]},
+    )
+    try:
+        upstream = await client.get(media_url, params=params)
+    except Exception:
+        await client.aclose()
+        logger.warning(f"Google photo fetch failed for reference={reference}", exc_info=True)
+        raise HTTPException(status_code=502, detail="Google Places photo unavailable")
+
+    if upstream.status_code != 200:
+        upstream_status = upstream.status_code
+        await upstream.aclose()
+        await client.aclose()
+        if upstream_status == 404:
+            raise HTTPException(status_code=404, detail="Photo not found")
+        raise HTTPException(status_code=502, detail="Google Places photo unavailable")
+
+    content_type = upstream.headers.get("content-type", "image/jpeg")
+
+    async def _stream_bytes():
+        sent = 0
+        try:
+            async for chunk in upstream.aiter_bytes(chunk_size=64 * 1024):
+                sent += len(chunk)
+                yield chunk
+                if sent >= _MAX_PHOTO_BYTES:
+                    break
+        finally:
+            await upstream.aclose()
+            await client.aclose()
+
+    return StreamingResponse(
+        _stream_bytes(),
+        media_type=content_type,
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
 
 
 @router.get("/{place_id}/photos")

@@ -89,12 +89,12 @@ class TestPerformance:
         # Should respond in under 5 seconds
         assert duration < 5.0, f"Health check took {duration:.2f}s, expected <5s"
 
-    def test_list_entities_reasonable_time(self, client):
+    def test_list_entities_reasonable_time(self, client, auth_headers):
         """Test listing entities completes in reasonable time"""
         import time
 
         start = time.time()
-        response = client.get("/api/v3/entities?limit=50")
+        response = client.get("/api/v3/entities?limit=50", headers=auth_headers)
         duration = time.time() - start
 
         assert response.status_code == 200

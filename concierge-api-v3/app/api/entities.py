@@ -113,7 +113,12 @@ def find_entity(db: Database, entity_id: str):
 
 
 @router.get("/{entity_id}", response_model=Entity)
-def get_entity(entity_id: str, db: Database = Depends(get_database)):
+def get_entity(
+    entity_id: str,
+    db: Database = Depends(get_database),
+    # Login-gate, mesmo motivo do list (achado #5 da auditoria 2026-08-18).
+    auth: dict = Depends(verify_auth),
+):
     """Get entity by ID"""
     result = find_entity(db, entity_id)
 
@@ -352,6 +357,10 @@ def list_entities(
         ),
     ),
     db: Database = Depends(get_database),
+    # Login-gate (achado #5 da auditoria 2026-08-18): o catálogo completo
+    # (~21k docs) era a maior superfície de leitura do Mongo sem auth.
+    # Sem redação por dono — usuário logado vê o documento completo.
+    auth: dict = Depends(verify_auth),
 ):
     """List entities with filters and pagination.
 

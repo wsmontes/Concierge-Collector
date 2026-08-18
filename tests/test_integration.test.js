@@ -74,8 +74,10 @@ describe('Integration - Entity Lifecycle', () => {
     expect(created.version).toBe(1);
     trackTestEntity(created.entity_id);
 
-    // 2. Read from API
-    const getResponse = await fetch(`${API_BASE}/entities/${entity.entity_id}`);
+    // 2. Read from API (leitura de entities agora exige auth — achado #5)
+    const getResponse = await fetch(`${API_BASE}/entities/${entity.entity_id}`, {
+      headers: { 'X-API-Key': API_KEY }
+    });
     expect(getResponse.ok).toBe(true);
     const retrieved = await getResponse.json();
     expect(retrieved.name).toBe('Integration Test Restaurant');
@@ -106,8 +108,10 @@ describe('Integration - Entity Lifecycle', () => {
 
     expect(deleteResponse.ok).toBe(true);
 
-    // 5. Verify deletion
-    const verifyResponse = await fetch(`${API_BASE}/entities/${entity.entity_id}`);
+    // 5. Verify deletion (com auth: 404; sem auth seria 401)
+    const verifyResponse = await fetch(`${API_BASE}/entities/${entity.entity_id}`, {
+      headers: { 'X-API-Key': API_KEY }
+    });
     expect(verifyResponse.status).toBe(404);
   });
 
@@ -224,7 +228,9 @@ describe('Integration - Version Conflicts', () => {
     expect([403, 409]).toContain(updateB.status);
 
     // Client B should fetch latest version and retry
-    const getLatest = await fetch(`${API_BASE}/entities/${entity.entity_id}`);
+    const getLatest = await fetch(`${API_BASE}/entities/${entity.entity_id}`, {
+      headers: { 'X-API-Key': API_KEY }
+    });
     const latest = await getLatest.json();
 
     const retryB = await fetch(`${API_BASE}/entities/${entity.entity_id}`, {
@@ -300,7 +306,9 @@ describe('Integration - Version Conflicts', () => {
     const serverVersion = await serverUpdate.json();
 
     // Get the latest data from server to merge with local changes
-    const getLatest = await fetch(`${API_BASE}/entities/${entity.entity_id}`);
+    const getLatest = await fetch(`${API_BASE}/entities/${entity.entity_id}`, {
+      headers: { 'X-API-Key': API_KEY }
+    });
     const latestData = await getLatest.json();
 
     // Merge: server data + local changes
