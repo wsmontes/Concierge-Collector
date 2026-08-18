@@ -62,7 +62,7 @@
 
 /* Logo styling */
 .access-control-logo {
-    width: 80px;
+    width: 240px;
     height: auto;
     margin: 0 auto 1.5rem;
     display: block;
@@ -173,7 +173,7 @@
     }
     
     .access-control-logo {
-        width: 64px;
+        width: 192px;
     }
 }
 
