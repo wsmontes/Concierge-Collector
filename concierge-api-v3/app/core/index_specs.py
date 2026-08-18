@@ -62,4 +62,9 @@ INDEX_SPECS = [
     # TTL: sessões de refresh expiram sozinhas (rotação/revogação 2026-08-15),
     # alinhadas aos REFRESH_TOKEN_EXPIRE_DAYS (30d)
     ("auth_sessions", "expiresAt", {"expireAfterSeconds": 0}),
+    # Lookup por jti na rotação de refresh token (security.py find_one) —
+    # sem índice cada rotação varria a coleção (178 docs hoje, crescendo
+    # com o TTL de 30d). Unique: jti é gerado pelo servidor (JWT) e a
+    # varredura 2026-08-18 confirmou zero duplicatas.
+    ("auth_sessions", "jti", {"unique": True}),
 ]
