@@ -21,9 +21,19 @@
     <!-- Social Sharing Meta Tags -->
     <meta property="og:title" content="Concierge Collector">
     <meta property="og:description" content="Restaurant curation and collection tool for concierges">
-    <meta property="og:image" content="images/og-image.png">
-    <meta property="og:url" content="">
+    <!-- URL ABSOLUTA de propósito: scrapers (WhatsApp, Slack, LinkedIn,
+         Facebook) não resolvem caminho relativo em og:image — com
+         "images/og-image.png" a prévia saía sem imagem nenhuma. O nome novo
+         do arquivo também serve de cache-bust: esses serviços guardam a
+         imagem pela URL por tempo indeterminado. -->
+    <meta property="og:image" content="https://concierge-collector.com/images/og-image-2026.png">
+    <meta property="og:image:width" content="1200">
+    <meta property="og:image:height" content="630">
+    <meta property="og:image:alt" content="Lotier Concierge">
+    <meta property="og:url" content="https://concierge-collector.com/">
+    <meta property="og:type" content="website">
     <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:image" content="https://concierge-collector.com/images/og-image-2026.png">
     <!-- Google Fonts
          Cormorant Garamond (display: nomes/wordmark) + DM Sans (UI) —
          mesma dupla do capture/. JetBrains Mono só para timers/ids. -->
