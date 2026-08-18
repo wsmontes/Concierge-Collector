@@ -1,5 +1,11 @@
 <!DOCTYPE html>
-<html lang="en">
+<!-- class="auth-pending": gate de boot. O shell (#app) é HTML estático e
+     pintava antes de AuthService.initialize() resolver, então quem estava
+     deslogado via a top bar piscar antes de ir para o login do Google. A
+     classe nasce no markup (styles/access-control.css é render-blocking,
+     está no <head>), então o shell não chega a pintar; AccessControl a
+     remove apenas quando há sessão válida (scripts/auth/accessControl.js). -->
+<html lang="en" class="auth-pending">
 
 <head>
     <!-- Add meta viewport tag for proper mobile rendering -->
@@ -37,14 +43,14 @@
     <link rel="stylesheet" href="styles/design-system.css?v=20260816-2">
 
     <!-- 2. Component Library (reusable components) -->
-    <link rel="stylesheet" href="styles/components.css?v=20260817-1">
+    <link rel="stylesheet" href="styles/components.css?v=20260818-2">
 
     <!-- 3. Application-specific Styles -->
     <link rel="stylesheet" href="styles/application.css?v=20260816-1">
 
     <!-- 4. Feature-specific Styles -->
     <link rel="stylesheet" href="styles/places-section.css?v=20260816-1">
-    <link rel="stylesheet" href="styles/access-control.css?v=20260814-1">
+    <link rel="stylesheet" href="styles/access-control.css?v=20260818-2">
     <link rel="stylesheet" href="styles/sync-badges.css?v=20260816-1">
     <link rel="stylesheet" href="styles/mobile-enhancements.css?v=20260816-2">
 
@@ -537,7 +543,9 @@
     <!-- Entities Section (Restaurants, Bars, Hotels, etc.) -->
     <section id="entities-section" class="panel collection-panel hidden">
         <!-- Cabeçalho editorial: ícone circular suave + título serif +
-             subtítulo (some em telas muito estreitas) + sync em atividade -->
+             subtítulo (some em telas muito estreitas). O aviso de sync
+             saiu daqui: virou overlay fixo, filho do <body> — dentro
+             desta linha ele empurrava tabs, contadores e a grade. -->
         <div class="page-head">
             <div class="page-head__icon" aria-hidden="true">
                 <span class="material-icons">restaurant</span>
@@ -545,10 +553,6 @@
             <div class="page-head__text">
                 <h2 class="page-head__title">My Collection</h2>
                 <p class="page-head__subtitle">Manage your curations and entities</p>
-            </div>
-            <div id="view-sync-activity" class="hidden text-sm px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 border border-blue-100 items-center gap-2">
-                <span class="material-icons text-sm animate-spin">sync</span>
-                <span id="view-sync-activity-text">Syncing data...</span>
             </div>
         </div>
 
@@ -863,6 +867,20 @@
 
     </div>
 
+    <!-- Aviso de atividade de sync (overlay independente).
+         Vivia dentro do .page-head, como terceiro item do flex do título
+         "My Collection": ao aparecer, disputava a linha com o título e
+         empurrava tabs, contadores e a grade inteira para baixo. Agora é
+         filho direto do <body> e fixo no canto inferior esquerdo (o FAB
+         ocupa o direito), fora do fluxo — não desloca mais nada.
+         Os ids são preservados: o uiManager os pega por getElementById
+         (uiManager.js:110-111), então nada no JS precisou mudar. -->
+    <div id="view-sync-activity" class="hidden text-sm px-3 py-1.5 rounded-lg bg-blue-50 text-blue-700 border border-blue-100 items-center gap-2"
+        role="status" aria-live="polite">
+        <span class="material-icons text-sm animate-spin">sync</span>
+        <span id="view-sync-activity-text">Syncing data...</span>
+    </div>
+
     <!-- Update the loading overlay to include a message element -->
     <div id="loading-overlay" class="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 hidden">
         <div class="bg-white p-6 rounded-lg flex flex-col items-center">
@@ -948,12 +966,12 @@
     <!-- Entity-Curation Backend - Core Data Layer -->
     <!-- migrationManager.js REMOVED: Clean break strategy, no migration needed -->
     <script src="scripts/storage/databaseDiagnostics.js"></script>
-    <script src="scripts/storage/dataStore.js"></script>
+    <script src="scripts/storage/dataStore.js?v=20260818-2"></script>
     <script src="scripts/services/apiService.js?v=20260816-1"></script>
     <script src="scripts/services/curationBrowser.js?v=20260816-1"></script>
     <script src="scripts/services/entityBrowser.js?v=20260814-3"></script>
-    <script src="scripts/sync/syncManagerV3.js"></script>
-    <script src="scripts/sync/importManager.js?v=20260813-3"></script>
+    <script src="scripts/sync/syncManagerV3.js?v=20260818-2"></script>
+    <script src="scripts/sync/importManager.js?v=20260818-2"></script>
 
     <!-- UI Components -->
     <script src="scripts/ui/cardFactory.js?v=20260817-1"></script>
@@ -1016,7 +1034,7 @@
     <script src="scripts/services/findEntityModal.js?v=20260814-1"></script>
 
     <!-- Access Control (must load before main.js) -->
-    <script src="scripts/auth/accessControl.js?v=20260813-1"></script>
+    <script src="scripts/auth/accessControl.js?v=20260818-2"></script>
 
     <!-- Core application scripts -->
     <script src="scripts/core/main.js?v=20260816-2"></script>

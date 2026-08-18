@@ -30,6 +30,22 @@
     background-color: var(--color-neutral-50);
 }
 
+/* ── Gate de boot ──
+   Enquanto a autenticação não resolve, o shell autenticado fica invisível:
+   o usuário deslogado deve ver só a tela de login, nunca a top bar piscando
+   antes do redirect. A classe sai do <html> em accessControl.js quando há
+   sessão válida; sem sessão ela permanece e o #access-control-overlay cobre.
+   O fundo é o MESMO do overlay para a transição não piscar branco.
+   visibility (e não display) evita reflow no momento em que o shell aparece. */
+html.auth-pending {
+    background-color: var(--color-bg);
+}
+
+html.auth-pending #app,
+html.auth-pending #view-sync-activity {
+    visibility: hidden;
+}
+
 /* Login Overlay */
 #access-control-overlay {
     position: fixed;

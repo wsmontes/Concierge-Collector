@@ -2432,17 +2432,32 @@
   padding-bottom: var(--spacing-1);
 }
 
+/* Slots laterais com a MESMA largura (flex: 1 1 0), e não com largura
+   ditada pelo conteúdo. São duas consequências, as duas pedidas:
+
+   1. O wordmark fica no centro EXATO do container (= centro da viewport,
+      porque #app é mx-auto e o padding do header é simétrico). Com
+      `flex-shrink: 0` + space-between, o título era centralizado no vão
+      ENTRE os slots, o que o deslocava em (largura_esq − largura_dir) / 2.
+   2. O título não se move mais enquanto o resto carrega: #sync-status-header
+      e #user-profile-header são preenchidos por JS depois do login
+      (curatorProfile.js, syncStatusModule.js), e antes disso mediam 0px —
+      era isso que jogava o título para a direita e o fazia "pular" quando
+      sync/avatar apareciam. Agora a largura do slot independe do conteúdo. */
 .header-bar__brand {
   display: flex;
   align-items: center;
-  flex-shrink: 0;
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 .header-bar__actions {
   display: flex;
   align-items: center;
+  justify-content: flex-end;
   gap: var(--spacing-1);
-  flex-shrink: 0;
+  flex: 1 1 0;
+  min-width: 0;
 }
 
 /* Logo menor no mobile (48→30px) devolve ~20px de viewport */
@@ -2519,6 +2534,13 @@
     margin-right: 0;
     padding-left: 0;
     padding-right: 0;
+    /* width: auto neutraliza o `width: calc(100% + 2rem)` do bloco legado
+       `header` em style.css:963. Aquele bloco está em @media (max-width: 640px)
+       — INCLUSIVO — e este em (min-width: 640px): os dois casam em exatamente
+       640px de viewport. Zerar só margin/padding deixava a barra 32px mais
+       larga que o container, ancorada à esquerda, e o wordmark saía 16px à
+       direita do centro da viewport nesse único ponto (medido no Chrome). */
+    width: auto;
   }
 
   .header-bar__inner {
@@ -2592,10 +2614,25 @@
 
 /* Pill de sync em atividade — estilizada por ID porque o JS
    (updateSyncActivityIndicator) RESETA as classes a cada update */
+/* Overlay independente, fora do fluxo: fixo no canto inferior esquerdo
+   (o FAB ocupa o direito) e com max-width que respeita a área do FAB.
+   O posicionamento fica no seletor de ID DE PROPÓSITO — updateSyncActivityIndicator()
+   (uiManager.js:534) faz `className = ''` a cada atualização e recria só as
+   utilitárias de cor/espaçamento, então qualquer classe de posição seria
+   apagada no primeiro sync; a regra de ID sobrevive ao wipe.
+   pointer-events: none porque é puramente informativo e não deve capturar
+   cliques do conteúdo por baixo. */
 #view-sync-activity {
   font-size: var(--text-xs);
   padding: 0.25rem 0.625rem;
   border-radius: var(--radius-full);
+  position: fixed;
+  left: 1rem;
+  bottom: calc(1rem + var(--safe-area-inset-bottom, 0px));
+  z-index: 45;
+  max-width: calc(100vw - 6.5rem);
+  box-shadow: var(--shadow-md);
+  pointer-events: none;
 }
 
 /* ── Painel da coleção ── */

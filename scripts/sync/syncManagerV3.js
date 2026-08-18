@@ -693,10 +693,10 @@ const SyncManagerV3 = ModuleWrapper.defineClass('SyncManagerV3', class {
             this.isPushing = false;  // pull não trava edições (guards de pending protegem)
 
             // 2. Pull incremental (server → client) — dados de outros dispositivos/curadores
-            this.emitSyncEvent('sync-progress', { stage: 'pull-curations', message: 'Baixando curations do servidor...' });
+            this.emitSyncEvent('sync-progress', { stage: 'pull-curations', message: 'Downloading curations from server...' });
             await this.pullCurations();
 
-            this.emitSyncEvent('sync-progress', { stage: 'pull-entities', message: 'Baixando entidades vinculadas...' });
+            this.emitSyncEvent('sync-progress', { stage: 'pull-entities', message: 'Downloading linked entities...' });
             await this.pullLinkedEntities();
 
             // 3. Fechamento HONESTO do ciclo (2026-08-15): 'success' só quando

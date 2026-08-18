@@ -395,9 +395,9 @@ const ImportManager = ModuleWrapper.defineClass('ImportManager', class {
 
             SafetyUtils.hideLoading();
             const message =
-                `✅ Import V3 concluído!\n` +
-                `• ${createdEntities} entities novas (${validEntities.length - createdEntities} já existiam, ${skippedEntities} inválidas)\n` +
-                `• ${createdCurations} curations novas (${validCurations.length - createdCurations} já existiam, ${skippedCurations} inválidas)`;
+                `✅ V3 import complete!\n` +
+                `• ${createdEntities} new entities (${validEntities.length - createdEntities} already existed, ${skippedEntities} invalid)\n` +
+                `• ${createdCurations} new curations (${validCurations.length - createdCurations} already existed, ${skippedCurations} invalid)`;
             SafetyUtils.showNotification(message, 'success');
 
             if (window.uiManager?.refreshCurrentView) {
