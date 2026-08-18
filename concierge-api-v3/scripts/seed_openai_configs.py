@@ -43,43 +43,65 @@ OPENAI_CONFIGS = [
     },
     {
         "service": "concept_extraction_text",
-        "model": "gpt-4",
+        "model": "gpt-5.6-terra",
         "config": {
-            "temperature": 0.3,
-            "max_tokens": 500,
-            "top_p": 1.0,
-            "frequency_penalty": 0.0,
-            "presence_penalty": 0.0
+            # v11 (2026-08-18): 800 tokens para as 12 categorias + exemplos
+            # caberem — 500 cortava o JSON no meio em textos densos
+            "max_completion_tokens": 800,
+            "extra_body": {"reasoning_effort": "low"}
         },
-        "prompt_template": """Você é um especialista em análise de restaurantes com 20 anos de experiência em crítica gastronômica.
+        "prompt_template": """You are an expert restaurant analyst with 20 years of experience in food criticism.
 
-Analise o seguinte texto de uma curadoria e extraia conceitos relevantes que descrevem o estabelecimento.
+Analyze the following text (likely an expert review) and extract relevant concepts that describe the establishment, classifying them into the appropriate categories.
 
-**Texto da curadoria:**
+**Curation text:**
 {text}
 
-**Categorias disponíveis:**
+**Available categories (use ONLY these keys — never invent new ones):**
 {categories}
 
-**Instruções:**
-- Extraia o nome do estabelecimento se mencionado explicitamente
-- Extraia APENAS conceitos que aparecem explicitamente ou implicitamente no texto
-- Use APENAS conceitos da lista de categorias disponíveis
-- Ignore conceitos não relacionados ao estabelecimento
-- Retorne múltiplos conceitos se aplicável (mínimo 2, máximo 8)
-- Avalie sua confiança na análise (0.0 a 1.0)
+**Instructions:**
+- Extract concepts that appear explicitly or implicitly in the text
+- Populate EVERY category that has evidence in the text — do not omit a category just because only one concept fits
+- Category semantics: "setting" = physical space (open kitchen, terrace, counter seats); "mood" = atmosphere/vibe (cozy, elegant); "crowd" = who frequents (families, business people); "suitable_for" = occasions (business lunch, romantic date)
+- Concepts must be in English, except local/regional terms (e.g., "Feijoada", "Moqueca")
+- ALL concept values MUST be lowercase, EXCEPT proper nouns (dish names in "menu") and amounts in "price_and_payment" (e.g., "R$ 480"), which keep their original form
+- "price_range" MUST contain EXACTLY ONE of: "unexpensive", "mid-range", "expensive"
+- If a concept doesn't fit any category, ignore it — NEVER add fields beyond the schema
+- Each category can have 0 or more concepts; omit categories with no concepts
+- Evaluate your overall confidence in the analysis (0.0 to 1.0)
 
-**Responda APENAS em JSON válido:**
-{{"restaurant_name": "Nome do Restaurante", "concepts": ["concept1", "concept2", "concept3"], "confidence_score": 0.85}}""",
+**Classification examples:**
+- "delicious italian food" → cuisine: ["italian"]
+- "pizza margherita, risotto ai funghi" → menu: ["Pizza Margherita", "Mushroom Risotto"]
+- "cozy and romantic atmosphere" → mood: ["cozy", "romantic"], setting: ["intimate"]
+- "slow-cooked stews from the wood-fired oven" → food_style: ["slow-cooked", "wood-fired"]
+- "full of families with kids on weekends" → crowd: ["families"]
+- "great for a business lunch or a romantic date" → suitable_for: ["business lunch", "romantic date"]
+- "excellent wine list" → drinks: ["wine"], special_features: ["wine focus"]
+- "fixed menu at R$ 480, cards accepted" → price_range: ["mid-range"], price_and_payment: ["R$ 480 fixed menu", "cards accepted"]
+- "takeout and delivery available" → covid_specials: ["takeout", "delivery"]
+
+**Reply ONLY in valid JSON — use only keys from the category list, plus "confidence_score":**
+{
+  "cuisine": ["italian"],
+  "menu": ["Pizza Margherita"],
+  "food_style": ["wood-fired"],
+  "mood": ["cozy"],
+  "crowd": ["families"],
+  "price_range": ["mid-range"],
+  "price_and_payment": ["cards accepted"],
+  "confidence_score": 0.85
+}""",
         "cache_ttl_hours": 168,
         "cache_by": "text_hash",
         "cost_per_token_input": 0.00003,
         "cost_per_token_output": 0.00006,
         "enabled": True,
-        "version": 1,
+        "version": 11,
         "updated_at": datetime.utcnow().isoformat(),
         "updated_by": "system_seed",
-        "notes": "GPT-4 concept extraction from text with 2-8 concepts limit"
+        "notes": "v11: exemplos para TODAS as 12 categorias (food_style/crowd/suitable_for/price_and_payment/covid_specials faltavam) + max_completion_tokens 800"
     },
     {
         "service": "image_analysis",
@@ -94,38 +116,55 @@ Analise o seguinte texto de uma curadoria e extraia conceitos relevantes que des
         },
         "prompt_template": """Você é um especialista em análise visual de restaurantes e ambientes gastronômicos.
 
-Analise esta imagem e identifique conceitos visuais relevantes que descrevem o estabelecimento.
+Analise esta imagem e identifique conceitos visuais relevantes que descrevem o estabelecimento, classificando-os pelas categorias apropriadas.
 
-**Categorias disponíveis:**
+**Categorias disponíveis (use SOMENTE estas chaves — nunca invente novas):**
 {categories}
 
-**Foque nos seguintes aspectos:**
-- Ambiance e atmosfera (modern, elegant, cozy, etc.)
-- Design e arquitetura (contemporary_design, historic_building, etc.)
-- Setting e espaço (open_kitchen, terrace, intimate, etc.)
-- Crowd e público visível (business, family_friendly, etc.)
-- Food presentation (se visível)
+**Semântica das categorias:**
+- "setting" = espaço físico (open kitchen, terrace, counter seats)
+- "mood" = atmosfera/vibe (cozy, elegant, lively)
+- "crowd" = quem frequenta (families, business people)
+- "suitable_for" = ocasiões que o espaço sugere (business lunch, romantic date)
 
 **Instruções:**
 - Extraia conceitos que você pode IDENTIFICAR VISUALMENTE na imagem
-- Use APENAS conceitos da lista de categorias disponíveis
-- Ignore conceitos que requerem contexto não-visual (ex: service, price)
-- Retorne 2-6 conceitos visuais aplicáveis
-- Avalie sua confiança na análise visual (0.0 a 1.0)
-- Adicione notas visuais breves sobre o que você vê
+- Popule TODA categoria com evidência visual na imagem — não omita uma categoria só porque cabe um único conceito
+- Todos os valores DEVEM ser em inglês e lowercase (ex.: "modern", "cozy", "open kitchen")
+- "price_range" apenas quando um preço estiver VISÍVEL (cardápio com preços na parede/mesa); caso contrário omita — vale "unexpensive", "mid-range" ou "expensive"
+- Conceitos que exigem contexto não-visual (service quality, delivery) ficam de fora
+- Se um conceito não se encaixa em nenhuma categoria, ignore-o — NUNCA adicione campos além do schema
+- Cada categoria pode ter 0 ou mais conceitos; omita categorias sem conceitos
+- Avalie sua confiança geral na análise visual (0.0 a 1.0)
 
-**Responda APENAS em JSON válido:**
-{{"concepts": ["concept1", "concept2"], "confidence_score": 0.80, "visual_notes": "brief description of what you see"}}""",
+**Exemplos de classificação:**
+- Pratos de massa e pizza visíveis → cuisine: ["italian"], food_style: ["casual"]
+- Garrafas de vinho e um bar bem abastecido visíveis → drinks: ["wine", "cocktails"], special_features: ["bar"]
+- Ambiente moderno e elegante → mood: ["modern", "elegant"], setting: ["contemporary"]
+- Cozinha aberta visível → setting: ["open kitchen"], special_features: ["chef's table"]
+- Mesas com famílias e crianças visíveis → crowd: ["families"], suitable_for: ["family friendly"]
+- Balcão com assentos individuais → suitable_for: ["solo dining"], setting: ["counter seats"]
+- Cardápio com preços visível → price_range: ["mid-range"], price_and_payment: ["menu prices visible"]
+
+**Responda APENAS em JSON válido — use só as chaves da lista de categorias, plus "confidence_score" e "visual_notes":**
+{
+  "mood": ["modern"],
+  "setting": ["contemporary"],
+  "crowd": ["families"],
+  "price_range": ["mid-range"],
+  "confidence_score": 0.80,
+  "visual_notes": "brief description of what you see"
+}""",
         "cache_ttl_hours": 168,
         "cache_by": "image_hash",
         "cost_per_image": 0.00765,
         "max_file_size_mb": 20,
         "supported_formats": ["jpg", "jpeg", "png", "gif", "webp"],
         "enabled": True,
-        "version": 1,
+        "version": 11,
         "updated_at": datetime.utcnow().isoformat(),
         "updated_by": "system_seed",
-        "notes": "GPT-4 Vision for visual concept extraction with 2-6 concepts limit"
+        "notes": "v11: Foque em usa SÓ as chaves do vocabulário (ambiance/design saíram), price_range permitido quando visível, exemplos para todas as categorias"
     },
     {
         "service": "restaurant_name_extraction_text",

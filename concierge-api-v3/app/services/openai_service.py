@@ -624,16 +624,32 @@ class OpenAIService:
         result["entity_type"] = entity_type
         result["model"] = config["model"]
 
+        # Chaves de metadados do payload (não são categorias)
+        metadata_keys = {
+            "confidence_score",
+            "entity_type",
+            "model",
+            "visual_notes",
+            "restaurant_name",
+        }
+
+        # Caminho de imagem aplica a MESMA validação dura do caminho de
+        # texto (2026-08-18): chaves fora do vocabulário (ambiance/design
+        # do prompt antigo) e price_range fora da escala fechada não podem
+        # vazar para o cache nem para as curadorias via orquestrador.
+        allowed = set(categories)
+        if allowed:
+            normalized = _canonicalize_categories(result, allowed)
+            for key in list(result.keys()):
+                if key in allowed or key in metadata_keys:
+                    continue
+                if isinstance(result.get(key), list):
+                    result.pop(key, None)  # categoria inventada fora do vocabulário
+            result.update(normalized)
+
         # Cache image analysis in DB only if requested
         if save_to_cache:
             # Extract categories (all keys except metadata fields)
-            metadata_keys = {
-                "confidence_score",
-                "entity_type",
-                "model",
-                "visual_notes",
-                "restaurant_name",
-            }
             categories = {k: v for k, v in result.items() if k not in metadata_keys}
 
             analysis_id = f"img_analysis_{uuid.uuid4().hex[:12]}"

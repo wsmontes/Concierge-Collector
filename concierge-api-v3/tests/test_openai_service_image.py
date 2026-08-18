@@ -315,6 +315,74 @@ async def test_image_url_loopback_bloqueado(monkeypatch):
             await resolve_image_input(url)
 
 
+@pytest.mark.asyncio
+async def test_analyze_image_canonicaliza_categorias(monkeypatch):
+    """Caminho de imagem (2026-08-18): o gpt-4o podia devolver chaves fora do
+    vocabulário (ambiance/design do prompt antigo) e price_range fora da
+    escala — o caminho de TEXTO já canonicaliza; a imagem vazava direto
+    para as curadorias. A validação dura agora é igual nos dois caminhos."""
+    from app.services.openai_service import OpenAIService  # noqa: F401
+
+    class FakeCompletions:
+        def create(self, **kwargs):
+            msg = type(
+                "M",
+                (),
+                {
+                    "content": json.dumps(
+                        {
+                            "mood": ["acolhedor"],
+                            "ambiance": ["intimista"],  # fora do vocabulário
+                            "design": ["moderno"],  # fora do vocabulário
+                            "price_range": ["moderate"],  # alias → mid-range
+                            "confidence_score": 0.8,
+                        }
+                    )
+                },
+            )
+            return type("R", (), {"choices": [type("C", (), {"message": msg})]})
+
+    class FakeClient:
+        def __init__(self):
+            self.chat = type("Chat", (), {"completions": FakeCompletions()})()
+
+    def responder(url):
+        return FakeResponse(IMG_BYTES)
+
+    _mk_fake_httpx(monkeypatch, responder)
+
+    service = OpenAIService(api_key="sk-test", db_url="mongodb://x", db_name="db")
+    service.client = FakeClient()
+    service.config_service = type(
+        "Cfg",
+        (),
+        {
+            "get_config": lambda self, s: {
+                "model": "gpt-4o",
+                "config": {"detail": "high", "temperature": 0.3, "max_tokens": 300},
+            },
+            "render_prompt": lambda self, s, v: "prompt pronto",
+        },
+    )()
+
+    class _CatStub:
+        async def get_categories(self, entity_type):
+            return ["mood", "price_range", "cuisine"]
+
+    service.category_service = _CatStub()
+
+    result = await service.analyze_image(
+        "https://api.onrender.com/api/v3/places/photo?reference=abc",
+        entity_type="restaurant",
+        save_to_cache=False,
+    )
+
+    assert "ambiance" not in result
+    assert "design" not in result
+    assert result["mood"] == ["acolhedor"]
+    assert result["price_range"] == ["mid-range"]
+
+
 async def test_image_url_privado_bloqueado(monkeypatch):
     """RFC1918, link-local (metadata cloud) e reservados são bloqueados."""
     from app.services.openai_service import resolve_image_input
