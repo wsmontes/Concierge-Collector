@@ -71,4 +71,12 @@ INDEX_SPECS = [
     # Handoff codes are stored hash-only and may be consumed exactly once.
     ("cms_auth_codes", [("code_hash", 1)], {"unique": True, "name": "cms_code_hash_unique"}),
     ("cms_auth_codes", [("expires_at", 1)], {"expireAfterSeconds": 0, "name": "cms_code_expiry_ttl"}),
+    # Consumer quota windows are operational, not CMS state. A short TTL
+    # bounds storage while the fixed minute key guarantees atomic increments.
+    (
+        "consumer_rate_limit_windows",
+        [("credentialId", 1), ("minuteWindow", 1)],
+        {"unique": True, "name": "consumer_rate_limit_window_unique"},
+    ),
+    ("consumer_rate_limit_windows", "expiresAt", {"expireAfterSeconds": 0, "name": "consumer_rate_limit_expiry_ttl"}),
 ]

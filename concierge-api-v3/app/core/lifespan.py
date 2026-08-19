@@ -15,6 +15,7 @@ async def lifespan(app: FastAPI):
     """Connect to MongoDB, create indexes, and warm caches on startup."""
     from app.core.config import settings
     from app.core.database import connect_to_mongo, close_mongo_connection, get_database
+    from app.core.cms_database import close_cms_mongo_connection, connect_cms_mongo
     from app.services.openai_service import OpenAIService
 
     # Startup
@@ -27,6 +28,17 @@ async def lifespan(app: FastAPI):
         return
 
     db = get_database()
+
+    # Consumer distribution has its own least-privilege client. In production
+    # absence/unavailability is a boot failure rather than a fallback to the
+    # operational Mongo credential. Development tests override the dependency
+    # and therefore need no second Mongo server.
+    if settings.environment == "production" or settings.cms_mongodb_read_url:
+        try:
+            connect_cms_mongo()
+        except Exception:
+            close_mongo_connection()
+            raise
 
     # Ensure TTL index on capture_sessions (auto-delete after 48h) — spec vinda
     # da fonte única app/core/index_specs.py (mesma que o db_rebuild usa)
@@ -50,5 +62,6 @@ async def lifespan(app: FastAPI):
     yield  # App runs here
 
     # Shutdown
+    close_cms_mongo_connection()
     close_mongo_connection()
     logger.info("Shutting down")

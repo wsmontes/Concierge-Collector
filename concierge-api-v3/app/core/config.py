@@ -26,6 +26,7 @@ class Settings(BaseSettings):
     # esse usuário recebe apenas find no banco CMS; a API nunca é dona de
     # mutations nem de índices desse namespace.
     cms_mongodb_read_url: str = ""
+    distribution_cursor_secret: str = ""
 
     # API
     api_v3_host: str = "0.0.0.0"

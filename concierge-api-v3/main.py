@@ -33,6 +33,7 @@ from app.api import (
     og_image,
     metrics,
     collection_associations,
+    distribution,
 )
 
 # Create FastAPI application
@@ -115,6 +116,7 @@ app.include_router(system.router, prefix="/api/v3")
 app.include_router(metrics.router, prefix="/api/v3")
 app.include_router(cms_auth.router, prefix="/api/v3")
 app.include_router(collection_associations.router, prefix="/api/v3")
+app.include_router(distribution.router, prefix="/api/v3")
 app.include_router(catalog.router, prefix="/api/v3")
 app.include_router(internal_curations.router, prefix="/api/v3")
 app.include_router(auth.router, prefix="/api/v3")
