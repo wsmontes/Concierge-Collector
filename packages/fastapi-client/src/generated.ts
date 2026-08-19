@@ -102,6 +102,40 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v3/catalog/curations/scan/page": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Scan Page */
+        post: operations["scan_page_api_v3_catalog_curations_scan_page_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v3/catalog/curations/scan/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Start Scan */
+        post: operations["start_scan_api_v3_catalog_curations_scan_start_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v3/curations/{curation_id}/collections": {
         parameters: {
             query?: never;
@@ -146,6 +180,72 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        /** AdminCurationRow */
+        AdminCurationRow: {
+            /** Catalog Sequence */
+            catalog_sequence: number;
+            /** City */
+            city?: string | null;
+            /** Curation Id */
+            curation_id: string;
+            /** Curator Id */
+            curator_id?: string | null;
+            /** Entity Type */
+            entity_type?: string | null;
+            /** Restaurant Name */
+            restaurant_name?: string | null;
+            /** Status */
+            status: string;
+            /** Updated At */
+            updated_at?: string | null;
+        };
+        /** CatalogFilters */
+        CatalogFilters: {
+            /** City */
+            city?: string | null;
+            /** Curator Id */
+            curator_id?: string | null;
+            /** Entity Type */
+            entity_type?: string | null;
+            /** Q */
+            q?: string | null;
+            /** Status */
+            status?: ("draft" | "linked" | "active" | "deleted" | "archived")[];
+            /** Updated From */
+            updated_from?: string | null;
+            /** Updated To */
+            updated_to?: string | null;
+        };
+        /** CatalogScanPage */
+        CatalogScanPage: {
+            /** Items */
+            items: components["schemas"]["AdminCurationRow"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+        };
+        /** CatalogScanPageRequest */
+        CatalogScanPageRequest: {
+            /** Cursor */
+            cursor?: string | null;
+            /**
+             * Limit
+             * @default 100
+             */
+            limit: number;
+            /** Scan Token */
+            scan_token: string;
+        };
+        /** CatalogScanStart */
+        CatalogScanStart: {
+            /** Max Catalog Sequence */
+            max_catalog_sequence: number;
+            /** Scan Token */
+            scan_token: string;
+        };
+        /** CatalogScanStartRequest */
+        CatalogScanStartRequest: {
+            filters?: components["schemas"]["CatalogFilters"];
+        };
         /**
          * CmsAuthorization
          * @description The current operational authorization for a CMS administrator.
@@ -446,6 +546,76 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ResolveCurationsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    scan_page_api_v3_catalog_curations_scan_page_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CMS-Actor-Id": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CatalogScanPageRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogScanPage"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    start_scan_api_v3_catalog_curations_scan_start_post: {
+        parameters: {
+            query?: never;
+            header: {
+                "X-CMS-Actor-Id": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["CatalogScanStartRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogScanStart"];
                 };
             };
             /** @description Validation Error */

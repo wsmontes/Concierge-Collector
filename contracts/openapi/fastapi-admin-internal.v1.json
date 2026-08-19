@@ -1,6 +1,265 @@
 {
   "components": {
     "schemas": {
+      "AdminCurationRow": {
+        "properties": {
+          "catalog_sequence": {
+            "minimum": 1.0,
+            "title": "Catalog Sequence",
+            "type": "integer"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "curation_id": {
+            "title": "Curation Id",
+            "type": "string"
+          },
+          "curator_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Curator Id"
+          },
+          "entity_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Type"
+          },
+          "restaurant_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Restaurant Name"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "curation_id",
+          "catalog_sequence",
+          "status"
+        ],
+        "title": "AdminCurationRow",
+        "type": "object"
+      },
+      "CatalogFilters": {
+        "properties": {
+          "city": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "curator_id": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Curator Id"
+          },
+          "entity_type": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Type"
+          },
+          "q": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Q"
+          },
+          "status": {
+            "items": {
+              "enum": [
+                "draft",
+                "linked",
+                "active",
+                "deleted",
+                "archived"
+              ],
+              "type": "string"
+            },
+            "title": "Status",
+            "type": "array"
+          },
+          "updated_from": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated From"
+          },
+          "updated_to": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated To"
+          }
+        },
+        "title": "CatalogFilters",
+        "type": "object"
+      },
+      "CatalogScanPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AdminCurationRow"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "CatalogScanPage",
+        "type": "object"
+      },
+      "CatalogScanPageRequest": {
+        "properties": {
+          "cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cursor"
+          },
+          "limit": {
+            "default": 100,
+            "maximum": 500.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "scan_token": {
+            "minLength": 1,
+            "title": "Scan Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scan_token"
+        ],
+        "title": "CatalogScanPageRequest",
+        "type": "object"
+      },
+      "CatalogScanStart": {
+        "properties": {
+          "max_catalog_sequence": {
+            "minimum": 0.0,
+            "title": "Max Catalog Sequence",
+            "type": "integer"
+          },
+          "scan_token": {
+            "title": "Scan Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scan_token",
+          "max_catalog_sequence"
+        ],
+        "title": "CatalogScanStart",
+        "type": "object"
+      },
+      "CatalogScanStartRequest": {
+        "properties": {
+          "filters": {
+            "$ref": "#/components/schemas/CatalogFilters"
+          }
+        },
+        "title": "CatalogScanStartRequest",
+        "type": "object"
+      },
       "CmsAuthorization": {
         "description": "The current operational authorization for a CMS administrator.",
         "properties": {
@@ -642,6 +901,118 @@
           }
         ],
         "summary": "Resolve Curation Selection",
+        "tags": [
+          "cms-catalog"
+        ]
+      }
+    },
+    "/api/v3/catalog/curations/scan/page": {
+      "post": {
+        "operationId": "scan_page_api_v3_catalog_curations_scan_page_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-CMS-Actor-Id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CatalogScanPageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogScanPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "CmsServiceKey": []
+          }
+        ],
+        "summary": "Scan Page",
+        "tags": [
+          "cms-catalog"
+        ]
+      }
+    },
+    "/api/v3/catalog/curations/scan/start": {
+      "post": {
+        "operationId": "start_scan_api_v3_catalog_curations_scan_start_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-CMS-Actor-Id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CatalogScanStartRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogScanStart"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "CmsServiceKey": []
+          }
+        ],
+        "summary": "Start Scan",
         "tags": [
           "cms-catalog"
         ]

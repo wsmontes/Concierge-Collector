@@ -116,6 +116,8 @@ def normalize_selected_operations(paths: dict[str, Any]) -> dict[str, Any]:
         "/api/v3/auth/cms/exchange",
         "/api/v3/auth/cms/introspect",
         "/api/v3/catalog/curations/resolve",
+        "/api/v3/catalog/curations/scan/start",
+        "/api/v3/catalog/curations/scan/page",
         "/api/v3/internal/curations/hydrate",
     ):
         operation = normalized.get(path, {}).get("post")

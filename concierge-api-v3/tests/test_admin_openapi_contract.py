@@ -20,6 +20,8 @@ def test_admin_contract_contains_only_approved_cms_boundary():
         "/api/v3/auth/cms/introspect",
         "/api/v3/auth/cms/introspect-bearer",
         "/api/v3/catalog/curations/resolve",
+        "/api/v3/catalog/curations/scan/start",
+        "/api/v3/catalog/curations/scan/page",
         "/api/v3/curations/{curation_id}/collections",
         "/api/v3/internal/curations/hydrate",
     }
@@ -38,6 +40,12 @@ def test_admin_contract_contains_only_approved_cms_boundary():
         "RejectedCuration",
         "ResolveCurationsRequest",
         "ResolveCurationsResponse",
+        "CatalogFilters",
+        "CatalogScanStartRequest",
+        "CatalogScanStart",
+        "CatalogScanPageRequest",
+        "CatalogScanPage",
+        "AdminCurationRow",
     }
     assert document["components"]["securitySchemes"] == {
         "CmsServiceKey": {"in": "header", "name": "X-CMS-Service-Key", "type": "apiKey"},
@@ -52,7 +60,12 @@ def test_admin_contract_contains_only_approved_cms_boundary():
         operation = document["paths"][path]["post"]
         assert operation["security"] == [{"CmsServiceKey": []}]
         assert all(parameter["name"] != "X-CMS-Service-Key" for parameter in operation.get("parameters", []))
-    for path in ("/api/v3/catalog/curations/resolve", "/api/v3/internal/curations/hydrate"):
+    for path in (
+        "/api/v3/catalog/curations/resolve",
+        "/api/v3/catalog/curations/scan/start",
+        "/api/v3/catalog/curations/scan/page",
+        "/api/v3/internal/curations/hydrate",
+    ):
         operation = document["paths"][path]["post"]
         assert operation["security"] == [{"CmsServiceKey": []}]
         assert all(parameter["name"] != "X-CMS-Service-Key" for parameter in operation.get("parameters", []))
