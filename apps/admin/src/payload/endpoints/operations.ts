@@ -20,11 +20,13 @@ function parseIfMatch(headers: Headers): number {
   return Number(value)
 }
 
-async function body(request: Request): Promise<{ action?: unknown; curationIds?: unknown; mode?: unknown }> {
+type OperationBody = { action?: unknown; curationIds?: unknown; curation_ids?: unknown; mode?: unknown }
+
+async function body(request: Request): Promise<OperationBody> {
   try {
     const value = await request.json()
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('invalid')
-    return value as { action?: unknown; curationIds?: unknown; mode?: unknown }
+    return value as OperationBody
   } catch {
     throw new AdminHttpError(400, 'invalid_request')
   }
@@ -54,17 +56,22 @@ export function operationEndpoints(): Endpoint[] {
       handler: async (request: PayloadRequest) => {
         try {
         const value = await body(request as unknown as Request)
+        if (Object.keys(value).some((key) => !['action', 'curationIds', 'curation_ids', 'mode'].includes(key))) throw new AdminHttpError(400, 'invalid_request')
+        // The Collector-facing contract is snake_case. Keep camelCase only for
+        // already-issued Admin clients while the CMS UI is being introduced.
+        if (value.curationIds !== undefined && value.curation_ids !== undefined) throw new AdminHttpError(400, 'invalid_request')
+        const curationIds = value.curation_ids ?? value.curationIds
         const key = request.headers.get('idempotency-key')?.trim()
         const requestId = request.headers.get('x-request-id')?.trim()
-        if (!key || !requestId || (value.mode !== undefined && value.mode !== 'explicit') || (value.action !== 'add' && value.action !== 'remove') || !Array.isArray(value.curationIds)) {
+        if (!key || !requestId || (value.mode !== undefined && value.mode !== 'explicit') || (value.action !== 'add' && value.action !== 'remove') || !Array.isArray(curationIds)) {
           throw new AdminHttpError(400, 'invalid_request')
         }
         const actor = await authenticateAdminRequest(request as unknown as Request, {
           allowCollectorBearer: true,
-          explicitCurationIds: value.curationIds as string[],
+          explicitCurationIds: curationIds as string[],
         })
         const operation = await enqueueDraftOperation(request.payload, {
-          collectionId: routeId(request), action: value.action, curationIds: value.curationIds,
+          collectionId: routeId(request), action: value.action, curationIds,
           baseDraftRevision: parseIfMatch(request.headers), idempotencyKey: key, actorId: actor.user_id, requestId,
         })
         return Response.json(operation, { status: 202 })

@@ -21,6 +21,11 @@ function url(request: PayloadRequest): URL {
   return new URL((request as unknown as Request).url)
 }
 
+function literalSearch(value: string): string {
+  // q is a user-facing substring filter, never a caller-controlled regex.
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+}
+
 /**
  * Collector-safe view of eligible Collections. It intentionally contains only
  * the one current visible delta, never other members, audit or credentials.
@@ -36,7 +41,8 @@ export function collectorCollectionEndpoints(): Endpoint[] {
           allowCollectorBearer: true,
           explicitCurationIds: [id],
         })
-        const search = url(request).searchParams.get('q')?.trim()
+        const suppliedSearch = url(request).searchParams.get('q')?.trim()
+        const search = suppliedSearch ? literalSearch(suppliedSearch) : undefined
         const collections = await modelFor(request, 'collections').find({
           lifecycle: { $ne: 'archived' },
           ...(search ? { $or: [{ slug: { $regex: search, $options: 'i' } }, { title: { $regex: search, $options: 'i' } }] } : {}),
@@ -64,7 +70,7 @@ export function collectorCollectionEndpoints(): Endpoint[] {
             currentPublishedVersion: collection.currentPublishedVersion ?? null,
             draftRevision,
             draftState: String(collection.draftState),
-            desiredState: change?.desiredState ?? (membership ? 'add' : 'remove'),
+            desiredState: change?.desiredState ?? (membership ? 'remove' : 'add'),
             locked: collection.draftState === 'publishing',
           }
         }))

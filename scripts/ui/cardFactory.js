@@ -606,6 +606,12 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                         <span class="material-icons" aria-hidden="true">edit</span>
                         <span>Edit</span>
                     </button>
+                    ${window.AppConfig?.app?.features?.collectionsModal ? `
+                    <button class="btn-collections card-link-btn card-collections-btn" title="Manage Collections" aria-label="Manage Collections">
+                        <span class="material-icons" aria-hidden="true">collections_bookmark</span>
+                        <span>Collections</span>
+                    </button>
+                    ` : ''}
                     <button class="btn-more-curation" title="More actions" aria-label="More actions" aria-haspopup="menu">
                         <span class="material-icons" aria-hidden="true">more_horiz</span>
                     </button>
@@ -641,6 +647,7 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
             const editBtn = actionsRow.querySelector('.btn-edit-curation');
             const viewEntityBtn = actionsRow.querySelector('.btn-view-entity');
             const linkEntityBtn = actionsRow.querySelector('.btn-link-entity');
+            const collectionsBtn = actionsRow.querySelector('.btn-collections');
             const moreBtn = actionsRow.querySelector('.btn-more-curation');
 
             if (editBtn) {
@@ -656,6 +663,14 @@ const CardFactory = ModuleWrapper.defineClass('CardFactory', class {
                     } else if (window.uiManager && typeof window.uiManager.editCuration === 'function') {
                         window.uiManager.editCuration(curation);
                     }
+                };
+            }
+
+            if (collectionsBtn) {
+                collectionsBtn.onclick = (e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    window.CollectionsModal?.open(curation);
                 };
             }
 

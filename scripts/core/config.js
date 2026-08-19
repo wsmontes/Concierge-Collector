@@ -162,6 +162,17 @@ const AppConfig = {
         }
     },
 
+    // CMS is a separate host on purpose: Collector requests use a live Bearer
+    // and never inherit the host-only CMS session cookie.
+    cms: {
+        adminBaseUrl: isLocalhost ? 'http://localhost:3000' : 'https://admin.concierge-collector.com',
+        endpoints: {
+            collectionOptions: '/api/admin/v1/curations',
+            collectionOperation: '/api/admin/v1/collections',
+            operation: '/api/admin/v1/operations'
+        }
+    },
+
     /**
      * API Version Configuration
      * Using V3 API (FastAPI + MongoDB)
@@ -290,7 +301,8 @@ const AppConfig = {
             // michelinStaging: REMOVED - Michelin data will be batch imported via separate script
             backgroundSync: true,        // Background synchronization
             bulkOperations: true,        // Bulk operations support
-            debug: false                 // Debug mode (disabled by default)
+            debug: false,                // Debug mode (disabled by default)
+            collectionsModal: true       // Online-only Collection association UI
         },
         
         // UI Settings
@@ -457,6 +469,8 @@ Object.freeze(AppConfig.api);
 Object.freeze(AppConfig.api.backend);
 Object.freeze(AppConfig.api.openai);
 Object.freeze(AppConfig.api.googlePlaces);
+Object.freeze(AppConfig.cms);
+Object.freeze(AppConfig.cms.endpoints);
 Object.freeze(AppConfig.apiVersion);
 Object.freeze(AppConfig.storage);
 Object.freeze(AppConfig.database);

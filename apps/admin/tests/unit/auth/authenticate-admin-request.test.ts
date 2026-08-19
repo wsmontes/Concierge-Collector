@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, test, vi } from 'vitest'
-import type { CmsIdentity } from '../../../src/auth/fastapi-authz-client'
+import { FastApiAuthzError, type CmsIdentity } from '../../../src/auth/fastapi-authz-client'
 import { authenticateAdminRequest } from '../../../src/auth/authenticate-admin-request'
 
 const admin: CmsIdentity = {
@@ -51,5 +51,18 @@ describe('authenticateAdminRequest', () => {
       {}, { requireCurrentAdmin, introspectCollectorBearer: vi.fn() },
     )).resolves.toBe(admin)
     expect(requireCurrentAdmin).toHaveBeenCalledOnce()
+  })
+
+  test.each([
+    [401, 401, 'authentication_required'],
+    [403, 403, 'authorization_denied'],
+    [503, 503, 'authorization_unavailable'],
+  ])('preserves safe Collector bridge failures (%s)', async (upstreamStatus, expectedStatus, code) => {
+    env()
+    await expect(authenticateAdminRequest(
+      new Request('https://admin.example.test/api/admin/v1/x', { headers: { origin: 'https://collector.example.test', authorization: 'Bearer stale-token' } }),
+      { allowCollectorBearer: true, explicitCurationIds: ['c1'] },
+      { introspectCollectorBearer: vi.fn().mockRejectedValue(new FastApiAuthzError(upstreamStatus)), requireCurrentAdmin: vi.fn() },
+    )).rejects.toMatchObject({ status: expectedStatus, code })
   })
 })

@@ -55,6 +55,8 @@ beforeEach(() => {
 afterEach(() => {
     document.body.innerHTML = '';
     localStorage.clear();
+    delete window.AppConfig;
+    delete window.CollectionsModal;
 });
 
 describe('createReviewCard — rodapé unificado (padrão curation card)', () => {
@@ -91,5 +93,18 @@ describe('createReviewCard — rodapé unificado (padrão curation card)', () =>
         expect(actions.children.length).toBe(3);
         expect(card.querySelector('.card-edit-btn')).toBeTruthy();
         expect(card.querySelector('.btn-more-curation')).toBeTruthy();
+    });
+
+    test('expõe Collections como ação contextual e abre o modal', () => {
+        window.AppConfig = { app: { features: { collectionsModal: true } } };
+        window.CollectionsModal = { open: vi.fn() };
+        const curation = makeCuration();
+        const card = ui.createReviewCard(curation);
+        document.body.appendChild(card);
+
+        card.querySelector('.btn-collections').click();
+
+        expect(card.querySelector('.btn-collections.card-collections-btn')).toBeTruthy();
+        expect(window.CollectionsModal.open).toHaveBeenCalledWith(curation);
     });
 });

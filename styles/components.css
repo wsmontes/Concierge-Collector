@@ -3249,6 +3249,125 @@
   outline-offset: var(--focus-ring-offset);
 }
 
+/* Collections actions are purposefully quiet: opening the modal is a
+   contextual action, not a competing workflow CTA. */
+.collection-card__actions .card-collections-btn {
+  background: var(--color-neutral-50);
+  border-color: var(--color-neutral-200);
+  color: var(--color-neutral-700);
+}
+
+.collection-card__actions .card-collections-btn:hover {
+  background: var(--color-primary-50);
+  border-color: var(--color-primary-200);
+  color: var(--color-primary-800);
+}
+
+.collections-modal {
+  display: grid;
+  gap: var(--spacing-5);
+}
+
+.collections-modal__description,
+.collections-modal__empty,
+.collections-modal__notice,
+.collections-modal__loading {
+  margin: 0;
+  color: var(--color-neutral-600);
+  font-size: 0.875rem;
+  line-height: 1.5;
+}
+
+.collections-modal__section {
+  display: grid;
+  gap: var(--spacing-2);
+}
+
+.collections-modal__heading {
+  margin: 0;
+  color: var(--color-neutral-900);
+  font-size: 0.875rem;
+  font-weight: var(--font-semibold);
+}
+
+.collections-modal__published-list,
+.collections-modal__draft-list {
+  display: grid;
+  gap: var(--spacing-2);
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.collections-modal__published-item,
+.collections-modal__draft-item {
+  display: flex;
+  align-items: center;
+  gap: var(--spacing-2);
+  padding: var(--spacing-3);
+  border: 1px solid var(--color-neutral-200);
+  border-radius: var(--radius-input);
+  background: var(--color-neutral-50);
+}
+
+.collections-modal__draft-copy {
+  display: grid;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.collections-modal__slug,
+.collections-modal__version,
+.collections-modal__draft-state {
+  color: var(--color-neutral-500);
+  font-size: 0.75rem;
+}
+
+.collections-modal__version {
+  margin-left: auto;
+}
+
+.collections-modal__action {
+  min-height: 2.5rem;
+  margin-left: auto;
+  padding: 0 var(--spacing-3);
+  border: 1px solid var(--color-primary-200);
+  border-radius: var(--radius-input);
+  background: var(--color-primary-50);
+  color: var(--color-primary-800);
+  cursor: pointer;
+  font-size: 0.75rem;
+  font-weight: var(--font-semibold);
+}
+
+.collections-modal__action:hover:not(:disabled) {
+  background: var(--color-primary-100);
+}
+
+.collections-modal__action:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.collections-modal__status {
+  min-height: 1.25rem;
+  color: var(--color-neutral-600);
+  font-size: 0.8125rem;
+}
+
+@media (max-width: 640px) {
+  .collections-modal__published-item,
+  .collections-modal__draft-item {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .collections-modal__version,
+  .collections-modal__action {
+    margin-left: 0;
+  }
+}
+
 /* Subtitle (curador/cuisine) dentro do novo corpo */
 .collection-card__subtitle {
   display: inline-flex;

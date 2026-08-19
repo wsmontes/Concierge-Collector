@@ -233,6 +233,11 @@ async function initializeApp() {
             console.warn('⚠️ API Service not available');
         }
 
+        if (window.CollectionsServiceClass && window.ApiService && !window.CollectionsService) {
+            window.CollectionsService = new window.CollectionsServiceClass({ apiService: window.ApiService });
+            console.log('✅ CollectionsService initialized (online-only)');
+        }
+
         // Initialize OG Image Module (véu de imagem nos cards via
         // /api/v3/og-image) — depende só do ApiService; falha silenciosa
         // se o endpoint não existir no backend.
@@ -932,4 +937,3 @@ function initializeNavigation() {
     setupNavigationContext(nm);
     nm.init();
 }
-

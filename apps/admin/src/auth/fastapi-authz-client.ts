@@ -8,6 +8,13 @@ export interface CmsIdentity {
   user_id: string
 }
 
+export class FastApiAuthzError extends Error {
+  constructor(readonly status: number) {
+    super(`FastAPI authz failed: ${status}`)
+    this.name = 'FastApiAuthzError'
+  }
+}
+
 export class FastApiAuthzClient {
   constructor(
     private readonly baseUrl: string,
@@ -48,7 +55,7 @@ export class FastApiAuthzClient {
       },
       ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     })
-    if (!response.ok) throw new Error(`FastAPI authz failed: ${response.status}`)
+    if (!response.ok) throw new FastApiAuthzError(response.status)
     return response.json() as Promise<T>
   }
 }

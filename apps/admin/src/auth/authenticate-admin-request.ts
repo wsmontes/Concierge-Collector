@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto'
-import type { CmsIdentity } from './fastapi-authz-client'
+import { FastApiAuthzError, type CmsIdentity } from './fastapi-authz-client'
 import { authzClient } from './cms-strategy'
 import { requireCurrentAdmin } from './require-current-admin'
 import { assertUnsafeCmsSessionOrigin } from './cms-session-request-policy'
@@ -54,9 +54,11 @@ export async function authenticateAdminRequest(
     }
     try {
       return await resolved.introspectCollectorBearer(authorization, requestId(request.headers))
-    } catch {
+    } catch (error) {
       // FastAPI never supplies a trusted role to this layer; failure is a
       // denial, not an opportunity to try a CMS cookie.
+      if (error instanceof FastApiAuthzError && error.status === 401) throw new AdminHttpError(401, 'authentication_required')
+      if (error instanceof FastApiAuthzError && error.status === 503) throw new AdminHttpError(503, 'authorization_unavailable')
       throw new AdminHttpError(403, 'authorization_denied')
     }
   }
