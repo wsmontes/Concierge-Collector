@@ -14,6 +14,7 @@ from app.models.distribution import (
     PublicCurationItem,
     UnavailableItem,
 )
+from app.models.distribution_api import PublicCurationItemV1
 
 
 class DistributionDependencyError(RuntimeError):
@@ -24,6 +25,14 @@ class DistributionDependencyError(RuntimeError):
 class AvailabilityResult:
     item: PublicCurationItem | None
     reason: AvailabilityReason | None
+
+
+@dataclass(frozen=True)
+class HydrationBatch:
+    """The versioned public representation plus live unavailability reasons."""
+
+    items: list[PublicCurationItemV1]
+    unavailable: list[UnavailableItem]
 
 
 def _canonical_id(value: object) -> str | None:
@@ -143,3 +152,88 @@ def hydrate_public_items(db: Database, curation_ids: list[str]) -> HydrateCurati
         available_count=len(items),
         unavailable_count=len(unavailable),
     )
+
+
+def hydrate_public_batch(db: Database, curation_ids: list[str]) -> HydrationBatch:
+    """Hydrate up to 500 frozen membership IDs into the v1 public DTO.
+
+    The Mongo projections enumerate only public candidate fields.  Even though
+    the DTO mapper has a second allowlist, private transcript/source/curator
+    documents are not fetched across this boundary in the first place.
+    """
+
+    requested = _distinct_in_order(curation_ids)
+    if len(requested) > 500:
+        raise ValueError("distribution hydration batch exceeds 500 IDs")
+    try:
+        curations = {
+            record.get("curation_id"): record
+            for record in db.curations.find(
+                {"curation_id": {"$in": requested}},
+                {
+                    "_id": 0,
+                    "curation_id": 1,
+                    "entity_id": 1,
+                    "status": 1,
+                    "notes.public": 1,
+                    "categories": 1,
+                    "version": 1,
+                    "createdAt": 1,
+                    "created_at": 1,
+                    "updatedAt": 1,
+                    "updated_at": 1,
+                },
+            )
+            if isinstance(record.get("curation_id"), str)
+        }
+        entity_ids = [
+            record.get("entity_id") for record in curations.values() if isinstance(record.get("entity_id"), str)
+        ]
+        entities = {
+            record.get("entity_id"): record
+            for record in db.entities.find(
+                {"entity_id": {"$in": entity_ids}},
+                {
+                    "_id": 0,
+                    "entity_id": 1,
+                    "name": 1,
+                    "type": 1,
+                    "status": 1,
+                    "data.location.address": 1,
+                    "data.location.formatted_address": 1,
+                    "data.location.city": 1,
+                    "data.location.country": 1,
+                    "data.location.lat": 1,
+                    "data.location.lng": 1,
+                    "data.location.latitude": 1,
+                    "data.location.longitude": 1,
+                    "data.contacts.phone": 1,
+                    "data.contacts.website": 1,
+                    "data.media.photos": 1,
+                    "version": 1,
+                    "createdAt": 1,
+                    "created_at": 1,
+                    "updatedAt": 1,
+                    "updated_at": 1,
+                },
+            )
+            if isinstance(record.get("entity_id"), str)
+        }
+    except PyMongoError as exc:
+        raise DistributionDependencyError("Live distribution source is unavailable") from exc
+
+    items: list[PublicCurationItemV1] = []
+    unavailable: list[UnavailableItem] = []
+    for curation_id in requested:
+        curation = curations.get(curation_id)
+        entity_id = curation.get("entity_id") if curation else None
+        entity = entities.get(entity_id) if isinstance(entity_id, str) else None
+        availability = evaluate_public_item(curation, entity)
+        if availability.item is None:
+            unavailable.append(UnavailableItem(curation_id=curation_id, reason=availability.reason or "schema_invalid"))
+            continue
+        try:
+            items.append(PublicCurationItemV1.from_documents(curation, entity))
+        except (KeyError, TypeError, ValueError, ValidationError):
+            unavailable.append(UnavailableItem(curation_id=curation_id, reason="schema_invalid"))
+    return HydrationBatch(items=items, unavailable=unavailable)
