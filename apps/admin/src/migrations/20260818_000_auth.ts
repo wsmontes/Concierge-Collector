@@ -7,23 +7,25 @@ const indexes = [
   ['cms-sessions', { expiresAt: 1 }, { expireAfterSeconds: 0, name: 'cms_session_expiry_ttl' }],
 ] as const
 
-export async function up({ payload, session }: MigrateUpArgs): Promise<void> {
+export async function up({ payload }: MigrateUpArgs): Promise<void> {
   const adapter = payload.db
   if (adapter.name !== 'mongoose') throw new Error('CMS auth migration requires the MongoDB adapter')
 
   for (const [slug, fields, options] of indexes) {
     const model = adapter.collections[slug]
     if (!model) throw new Error(`Missing CMS collection model: ${slug}`)
-    await model.collection.createIndex(fields, { ...options, session })
+    // MongoDB DDL must not run inside the transaction used by Payload's
+    // migration ledger. createIndex is idempotent with the named spec.
+    await model.collection.createIndex(fields, options)
   }
 }
 
-export async function down({ payload, session }: MigrateDownArgs): Promise<void> {
+export async function down({ payload }: MigrateDownArgs): Promise<void> {
   const adapter = payload.db
   if (adapter.name !== 'mongoose') return
 
   for (const [slug, , options] of indexes) {
     const model = adapter.collections[slug]
-    if (model) await model.collection.dropIndex(options.name, { session })
+    if (model) await model.collection.dropIndex(options.name)
   }
 }

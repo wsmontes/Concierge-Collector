@@ -28,7 +28,7 @@ export async function up({ payload, session }: MigrateUpArgs): Promise<void> {
   for (const [slug, fields, options] of indexes) {
     const model = adapter.collections[slug]
     if (!model) throw new Error(`Missing CMS collection model: ${slug}`)
-    await model.collection.createIndex(fields, { ...options, session })
+    await model.collection.createIndex(fields, options)
   }
 }
 
@@ -38,6 +38,6 @@ export async function down({ payload, session }: MigrateDownArgs): Promise<void>
 
   for (const [slug, , options] of indexes) {
     const model = adapter.collections[slug]
-    if (model) await model.collection.dropIndex(options.name, { session })
+    if (model) await model.collection.dropIndex(options.name)
   }
 }

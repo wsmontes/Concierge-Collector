@@ -12,6 +12,8 @@ from copy import deepcopy
 from types import SimpleNamespace
 from uuid import uuid4
 
+from dotenv import load_dotenv
+
 # O zsh do dev exporta OPENAI_BASE_URL=http://localhost:1234/v1 (LM Studio) e
 # OPENAI_API_KEY=lm-studio — pydantic-settings congela essas env vars no
 # singleton `settings` no import, e qualquer teste que passe pelo OpenAI SDK
@@ -36,8 +38,6 @@ os.environ["API_SECRET_KEY"] = "test-api-secret-key"
 os.environ["ADMIN_API_KEYS"] = ""
 
 # Load .env file before importing app
-from dotenv import load_dotenv
-
 env_path = Path(__file__).parent.parent / ".env"
 load_dotenv(env_path)
 

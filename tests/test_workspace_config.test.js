@@ -9,7 +9,7 @@ describe('workspace root', () => {
   test('preserva Collector e declara o workspace Node 22', () => {
     expect(pkg.private).toBe(true)
     expect(pkg.workspaces).toEqual(['apps/*', 'packages/*'])
-    expect(pkg.engines).toMatchObject({ node: '>=22 <23', npm: '>=10 <11' })
+    expect(pkg.engines).toMatchObject({ node: '>=22.12 <23', npm: '>=10 <11' })
     expect(pkg.packageManager).toBe('npm@10.9.2')
     expect(pkg.scripts['test:collector']).toBe('vitest run')
     expect(pkg.scripts['dev:admin']).toContain('--workspace=@concierge/admin')

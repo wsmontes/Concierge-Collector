@@ -66,23 +66,25 @@ const indexes = [
   ['audit-events', { actorId: 1, createdAt: -1 }, { name: 'audit_by_actor' }],
 ] as const
 
-export async function up({ payload, session }: MigrateUpArgs): Promise<void> {
+export async function up({ payload }: MigrateUpArgs): Promise<void> {
   const adapter = payload.db
   if (adapter.name !== 'mongoose') throw new Error('Collections migration requires the MongoDB adapter')
 
   for (const [slug, fields, options] of indexes) {
     const model = adapter.collections[slug]
     if (!model) throw new Error(`Missing CMS collection model: ${slug}`)
-    await model.collection.createIndex(fields, { ...options, session })
+    // Index DDL cannot be part of Payload's migration transaction. The
+    // explicit name keeps this retry-safe if a release is interrupted.
+    await model.collection.createIndex(fields, options)
   }
 }
 
-export async function down({ payload, session }: MigrateDownArgs): Promise<void> {
+export async function down({ payload }: MigrateDownArgs): Promise<void> {
   const adapter = payload.db
   if (adapter.name !== 'mongoose') return
 
   for (const [slug, , options] of indexes) {
     const model = adapter.collections[slug]
-    if (model) await model.collection.dropIndex(options.name, { session })
+    if (model) await model.collection.dropIndex(options.name)
   }
 }

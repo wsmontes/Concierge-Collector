@@ -1,0 +1,55 @@
+name: quality
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  collector:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22.18.0', cache: npm }
+      - run: npm install --global npm@10.9.2 && test "$(npm --version)" = "10.9.2"
+      - run: npm ci --legacy-peer-deps
+      - run: npm run build:collector:check && npm run lint:collector && npm run test:collector
+  admin:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22.18.0', cache: npm }
+      - run: npm install --global npm@10.9.2 && npm ci --legacy-peer-deps
+      - run: npm run test:admin && npm run typecheck:admin && npm run build:admin
+        env:
+          CMS_MONGODB_URL: mongodb://127.0.0.1:27017
+          CMS_MONGODB_DB_NAME: concierge-cms-test
+          CMS_SERVICE_KEY: test-cms-service-key
+          CMS_PUBLIC_SERVER_URL: https://admin.example.test
+          FASTAPI_BASE_URL: https://api.example.test
+          METRICS_KEY: test-metrics-key
+          PAYLOAD_SECRET: test-payload-secret-with-at-least-32-chars
+  api:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: { python-version: '3.13' }
+      - run: python -m pip install -r concierge-api-v3/requirements.txt -r concierge-api-v3/requirements-dev.txt
+      - run: cd concierge-api-v3 && pytest -m "not integration and not external_api and not mongo and not openai" -q && black --check app tests && flake8 app tests --max-line-length=120 --ignore=E203,W503
+  generated:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '22.18.0', cache: npm }
+      - run: npm install --global npm@10.9.2 && npm ci --legacy-peer-deps
+      - run: npm run check:contracts && git diff --exit-code
+  quality:
+    if: always()
+    needs: [collector, admin, api, generated]
+    runs-on: ubuntu-24.04
+    steps:
+      - run: test '${{ needs.collector.result }}' = success && test '${{ needs.admin.result }}' = success && test '${{ needs.api.result }}' = success && test '${{ needs.generated.result }}' = success
