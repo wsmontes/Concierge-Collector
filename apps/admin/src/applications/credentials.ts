@@ -1,4 +1,4 @@
-import { createHash, randomBytes as secureRandomBytes, randomUUID } from 'node:crypto'
+import { createHash, randomBytes as secureRandomBytes } from 'node:crypto'
 import { AdminHttpError } from '../http/errors'
 import type {
   ConsumerApplicationRecord,
@@ -10,12 +10,13 @@ import type {
 } from './types'
 
 export interface CredentialRepository {
+  newCredentialId(): string
   activeApplication(applicationId: string): Promise<ConsumerApplicationRecord | null>
-  createCredential(credential: ConsumerCredentialRecord): Promise<void>
+  /** Persists credential, application revision and audit as one transaction. */
+  issueCredential(credential: ConsumerCredentialRecord): Promise<void>
   findCredential(id: string): Promise<ConsumerCredentialRecord | null>
   /** Atomically marks an active credential revoked and increments its app revision. */
   revokeCredential(id: string, actorId: string, now: Date): Promise<{ credential: ConsumerCredentialRecord; changed: boolean } | null>
-  appendAudit(eventType: 'credential.issued' | 'credential.revoked', credentialId: string): Promise<void>
   applicationRevision(applicationId: string): Promise<number>
 }
 
@@ -35,14 +36,14 @@ export function createOpaqueCredential(randomBytes: (size: number) => Buffer = s
 }
 
 function publicCredential(credential: ConsumerCredentialRecord): ConsumerCredentialPublic {
-  const { secretHash: _secretHash, createdBy: _createdBy, revokedBy: _revokedBy, ...safe } = credential
+  const { secretHash: _secretHash, issueIdempotencyKey: _issueIdempotencyKey, createdBy: _createdBy, revokedBy: _revokedBy, ...safe } = credential
   return safe
 }
 
 function validateIssue(command: IssueCredentialCommand, now: Date): IssueCredentialCommand {
   const name = command.name.trim()
   const scopes = [...new Set(command.scopes)]
-  if (!command.applicationId || !command.actorId || !name || name.length > 120 || scopes.length === 0 || scopes.some((scope) => !VALID_SCOPE.has(scope))) {
+  if (!command.applicationId || !command.actorId || !command.idempotencyKey || !name || name.length > 120 || scopes.length === 0 || scopes.some((scope) => !VALID_SCOPE.has(scope))) {
     throw new AdminHttpError(400, 'invalid_request')
   }
   if (command.expiresAt && (!Number.isFinite(command.expiresAt.getTime()) || command.expiresAt <= now)) {
@@ -62,12 +63,11 @@ export async function issueCredential(
   if (!application) throw new AdminHttpError(404, 'not_found')
   const generated = createOpaqueCredential(randomBytes)
   const credential: ConsumerCredentialRecord = {
-    id: randomUUID(), applicationId: input.applicationId, name: input.name, prefix: generated.prefix,
-    secretHash: generated.hash, scopes: input.scopes, status: 'active', createdAt: now, createdBy: input.actorId,
+    id: repository.newCredentialId(), applicationId: input.applicationId, name: input.name, prefix: generated.prefix,
+    secretHash: generated.hash, issueIdempotencyKey: input.idempotencyKey, scopes: input.scopes, status: 'active', createdAt: now, createdBy: input.actorId,
     expiresAt: input.expiresAt, revokedAt: null, revokedBy: null,
   }
-  await repository.createCredential(credential)
-  await repository.appendAudit('credential.issued', credential.id)
+  await repository.issueCredential(credential)
   return { credential: publicCredential(credential), secretOnce: generated.raw }
 }
 
@@ -84,6 +84,5 @@ export async function revokeCredential(
   const result = await repository.revokeCredential(credentialId, actorId, now)
   if (!result) throw new AdminHttpError(404, 'not_found')
   // A concurrent winner returns changed:false and owns the single audit.
-  if (result.changed) await repository.appendAudit('credential.revoked', result.credential.id)
   return publicCredential(result.credential)
 }

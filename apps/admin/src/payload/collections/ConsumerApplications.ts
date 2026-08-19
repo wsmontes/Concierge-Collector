@@ -16,5 +16,6 @@ export const ConsumerApplications: CollectionConfig = {
     { name: 'allowedCollectionIds', type: 'array', required: true, fields: [{ name: 'collectionId', type: 'text', required: true }] },
     { name: 'defaultRequestsPerMinute', type: 'number', required: true, defaultValue: 60 },
     { name: 'credentialsRevision', type: 'number', required: true, defaultValue: 0 },
+    { name: 'revision', type: 'number', required: true, defaultValue: 1 },
   ],
 }

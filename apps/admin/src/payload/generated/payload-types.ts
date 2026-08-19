@@ -443,6 +443,7 @@ export interface ConsumerApplication {
   }[];
   defaultRequestsPerMinute: number;
   credentialsRevision: number;
+  revision: number;
   updatedAt: string;
   createdAt: string;
 }
@@ -456,6 +457,7 @@ export interface ConsumerCredential {
   name: string;
   prefix: string;
   secretHash: string;
+  issueIdempotencyKey: string;
   scopes: 'collections:read'[];
   status: 'active' | 'revoked';
   createdBy: string;
@@ -919,6 +921,7 @@ export interface ConsumerApplicationsSelect<T extends boolean = true> {
       };
   defaultRequestsPerMinute?: T;
   credentialsRevision?: T;
+  revision?: T;
   updatedAt?: T;
   createdAt?: T;
 }
@@ -931,6 +934,7 @@ export interface ConsumerCredentialsSelect<T extends boolean = true> {
   name?: T;
   prefix?: T;
   secretHash?: T;
+  issueIdempotencyKey?: T;
   scopes?: T;
   status?: T;
   createdBy?: T;

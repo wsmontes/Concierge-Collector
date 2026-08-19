@@ -14,6 +14,7 @@ export interface ConsumerCredentialRecord {
   name: string
   prefix: string
   secretHash: string
+  issueIdempotencyKey: string
   scopes: ConsumerCredentialScope[]
   status: ConsumerCredentialStatus
   createdAt: Date
@@ -41,6 +42,7 @@ export interface IssueCredentialCommand {
   scopes: ConsumerCredentialScope[]
   expiresAt: Date | null
   actorId: string
+  idempotencyKey: string
 }
 
 export interface IssueCredentialResult {
