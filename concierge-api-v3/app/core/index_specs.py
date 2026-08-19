@@ -67,4 +67,8 @@ INDEX_SPECS = [
     # com o TTL de 30d). Unique: jti é gerado pelo servidor (JWT) e a
     # varredura 2026-08-18 confirmou zero duplicatas.
     ("auth_sessions", "jti", {"unique": True}),
+    # ── cms_auth_codes ────────────────────────────────────────────────────
+    # Handoff codes are stored hash-only and may be consumed exactly once.
+    ("cms_auth_codes", [("code_hash", 1)], {"unique": True, "name": "cms_code_hash_unique"}),
+    ("cms_auth_codes", [("expires_at", 1)], {"expireAfterSeconds": 0, "name": "cms_code_expiry_ttl"}),
 ]

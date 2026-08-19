@@ -64,6 +64,13 @@ class Settings(BaseSettings):
     # OAuth callback URL allowlist (JSON list of trusted frontend origins)
     trusted_callback_origins: str = "[]"
 
+    # CMS / Payload handoff. These credentials are deliberately distinct from
+    # both JWT signing and X-API-Key authorization.
+    cms_admin_origin: str = ""
+    cms_admin_callback_url: str = ""
+    cms_service_key: str = ""
+    cms_handoff_ttl_seconds: int = 120
+
     # JWT Token Settings
     access_token_expire_minutes: int = 60  # 1 hour
     refresh_token_expire_days: int = 30  # 30 days for refresh token
@@ -127,6 +134,25 @@ class Settings(BaseSettings):
             )
             return self.api_secret_key
         raise RuntimeError("JWT_SIGNING_SECRET não configurado em produção — configure no dashboard do Render")
+
+    def _required_cms_setting(self, value: str, setting_name: str) -> str:
+        if value:
+            return value
+        if self.environment == "production":
+            raise RuntimeError(f"{setting_name} não configurado em produção")
+        return value
+
+    @property
+    def cms_admin_origin_value(self) -> str:
+        return self._required_cms_setting(self.cms_admin_origin, "CMS_ADMIN_ORIGIN")
+
+    @property
+    def cms_admin_callback_url_value(self) -> str:
+        return self._required_cms_setting(self.cms_admin_callback_url, "CMS_ADMIN_CALLBACK_URL")
+
+    @property
+    def cms_service_key_value(self) -> str:
+        return self._required_cms_setting(self.cms_service_key, "CMS_SERVICE_KEY")
 
     @property
     def admin_api_key_list(self) -> List[str]:

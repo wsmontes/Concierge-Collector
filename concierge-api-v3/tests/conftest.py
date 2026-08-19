@@ -69,11 +69,20 @@ def client(hermetic_test_database):
 
 
 @pytest.fixture(autouse=True)
-def _client_cookie_isolation(client):
+def _client_cookie_isolation(request):
     """Isola o jar de cookies ENTRE testes (2026-08-15): o client é
     session-scoped e o TestClient persiste cookies — o dev-login de
     test_auth deixava o access_token no jar e autenticava requests "sem
-    credencial" dos testes seguintes (poluição cross-file)."""
+    credencial" dos testes seguintes (poluição cross-file).
+
+    Não pede o fixture ``client`` incondicionalmente: testes unitários de
+    serviços não devem iniciar a aplicação nem depender de MongoDB remoto.
+    """
+    if "client" not in request.fixturenames:
+        yield
+        return
+
+    client = request.getfixturevalue("client")
     yield
     client.cookies.clear()
 

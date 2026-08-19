@@ -40,6 +40,7 @@ class FakeDb:
         self.curations = FakeCol("curations")
         self.capture_sessions = FakeCol("capture_sessions")
         self.auth_sessions = FakeCol("auth_sessions")
+        self.cms_auth_codes = FakeCol("cms_auth_codes")
 
 
 def test_ensure_indexes_continues_after_index_failure(monkeypatch, caplog):
@@ -51,10 +52,11 @@ def test_ensure_indexes_continues_after_index_failure(monkeypatch, caplog):
     # o índice que falhou NÃO foi criado...
     assert "externalId" not in [k for k, _ in fake.entities.created]
     # ...mas todos os demais de entities, todos os de curations e os de
-    # auth_sessions (TTL expiresAt + lookup jti) foram
+    # auth_sessions (TTL expiresAt + lookup jti) e cms_auth_codes foram
     assert len(fake.entities.created) == 9
     assert len(fake.curations.created) == 10
     assert len(fake.auth_sessions.created) == 2
+    assert len(fake.cms_auth_codes.created) == 2
     # e a falha foi registrada explicitamente no log
     assert any("externalId" in r.getMessage() for r in caplog.records)
 
@@ -69,6 +71,7 @@ def test_ensure_indexes_all_success_when_no_duplicates(monkeypatch):
     assert len(fake.entities.created) == 10
     assert len(fake.curations.created) == 10
     assert len(fake.auth_sessions.created) == 2
+    assert len(fake.cms_auth_codes.created) == 2
 
 
 def test_index_specs_come_from_the_shared_module():
@@ -77,9 +80,15 @@ def test_index_specs_come_from_the_shared_module():
     from app.core.index_specs import INDEX_SPECS
 
     assert dbmod.INDEX_SPECS is INDEX_SPECS
-    assert len(INDEX_SPECS) == 23
+    assert len(INDEX_SPECS) == 25
     assert sum(1 for s in INDEX_SPECS if s[0] == "capture_sessions") == 1
     assert ("auth_sessions", "jti", {"unique": True}) in INDEX_SPECS
+    assert ("cms_auth_codes", [("code_hash", 1)], {"unique": True, "name": "cms_code_hash_unique"}) in INDEX_SPECS
+    assert (
+        "cms_auth_codes",
+        [("expires_at", 1)],
+        {"expireAfterSeconds": 0, "name": "cms_code_expiry_ttl"},
+    ) in INDEX_SPECS
 
 
 def test_ensure_indexes_records_state_and_logs_error(monkeypatch, caplog):
@@ -96,6 +105,6 @@ def test_ensure_indexes_records_state_and_logs_error(monkeypatch, caplog):
 
     state = dbmod.get_index_state()
     assert state["failed"] == 1
-    assert state["created"] == 21  # 9 entities + 10 curations + 2 auth_sessions (22 specs - capture_sessions)
+    assert state["created"] == 23  # 9 entities + 10 curations + 2 auth_sessions + 2 CMS codes
     assert any("externalId" in str(d["keys"]) for d in state["failed_details"])
     assert any("externalId" in r.getMessage() for r in caplog.records)
