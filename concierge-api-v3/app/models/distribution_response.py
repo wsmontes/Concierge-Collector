@@ -22,3 +22,22 @@ class CollectionDistributionEnvelopeV1(BaseModel):
     available_count: int = Field(ge=0)
     unavailable_count: int = Field(ge=0)
     next_cursor: str | None = None
+
+
+class DistributionVersionInfo(BaseModel):
+    """Immutable publication metadata safe to disclose to a consumer."""
+
+    model_config = ConfigDict(extra="forbid")
+    version: int = Field(ge=1)
+    selected_count: int = Field(ge=0)
+    published_at: str | None = None
+
+
+class CollectionVersionHistoryEnvelopeV1(BaseModel):
+    """A page of published Collection versions, newest first."""
+
+    model_config = ConfigDict(extra="forbid")
+    schema_version: int = 1
+    collection: DistributionCollectionInfo
+    versions: list[DistributionVersionInfo]
+    next_cursor: str | None = None
