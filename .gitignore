@@ -119,6 +119,8 @@ dump/
 *.crt
 secrets/
 credentials/
+!apps/admin/src/components/credentials/
+!apps/admin/src/components/credentials/*.tsx
 
 # OpenAI keys
 openai_key.txt

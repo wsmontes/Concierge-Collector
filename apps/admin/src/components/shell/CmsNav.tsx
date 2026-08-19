@@ -24,7 +24,7 @@ export const CMS_NAV_GROUPS: readonly CmsNavGroup[] = [
   },
   {
     label: 'Distribution',
-    items: [],
+    items: [{ href: '/admin/applications', label: 'Applications' }],
     emptyState: 'Distribution tools will appear here when available.',
   },
   {
