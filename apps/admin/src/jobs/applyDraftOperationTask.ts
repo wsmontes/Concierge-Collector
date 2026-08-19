@@ -1,5 +1,6 @@
 import type { TaskConfig } from 'payload'
 import { applyDraftOperation } from '../operations/apply-draft-operation'
+import { observeCollectionTask } from '../observability/metrics'
 
 export const applyDraftOperationTask: TaskConfig<{ input: { operationId: string }; output: { status: string } }> = {
   slug: 'apply-draft-operation',
@@ -13,7 +14,11 @@ export const applyDraftOperationTask: TaskConfig<{ input: { operationId: string 
   inputSchema: [{ name: 'operationId', type: 'text', required: true }],
   outputSchema: [{ name: 'status', type: 'text', required: true }],
   handler: async ({ input, req }) => {
-    const result = await applyDraftOperation(req.payload, input.operationId, process.env.CMS_WORKER_ID?.trim() || 'cms-admin-worker')
+    const result = await observeCollectionTask(
+      'draft_operation',
+      () => applyDraftOperation(req.payload, input.operationId, process.env.CMS_WORKER_ID?.trim() || 'cms-admin-worker'),
+      (operation) => operation?.status ?? 'not_claimed',
+    )
     return { output: { status: result?.status ?? 'not_claimed' } }
   },
 }

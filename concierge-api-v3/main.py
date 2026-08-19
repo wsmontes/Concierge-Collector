@@ -14,6 +14,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from app.core.config import settings
 from app.core.lifespan import lifespan
 from app.core.rate_limit import limiter
+from app.core.observability import install_log_redaction, request_context_middleware
 from app.api import (
     entities,
     curations,
@@ -30,6 +31,7 @@ from app.api import (
     internal_curations,
     curators,
     og_image,
+    metrics,
 )
 
 # Create FastAPI application
@@ -48,6 +50,8 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
+install_log_redaction()
+app.middleware("http")(request_context_middleware)
 
 
 def _cors_origins_safe(origins=None):
@@ -107,6 +111,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # Include routers with /api/v3 prefix
 app.include_router(system.router, prefix="/api/v3")
+app.include_router(metrics.router, prefix="/api/v3")
 app.include_router(cms_auth.router, prefix="/api/v3")
 app.include_router(catalog.router, prefix="/api/v3")
 app.include_router(internal_curations.router, prefix="/api/v3")

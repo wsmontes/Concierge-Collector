@@ -4,6 +4,7 @@ export interface AdminEnv {
   cmsDatabaseName: string
   cmsServiceKey: string
   fastApiBaseUrl: string
+  metricsKey: string
   payloadSecret: string
   publicServerUrl: string
 }
@@ -50,6 +51,9 @@ export function readEnv(): AdminEnv {
     cmsDatabaseName: process.env.CMS_MONGODB_DB_NAME?.trim() || 'concierge-cms',
     cmsServiceKey: required('CMS_SERVICE_KEY'),
     fastApiBaseUrl: required('FASTAPI_BASE_URL').replace(/\/$/, ''),
+    // Absence fails closed at the metrics route (401) rather than preventing
+    // liveness/readiness from starting. Production provisioning must set it.
+    metricsKey: process.env.METRICS_KEY?.trim() || '',
     payloadSecret: required('PAYLOAD_SECRET'),
     publicServerUrl: canonicalOrigin(required('CMS_PUBLIC_SERVER_URL'), 'CMS_PUBLIC_SERVER_URL'),
   }

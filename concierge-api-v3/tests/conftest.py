@@ -47,6 +47,7 @@ load_dotenv(env_path)
 os.environ["CMS_SERVICE_KEY"] = "test-cms-key"
 os.environ["CMS_ADMIN_ORIGIN"] = "https://admin.concierge-collector.com"
 os.environ["CMS_ADMIN_CALLBACK_URL"] = "https://admin.concierge-collector.com/auth/callback"
+os.environ["METRICS_KEY"] = "test-metrics-key"
 
 from main import app  # noqa: E402  (import DEPOIS do setup de env acima)
 from app.core.config import settings  # noqa: E402

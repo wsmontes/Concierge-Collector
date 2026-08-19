@@ -71,6 +71,10 @@ class Settings(BaseSettings):
     cms_service_key: str = ""
     cms_handoff_ttl_seconds: int = 120
 
+    # Métricas são uma superfície operacional separada. Nunca reutilizar uma
+    # API key, JWT ou credencial de serviço para expô-las.
+    metrics_key: str = ""
+
     # JWT Token Settings
     access_token_expire_minutes: int = 60  # 1 hour
     refresh_token_expire_days: int = 30  # 30 days for refresh token
@@ -153,6 +157,10 @@ class Settings(BaseSettings):
     @property
     def cms_service_key_value(self) -> str:
         return self._required_cms_setting(self.cms_service_key, "CMS_SERVICE_KEY")
+
+    @property
+    def metrics_key_value(self) -> str:
+        return self._required_cms_setting(self.metrics_key, "METRICS_KEY")
 
     @property
     def admin_api_key_list(self) -> List[str]:

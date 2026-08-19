@@ -19,6 +19,7 @@ describe('readEnv', () => {
     process.env.CMS_MONGODB_DB_NAME = 'concierge-cms-test'
     process.env.CMS_SERVICE_KEY = 'test-cms-service-key'
     process.env.FASTAPI_BASE_URL = 'http://localhost:8000'
+    process.env.METRICS_KEY = 'test-metrics-key'
     process.env.PAYLOAD_SECRET = 'x'.repeat(32)
     process.env.CMS_PUBLIC_SERVER_URL = 'http://localhost:3000'
     expect(readEnv().cmsDatabaseName).toBe('concierge-cms-test')
