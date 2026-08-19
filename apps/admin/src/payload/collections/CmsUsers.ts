@@ -1,11 +1,13 @@
 import type { CollectionConfig } from 'payload'
 import { isAuthenticated, isAuthorizedAdmin } from '../../auth/access'
+import { cmsSessionStrategy } from '../../auth/cms-strategy'
 
 export const CmsUsers: CollectionConfig = {
   slug: 'cms-users',
   dbName: 'cms_users',
   auth: {
     disableLocalStrategy: true,
+    strategies: [cmsSessionStrategy],
   },
   admin: {
     useAsTitle: 'email',
@@ -68,10 +70,8 @@ export const CmsUsers: CollectionConfig = {
     },
     {
       name: 'authzRevision',
-      type: 'number',
+      type: 'text',
       required: true,
-      defaultValue: 0,
-      min: 0,
       admin: { readOnly: true },
     },
     {

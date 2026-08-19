@@ -68,6 +68,8 @@ export interface Config {
   blocks: {};
   collections: {
     'cms-users': CmsUser;
+    'cms-login-states': CmsLoginState;
+    'cms-sessions': CmsSession;
     'worker-heartbeats': WorkerHeartbeat;
     'payload-kv': PayloadKv;
     'payload-jobs': PayloadJob;
@@ -78,6 +80,8 @@ export interface Config {
   collectionsJoins: {};
   collectionsSelect: {
     'cms-users': CmsUsersSelect<false> | CmsUsersSelect<true>;
+    'cms-login-states': CmsLoginStatesSelect<false> | CmsLoginStatesSelect<true>;
+    'cms-sessions': CmsSessionsSelect<false> | CmsSessionsSelect<true>;
     'worker-heartbeats': WorkerHeartbeatsSelect<false> | WorkerHeartbeatsSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-jobs': PayloadJobsSelect<false> | PayloadJobsSelect<true>;
@@ -141,11 +145,38 @@ export interface CmsUser {
   picture?: string | null;
   role: 'admin' | 'curator' | 'viewer';
   authorized: boolean;
-  authzRevision: number;
+  authzRevision: string;
   lastIntrospectedAt?: string | null;
   updatedAt: string;
   createdAt: string;
   collection: 'cms-users';
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "cms-login-states".
+ */
+export interface CmsLoginState {
+  id: string;
+  stateHash: string;
+  returnTo: string;
+  expiresAt: string;
+  consumedAt?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "cms-sessions".
+ */
+export interface CmsSession {
+  id: string;
+  sessionHash: string;
+  user: string | CmsUser;
+  subject: string;
+  expiresAt: string;
+  revokedAt?: string | null;
+  updatedAt: string;
+  createdAt: string;
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
@@ -288,6 +319,14 @@ export interface PayloadLockedDocument {
         value: string | CmsUser;
       } | null)
     | ({
+        relationTo: 'cms-login-states';
+        value: string | CmsLoginState;
+      } | null)
+    | ({
+        relationTo: 'cms-sessions';
+        value: string | CmsSession;
+      } | null)
+    | ({
         relationTo: 'worker-heartbeats';
         value: string | WorkerHeartbeat;
       } | null);
@@ -346,6 +385,31 @@ export interface CmsUsersSelect<T extends boolean = true> {
   authorized?: T;
   authzRevision?: T;
   lastIntrospectedAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "cms-login-states_select".
+ */
+export interface CmsLoginStatesSelect<T extends boolean = true> {
+  stateHash?: T;
+  returnTo?: T;
+  expiresAt?: T;
+  consumedAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "cms-sessions_select".
+ */
+export interface CmsSessionsSelect<T extends boolean = true> {
+  sessionHash?: T;
+  user?: T;
+  subject?: T;
+  expiresAt?: T;
+  revokedAt?: T;
   updatedAt?: T;
   createdAt?: T;
 }

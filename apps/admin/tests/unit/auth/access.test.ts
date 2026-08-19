@@ -17,7 +17,7 @@ describe('CMS foundation access', () => {
   })
 
   test('the FastAPI-mirrored users collection has no local write path', () => {
-    expect(CmsUsers.auth).toEqual({ disableLocalStrategy: true })
+    expect(CmsUsers.auth).toMatchObject({ disableLocalStrategy: true })
     expect(CmsUsers.access?.create?.({} as never)).toBe(false)
     expect(CmsUsers.access?.update?.({} as never)).toBe(false)
     expect(CmsUsers.access?.delete?.({} as never)).toBe(false)

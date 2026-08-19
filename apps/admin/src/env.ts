@@ -1,6 +1,8 @@
 export interface AdminEnv {
   cmsMongoUrl: string
   cmsDatabaseName: string
+  cmsServiceKey: string
+  fastApiBaseUrl: string
   payloadSecret: string
   publicServerUrl: string
 }
@@ -15,6 +17,8 @@ export function readEnv(): AdminEnv {
   return {
     cmsMongoUrl: required('CMS_MONGODB_URL'),
     cmsDatabaseName: process.env.CMS_MONGODB_DB_NAME?.trim() || 'concierge-cms',
+    cmsServiceKey: required('CMS_SERVICE_KEY'),
+    fastApiBaseUrl: required('FASTAPI_BASE_URL').replace(/\/$/, ''),
     payloadSecret: required('PAYLOAD_SECRET'),
     publicServerUrl: required('CMS_PUBLIC_SERVER_URL'),
   }

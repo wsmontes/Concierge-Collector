@@ -2,7 +2,8 @@ import { mongooseAdapter } from '@payloadcms/db-mongodb'
 import { buildConfig } from 'payload'
 import { readEnv } from './src/env'
 import { recordWorkerHeartbeat } from './src/jobs/recordWorkerHeartbeat'
-import { CmsUsers, WorkerHeartbeats } from './src/payload/collections'
+import { CmsLoginStates, CmsSessions, CmsUsers, WorkerHeartbeats } from './src/payload/collections'
+import { down as authMigrationDown, up as authMigrationUp } from './src/migrations/20260818_000_auth'
 
 const env = readEnv()
 
@@ -14,6 +15,13 @@ export default buildConfig({
     connectOptions: {
       dbName: env.cmsDatabaseName,
     },
+    prodMigrations: [
+      {
+        name: '20260818_000_auth',
+        up: authMigrationUp,
+        down: authMigrationDown,
+      },
+    ],
   }),
   admin: {
     user: 'cms-users',
@@ -37,7 +45,7 @@ export default buildConfig({
       },
     },
   },
-  collections: [CmsUsers, WorkerHeartbeats],
+  collections: [CmsUsers, CmsLoginStates, CmsSessions, WorkerHeartbeats],
   jobs: {
     access: {
       cancel: () => false,

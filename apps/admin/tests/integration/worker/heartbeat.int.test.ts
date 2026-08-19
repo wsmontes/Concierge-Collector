@@ -25,6 +25,8 @@ function requireIntegrationDatabase(): void {
 integrationSuite('worker heartbeat', () => {
   beforeAll(async () => {
     requireIntegrationDatabase()
+    process.env.CMS_SERVICE_KEY ??= 'integration-cms-service-key'
+    process.env.FASTAPI_BASE_URL ??= 'http://localhost:8000'
     process.env.PAYLOAD_SECRET ??= 'integration-payload-secret-with-at-least-32-characters'
     process.env.CMS_PUBLIC_SERVER_URL ??= 'http://localhost:3000'
 
