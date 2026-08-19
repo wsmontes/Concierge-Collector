@@ -18,7 +18,9 @@ class _Users:
         self.documents: dict[str, dict] = {}
 
     def find_one(self, query):
-        return self.documents.get(query["email"])
+        if "email" in query:
+            return self.documents.get(query["email"])
+        return next((document for document in self.documents.values() if document["_id"] == query["_id"]), None)
 
 
 class _CmsAuthTestDatabase:
@@ -209,3 +211,14 @@ def test_cms_introspection_loads_current_authorization(cms_client, admin_auth_he
     assert response.status_code == 200
     assert response.json()["role"] == "admin"
     assert response.json()["email"] == "cms-admin-test@example.com"
+
+
+def test_cms_introspection_accepts_the_stable_user_id_for_worker_revalidation(cms_client, admin_auth_headers):
+    response = cms_client.post(
+        "/api/v3/auth/cms/introspect",
+        json={"subject": "cms-admin-test"},
+        headers={"X-CMS-Service-Key": "test-cms-key"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["user_id"] == "cms-admin-test"

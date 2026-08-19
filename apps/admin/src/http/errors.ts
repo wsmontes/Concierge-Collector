@@ -36,18 +36,19 @@ export class AdminHttpError extends Error {
   constructor(
     readonly status: AdminErrorStatus,
     readonly code: AdminErrorCode = DEFAULT_CODES[status] as AdminErrorCode,
+    readonly details?: Record<string, string>,
   ) {
     super(code)
   }
 }
 
-function errorShape(error: unknown): { code: string; status: AdminErrorStatus } | null {
+function errorShape(error: unknown): { code: string; details?: Record<string, string>; status: AdminErrorStatus } | null {
   if (!(error instanceof AdminHttpError)) return null
 
-  const { code, status } = error
+  const { code, details, status } = error
   if (ADMIN_ERROR_CODES[code] !== status) return null
 
-  return { code, status }
+  return { code, details, status }
 }
 
 /** Formats every administrative failure without leaking internal exception details. */
@@ -56,5 +57,5 @@ export function adminErrorResponse(error: unknown): Response {
   const status = known?.status ?? 503
   const code = known?.code ?? DEFAULT_CODES[503]
 
-  return Response.json({ error: { code } }, { status })
+  return Response.json({ error: { code, ...(known?.details ?? {}) } }, { status })
 }

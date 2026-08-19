@@ -19,12 +19,19 @@ integrationSuite('Collections CMS indexes', () => {
       unique: true,
       partialFilterExpression: { removedInVersion: null },
     })
-    expect(await names('collection_draft_changes')).toContain('draft_change_item_unique')
+    expect(await names('collection_draft_changes')).toEqual(expect.arrayContaining([
+      'draft_change_item_unique',
+      'draft_changes_by_stage',
+    ]))
     expect(await names('collection_operations')).toEqual(
-      expect.arrayContaining(['operation_idempotency_unique', 'operation_queue_order', 'operation_lease_expiry']),
+      expect.arrayContaining(['operation_idempotency_unique', 'operation_job_unique', 'operation_queue_order', 'operation_lease_expiry']),
     )
     expect(await byName('collection_operations', 'operation_queue_order')).toMatchObject({
       key: { collectionId: 1, operationSequence: 1, status: 1 },
+    })
+    expect(await byName('collection_operations', 'operation_job_unique')).toMatchObject({
+      key: { jobId: 1 },
+      unique: true,
     })
     expect(await names('collection_publish_jobs')).toContain('publish_lease_expiry')
   })

@@ -47,4 +47,18 @@ describe("FastApiAdminClient", () => {
       }),
     );
   });
+
+  it("resolves bounded selections with the authoritative CMS actor", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ eligible_ids: ["c1"], rejected: [] }), { status: 200 }),
+    );
+    const client = new FastApiAdminClient({ baseUrl: "https://api.example.test", serviceKey: "service-key", fetch });
+
+    await expect(client.resolveCurations({ curation_ids: ["c1"] }, "admin-1"))
+      .resolves.toEqual({ eligible_ids: ["c1"], rejected: [] });
+    expect(fetch).toHaveBeenCalledWith(
+      "https://api.example.test/api/v3/catalog/curations/resolve",
+      expect.objectContaining({ headers: expect.objectContaining({ "x-cms-actor-id": "admin-1" }) }),
+    );
+  });
 });

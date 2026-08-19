@@ -108,6 +108,71 @@
         "title": "HTTPValidationError",
         "type": "object"
       },
+      "RejectedCuration": {
+        "properties": {
+          "curation_id": {
+            "title": "Curation Id",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "not_found",
+              "ineligible_status"
+            ],
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "curation_id",
+          "reason"
+        ],
+        "title": "RejectedCuration",
+        "type": "object"
+      },
+      "ResolveCurationsRequest": {
+        "description": "A bounded, explicitly chosen set of Curations to resolve.",
+        "properties": {
+          "curation_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Curation Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "curation_ids"
+        ],
+        "title": "ResolveCurationsRequest",
+        "type": "object"
+      },
+      "ResolveCurationsResponse": {
+        "properties": {
+          "eligible_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Eligible Ids",
+            "type": "array"
+          },
+          "rejected": {
+            "items": {
+              "$ref": "#/components/schemas/RejectedCuration"
+            },
+            "title": "Rejected",
+            "type": "array"
+          }
+        },
+        "required": [
+          "eligible_ids",
+          "rejected"
+        ],
+        "title": "ResolveCurationsResponse",
+        "type": "object"
+      },
       "ValidationError": {
         "properties": {
           "loc": {
@@ -310,6 +375,82 @@
         "summary": "Introspect",
         "tags": [
           "cms-auth"
+        ]
+      }
+    },
+    "/api/v3/catalog/curations/resolve": {
+      "post": {
+        "description": "Resolve an explicit selection for a currently authorized CMS admin.",
+        "operationId": "resolve_curation_selection_api_v3_catalog_curations_resolve_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-CMS-Actor-Id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cms-Actor-Id"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CMS-Service-Key",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "X-Cms-Service-Key"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveCurationsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolveCurationsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "Resolve Curation Selection",
+        "tags": [
+          "cms-catalog"
         ]
       }
     }

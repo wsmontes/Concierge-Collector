@@ -15,6 +15,9 @@ export const CollectionDraftChanges: CollectionConfig = {
     { name: 'targetDraftRevision', type: 'number', required: true, index: true },
     { name: 'operationId', type: 'text', required: true, index: true },
     { name: 'operationSequence', type: 'number', required: true },
+    // A worker may prepare rows long before the collection revision advances.
+    // Only the commit transaction promotes them to `committed`.
+    { name: 'stageState', type: 'select', required: true, options: ['staged', 'committed'], defaultValue: 'staged', index: true },
     { name: 'validUntilDraftRevision', type: 'number' },
   ],
 }

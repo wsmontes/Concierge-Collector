@@ -47,7 +47,29 @@ describe('Payload browser security configuration', () => {
       'delete /admin/v1/collections/:id',
       'post /admin/v1/collections/:id/archive',
       'post /admin/v1/collections/:id/restore',
+      'post /admin/v1/collections/:id/draft/operations',
+      'get /admin/v1/operations/:id',
+      'post /admin/v1/operations/:id/cancel',
     ]))
+  })
+
+  test('registers the draft mutation task on the dedicated worker config', async () => {
+    const { default: pendingConfig } = await import('../../../payload.config')
+    const config = await pendingConfig
+
+    expect(config.jobs?.tasks).toContainEqual(expect.objectContaining({
+      slug: 'apply-draft-operation',
+      retries: {
+        attempts: 3,
+        backoff: { type: 'exponential', delay: 1_000 },
+      },
+    }))
+  })
+
+  test('persists the request correlation ID required by draft-operation audits', async () => {
+    const { CollectionOperations } = await import('../../../src/payload/collections/CollectionOperations')
+
+    expect(CollectionOperations.fields).toContainEqual(expect.objectContaining({ name: 'requestId', required: true }))
   })
 
   test('denies native Payload writes while retaining bounded Payload history configuration', async () => {

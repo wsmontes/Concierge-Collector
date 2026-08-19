@@ -8,6 +8,8 @@ export interface AppendAuditEventInput {
   eventKey: string
   eventType: string
   metadata: Record<string, unknown>
+  operationId?: string
+  publicationJobId?: string
   requestId: string
 }
 

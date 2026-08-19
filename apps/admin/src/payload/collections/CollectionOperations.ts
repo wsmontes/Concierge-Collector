@@ -44,6 +44,8 @@ export const CollectionOperations: CollectionConfig = {
     { name: 'leaseExpiresAt', type: 'date', index: true },
     { name: 'fencingToken', type: 'number', required: true, defaultValue: 0 },
     { name: 'actorId', type: 'text', required: true },
+    { name: 'requestId', type: 'text', required: true },
+    { name: 'jobId', type: 'text', required: true, index: true },
     { name: 'errorCode', type: 'text' },
   ],
 }

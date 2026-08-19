@@ -59,6 +59,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v3/catalog/curations/resolve": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Resolve Curation Selection
+         * @description Resolve an explicit selection for a currently authorized CMS admin.
+         */
+        post: operations["resolve_curation_selection_api_v3_catalog_curations_resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -113,6 +133,31 @@ export interface components {
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
+        };
+        /** RejectedCuration */
+        RejectedCuration: {
+            /** Curation Id */
+            curation_id: string;
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "not_found" | "ineligible_status";
+        };
+        /**
+         * ResolveCurationsRequest
+         * @description A bounded, explicitly chosen set of Curations to resolve.
+         */
+        ResolveCurationsRequest: {
+            /** Curation Ids */
+            curation_ids: string[];
+        };
+        /** ResolveCurationsResponse */
+        ResolveCurationsResponse: {
+            /** Eligible Ids */
+            eligible_ids: string[];
+            /** Rejected */
+            rejected: components["schemas"]["RejectedCuration"][];
         };
         /** ValidationError */
         ValidationError: {
@@ -216,6 +261,42 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CmsAuthorization"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    resolve_curation_selection_api_v3_catalog_curations_resolve_post: {
+        parameters: {
+            query?: never;
+            header?: {
+                "X-CMS-Actor-Id"?: string | null;
+                "X-CMS-Service-Key"?: string | null;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["ResolveCurationsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ResolveCurationsResponse"];
                 };
             };
             /** @description Validation Error */

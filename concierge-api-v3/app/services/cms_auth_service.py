@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 import hashlib
 import secrets
 
+from bson import ObjectId
 from fastapi import HTTPException, status
 from pymongo import ReturnDocument
 from pymongo.database import Database
@@ -33,7 +34,14 @@ def _unauthorized(detail: str) -> HTTPException:
 
 def load_cms_authorization(db: Database, subject: str) -> CmsAuthorization:
     """Load the live user record and require current CMS-admin access."""
+    # CMS stores the durable operational ``user_id`` in its session. The
+    # interactive handoff begins with email, so accept both canonical lookup
+    # keys and always reload the record before authorizing a worker action.
     user = db.users.find_one({"email": subject})
+    if user is None:
+        user = db.users.find_one({"_id": subject})
+    if user is None and ObjectId.is_valid(subject):
+        user = db.users.find_one({"_id": ObjectId(subject)})
     if user is None:
         raise _unauthorized("CMS authorization subject was not found")
 

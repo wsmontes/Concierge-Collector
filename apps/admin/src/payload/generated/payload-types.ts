@@ -123,6 +123,7 @@ export interface Config {
   jobs: {
     tasks: {
       'record-worker-heartbeat': TaskRecordWorkerHeartbeat;
+      'apply-draft-operation': TaskApplyDraftOperation;
       inline: {
         input: unknown;
         output: unknown;
@@ -219,6 +220,7 @@ export interface Collection {
   draftBaseVersion?: number | null;
   draftEpoch: string;
   draftRevision: number;
+  operationSequenceCounter: number;
   draftState: 'clean' | 'dirty' | 'publishing' | 'failed';
   publishedSelectedCount: number;
   draftSelectedCount: number;
@@ -283,6 +285,7 @@ export interface CollectionDraftChange {
   targetDraftRevision: number;
   operationId: string;
   operationSequence: number;
+  stageState: 'staged' | 'committed';
   validUntilDraftRevision?: number | null;
   updatedAt: string;
   createdAt: string;
@@ -332,6 +335,8 @@ export interface CollectionOperation {
   leaseExpiresAt?: string | null;
   fencingToken: number;
   actorId: string;
+  requestId: string;
+  jobId: string;
   errorCode?: string | null;
   updatedAt: string;
   createdAt: string;
@@ -469,7 +474,7 @@ export interface PayloadJob {
     | {
         executedAt: string;
         completedAt: string;
-        taskSlug: 'inline' | 'record-worker-heartbeat';
+        taskSlug: 'inline' | 'record-worker-heartbeat' | 'apply-draft-operation';
         taskID: string;
         input?:
           | {
@@ -502,7 +507,7 @@ export interface PayloadJob {
         id?: string | null;
       }[]
     | null;
-  taskSlug?: ('inline' | 'record-worker-heartbeat') | null;
+  taskSlug?: ('inline' | 'record-worker-heartbeat' | 'apply-draft-operation') | null;
   queue?: string | null;
   waitUntil?: string | null;
   processing?: boolean | null;
@@ -679,6 +684,7 @@ export interface CollectionsSelect<T extends boolean = true> {
   draftBaseVersion?: T;
   draftEpoch?: T;
   draftRevision?: T;
+  operationSequenceCounter?: T;
   draftState?: T;
   publishedSelectedCount?: T;
   draftSelectedCount?: T;
@@ -732,6 +738,7 @@ export interface CollectionDraftChangesSelect<T extends boolean = true> {
   targetDraftRevision?: T;
   operationId?: T;
   operationSequence?: T;
+  stageState?: T;
   validUntilDraftRevision?: T;
   updatedAt?: T;
   createdAt?: T;
@@ -759,6 +766,8 @@ export interface CollectionOperationsSelect<T extends boolean = true> {
   leaseExpiresAt?: T;
   fencingToken?: T;
   actorId?: T;
+  requestId?: T;
+  jobId?: T;
   errorCode?: T;
   updatedAt?: T;
   createdAt?: T;
@@ -936,6 +945,18 @@ export interface TaskRecordWorkerHeartbeat {
   };
   output: {
     observedAt: string;
+  };
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TaskApply-draft-operation".
+ */
+export interface TaskApplyDraftOperation {
+  input: {
+    operationId: string;
+  };
+  output: {
+    status: string;
   };
 }
 /**

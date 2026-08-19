@@ -5,6 +5,8 @@ export type { components, paths } from "./generated.js";
 export type CmsAuthorization = components["schemas"]["CmsAuthorization"];
 export type CmsExchangeRequest = components["schemas"]["CmsExchangeRequest"];
 export type CmsIntrospectionRequest = components["schemas"]["CmsIntrospectionRequest"];
+export type ResolveCurationsRequest = components["schemas"]["ResolveCurationsRequest"];
+export type ResolveCurationsResponse = components["schemas"]["ResolveCurationsResponse"];
 
 type ExchangeResponse = paths["/api/v3/auth/cms/exchange"]["post"] extends {
   responses: { 200: { content: { "application/json": infer Response } } };
@@ -13,6 +15,12 @@ type ExchangeResponse = paths["/api/v3/auth/cms/exchange"]["post"] extends {
   : never;
 
 type IntrospectionResponse = paths["/api/v3/auth/cms/introspect"]["post"] extends {
+  responses: { 200: { content: { "application/json": infer Response } } };
+}
+  ? Response
+  : never;
+
+type ResolveCurationsResponseContract = paths["/api/v3/catalog/curations/resolve"]["post"] extends {
   responses: { 200: { content: { "application/json": infer Response } } };
 }
   ? Response
@@ -57,12 +65,17 @@ export class FastApiAdminClient {
     return this.post("/api/v3/auth/cms/introspect", payload);
   }
 
-  private async post<Request, Response>(path: string, payload: Request): Promise<Response> {
+  resolveCurations(payload: ResolveCurationsRequest, actorId: string): Promise<ResolveCurationsResponseContract> {
+    return this.post("/api/v3/catalog/curations/resolve", payload, { "x-cms-actor-id": actorId });
+  }
+
+  private async post<Request, Response>(path: string, payload: Request, extraHeaders: Record<string, string> = {}): Promise<Response> {
     const response = await this.fetch(`${this.baseUrl}${path}`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
         "x-cms-service-key": this.serviceKey,
+        ...extraHeaders,
       },
       body: JSON.stringify(payload),
     });
