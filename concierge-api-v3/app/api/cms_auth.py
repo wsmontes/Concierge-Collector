@@ -8,7 +8,9 @@ current authorization with its own rotating service credential.
 from datetime import datetime, timezone
 from urllib.parse import urlencode
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+import logging
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 from fastapi.responses import RedirectResponse
 from pymongo.database import Database
 
@@ -19,6 +21,7 @@ from app.models.cms_auth import CmsAuthorization, CmsExchangeRequest, CmsIntrosp
 from app.services.cms_auth_service import consume_handoff_code, issue_handoff_code, load_cms_authorization
 
 router = APIRouter(prefix="/auth/cms", tags=["cms-auth"])
+logger = logging.getLogger(__name__)
 
 
 def _human_session_subject(auth: dict) -> str:
@@ -89,3 +92,25 @@ def introspect(
 ) -> CmsAuthorization:
     """Return the live authorization for an already-authenticated CMS subject."""
     return load_cms_authorization(db, request.subject)
+
+
+@router.post("/introspect-bearer", response_model=CmsAuthorization)
+def introspect_bearer(
+    request: Request,
+    auth: dict = Depends(verify_auth),
+    _: None = Depends(verify_cms_service),
+    db: Database = Depends(get_database),
+) -> CmsAuthorization:
+    """Revalidate a Collector Bearer for the narrow CMS bridge.
+
+    This is not a general token exchange: it accepts only an interactive
+    session and only returns a currently authorized admin identity.
+    """
+    subject = _human_session_subject(auth)
+    identity = load_cms_authorization(db, subject)
+    logger.info(
+        "cms_bearer_introspection actor=%s request_id=%s decision=allowed",
+        identity.user_id,
+        request.headers.get("x-request-id", ""),
+    )
+    return identity

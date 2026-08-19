@@ -19,6 +19,9 @@ class Settings(BaseSettings):
     # MongoDB
     mongodb_url: str
     mongodb_db_name: str = "concierge-collector"
+    # Collections usa um banco lógico isolado, mas pode compartilhar o mesmo
+    # cluster/URI operacional. A API o acessa somente para a projeção pública.
+    cms_mongodb_db_name: str = "concierge-cms"
 
     # API
     api_v3_host: str = "0.0.0.0"

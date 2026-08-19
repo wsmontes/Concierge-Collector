@@ -222,3 +222,24 @@ def test_cms_introspection_accepts_the_stable_user_id_for_worker_revalidation(cm
 
     assert response.status_code == 200
     assert response.json()["user_id"] == "cms-admin-test"
+
+
+def test_cms_bearer_introspection_rejects_curator_for_collector_write(cms_client, curator_auth_headers):
+    response = cms_client.post(
+        "/api/v3/auth/cms/introspect-bearer",
+        headers={**curator_auth_headers, "X-CMS-Service-Key": "test-cms-key"},
+    )
+
+    assert response.status_code == 403
+
+
+def test_cms_bearer_introspection_logs_request_without_token(cms_client, admin_auth_headers, caplog):
+    caplog.set_level("INFO", logger="app.api.cms_auth")
+    response = cms_client.post(
+        "/api/v3/auth/cms/introspect-bearer",
+        headers={**admin_auth_headers, "X-CMS-Service-Key": "test-cms-key", "X-Request-Id": "request-1"},
+    )
+
+    assert response.status_code == 200
+    assert "request-1" in caplog.text
+    assert admin_auth_headers["Authorization"] not in caplog.text

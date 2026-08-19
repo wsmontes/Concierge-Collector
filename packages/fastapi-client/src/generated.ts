@@ -59,6 +59,29 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v3/auth/cms/introspect-bearer": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Introspect Bearer
+         * @description Revalidate a Collector Bearer for the narrow CMS bridge.
+         *
+         *     This is not a general token exchange: it accepts only an interactive
+         *     session and only returns a currently authorized admin identity.
+         */
+        post: operations["introspect_bearer_api_v3_auth_cms_introspect_bearer_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v3/catalog/curations/resolve": {
         parameters: {
             query?: never;
@@ -73,6 +96,29 @@ export interface paths {
          * @description Resolve an explicit selection for a currently authorized CMS admin.
          */
         post: operations["resolve_curation_selection_api_v3_catalog_curations_resolve_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/api/v3/curations/{curation_id}/collections": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Published Associations
+         * @description List only the currently published associations of a Curation.
+         *
+         *     The curation must still exist, while association visibility is solely
+         *     governed by the version interval and the Collection publication state.
+         */
+        get: operations["published_associations_api_v3_curations__curation_id__collections_get"];
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -182,6 +228,22 @@ export interface components {
             entity_id: string;
             /** Name */
             name: string;
+        };
+        /** PublishedCollectionAssociation */
+        PublishedCollectionAssociation: {
+            /** Collection Id */
+            collection_id: string;
+            /** Current Published Version */
+            current_published_version: number;
+            /** Slug */
+            slug: string;
+            /** Title */
+            title: string;
+        };
+        /** PublishedCollectionAssociationResponse */
+        PublishedCollectionAssociationResponse: {
+            /** Items */
+            items: components["schemas"]["PublishedCollectionAssociation"][];
         };
         /** RejectedCuration */
         RejectedCuration: {
@@ -333,6 +395,35 @@ export interface operations {
             };
         };
     };
+    introspect_bearer_api_v3_auth_cms_introspect_bearer_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CmsAuthorization"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
     resolve_curation_selection_api_v3_catalog_curations_resolve_post: {
         parameters: {
             query?: never;
@@ -355,6 +446,37 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ResolveCurationsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    published_associations_api_v3_curations__curation_id__collections_get: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                curation_id: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["PublishedCollectionAssociationResponse"];
                 };
             };
             /** @description Validation Error */

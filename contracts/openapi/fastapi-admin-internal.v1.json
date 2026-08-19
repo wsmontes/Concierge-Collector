@@ -206,6 +206,52 @@
         "title": "PublicCurationItem",
         "type": "object"
       },
+      "PublishedCollectionAssociation": {
+        "properties": {
+          "collection_id": {
+            "minLength": 1,
+            "title": "Collection Id",
+            "type": "string"
+          },
+          "current_published_version": {
+            "minimum": 1.0,
+            "title": "Current Published Version",
+            "type": "integer"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "collection_id",
+          "slug",
+          "title",
+          "current_published_version"
+        ],
+        "title": "PublishedCollectionAssociation",
+        "type": "object"
+      },
+      "PublishedCollectionAssociationResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PublishedCollectionAssociation"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "PublishedCollectionAssociationResponse",
+        "type": "object"
+      },
       "RejectedCuration": {
         "properties": {
           "curation_id": {
@@ -501,6 +547,49 @@
         ]
       }
     },
+    "/api/v3/auth/cms/introspect-bearer": {
+      "post": {
+        "description": "Revalidate a Collector Bearer for the narrow CMS bridge.\n\nThis is not a general token exchange: it accepts only an interactive\nsession and only returns a currently authorized admin identity.",
+        "operationId": "introspect_bearer_api_v3_auth_cms_introspect_bearer_post",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CmsAuthorization"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "CmsServiceKey": [],
+            "HTTPBearer": []
+          },
+          {
+            "CmsServiceKey": [],
+            "FastApiAccessCookie": []
+          }
+        ],
+        "summary": "Introspect Bearer",
+        "tags": [
+          "cms-auth"
+        ]
+      }
+    },
     "/api/v3/catalog/curations/resolve": {
       "post": {
         "description": "Resolve an explicit selection for a currently authorized CMS admin.",
@@ -555,6 +644,57 @@
         "summary": "Resolve Curation Selection",
         "tags": [
           "cms-catalog"
+        ]
+      }
+    },
+    "/api/v3/curations/{curation_id}/collections": {
+      "get": {
+        "description": "List only the currently published associations of a Curation.\n\nThe curation must still exist, while association visibility is solely\ngoverned by the version interval and the Collection publication state.",
+        "operationId": "published_associations_api_v3_curations__curation_id__collections_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "curation_id",
+            "required": true,
+            "schema": {
+              "title": "Curation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublishedCollectionAssociationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "FastApiAccessCookie": []
+          }
+        ],
+        "summary": "Published Associations",
+        "tags": [
+          "collections"
         ]
       }
     },

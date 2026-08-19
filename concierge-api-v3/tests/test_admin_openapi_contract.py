@@ -18,13 +18,17 @@ def test_admin_contract_contains_only_approved_cms_boundary():
         "/api/v3/auth/cms/authorize",
         "/api/v3/auth/cms/exchange",
         "/api/v3/auth/cms/introspect",
+        "/api/v3/auth/cms/introspect-bearer",
         "/api/v3/catalog/curations/resolve",
+        "/api/v3/curations/{curation_id}/collections",
         "/api/v3/internal/curations/hydrate",
     }
     assert set(document["components"]["schemas"]) == {
         "CmsAuthorization",
         "CmsExchangeRequest",
         "CmsIntrospectionRequest",
+        "PublishedCollectionAssociation",
+        "PublishedCollectionAssociationResponse",
         "HydrateCurationsRequest",
         "HydrateCurationsResponse",
         "HTTPValidationError",
@@ -52,6 +56,14 @@ def test_admin_contract_contains_only_approved_cms_boundary():
         operation = document["paths"][path]["post"]
         assert operation["security"] == [{"CmsServiceKey": []}]
         assert all(parameter["name"] != "X-CMS-Service-Key" for parameter in operation.get("parameters", []))
+    assert document["paths"]["/api/v3/auth/cms/introspect-bearer"]["post"]["security"] == [
+        {"HTTPBearer": [], "CmsServiceKey": []},
+        {"FastApiAccessCookie": [], "CmsServiceKey": []},
+    ]
+    assert document["paths"]["/api/v3/curations/{curation_id}/collections"]["get"]["security"] == [
+        {"HTTPBearer": []},
+        {"FastApiAccessCookie": []},
+    ]
 
 
 def test_reachable_schemas_follows_nested_references():

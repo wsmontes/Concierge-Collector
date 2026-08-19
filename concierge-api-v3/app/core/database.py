@@ -61,6 +61,17 @@ def get_database() -> Database:
     return _client[settings.mongodb_db_name]
 
 
+def get_cms_database() -> Database:
+    """Return the logically isolated CMS database through the existing client.
+
+    The API uses this dependency only for read-only published-Collection
+    projections. Writes remain owned by the Payload Admin worker.
+    """
+    if _client is None:
+        raise RuntimeError("MongoDB not connected")
+    return _client[settings.cms_mongodb_db_name]
+
+
 def _ensure_indexes():
     """Create indexes if they don't exist — one try/except PER INDEX.
 
