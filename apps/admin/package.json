@@ -1,0 +1,42 @@
+{
+  "name": "@concierge/admin",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22 <23"
+  },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start --hostname 0.0.0.0",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run -c vitest.unit.config.ts",
+    "test:integration": "vitest run -c vitest.integration.config.ts",
+    "test:e2e": "playwright test",
+    "generate:types": "payload generate:types",
+    "generate:importmap": "payload generate:importmap"
+  },
+  "dependencies": {
+    "@payloadcms/db-mongodb": "3.86.0",
+    "@payloadcms/next": "3.86.0",
+    "next": "16.2.12",
+    "payload": "3.86.0",
+    "react": "19.2.6",
+    "react-dom": "19.2.6"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1",
+    "@testing-library/dom": "10.4.1",
+    "@testing-library/jest-dom": "6.9.1",
+    "@testing-library/react": "16.3.2",
+    "@types/node": "22.18.0",
+    "@types/react": "19.2.18",
+    "@types/react-dom": "19.2.4",
+    "eslint": "9.39.1",
+    "eslint-config-next": "16.2.12",
+    "jsdom": "26.1.0",
+    "typescript": "5.9.3",
+    "vitest": "4.1.1"
+  }
+}

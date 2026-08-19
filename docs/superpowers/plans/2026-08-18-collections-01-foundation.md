@@ -6,7 +6,7 @@
 
 **Architecture:** A raiz passa a ser um npm workspace incremental e continua publicando o Collector estático. `apps/admin` possui o banco lógico `concierge-cms`, rotas Payload e jobs; web e worker compartilham código/lockfile, mas são processos distintos.
 
-**Tech Stack:** Node.js 22, npm 10.9.2 workspaces, Payload 3.86.0, `@payloadcms/next` 3.86.0, `@payloadcms/db-mongodb` 3.86.0, Next.js 16.2.12, React 19.2.6, TypeScript 5.9.3, Vitest 4.1.1, MongoDB.
+**Tech Stack:** Node.js 22, npm 10.9.2 workspaces, Payload 3.86.0, `@payloadcms/next` 3.86.0, `@payloadcms/db-mongodb` 3.86.0, Next.js 16.2.12, React 19.2.6, TypeScript 5.9.3, Vitest 4.1.1, ESLint 9.39.1, MongoDB.
 
 **Spec:** `docs/superpowers/specs/2026-08-18-collections-payload-cms-design.md`
 
@@ -215,7 +215,7 @@ Run na raiz:
 
 ```bash
 npm install --workspace=@concierge/admin --save-exact payload@3.86.0 @payloadcms/next@3.86.0 @payloadcms/db-mongodb@3.86.0 next@16.2.12 react@19.2.6 react-dom@19.2.6
-npm install --workspace=@concierge/admin --save-dev --save-exact typescript@5.9.3 vitest@4.1.1 @playwright/test@1.62.1 eslint@10.8.1 eslint-config-next@16.2.12 jsdom@26.1.0 @testing-library/react@16.3.2 @testing-library/dom@10.4.1 @testing-library/jest-dom@6.9.1 @types/node@22.18.0 @types/react@19.2.18 @types/react-dom@19.2.4
+npm install --workspace=@concierge/admin --save-dev --save-exact typescript@5.9.3 vitest@4.1.1 @playwright/test@1.62.1 eslint@9.39.1 eslint-config-next@16.2.12 jsdom@26.1.0 @testing-library/react@16.3.2 @testing-library/dom@10.4.1 @testing-library/jest-dom@6.9.1 @types/node@22.18.0 @types/react@19.2.18 @types/react-dom@19.2.4
 npm run test:admin -- --run tests/unit/env.test.ts
 ```
 
