@@ -26,7 +26,9 @@
     "test:admin:integration": "npm run test:integration --workspace=@concierge/admin",
     "test:e2e": "npm run test:e2e --workspace=@concierge/admin",
     "lint:admin": "npm run lint --workspace=@concierge/admin",
-    "typecheck:admin": "npm run typecheck --workspace=@concierge/admin"
+    "typecheck:admin": "npm run typecheck --workspace=@concierge/admin",
+    "generate:contracts": "cd concierge-api-v3 && venv/bin/python scripts/export_admin_openapi.py && cd .. && npm run generate --workspace=@concierge/fastapi-client",
+    "check:contracts": "cd concierge-api-v3 && venv/bin/python scripts/export_admin_openapi.py --check && cd .. && npm run check --workspace=@concierge/fastapi-client"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^1.6.1",
@@ -40,7 +42,7 @@
     "vitest": "^1.0.4"
   },
   "engines": {
-    "node": ">=22 <23",
+    "node": ">=22.12 <23",
     "npm": ">=10 <11"
   },
   "dependencies": {
