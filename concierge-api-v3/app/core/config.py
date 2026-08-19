@@ -22,6 +22,10 @@ class Settings(BaseSettings):
     # Collections usa um banco lógico isolado, mas pode compartilhar o mesmo
     # cluster/URI operacional. A API o acessa somente para a projeção pública.
     cms_mongodb_db_name: str = "concierge-cms"
+    # URI de leitura segregada para distribuição a consumidores. Em produção
+    # esse usuário recebe apenas find no banco CMS; a API nunca é dona de
+    # mutations nem de índices desse namespace.
+    cms_mongodb_read_url: str = ""
 
     # API
     api_v3_host: str = "0.0.0.0"
@@ -160,6 +164,10 @@ class Settings(BaseSettings):
     @property
     def cms_service_key_value(self) -> str:
         return self._required_cms_setting(self.cms_service_key, "CMS_SERVICE_KEY")
+
+    @property
+    def cms_mongodb_read_url_value(self) -> str:
+        return self._required_cms_setting(self.cms_mongodb_read_url, "CMS_MONGODB_READ_URL")
 
     @property
     def metrics_key_value(self) -> str:
