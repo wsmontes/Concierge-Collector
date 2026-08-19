@@ -123,7 +123,6 @@ class TestSystemEndpoints:
     def test_global_exception_handler_does_not_leak_details(self, client, auth_headers):
         """O exception handler global nao deve expor detalhes internos no body."""
         from unittest.mock import patch
-        from pymongo.collection import Collection
 
         # The session-scoped client has raise_server_exceptions=True (default),
         # so ServerErrorMiddleware re-raises after sending the 500.
@@ -132,11 +131,7 @@ class TestSystemEndpoints:
         from starlette.testclient import TestClient
         from main import app
 
-        with patch.object(
-            Collection,
-            "find_one",
-            side_effect=RuntimeError("Something broke internally"),
-        ):
+        with patch("app.api.curations.find_curation", side_effect=RuntimeError("Something broke internally")):
             with TestClient(app, raise_server_exceptions=False) as tc:
                 # login-gate (2026-08-15): a rota de leitura exige auth — o
                 # crash mockado só é alcançado autenticado

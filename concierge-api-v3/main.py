@@ -22,6 +22,7 @@ from app.api import (
     ai,
     concepts,
     auth,
+    cms_auth,
     llm_gateway,
     openai_compat,
     capture,
@@ -57,7 +58,13 @@ def _cors_origins_safe(origins=None):
     `origins` é injetável nos testes; em runtime usa settings.cors_origins_list.
     """
     if origins is None:
-        origins = settings.cors_origins_list
+        origins = list(settings.cors_origins_list)
+        # O Admin é uma origem conhecida/configurada, não um wildcard ou uma
+        # reflection do header Origin. Em produção a property é fail-closed se
+        # CMS_ADMIN_ORIGIN estiver ausente.
+        admin_origin = settings.cms_admin_origin_value
+        if admin_origin and admin_origin not in origins:
+            origins.append(admin_origin)
     if "*" in origins:
         raise RuntimeError(
             "CORS_ORIGINS contém '*' — inseguro com allow_credentials=True; "
@@ -98,6 +105,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # Include routers with /api/v3 prefix
 app.include_router(system.router, prefix="/api/v3")
+app.include_router(cms_auth.router, prefix="/api/v3")
 app.include_router(auth.router, prefix="/api/v3")
 app.include_router(entities.router, prefix="/api/v3")
 app.include_router(curations.router, prefix="/api/v3")

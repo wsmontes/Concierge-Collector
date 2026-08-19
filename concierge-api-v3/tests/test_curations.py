@@ -1329,6 +1329,7 @@ def test_hybrid_search_escapes_location_regex(location):
             os.environ["OPENAI_API_KEY"] = old_key
 
 
+@pytest.mark.mongo
 def test_create_curation_denormalizes_city_type(client, test_db, clean_test_entities, clean_test_curations):
     test_db.entities.insert_one(
         {
