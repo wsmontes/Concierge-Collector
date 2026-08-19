@@ -53,7 +53,7 @@
     <link rel="stylesheet" href="styles/design-system.css?v=20260816-2">
 
     <!-- 2. Component Library (reusable components) -->
-    <link rel="stylesheet" href="styles/components.css?v=20260818-2">
+    <link rel="stylesheet" href="styles/components.css?v=20260818-3">
 
     <!-- 3. Application-specific Styles -->
     <link rel="stylesheet" href="styles/application.css?v=20260816-1">
@@ -540,16 +540,6 @@
             </div>
     </section>
 
-    <!-- Add a Place Button (starts hidden, revealed by switchView('list'))
-         — linguagem de tarefa: o usuário quer ADICIONAR um lugar, não
-         "encontrar uma entidade" (entidade é arquitetura do modelo) -->
-    <div class="mb-6">
-        <button id="find-entity-btn" class="btn btn-primary btn-lg w-full mb-4 hidden">
-            <span class="material-icons mr-2" aria-hidden="true">search</span>
-            <span class="font-medium">Add a Place</span>
-        </button>
-    </div>
-
     <!-- Entities Section (Restaurants, Bars, Hotels, etc.) -->
     <section id="entities-section" class="panel collection-panel hidden">
         <!-- Cabeçalho editorial: ícone circular suave + título serif +
@@ -564,6 +554,20 @@
                 <h2 class="page-head__title">My Collection</h2>
                 <p class="page-head__subtitle">Manage your curations and entities</p>
             </div>
+            <!-- Add a Place: ação da coleção, ancorada à direita da própria
+                 linha do título. Antes era um botão full-width solto ACIMA do
+                 painel, desligado do conteúdo que afeta.
+                 Linguagem de tarefa preservada: o usuário quer ADICIONAR um
+                 lugar, não "encontrar uma entidade" (entidade é arquitetura
+                 do modelo). Segue nascendo `hidden` — quem revela é
+                 switchView('list') (uiManager.js:2941), que só alterna a
+                 classe e acessa o elemento por id, então mover não muda nada.
+                 aria-label fixo porque o rótulo some abaixo de 430px. -->
+            <button id="find-entity-btn" type="button" aria-label="Add a Place"
+                class="btn btn-primary btn-md page-head__action hidden">
+                <span class="material-icons" aria-hidden="true">search</span>
+                <span class="page-head__action-label">Add a Place</span>
+            </button>
         </div>
 
         <!-- Tab Navigation: área inteira clicável, underline oliva na ativa -->
