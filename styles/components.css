@@ -2612,6 +2612,30 @@
   }
 }
 
+/* Ação da linha de título ("Add a Place"). O .page-head__text tem flex: 1,
+   então já empurraria o botão para a direita; o margin-left: auto mantém o
+   alinhamento mesmo se aquele flex mudar. flex-shrink: 0 impede que ele
+   encolha junto com o texto — o .btn é white-space: nowrap e ficaria com o
+   rótulo cortado. */
+.page-head__action {
+  flex-shrink: 0;
+  margin-left: auto;
+}
+
+/* Na mesma largura em que o subtítulo some, a ação vira só ícone: o rótulo
+   competiria com o título serif na mesma linha. O nome acessível não se
+   perde — o botão tem aria-label fixo no HTML. */
+@media (max-width: 430px) {
+  .page-head__action .page-head__action-label {
+    display: none;
+  }
+
+  .page-head__action {
+    padding-left: var(--spacing-3);
+    padding-right: var(--spacing-3);
+  }
+}
+
 /* Pill de sync em atividade — estilizada por ID porque o JS
    (updateSyncActivityIndicator) RESETA as classes a cada update */
 /* Overlay independente, fora do fluxo: fixo no canto inferior esquerdo
