@@ -49,6 +49,10 @@ describe('Payload browser security configuration', () => {
       'post /admin/v1/collections/:id/restore',
       'post /admin/v1/collections/:id/draft/operations',
       'post /admin/v1/collections/:id/publish',
+      'get /admin/v1/collections/:id/members',
+      'get /admin/v1/collections/:id/draft/diff',
+      'get /admin/v1/collections/:id/versions',
+      'get /admin/v1/collections/:id/activity',
       'get /admin/v1/operations/:id',
       'post /admin/v1/operations/:id/cancel',
     ]))

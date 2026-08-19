@@ -41,6 +41,59 @@
   margin: 0;
 }
 
+.collection-views {
+  display: grid;
+  gap: 1rem;
+  margin: 0 auto;
+  max-width: 1100px;
+  padding: 1.5rem;
+}
+
+.collection-views__header {
+  align-items: start;
+  display: flex;
+  gap: 1rem;
+  justify-content: space-between;
+}
+
+.collection-views__header h1,
+.collection-views__header p {
+  margin: 0;
+}
+
+.collection-views__eyebrow {
+  color: var(--cms-olive-700);
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.collection-views [role='tablist'] {
+  border-bottom: 1px solid var(--theme-border-color);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.collection-views [role='tab'] {
+  background: transparent;
+  border: 0;
+  color: var(--theme-text);
+  padding: 0.5rem 0.75rem;
+}
+
+.collection-views [role='tab'][aria-selected='true'] {
+  border-bottom: 3px solid var(--cms-olive-700);
+  font-weight: 700;
+}
+
+.collection-views__panel {
+  background: var(--theme-elevation-50);
+  border: 1px solid var(--theme-border-color);
+  padding: 1rem;
+}
+
 :where(a, button, input, select, textarea):focus-visible {
   outline: 2px solid #596f42;
   outline-offset: 2px;
