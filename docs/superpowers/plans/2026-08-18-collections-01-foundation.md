@@ -284,11 +284,10 @@ Criar o layout Payload com o padrão oficial:
 import type { ServerFunctionClient } from 'payload'
 import '@payloadcms/next/css'
 import config from '@payload-config'
-import { generatePayloadViewport, handleServerFunctions, RootLayout } from '@payloadcms/next/layouts'
+import { handleServerFunctions, RootLayout } from '@payloadcms/next/layouts'
 import type { ReactNode } from 'react'
 import { importMap } from './admin/importMap.js'
 
-export const generateViewport = generatePayloadViewport
 const serverFunction: ServerFunctionClient = async (args) => {
   'use server'
   return handleServerFunctions({ ...args, config, importMap })
@@ -315,14 +314,31 @@ export default function Page({ params, searchParams }: Args) {
 
 // app/(payload)/api/[...slug]/route.ts
 import config from '@payload-config'
-import { REST_DELETE, REST_GET, REST_OPTIONS, REST_PATCH, REST_POST, REST_PUT } from '@payloadcms/next/routes'
-export const GET = REST_GET(config)
-export const POST = REST_POST(config)
-export const DELETE = REST_DELETE(config)
-export const PATCH = REST_PATCH(config)
-export const PUT = REST_PUT(config)
-export const OPTIONS = REST_OPTIONS(config)
+import { handleEndpoints } from 'payload'
+import { formatAdminURL } from 'payload/shared'
+
+type RouteContext = { params: Promise<{ slug?: string[] }> }
+async function handle(request: Request, { params }: RouteContext): Promise<Response> {
+  const awaitedConfig = await config
+  const { slug } = await params
+  return handleEndpoints({
+    config: awaitedConfig,
+    request,
+    path: formatAdminURL({
+      apiRoute: awaitedConfig.routes.api,
+      path: slug ? `/${slug.map(encodeURIComponent).join('/')}` : undefined,
+    }),
+  })
+}
+export const GET = handle
+export const POST = handle
+export const DELETE = handle
+export const PATCH = handle
+export const PUT = handle
+export const OPTIONS = handle
 ```
+
+Em Payload 3.86.0, não importar `@payloadcms/next/routes`: o barrel reexporta o handler GraphQL e força o peer `graphql` durante o build. O handler acima usa apenas as APIs públicas REST de `payload` e `payload/shared`, preservando a proibição de GraphQL desta fase.
 
 Criar o `not-found.tsx` no mesmo contrato gerado pelo Payload:
 

@@ -1,0 +1,57 @@
+:root {
+  --cms-limestone-50: #f8f6ee;
+  --cms-limestone-100: #efeadb;
+  --cms-limestone-200: #ded4bb;
+  --cms-olive-700: #374636;
+  --cms-olive-800: #273626;
+  --cms-olive-900: #182618;
+  --theme-elevation-0: var(--cms-limestone-50);
+  --theme-elevation-50: var(--cms-limestone-100);
+  --theme-elevation-100: var(--cms-limestone-200);
+  --theme-text: var(--cms-olive-900);
+  --theme-elevation-900: var(--cms-olive-900);
+  --theme-success-500: var(--cms-olive-700);
+  --theme-border-color: #a99f86;
+}
+
+.cms-brand {
+  color: var(--cms-olive-800);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.cms-nav-group {
+  border-top: 1px solid var(--theme-border-color);
+  margin-top: 1rem;
+  padding-top: 1rem;
+}
+
+.cms-nav-group h2 {
+  color: var(--cms-olive-800);
+  font-size: 0.75rem;
+  letter-spacing: 0.08em;
+  margin: 0 0 0.5rem;
+  text-transform: uppercase;
+}
+
+.cms-nav-group p {
+  color: #4a5143;
+  font-size: 0.875rem;
+  line-height: 1.4;
+  margin: 0;
+}
+
+:where(a, button, input, select, textarea):focus-visible {
+  outline: 2px solid #596f42;
+  outline-offset: 2px;
+}
+
+:where(a, button, input, select, textarea) {
+  min-height: 40px;
+}
+
+@media (prefers-contrast: more) {
+  :root {
+    --theme-border-color: var(--cms-olive-900);
+  }
+}
