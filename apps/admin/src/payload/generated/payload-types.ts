@@ -79,6 +79,8 @@ export interface Config {
     'collection-operation-items': CollectionOperationItem;
     'collection-publish-jobs': CollectionPublishJob;
     'audit-events': AuditEvent;
+    'consumer-applications': ConsumerApplication;
+    'consumer-credentials': ConsumerCredential;
     'payload-kv': PayloadKv;
     'payload-jobs': PayloadJob;
     'payload-locked-documents': PayloadLockedDocument;
@@ -99,6 +101,8 @@ export interface Config {
     'collection-operation-items': CollectionOperationItemsSelect<false> | CollectionOperationItemsSelect<true>;
     'collection-publish-jobs': CollectionPublishJobsSelect<false> | CollectionPublishJobsSelect<true>;
     'audit-events': AuditEventsSelect<false> | AuditEventsSelect<true>;
+    'consumer-applications': ConsumerApplicationsSelect<false> | ConsumerApplicationsSelect<true>;
+    'consumer-credentials': ConsumerCredentialsSelect<false> | ConsumerCredentialsSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-jobs': PayloadJobsSelect<false> | PayloadJobsSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
@@ -406,6 +410,8 @@ export interface AuditEvent {
   actorId: string;
   requestId: string;
   collectionId?: string | null;
+  applicationId?: string | null;
+  credentialId?: string | null;
   operationId?: string | null;
   publicationJobId?: string | null;
   beforeRevision?: number | null;
@@ -419,6 +425,44 @@ export interface AuditEvent {
     | number
     | boolean
     | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "consumer-applications".
+ */
+export interface ConsumerApplication {
+  id: string;
+  name: string;
+  owner: string;
+  status: 'active' | 'suspended';
+  allowedCollectionIds: {
+    collectionId: string;
+    id?: string | null;
+  }[];
+  defaultRequestsPerMinute: number;
+  credentialsRevision: number;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "consumer-credentials".
+ */
+export interface ConsumerCredential {
+  id: string;
+  applicationId: string;
+  name: string;
+  prefix: string;
+  secretHash: string;
+  scopes: 'collections:read'[];
+  status: 'active' | 'revoked';
+  createdBy: string;
+  expiresAt?: string | null;
+  revokedAt?: string | null;
+  revokedBy?: string | null;
+  lastUsedAt?: string | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -594,6 +638,14 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'audit-events';
         value: string | AuditEvent;
+      } | null)
+    | ({
+        relationTo: 'consumer-applications';
+        value: string | ConsumerApplication;
+      } | null)
+    | ({
+        relationTo: 'consumer-credentials';
+        value: string | ConsumerCredential;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -841,11 +893,51 @@ export interface AuditEventsSelect<T extends boolean = true> {
   actorId?: T;
   requestId?: T;
   collectionId?: T;
+  applicationId?: T;
+  credentialId?: T;
   operationId?: T;
   publicationJobId?: T;
   beforeRevision?: T;
   afterRevision?: T;
   metadata?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "consumer-applications_select".
+ */
+export interface ConsumerApplicationsSelect<T extends boolean = true> {
+  name?: T;
+  owner?: T;
+  status?: T;
+  allowedCollectionIds?:
+    | T
+    | {
+        collectionId?: T;
+        id?: T;
+      };
+  defaultRequestsPerMinute?: T;
+  credentialsRevision?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "consumer-credentials_select".
+ */
+export interface ConsumerCredentialsSelect<T extends boolean = true> {
+  applicationId?: T;
+  name?: T;
+  prefix?: T;
+  secretHash?: T;
+  scopes?: T;
+  status?: T;
+  createdBy?: T;
+  expiresAt?: T;
+  revokedAt?: T;
+  revokedBy?: T;
+  lastUsedAt?: T;
   updatedAt?: T;
   createdAt?: T;
 }

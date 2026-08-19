@@ -4,7 +4,9 @@ export interface AppendAuditEventInput {
   actorId: string
   afterRevision?: number
   beforeRevision?: number
-  collectionId: string
+  collectionId?: string
+  applicationId?: string
+  credentialId?: string
   eventKey: string
   eventType: string
   metadata: Record<string, unknown>

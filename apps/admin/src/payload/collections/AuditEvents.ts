@@ -11,6 +11,8 @@ export const AuditEvents: CollectionConfig = {
     { name: 'actorId', type: 'text', required: true, index: true },
     { name: 'requestId', type: 'text', required: true },
     { name: 'collectionId', type: 'text', index: true },
+    { name: 'applicationId', type: 'text', index: true },
+    { name: 'credentialId', type: 'text', index: true },
     { name: 'operationId', type: 'text' },
     { name: 'publicationJobId', type: 'text' },
     { name: 'beforeRevision', type: 'number' },

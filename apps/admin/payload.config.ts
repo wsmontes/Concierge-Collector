@@ -19,6 +19,8 @@ import {
   CollectionPublishJobs,
   CollectionVersions,
   Collections,
+  ConsumerApplications,
+  ConsumerCredentials,
   CmsLoginStates,
   CmsSessions,
   CmsUsers,
@@ -78,6 +80,8 @@ export default buildConfig({
     CollectionOperationItems,
     CollectionPublishJobs,
     AuditEvents,
+    ConsumerApplications,
+    ConsumerCredentials,
   ],
   endpoints: [...collectionEndpoints(), ...collectionReadEndpoints(), ...collectorCollectionEndpoints(), ...operationEndpoints(), ...publishingEndpoints()],
   jobs: {
