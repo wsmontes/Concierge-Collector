@@ -35,6 +35,10 @@ ALLOWED_PATHS = {
 # leaking the broader implementation dependency into this contract.
 HUMAN_SESSION_SECURITY = [{"HTTPBearer": []}, {"FastApiAccessCookie": []}]
 CMS_SERVICE_SECURITY = [{"CmsServiceKey": []}]
+COLLECTOR_BEARER_SECURITY = [
+    {"HTTPBearer": [], "CmsServiceKey": []},
+    {"FastApiAccessCookie": [], "CmsServiceKey": []},
+]
 CMS_SECURITY_SCHEMES = {
     "CmsServiceKey": {"type": "apiKey", "in": "header", "name": "X-CMS-Service-Key"},
     "FastApiAccessCookie": {"type": "apiKey", "in": "cookie", "name": "access_token"},
@@ -105,6 +109,9 @@ def normalize_selected_operations(paths: dict[str, Any]) -> dict[str, Any]:
     authorize = normalized.get("/api/v3/auth/cms/authorize", {}).get("get")
     if authorize is not None:
         authorize["security"] = HUMAN_SESSION_SECURITY
+    associations = normalized.get("/api/v3/curations/{curation_id}/collections", {}).get("get")
+    if associations is not None:
+        associations["security"] = HUMAN_SESSION_SECURITY
     for path in (
         "/api/v3/auth/cms/exchange",
         "/api/v3/auth/cms/introspect",
@@ -125,6 +132,12 @@ def normalize_selected_operations(paths: dict[str, Any]) -> dict[str, Any]:
             if parameter.get("name") == "X-CMS-Actor-Id":
                 parameter["required"] = True
                 parameter["schema"] = {"type": "string"}
+    collector_bearer = normalized.get("/api/v3/auth/cms/introspect-bearer", {}).get("post")
+    if collector_bearer is not None:
+        collector_bearer["security"] = COLLECTOR_BEARER_SECURITY
+        collector_bearer["parameters"] = [
+            parameter for parameter in collector_bearer.get("parameters", []) if parameter.get("name") != "X-CMS-Service-Key"
+        ]
     return normalized
 
 

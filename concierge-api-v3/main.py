@@ -32,6 +32,7 @@ from app.api import (
     curators,
     og_image,
     metrics,
+    collection_associations,
 )
 
 # Create FastAPI application
@@ -113,6 +114,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 app.include_router(system.router, prefix="/api/v3")
 app.include_router(metrics.router, prefix="/api/v3")
 app.include_router(cms_auth.router, prefix="/api/v3")
+app.include_router(collection_associations.router, prefix="/api/v3")
 app.include_router(catalog.router, prefix="/api/v3")
 app.include_router(internal_curations.router, prefix="/api/v3")
 app.include_router(auth.router, prefix="/api/v3")
