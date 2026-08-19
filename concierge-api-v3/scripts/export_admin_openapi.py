@@ -105,7 +105,12 @@ def normalize_selected_operations(paths: dict[str, Any]) -> dict[str, Any]:
     authorize = normalized.get("/api/v3/auth/cms/authorize", {}).get("get")
     if authorize is not None:
         authorize["security"] = HUMAN_SESSION_SECURITY
-    for path in ("/api/v3/auth/cms/exchange", "/api/v3/auth/cms/introspect"):
+    for path in (
+        "/api/v3/auth/cms/exchange",
+        "/api/v3/auth/cms/introspect",
+        "/api/v3/catalog/curations/resolve",
+        "/api/v3/internal/curations/hydrate",
+    ):
         operation = normalized.get(path, {}).get("post")
         if operation is None:
             continue
@@ -114,10 +119,12 @@ def normalize_selected_operations(paths: dict[str, Any]) -> dict[str, Any]:
         # while the dependency rejects a missing header. The OpenAPI security
         # scheme is the authoritative representation for this boundary.
         operation["parameters"] = [
-            parameter
-            for parameter in operation.get("parameters", [])
-            if parameter.get("name") != "X-CMS-Service-Key"
+            parameter for parameter in operation.get("parameters", []) if parameter.get("name") != "X-CMS-Service-Key"
         ]
+        for parameter in operation["parameters"]:
+            if parameter.get("name") == "X-CMS-Actor-Id":
+                parameter["required"] = True
+                parameter["schema"] = {"type": "string"}
     return normalized
 
 

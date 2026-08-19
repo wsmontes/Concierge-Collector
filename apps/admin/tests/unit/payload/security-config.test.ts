@@ -48,6 +48,7 @@ describe('Payload browser security configuration', () => {
       'post /admin/v1/collections/:id/archive',
       'post /admin/v1/collections/:id/restore',
       'post /admin/v1/collections/:id/draft/operations',
+      'post /admin/v1/collections/:id/publish',
       'get /admin/v1/operations/:id',
       'post /admin/v1/operations/:id/cancel',
     ]))
@@ -63,6 +64,10 @@ describe('Payload browser security configuration', () => {
         attempts: 3,
         backoff: { type: 'exponential', delay: 1_000 },
       },
+    }))
+    expect(config.jobs?.tasks).toContainEqual(expect.objectContaining({
+      slug: 'publish-collection',
+      retries: { attempts: 3, backoff: { type: 'exponential', delay: 1_000 } },
     }))
   })
 

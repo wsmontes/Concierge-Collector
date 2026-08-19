@@ -4,8 +4,10 @@ import { readEnv } from './src/env'
 import { approvedBrowserOrigins } from './src/auth/access'
 import { recordWorkerHeartbeat } from './src/jobs/recordWorkerHeartbeat'
 import { applyDraftOperationTask } from './src/jobs/applyDraftOperationTask'
+import { publishCollectionTask } from './src/jobs/publishCollectionTask'
 import { collectionEndpoints } from './src/payload/endpoints/collections'
 import { operationEndpoints } from './src/payload/endpoints/operations'
+import { publishingEndpoints } from './src/payload/endpoints/publishing'
 import {
   AuditEvents,
   CollectionDraftChanges,
@@ -75,7 +77,7 @@ export default buildConfig({
     CollectionPublishJobs,
     AuditEvents,
   ],
-  endpoints: [...collectionEndpoints(), ...operationEndpoints()],
+  endpoints: [...collectionEndpoints(), ...operationEndpoints(), ...publishingEndpoints()],
   jobs: {
     access: {
       cancel: () => false,
@@ -83,7 +85,7 @@ export default buildConfig({
       run: () => false,
     },
     processingOrder: 'createdAt',
-    tasks: [recordWorkerHeartbeat, applyDraftOperationTask],
+    tasks: [recordWorkerHeartbeat, applyDraftOperationTask, publishCollectionTask],
   },
   typescript: {
     outputFile: './src/payload/generated/payload-types.ts',

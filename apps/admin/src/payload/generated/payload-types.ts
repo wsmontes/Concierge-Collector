@@ -124,6 +124,7 @@ export interface Config {
     tasks: {
       'record-worker-heartbeat': TaskRecordWorkerHeartbeat;
       'apply-draft-operation': TaskApplyDraftOperation;
+      'publish-collection': TaskPublishCollection;
       inline: {
         input: unknown;
         output: unknown;
@@ -220,6 +221,7 @@ export interface Collection {
   draftBaseVersion?: number | null;
   draftEpoch: string;
   draftRevision: number;
+  publishFencingToken: number;
   operationSequenceCounter: number;
   draftState: 'clean' | 'dirty' | 'publishing' | 'failed';
   publishedSelectedCount: number;
@@ -365,9 +367,19 @@ export interface CollectionPublishJob {
   collectionId: string;
   fixedDraftEpoch: string;
   fixedDraftRevision: number;
+  fixedCollectionRevision: number;
   baseVersion?: number | null;
   targetVersion: number;
-  status: 'queued' | 'running' | 'committing' | 'completed' | 'failed' | 'cancelled' | 'stale';
+  status:
+    | 'queued'
+    | 'running'
+    | 'committing'
+    | 'completed'
+    | 'failed'
+    | 'cancelled'
+    | 'stale'
+    | 'conflicted'
+    | 'authorization_revoked';
   checkpoint?: ('locked' | 'intervals_applied' | 'version_ready' | 'validated' | 'promoted') | null;
   selectedCount?: number | null;
   membershipHash?: string | null;
@@ -375,6 +387,11 @@ export interface CollectionPublishJob {
   leaseExpiresAt?: string | null;
   fencingToken: number;
   actorId: string;
+  requestId: string;
+  idempotencyKey: string;
+  requestHash: string;
+  payloadJobId: string;
+  confirmedUnavailableCount: number;
   updatedAt: string;
   createdAt: string;
 }
@@ -474,7 +491,7 @@ export interface PayloadJob {
     | {
         executedAt: string;
         completedAt: string;
-        taskSlug: 'inline' | 'record-worker-heartbeat' | 'apply-draft-operation';
+        taskSlug: 'inline' | 'record-worker-heartbeat' | 'apply-draft-operation' | 'publish-collection';
         taskID: string;
         input?:
           | {
@@ -507,7 +524,7 @@ export interface PayloadJob {
         id?: string | null;
       }[]
     | null;
-  taskSlug?: ('inline' | 'record-worker-heartbeat' | 'apply-draft-operation') | null;
+  taskSlug?: ('inline' | 'record-worker-heartbeat' | 'apply-draft-operation' | 'publish-collection') | null;
   queue?: string | null;
   waitUntil?: string | null;
   processing?: boolean | null;
@@ -684,6 +701,7 @@ export interface CollectionsSelect<T extends boolean = true> {
   draftBaseVersion?: T;
   draftEpoch?: T;
   draftRevision?: T;
+  publishFencingToken?: T;
   operationSequenceCounter?: T;
   draftState?: T;
   publishedSelectedCount?: T;
@@ -794,6 +812,7 @@ export interface CollectionPublishJobsSelect<T extends boolean = true> {
   collectionId?: T;
   fixedDraftEpoch?: T;
   fixedDraftRevision?: T;
+  fixedCollectionRevision?: T;
   baseVersion?: T;
   targetVersion?: T;
   status?: T;
@@ -804,6 +823,11 @@ export interface CollectionPublishJobsSelect<T extends boolean = true> {
   leaseExpiresAt?: T;
   fencingToken?: T;
   actorId?: T;
+  requestId?: T;
+  idempotencyKey?: T;
+  requestHash?: T;
+  payloadJobId?: T;
+  confirmedUnavailableCount?: T;
   updatedAt?: T;
   createdAt?: T;
 }
@@ -954,6 +978,18 @@ export interface TaskRecordWorkerHeartbeat {
 export interface TaskApplyDraftOperation {
   input: {
     operationId: string;
+  };
+  output: {
+    status: string;
+  };
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TaskPublish-collection".
+ */
+export interface TaskPublishCollection {
+  input: {
+    publishJobId: string;
   };
   output: {
     status: string;

@@ -38,6 +38,9 @@ export const Collections: CollectionConfig = {
     { name: 'draftBaseVersion', type: 'number' },
     { name: 'draftEpoch', type: 'text', required: true, index: true },
     { name: 'draftRevision', type: 'number', required: true, defaultValue: 0 },
+    // Mirrors the durable publish-job fence during a promotion. A stale worker
+    // cannot move the production pointer after a lease takeover.
+    { name: 'publishFencingToken', type: 'number', required: true, defaultValue: 0 },
     // Monotonic per-Collection queue sequence for serialized draft commands.
     { name: 'operationSequenceCounter', type: 'number', required: true, defaultValue: 0 },
     {

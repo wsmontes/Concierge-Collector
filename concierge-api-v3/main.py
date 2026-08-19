@@ -27,6 +27,7 @@ from app.api import (
     openai_compat,
     capture,
     catalog,
+    internal_curations,
     curators,
     og_image,
 )
@@ -108,6 +109,7 @@ async def global_exception_handler(request: Request, exc: Exception):
 app.include_router(system.router, prefix="/api/v3")
 app.include_router(cms_auth.router, prefix="/api/v3")
 app.include_router(catalog.router, prefix="/api/v3")
+app.include_router(internal_curations.router, prefix="/api/v3")
 app.include_router(auth.router, prefix="/api/v3")
 app.include_router(entities.router, prefix="/api/v3")
 app.include_router(curations.router, prefix="/api/v3")

@@ -79,6 +79,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v3/internal/curations/hydrate": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /** Hydrate Curations */
+        post: operations["hydrate_curations_api_v3_internal_curations_hydrate_post"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
@@ -134,6 +151,38 @@ export interface components {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
         };
+        /** HydrateCurationsRequest */
+        HydrateCurationsRequest: {
+            /** Curation Ids */
+            curation_ids: string[];
+        };
+        /** HydrateCurationsResponse */
+        HydrateCurationsResponse: {
+            /** Available Count */
+            available_count: number;
+            /** Items */
+            items: components["schemas"]["PublicCurationItem"][];
+            /** Selected Count */
+            selected_count: number;
+            /** Unavailable */
+            unavailable: components["schemas"]["UnavailableItem"][];
+            /** Unavailable Count */
+            unavailable_count: number;
+        };
+        /**
+         * PublicCurationItem
+         * @description The only Curation/Entity fields permitted across the CMS boundary.
+         */
+        PublicCurationItem: {
+            /** Curation Id */
+            curation_id: string;
+            /** Curation Note */
+            curation_note?: string | null;
+            /** Entity Id */
+            entity_id: string;
+            /** Name */
+            name: string;
+        };
         /** RejectedCuration */
         RejectedCuration: {
             /** Curation Id */
@@ -158,6 +207,16 @@ export interface components {
             eligible_ids: string[];
             /** Rejected */
             rejected: components["schemas"]["RejectedCuration"][];
+        };
+        /** UnavailableItem */
+        UnavailableItem: {
+            /** Curation Id */
+            curation_id: string;
+            /**
+             * Reason
+             * @enum {string}
+             */
+            reason: "curation_missing" | "curation_not_public" | "missing_entity" | "entity_not_public" | "schema_invalid";
         };
         /** ValidationError */
         ValidationError: {
@@ -277,9 +336,8 @@ export interface operations {
     resolve_curation_selection_api_v3_catalog_curations_resolve_post: {
         parameters: {
             query?: never;
-            header?: {
-                "X-CMS-Actor-Id"?: string | null;
-                "X-CMS-Service-Key"?: string | null;
+            header: {
+                "X-CMS-Actor-Id": string;
             };
             path?: never;
             cookie?: never;
@@ -297,6 +355,39 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ResolveCurationsResponse"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    hydrate_curations_api_v3_internal_curations_hydrate_post: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["HydrateCurationsRequest"];
+            };
+        };
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HydrateCurationsResponse"];
                 };
             };
             /** @description Validation Error */

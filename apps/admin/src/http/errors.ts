@@ -22,6 +22,7 @@ const ADMIN_ERROR_CODES = {
   not_found: 404,
   conflict: 409,
   idempotency_conflict: 409,
+  unavailable_confirmation_required: 409,
   revision_conflict: 412,
   precondition_failed: 412,
   locked: 423,

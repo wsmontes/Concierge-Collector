@@ -10,21 +10,30 @@ sys.path.insert(0, str(Path(__file__).parents[1] / "scripts"))
 from export_admin_openapi import reachable_schemas  # noqa: E402
 
 
-def test_admin_contract_contains_auth_boundary():
-    """The versioned Admin contract exposes only its CMS auth boundary."""
+def test_admin_contract_contains_only_approved_cms_boundary():
+    """The versioned Admin contract exposes only approved CMS operations."""
     document = json.loads(CONTRACT.read_text())
 
     assert set(document["paths"]) == {
         "/api/v3/auth/cms/authorize",
         "/api/v3/auth/cms/exchange",
         "/api/v3/auth/cms/introspect",
+        "/api/v3/catalog/curations/resolve",
+        "/api/v3/internal/curations/hydrate",
     }
     assert set(document["components"]["schemas"]) == {
         "CmsAuthorization",
         "CmsExchangeRequest",
         "CmsIntrospectionRequest",
+        "HydrateCurationsRequest",
+        "HydrateCurationsResponse",
         "HTTPValidationError",
         "ValidationError",
+        "PublicCurationItem",
+        "UnavailableItem",
+        "RejectedCuration",
+        "ResolveCurationsRequest",
+        "ResolveCurationsResponse",
     }
     assert document["components"]["securitySchemes"] == {
         "CmsServiceKey": {"in": "header", "name": "X-CMS-Service-Key", "type": "apiKey"},
@@ -36,6 +45,10 @@ def test_admin_contract_contains_auth_boundary():
         {"FastApiAccessCookie": []},
     ]
     for path in ("/api/v3/auth/cms/exchange", "/api/v3/auth/cms/introspect"):
+        operation = document["paths"][path]["post"]
+        assert operation["security"] == [{"CmsServiceKey": []}]
+        assert all(parameter["name"] != "X-CMS-Service-Key" for parameter in operation.get("parameters", []))
+    for path in ("/api/v3/catalog/curations/resolve", "/api/v3/internal/curations/hydrate"):
         operation = document["paths"][path]["post"]
         assert operation["security"] == [{"CmsServiceKey": []}]
         assert all(parameter["name"] != "X-CMS-Service-Key" for parameter in operation.get("parameters", []))
