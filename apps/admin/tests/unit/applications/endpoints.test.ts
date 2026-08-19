@@ -31,6 +31,27 @@ function requestFor(url: string, init: RequestInit & { routeParams?: Record<stri
 }
 
 describe('consumer credential endpoints', () => {
+  test('lists credentials without hashes or internal actor fields', async () => {
+    const { applicationEndpoints } = await import('../../../src/payload/endpoints/applications')
+    const endpoint = applicationEndpoints().find(({ method, path }) => method === 'get' && path === '/admin/v1/applications/:id/credentials')
+    const request = requestFor('https://admin.example.test/api/admin/v1/applications/0123456789abcdef01234567/credentials', {
+      method: 'GET', routeParams: { id: '0123456789abcdef01234567' },
+    })
+    Object.assign(request.payload.db.collections, {
+      'consumer-applications': { exists: async () => ({ _id: '0123456789abcdef01234567' }) },
+      'consumer-credentials': {
+        find: () => ({ sort: () => ({ lean: async () => [{ _id: 'cred-1', applicationId: '0123456789abcdef01234567', name: 'Production', prefix: 'abc', status: 'active', secretHash: 'never', createdBy: 'admin-1', issueIdempotencyKey: 'key' }] }) }),
+      },
+    })
+    const response = await endpoint!.handler(request as never)
+    const result = await response.json()
+    expect(response.status).toBe(200)
+    expect(response.headers.get('cache-control')).toBe('private, no-store')
+    expect(result.items[0]).toEqual(expect.objectContaining({ id: 'cred-1', name: 'Production', prefix: 'abc' }))
+    expect(JSON.stringify(result)).not.toContain('never')
+    expect(JSON.stringify(result)).not.toContain('admin-1')
+  })
+
   test('returns a secret once with no-store and forwards only valid input', async () => {
     issueCredential.mockResolvedValueOnce({ credential: { id: 'cred-1', prefix: 'a'.repeat(12) }, secretOnce: 'cck_secret' })
     const { applicationEndpoints } = await import('../../../src/payload/endpoints/applications')

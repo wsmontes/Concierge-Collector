@@ -19,6 +19,14 @@ interface CredentialResponse {
   secret_once: string
 }
 
+interface CredentialRecord extends IssuedCredential {
+  applicationId: string
+  status: 'active' | 'revoked'
+  expiresAt: string | null
+  revokedAt: string | null
+  lastUsedAt: string | null
+}
+
 function requestId() {
   return globalThis.crypto?.randomUUID?.() ?? `admin-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
@@ -47,6 +55,8 @@ export function ApplicationViews() {
   const [loading, setLoading] = useState(true)
   const [issuingFor, setIssuingFor] = useState<string | null>(null)
   const [revealed, setRevealed] = useState<CredentialResponse | null>(null)
+  const [credentials, setCredentials] = useState<Record<string, CredentialRecord[]>>({})
+  const [credentialLoading, setCredentialLoading] = useState<string | null>(null)
 
   const reload = useCallback(async () => {
     setLoading(true)
@@ -108,6 +118,43 @@ export function ApplicationViews() {
     }
   }
 
+  async function loadCredentials(applicationId: string) {
+    if (credentials[applicationId]) {
+      setCredentials((current) => {
+        const next = { ...current }
+        delete next[applicationId]
+        return next
+      })
+      return
+    }
+    setCredentialLoading(applicationId)
+    try {
+      const result = await api<{ items: CredentialRecord[] }>(`/api/admin/v1/applications/${applicationId}/credentials`)
+      setCredentials((current) => ({ ...current, [applicationId]: result.items }))
+      setError(null)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'request_failed')
+    } finally {
+      setCredentialLoading(null)
+    }
+  }
+
+  async function revoke(applicationId: string, credential: CredentialRecord) {
+    if (credential.status !== 'active' || !window.confirm(`Revoke ${credential.name}? This takes effect on the next API request.`)) return
+    try {
+      const revoked = await api<CredentialRecord>(`/api/admin/v1/credentials/${credential.id}/revoke`, {
+        method: 'POST', headers: { 'X-Request-Id': requestId() },
+      })
+      setCredentials((current) => ({
+        ...current,
+        [applicationId]: (current[applicationId] ?? []).map((item) => item.id === revoked.id ? { ...item, ...revoked } : item),
+      }))
+      setError(null)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'request_failed')
+    }
+  }
+
   return (
     <main className="application-views">
       <header>
@@ -140,6 +187,19 @@ export function ApplicationViews() {
                 <button type="button" onClick={() => void issue(application)} disabled={application.status !== 'active' || issuingFor === application.id}>
                   {issuingFor === application.id ? 'Issuing…' : 'Issue credential'}
                 </button>
+                <button type="button" onClick={() => void loadCredentials(application.id)} disabled={credentialLoading === application.id}>
+                  {credentialLoading === application.id ? 'Loading…' : credentials[application.id] ? 'Hide credentials' : 'Manage credentials'}
+                </button>
+                {credentials[application.id] && (
+                  <ul className="application-views__credentials" aria-label={`${application.name} credentials`}>
+                    {credentials[application.id].length === 0 ? <li>No credentials issued.</li> : credentials[application.id].map((credential) => (
+                      <li key={credential.id}>
+                        <span>{credential.name} ({credential.prefix}) · {credential.status} · last use {credential.lastUsedAt ?? 'never'}</span>
+                        <button type="button" disabled={credential.status !== 'active'} onClick={() => void revoke(application.id, credential)}>Revoke</button>
+                      </li>
+                    ))}
+                  </ul>
+                )}
               </li>
             ))}
           </ul>

@@ -62,10 +62,38 @@ function issueInput(value: Record<string, unknown>, applicationId: string, actor
   return { applicationId, actorId, idempotencyKey, name: value.name, scopes: value.scopes as ConsumerCredentialScope[], expiresAt }
 }
 
+function credentialPublic(value: Record<string, unknown>) {
+  return {
+    id: String(value._id),
+    applicationId: String(value.applicationId),
+    name: value.name,
+    prefix: value.prefix,
+    scopes: value.scopes,
+    status: value.status,
+    createdAt: value.createdAt,
+    expiresAt: value.expiresAt ?? null,
+    revokedAt: value.revokedAt ?? null,
+    lastUsedAt: value.lastUsedAt ?? null,
+  }
+}
+
 /** Admin-only application and show-once credential command surface. */
 export function applicationEndpoints(): Endpoint[] {
   return [
     { method: 'get', path: '/admin/v1/applications', handler: guarded(async (request) => Response.json({ items: await new ConsumerApplicationService(request.payload).list() })) },
+    { method: 'get', path: '/admin/v1/applications/:id/credentials', handler: guarded(async (request) => {
+      const applicationId = routeId(request)
+      const applications = request.payload.db.collections['consumer-applications']
+      const credentials = request.payload.db.collections['consumer-credentials']
+      if (!applications || !credentials) throw new Error('Missing CMS application models')
+      const application = await (applications as { exists(query: Record<string, unknown>): Promise<unknown> }).exists({ _id: applicationId })
+      if (!application) throw new AdminHttpError(404, 'not_found')
+      const documents = await (credentials as { find(query: Record<string, unknown>, projection: Record<string, unknown>): { sort(sort: Record<string, number>): { lean(): Promise<Record<string, unknown>[]> } } }).find(
+        { applicationId },
+        { secretHash: 0, issueIdempotencyKey: 0, createdBy: 0, revokedBy: 0 },
+      ).sort({ createdAt: -1 }).lean()
+      return Response.json({ items: documents.map(credentialPublic) }, { headers: { 'Cache-Control': 'private, no-store' } })
+    }) },
     { method: 'post', path: '/admin/v1/applications', handler: guarded(async (request, actorId) => {
       const context = commandContext(request.headers, actorId)
       return Response.json(await new ConsumerApplicationService(request.payload).create(applicationInput(await body(request as unknown as Request)), context), { status: 201 })
