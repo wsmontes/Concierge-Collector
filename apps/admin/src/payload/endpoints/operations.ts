@@ -20,7 +20,7 @@ function parseIfMatch(headers: Headers): number {
   return Number(value)
 }
 
-type OperationBody = { action?: unknown; curationIds?: unknown; curation_ids?: unknown; mode?: unknown }
+type OperationBody = { action?: unknown; curationIds?: unknown; curation_ids?: unknown; draft_revision?: unknown; mode?: unknown }
 
 async function body(request: Request): Promise<OperationBody> {
   try {
@@ -56,14 +56,15 @@ export function operationEndpoints(): Endpoint[] {
       handler: async (request: PayloadRequest) => {
         try {
         const value = await body(request as unknown as Request)
-        if (Object.keys(value).some((key) => !['action', 'curationIds', 'curation_ids', 'mode'].includes(key))) throw new AdminHttpError(400, 'invalid_request')
+        if (Object.keys(value).some((key) => !['action', 'curationIds', 'curation_ids', 'draft_revision', 'mode'].includes(key))) throw new AdminHttpError(400, 'invalid_request')
         // The Collector-facing contract is snake_case. Keep camelCase only for
         // already-issued Admin clients while the CMS UI is being introduced.
         if (value.curationIds !== undefined && value.curation_ids !== undefined) throw new AdminHttpError(400, 'invalid_request')
         const curationIds = value.curation_ids ?? value.curationIds
         const key = request.headers.get('idempotency-key')?.trim()
         const requestId = request.headers.get('x-request-id')?.trim()
-        if (!key || !requestId || (value.mode !== undefined && value.mode !== 'explicit') || (value.action !== 'add' && value.action !== 'remove') || !Array.isArray(curationIds)) {
+        const baseDraftRevision = parseIfMatch(request.headers)
+        if (!key || !requestId || (value.mode !== undefined && value.mode !== 'explicit') || (value.action !== 'add' && value.action !== 'remove') || !Array.isArray(curationIds) || !Number.isInteger(value.draft_revision) || value.draft_revision !== baseDraftRevision) {
           throw new AdminHttpError(400, 'invalid_request')
         }
         const actor = await authenticateAdminRequest(request as unknown as Request, {
@@ -72,7 +73,7 @@ export function operationEndpoints(): Endpoint[] {
         })
         const operation = await enqueueDraftOperation(request.payload, {
           collectionId: routeId(request), action: value.action, curationIds,
-          baseDraftRevision: parseIfMatch(request.headers), idempotencyKey: key, actorId: actor.user_id, requestId,
+          baseDraftRevision, idempotencyKey: key, actorId: actor.user_id, requestId,
         })
         return Response.json(operation, { status: 202 })
         } catch (error) {

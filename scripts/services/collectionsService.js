@@ -36,7 +36,7 @@ const CollectionsServiceClass = ModuleWrapper.defineClass('CollectionsServiceCla
             const response = await this._request(
                 'POST',
                 `${this.config.cms.endpoints.collectionOperation}/${encodeURIComponent(collectionId)}/draft/operations`,
-                { action, curation_ids: [curationId], mode: 'explicit' },
+                { action, curation_ids: [curationId], draft_revision: draftRevision, mode: 'explicit' },
                 { 'Idempotency-Key': idempotencyKey, 'If-Match': String(draftRevision) }
             );
             return response;

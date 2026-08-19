@@ -66,7 +66,7 @@ describe('CollectionsService', () => {
           'If-Match': '7',
           'X-Request-Id': 'request-1'
         }),
-        body: JSON.stringify({ action: 'add', curation_ids: ['curation-1'], mode: 'explicit' })
+        body: JSON.stringify({ action: 'add', curation_ids: ['curation-1'], draft_revision: 7, mode: 'explicit' })
       })
     );
   });
