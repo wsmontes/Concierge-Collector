@@ -1,5 +1,5 @@
 import { describe, expect, test } from 'vitest'
-import { isAuthenticated, isAuthorizedAdmin } from '../../../src/auth/access'
+import { approvedBrowserOrigins, isAuthenticated, isAuthorizedAdmin } from '../../../src/auth/access'
 import { CmsUsers } from '../../../src/payload/collections/CmsUsers'
 
 describe('CMS foundation access', () => {
@@ -14,6 +14,13 @@ describe('CMS foundation access', () => {
     expect(isAuthenticated({ id: 'cms-user-1' })).toBe(true)
     expect(isAuthenticated(null)).toBe(false)
     expect(isAuthenticated(undefined)).toBe(false)
+  })
+
+  test('deduplicates only the configured Admin and Collector browser origins', () => {
+    expect(approvedBrowserOrigins('https://admin.example.test', [
+      'https://concierge-collector.com',
+      'https://admin.example.test',
+    ])).toEqual(['https://admin.example.test', 'https://concierge-collector.com'])
   })
 
   test('the FastAPI-mirrored users collection has no local write path', () => {

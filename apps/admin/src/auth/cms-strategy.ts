@@ -2,6 +2,7 @@ import type { AuthStrategy, AuthStrategyFunctionArgs, Payload } from 'payload'
 import type { CmsIdentity } from './fastapi-authz-client'
 import { FastApiAuthzClient } from './fastapi-authz-client'
 import { revokeCmsSession, resolveCmsSession } from './cms-session'
+import { isTrustedCmsSessionRequest } from './cms-session-request-policy'
 import { readEnv } from '../env'
 import type { CmsUser } from '../payload/generated/payload-types'
 
@@ -45,6 +46,7 @@ export const cmsSessionStrategy: AuthStrategy = {
   authenticate: async ({ payload, headers }: AuthStrategyFunctionArgs) => {
     const session = await resolveCmsSession(payload, headers.get('cookie') || '')
     if (!session) return { user: null }
+    if (!isTrustedCmsSessionRequest(headers)) return { user: null }
 
     try {
       const identity = await authzClient().introspectSubject(session.subject)
