@@ -2,6 +2,9 @@ import type { Endpoint, PayloadRequest } from 'payload'
 import type { CmsIdentity } from '../../auth/fastapi-authz-client'
 import { AdminHttpError } from '../../http/errors'
 import { withAdmin } from '../../http/with-admin'
+import { authenticateAdminRequest } from '../../auth/authenticate-admin-request'
+import { adminErrorResponse } from '../../http/errors'
+import { readEnv } from '../../env'
 import { cancelDraftOperation } from '../../operations/apply-draft-operation'
 import { enqueueDraftOperation } from '../../operations/enqueue'
 
@@ -17,11 +20,11 @@ function parseIfMatch(headers: Headers): number {
   return Number(value)
 }
 
-async function body(request: Request): Promise<{ action?: unknown; curationIds?: unknown }> {
+async function body(request: Request): Promise<{ action?: unknown; curationIds?: unknown; mode?: unknown }> {
   try {
     const value = await request.json()
     if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('invalid')
-    return value as { action?: unknown; curationIds?: unknown }
+    return value as { action?: unknown; curationIds?: unknown; mode?: unknown }
   } catch {
     throw new AdminHttpError(400, 'invalid_request')
   }
@@ -38,32 +41,56 @@ function operationModels(request: PayloadRequest) {
   return model as unknown as { findById(id: string): { lean(): Promise<unknown> } }
 }
 
+function readCollectorOrigin(request: PayloadRequest): boolean {
+  const origin = request.headers.get('origin')
+  return Boolean(origin && readEnv().collectorOrigins.includes(origin))
+}
+
 /** Command API for operations. Native Payload writes remain deny-by-default. */
 export function operationEndpoints(): Endpoint[] {
   return [
     {
       method: 'post', path: '/admin/v1/collections/:id/draft/operations',
-      handler: guard(async (request, actor) => {
+      handler: async (request: PayloadRequest) => {
+        try {
         const value = await body(request as unknown as Request)
         const key = request.headers.get('idempotency-key')?.trim()
         const requestId = request.headers.get('x-request-id')?.trim()
-        if (!key || !requestId || (value.action !== 'add' && value.action !== 'remove') || !Array.isArray(value.curationIds)) {
+        if (!key || !requestId || (value.mode !== undefined && value.mode !== 'explicit') || (value.action !== 'add' && value.action !== 'remove') || !Array.isArray(value.curationIds)) {
           throw new AdminHttpError(400, 'invalid_request')
         }
+        const actor = await authenticateAdminRequest(request as unknown as Request, {
+          allowCollectorBearer: true,
+          explicitCurationIds: value.curationIds as string[],
+        })
         const operation = await enqueueDraftOperation(request.payload, {
           collectionId: routeId(request), action: value.action, curationIds: value.curationIds,
           baseDraftRevision: parseIfMatch(request.headers), idempotencyKey: key, actorId: actor.user_id, requestId,
         })
         return Response.json(operation, { status: 202 })
-      }),
+        } catch (error) {
+          return adminErrorResponse(error)
+        }
+      },
     },
     {
       method: 'get', path: '/admin/v1/operations/:id',
-      handler: guard(async (request) => {
+      handler: async (request: PayloadRequest) => {
+        try {
+        const actor = await authenticateAdminRequest(request as unknown as Request, { allowCollectorBearer: true, allowCollectorOperationRead: true })
         const value = await operationModels(request).findById(routeId(request)).lean()
         if (!value) throw new AdminHttpError(404, 'not_found')
-        return Response.json({ ...(value as Record<string, unknown>), id: String((value as Record<string, unknown>).id ?? (value as Record<string, unknown>)._id) })
-      }),
+        const operation = value as Record<string, unknown>
+        const isCollector = readCollectorOrigin(request)
+        if (isCollector && (operation.actorId !== actor.user_id || operation.mode !== 'explicit' || operation.selectedCount !== 1)) {
+          throw new AdminHttpError(404, 'not_found')
+        }
+        if (isCollector) return Response.json({ id: String(operation.id ?? operation._id), status: operation.status, progress: operation.progress, errorCode: operation.errorCode ?? null })
+        return Response.json({ ...operation, id: String(operation.id ?? operation._id) })
+        } catch (error) {
+          return adminErrorResponse(error)
+        }
+      },
     },
     {
       method: 'post', path: '/admin/v1/operations/:id/cancel',

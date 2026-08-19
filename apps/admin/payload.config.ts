@@ -9,6 +9,7 @@ import { collectionEndpoints } from './src/payload/endpoints/collections'
 import { operationEndpoints } from './src/payload/endpoints/operations'
 import { publishingEndpoints } from './src/payload/endpoints/publishing'
 import { collectionReadEndpoints } from './src/payload/endpoints/collection-reads'
+import { collectorCollectionEndpoints } from './src/payload/endpoints/collector-collections'
 import {
   AuditEvents,
   CollectionDraftChanges,
@@ -78,7 +79,7 @@ export default buildConfig({
     CollectionPublishJobs,
     AuditEvents,
   ],
-  endpoints: [...collectionEndpoints(), ...collectionReadEndpoints(), ...operationEndpoints(), ...publishingEndpoints()],
+  endpoints: [...collectionEndpoints(), ...collectionReadEndpoints(), ...collectorCollectionEndpoints(), ...operationEndpoints(), ...publishingEndpoints()],
   jobs: {
     access: {
       cancel: () => false,

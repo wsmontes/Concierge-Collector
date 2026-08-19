@@ -30,15 +30,23 @@ export class FastApiAuthzClient {
     return this.post<CmsIdentity>('/api/v3/auth/cms/introspect', { subject })
   }
 
-  private async post<T>(path: string, body: unknown): Promise<T> {
+  async introspectCollectorBearer(authorization: string, requestId: string): Promise<CmsIdentity> {
+    return this.post<CmsIdentity>('/api/v3/auth/cms/introspect-bearer', undefined, {
+      Authorization: authorization,
+      'X-Request-Id': requestId,
+    })
+  }
+
+  private async post<T>(path: string, body: unknown, headers: HeadersInit = {}): Promise<T> {
     const response = await fetch(`${this.baseUrl}${path}`, {
       method: 'POST',
       cache: 'no-store',
       headers: {
-        'Content-Type': 'application/json',
         'X-CMS-Service-Key': this.serviceKey,
+        ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
+        ...headers,
       },
-      body: JSON.stringify(body),
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
     })
     if (!response.ok) throw new Error(`FastAPI authz failed: ${response.status}`)
     return response.json() as Promise<T>
