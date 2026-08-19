@@ -65,7 +65,7 @@ describe('withAdmin', () => {
   test.each([
     [401, 'authentication_required'],
     [403, 'authorization_revoked'],
-    [409, 'revision_conflict'],
+    [412, 'revision_conflict'],
     [412, 'precondition_failed'],
     [423, 'draft_locked'],
     [503, 'authorization_unavailable'],

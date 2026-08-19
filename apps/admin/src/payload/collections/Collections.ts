@@ -12,11 +12,15 @@ export const Collections: CollectionConfig = {
   dbName: 'collections',
   admin: { useAsTitle: 'title', group: 'Content' },
   access: {
-    create: adminAccess,
+    // Lifecycle writes are allowed only through the guarded command endpoints.
+    // Native Payload REST/Admin creation would bypass CAS, idempotency and audit.
+    create: () => false,
     read: adminAccess,
     update: () => false,
     delete: () => false,
   },
+  // Domain publication history is the authoritative collection-versions model.
+  // Payload's bounded document history is retained as the declared CMS config.
   versions: { maxPerDoc: 50 },
   fields: [
     { name: 'slug', type: 'text', required: true, unique: true, index: true },

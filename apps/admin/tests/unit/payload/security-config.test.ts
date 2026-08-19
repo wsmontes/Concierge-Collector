@@ -35,4 +35,27 @@ describe('Payload browser security configuration', () => {
       'https://admin.example.test',
     ])
   })
+
+  test('registers the lifecycle API as guarded root endpoints', async () => {
+    const { default: pendingConfig } = await import('../../../payload.config')
+    const config = await pendingConfig
+
+    expect(config.endpoints.map(({ method, path }) => `${method} ${path}`)).toEqual(expect.arrayContaining([
+      'post /admin/v1/collections',
+      'get /admin/v1/collections/:id',
+      'patch /admin/v1/collections/:id',
+      'delete /admin/v1/collections/:id',
+      'post /admin/v1/collections/:id/archive',
+      'post /admin/v1/collections/:id/restore',
+    ]))
+  })
+
+  test('denies native Payload writes while retaining bounded Payload history configuration', async () => {
+    const { Collections } = await import('../../../src/payload/collections/Collections')
+
+    expect(Collections.access?.create?.({} as never)).toBe(false)
+    expect(Collections.access?.update?.({} as never)).toBe(false)
+    expect(Collections.access?.delete?.({} as never)).toBe(false)
+    expect(Collections.versions).toEqual({ maxPerDoc: 50 })
+  })
 })

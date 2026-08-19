@@ -3,6 +3,7 @@ import { buildConfig } from 'payload'
 import { readEnv } from './src/env'
 import { approvedBrowserOrigins } from './src/auth/access'
 import { recordWorkerHeartbeat } from './src/jobs/recordWorkerHeartbeat'
+import { collectionEndpoints } from './src/payload/endpoints/collections'
 import {
   AuditEvents,
   CollectionDraftChanges,
@@ -72,6 +73,7 @@ export default buildConfig({
     CollectionPublishJobs,
     AuditEvents,
   ],
+  endpoints: collectionEndpoints(),
   jobs: {
     access: {
       cancel: () => false,

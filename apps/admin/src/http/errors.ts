@@ -1,10 +1,12 @@
-export const ADMIN_ERROR_STATUSES = [401, 403, 409, 412, 423, 503] as const
+export const ADMIN_ERROR_STATUSES = [400, 401, 403, 404, 409, 412, 423, 503] as const
 
 export type AdminErrorStatus = (typeof ADMIN_ERROR_STATUSES)[number]
 
 const DEFAULT_CODES: Record<AdminErrorStatus, string> = {
+  400: 'invalid_request',
   401: 'authentication_required',
   403: 'authorization_denied',
+  404: 'not_found',
   409: 'conflict',
   412: 'precondition_failed',
   423: 'locked',
@@ -12,12 +14,15 @@ const DEFAULT_CODES: Record<AdminErrorStatus, string> = {
 }
 
 const ADMIN_ERROR_CODES = {
+  invalid_request: 400,
   authentication_required: 401,
   authorization_denied: 403,
   authorization_revoked: 403,
   csrf_origin_invalid: 403,
+  not_found: 404,
   conflict: 409,
-  revision_conflict: 409,
+  idempotency_conflict: 409,
+  revision_conflict: 412,
   precondition_failed: 412,
   locked: 423,
   draft_locked: 423,
