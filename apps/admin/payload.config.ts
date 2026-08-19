@@ -1,7 +1,8 @@
 import { mongooseAdapter } from '@payloadcms/db-mongodb'
 import { buildConfig } from 'payload'
 import { readEnv } from './src/env'
-import { CmsUsers } from './src/payload/collections'
+import { recordWorkerHeartbeat } from './src/jobs/recordWorkerHeartbeat'
+import { CmsUsers, WorkerHeartbeats } from './src/payload/collections'
 
 const env = readEnv()
 
@@ -36,7 +37,16 @@ export default buildConfig({
       },
     },
   },
-  collections: [CmsUsers],
+  collections: [CmsUsers, WorkerHeartbeats],
+  jobs: {
+    access: {
+      cancel: () => false,
+      queue: () => false,
+      run: () => false,
+    },
+    processingOrder: 'createdAt',
+    tasks: [recordWorkerHeartbeat],
+  },
   typescript: {
     outputFile: './src/payload/generated/payload-types.ts',
   },

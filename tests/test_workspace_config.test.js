@@ -13,5 +13,6 @@ describe('workspace root', () => {
     expect(pkg.packageManager).toBe('npm@10.9.2')
     expect(pkg.scripts['test:collector']).toBe('vitest run')
     expect(pkg.scripts['dev:admin']).toContain('--workspace=@concierge/admin')
+    expect(pkg.scripts['build:admin']).toContain('--workspace=@concierge/admin')
   })
 })

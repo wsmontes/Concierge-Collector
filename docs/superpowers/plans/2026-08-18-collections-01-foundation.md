@@ -169,7 +169,7 @@ Criar `apps/admin/package.json`:
   "engines": { "node": ">=22 <23" },
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "next build --webpack",
     "start": "next start --hostname 0.0.0.0",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
@@ -371,7 +371,7 @@ export default withPayload(nextConfig)
 
 Criar `tsconfig.json` com `strict: true`, `noEmit: true`, `moduleResolution: 'bundler'`, alias `@payload-config -> ./payload.config.ts` e includes `app/**/*.ts(x)`, `src/**/*.ts(x)`, `payload.config.ts`. Rodar `generate:types` e `generate:importmap`; manter ambos os arquivos gerados versionados.
 
-`vitest.unit.config.ts` usa jsdom, `tests/setup.ts` importa `@testing-library/jest-dom/vitest` e inclui `tests/unit/**/*.test.ts(x)`. A config integration inclui somente `tests/integration/**/*.int.test.ts`; Playwright usa `tests/e2e`, `baseURL=http://127.0.0.1:3000`, trace `retain-on-failure`; ESLint usa `eslint-config-next` para `app/src/tests`.
+`vitest.unit.config.ts` usa jsdom, `tests/setup.ts` importa `@testing-library/jest-dom/vitest` e inclui `tests/unit/**/*.test.ts(x)`. A config integration inclui somente `tests/integration/**/*.int.test.ts`; Playwright usa `tests/e2e`, `baseURL=http://127.0.0.1:3000`, trace `retain-on-failure`; ESLint usa `eslint-config-next` para `app/src/tests`. Fixar `build` em `next build --webpack`: na combinação Next 16.2.12/Payload 3.86.0, Turbopack pode travar durante a compilação de produção; Webpack conclui e mantém a rota de produção suportada.
 
 O `.env.example` contém apenas nomes não secretos:
 
@@ -532,6 +532,8 @@ describe('worker heartbeat', () => {
   })
 })
 ```
+
+O teste de integração deve validar a configuração antes de importar `payload.config`: exige `CMS_MONGODB_URL` e `CMS_MONGODB_DB_NAME` terminado em `-test`, mais `PAYLOAD_SECRET` e `CMS_PUBLIC_SERVER_URL` efêmeros. Sem essa configuração, deve falhar com mensagem explícita; `CMS_SKIP_MONGO_INTEGRATION=1` é o único skip permitido, para ambientes que deliberadamente não forneçam Mongo. Nunca conectar a um banco sem o sufixo `-test`.
 
 - [ ] **Step 2: Rodar e confirmar a falha**
 
