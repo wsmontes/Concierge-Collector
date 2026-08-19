@@ -5,7 +5,7 @@ from __future__ import annotations
 from datetime import timedelta
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Query
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pymongo.database import Database
 
 from app.core.cms_database import CmsReadOnlyDatabase, get_cms_read_database
@@ -15,6 +15,7 @@ from app.models.distribution_response import CollectionDistributionEnvelopeV1
 from app.services.consumer_auth_service import ConsumerPrincipal, authenticate_consumer, authorize_collection
 from app.services.consumer_rate_limit import ConsumerRateLimitService
 from app.services.distribution_cursor import CursorError, decode_cursor, encode_cursor
+from app.services.distribution_dump import gzip_iter, iter_ndjson_dump
 from app.services.distribution_service import hydrate_public_batch
 
 router = APIRouter(prefix="/distribution/collections", tags=["distribution"])
@@ -148,3 +149,66 @@ def current_collection_page(
         next_cursor=next_cursor,
     )
     return JSONResponse(payload.model_dump(mode="json"), headers=response_headers)
+
+
+@router.get("/{slug}/dump")
+def current_collection_dump(
+    slug: str,
+    authorization: str | None = Header(default=None),
+    accept_encoding: str = Header(default=""),
+    cms_db: CmsReadOnlyDatabase = Depends(get_cms_read_database),
+    operational_db: Database = Depends(get_database),
+):
+    principal = _consumer(authorization, cms_db)
+    rate = ConsumerRateLimitService(operational_db).consume(principal)
+    response_headers = {**rate.headers, "Cache-Control": "private, no-store"}
+    if not rate.allowed:
+        raise HTTPException(status_code=429, detail="Consumer rate limit exceeded", headers=response_headers)
+    collection = cms_db.collection("collections").find_one({"slug": slug})
+    if not collection:
+        raise HTTPException(status_code=404, detail="Collection not found", headers=response_headers)
+    collection_id = str(collection.get("_id"))
+    try:
+        authorize_collection(principal, collection_id)
+    except HTTPException as exc:
+        exc.headers = response_headers
+        raise
+    if collection.get("lifecycle") == "archived":
+        raise HTTPException(status_code=410, detail="Collection archived", headers=response_headers)
+    version = collection.get("currentPublishedVersion")
+    if collection.get("lifecycle") != "published" or not isinstance(version, int) or version < 1:
+        raise HTTPException(status_code=404, detail="Collection not found", headers=response_headers)
+
+    selected_count = int(collection.get("publishedSelectedCount") or 0)
+
+    def batches():
+        pending: list[str] = []
+        cursor = (
+            cms_db.collection("collection_memberships")
+            .find(_membership_query(collection_id, version, None), {"_id": 0, "curationId": 1})
+            .sort("curationId", 1)
+        )
+        for row in cursor:
+            curation_id = row.get("curationId")
+            if not isinstance(curation_id, str):
+                continue
+            pending.append(curation_id)
+            if len(pending) == 500:
+                hydrated = hydrate_public_batch(operational_db, pending)
+                yield hydrated.items, hydrated.unavailable
+                pending = []
+        if pending:
+            hydrated = hydrate_public_batch(operational_db, pending)
+            yield hydrated.items, hydrated.unavailable
+
+    manifest = {
+        "schema_version": 1,
+        "collection": {"slug": slug, "version": version},
+        "selected_count": selected_count,
+    }
+    stream = iter_ndjson_dump(manifest, batches())
+    if "gzip" in accept_encoding.lower():
+        response_headers["Content-Encoding"] = "gzip"
+        response_headers["Vary"] = "Accept-Encoding"
+        stream = gzip_iter(stream)
+    return StreamingResponse(stream, media_type="application/x-ndjson", headers=response_headers)

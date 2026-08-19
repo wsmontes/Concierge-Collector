@@ -1,4 +1,5 @@
 from datetime import datetime, timezone
+import json
 
 from app.api import distribution
 from app.core.cms_database import get_cms_read_database
@@ -106,3 +107,36 @@ def test_distribution_page_uses_consumer_scope_and_returns_no_store(client, monk
     assert response.headers["cache-control"] == "private, no-store"
     assert response.json()["collection"] == {"slug": "sushi", "version": 2, "selected_count": 1}
     assert response.json()["items"][0]["curation"]["id"] == "c1"
+
+
+def test_distribution_dump_streams_manifest_items_and_footer(client, monkeypatch):
+    cms = Cms()
+    operational = Operational()
+    client.app.dependency_overrides[get_cms_read_database] = lambda: cms
+    client.app.dependency_overrides[get_database] = lambda: operational
+    monkeypatch.setattr(
+        distribution,
+        "_consumer",
+        lambda _authorization, _db: type(
+            "P",
+            (),
+            {
+                "application_id": "app-1",
+                "credential_id": "cred-1",
+                "requests_per_minute": 60,
+                "allowed_collection_ids": frozenset({"collection-1"}),
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        distribution.ConsumerRateLimitService,
+        "consume",
+        lambda *_args: RateLimitResult(True, 200, {"X-RateLimit-Limit": "60"}),
+    )
+
+    response = client.get("/api/v3/distribution/collections/sushi/dump")
+    records = [json.loads(line) for line in response.content.splitlines()]
+
+    assert response.status_code == 200
+    assert [record["record_type"] for record in records] == ["manifest", "item", "footer"]
+    assert records[-1]["available_count"] == 1
