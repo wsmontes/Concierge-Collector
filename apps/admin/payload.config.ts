@@ -3,8 +3,20 @@ import { buildConfig } from 'payload'
 import { readEnv } from './src/env'
 import { approvedBrowserOrigins } from './src/auth/access'
 import { recordWorkerHeartbeat } from './src/jobs/recordWorkerHeartbeat'
-import { CmsLoginStates, CmsSessions, CmsUsers, WorkerHeartbeats } from './src/payload/collections'
-import { down as authMigrationDown, up as authMigrationUp } from './src/migrations/20260818_000_auth'
+import {
+  AuditEvents,
+  CollectionDraftChanges,
+  CollectionMemberships,
+  CollectionOperationItems,
+  CollectionOperations,
+  CollectionPublishJobs,
+  CollectionVersions,
+  Collections,
+  CmsLoginStates,
+  CmsSessions,
+  CmsUsers,
+  WorkerHeartbeats,
+} from './src/payload/collections'
 
 const env = readEnv()
 const browserOrigins = approvedBrowserOrigins(env.publicServerUrl, env.collectorOrigins)
@@ -17,16 +29,12 @@ export default buildConfig({
   secret: env.payloadSecret,
   db: mongooseAdapter({
     url: env.cmsMongoUrl,
+    // Migrations run only in the explicit release/manual command
+    // (`payload migrate`), never as web or worker boot side effects.
+    migrationDir: 'src/migrations',
     connectOptions: {
       dbName: env.cmsDatabaseName,
     },
-    prodMigrations: [
-      {
-        name: '20260818_000_auth',
-        up: authMigrationUp,
-        down: authMigrationDown,
-      },
-    ],
   }),
   admin: {
     user: 'cms-users',
@@ -50,7 +58,20 @@ export default buildConfig({
       },
     },
   },
-  collections: [CmsUsers, CmsLoginStates, CmsSessions, WorkerHeartbeats],
+  collections: [
+    CmsUsers,
+    CmsLoginStates,
+    CmsSessions,
+    WorkerHeartbeats,
+    Collections,
+    CollectionVersions,
+    CollectionMemberships,
+    CollectionDraftChanges,
+    CollectionOperations,
+    CollectionOperationItems,
+    CollectionPublishJobs,
+    AuditEvents,
+  ],
   jobs: {
     access: {
       cancel: () => false,

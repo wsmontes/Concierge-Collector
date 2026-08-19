@@ -71,6 +71,14 @@ export interface Config {
     'cms-login-states': CmsLoginState;
     'cms-sessions': CmsSession;
     'worker-heartbeats': WorkerHeartbeat;
+    collections: Collection;
+    'collection-versions': CollectionVersion;
+    'collection-memberships': CollectionMembership;
+    'collection-draft-changes': CollectionDraftChange;
+    'collection-operations': CollectionOperation;
+    'collection-operation-items': CollectionOperationItem;
+    'collection-publish-jobs': CollectionPublishJob;
+    'audit-events': AuditEvent;
     'payload-kv': PayloadKv;
     'payload-jobs': PayloadJob;
     'payload-locked-documents': PayloadLockedDocument;
@@ -83,6 +91,14 @@ export interface Config {
     'cms-login-states': CmsLoginStatesSelect<false> | CmsLoginStatesSelect<true>;
     'cms-sessions': CmsSessionsSelect<false> | CmsSessionsSelect<true>;
     'worker-heartbeats': WorkerHeartbeatsSelect<false> | WorkerHeartbeatsSelect<true>;
+    collections: CollectionsSelect<false> | CollectionsSelect<true>;
+    'collection-versions': CollectionVersionsSelect<false> | CollectionVersionsSelect<true>;
+    'collection-memberships': CollectionMembershipsSelect<false> | CollectionMembershipsSelect<true>;
+    'collection-draft-changes': CollectionDraftChangesSelect<false> | CollectionDraftChangesSelect<true>;
+    'collection-operations': CollectionOperationsSelect<false> | CollectionOperationsSelect<true>;
+    'collection-operation-items': CollectionOperationItemsSelect<false> | CollectionOperationItemsSelect<true>;
+    'collection-publish-jobs': CollectionPublishJobsSelect<false> | CollectionPublishJobsSelect<true>;
+    'audit-events': AuditEventsSelect<false> | AuditEventsSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-jobs': PayloadJobsSelect<false> | PayloadJobsSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
@@ -186,6 +202,201 @@ export interface WorkerHeartbeat {
   id: string;
   workerId: string;
   observedAt: string;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "collections".
+ */
+export interface Collection {
+  id: string;
+  slug: string;
+  title: string;
+  description?: string | null;
+  lifecycle: 'draft' | 'published' | 'archived';
+  currentPublishedVersion?: number | null;
+  draftBaseVersion?: number | null;
+  draftEpoch: string;
+  draftRevision: number;
+  draftState: 'clean' | 'dirty' | 'publishing' | 'failed';
+  publishedSelectedCount: number;
+  draftSelectedCount: number;
+  revision: number;
+  everPublished: boolean;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "collection-versions".
+ */
+export interface CollectionVersion {
+  id: string;
+  collectionId: string;
+  version: number;
+  metadataSnapshot:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  selectedCount: number;
+  membershipHash: string;
+  publicationJobId: string;
+  schemaVersion: number;
+  status: 'ready' | 'published' | 'failed';
+  publishedAt?: string | null;
+  publishedBy?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "collection-memberships".
+ */
+export interface CollectionMembership {
+  id: string;
+  collectionId: string;
+  curationId: string;
+  addedInVersion: number;
+  removedInVersion?: number | null;
+  createdBy: string;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "collection-draft-changes".
+ */
+export interface CollectionDraftChange {
+  id: string;
+  collectionId: string;
+  curationId: string;
+  desiredState: 'add' | 'remove';
+  basePublishedVersion?: number | null;
+  draftEpoch: string;
+  baseDraftRevision: number;
+  targetDraftRevision: number;
+  operationId: string;
+  operationSequence: number;
+  validUntilDraftRevision?: number | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "collection-operations".
+ */
+export interface CollectionOperation {
+  id: string;
+  collectionId: string;
+  parentOperationId?: string | null;
+  mode: 'explicit' | 'selection';
+  action: 'add' | 'remove';
+  selectionId?: string | null;
+  operationSequence: number;
+  baseDraftRevision: number;
+  targetDraftRevision: number;
+  idempotencyKey: string;
+  requestHash: string;
+  selectedCount: number;
+  status:
+    | 'queued'
+    | 'materializing'
+    | 'staging'
+    | 'validating'
+    | 'committing'
+    | 'committed'
+    | 'completed'
+    | 'completed_with_skips'
+    | 'failed'
+    | 'cancelled'
+    | 'stale'
+    | 'conflicted'
+    | 'authorization_revoked';
+  progress:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  checkpoint?: string | null;
+  leaseOwner?: string | null;
+  leaseExpiresAt?: string | null;
+  fencingToken: number;
+  actorId: string;
+  errorCode?: string | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "collection-operation-items".
+ */
+export interface CollectionOperationItem {
+  id: string;
+  operationId: string;
+  curationId: string;
+  desiredState: 'add' | 'remove';
+  status: 'pending' | 'applied' | 'skipped' | 'failed';
+  reasonCode?: string | null;
+  targetDraftRevision: number;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "collection-publish-jobs".
+ */
+export interface CollectionPublishJob {
+  id: string;
+  collectionId: string;
+  fixedDraftEpoch: string;
+  fixedDraftRevision: number;
+  baseVersion?: number | null;
+  targetVersion: number;
+  status: 'queued' | 'running' | 'committing' | 'completed' | 'failed' | 'cancelled' | 'stale';
+  checkpoint?: ('locked' | 'intervals_applied' | 'version_ready' | 'validated' | 'promoted') | null;
+  selectedCount?: number | null;
+  membershipHash?: string | null;
+  leaseOwner?: string | null;
+  leaseExpiresAt?: string | null;
+  fencingToken: number;
+  actorId: string;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "audit-events".
+ */
+export interface AuditEvent {
+  id: string;
+  eventKey: string;
+  eventType: string;
+  actorId: string;
+  requestId: string;
+  collectionId?: string | null;
+  operationId?: string | null;
+  publicationJobId?: string | null;
+  beforeRevision?: number | null;
+  afterRevision?: number | null;
+  metadata:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
   updatedAt: string;
   createdAt: string;
 }
@@ -329,6 +540,38 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'worker-heartbeats';
         value: string | WorkerHeartbeat;
+      } | null)
+    | ({
+        relationTo: 'collections';
+        value: string | Collection;
+      } | null)
+    | ({
+        relationTo: 'collection-versions';
+        value: string | CollectionVersion;
+      } | null)
+    | ({
+        relationTo: 'collection-memberships';
+        value: string | CollectionMembership;
+      } | null)
+    | ({
+        relationTo: 'collection-draft-changes';
+        value: string | CollectionDraftChange;
+      } | null)
+    | ({
+        relationTo: 'collection-operations';
+        value: string | CollectionOperation;
+      } | null)
+    | ({
+        relationTo: 'collection-operation-items';
+        value: string | CollectionOperationItem;
+      } | null)
+    | ({
+        relationTo: 'collection-publish-jobs';
+        value: string | CollectionPublishJob;
+      } | null)
+    | ({
+        relationTo: 'audit-events';
+        value: string | AuditEvent;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -420,6 +663,156 @@ export interface CmsSessionsSelect<T extends boolean = true> {
 export interface WorkerHeartbeatsSelect<T extends boolean = true> {
   workerId?: T;
   observedAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "collections_select".
+ */
+export interface CollectionsSelect<T extends boolean = true> {
+  slug?: T;
+  title?: T;
+  description?: T;
+  lifecycle?: T;
+  currentPublishedVersion?: T;
+  draftBaseVersion?: T;
+  draftEpoch?: T;
+  draftRevision?: T;
+  draftState?: T;
+  publishedSelectedCount?: T;
+  draftSelectedCount?: T;
+  revision?: T;
+  everPublished?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "collection-versions_select".
+ */
+export interface CollectionVersionsSelect<T extends boolean = true> {
+  collectionId?: T;
+  version?: T;
+  metadataSnapshot?: T;
+  selectedCount?: T;
+  membershipHash?: T;
+  publicationJobId?: T;
+  schemaVersion?: T;
+  status?: T;
+  publishedAt?: T;
+  publishedBy?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "collection-memberships_select".
+ */
+export interface CollectionMembershipsSelect<T extends boolean = true> {
+  collectionId?: T;
+  curationId?: T;
+  addedInVersion?: T;
+  removedInVersion?: T;
+  createdBy?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "collection-draft-changes_select".
+ */
+export interface CollectionDraftChangesSelect<T extends boolean = true> {
+  collectionId?: T;
+  curationId?: T;
+  desiredState?: T;
+  basePublishedVersion?: T;
+  draftEpoch?: T;
+  baseDraftRevision?: T;
+  targetDraftRevision?: T;
+  operationId?: T;
+  operationSequence?: T;
+  validUntilDraftRevision?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "collection-operations_select".
+ */
+export interface CollectionOperationsSelect<T extends boolean = true> {
+  collectionId?: T;
+  parentOperationId?: T;
+  mode?: T;
+  action?: T;
+  selectionId?: T;
+  operationSequence?: T;
+  baseDraftRevision?: T;
+  targetDraftRevision?: T;
+  idempotencyKey?: T;
+  requestHash?: T;
+  selectedCount?: T;
+  status?: T;
+  progress?: T;
+  checkpoint?: T;
+  leaseOwner?: T;
+  leaseExpiresAt?: T;
+  fencingToken?: T;
+  actorId?: T;
+  errorCode?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "collection-operation-items_select".
+ */
+export interface CollectionOperationItemsSelect<T extends boolean = true> {
+  operationId?: T;
+  curationId?: T;
+  desiredState?: T;
+  status?: T;
+  reasonCode?: T;
+  targetDraftRevision?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "collection-publish-jobs_select".
+ */
+export interface CollectionPublishJobsSelect<T extends boolean = true> {
+  collectionId?: T;
+  fixedDraftEpoch?: T;
+  fixedDraftRevision?: T;
+  baseVersion?: T;
+  targetVersion?: T;
+  status?: T;
+  checkpoint?: T;
+  selectedCount?: T;
+  membershipHash?: T;
+  leaseOwner?: T;
+  leaseExpiresAt?: T;
+  fencingToken?: T;
+  actorId?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "audit-events_select".
+ */
+export interface AuditEventsSelect<T extends boolean = true> {
+  eventKey?: T;
+  eventType?: T;
+  actorId?: T;
+  requestId?: T;
+  collectionId?: T;
+  operationId?: T;
+  publicationJobId?: T;
+  beforeRevision?: T;
+  afterRevision?: T;
+  metadata?: T;
   updatedAt?: T;
   createdAt?: T;
 }

@@ -15,12 +15,14 @@
     "test:integration": "vitest run -c vitest.integration.config.ts",
     "start:worker": "payload jobs:run --cron \"* * * * *\" --all-queues --handle-schedules",
     "test:e2e": "playwright test",
+    "migrate:cms": "payload migrate",
     "generate:types": "payload generate:types",
     "generate:importmap": "payload generate:importmap"
   },
   "dependencies": {
     "@payloadcms/db-mongodb": "3.86.0",
     "@payloadcms/next": "3.86.0",
+    "mongodb": "6.20.0",
     "next": "16.2.12",
     "payload": "3.86.0",
     "react": "19.2.6",
