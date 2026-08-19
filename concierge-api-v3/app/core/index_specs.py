@@ -55,6 +55,18 @@ INDEX_SPECS = [
     ("curations", [("curator.id", 1), ("status", 1)], {}),
     # Supports: stable cursor-based pagination on large collections
     ("curations", [("updatedAt", -1), ("_id", 1)], {}),
+    # Server-owned watermark used by the CMS Explorer scan.  The unique
+    # partial index permits legacy documents only during the backfill window.
+    (
+        "curations",
+        [("catalog_sequence", 1)],
+        {
+            "unique": True,
+            "partialFilterExpression": {"catalog_sequence": {"$exists": True}},
+            "name": "catalog_sequence_unique",
+        },
+    ),
+    ("curations", [("catalog_sequence", 1), ("curation_id", 1)], {"name": "catalog_sequence_curation_scan"}),
     # ── capture_sessions ───────────────────────────────────────────────────
     # TTL 48h (auto-delete de sessões de captura) — criado pelo lifespan.py
     ("capture_sessions", "createdAt", {"expireAfterSeconds": 172800}),

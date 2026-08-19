@@ -20,6 +20,7 @@ from app.api.entities import find_entity
 from app.core.security import is_admin_auth
 from app.models.schemas import Curation, CurationCreate
 from app.services.curation_denorm import denormalize_curation_location
+from app.services.catalog_service import ensure_catalog_sequence
 
 logger = logging.getLogger(__name__)
 
@@ -119,6 +120,7 @@ def create_curation_doc(db: Database, curation: CurationCreate, auth: dict) -> C
             status_code=status.HTTP_409_CONFLICT,
             detail=f"Curation {curation.curation_id} already exists",
         )
+    ensure_catalog_sequence(db, doc)
     # Insert
     try:
         db.curations.insert_one(doc)

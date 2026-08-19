@@ -24,6 +24,7 @@ from pymongo.errors import DuplicateKeyError
 from app.core.database import get_database
 from app.core.security import verify_auth, is_admin_auth
 from app.services.curation_denorm import denormalize_curation_location
+from app.services.catalog_service import ensure_catalog_sequence
 
 logger = logging.getLogger(__name__)
 
@@ -557,6 +558,7 @@ async def confirm_capture(
     # Denormalize city/type
     denorm = denormalize_curation_location(entity_doc)
     curation_doc.update(denorm)
+    ensure_catalog_sequence(db, curation_doc)
 
     try:
         db.curations.insert_one(curation_doc)

@@ -40,6 +40,7 @@ from app.core.rate_limit import limiter, auth_header_key
 from app.core.security import is_admin_auth, require_role, verify_auth
 from app.models.user import has_role
 from app.services.curation_denorm import denormalize_curation_location
+from app.services.catalog_service import ensure_catalog_sequence
 from app.services.curation_service import (
     CURATION_RESPONSE_PROJECTION,
     create_curation_doc,
@@ -1381,6 +1382,7 @@ def bulk_upsert_curations(
                 doc["createdAt"] = now
                 doc["updatedAt"] = now
                 doc["version"] = 1
+                ensure_catalog_sequence(db, doc)
                 doc["createdBy"] = _clean_created_by(curation, doc)
                 doc["updatedBy"] = doc.get("curator_id") or auth.get("user")
                 if entity_for_denorm:

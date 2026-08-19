@@ -125,10 +125,13 @@ class InMemoryCollection:
             result["_id"] = document["_id"]
         return result
 
-    def find_one(self, query: dict, projection: dict | None = None):
-        for document in self.documents:
-            if self._matches(document, query):
-                return self._project(document, projection)
+    def find_one(self, query: dict, projection: dict | None = None, sort=None):
+        documents = [document for document in self.documents if self._matches(document, query)]
+        if sort:
+            for key, direction in reversed(sort):
+                documents.sort(key=lambda document: self._value(document, key) or 0, reverse=direction < 0)
+        for document in documents:
+            return self._project(document, projection)
         return None
 
     def find(self, query: dict | None = None, projection: dict | None = None):
@@ -148,13 +151,13 @@ class InMemoryCollection:
     def update_one(self, query: dict, update: dict, upsert: bool = False):
         for document in self.documents:
             if self._matches(document, query):
-                document.update(deepcopy(update.get("$set", {})))
+                self._apply_update(document, update)
                 return SimpleNamespace(matched_count=1, modified_count=1, upserted_id=None)
         if not upsert:
             return SimpleNamespace(matched_count=0, modified_count=0, upserted_id=None)
         document = deepcopy(query)
         document.update(deepcopy(update.get("$setOnInsert", {})))
-        document.update(deepcopy(update.get("$set", {})))
+        self._apply_update(document, update)
         result = self.insert_one(document)
         return SimpleNamespace(matched_count=0, modified_count=0, upserted_id=result.inserted_id)
 
@@ -162,9 +165,18 @@ class InMemoryCollection:
         for document in self.documents:
             if self._matches(document, query):
                 original = deepcopy(document)
-                document.update(deepcopy(update.get("$set", {})))
+                self._apply_update(document, update)
                 return deepcopy(document) if _kwargs.get("return_document") else original
         return None
+
+    @staticmethod
+    def _apply_update(document: dict, update: dict) -> None:
+        document.update(deepcopy(update.get("$set", {})))
+        for key, increment in update.get("$inc", {}).items():
+            document[key] = document.get(key, 0) + increment
+        for key, minimum in update.get("$max", {}).items():
+            if key not in document or document[key] < minimum:
+                document[key] = minimum
 
     def create_index(self, *_args, **_kwargs):
         return "in-memory-index"

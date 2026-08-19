@@ -2,11 +2,46 @@
 
 from fastapi import HTTPException, status
 from bson import ObjectId
+from pymongo import ReturnDocument
 from pymongo.database import Database
 
 from app.models.catalog import RejectedCuration, ResolveCurationsResponse
 
 SELECTABLE_STATUSES = frozenset({"active", "draft", "linked"})
+CATALOG_SEQUENCE_COUNTER_ID = "curations_catalog_sequence"
+
+
+def reserve_catalog_sequences(db: Database, count: int) -> range:
+    """Reserve a disjoint, monotonically increasing server-owned range."""
+
+    if not isinstance(count, int) or count < 1:
+        raise ValueError("count must be a positive integer")
+    highest = db.curations.find_one(
+        {"catalog_sequence": {"$type": "number"}},
+        projection={"catalog_sequence": 1},
+        sort=[("catalog_sequence", -1)],
+    )
+    current_max = int((highest or {}).get("catalog_sequence", 0))
+    db.counters.update_one(
+        {"_id": CATALOG_SEQUENCE_COUNTER_ID},
+        {"$max": {"value": current_max}, "$set": {"initialized": True}},
+        upsert=True,
+    )
+    counter = db.counters.find_one_and_update(
+        {"_id": CATALOG_SEQUENCE_COUNTER_ID},
+        {"$inc": {"value": count}},
+        return_document=ReturnDocument.AFTER,
+    )
+    end = int(counter["value"])
+    return range(end - count + 1, end + 1)
+
+
+def ensure_catalog_sequence(db: Database, document: dict) -> int:
+    """Assign a fresh sequence immediately before a Curation write."""
+
+    sequence = next(iter(reserve_catalog_sequences(db, 1)))
+    document["catalog_sequence"] = sequence
+    return sequence
 
 
 def _distinct_in_order(curation_ids: list[str]) -> list[str]:
