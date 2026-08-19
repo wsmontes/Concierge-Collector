@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     # mutations nem de índices desse namespace.
     cms_mongodb_read_url: str = ""
     distribution_cursor_secret: str = ""
+    # Distinct HMAC key for internal CMS catalog scans. It is unrelated to
+    # JWTs, service authentication and consumer distribution cursors.
+    catalog_cursor_secret: str = ""
 
     # API
     api_v3_host: str = "0.0.0.0"
@@ -169,6 +172,10 @@ class Settings(BaseSettings):
     @property
     def cms_mongodb_read_url_value(self) -> str:
         return self._required_cms_setting(self.cms_mongodb_read_url, "CMS_MONGODB_READ_URL")
+
+    @property
+    def catalog_cursor_secret_value(self) -> str:
+        return self._required_cms_setting(self.catalog_cursor_secret, "CATALOG_CURSOR_SECRET")
 
     @property
     def metrics_key_value(self) -> str:

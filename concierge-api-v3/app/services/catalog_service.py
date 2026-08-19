@@ -1,4 +1,10 @@
-"""Bounded selection resolution against the operational Curation database."""
+"""Bounded selection resolution and high-water scans for CMS Explorer."""
+
+import base64
+from datetime import datetime, timedelta, timezone
+import hashlib
+import hmac
+import json
 
 from fastapi import HTTPException, status
 from bson import ObjectId
@@ -42,6 +48,160 @@ def ensure_catalog_sequence(db: Database, document: dict) -> int:
     sequence = next(iter(reserve_catalog_sequences(db, 1)))
     document["catalog_sequence"] = sequence
     return sequence
+
+
+class CatalogCursorError(ValueError):
+    """A scan or page cursor is malformed, expired or bound to another actor."""
+
+
+def _encode_token(value: dict, secret: str) -> str:
+    body = json.dumps(value, separators=(",", ":"), sort_keys=True).encode("utf-8")
+    signature = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).digest()
+    return f"{base64.urlsafe_b64encode(body).decode().rstrip('=')}.{base64.urlsafe_b64encode(signature).decode().rstrip('=')}"
+
+
+def _decode_token(token: str, secret: str) -> dict:
+    try:
+        body_part, signature_part = token.split(".")
+        body = base64.urlsafe_b64decode(body_part + "=" * (-len(body_part) % 4))
+        signature = base64.urlsafe_b64decode(signature_part + "=" * (-len(signature_part) % 4))
+        expected = hmac.new(secret.encode("utf-8"), body, hashlib.sha256).digest()
+        value = json.loads(body)
+    except (TypeError, ValueError, UnicodeDecodeError) as exc:
+        raise CatalogCursorError("invalid cursor") from exc
+    if not hmac.compare_digest(signature, expected) or not isinstance(value, dict):
+        raise CatalogCursorError("invalid cursor")
+    if not isinstance(value.get("exp"), int) or value["exp"] < int(datetime.now(timezone.utc).timestamp()):
+        raise CatalogCursorError("invalid cursor")
+    return value
+
+
+def _normalized_filters(filters: dict) -> dict:
+    value = dict(filters)
+    if isinstance(value.get("q"), str):
+        value["q"] = value["q"].strip().lower() or None
+    if isinstance(value.get("status"), list):
+        value["status"] = sorted(set(value["status"]))
+    return {key: item for key, item in value.items() if item not in (None, [], "")}
+
+
+def _filter_query(filters: dict) -> dict:
+    query: dict = {}
+    if filters.get("status"):
+        query["status"] = {"$in": filters["status"]}
+    if filters.get("city"):
+        query["city"] = filters["city"]
+    if filters.get("entity_type"):
+        query["type"] = filters["entity_type"]
+    if filters.get("curator_id"):
+        query["curator_id"] = filters["curator_id"]
+    if filters.get("q"):
+        query["restaurant_name"] = {"$regex": filters["q"], "$options": "i"}
+    if filters.get("updated_from") or filters.get("updated_to"):
+        updated: dict = {}
+        if filters.get("updated_from"):
+            updated["$gte"] = filters["updated_from"]
+        if filters.get("updated_to"):
+            updated["$lte"] = filters["updated_to"]
+        query["updatedAt"] = updated
+    return query
+
+
+def start_catalog_scan(db: Database, actor_id: str, filters: dict, secret: str) -> dict:
+    """Freeze a high-water sequence while keeping mutable filters live."""
+
+    require_current_cms_admin(db, actor_id)
+    normalized = _normalized_filters(filters)
+    highest = db.curations.find_one(
+        {"catalog_sequence": {"$type": "number"}},
+        projection={"catalog_sequence": 1},
+        sort=[("catalog_sequence", -1)],
+    )
+    maximum = int((highest or {}).get("catalog_sequence", 0))
+    expires = int((datetime.now(timezone.utc) + timedelta(minutes=15)).timestamp())
+    token = _encode_token(
+        {"kind": "catalog-scan", "actor": actor_id, "filters": normalized, "max": maximum, "exp": expires}, secret
+    )
+    return {"scan_token": token, "max_catalog_sequence": maximum}
+
+
+def catalog_scan_page(
+    db: Database, actor_id: str, scan_token: str, cursor: str | None, limit: int, secret: str
+) -> dict:
+    require_current_cms_admin(db, actor_id)
+    scan = _decode_token(scan_token, secret)
+    if scan.get("kind") != "catalog-scan" or scan.get("actor") != actor_id or not isinstance(scan.get("max"), int):
+        raise CatalogCursorError("invalid scan")
+    last_sequence = last_id = None
+    if cursor:
+        position = _decode_token(cursor, secret)
+        if (
+            any(position.get(key) != scan.get(key) for key in ("actor", "filters", "max", "exp"))
+            or position.get("kind") != "catalog-page"
+        ):
+            raise CatalogCursorError("invalid cursor")
+        if not isinstance(position.get("sequence"), int) or not isinstance(position.get("curation_id"), str):
+            raise CatalogCursorError("invalid cursor")
+        last_sequence, last_id = position["sequence"], position["curation_id"]
+    clauses: list[dict] = [_filter_query(scan["filters"]), {"catalog_sequence": {"$lte": scan["max"]}}]
+    if last_sequence is not None:
+        clauses.append(
+            {
+                "$or": [
+                    {"catalog_sequence": {"$gt": last_sequence}},
+                    {"catalog_sequence": last_sequence, "curation_id": {"$gt": last_id}},
+                ]
+            }
+        )
+    rows = list(
+        db.curations.find(
+            {"$and": clauses},
+            {
+                "_id": 0,
+                "curation_id": 1,
+                "catalog_sequence": 1,
+                "status": 1,
+                "restaurant_name": 1,
+                "city": 1,
+                "type": 1,
+                "curator_id": 1,
+                "updatedAt": 1,
+            },
+        )
+        .sort([("catalog_sequence", 1), ("curation_id", 1)])
+        .limit(limit + 1)
+    )
+    page, more = rows[:limit], len(rows) > limit
+    items = [
+        {
+            "curation_id": str(row["curation_id"]),
+            "catalog_sequence": int(row["catalog_sequence"]),
+            "status": str(row.get("status") or "draft"),
+            "restaurant_name": row.get("restaurant_name"),
+            "city": row.get("city"),
+            "entity_type": row.get("type"),
+            "curator_id": row.get("curator_id"),
+            "updated_at": row.get("updatedAt"),
+        }
+        for row in page
+        if isinstance(row.get("curation_id"), str) and isinstance(row.get("catalog_sequence"), int)
+    ]
+    next_cursor = None
+    if more and items:
+        tail = items[-1]
+        next_cursor = _encode_token(
+            {
+                "kind": "catalog-page",
+                "actor": scan["actor"],
+                "filters": scan["filters"],
+                "max": scan["max"],
+                "exp": scan["exp"],
+                "sequence": tail["catalog_sequence"],
+                "curation_id": tail["curation_id"],
+            },
+            secret,
+        )
+    return {"items": items, "next_cursor": next_cursor}
 
 
 def _distinct_in_order(curation_ids: list[str]) -> list[str]:

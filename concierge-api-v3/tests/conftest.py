@@ -102,6 +102,12 @@ class InMemoryCollection:
                     return False
                 if operator == "$exists" and (actual is not None) != operand:
                     return False
+                if (
+                    operator == "$type"
+                    and operand == "number"
+                    and (isinstance(actual, bool) or not isinstance(actual, (int, float)))
+                ):
+                    return False
                 if operator == "$regex":
                     import re
 
