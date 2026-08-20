@@ -1,6 +1,5 @@
 """User identity creation must be idempotent under concurrent OAuth callbacks."""
 
-from datetime import datetime, timezone
 from unittest.mock import patch
 
 from pymongo.errors import DuplicateKeyError
