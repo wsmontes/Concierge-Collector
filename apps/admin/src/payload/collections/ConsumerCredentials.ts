@@ -21,6 +21,10 @@ export const ConsumerCredentials: CollectionConfig = {
     { name: 'expiresAt', type: 'date', index: true },
     { name: 'revokedAt', type: 'date' },
     { name: 'revokedBy', type: 'text' },
+    // Internal lineage only. The old credential remains usable through its
+    // overlap expiry, but it may never mint a second replacement.
+    { name: 'rotatedAt', type: 'date', admin: { hidden: true }, access: { read: () => false } },
+    { name: 'rotatedToCredentialId', type: 'text', admin: { hidden: true }, access: { read: () => false } },
     { name: 'lastUsedAt', type: 'date' },
   ],
 }
