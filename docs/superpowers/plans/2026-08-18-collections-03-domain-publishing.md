@@ -48,7 +48,7 @@
 - Consumes: `CmsUsers`, `isAuthorizedAdmin` e Mongo CMS.
 - Produces: slugs/db names `collections`, `collection_versions`, `collection_memberships`, `collection_draft_changes`, `collection_operations`, `collection_operation_items`, `collection_publish_jobs`, `audit_events`; script `migrate:cms`.
 
-- [ ] **Step 1: Escrever o teste de schema e índices**
+- [x] **Step 1: Escrever o teste de schema e índices**
 
 ```typescript
 import { describe, expect, test } from 'vitest'
@@ -72,13 +72,13 @@ describe('Collections CMS indexes', () => {
 })
 ```
 
-- [ ] **Step 2: Rodar e confirmar collections ausentes**
+- [x] **Step 2: Rodar e confirmar collections ausentes**
 
 Run: `npm run test:integration --workspace=@concierge/admin -- tests/integration/payload/collection-indexes.int.test.ts`
 
 Expected: FAIL porque as collections/índices ainda não existem.
 
-- [ ] **Step 3: Criar configs e migration idempotente**
+- [x] **Step 3: Criar configs e migration idempotente**
 
 `Collections.ts` contém exatamente os campos pequenos:
 
@@ -147,7 +147,7 @@ await db.collection('audit_events').createIndex(
 
 Adicionar `migrate:cms: payload migrate` ao package; migration é invocada apenas manual/release step.
 
-- [ ] **Step 4: Migrar banco de teste e validar tipos/índices**
+- [x] **Step 4: Migrar banco de teste e validar tipos/índices**
 
 Run:
 
@@ -160,7 +160,7 @@ npm run typecheck:admin
 
 Expected: PASS; segundo `migrate:cms` é no-op; `payload-types.ts` fica versionado.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/admin
@@ -185,7 +185,7 @@ git commit -m "feat(collections): criar schema CMS e indices"
 - Consumes: collections Task 1, `withAdmin`, headers `If-Match`, `Idempotency-Key`, `X-Request-Id`.
 - Produces: `createCollection`, `patchCollectionMetadata`, `hardDeleteNeverPublished`, `archiveCollection`, `restoreCollection`; CRUD/transitions em `/api/admin/v1/collections`.
 
-- [ ] **Step 1: Escrever tabela de transições que falha**
+- [x] **Step 1: Escrever tabela de transições que falha**
 
 ```typescript
 import { describe, expect, test } from 'vitest'
@@ -211,13 +211,13 @@ describe('Collection lifecycle', () => {
 })
 ```
 
-- [ ] **Step 2: Rodar e confirmar módulo ausente**
+- [x] **Step 2: Rodar e confirmar módulo ausente**
 
 Run: `npm run test:admin -- --run tests/unit/collections/lifecycle.test.ts`
 
 Expected: FAIL por import inexistente.
 
-- [ ] **Step 3: Implementar comandos com CAS e audit**
+- [x] **Step 3: Implementar comandos com CAS e audit**
 
 Definir `CollectionRecord` com os campos da Task 1. `decideLifecycle` é função pura e cobre cada linha da spec. Repository atualiza sempre com filtro `{id, revision: ifMatch}` e `$inc:{revision:1}`; zero match retorna `412 revision_conflict`.
 
@@ -236,7 +236,7 @@ POST   /api/admin/v1/collections/:id/restore
 
 Normalize slug com lowercase ASCII, `-`, 3–80 chars; criar reserva única na própria Collection e nunca apagar documento publicado.
 
-- [ ] **Step 4: Rodar unit e integração de lifecycle**
+- [x] **Step 4: Rodar unit e integração de lifecycle**
 
 Run:
 
@@ -247,7 +247,7 @@ npm run test:integration --workspace=@concierge/admin -- tests/integration/paylo
 
 Expected: PASS para slug conflict, stale If-Match, delete never-published, archive/restore e audit append-only.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/admin/src apps/admin/tests apps/admin/payload.config.ts
@@ -269,7 +269,7 @@ git commit -m "feat(collections): implementar lifecycle auditado"
 **Interfaces:**
 - Produces: `isMemberAtVersion(interval, version) -> boolean`; `convergeDraftDelta(published, current, action) -> 'add'|'remove'|null`; `computeCanonicalMembershipHash(ids: Iterable<string>|AsyncIterable<string>, schemaVersion: number) -> Promise<string>`.
 
-- [ ] **Step 1: Escrever testes de interval/reentrada/convergência**
+- [x] **Step 1: Escrever testes de interval/reentrada/convergência**
 
 ```typescript
 import { describe, expect, test } from 'vitest'
@@ -291,13 +291,13 @@ test.each([
 })
 ```
 
-- [ ] **Step 2: Rodar e confirmar falha de imports**
+- [x] **Step 2: Rodar e confirmar falha de imports**
 
 Run: `npm run test:admin -- --run tests/unit/collections/membership.test.ts tests/unit/collections/draft-delta.test.ts tests/unit/collections/hash.test.ts`
 
 Expected: FAIL porque as três funções não existem.
 
-- [ ] **Step 3: Implementar funções puras e streaming hash**
+- [x] **Step 3: Implementar funções puras e streaming hash**
 
 ```typescript
 export function isMemberAtVersion(
@@ -318,7 +318,7 @@ export function convergeDraftDelta(
 
 `computeCanonicalMembershipHash` recebe `Iterable<string> | AsyncIterable<string>` já ordenado pela query Mongo, valida monotonicidade, ignora somente duplicata adjacente e alimenta incrementalmente SHA-256 com `concierge-collection-membership\0`, `schemaVersion`, `\0`, e cada `curationId + '\n'`. O caller que parte de input compacto normaliza/sort antes; publish/manifests nunca criam array completo. Testes cobrem stream ordenado, duplicata adjacente, input fora de ordem rejeitado e schema version diferente.
 
-- [ ] **Step 4: Rodar testes e typecheck**
+- [x] **Step 4: Rodar testes e typecheck**
 
 Run:
 
@@ -329,7 +329,7 @@ npm run typecheck:admin
 
 Expected: todos PASS, sem ordenar significado editorial em DTO/UI.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/admin/src/collections apps/admin/tests/unit/collections
@@ -365,7 +365,7 @@ git commit -m "feat(collections): projetar intervals delta e hash"
 - Consumes: Task 3, `CreateDraftOperationCommand`, `requireCurrentAdmin`.
 - Produces: `POST /api/v3/catalog/curations/resolve`; `resolveCurations(ids, actorSubject)`; `enqueueDraftOperation(command)`, `applyDraftOperation(operationId, lease)`, Payload task `apply-draft-operation`, endpoints create/get/cancel.
 
-- [ ] **Step 1: Escrever testes de idempotência e invisibilidade do staging**
+- [x] **Step 1: Escrever testes de idempotência e invisibilidade do staging**
 
 ```typescript
 test('same key/same hash returns original; different hash conflicts', async () => {
@@ -415,7 +415,7 @@ def test_resolve_accepts_selectable_statuses_and_rejects_archived(
 
 `collection-fixtures.ts` exporta `seedOperation({curationIds})`, `runUntilCheckpoint(operationId, checkpoint)`, `loadCollection`, `visibleDraftChanges`, `seedPublishedWithDirtyDraft`, `runPublishWithCrash` e `loadOperation`; cada helper grava apenas no `concierge-cms-test`, recebe IDs fixos por teste e apaga os documentos no `afterEach`.
 
-- [ ] **Step 2: Rodar e confirmar falhas**
+- [x] **Step 2: Rodar e confirmar falhas**
 
 Run:
 
@@ -426,7 +426,7 @@ cd .. && npm run test:integration --workspace=@concierge/admin -- tests/integrat
 
 Expected: FAIL/404 porque resolve/enqueue/task não existem.
 
-- [ ] **Step 3: Implementar fila, lease, staging e CAS**
+- [x] **Step 3: Implementar fila, lease, staging e CAS**
 
 O novo router FastAPI aceita no máximo 500 IDs, exige `X-CMS-Service-Key` e `X-CMS-Actor-Id`, recarrega esse actor como admin e resolve somente Curations existentes cujo status é `active`, `draft` ou legado `linked`. Ele deduplica preservando a primeira ocorrência e devolve `eligible_ids` mais `rejected[{curation_id,reason}]`; `deleted`/`archived` são `ineligible_status`. Não hidrata Entity e não confunde elegibilidade de seleção com disponibilidade pública.
 
@@ -458,7 +458,7 @@ POST /api/admin/v1/operations/:id/cancel
 
 Cancelar é permitido até antes de `committing`; após commit retorna 409 e oferece operação compensatória. `423` inclui `blockingJobId` quando `draftState='publishing'`.
 
-- [ ] **Step 4: Rodar integração, concorrência e restart**
+- [x] **Step 4: Rodar integração, concorrência e restart**
 
 Run:
 
@@ -472,7 +472,7 @@ cd concierge-api-v3 && venv/bin/pytest tests/test_catalog_resolve.py -v
 
 Expected: PASS para add/add, add/remove, remove/remove, stale If-Match, retry de lote, crash em cada checkpoint, cancel e fence antigo rejeitado.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/admin/src apps/admin/tests apps/admin/payload.config.ts concierge-api-v3/app concierge-api-v3/tests/test_catalog_resolve.py concierge-api-v3/main.py contracts packages/fastapi-client
@@ -502,7 +502,7 @@ git commit -m "feat(collections): aplicar operacoes de draft por CAS"
 - Consumes: intervals/delta, `FastApiAdminClient`, current live Curations/Entities.
 - Produces: `POST /api/v3/internal/curations/hydrate`; `enqueuePublish`; `runPublishJob`; `POST /api/admin/v1/collections/:id/publish`; immutable `collection_versions`.
 
-- [ ] **Step 1: Escrever testes de availability e promoção**
+- [x] **Step 1: Escrever testes de availability e promoção**
 
 ```python
 from unittest.mock import MagicMock
@@ -534,7 +534,7 @@ test('falha antes da transação mantém current e draft', async () => {
 
 `tests/factories.py` reutiliza `active_curation(**overrides)`/`active_entity(**overrides)` criados na Task 4; os testes nunca importam dados reais.
 
-- [ ] **Step 2: Rodar e confirmar falhas**
+- [x] **Step 2: Rodar e confirmar falhas**
 
 Run:
 
@@ -545,7 +545,7 @@ cd .. && npm run test:integration --workspace=@concierge/admin -- tests/integrat
 
 Expected: FAIL por serviços/tasks ausentes.
 
-- [ ] **Step 3: Implementar predicado e publish resumível**
+- [x] **Step 3: Implementar predicado e publish resumível**
 
 FastAPI cria `AvailabilityReason`, `UnavailableItem`, `PublicCurationItem` allowlisted e `evaluate_public_item`. Somente Curation `active`, Entity `active`, IDs/nome válidos e serialização allowlisted ficam disponíveis; `draft`, legado `linked`, `deleted`, `archived`, entity ausente/inactive e schema inválido geram os reason codes da spec. Erros PyMongo/http não viram unavailable.
 
@@ -598,7 +598,7 @@ Se `unavailable_count > 0`, endpoint exige `confirmUnavailable=true` ligado ao c
 
 Adicionar `POST /api/admin/v1/collections/:id/versions/:version/restore-as-draft`: ele compara em cursor/batches a versão histórica com a current, enfileira deltas para o draft e audita `historical_version_restored_to_draft`; não move o ponteiro publicado. O usuário revisa o diff e publica, criando número monotônico novo.
 
-- [ ] **Step 4: Rodar unit/integration/concurrency/restart**
+- [x] **Step 4: Rodar unit/integration/concurrency/restart**
 
 Run:
 
@@ -610,7 +610,7 @@ npm run test:integration --workspace=@concierge/admin -- tests/integration/worke
 
 Expected: PASS para dois publishes, pending operation, role revogada, takeover após lease, fence antigo, hash/count mismatch e crash/retry em cada checkpoint.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add concierge-api-v3/app concierge-api-v3/tests apps/admin/src apps/admin/tests apps/admin/payload.config.ts
@@ -638,7 +638,7 @@ git commit -m "feat(collections): publicar versoes de forma atomica"
 - Consumes: lifecycle/diff/version/audit endpoints cursor-paginados.
 - Produces: tabs `Overview`, `Members`, `Draft Changes`, `Versions`, `Distribution`, `Activity`; publish confirmation; exports JSON/CSV de diff server-side.
 
-- [ ] **Step 1: Escrever teste da UI sem ordem editorial**
+- [x] **Step 1: Escrever teste da UI sem ordem editorial**
 
 ```typescript
 test('Collection view mostra contagens e não oferece reorder', async () => {
@@ -652,13 +652,13 @@ test('Collection view mostra contagens e não oferece reorder', async () => {
 
 O teste importa `render`/`screen` de `@testing-library/react`, usa `publishedDirtyCollection` local com counts/revision explícitos e mocka somente os quatro endpoints de leitura; nenhuma fixture global implícita.
 
-- [ ] **Step 2: Rodar e confirmar componente ausente**
+- [x] **Step 2: Rodar e confirmar componente ausente**
 
 Run: `npm run test:admin -- --run tests/unit/components/collection-views.test.tsx`
 
 Expected: FAIL por import ausente.
 
-- [ ] **Step 3: Implementar views e reads paginadas**
+- [x] **Step 3: Implementar views e reads paginadas**
 
 Endpoints `members`, `draft/diff`, `versions`, `activity` aceitam `limit<=200`, cursor opaco e filtros server-side; diff nunca materializa tudo no browser. UI usa componentes Payload para metadata pequena e custom views para as tabs; publish mostra base/current/next, adds/removes/unavailable e exige confirmação quando unavailable > 0. Collection archived fica read-only com ação Restore.
 
@@ -680,7 +680,7 @@ export interface CollectionReadAdapter {
 
 `MembersView` oferece filtro `unavailable` e lista reason code paginada. `VersionsView` oferece “Restore as draft”, nunca “set current”. `OverviewView` agrega drafts dirty/failed, jobs ativos/antigos, publicações recentes e Collections com unavailable crescente, com links para os recursos reais.
 
-- [ ] **Step 4: Rodar UI/E2E e gate do domínio**
+- [x] **Step 4: Rodar UI/E2E e gate do domínio**
 
 Run:
 
@@ -694,7 +694,7 @@ npm run build:admin
 
 Expected: PASS; E2E cria v1, acumula draft, comprova v1 estável, publica v2, arquiva/restaura a mesma v2.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/admin
