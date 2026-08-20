@@ -53,6 +53,36 @@ def _membership_query(collection_id: str, version: int, after: str | None) -> di
     return {"$and": clauses}
 
 
+def _hydrate_membership_page(
+    *,
+    cms_db: CmsReadOnlyDatabase,
+    operational_db: Database,
+    collection_id: str,
+    version: int,
+    after: str | None,
+    limit: int,
+):
+    """Hydrate at most ``limit`` frozen memberships and preserve cursor order.
+
+    Page capacity is membership-based, not availability-based. An unavailable
+    curation consumes one slot just like a hydrated item; otherwise a page with
+    many unavailable IDs could scan the entire Collection while claiming a
+    small limit.
+    """
+    rows = list(
+        cms_db.collection("collection_memberships")
+        .find(_membership_query(collection_id, version, after), {"_id": 0, "curationId": 1})
+        .sort("curationId", 1)
+        .limit(limit + 1)
+    )
+    has_more = len(rows) > limit
+    page_rows = rows[:limit]
+    ids = [row.get("curationId") for row in page_rows if isinstance(row.get("curationId"), str)]
+    batch = hydrate_public_batch(operational_db, ids)
+    last_seen = ids[-1] if ids else after
+    return batch.items, batch.unavailable, last_seen, has_more
+
+
 def _authorize_published_collection(
     *, slug: str, principal: ConsumerPrincipal, cms_db: CmsReadOnlyDatabase, response_headers: dict[str, str]
 ) -> tuple[dict, str]:
@@ -194,36 +224,17 @@ def current_collection_page(
         except CursorError as exc:
             raise HTTPException(status_code=409, detail="Invalid collection cursor", headers=response_headers) from exc
 
-    items = []
-    unavailable = []
-    last_seen: str | None = after
-    exhausted = False
-    memberships = cms_db.collection("collection_memberships")
-    while len(items) < limit and not exhausted:
-        batch_limit = min(500, max(1, limit - len(items)))
-        rows = list(
-            memberships.find(
-                _membership_query(collection_id, version, last_seen),
-                {"_id": 0, "curationId": 1},
-            ).sort("curationId", 1)
-            # Never scan beyond the remaining response capacity: otherwise a
-            # cursor could advance past hydrated items that were not emitted.
-            .limit(batch_limit)
-        )
-        if not rows:
-            exhausted = True
-            break
-        ids = [row.get("curationId") for row in rows if isinstance(row.get("curationId"), str)]
-        last_seen = ids[-1] if ids else last_seen
-        batch = hydrate_public_batch(operational_db, ids)
-        remaining = limit - len(items)
-        items.extend(batch.items[:remaining])
-        unavailable.extend(batch.unavailable)
-        if len(rows) < batch_limit:
-            exhausted = True
+    items, unavailable, last_seen, has_more = _hydrate_membership_page(
+        cms_db=cms_db,
+        operational_db=operational_db,
+        collection_id=collection_id,
+        version=version,
+        after=after,
+        limit=limit,
+    )
 
     next_cursor = None
-    if last_seen and not exhausted:
+    if last_seen and has_more:
         next_cursor = encode_cursor(
             {
                 "purpose": "collection-items",
@@ -384,30 +395,16 @@ def exact_collection_version_page(
         except CursorError as exc:
             raise HTTPException(status_code=409, detail="Invalid collection cursor", headers=response_headers) from exc
 
-    items = []
-    unavailable = []
-    last_seen: str | None = after
-    exhausted = False
-    memberships = cms_db.collection("collection_memberships")
-    while len(items) < limit and not exhausted:
-        batch_limit = min(500, max(1, limit - len(items)))
-        rows = list(
-            memberships.find(_membership_query(collection_id, version, last_seen), {"_id": 0, "curationId": 1})
-            .sort("curationId", 1)
-            .limit(batch_limit)
-        )
-        if not rows:
-            exhausted = True
-            break
-        ids = [row.get("curationId") for row in rows if isinstance(row.get("curationId"), str)]
-        last_seen = ids[-1] if ids else last_seen
-        batch = hydrate_public_batch(operational_db, ids)
-        items.extend(batch.items[: limit - len(items)])
-        unavailable.extend(batch.unavailable)
-        if len(rows) < batch_limit:
-            exhausted = True
+    items, unavailable, last_seen, has_more = _hydrate_membership_page(
+        cms_db=cms_db,
+        operational_db=operational_db,
+        collection_id=collection_id,
+        version=version,
+        after=after,
+        limit=limit,
+    )
     next_cursor = None
-    if last_seen and not exhausted:
+    if last_seen and has_more:
         next_cursor = encode_cursor(
             {
                 "purpose": "collection-items",
