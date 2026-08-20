@@ -177,7 +177,9 @@ export class CollectionRepository {
     try {
       return await atomically(this.payload, async (session) => {
         const created = await this.models.collections.create([record], { session })
-        const result = asRecord(created[0])
+        // `create` returns mongoose Documents; spreading one (asRecord) would
+        // drop every schema path, since they live as prototype accessors.
+        const result = asRecord(created[0].toObject())
         await appendAuditEvent(this.models.auditEvents, {
           actorId: audit.actorId,
           afterRevision: result.revision,
