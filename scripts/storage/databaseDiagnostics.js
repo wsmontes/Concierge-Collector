@@ -270,7 +270,7 @@ const DatabaseDiagnostics = ModuleWrapper.defineClass('DatabaseDiagnostics', cla
                 curator: c.curator?.name,
                 categories: c.categories?.join(', '),
                 'sync.status': c.sync?.status
-            })));
+            }));
             
             return curations;
         } catch (error) {
@@ -378,3 +378,109 @@ if (typeof window !== 'undefined') {
         'color: #6b7280;'
     );
 }
+
+// Durable recovery backend. This file is loaded immediately after
+// databaseManager.js and before DataStore creates its DatabaseManager instance,
+// so the production path receives these methods without rewriting the large
+// migration module. A separate IndexedDB preserves structured-clone values
+// (notably pendingAudio Blob objects) and avoids localStorage quota limits.
+(function installDurableDatabaseRecovery() {
+    if (typeof window === 'undefined' || !window.DatabaseManager || typeof Dexie === 'undefined') return;
+
+    const proto = window.DatabaseManager.prototype;
+    if (proto.__durableRecoveryInstalled) return;
+
+    const RECOVERY_DB_SUFFIX = '-Recovery';
+    const SNAPSHOT_KEY = 'latest';
+    const BACKUP_STORES = [
+        'entities',
+        'curations',
+        'curators',
+        'syncQueue',
+        'drafts',
+        'draftRestaurants',
+        'pendingAudio',
+        'settings'
+    ];
+
+    function openRecoveryDatabase(primaryName) {
+        const recovery = new Dexie(`${primaryName}${RECOVERY_DB_SUFFIX}`);
+        recovery.version(1).stores({ snapshots: 'key,timestamp' });
+        return recovery.open().then(() => recovery);
+    }
+
+    proto.createBackup = async function createDurableBackup() {
+        if (!this.db || !this.db.isOpen()) {
+            throw new Error('Cannot create recovery backup: primary database is not open');
+        }
+
+        const stores = {};
+        for (const name of BACKUP_STORES) {
+            if (!this.db[name]) continue;
+            stores[name] = await this.db[name].toArray();
+        }
+
+        const snapshot = {
+            key: SNAPSHOT_KEY,
+            version: this.currentVersion,
+            timestamp: new Date().toISOString(),
+            stores
+        };
+
+        const recovery = await openRecoveryDatabase(this.dbName);
+        try {
+            await recovery.snapshots.put(snapshot);
+        } finally {
+            recovery.close();
+        }
+
+        // Remove the old JSON/localStorage snapshot only after the durable
+        // IndexedDB write succeeds. Failure remains fatal to destructive flows.
+        try { localStorage.removeItem('concierge_db_backup'); } catch (_) {}
+        this.log.info('✅ Durable IndexedDB recovery backup created');
+    };
+
+    proto.restoreBackup = async function restoreDurableBackup() {
+        const recovery = await openRecoveryDatabase(this.dbName);
+        let snapshot;
+        try {
+            snapshot = await recovery.snapshots.get(SNAPSHOT_KEY);
+        } finally {
+            recovery.close();
+        }
+        if (!snapshot || !snapshot.stores) {
+            throw new Error('No durable recovery backup found');
+        }
+
+        // attemptRecovery deliberately closes this.db first. Reopen through the
+        // manager's canonical schema path before touching any primary store.
+        if (!this.db || !this.db.isOpen()) {
+            await this.openDatabase();
+        }
+
+        const tableNames = BACKUP_STORES.filter((name) => this.db[name]);
+        const tables = tableNames.map((name) => this.db[name]);
+        if (this.db._meta) tables.push(this.db._meta);
+
+        await this.db.transaction('rw', ...tables, async () => {
+            for (const name of tableNames) {
+                const table = this.db[name];
+                await table.clear();
+                const rows = Array.isArray(snapshot.stores[name]) ? snapshot.stores[name] : [];
+                if (rows.length) await table.bulkPut(rows);
+            }
+            if (this.db._meta) {
+                await this.db._meta.put({ key: 'version', value: this.currentVersion });
+            }
+        });
+
+        this.log.info('✅ Durable IndexedDB recovery backup restored');
+    };
+
+    Object.defineProperty(proto, '__durableRecoveryInstalled', {
+        value: true,
+        writable: false,
+        configurable: false,
+        enumerable: false
+    });
+})();
