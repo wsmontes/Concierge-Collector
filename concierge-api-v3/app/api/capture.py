@@ -26,6 +26,11 @@ from app.core.database import get_database
 from app.core.security import require_role, is_admin_auth
 from app.services.curation_denorm import denormalize_curation_location
 from app.services.catalog_service import ensure_catalog_sequence
+from app.services.capture_session_service import (
+    abandon_capture_session,
+    claim_capture_session,
+    complete_capture_session,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -402,84 +407,90 @@ async def capture(
         logger.info("Capture idempotency cache hit: %s", capture_id)
         return cached
 
-    # Durable retry path before any paid AI work. This survives process restarts
-    # and prevents one curator's client key from colliding with another's.
-    col = _capture_collection(db)
+    # Durable claim BEFORE Whisper/GPT/Places. Completed retries are returned
+    # from Mongo; an active worker produces 409 + Retry-After instead of a
+    # second paid pipeline.
     try:
-        existing = col.find_one({"_id": capture_id, "curator_id": request.curator_id})
+        claim = claim_capture_session(
+            db,
+            capture_id=capture_id,
+            curator_id=request.curator_id,
+            idempotency_key=request.idempotency_key,
+        )
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Failed to check persisted capture session: {e}")
+        logger.error("Failed to claim capture session: %s", e)
         raise HTTPException(
             status_code=503,
-            detail="Failed to check capture session. Please try again.",
+            detail="Failed to claim capture session. Please try again.",
         )
-    if existing:
-        result = _response_from_session(existing)
+
+    if not claim.acquired:
+        result = _response_from_session(claim.existing_session or {})
         cache_entry = result.model_dump()
         cache_entry["curator_id"] = request.curator_id
         _idempotency_cache.set(cache_key, cache_entry)
         logger.info("Capture idempotency persistent hit: %s", capture_id)
         return result
 
-    # ── 1. Transcribe ──
-    logger.info(f"Transcribing audio ({len(request.audio)} chars base64)...")
+    processing_token = claim.processing_token
+    if not processing_token:
+        raise HTTPException(status_code=503, detail="Capture processing claim unavailable")
+
     try:
-        # _transcribe é síncrono (SDK OpenAI bloqueante) — thread para não
-        # travar o event loop (1 worker no Render atende todos os requests).
+        # ── 1. Transcribe ──
+        logger.info(f"Transcribing audio ({len(request.audio)} chars base64)...")
         transcription = await asyncio.to_thread(_transcribe, request.audio, request.language)
         if not transcription:
             raise HTTPException(status_code=422, detail="Could not transcribe audio")
+
+        logger.info("Transcription completed (%d chars)", len(transcription))
+
+        # ── 2. Extract restaurant name (OpenAI síncrono → thread) ──
+        restaurant_name = await asyncio.to_thread(_extract_restaurant_name, transcription)
+        logger.info(f"Extracted name: {restaurant_name}")
+
+        # ── 3. Match entities ──
+        entities = _match_entities(db, restaurant_name)
+        logger.info(f"Found {len(entities)} entity matches")
+
+        # ── 4. Extract concepts (OpenAI síncrono → thread) ──
+        concepts = await asyncio.to_thread(_extract_concepts, transcription, restaurant_name)
+        logger.info(f"Extracted concepts: {list(concepts.keys())}")
+
+        # ── 5. Persist only while this request still owns the lease ──
+        completed_session = complete_capture_session(
+            db,
+            capture_id=capture_id,
+            curator_id=request.curator_id,
+            processing_token=processing_token,
+            result_fields={
+                "transcription": transcription,
+                "restaurant_name": restaurant_name,
+                "entities": entities,
+                "concepts": concepts,
+            },
+        )
     except HTTPException:
+        abandon_capture_session(
+            db,
+            capture_id=capture_id,
+            curator_id=request.curator_id,
+            processing_token=processing_token,
+        )
         raise
     except Exception as e:
-        logger.error(f"Transcription failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
-
-    logger.info("Transcription completed (%d chars)", len(transcription))
-
-    # ── 2. Extract restaurant name (OpenAI síncrono → thread) ──
-    restaurant_name = await asyncio.to_thread(_extract_restaurant_name, transcription)
-    logger.info(f"Extracted name: {restaurant_name}")
-
-    # ── 3. Match entities ──
-    entities = _match_entities(db, restaurant_name)
-    logger.info(f"Found {len(entities)} entity matches")
-
-    # ── 4. Extract concepts (OpenAI síncrono → thread) ──
-    concepts = await asyncio.to_thread(_extract_concepts, transcription, restaurant_name)
-    logger.info(f"Extracted concepts: {list(concepts.keys())}")
-
-    # ── 5. Store capture session ──
-    # Persist to MongoDB FIRST, then cache on success.
-    # If MongoDB is down, we return 503 without polluting the cache.
-    session_doc = {
-        "_id": capture_id,
-        "capture_id": capture_id,
-        "idempotency_key": request.idempotency_key,
-        "transcription": transcription,
-        "restaurant_name": restaurant_name,
-        "entities": entities,
-        "concepts": concepts,
-        "curator_id": request.curator_id,
-        "status": "pending_confirmation",
-        "createdAt": datetime.now(timezone.utc),
-    }
-    try:
-        col.replace_one({"_id": capture_id, "curator_id": request.curator_id}, session_doc, upsert=True)
-    except Exception as e:
-        logger.error(f"Failed to persist capture session: {e}")
-        raise HTTPException(
-            status_code=503,
-            detail="Failed to persist capture session. Please try again.",
+        abandon_capture_session(
+            db,
+            capture_id=capture_id,
+            curator_id=request.curator_id,
+            processing_token=processing_token,
         )
+        logger.error("Capture processing failed: %s", e)
+        raise HTTPException(status_code=500, detail="Capture processing failed")
 
-    result = CaptureResponse(
-        capture_id=capture_id,
-        transcription=transcription,
-        restaurant_name=restaurant_name,
-        entities=entities,
-        concepts=concepts,
-    )
+    result = _response_from_session(completed_session)
 
     # Now that MongoDB succeeded, populate the scoped idempotency cache.
     cache_entry = result.model_dump()
