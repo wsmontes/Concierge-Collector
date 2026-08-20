@@ -71,6 +71,8 @@ export interface Config {
     'cms-login-states': CmsLoginState;
     'cms-sessions': CmsSession;
     'worker-heartbeats': WorkerHeartbeat;
+    'selection-manifests': SelectionManifest;
+    'selection-manifest-items': SelectionManifestItem;
     collections: Collection;
     'collection-versions': CollectionVersion;
     'collection-memberships': CollectionMembership;
@@ -93,6 +95,8 @@ export interface Config {
     'cms-login-states': CmsLoginStatesSelect<false> | CmsLoginStatesSelect<true>;
     'cms-sessions': CmsSessionsSelect<false> | CmsSessionsSelect<true>;
     'worker-heartbeats': WorkerHeartbeatsSelect<false> | WorkerHeartbeatsSelect<true>;
+    'selection-manifests': SelectionManifestsSelect<false> | SelectionManifestsSelect<true>;
+    'selection-manifest-items': SelectionManifestItemsSelect<false> | SelectionManifestItemsSelect<true>;
     collections: CollectionsSelect<false> | CollectionsSelect<true>;
     'collection-versions': CollectionVersionsSelect<false> | CollectionVersionsSelect<true>;
     'collection-memberships': CollectionMembershipsSelect<false> | CollectionMembershipsSelect<true>;
@@ -129,6 +133,7 @@ export interface Config {
       'record-worker-heartbeat': TaskRecordWorkerHeartbeat;
       'apply-draft-operation': TaskApplyDraftOperation;
       'publish-collection': TaskPublishCollection;
+      'materialize-selection': TaskMaterializeSelection;
       inline: {
         input: unknown;
         output: unknown;
@@ -208,6 +213,73 @@ export interface WorkerHeartbeat {
   id: string;
   workerId: string;
   observedAt: string;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "selection-manifests".
+ */
+export interface SelectionManifest {
+  id: string;
+  actorId: string;
+  mode: 'explicit' | 'all_matching';
+  filters?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  excludedIds?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  scanToken?: string | null;
+  checkpointCursor?: string | null;
+  scanComplete: boolean;
+  candidateCount: number;
+  capturedCount: number;
+  skippedCount: number;
+  skippedReasons?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  manifestHash?: string | null;
+  status: 'queued' | 'materializing' | 'ready' | 'failed' | 'expired';
+  leaseOwner?: string | null;
+  leaseExpiresAt?: string | null;
+  fencingToken: number;
+  idempotencyKey: string;
+  requestHash: string;
+  requestId: string;
+  payloadJobId?: string | null;
+  expiresAt: string;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "selection-manifest-items".
+ */
+export interface SelectionManifestItem {
+  id: string;
+  selectionId: string;
+  curationId: string;
+  retainedUntil?: string | null;
+  expiresAt: string;
   updatedAt: string;
   createdAt: string;
 }
@@ -537,7 +609,12 @@ export interface PayloadJob {
     | {
         executedAt: string;
         completedAt: string;
-        taskSlug: 'inline' | 'record-worker-heartbeat' | 'apply-draft-operation' | 'publish-collection';
+        taskSlug:
+          | 'inline'
+          | 'record-worker-heartbeat'
+          | 'apply-draft-operation'
+          | 'publish-collection'
+          | 'materialize-selection';
         taskID: string;
         input?:
           | {
@@ -570,7 +647,9 @@ export interface PayloadJob {
         id?: string | null;
       }[]
     | null;
-  taskSlug?: ('inline' | 'record-worker-heartbeat' | 'apply-draft-operation' | 'publish-collection') | null;
+  taskSlug?:
+    | ('inline' | 'record-worker-heartbeat' | 'apply-draft-operation' | 'publish-collection' | 'materialize-selection')
+    | null;
   queue?: string | null;
   waitUntil?: string | null;
   processing?: boolean | null;
@@ -608,6 +687,14 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'worker-heartbeats';
         value: string | WorkerHeartbeat;
+      } | null)
+    | ({
+        relationTo: 'selection-manifests';
+        value: string | SelectionManifest;
+      } | null)
+    | ({
+        relationTo: 'selection-manifest-items';
+        value: string | SelectionManifestItem;
       } | null)
     | ({
         relationTo: 'collections';
@@ -739,6 +826,47 @@ export interface CmsSessionsSelect<T extends boolean = true> {
 export interface WorkerHeartbeatsSelect<T extends boolean = true> {
   workerId?: T;
   observedAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "selection-manifests_select".
+ */
+export interface SelectionManifestsSelect<T extends boolean = true> {
+  actorId?: T;
+  mode?: T;
+  filters?: T;
+  excludedIds?: T;
+  scanToken?: T;
+  checkpointCursor?: T;
+  scanComplete?: T;
+  candidateCount?: T;
+  capturedCount?: T;
+  skippedCount?: T;
+  skippedReasons?: T;
+  manifestHash?: T;
+  status?: T;
+  leaseOwner?: T;
+  leaseExpiresAt?: T;
+  fencingToken?: T;
+  idempotencyKey?: T;
+  requestHash?: T;
+  requestId?: T;
+  payloadJobId?: T;
+  expiresAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "selection-manifest-items_select".
+ */
+export interface SelectionManifestItemsSelect<T extends boolean = true> {
+  selectionId?: T;
+  curationId?: T;
+  retainedUntil?: T;
+  expiresAt?: T;
   updatedAt?: T;
   createdAt?: T;
 }
@@ -1086,6 +1214,18 @@ export interface TaskApplyDraftOperation {
 export interface TaskPublishCollection {
   input: {
     publishJobId: string;
+  };
+  output: {
+    status: string;
+  };
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TaskMaterialize-selection".
+ */
+export interface TaskMaterializeSelection {
+  input: {
+    selectionId: string;
   };
   output: {
     status: string;

@@ -12,6 +12,8 @@ import { collectionReadEndpoints } from './src/payload/endpoints/collection-read
 import { collectorCollectionEndpoints } from './src/payload/endpoints/collector-collections'
 import { applicationEndpoints } from './src/payload/endpoints/applications'
 import { explorerEndpoints } from './src/payload/endpoints/explorer'
+import { selectionEndpoints } from './src/payload/endpoints/selections'
+import { materializeSelectionTask } from './src/jobs/materializeSelectionTask'
 import {
   AuditEvents,
   CollectionDraftChanges,
@@ -27,6 +29,8 @@ import {
   CmsSessions,
   CmsUsers,
   WorkerHeartbeats,
+  SelectionManifests,
+  SelectionManifestItems,
 } from './src/payload/collections'
 
 const env = readEnv()
@@ -74,6 +78,8 @@ export default buildConfig({
     CmsLoginStates,
     CmsSessions,
     WorkerHeartbeats,
+    SelectionManifests,
+    SelectionManifestItems,
     Collections,
     CollectionVersions,
     CollectionMemberships,
@@ -85,7 +91,7 @@ export default buildConfig({
     ConsumerApplications,
     ConsumerCredentials,
   ],
-  endpoints: [...collectionEndpoints(), ...collectionReadEndpoints(), ...collectorCollectionEndpoints(), ...operationEndpoints(), ...publishingEndpoints(), ...applicationEndpoints(), ...explorerEndpoints()],
+  endpoints: [...collectionEndpoints(), ...collectionReadEndpoints(), ...collectorCollectionEndpoints(), ...operationEndpoints(), ...publishingEndpoints(), ...applicationEndpoints(), ...explorerEndpoints(), ...selectionEndpoints()],
   jobs: {
     access: {
       cancel: () => false,
@@ -93,7 +99,7 @@ export default buildConfig({
       run: () => false,
     },
     processingOrder: 'createdAt',
-    tasks: [recordWorkerHeartbeat, applyDraftOperationTask, publishCollectionTask],
+    tasks: [recordWorkerHeartbeat, applyDraftOperationTask, publishCollectionTask, materializeSelectionTask],
   },
   typescript: {
     outputFile: './src/payload/generated/payload-types.ts',

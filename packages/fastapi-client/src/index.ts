@@ -9,6 +9,8 @@ export type ResolveCurationsRequest = components["schemas"]["ResolveCurationsReq
 export type ResolveCurationsResponse = components["schemas"]["ResolveCurationsResponse"];
 export type CatalogSearchPage = components["schemas"]["CatalogSearchPage"];
 export type CatalogSearchQuery = NonNullable<paths["/api/v3/catalog/curations"]["get"]["parameters"]["query"]>;
+export type CatalogFilters = components["schemas"]["CatalogFilters"];
+export type CatalogScanPageRequest = components["schemas"]["CatalogScanPageRequest"];
 
 type ExchangeResponse = paths["/api/v3/auth/cms/exchange"]["post"] extends {
   responses: { 200: { content: { "application/json": infer Response } } };
@@ -29,6 +31,18 @@ type ResolveCurationsResponseContract = paths["/api/v3/catalog/curations/resolve
   : never;
 
 type CatalogSearchResponse = paths["/api/v3/catalog/curations"]["get"] extends {
+  responses: { 200: { content: { "application/json": infer Response } } };
+}
+  ? Response
+  : never;
+
+type CatalogScanStartResponse = paths["/api/v3/catalog/curations/scan/start"]["post"] extends {
+  responses: { 200: { content: { "application/json": infer Response } } };
+}
+  ? Response
+  : never;
+
+type CatalogScanPageResponse = paths["/api/v3/catalog/curations/scan/page"]["post"] extends {
   responses: { 200: { content: { "application/json": infer Response } } };
 }
   ? Response
@@ -86,6 +100,14 @@ export class FastApiAdminClient {
     }
     const suffix = params.size ? `?${params.toString()}` : "";
     return this.get(`/api/v3/catalog/curations${suffix}`, { "x-cms-actor-id": actorId });
+  }
+
+  startCatalogScan(filters: CatalogFilters, actorId: string): Promise<CatalogScanStartResponse> {
+    return this.post("/api/v3/catalog/curations/scan/start", { filters }, { "x-cms-actor-id": actorId });
+  }
+
+  scanCatalogPage(payload: CatalogScanPageRequest, actorId: string): Promise<CatalogScanPageResponse> {
+    return this.post("/api/v3/catalog/curations/scan/page", payload, { "x-cms-actor-id": actorId });
   }
 
   private async post<Request, Response>(path: string, payload: Request, extraHeaders: Record<string, string> = {}): Promise<Response> {

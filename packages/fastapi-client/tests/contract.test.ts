@@ -75,4 +75,18 @@ describe("FastApiAdminClient", () => {
       expect.objectContaining({ headers: expect.objectContaining({ "x-cms-actor-id": "admin-1" }) }),
     );
   });
+
+  it("starts and advances a high-water scan using the service-only boundary", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ scan_token: "scan-token", max_catalog_sequence: 42 }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ items: [], next_cursor: null }), { status: 200 }));
+    const client = new FastApiAdminClient({ baseUrl: "https://api.example.test", serviceKey: "service-key", fetch });
+
+    await expect(client.startCatalogScan({ q: "sushi" }, "admin-1")).resolves.toMatchObject({ scan_token: "scan-token" });
+    await expect(client.scanCatalogPage({ scan_token: "scan-token", cursor: null, limit: 500 }, "admin-1"))
+      .resolves.toEqual({ items: [], next_cursor: null });
+    expect(fetch).toHaveBeenNthCalledWith(2, "https://api.example.test/api/v3/catalog/curations/scan/page", expect.objectContaining({
+      headers: expect.objectContaining({ "x-cms-actor-id": "admin-1" }),
+    }));
+  });
 });
