@@ -22,7 +22,7 @@ from pymongo.database import Database
 from pymongo.errors import DuplicateKeyError
 
 from app.core.database import get_database
-from app.core.security import verify_auth, is_admin_auth
+from app.core.security import require_role, is_admin_auth
 from app.services.curation_denorm import denormalize_curation_location
 from app.services.catalog_service import ensure_catalog_sequence
 
@@ -337,7 +337,7 @@ def _extract_city(place: Dict[str, Any]) -> str:
 async def capture(
     request: CaptureRequest,
     db: Database = Depends(get_database),
-    auth: dict = Depends(verify_auth),
+    auth: dict = Depends(require_role("curator")),
 ):
     """
     Upload audio to start a capture session.
@@ -380,7 +380,7 @@ async def capture(
         logger.error(f"Transcription failed: {e}")
         raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
 
-    logger.info(f"Transcription: {transcription[:200]}...")
+    logger.info("Transcription completed (%d chars)", len(transcription))
 
     # ── 2. Extract restaurant name (OpenAI síncrono → thread) ──
     restaurant_name = await asyncio.to_thread(_extract_restaurant_name, transcription)
@@ -442,7 +442,7 @@ async def confirm_capture(
     capture_id: str,
     request: CaptureConfirmRequest,
     db: Database = Depends(get_database),
-    auth: dict = Depends(verify_auth),
+    auth: dict = Depends(require_role("curator")),
 ):
     """
     Confirm a capture session and create the curation.
