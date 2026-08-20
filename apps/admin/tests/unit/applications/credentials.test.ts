@@ -37,6 +37,7 @@ describe('consumer credentials', () => {
     const old = await repo.findCredential('cred-1')
     expect(old?.status).toBe('active')
     expect(old?.expiresAt).toEqual(overlapUntil)
+    expect(old?.rotatedToCredentialId).toBe('credential-new')
     // The application revision advances once for the whole rotation.
     expect(await repo.applicationRevision('app-1')).toBe(before + 1)
     expect(repo.audit).toEqual([{ type: 'credential.rotated', credentialId: 'cred-1' }])
@@ -60,6 +61,37 @@ describe('consumer credentials', () => {
   test('rotate rejects an overlap window in the past', async () => {
     const repo = fakeCredentialRepository({ id: 'cred-1' })
     await expect(rotateCredential('cred-1', { actorId: actor.user_id, idempotencyKey: 'rotate-4', overlapUntil: new Date('2026-08-19T00:00:00Z') }, repo, fixedRandom(9), new Date('2026-08-20T01:00:00Z'))).rejects.toMatchObject({ status: 400, code: 'invalid_request' })
+    expect(repo.audit).toEqual([])
+  })
+
+  test('a credential can produce only one replacement even with a different idempotency key', async () => {
+    const repo = fakeCredentialRepository({ id: 'cred-1' })
+    const now = new Date('2026-08-20T01:00:00Z')
+    const overlapUntil = new Date('2026-08-21T00:00:00Z')
+
+    await rotateCredential('cred-1', { actorId: actor.user_id, idempotencyKey: 'rotate-a', overlapUntil }, repo, fixedRandom(9), now)
+    await expect(
+      rotateCredential('cred-1', { actorId: actor.user_id, idempotencyKey: 'rotate-b', overlapUntil }, repo, fixedRandom(10), now),
+    ).rejects.toMatchObject({ status: 409, code: 'conflict' })
+
+    expect(repo.audit).toEqual([{ type: 'credential.rotated', credentialId: 'cred-1' }])
+    expect(await repo.applicationRevision('app-1')).toBe(3)
+  })
+
+  test('repository CAS loser never receives a newly generated secret', async () => {
+    const repo = fakeCredentialRepository({ id: 'cred-1' })
+    repo.forceNextRotationConflict = true
+
+    await expect(
+      rotateCredential(
+        'cred-1',
+        { actorId: actor.user_id, idempotencyKey: 'rotate-race', overlapUntil: new Date('2026-08-21T00:00:00Z') },
+        repo,
+        fixedRandom(11),
+        new Date('2026-08-20T01:00:00Z'),
+      ),
+    ).rejects.toMatchObject({ status: 409, code: 'conflict' })
+
     expect(repo.audit).toEqual([])
   })
 })
