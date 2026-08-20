@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Path, Query
 from fastapi.responses import JSONResponse, StreamingResponse
@@ -18,6 +18,7 @@ from app.models.distribution_response import (
 )
 from app.services.consumer_auth_service import ConsumerPrincipal, authenticate_consumer, authorize_collection
 from app.services.consumer_rate_limit import ConsumerRateLimitService
+from app.services.consumer_usage_service import record_consumer_usage
 from app.services.distribution_cursor import CursorError, decode_cursor, encode_cursor
 from app.services.distribution_dump import gzip_iter, iter_ndjson_dump
 from app.services.distribution_service import hydrate_public_batch
@@ -134,6 +135,9 @@ def current_collection_page(
     operational_db: Database = Depends(get_database),
 ):
     principal = _consumer(authorization, cms_db)
+    # Uso agregado vai SEMPRE ao banco operacional (nunca ao CMS); a response
+    # carrega os rate-limit headers junto — o sync de last use é por credencial.
+    record_consumer_usage(operational_db, principal, datetime.now(timezone.utc))
     response_headers = _response_headers(principal, operational_db)
     collection, collection_id = _authorize_published_collection(
         slug=slug, principal=principal, cms_db=cms_db, response_headers=response_headers
@@ -226,6 +230,9 @@ def published_collection_versions(
     operational_db: Database = Depends(get_database),
 ):
     principal = _consumer(authorization, cms_db)
+    # Uso agregado vai SEMPRE ao banco operacional (nunca ao CMS); a response
+    # carrega os rate-limit headers junto — o sync de last use é por credencial.
+    record_consumer_usage(operational_db, principal, datetime.now(timezone.utc))
     response_headers = _response_headers(principal, operational_db)
     collection, collection_id = _authorize_published_collection(
         slug=slug, principal=principal, cms_db=cms_db, response_headers=response_headers
@@ -316,6 +323,9 @@ def exact_collection_version_page(
     operational_db: Database = Depends(get_database),
 ):
     principal = _consumer(authorization, cms_db)
+    # Uso agregado vai SEMPRE ao banco operacional (nunca ao CMS); a response
+    # carrega os rate-limit headers junto — o sync de last use é por credencial.
+    record_consumer_usage(operational_db, principal, datetime.now(timezone.utc))
     response_headers = _response_headers(principal, operational_db)
     _collection, collection_id = _authorize_published_collection(
         slug=slug, principal=principal, cms_db=cms_db, response_headers=response_headers
@@ -406,6 +416,9 @@ def current_collection_dump(
     operational_db: Database = Depends(get_database),
 ):
     principal = _consumer(authorization, cms_db)
+    # Uso agregado vai SEMPRE ao banco operacional (nunca ao CMS); a response
+    # carrega os rate-limit headers junto — o sync de last use é por credencial.
+    record_consumer_usage(operational_db, principal, datetime.now(timezone.utc))
     response_headers = _response_headers(principal, operational_db)
     collection, collection_id = _authorize_published_collection(
         slug=slug, principal=principal, cms_db=cms_db, response_headers=response_headers
@@ -436,6 +449,9 @@ def exact_collection_version_dump(
     operational_db: Database = Depends(get_database),
 ):
     principal = _consumer(authorization, cms_db)
+    # Uso agregado vai SEMPRE ao banco operacional (nunca ao CMS); a response
+    # carrega os rate-limit headers junto — o sync de last use é por credencial.
+    record_consumer_usage(operational_db, principal, datetime.now(timezone.utc))
     response_headers = _response_headers(principal, operational_db)
     _collection, collection_id = _authorize_published_collection(
         slug=slug, principal=principal, cms_db=cms_db, response_headers=response_headers

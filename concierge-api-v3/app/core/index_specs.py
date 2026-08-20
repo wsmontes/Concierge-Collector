@@ -91,4 +91,9 @@ INDEX_SPECS = [
         {"unique": True, "name": "consumer_rate_limit_window_unique"},
     ),
     ("consumer_rate_limit_windows", "expiresAt", {"expireAfterSeconds": 0, "name": "consumer_rate_limit_expiry_ttl"}),
+    # ── consumer_credential_usage ──────────────────────────────────────────
+    # Operational aggregation read by the Payload last-use sync job, paged
+    # strictly by (updatedAt, _id). NO TTL: this collection is the source of
+    # the CMS last-used sync, not a transient window.
+    ("consumer_credential_usage", [("updatedAt", 1), ("_id", 1)], {}),
 ]

@@ -26,6 +26,11 @@ class Settings(BaseSettings):
     # esse usuário recebe apenas find no banco CMS; a API nunca é dona de
     # mutations nem de índices desse namespace.
     cms_mongodb_read_url: str = ""
+    # CMS de teste — lido SOMENTE por fixtures de teste (nunca por código de
+    # produção). O fixture cms_writer exige nome terminando em "-test" e a
+    # URL só é usada sob opt-in, espelhando MONGODB_TEST_URL.
+    cms_mongodb_test_url: str = ""
+    cms_mongodb_test_db_name: str = "concierge-cms-test"
     distribution_cursor_secret: str = ""
     # Distinct HMAC key for internal CMS catalog scans. It is unrelated to
     # JWTs, service authentication and consumer distribution cursors.

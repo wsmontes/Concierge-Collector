@@ -18,8 +18,8 @@ _CREDENTIAL_RE = re.compile(r"^Bearer\s+(cck_([a-f0-9]{12})_([A-Za-z0-9_-]{32,})
 class ConsumerPrincipal:
     credential_id: str
     application_id: str
-    allowed_collection_ids: frozenset[str]
-    requests_per_minute: int
+    allowed_collection_ids: frozenset[str] = frozenset()
+    requests_per_minute: int = 60
 
 
 def _as_id(value: object) -> str:

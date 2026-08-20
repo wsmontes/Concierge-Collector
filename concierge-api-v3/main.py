@@ -29,6 +29,7 @@ from app.api import (
     capture,
     catalog,
     internal_curations,
+    internal_consumer_usage,
     curators,
     og_image,
     metrics,
@@ -119,6 +120,7 @@ app.include_router(collection_associations.router, prefix="/api/v3")
 app.include_router(distribution.router, prefix="/api/v3")
 app.include_router(catalog.router, prefix="/api/v3")
 app.include_router(internal_curations.router, prefix="/api/v3")
+app.include_router(internal_consumer_usage.router, prefix="/api/v3")
 app.include_router(auth.router, prefix="/api/v3")
 app.include_router(entities.router, prefix="/api/v3")
 app.include_router(curations.router, prefix="/api/v3")

@@ -1,4 +1,5 @@
 import json
+from types import SimpleNamespace
 
 import pytest
 
@@ -106,13 +107,26 @@ class Cms:
         return self.values[name]
 
 
+class _UsageCollection:
+    """Usage recording (record_consumer_usage) must not disturb page/dump
+    tests; capture the call instead of touching a real collection."""
+
+    def __init__(self):
+        self.calls = []
+
+    def update_one(self, query, update, upsert=False):
+        self.calls.append((query, update))
+        return SimpleNamespace(matched_count=1, modified_count=1, upserted_id=None)
+
+
 class Operational:
     def __init__(self):
         self.curations = Collection([active_curation(curation_id="c1", entity_id="e1")])
         self.entities = Collection([active_entity(entity_id="e1")])
+        self._usage = _UsageCollection()
 
     def __getitem__(self, _name):
-        return object()
+        return self._usage
 
 
 def test_distribution_page_uses_consumer_scope_and_returns_no_store(client, monkeypatch):

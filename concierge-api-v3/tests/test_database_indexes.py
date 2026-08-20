@@ -5,7 +5,7 @@ individual. Incidente 2026-08-12: o primeiro índice único que falhava
 em produção entities ficou com 4 de 10 índices e curations só com _id_.
 Sem MongoDB — get_database() é monkeypatched.
 
-Contagens são DERIVADAS de INDEX_SPECS (fonte única, 29 specs): números mágicos
+Contagens são DERIVADAS de INDEX_SPECS (fonte única, 30 specs): números mágicos
 hardcoded já envelheceram duas vezes (catalog_sequence, cms_auth_codes,
 consumer_rate_limit_windows). FakeDb cobre TODAS as collections referenciadas.
 """
@@ -90,8 +90,9 @@ def test_index_specs_come_from_the_shared_module():
     from app.core.index_specs import INDEX_SPECS
 
     assert dbmod.INDEX_SPECS is INDEX_SPECS
-    # 29 specs (2026-08-20): 10 entities + 12 curations + 1 capture_sessions
+    # 30 specs (2026-08-20): 10 entities + 12 curations + 1 capture_sessions
     # + 2 auth_sessions + 2 cms_auth_codes + 2 consumer_rate_limit_windows
+    # + 1 consumer_credential_usage
     assert {s[0] for s in INDEX_SPECS} == {
         "entities",
         "curations",
@@ -99,6 +100,7 @@ def test_index_specs_come_from_the_shared_module():
         "auth_sessions",
         "cms_auth_codes",
         "consumer_rate_limit_windows",
+        "consumer_credential_usage",
     }
     assert sum(1 for s in INDEX_SPECS if s[0] == "capture_sessions") == 1
     assert ("auth_sessions", "jti", {"unique": True}) in INDEX_SPECS
@@ -134,6 +136,9 @@ def test_index_specs_come_from_the_shared_module():
         "expiresAt",
         {"expireAfterSeconds": 0, "name": "consumer_rate_limit_expiry_ttl"},
     ) in INDEX_SPECS
+    # sync de last use (fase 05): page key (updatedAt,_id), SEM TTL — é a
+    # fonte do job Payload, não uma janela transitória
+    assert ("consumer_credential_usage", [("updatedAt", 1), ("_id", 1)], {}) in INDEX_SPECS
 
 
 def test_ensure_indexes_records_state_and_logs_error(monkeypatch, caplog):

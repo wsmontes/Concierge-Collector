@@ -14,6 +14,11 @@ from uuid import uuid4
 
 from dotenv import load_dotenv
 
+# Fixtures compartilhados do boundary CMS/consumer distribution. O pytest só
+# importa os plugins DEPOIS de este conftest ser importado por completo, então
+# as env vars de teste setadas abaixo já valem quando os fixtures rodam.
+pytest_plugins = ("tests.fixtures.cms_projection", "tests.fixtures.distribution")
+
 # O zsh do dev exporta OPENAI_BASE_URL=http://localhost:1234/v1 (LM Studio) e
 # OPENAI_API_KEY=lm-studio — pydantic-settings congela essas env vars no
 # singleton `settings` no import, e qualquer teste que passe pelo OpenAI SDK
