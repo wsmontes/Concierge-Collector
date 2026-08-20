@@ -1,9 +1,10 @@
 """Short-lived, browser-bound state for the Google OAuth + PKCE flow.
 
-The public ``state`` value and the browser binding are independent random
-secrets. Mongo stores only their SHA-256 hashes; the PKCE verifier and trusted
-frontend target stay server-side and never travel through the authorization
-URL. A state can be consumed exactly once.
+The public ``state`` remains a signed JWT for backwards-compatible diagnostics,
+but it contains only the trusted frontend URL plus timing/nonce metadata. The
+PKCE verifier never travels through the authorization URL. Mongo stores only a
+hash of the public state and a hash of an independent browser binding, while
+the verifier stays server-side. A state can be consumed exactly once.
 """
 
 from __future__ import annotations
@@ -13,9 +14,12 @@ import hashlib
 import secrets
 
 from fastapi import HTTPException, status
+from jose import jwt
 from pymongo import ReturnDocument
 from pymongo.database import Database
 from pymongo.errors import DuplicateKeyError
+
+from app.core.security import ALGORITHM, get_jwt_secret
 
 OAUTH_STATE_TTL_SECONDS = 600
 
@@ -42,14 +46,25 @@ def issue_oauth_state(
     frontend_url: str,
     now: datetime | None = None,
 ) -> tuple[str, str]:
-    """Create an opaque state plus a separate secret bound to the browser."""
+    """Create a signed non-secret state plus a secret browser binding."""
     issued_at = now or _utc_now()
     expires_at = issued_at + timedelta(seconds=OAUTH_STATE_TTL_SECONDS)
 
     # A cryptographic collision is practically impossible, but retrying keeps
     # the uniqueness invariant explicit if the database ever reports one.
     for _attempt in range(3):
-        state = secrets.token_urlsafe(32)
+        state_nonce = secrets.token_urlsafe(24)
+        state = jwt.encode(
+            {
+                "sd": frontend_url,
+                "jti": state_nonce,
+                "iat": issued_at,
+                "exp": expires_at,
+                "type": "oauth_state",
+            },
+            get_jwt_secret(),
+            algorithm=ALGORITHM,
+        )
         browser_binding = secrets.token_urlsafe(32)
         document = {
             "state_hash": _secret_hash(state),
