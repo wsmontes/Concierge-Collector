@@ -2,9 +2,10 @@
 
 A capture can invoke multiple paid providers (Whisper, chat completions and
 Google Places). The actor-scoped capture id is therefore claimed in Mongo
-*before* any provider call. The unique ``_id`` plus an expiring processing
+*before* any provider call. The unique ``_id`` plus a renewable processing
 lease makes one request the worker while concurrent duplicates fail fast and
-can retry later. Completed sessions remain the durable idempotency result.
+can retry after a crashed worker stops heartbeating. Completed sessions remain
+the durable idempotency result.
 """
 
 from __future__ import annotations
@@ -20,6 +21,7 @@ from pymongo.database import Database
 from pymongo.errors import DuplicateKeyError
 
 CAPTURE_PROCESSING_LEASE_SECONDS = 300
+CAPTURE_LEASE_HEARTBEAT_SECONDS = 60
 
 
 @dataclass(frozen=True)
@@ -38,6 +40,13 @@ def _processing_conflict() -> HTTPException:
         status_code=status.HTTP_409_CONFLICT,
         detail="Capture is already being processed",
         headers={"Retry-After": "2"},
+    )
+
+
+def _lost_lease() -> HTTPException:
+    return HTTPException(
+        status_code=status.HTTP_409_CONFLICT,
+        detail="Capture processing lease was lost",
     )
 
 
@@ -111,7 +120,7 @@ def claim_capture_session(
     if isinstance(expires_at, datetime) and expires_at > claimed_at:
         raise _processing_conflict()
 
-    # Worker crashed or exceeded the lease. CAS on the expired timestamp so
+    # Worker crashed or stopped heartbeating. CAS on the expired timestamp so
     # only one retry can take ownership of the abandoned pipeline.
     takeover = collection.find_one_and_update(
         {
@@ -131,6 +140,31 @@ def claim_capture_session(
     if takeover is None:
         raise _processing_conflict()
     return CaptureSessionClaim(acquired=True, processing_token=processing_token)
+
+
+def renew_capture_session(
+    db: Database,
+    *,
+    capture_id: str,
+    curator_id: str,
+    processing_token: str,
+    now: datetime | None = None,
+) -> datetime:
+    """Extend an active lease only for the worker that still owns its token."""
+    renewed_at = now or _utc_now()
+    processing_expires_at = renewed_at + timedelta(seconds=CAPTURE_PROCESSING_LEASE_SECONDS)
+    result = db["capture_sessions"].update_one(
+        {
+            "_id": capture_id,
+            "curator_id": curator_id,
+            "status": "processing",
+            "processing_token": processing_token,
+        },
+        {"$set": {"processing_expires_at": processing_expires_at}},
+    )
+    if result.matched_count != 1:
+        raise _lost_lease()
+    return processing_expires_at
 
 
 def complete_capture_session(
@@ -161,10 +195,7 @@ def complete_capture_session(
         {"$set": update_fields},
     )
     if result.matched_count != 1:
-        raise HTTPException(
-            status_code=status.HTTP_409_CONFLICT,
-            detail="Capture processing lease was lost",
-        )
+        raise _lost_lease()
     return collection.find_one({"_id": capture_id, "curator_id": curator_id})
 
 
