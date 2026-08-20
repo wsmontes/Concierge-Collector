@@ -2,9 +2,9 @@
 Sessões de refresh token — coleção auth_sessions.
 
 Rotação com detecção de replay (2026-08-15): cada refresh token carrega um
-jti; ao ser USADO, o jti é revogado e um novo par é emitido com jti novo.
-Um refresh token roubado re-usado após a rotação bate em sessão inexistente
-e é rejeitado (antes: JWT stateless valia até os 30 dias, sem revogação).
+jti; ao ser USADO, o jti é consumido atomicamente e um novo par é emitido com
+jti novo. Duas requests concorrentes para o mesmo token têm exatamente um
+vencedor; a outra encontra a sessão já consumida e é rejeitada.
 
 A coleção tem TTL (index_specs.auth_sessions → expiresAt) — sessões expiram
 sozinhas no Mongo, alinhadas aos REFRESH_TOKEN_EXPIRE_DAYS.
@@ -30,6 +30,16 @@ def register_session(db: Database, jti: str, sub: str, issued_at: datetime = Non
     return doc
 
 
+def consume_session(db: Database, jti: str, sub: str) -> dict | None:
+    """Consome um refresh jti uma única vez, com CAS atômica por subject.
+
+    ``find_one_and_delete`` é a fronteira de rotação: ao contrário de um
+    ``find`` seguido de ``delete``, duas requests concorrentes não conseguem
+    observar a mesma sessão como válida e ambas emitir descendentes.
+    """
+    return db.auth_sessions.find_one_and_delete({"jti": jti, "sub": sub})
+
+
 def revoke_session(db: Database, jti: str) -> None:
-    """Revoga a sessão do jti (rotação/logout). Idempotente."""
+    """Revoga a sessão do jti (logout/admin). Idempotente."""
     db.auth_sessions.delete_one({"jti": jti})
