@@ -31,6 +31,7 @@ import {
   WorkerHeartbeats,
   SelectionManifests,
   SelectionManifestItems,
+  SavedCurationViews,
 } from './src/payload/collections'
 
 const env = readEnv()
@@ -90,6 +91,7 @@ export default buildConfig({
     AuditEvents,
     ConsumerApplications,
     ConsumerCredentials,
+    SavedCurationViews,
   ],
   endpoints: [...collectionEndpoints(), ...collectionReadEndpoints(), ...collectorCollectionEndpoints(), ...operationEndpoints(), ...publishingEndpoints(), ...applicationEndpoints(), ...explorerEndpoints(), ...selectionEndpoints()],
   jobs: {

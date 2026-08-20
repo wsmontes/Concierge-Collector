@@ -83,6 +83,7 @@ export interface Config {
     'audit-events': AuditEvent;
     'consumer-applications': ConsumerApplication;
     'consumer-credentials': ConsumerCredential;
+    'saved-curation-views': SavedCurationView;
     'payload-kv': PayloadKv;
     'payload-jobs': PayloadJob;
     'payload-locked-documents': PayloadLockedDocument;
@@ -107,6 +108,7 @@ export interface Config {
     'audit-events': AuditEventsSelect<false> | AuditEventsSelect<true>;
     'consumer-applications': ConsumerApplicationsSelect<false> | ConsumerApplicationsSelect<true>;
     'consumer-credentials': ConsumerCredentialsSelect<false> | ConsumerCredentialsSelect<true>;
+    'saved-curation-views': SavedCurationViewsSelect<false> | SavedCurationViewsSelect<true>;
     'payload-kv': PayloadKvSelect<false> | PayloadKvSelect<true>;
     'payload-jobs': PayloadJobsSelect<false> | PayloadJobsSelect<true>;
     'payload-locked-documents': PayloadLockedDocumentsSelect<false> | PayloadLockedDocumentsSelect<true>;
@@ -542,6 +544,44 @@ export interface ConsumerCredential {
 }
 /**
  * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "saved-curation-views".
+ */
+export interface SavedCurationView {
+  id: string;
+  owner: string | CmsUser;
+  name: string;
+  normalizedFilters?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  sort?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  visibleColumns?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
  * via the `definition` "payload-kv".
  */
 export interface PayloadKv {
@@ -735,6 +775,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'consumer-credentials';
         value: string | ConsumerCredential;
+      } | null)
+    | ({
+        relationTo: 'saved-curation-views';
+        value: string | SavedCurationView;
       } | null);
   globalSlug?: string | null;
   user: {
@@ -1070,6 +1114,19 @@ export interface ConsumerCredentialsSelect<T extends boolean = true> {
   revokedAt?: T;
   revokedBy?: T;
   lastUsedAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "saved-curation-views_select".
+ */
+export interface SavedCurationViewsSelect<T extends boolean = true> {
+  owner?: T;
+  name?: T;
+  normalizedFilters?: T;
+  sort?: T;
+  visibleColumns?: T;
   updatedAt?: T;
   createdAt?: T;
 }
