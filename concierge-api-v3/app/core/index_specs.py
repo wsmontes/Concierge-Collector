@@ -3,7 +3,7 @@ File: app/core/index_specs.py
 Purpose: FONTE ÚNICA das specs de índices do MongoDB. Usada por:
          - app/core/database.py:_ensure_indexes (todas EXCETO o TTL);
          - app/core/lifespan.py (TTL de capture_sessions, 48h);
-         - scripts/python-tools/db_rebuild.py (todas as 21).
+         - scripts/python-tools/db_rebuild.py (todas as specs).
          Antes havia duas listas hand-maintained (18 vs 19 specs) com risco de
          deriva silenciosa — a classe exata do incidente 2026-08-12 (entities
          rodando com 4 de 10 índices).
@@ -79,6 +79,11 @@ INDEX_SPECS = [
     # com o TTL de 30d). Unique: jti é gerado pelo servidor (JWT) e a
     # varredura 2026-08-18 confirmou zero duplicatas.
     ("auth_sessions", "jti", {"unique": True}),
+    # ── oauth_login_states ────────────────────────────────────────────────
+    # Google OAuth state is hash-only, browser-bound and one-shot. Consumed
+    # rows remain only until this short TTL removes the transient PKCE secret.
+    ("oauth_login_states", [("state_hash", 1)], {"unique": True, "name": "oauth_state_hash_unique"}),
+    ("oauth_login_states", [("expires_at", 1)], {"expireAfterSeconds": 0, "name": "oauth_state_expiry_ttl"}),
     # ── cms_auth_codes ────────────────────────────────────────────────────
     # Handoff codes are stored hash-only and may be consumed exactly once.
     ("cms_auth_codes", [("code_hash", 1)], {"unique": True, "name": "cms_code_hash_unique"}),
