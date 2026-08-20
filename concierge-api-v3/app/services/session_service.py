@@ -12,6 +12,7 @@ sozinhas no Mongo, alinhadas aos REFRESH_TOKEN_EXPIRE_DAYS.
 
 from datetime import datetime, timedelta, timezone
 
+from fastapi import HTTPException, status
 from pymongo.database import Database
 
 from app.core.config import settings
@@ -41,5 +42,18 @@ def consume_session(db: Database, jti: str, sub: str) -> dict | None:
 
 
 def revoke_session(db: Database, jti: str) -> None:
-    """Revoga a sessão do jti (logout/admin). Idempotente."""
-    db.auth_sessions.delete_one({"jti": jti})
+    """Revoga um jti uma única vez e rejeita replay concorrente.
+
+    O endpoint de refresh chama esta função imediatamente antes de emitir o
+    novo par. ``find_one_and_delete`` torna esse ponto a CAS efetiva mesmo que
+    duas requests tenham terminado a validação JWT ao mesmo tempo. O logout
+    trata revogação ausente como best-effort e continua idempotente no boundary
+    HTTP.
+    """
+    consumed = db.auth_sessions.find_one_and_delete({"jti": jti})
+    if consumed is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Refresh token revoked",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
