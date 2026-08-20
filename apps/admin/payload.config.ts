@@ -13,7 +13,9 @@ import { collectorCollectionEndpoints } from './src/payload/endpoints/collector-
 import { applicationEndpoints } from './src/payload/endpoints/applications'
 import { explorerEndpoints } from './src/payload/endpoints/explorer'
 import { selectionEndpoints } from './src/payload/endpoints/selections'
+import { exportEndpoints } from './src/payload/endpoints/exports'
 import { materializeSelectionTask } from './src/jobs/materializeSelectionTask'
+import { exportSelectionTask } from './src/jobs/exportSelectionTask'
 import {
   AuditEvents,
   CollectionDraftChanges,
@@ -31,6 +33,7 @@ import {
   WorkerHeartbeats,
   SelectionManifests,
   SelectionManifestItems,
+  CollectionExports,
   SavedCurationViews,
 } from './src/payload/collections'
 
@@ -81,6 +84,7 @@ export default buildConfig({
     WorkerHeartbeats,
     SelectionManifests,
     SelectionManifestItems,
+    CollectionExports,
     Collections,
     CollectionVersions,
     CollectionMemberships,
@@ -93,7 +97,7 @@ export default buildConfig({
     ConsumerCredentials,
     SavedCurationViews,
   ],
-  endpoints: [...collectionEndpoints(), ...collectionReadEndpoints(), ...collectorCollectionEndpoints(), ...operationEndpoints(), ...publishingEndpoints(), ...applicationEndpoints(), ...explorerEndpoints(), ...selectionEndpoints()],
+  endpoints: [...collectionEndpoints(), ...collectionReadEndpoints(), ...collectorCollectionEndpoints(), ...operationEndpoints(), ...publishingEndpoints(), ...applicationEndpoints(), ...explorerEndpoints(), ...selectionEndpoints(), ...exportEndpoints()],
   jobs: {
     access: {
       cancel: () => false,
@@ -101,7 +105,7 @@ export default buildConfig({
       run: () => false,
     },
     processingOrder: 'createdAt',
-    tasks: [recordWorkerHeartbeat, applyDraftOperationTask, publishCollectionTask, materializeSelectionTask],
+    tasks: [recordWorkerHeartbeat, applyDraftOperationTask, publishCollectionTask, materializeSelectionTask, exportSelectionTask],
   },
   typescript: {
     outputFile: './src/payload/generated/payload-types.ts',

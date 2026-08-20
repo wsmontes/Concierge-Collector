@@ -73,6 +73,7 @@ export interface Config {
     'worker-heartbeats': WorkerHeartbeat;
     'selection-manifests': SelectionManifest;
     'selection-manifest-items': SelectionManifestItem;
+    'collection-exports': CollectionExport;
     collections: Collection;
     'collection-versions': CollectionVersion;
     'collection-memberships': CollectionMembership;
@@ -98,6 +99,7 @@ export interface Config {
     'worker-heartbeats': WorkerHeartbeatsSelect<false> | WorkerHeartbeatsSelect<true>;
     'selection-manifests': SelectionManifestsSelect<false> | SelectionManifestsSelect<true>;
     'selection-manifest-items': SelectionManifestItemsSelect<false> | SelectionManifestItemsSelect<true>;
+    'collection-exports': CollectionExportsSelect<false> | CollectionExportsSelect<true>;
     collections: CollectionsSelect<false> | CollectionsSelect<true>;
     'collection-versions': CollectionVersionsSelect<false> | CollectionVersionsSelect<true>;
     'collection-memberships': CollectionMembershipsSelect<false> | CollectionMembershipsSelect<true>;
@@ -136,6 +138,7 @@ export interface Config {
       'apply-draft-operation': TaskApplyDraftOperation;
       'publish-collection': TaskPublishCollection;
       'materialize-selection': TaskMaterializeSelection;
+      'export-selection': TaskExportSelection;
       inline: {
         input: unknown;
         output: unknown;
@@ -282,6 +285,39 @@ export interface SelectionManifestItem {
   curationId: string;
   retainedUntil?: string | null;
   expiresAt: string;
+  updatedAt: string;
+  createdAt: string;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "collection-exports".
+ */
+export interface CollectionExport {
+  id: string;
+  selectionId: string;
+  actorId: string;
+  format: 'ndjson' | 'csv';
+  status: 'queued' | 'running' | 'complete' | 'failed';
+  progress?:
+    | {
+        [k: string]: unknown;
+      }
+    | unknown[]
+    | string
+    | number
+    | boolean
+    | null;
+  key?: string | null;
+  contentType?: string | null;
+  sha256?: string | null;
+  expiresAt: string;
+  idempotencyKey: string;
+  requestHash: string;
+  requestId: string;
+  payloadJobId?: string | null;
+  leaseOwner?: string | null;
+  leaseExpiresAt?: string | null;
+  fencingToken: number;
   updatedAt: string;
   createdAt: string;
 }
@@ -654,7 +690,8 @@ export interface PayloadJob {
           | 'record-worker-heartbeat'
           | 'apply-draft-operation'
           | 'publish-collection'
-          | 'materialize-selection';
+          | 'materialize-selection'
+          | 'export-selection';
         taskID: string;
         input?:
           | {
@@ -688,7 +725,14 @@ export interface PayloadJob {
       }[]
     | null;
   taskSlug?:
-    | ('inline' | 'record-worker-heartbeat' | 'apply-draft-operation' | 'publish-collection' | 'materialize-selection')
+    | (
+        | 'inline'
+        | 'record-worker-heartbeat'
+        | 'apply-draft-operation'
+        | 'publish-collection'
+        | 'materialize-selection'
+        | 'export-selection'
+      )
     | null;
   queue?: string | null;
   waitUntil?: string | null;
@@ -735,6 +779,10 @@ export interface PayloadLockedDocument {
     | ({
         relationTo: 'selection-manifest-items';
         value: string | SelectionManifestItem;
+      } | null)
+    | ({
+        relationTo: 'collection-exports';
+        value: string | CollectionExport;
       } | null)
     | ({
         relationTo: 'collections';
@@ -911,6 +959,30 @@ export interface SelectionManifestItemsSelect<T extends boolean = true> {
   curationId?: T;
   retainedUntil?: T;
   expiresAt?: T;
+  updatedAt?: T;
+  createdAt?: T;
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "collection-exports_select".
+ */
+export interface CollectionExportsSelect<T extends boolean = true> {
+  selectionId?: T;
+  actorId?: T;
+  format?: T;
+  status?: T;
+  progress?: T;
+  key?: T;
+  contentType?: T;
+  sha256?: T;
+  expiresAt?: T;
+  idempotencyKey?: T;
+  requestHash?: T;
+  requestId?: T;
+  payloadJobId?: T;
+  leaseOwner?: T;
+  leaseExpiresAt?: T;
+  fencingToken?: T;
   updatedAt?: T;
   createdAt?: T;
 }
@@ -1283,6 +1355,19 @@ export interface TaskPublishCollection {
 export interface TaskMaterializeSelection {
   input: {
     selectionId: string;
+  };
+  output: {
+    status: string;
+  };
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TaskExport-selection".
+ */
+export interface TaskExportSelection {
+  input: {
+    selectionId: string;
+    exportId: string;
   };
   output: {
     status: string;

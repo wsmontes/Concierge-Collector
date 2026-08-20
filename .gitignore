@@ -165,8 +165,8 @@ debug.log
 backup/
 *.backup
 
-# Exports de teste
-exports/
+# Exports de teste (apenas na raiz; não sombreia apps/admin/src/exports)
+/exports/
 test_data/
 data/
 data/**
