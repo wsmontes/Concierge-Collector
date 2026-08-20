@@ -27,9 +27,11 @@ from app.core.rate_limit import limiter, auth_header_key
 from app.core.security import require_role, is_admin_auth
 from app.models.schemas import CurationCreate, EntityCreate
 from app.services.capture_session_service import (
+    CAPTURE_LEASE_HEARTBEAT_SECONDS,
     abandon_capture_session,
     claim_capture_session,
     complete_capture_session,
+    renew_capture_session,
 )
 from app.services.curation_service import create_curation_doc, find_curation
 from app.services.entity_service import upsert_entity
@@ -144,6 +146,43 @@ def _response_from_session(session: Dict[str, Any]) -> CaptureResponse:
         entities=session.get("entities", []),
         concepts=session.get("concepts", {}),
     )
+
+
+async def _capture_lease_heartbeat(
+    db: Database,
+    *,
+    capture_id: str,
+    curator_id: str,
+    processing_token: str,
+    stop: asyncio.Event,
+    errors: list[Exception],
+) -> None:
+    """Renew a processing lease while provider calls run in worker threads."""
+    while not stop.is_set():
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=CAPTURE_LEASE_HEARTBEAT_SECONDS)
+            return
+        except asyncio.TimeoutError:
+            try:
+                await asyncio.to_thread(
+                    renew_capture_session,
+                    db,
+                    capture_id=capture_id,
+                    curator_id=curator_id,
+                    processing_token=processing_token,
+                )
+            except Exception as exc:
+                errors.append(exc)
+                return
+
+
+def _raise_capture_heartbeat_error(errors: list[Exception]) -> None:
+    if not errors:
+        return
+    error = errors[0]
+    if isinstance(error, HTTPException):
+        raise error
+    raise HTTPException(status_code=503, detail="Capture processing lease renewal failed")
 
 
 # ── AI helpers ───────────────────────────────────────────────────────────────
@@ -442,10 +481,24 @@ async def capture(
     if not processing_token:
         raise HTTPException(status_code=503, detail="Capture processing claim unavailable")
 
+    heartbeat_stop = asyncio.Event()
+    heartbeat_errors: list[Exception] = []
+    heartbeat_task = asyncio.create_task(
+        _capture_lease_heartbeat(
+            db,
+            capture_id=capture_id,
+            curator_id=payload.curator_id,
+            processing_token=processing_token,
+            stop=heartbeat_stop,
+            errors=heartbeat_errors,
+        )
+    )
+
     try:
         # ── 1. Transcribe ──
         logger.info(f"Transcribing audio ({len(payload.audio)} chars base64)...")
         transcription = await asyncio.to_thread(_transcribe, payload.audio, payload.language)
+        _raise_capture_heartbeat_error(heartbeat_errors)
         if not transcription:
             raise HTTPException(status_code=422, detail="Could not transcribe audio")
 
@@ -453,15 +506,24 @@ async def capture(
 
         # ── 2. Extract restaurant name (OpenAI síncrono → thread) ──
         restaurant_name = await asyncio.to_thread(_extract_restaurant_name, transcription)
+        _raise_capture_heartbeat_error(heartbeat_errors)
         logger.info(f"Extracted name: {restaurant_name}")
 
         # ── 3. Match entities (Mongo + optional Google Places) ──
         entities = await asyncio.to_thread(_match_entities, db, restaurant_name)
+        _raise_capture_heartbeat_error(heartbeat_errors)
         logger.info(f"Found {len(entities)} entity matches")
 
         # ── 4. Extract concepts (OpenAI síncrono → thread) ──
         concepts = await asyncio.to_thread(_extract_concepts, transcription, restaurant_name)
+        _raise_capture_heartbeat_error(heartbeat_errors)
         logger.info(f"Extracted concepts: {list(concepts.keys())}")
+
+        # Stop renewal before the terminal CAS so a post-completion heartbeat
+        # cannot mistake the cleared processing token for a lost lease.
+        heartbeat_stop.set()
+        await heartbeat_task
+        _raise_capture_heartbeat_error(heartbeat_errors)
 
         # ── 5. Persist only while this request still owns the lease ──
         completed_session = complete_capture_session(
@@ -493,6 +555,10 @@ async def capture(
         )
         logger.error("Capture processing failed: %s", e)
         raise HTTPException(status_code=500, detail="Capture processing failed")
+    finally:
+        heartbeat_stop.set()
+        if not heartbeat_task.done():
+            await heartbeat_task
 
     result = _response_from_session(completed_session)
 
