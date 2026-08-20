@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from typing import Literal
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Path, Query
+from fastapi import APIRouter, Depends, Header, HTTPException, Path, Query, Request
 from fastapi.responses import JSONResponse, StreamingResponse
 from pymongo.database import Database
 
@@ -20,7 +21,7 @@ from app.services.consumer_auth_service import ConsumerPrincipal, authenticate_c
 from app.services.consumer_rate_limit import ConsumerRateLimitService
 from app.services.consumer_usage_service import record_consumer_usage
 from app.services.distribution_cursor import CursorError, decode_cursor, encode_cursor
-from app.services.distribution_dump import gzip_iter, iter_ndjson_dump
+from app.services.distribution_dump import collect_json_dump, gzip_iter, iter_ndjson_dump
 from app.services.distribution_service import hydrate_public_batch
 
 router = APIRouter(prefix="/distribution/collections", tags=["distribution"])
@@ -79,18 +80,44 @@ def _response_headers(principal: ConsumerPrincipal, operational_db: Database) ->
     return headers
 
 
-def _stream_collection_dump(
+def _json_dump_denied(
+    *,
+    request: Request,
+    slug: str,
+    version: int,
+    selected_count: int,
+    headers: dict[str, str],
+) -> HTTPException:
+    """413 for format=json above the cap, pointing at the NDJSON equivalent."""
+    ndjson_url = f"{request.url.path}?format=ndjson"
+    return HTTPException(
+        status_code=413,
+        detail=(
+            f"Collection {slug} version {version} has {selected_count} selected items, exceeding the "
+            f"JSON dump limit of {settings.distribution_json_max_selected}; "
+            f"use the NDJSON export: {ndjson_url}"
+        ),
+        headers=headers,
+    )
+
+
+def _collection_dump_response(
     *,
     slug: str,
     collection_id: str,
     version: int,
     selected_count: int,
+    dump_format: Literal["ndjson", "json"],
     accept_encoding: str,
     cms_db: CmsReadOnlyDatabase,
     operational_db: Database,
     response_headers: dict[str, str],
-) -> StreamingResponse:
-    """Stream one resolved publication without retaining membership IDs in memory."""
+) -> StreamingResponse | JSONResponse:
+    """Serve one resolved publication as NDJSON (streaming) or bounded JSON.
+
+    Membership IDs are never retained in memory; JSON is only materialized
+    after the route already enforced `distribution_json_max_selected`.
+    """
 
     def batches():
         pending: list[str] = []
@@ -117,6 +144,8 @@ def _stream_collection_dump(
         "collection": {"slug": slug, "version": version},
         "selected_count": selected_count,
     }
+    if dump_format == "json":
+        return JSONResponse(collect_json_dump(manifest, batches()), headers=response_headers)
     stream = iter_ndjson_dump(manifest, batches())
     if "gzip" in accept_encoding.lower():
         response_headers["Content-Encoding"] = "gzip"
@@ -412,6 +441,8 @@ def current_collection_dump(
     slug: str,
     authorization: str | None = Header(default=None),
     accept_encoding: str = Header(default=""),
+    format: Literal["ndjson", "json"] = Query(default="ndjson"),
+    request: Request = None,  # type: ignore[assignment]  # FastAPI injects the request
     cms_db: CmsReadOnlyDatabase = Depends(get_cms_read_database),
     operational_db: Database = Depends(get_database),
 ):
@@ -426,12 +457,17 @@ def current_collection_dump(
     version = collection.get("currentPublishedVersion")
     if collection.get("lifecycle") != "published" or not isinstance(version, int) or version < 1:
         raise HTTPException(status_code=404, detail="Collection not found", headers=response_headers)
-
-    return _stream_collection_dump(
+    selected_count = int(collection.get("publishedSelectedCount") or 0)
+    if format == "json" and selected_count > settings.distribution_json_max_selected:
+        raise _json_dump_denied(
+            request=request, slug=slug, version=version, selected_count=selected_count, headers=response_headers
+        )
+    return _collection_dump_response(
         slug=slug,
         collection_id=collection_id,
         version=version,
-        selected_count=int(collection.get("publishedSelectedCount") or 0),
+        selected_count=selected_count,
+        dump_format=format,
         accept_encoding=accept_encoding,
         cms_db=cms_db,
         operational_db=operational_db,
@@ -445,6 +481,8 @@ def exact_collection_version_dump(
     version: int = Path(ge=1),
     authorization: str | None = Header(default=None),
     accept_encoding: str = Header(default=""),
+    format: Literal["ndjson", "json"] = Query(default="ndjson"),
+    request: Request = None,  # type: ignore[assignment]  # FastAPI injects the request
     cms_db: CmsReadOnlyDatabase = Depends(get_cms_read_database),
     operational_db: Database = Depends(get_database),
 ):
@@ -461,11 +499,17 @@ def exact_collection_version_dump(
     )
     if not version_document:
         raise HTTPException(status_code=404, detail="Collection version not found", headers=response_headers)
-    return _stream_collection_dump(
+    selected_count = int(version_document.get("selectedCount") or 0)
+    if format == "json" and selected_count > settings.distribution_json_max_selected:
+        raise _json_dump_denied(
+            request=request, slug=slug, version=version, selected_count=selected_count, headers=response_headers
+        )
+    return _collection_dump_response(
         slug=slug,
         collection_id=collection_id,
         version=version,
-        selected_count=int(version_document.get("selectedCount") or 0),
+        selected_count=selected_count,
+        dump_format=format,
         accept_encoding=accept_encoding,
         cms_db=cms_db,
         operational_db=operational_db,

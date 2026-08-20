@@ -4,6 +4,7 @@ Loads from environment variables and .env file
 Automatically detects localhost vs production environment
 """
 
+from pydantic import Field
 from pydantic_settings import BaseSettings
 from typing import List
 import json
@@ -35,6 +36,10 @@ class Settings(BaseSettings):
     # Distinct HMAC key for internal CMS catalog scans. It is unrelated to
     # JWTs, service authentication and consumer distribution cursors.
     catalog_cursor_secret: str = ""
+    # Cap for `format=json` dumps: above this selected count the API refuses
+    # to materialize the dump as JSON (413 with the NDJSON equivalent URL).
+    # NDJSON streaming is never bounded by this cap.
+    distribution_json_max_selected: int = Field(default=5000, ge=1)
 
     # API
     api_v3_host: str = "0.0.0.0"

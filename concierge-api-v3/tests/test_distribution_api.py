@@ -266,6 +266,89 @@ def test_version_history_uses_a_distinct_cursor_context(client, monkeypatch):
     assert client.get(f"/api/v3/distribution/collections/sushi/versions?cursor={item_cursor}").status_code == 409
 
 
+def _with_distribution_harness(client, monkeypatch, cms=None, operational=None):
+    """Seed the fake CMS/operational databases and the auth/rate stubs used by
+    every distribution route test in this file."""
+    client.app.dependency_overrides[get_cms_read_database] = lambda: cms or Cms()
+    client.app.dependency_overrides[get_database] = lambda: operational or Operational()
+    monkeypatch.setattr(
+        distribution,
+        "_consumer",
+        lambda _authorization, _db: type(
+            "P",
+            (),
+            {
+                "application_id": "app-1",
+                "credential_id": "cred-1",
+                "requests_per_minute": 60,
+                "allowed_collection_ids": frozenset({"collection-1"}),
+            },
+        )(),
+    )
+    monkeypatch.setattr(
+        distribution.ConsumerRateLimitService,
+        "consume",
+        lambda *_args: RateLimitResult(True, 200, {"X-RateLimit-Limit": "60"}),
+    )
+
+
+def test_json_dump_rejected_above_cap_with_equivalent_ndjson_url(client, monkeypatch):
+    cms = Cms()
+    cms.values["collections"].documents[0]["publishedSelectedCount"] = 2
+    _with_distribution_harness(client, monkeypatch, cms=cms)
+    monkeypatch.setattr(distribution.settings, "distribution_json_max_selected", 1)
+
+    response = client.get("/api/v3/distribution/collections/sushi/dump?format=json")
+
+    assert response.status_code == 413
+    detail = response.json()["detail"]
+    assert "format=ndjson" in detail
+    assert "/api/v3/distribution/collections/sushi/dump" in detail
+
+
+def test_ndjson_dump_ignores_the_json_cap(client, monkeypatch):
+    cms = Cms()
+    cms.values["collections"].documents[0]["publishedSelectedCount"] = 2
+    _with_distribution_harness(client, monkeypatch, cms=cms)
+    monkeypatch.setattr(distribution.settings, "distribution_json_max_selected", 1)
+
+    response = client.get("/api/v3/distribution/collections/sushi/dump?format=ndjson")
+
+    assert response.status_code == 200
+    records = [json.loads(line) for line in response.content.splitlines()]
+    assert records[0]["record_type"] == "manifest"
+    assert records[-1]["record_type"] == "footer"
+    assert records[-1]["selected_count"] == 2
+
+
+def test_json_dump_returns_one_json_document_when_within_cap(client, monkeypatch):
+    _with_distribution_harness(client, monkeypatch)
+
+    response = client.get("/api/v3/distribution/collections/sushi/dump?format=json")
+
+    assert response.status_code == 200
+    assert response.headers["cache-control"] == "private, no-store"
+    assert response.headers["content-type"].startswith("application/json")
+    body = response.json()
+    assert body["manifest"]["collection"] == {"slug": "sushi", "version": 2}
+    assert [item["curation"]["id"] for item in body["items"]] == ["c1"]
+    assert body["footer"]["selected_count"] == 1
+    assert body["footer"]["available_count"] == 1
+
+
+def test_exact_version_json_dump_respects_the_cap(client, monkeypatch):
+    cms = Cms()
+    cms.values["collection_versions"].documents[1]["selectedCount"] = 2
+    _with_distribution_harness(client, monkeypatch, cms=cms)
+    monkeypatch.setattr(distribution.settings, "distribution_json_max_selected", 1)
+
+    response = client.get("/api/v3/distribution/collections/sushi/versions/1/dump?format=json")
+
+    assert response.status_code == 413
+    assert "format=ndjson" in response.json()["detail"]
+    assert client.get("/api/v3/distribution/collections/sushi/versions/1/dump?format=ndjson").status_code == 200
+
+
 def test_exact_version_dump_uses_the_path_version(client, monkeypatch):
     cms = Cms()
     operational = Operational()

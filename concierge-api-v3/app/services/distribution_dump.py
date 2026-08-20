@@ -66,6 +66,28 @@ def iter_ndjson_dump(
     )
 
 
+def collect_json_dump(
+    manifest: dict[str, Any], item_batches: Iterable[Iterable[Any] | tuple[Iterable[Any], Iterable[Any]]]
+) -> dict[str, Any]:
+    """Aggregate a dump into one JSON document: {manifest, items, footer}.
+
+    Callers must enforce the JSON cap (`distribution_json_max_selected`)
+    before materializing; NDJSON remains the streaming path for large sets.
+    Reuses the canonical encoder so the JSON and NDJSON dumps agree on the
+    logical records and the footer digest.
+    """
+
+    records: dict[str, Any] = {"items": []}
+    for line in iter_ndjson_dump(manifest, item_batches):
+        record = json.loads(line)
+        record_type = record.get("record_type")
+        if record_type == "item":
+            records["items"].append(record.get("item"))
+        elif record_type is not None:
+            records[record_type] = record
+    return records
+
+
 def gzip_iter(chunks: Iterable[bytes]) -> Iterator[bytes]:
     compressor = zlib.compressobj(wbits=31)
     for chunk in chunks:
