@@ -22,6 +22,7 @@ from fastapi.responses import RedirectResponse
 import httpx
 from jose import jwt
 from pymongo.database import Database
+from pymongo.errors import DuplicateKeyError
 
 from app.core.config import settings
 from app.core.database import get_database
@@ -159,6 +160,12 @@ def generate_pkce_pair() -> tuple[str, str]:
     return code_verifier, code_challenge
 
 
+def _user_id_for_google_id(google_id: str) -> str:
+    """Stable opaque identity so concurrent first-login inserts collide safely."""
+    digest = hashlib.sha256(google_id.encode("utf-8")).hexdigest()
+    return f"usr_{digest[:32]}"
+
+
 def get_user_by_google_id(db: Database, google_id: str) -> Optional[UserInDB]:
     user_doc = db.users.find_one({"google_id": google_id})
     if user_doc:
@@ -220,9 +227,18 @@ def create_or_update_user(db: Database, user_data: dict) -> UserInDB:
         last_login=datetime.now(timezone.utc),
         refresh_token=None,
     )
-    result = db.users.insert_one(new_user.dict())
     user_dict = new_user.dict()
-    user_dict["_id"] = str(result.inserted_id)
+    user_dict["_id"] = _user_id_for_google_id(user_data["google_id"])
+    try:
+        db.users.insert_one(user_dict)
+    except DuplicateKeyError:
+        winner = get_user_by_google_id(db, user_data["google_id"])
+        if not winner:
+            raise
+        logger.info("[OAuth] Concurrent user creation won elsewhere; reusing %s", winner.email)
+        return winner
+
+    user_dict["_id"] = str(user_dict["_id"])
     logger.info("[OAuth] Created new user: %s", new_user.email)
     return UserInDB(**user_dict)
 
