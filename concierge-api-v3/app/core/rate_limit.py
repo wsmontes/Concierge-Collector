@@ -8,6 +8,7 @@ app.state.limiter e registra o handler/exception handler/middleware.
 """
 
 import hashlib
+import hmac
 
 from jose import JWTError, jwt
 from slowapi import Limiter
@@ -17,9 +18,19 @@ from app.core.security import ALGORITHM, get_jwt_secret
 
 
 def _hashed_bucket(prefix: str, value: str) -> str:
-    """Return a stable opaque limiter key without exposing the identity."""
+    """Hash high-entropy credentials without exposing their raw value."""
     digest = hashlib.sha256(value.encode("utf-8")).hexdigest()
     return f"{prefix}:{digest}"
+
+
+def _subject_bucket(subject: str) -> str:
+    """Pseudonymize low-entropy user identities with a keyed digest."""
+    digest = hmac.new(
+        get_jwt_secret().encode("utf-8"),
+        subject.encode("utf-8"),
+        hashlib.sha256,
+    ).hexdigest()
+    return f"user:{digest}"
 
 
 def _access_subject_bucket(token: str) -> str | None:
@@ -34,17 +45,18 @@ def _access_subject_bucket(token: str) -> str | None:
     subject = payload.get("sub")
     if not isinstance(subject, str) or not subject:
         return None
-    return _hashed_bucket("user", subject)
+    return _subject_bucket(subject)
 
 
 def auth_header_key(request):
     """Stable bucket for paid/provider endpoints.
 
-    API keys are keyed by a hash of the key. Human access sessions are keyed by
-    the signed JWT subject, so rotating the access token does not reset quota
-    and Bearer/cookie transports share one bucket. Invalid credentials fall
-    back to an opaque credential hash (or IP when no credential is present);
-    authentication still decides whether the request may reach the endpoint.
+    API keys are keyed by a hash of the high-entropy key. Human access sessions
+    are keyed by an HMAC of the verified JWT subject, so rotating the access
+    token does not reset quota, Bearer/cookie transports share one bucket, and
+    a guessed email cannot be matched to a limiter key without the server
+    secret. Invalid credentials fall back to an opaque credential hash (or IP
+    when no credential is present); authentication still decides access.
     """
     api_key = request.headers.get("x-api-key", "").strip()
     if api_key:
