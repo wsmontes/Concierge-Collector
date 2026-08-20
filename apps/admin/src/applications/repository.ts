@@ -114,9 +114,26 @@ export class PayloadCredentialRepository implements CredentialRepository {
   ): Promise<{ rotated: ConsumerCredentialRecord; changed: boolean } | null> {
     if (!Types.ObjectId.isValid(id)) return null
     return this.inTransaction(async (session) => {
+      // The source remains status=active during the overlap, so status alone
+      // is not a sufficient CAS. The lineage marker is written atomically
+      // with the clamp: exactly one caller can claim the source credential.
       const changed = await this.credentials.findOneAndUpdate(
-        { _id: id, status: 'active' },
-        { $set: { expiresAt: clampedExpiry, updatedAt: now } },
+        {
+          _id: id,
+          status: 'active',
+          $or: [
+            { rotatedToCredentialId: { $exists: false } },
+            { rotatedToCredentialId: null },
+          ],
+        },
+        {
+          $set: {
+            expiresAt: clampedExpiry,
+            rotatedAt: now,
+            rotatedToCredentialId: replacement.id,
+            updatedAt: now,
+          },
+        },
         { new: true, session },
       ).lean()
       if (!changed) {
@@ -150,6 +167,8 @@ export class PayloadCredentialRepository implements CredentialRepository {
       expiresAt: document.expiresAt ? new Date(document.expiresAt as string) : null,
       revokedAt: document.revokedAt ? new Date(document.revokedAt as string) : null,
       revokedBy: document.revokedBy ? String(document.revokedBy) : null,
+      rotatedAt: document.rotatedAt ? new Date(document.rotatedAt as string) : null,
+      rotatedToCredentialId: document.rotatedToCredentialId ? String(document.rotatedToCredentialId) : null,
     }
   }
 }
