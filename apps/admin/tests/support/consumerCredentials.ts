@@ -27,6 +27,8 @@ export interface FakeCredentialRepository extends CredentialRepository {
   created?: ConsumerCredentialRecord
   /** Ordered record of every state transition observed by the double. */
   audit: Array<{ type: string; credentialId: string }>
+  /** Simulates losing the repository CAS after the service generated a replacement. */
+  forceNextRotationConflict: boolean
 }
 
 const DEFAULT_APPLICATION = { id: 'app-1', status: 'active' as const, credentialsRevision: 2 }
@@ -46,6 +48,8 @@ function seeded(seed?: Partial<ConsumerCredentialRecord>): ConsumerCredentialRec
     expiresAt: seed?.expiresAt ?? null,
     revokedAt: seed?.revokedAt ?? null,
     revokedBy: seed?.revokedBy ?? null,
+    rotatedAt: seed?.rotatedAt ?? null,
+    rotatedToCredentialId: seed?.rotatedToCredentialId ?? null,
   }
 }
 
@@ -63,6 +67,7 @@ export function fakeCredentialRepository(seed?: Partial<ConsumerCredentialRecord
 
   return {
     audit,
+    forceNextRotationConflict: false,
     newCredentialId: () => 'credential-new',
     async activeApplication(id) {
       return applications.get(id) ?? null
@@ -88,8 +93,17 @@ export function fakeCredentialRepository(seed?: Partial<ConsumerCredentialRecord
     async rotateCredential(id, clampedExpiry, now, _actorId, replacement) {
       const current = credentials.get(id)
       if (!current) return null
-      if (current.status === 'revoked') return { rotated: current, changed: false }
-      const rotated = { ...current, expiresAt: clampedExpiry, updatedAt: now }
+      if (this.forceNextRotationConflict) {
+        this.forceNextRotationConflict = false
+        return { rotated: current, changed: false }
+      }
+      if (current.status === 'revoked' || current.rotatedToCredentialId) return { rotated: current, changed: false }
+      const rotated = {
+        ...current,
+        expiresAt: clampedExpiry,
+        rotatedAt: now,
+        rotatedToCredentialId: replacement.id,
+      }
       credentials.set(id, rotated)
       credentials.set(replacement.id, replacement)
       bumpRevision(current.applicationId)
