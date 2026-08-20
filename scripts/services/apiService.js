@@ -140,7 +140,12 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
                         retryHeaders['Content-Type'] = 'application/json';
                     }
 
-                    const retryFetchOptions = { method, headers: retryHeaders, ...restOptions };
+                    const retryFetchOptions = {
+                        method,
+                        headers: retryHeaders,
+                        credentials: 'include',
+                        ...restOptions
+                    };
                     const retryResponse = await fetch(url, retryFetchOptions);
                     if (!retryResponse.ok) {
                         await this.handleErrorResponse(retryResponse, { silent });
@@ -170,9 +175,10 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         // Check for 401 FIRST, before reading the body
         if (response.status === 401) {
             errorMessage = 'Authentication required or token expired';
-            // Try to refresh token
-            if (typeof AuthService !== 'undefined' && AuthService.isAuthenticated()) {
-                this.log.debug('Token expired, attempting refresh...');
+            // Cookie-only sessions have no JS-visible access token, so a 401
+            // must still attempt the single refresh path when AuthService exists.
+            if (typeof AuthService !== 'undefined') {
+                this.log.debug('Token expired or cookie session needs refresh, attempting refresh...');
                 const refreshed = await AuthService.refreshToken();
                 if (refreshed === true) {
                     // Return true to signal caller to retry the request
