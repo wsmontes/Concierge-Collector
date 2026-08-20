@@ -261,11 +261,9 @@ async def search_nearby(
     ...
     """
     try:
-        # Validate API key
         if not settings.google_places_api_key or settings.google_places_api_key.strip() == "":
             raise HTTPException(status_code=500, detail="Google Places API key not configured on server")
 
-        # Determine search mode: Text Search (worldwide) or Nearby Search
         use_text_search = keyword and not radius
 
         if use_text_search:
@@ -283,9 +281,8 @@ async def search_nearby(
                 price_levels=price_levels,
             )
         else:
-            # Default to nearby search
             if not radius:
-                radius = 5000  # Default 5km
+                radius = 5000
             logger.info(f"Nearby Search: lat={latitude}, lng={longitude}, radius={radius}, type={place_type}")
             return await _nearby_search(
                 latitude=latitude,
@@ -322,8 +319,6 @@ async def _nearby_search(
     """Execute Nearby Search with Google Places API"""
 
     max_results = min(max_results, 20)
-
-    # Build payload
     payload = {
         "maxResultCount": max_results,
         "locationRestriction": {
@@ -336,17 +331,14 @@ async def _nearby_search(
         "regionCode": region or "BR",
     }
 
-    # Add type filter - default to food-related types if none specified
     if place_type:
         payload["includedTypes"] = [place_type]
         logger.info(f"🔍 Applying type filter: includedTypes=['{place_type}']")
     else:
-        # Default to food-related types to avoid returning hotels, tourist attractions, etc.
         default_food_types = ["restaurant", "cafe", "bar", "bakery"]
         payload["includedTypes"] = default_food_types
         logger.info(f"🍽️ No type filter provided - defaulting to food types: {default_food_types}")
 
-    # Add filters
     if min_rating:
         payload["minRating"] = min_rating
 
@@ -356,15 +348,13 @@ async def _nearby_search(
 
     logger.info(f"📤 Places API Payload: {payload}")
 
-    # Headers with comprehensive field mask (100 most important fields)
-    # Note: searchNearby requires 'places.' prefix for fields
     field_mask = get_enhanced_field_mask(
         include_reviews=False,
         include_photos=True,
         detail_level="standard",
         use_prefix=True,
     )
-    logger.info(f"Field mask for nearby search: {field_mask[:200]}...")  # Log first 200 chars
+    logger.info(f"Field mask for nearby search: {field_mask[:200]}...")
 
     headers = {
         "Content-Type": "application/json",
@@ -372,28 +362,23 @@ async def _nearby_search(
         "X-Goog-FieldMask": field_mask,
     }
 
-    # Make request
     async with httpx.AsyncClient(timeout=30.0) as client:
         response = await client.post(PLACES_API_NEARBY_URL, json=payload, headers=headers)
 
         if response.status_code != 200:
-            error_text = response.text
-            logger.error(f"Places API error: {response.status_code} - {error_text}")
-            raise HTTPException(status_code=502, detail=f"Google Places API error: {error_text}")
+            logger.error("Places API request failed status=%s", response.status_code)
+            raise HTTPException(status_code=502, detail="Google Places request failed")
 
         data = response.json()
 
-    # Format results
     places = data.get("places", [])
     formatted_results = []
 
-    # Debug: Log first place to check id field
     if places:
         logger.info(f"First place from Google API: {places[0]}")
         logger.info(f"First place 'id' field: {places[0].get('id', 'NOT FOUND')}")
 
     for place in places:
-        # Apply openNow filter if requested (client-side since API doesn't support it directly in nearby)
         if open_now:
             opening_hours = place.get("currentOpeningHours", {})
             if not opening_hours.get("openNow", False):
@@ -413,11 +398,10 @@ async def _nearby_search(
                 "opening_hours": place.get("currentOpeningHours"),
                 "website": place.get("websiteUri"),
                 "phone": place.get("internationalPhoneNumber"),
-                "photos": None,  # Would need separate request
+                "photos": None,
             }
         )
 
-        # Debug: Log if place_id is missing
         if not place.get("id"):
             logger.warning(f"⚠️ Place missing 'id' field: {place.get('displayName', {}).get('text', 'Unknown')}")
 
@@ -446,8 +430,6 @@ async def _text_search(
     """Execute Text Search with Google Places API (worldwide search)"""
 
     max_results = min(max_results, 20)
-
-    # Build payload for Text Search
     payload = {
         "textQuery": keyword,
         "maxResultCount": max_results,
@@ -456,20 +438,17 @@ async def _text_search(
         "locationBias": {
             "circle": {
                 "center": {"latitude": latitude, "longitude": longitude},
-                "radius": 50000,  # 50km bias (not restriction)
+                "radius": 50000,
             }
         },
     }
 
-    # Add type filter - default to 'restaurant' if none specified
-    # Note: Text Search API only supports a single includedType (not an array)
     if place_type:
         payload["includedType"] = place_type
     else:
         payload["includedType"] = "restaurant"
         logger.info("🍽️ No type filter provided for text search - defaulting to 'restaurant'")
 
-    # Add filters
     if min_rating:
         payload["minRating"] = min_rating
 
@@ -480,8 +459,6 @@ async def _text_search(
         levels = [f"PRICE_LEVEL_{level.strip().upper()}" for level in price_levels.split(",")]
         payload["priceLevels"] = levels
 
-    # Headers with comprehensive field mask (100 most important fields)
-    # Note: searchText requires 'places.' prefix for fields
     headers = {
         "Content-Type": "application/json",
         "X-Goog-Api-Key": settings.google_places_api_key,
@@ -493,22 +470,18 @@ async def _text_search(
         ),
     }
 
-    # Make request
     async with httpx.AsyncClient(timeout=30.0) as client:
         response = await client.post(PLACES_API_TEXT_SEARCH_URL, json=payload, headers=headers)
 
         if response.status_code != 200:
-            error_text = response.text
-            logger.error(f"Text Search API error: {response.status_code} - {error_text}")
-            raise HTTPException(status_code=502, detail=f"Google Places API error: {error_text}")
+            logger.error("Text Search API request failed status=%s", response.status_code)
+            raise HTTPException(status_code=502, detail="Google Places request failed")
 
         data = response.json()
 
-    # Format results (same format as nearby search)
     places = data.get("places", [])
     formatted_results = []
 
-    # Debug: Log first place to check id field
     if places:
         logger.info(f"First place from Google API (text search): {places[0]}")
         logger.info(f"First place 'id' field (text search): {places[0].get('id', 'NOT FOUND')}")
@@ -528,11 +501,10 @@ async def _text_search(
                 "opening_hours": place.get("currentOpeningHours"),
                 "website": place.get("websiteUri"),
                 "phone": place.get("internationalPhoneNumber"),
-                "photos": None,  # Would need separate request
+                "photos": None,
             }
         )
 
-        # Debug: Log if place_id is missing
         if not place.get("id"):
             logger.warning(
                 f"⚠️ Place missing 'id' field (text search): {place.get('displayName', {}).get('text', 'Unknown')}"
@@ -570,40 +542,18 @@ async def get_place_details(
     request: Request,
     place_id: str,
     fields: Optional[str] = Query(None, description="Comma-separated list of fields to return"),
-    auth: dict = Depends(verify_auth),  # Support both API key and JWT
+    auth: dict = Depends(verify_auth),
 ):
-    """
-    Get detailed information about a place using Google Places API (New)
-
-    This endpoint proxies requests to Google Places Details API.
-    Uses the new Places API with Place ID format.
-
-    **Authentication Required:** `Authorization: Bearer <token>` OR `X-API-Key: <key>`
-
-    Args:
-        place_id: Google Place ID (will be converted to places/{place_id} format)
-        fields: Optional comma-separated fields (ignored - uses comprehensive field mask)
-
-    Returns:
-        PlaceDetailsResponse with place details
-
-    Example:
-        GET /api/v3/places/details/ChIJN1t_tDeuEmsRUsoyG83frY4
-    """
+    """Get detailed information about a place using Google Places API (New)."""
     try:
         logger.info(f"Place details: place_id={place_id}")
 
-        # Validate API key
         if not settings.google_places_api_key or settings.google_places_api_key.strip() == "":
             raise HTTPException(status_code=500, detail="Google Places API key not configured on server")
 
-        # Format place ID for new API (needs places/ prefix)
         formatted_place_id = place_id if place_id.startswith("places/") else f"places/{place_id}"
-
-        # New Places API endpoint for place details
         url = f"https://places.googleapis.com/v1/{formatted_place_id}"
 
-        # Headers with comprehensive field mask
         headers = {
             "Content-Type": "application/json",
             "X-Goog-Api-Key": settings.google_places_api_key,
@@ -615,14 +565,12 @@ async def get_place_details(
             ),
         }
 
-        # Make request
         async with httpx.AsyncClient(timeout=30.0) as client:
             response = await client.get(url, headers=headers)
 
             if response.status_code != 200:
-                error_text = response.text
-                logger.error(f"Places API error: {response.status_code} - {error_text}")
-                raise HTTPException(status_code=502, detail=f"Google Places API error: {error_text}")
+                logger.error("Places details request failed status=%s", response.status_code)
+                raise HTTPException(status_code=502, detail="Google Places request failed")
 
             data = response.json()
 
@@ -635,18 +583,8 @@ async def get_place_details(
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
 
-# ============================================================================
-# FOTOS (movidas de places_router.py — consolidado em ago/2026)
-# ============================================================================
-# A chave da API Google NUNCA sai do servidor — as URLs de foto retornadas
-# apontam para o proxy interno GET /places/photo, que adiciona a chave
-# server-side e responde 302 para o Google (o <img> segue o redirect).
 PLACES_API_PHOTO_MEDIA_URL = "https://places.googleapis.com/v1/{photo_name}/media"
-
-# Teto do streaming server-side: protege o egress do Render contra abuso
-# (o rate limit de 60/min já limita por IP; o teto limita por request).
-_MAX_PHOTO_BYTES = 20 * 1024 * 1024  # 20MB
-
+_MAX_PHOTO_BYTES = 20 * 1024 * 1024
 _PHOTO_REFERENCE_RE = re.compile(r"^places/[A-Za-z0-9_\-]+/photos/[A-Za-z0-9_\-]+$")
 
 
@@ -659,38 +597,16 @@ def get_llm_service() -> LLMPlaceService:
 @limiter.limit("60/minute")
 async def proxy_place_photo(
     request: Request,
-    reference: str = Query(
-        ...,
-        description="Google photo resource name (e.g., places/xxx/photos/yyy)",
-    ),
-    max_width: Optional[int] = Query(None, ge=400, le=4800, description="Maximum width in pixels (400-4800)"),
-    max_height: Optional[int] = Query(None, ge=400, le=4800, description="Maximum height in pixels (400-4800)"),
-    skip_http_redirect: bool = Query(False, description="Ask Google to return image bytes directly"),
+    reference: str = Query(..., description="Google photo resource name (e.g., places/xxx/photos/yyy)"),
+    max_width: Optional[int] = Query(None, ge=400, le=4800),
+    max_height: Optional[int] = Query(None, ge=400, le=4800),
+    skip_http_redirect: bool = Query(False),
 ):
-    """
-    Proxy de fotos do Google Places (sem autenticação de propósito).
-
-    Sem autenticação: <img> tags não carregam headers, então o browser precisa
-    de uma URL nua. O rate limit (60/min por IP) protege o custo/abuso.
-
-    Desde 2026-08-18 (achado #1 da auditoria de segurança): a foto é baixada
-    SERVER-SIDE e devolvida em streaming — a chave do Google NUNCA sai do
-    servidor. Antes, o proxy devolvia 302 com `key=` no Location, legível por
-    qualquer um com curl -i (o comentário antigo afirmava o contrário,
-    incorreto: o Location É entregue ao cliente).
-    """
-    # Validar formato ANTES de montar a URL — o reference vai para o path da
-    # URL do Google; sem a validação seria SSRF/open-redirect com a chave.
+    """Proxy Google Places photos without exposing the Google API key."""
     if not _PHOTO_REFERENCE_RE.fullmatch(reference):
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid photo reference (expected places/<id>/photos/<id>)",
-        )
+        raise HTTPException(status_code=400, detail="Invalid photo reference (expected places/<id>/photos/<id>)")
 
     params = [("key", settings.google_places_api_key)]
-    # A API moderna do Google REJEITA a URL sem dimensão ('At least one of
-    # max_height_px or max_width_px must be specified') — o default segue
-    # aplicado, agora na requisição server-side.
     if not max_width and not max_height:
         max_width = 1200
     if max_width:
@@ -701,9 +617,6 @@ async def proxy_place_photo(
         params.append(("skipHttpRedirect", "true"))
 
     media_url = PLACES_API_PHOTO_MEDIA_URL.format(photo_name=reference)
-
-    # SSRF guard reutilizado do serviço de imagens: cada request da cadeia de
-    # redirects (Google → storage CDN) passa pela validação de host.
     from app.services.openai_service import _validate_image_request_hook
 
     client = httpx.AsyncClient(
@@ -752,51 +665,15 @@ async def proxy_place_photo(
 async def get_place_photos(
     request: Request,
     place_id: str,
-    max_photos: int = Query(10, ge=1, le=10, description="Maximum number of photos (1-10)"),
-    max_width: Optional[int] = Query(None, ge=400, le=4800, description="Maximum width in pixels (400-4800)"),
-    max_height: Optional[int] = Query(None, ge=400, le=4800, description="Maximum height in pixels (400-4800)"),
-    include_metadata: bool = Query(True, description="Include original dimensions and attributions"),
-    language: str = Query("pt-BR", description="Language code for attributions"),
+    max_photos: int = Query(10, ge=1, le=10),
+    max_width: Optional[int] = Query(None, ge=400, le=4800),
+    max_height: Optional[int] = Query(None, ge=400, le=4800),
+    include_metadata: bool = Query(True),
+    language: str = Query("pt-BR"),
     service: LLMPlaceService = Depends(get_llm_service),
     auth: dict = Depends(verify_auth),
 ):
-    """
-    Get restaurant photos from Google Places.
-
-    **Authentication Required:** `Authorization: Bearer <token>` OR `X-API-Key: <key>`
-
-    Returns photo URLs and optional metadata (dimensions, attributions).
-    Photos are automatically resized if max_width or max_height specified.
-    As URLs apontam para o proxy interno /api/v3/places/photo (a chave da API
-    Google nunca chega ao cliente).
-
-    **Example:**
-    ```
-    GET /api/v3/places/ChIJxxx/photos?max_photos=5&max_width=800
-    ```
-
-    **Response:**
-    ```json
-    {
-      "place_id": "ChIJxxx",
-      "entity_id": "ent_xxx",
-      "name": "Restaurant Name",
-      "photos": [
-        {
-          "index": 0,
-          "url": "https://<host>/api/v3/places/photo?reference=places%2Fxxx%2Fphotos%2Fyyy&maxWidthPx=800",
-          "photo_reference": "places/xxx/photos/yyy",
-          "width_px": 4032,
-          "height_px": 3024,
-          "attributions": ["Photographer Name"]
-        }
-      ],
-      "total": 5,
-      "max_width": 800,
-      "max_height": null
-    }
-    ```
-    """
+    """Get restaurant photos from Google Places."""
     try:
         result = service.get_restaurant_photos(
             place_id=place_id,
@@ -805,165 +682,109 @@ async def get_place_photos(
             max_height=max_height,
             include_metadata=include_metadata,
             language=language,
-            # URLs absolutas (o static site vive em outro domínio; URLs
-            # relativas quebrariam <img> na página do concierge)
             base_url=str(request.base_url),
         )
-
-        # Check for errors
         if "error" in result:
-            raise HTTPException(status_code=400, detail=result["error"])
-
+            raise HTTPException(status_code=400, detail="Unable to fetch restaurant photos")
         return result
-
     except HTTPException:
         raise
     except Exception as e:
         logger.error(f"Error fetching photos for {place_id}: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail="Unable to fetch restaurant photos")
 
 
-# ============================================================================
-# ORQUESTRAÇÃO PLACES (movida de places_orchestrate.py — consolidado em
-# ago/2026; a rota /places/orchestrate unifica search/details/bulk)
-# ============================================================================
 PLACES_API_DETAILS_URL = "https://places.googleapis.com/v1/places"
 PLACES_API_AUTOCOMPLETE_URL = "https://places.googleapis.com/v1/places:autocomplete"
-
-
-# ============================================================================
-# REQUEST/RESPONSE MODELS
-# ============================================================================
 
 
 class PlacesOrchestrationRequest(BaseModel):
     """Unified request for all Places API operations"""
 
-    # Search parameters
     query: Optional[str] = Field(None, description="Text query for search")
     place_id: Optional[str] = Field(None, description="Place ID for details lookup")
-    place_ids: Optional[List[str]] = Field(
-        None,
-        max_length=20,
-        description="List of Place IDs for bulk details lookup (max 20 — fan-out de custo na API do Google)",
-    )
-
-    # Location parameters
-    latitude: Optional[float] = Field(None, description="Latitude for location-based search")
-    longitude: Optional[float] = Field(None, description="Longitude for location-based search")
-    radius: Optional[float] = Field(500.0, description="Search radius in meters (max 50000)")
-
-    # Filtering parameters
-    included_types: Optional[List[str]] = Field(None, description="Filter by place types")
-    excluded_types: Optional[List[str]] = Field(None, description="Exclude place types")
-    min_rating: Optional[float] = Field(None, description="Minimum rating (0-5)")
-    price_levels: Optional[List[str]] = Field(None, description="Filter by price levels")
-    open_now: Optional[bool] = Field(None, description="Only return open places")
-
-    # Response parameters
-    max_results: Optional[int] = Field(20, description="Maximum results to return (1-20)")
-    language: Optional[str] = Field("en", description="Language code for results")
-    region_code: Optional[str] = Field(None, description="Region code for formatting")
-
-    # Advanced parameters
-    rank_preference: Optional[Literal["DISTANCE", "POPULARITY"]] = Field(None, description="Result ranking")
-    include_pure_service_area: Optional[bool] = Field(False, description="Include service-area-only businesses")
-
-    # Bulk operations
-    bulk: Optional[bool] = Field(False, description="Enable bulk processing mode")
-    combine_results: Optional[bool] = Field(True, description="Combine results from multiple operations")
-
-    # Multi-operation parameters
-    operations: Optional[List[Dict[str, Any]]] = Field(
-        None,
-        max_length=10,
-        description="List of operations to execute in bulk (max 10 — cada operação pode gerar chamadas Google)",
-    )
+    place_ids: Optional[List[str]] = Field(None, max_length=20)
+    latitude: Optional[float] = None
+    longitude: Optional[float] = None
+    radius: Optional[float] = 500.0
+    included_types: Optional[List[str]] = None
+    excluded_types: Optional[List[str]] = None
+    min_rating: Optional[float] = None
+    price_levels: Optional[List[str]] = None
+    open_now: Optional[bool] = None
+    max_results: Optional[int] = 20
+    language: Optional[str] = "en"
+    region_code: Optional[str] = None
+    rank_preference: Optional[Literal["DISTANCE", "POPULARITY"]] = None
+    include_pure_service_area: Optional[bool] = False
+    bulk: Optional[bool] = False
+    combine_results: Optional[bool] = True
+    operations: Optional[List[Dict[str, Any]]] = Field(None, max_length=10)
 
 
 class PlacesOrchestrationResponse(BaseModel):
     """Unified response from Places orchestration"""
 
-    operation: str = Field(
-        ...,
-        description="Operation performed: nearby|text_search|details|autocomplete|bulk",
-    )
-    results: List[Dict[str, Any]] = Field(..., description="Search results")
-    total_results: int = Field(..., description="Number of results returned")
-    next_page_token: Optional[str] = Field(None, description="Token for next page")
-    operations_executed: Optional[List[str]] = Field(None, description="List of operations executed in bulk mode")
-    errors: Optional[List[Dict[str, Any]]] = Field(None, description="Errors encountered during bulk operations")
-
-
-# ============================================================================
-# ORCHESTRATION LOGIC
-# ============================================================================
+    operation: str
+    results: List[Dict[str, Any]]
+    total_results: int
+    next_page_token: Optional[str] = None
+    operations_executed: Optional[List[str]] = None
+    errors: Optional[List[Dict[str, Any]]] = None
 
 
 def determine_operation(request: PlacesOrchestrationRequest) -> str:
-    """
-    Intelligently determine which Places API to call based on request parameters.
-
-    Priority order:
-    1. operations list -> Bulk mode
-    2. place_ids list -> Bulk details
-    3. place_id -> Details API
-    4. query + no location -> Text Search API
-    5. query + location -> Text Search API (with location bias)
-    6. location + types -> Nearby Search API
-    7. location only -> Nearby Search API
-    """
-
-    # Case 0: Bulk operations
     if request.operations:
         return "bulk_multi"
-
-    # Case 1: Bulk details
     if request.place_ids:
         return "bulk_details"
-
-    # Case 2: Single place ID -> Details
     if request.place_id:
         return "details"
-
-    # Case 3: Query provided -> Text Search
     if request.query:
         return "text_search"
-
-    # Case 4: Location + types -> Nearby Search
     if request.latitude and request.longitude:
         return "nearby"
-
-    # Default: autocomplete if nothing else matches
     return "autocomplete"
 
 
-async def call_nearby_search(request: PlacesOrchestrationRequest) -> Dict[str, Any]:
-    """Call Nearby Search API"""
+def _safe_provider_error(*, place_id: str | None = None, status_code: int | None = None) -> Dict[str, Any]:
+    error: Dict[str, Any] = {
+        "code": "provider_error",
+        "message": "Google Places request failed",
+    }
+    if place_id is not None:
+        error["place_id"] = place_id
+    if status_code is not None:
+        error["status_code"] = status_code
+    return error
 
+
+def _safe_operation_error(operation: str, *, provider: bool = False, status_code: int | None = None) -> Dict[str, Any]:
+    error: Dict[str, Any] = {
+        "operation": operation,
+        "code": "provider_error" if provider else "dependency_error",
+        "message": "Google Places request failed" if provider else "Places operation failed",
+    }
+    if status_code is not None:
+        error["status_code"] = status_code
+    return error
+
+
+async def call_nearby_search(request: PlacesOrchestrationRequest) -> Dict[str, Any]:
     headers = {
         "Content-Type": "application/json",
         "X-Goog-Api-Key": settings.google_places_api_key,
-        "X-Goog-FieldMask": (
-            "places.id,places.displayName,places.formattedAddress,"
-            "places.location,places.rating,places.types,places.priceLevel"
-        ),
+        "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.types,places.priceLevel",
     }
-
     body = {
         "locationRestriction": {
             "circle": {
-                "center": {
-                    "latitude": request.latitude,
-                    "longitude": request.longitude,
-                },
+                "center": {"latitude": request.latitude, "longitude": request.longitude},
                 "radius": request.radius or 500.0,
             }
         },
         "maxResultCount": min(request.max_results or 20, 20),
     }
-
-    # Add optional filters
     if request.included_types:
         body["includedTypes"] = request.included_types
     if request.excluded_types:
@@ -973,47 +794,30 @@ async def call_nearby_search(request: PlacesOrchestrationRequest) -> Dict[str, A
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         response = await client.post(PLACES_API_NEARBY_URL, headers=headers, json=body)
-
         if response.status_code != 200:
-            raise HTTPException(
-                status_code=response.status_code,
-                detail=f"Places API error: {response.text}",
-            )
-
+            logger.error("Places nearby request failed status=%s", response.status_code)
+            raise HTTPException(status_code=502, detail="Google Places request failed")
         return response.json()
 
 
 async def call_text_search(request: PlacesOrchestrationRequest) -> Dict[str, Any]:
-    """Call Text Search API"""
-
     headers = {
         "Content-Type": "application/json",
         "X-Goog-Api-Key": settings.google_places_api_key,
-        "X-Goog-FieldMask": (
-            "places.id,places.displayName,places.formattedAddress,"
-            "places.location,places.rating,places.types,places.priceLevel"
-        ),
+        "X-Goog-FieldMask": "places.id,places.displayName,places.formattedAddress,places.location,places.rating,places.types,places.priceLevel",
     }
-
     body = {
         "textQuery": request.query,
         "pageSize": min(request.max_results or 20, 20),
         "languageCode": request.language,
     }
-
-    # Add location bias if coordinates provided
     if request.latitude and request.longitude:
         body["locationBias"] = {
             "circle": {
-                "center": {
-                    "latitude": request.latitude,
-                    "longitude": request.longitude,
-                },
+                "center": {"latitude": request.latitude, "longitude": request.longitude},
                 "radius": request.radius or 500.0,
             }
         }
-
-    # Add optional filters
     if request.included_types and len(request.included_types) == 1:
         body["includedType"] = request.included_types[0]
     if request.min_rating:
@@ -1029,28 +833,18 @@ async def call_text_search(request: PlacesOrchestrationRequest) -> Dict[str, Any
 
     async with httpx.AsyncClient(timeout=30.0) as client:
         response = await client.post(PLACES_API_TEXT_SEARCH_URL, headers=headers, json=body)
-
         if response.status_code != 200:
-            raise HTTPException(
-                status_code=response.status_code,
-                detail=f"Places API error: {response.text}",
-            )
-
+            logger.error("Places text search request failed status=%s", response.status_code)
+            raise HTTPException(status_code=502, detail="Google Places request failed")
         return response.json()
 
 
 async def call_place_details(request: PlacesOrchestrationRequest) -> Dict[str, Any]:
-    """Call Place Details API"""
-
     headers = {
         "Content-Type": "application/json",
         "X-Goog-Api-Key": settings.google_places_api_key,
-        "X-Goog-FieldMask": (
-            "id,displayName,formattedAddress,location,rating,types,priceLevel,"
-            "nationalPhoneNumber,websiteUri,regularOpeningHours"
-        ),
+        "X-Goog-FieldMask": "id,displayName,formattedAddress,location,rating,types,priceLevel,nationalPhoneNumber,websiteUri,regularOpeningHours",
     }
-
     params = {}
     if request.language:
         params["languageCode"] = request.language
@@ -1058,36 +852,19 @@ async def call_place_details(request: PlacesOrchestrationRequest) -> Dict[str, A
         params["regionCode"] = request.region_code
 
     async with httpx.AsyncClient(timeout=30.0) as client:
-        response = await client.get(
-            f"{PLACES_API_DETAILS_URL}/{request.place_id}",
-            headers=headers,
-            params=params,
-        )
-
+        response = await client.get(f"{PLACES_API_DETAILS_URL}/{request.place_id}", headers=headers, params=params)
         if response.status_code != 200:
-            raise HTTPException(
-                status_code=response.status_code,
-                detail=f"Places API error: {response.text}",
-            )
-
+            logger.error("Places details request failed status=%s", response.status_code)
+            raise HTTPException(status_code=502, detail="Google Places request failed")
         return response.json()
 
 
 async def call_bulk_details(place_ids: List[str], request: PlacesOrchestrationRequest) -> Dict[str, Any]:
-    """
-    Call Place Details API for multiple place IDs in parallel.
-    Returns combined results and tracks errors.
-    """
-
     headers = {
         "Content-Type": "application/json",
         "X-Goog-Api-Key": settings.google_places_api_key,
-        "X-Goog-FieldMask": (
-            "id,displayName,formattedAddress,location,rating,types,priceLevel,"
-            "nationalPhoneNumber,websiteUri,regularOpeningHours"
-        ),
+        "X-Goog-FieldMask": "id,displayName,formattedAddress,location,rating,types,priceLevel,nationalPhoneNumber,websiteUri,regularOpeningHours",
     }
-
     params = {}
     if request.language:
         params["languageCode"] = request.language
@@ -1096,30 +873,29 @@ async def call_bulk_details(place_ids: List[str], request: PlacesOrchestrationRe
 
     results = []
     errors = []
-
     async with httpx.AsyncClient(timeout=30.0) as client:
-        # Create tasks for parallel execution
         tasks = []
         for place_id in place_ids:
             task = client.get(f"{PLACES_API_DETAILS_URL}/{place_id}", headers=headers, params=params)
             tasks.append((place_id, task))
 
-        # Execute all requests in parallel
         for place_id, task in tasks:
             try:
                 response = await task
                 if response.status_code == 200:
                     results.append(response.json())
                 else:
-                    errors.append(
-                        {
-                            "place_id": place_id,
-                            "status_code": response.status_code,
-                            "error": response.text,
-                        }
-                    )
-            except Exception as e:
-                errors.append({"place_id": place_id, "error": str(e)})
+                    logger.error("Places bulk detail failed place_id=%s status=%s", place_id, response.status_code)
+                    errors.append(_safe_provider_error(place_id=place_id, status_code=response.status_code))
+            except Exception:
+                logger.error("Places bulk detail dependency failure place_id=%s", place_id, exc_info=True)
+                errors.append(
+                    {
+                        "place_id": place_id,
+                        "code": "dependency_error",
+                        "message": "Google Places request failed",
+                    }
+                )
 
     return {
         "places": results,
@@ -1133,50 +909,42 @@ async def call_bulk_details(place_ids: List[str], request: PlacesOrchestrationRe
 async def call_bulk_multi_operations(
     operations: List[Dict[str, Any]], base_request: PlacesOrchestrationRequest
 ) -> Dict[str, Any]:
-    """
-    Execute multiple different operations in sequence or parallel.
-    Each operation can be: nearby, text_search, or details.
-
-    Example operations list:
-    [
-        {"operation": "text_search", "query": "pizza", "latitude": -23.5, "longitude": -46.6},
-        {"operation": "nearby", "latitude": -23.5, "longitude": -46.6, "included_types": ["restaurant"]},
-        {"operation": "details", "place_id": "ChIJ..."}
-    ]
-    """
-
     all_results = []
     all_errors = []
     operations_executed = []
 
     for op_config in operations:
+        operation_label = str(op_config.get("operation") or "unknown")
         try:
-            # Create a request object for this operation (exclude operations to avoid recursion)
             base_dict = base_request.dict(exclude_none=True)
-            base_dict.pop("operations", None)  # Remove operations to prevent recursion
-            base_dict.pop("place_ids", None)  # Remove place_ids to prevent confusion
-
+            base_dict.pop("operations", None)
+            base_dict.pop("place_ids", None)
             op_request = PlacesOrchestrationRequest(**{**base_dict, **op_config})
-
-            # Determine operation type for this specific request
             operation_type = op_config.get("operation") or determine_operation(op_request)
+            operation_label = str(operation_type)
             operations_executed.append(operation_type)
 
-            # Execute the operation
             if operation_type == "details":
                 data = await call_place_details(op_request)
                 all_results.append(data)
-
             elif operation_type == "text_search":
                 data = await call_text_search(op_request)
                 all_results.extend(data.get("places", []))
-
             elif operation_type == "nearby":
                 data = await call_nearby_search(op_request)
                 all_results.extend(data.get("places", []))
-
-        except Exception as e:
-            all_errors.append({"operation": op_config, "error": str(e)})
+        except HTTPException as exc:
+            provider_error = exc.status_code == 502
+            all_errors.append(
+                _safe_operation_error(
+                    operation_label,
+                    provider=provider_error,
+                    status_code=exc.status_code,
+                )
+            )
+        except Exception:
+            logger.error("Places bulk operation failed operation=%s", operation_label, exc_info=True)
+            all_errors.append(_safe_operation_error(operation_label))
 
     return {
         "places": all_results,
@@ -1188,105 +956,60 @@ async def call_bulk_multi_operations(
     }
 
 
-# ============================================================================
-# ENDPOINTS
-# ============================================================================
-
-
 @router.post("/orchestrate", response_model=PlacesOrchestrationResponse)
 @limiter.limit("20/minute")
 async def orchestrate_places_request(
     request: Request,
     body: PlacesOrchestrationRequest,
-    auth: dict = Depends(verify_auth),  # Support both API key and JWT
+    auth: dict = Depends(verify_auth),
 ):
-    """
-    Unified orchestration endpoint for Google Places API.
-
-    Automatically determines the best API to use based on your input:
-    - Place IDs list -> Bulk Details API
-    - Operations list -> Multi-operation bulk mode
-    - Place ID -> Details API
-    - Text query -> Text Search API
-    - Location + types -> Nearby Search API
-
-    **Authentication Required:** `Authorization: Bearer <token>` OR `X-API-Key: <key>`
-
-    Examples:
-    - Search by name: `{"query": "pizza restaurants"}`
-    - Search nearby: `{"latitude": 37.7749, "longitude": -122.4194, "included_types": ["restaurant"]}`
-    - Get details: `{"place_id": "ChIJN1t_tDeuEmsRUsoyG83frY4"}`
-    - Bulk details: `{"place_ids": ["ChIJ...", "ChIJ..."]}`
-    - Multi-operation: `{"operations": [{"query": "pizza"}, {"latitude": 37.7, "longitude": -122.4}]}`
-    """
-
+    """Unified orchestration endpoint for Google Places API."""
     try:
-        # Determine which operation to perform
         operation = determine_operation(body)
         logger.info(f"Orchestrating Places API request: operation={operation}")
 
         errors = None
         operations_executed = None
 
-        # Call appropriate API
         if operation == "bulk_multi":
-            # Execute multiple different operations
             if not body.operations:
-                raise HTTPException(
-                    status_code=400,
-                    detail="operations list is required for bulk_multi mode",
-                )
+                raise HTTPException(status_code=400, detail="operations list is required for bulk_multi mode")
             data = await call_bulk_multi_operations(body.operations, body)
             results = data.get("places", [])
             errors = data.get("errors") if data.get("errors") else None
             operations_executed = data.get("operations_executed")
             operation = "bulk"
-
         elif operation == "bulk_details":
-            # Bulk details lookup for multiple place IDs
             if not body.place_ids:
-                raise HTTPException(
-                    status_code=400,
-                    detail="place_ids list is required for bulk_details mode",
-                )
+                raise HTTPException(status_code=400, detail="place_ids list is required for bulk_details mode")
             data = await call_bulk_details(body.place_ids, body)
             results = data.get("places", [])
             errors = data.get("errors") if data.get("errors") else None
             operations_executed = ["details"] * data.get("total_requested", 0)
             operation = "bulk"
-
         elif operation == "details":
             data = await call_place_details(body)
-            results = [data]  # Wrap single result in array
-
+            results = [data]
         elif operation == "text_search":
             data = await call_text_search(body)
             results = data.get("places", [])
-
         elif operation == "nearby":
             data = await call_nearby_search(body)
             results = data.get("places", [])
-
         else:
-            raise HTTPException(
-                status_code=400,
-                detail="Unable to determine operation from request parameters",
-            )
+            raise HTTPException(status_code=400, detail="Unable to determine operation from request parameters")
 
-        # Build response
         return PlacesOrchestrationResponse(
             operation=operation,
             results=results,
             total_results=len(results),
-            next_page_token=(
-                data.get("nextPageToken") if operation not in ["bulk", "bulk_details", "bulk_multi"] else None
-            ),
+            next_page_token=(data.get("nextPageToken") if operation not in ["bulk", "bulk_details", "bulk_multi"] else None),
             operations_executed=operations_executed,
             errors=errors,
         )
 
     except HTTPException:
         raise
-    except Exception as e:
-        logger.error(f"Places orchestration error: {str(e)}")
-        raise HTTPException(status_code=500, detail=f"Internal error: {str(e)}")
+    except Exception:
+        logger.error("Places orchestration failed", exc_info=True)
+        raise HTTPException(status_code=500, detail="Places orchestration failed")
