@@ -145,7 +145,7 @@ def test_confirm_handles_entity_duplicate_key_race():
 
     if not entity_doc:
         # Google Places enrichment not applicable here (source != google_places)
-        # Last resort: create a minimal entity
+        # Legacy race simulation retained as a lower-level DuplicateKey check.
         from datetime import datetime, timezone
 
         entity_doc = {
@@ -190,6 +190,17 @@ def _override_database(client, database):
     return restore
 
 
+def _mock_live_user(mock_db, email: str, role: str):
+    mock_db.users.find_one.return_value = {
+        "_id": f"user-{email}",
+        "email": email,
+        "google_id": f"google-{email}",
+        "name": email,
+        "authorized": True,
+        "role": role,
+    }
+
+
 def test_capture_rejects_viewer_before_processing(client):
     """Viewer is read-only even when curator_id matches the JWT subject."""
     from app.api.capture import _idempotency_cache
@@ -197,6 +208,7 @@ def test_capture_rejects_viewer_before_processing(client):
 
     _idempotency_cache._data.clear()
     mock_db = MagicMock()
+    _mock_live_user(mock_db, "viewer@example.com", "viewer")
     restore = _override_database(client, mock_db)
     token = create_access_token(data={"sub": "viewer@example.com", "role": "viewer"})
     try:
@@ -230,6 +242,7 @@ def test_confirm_capture_rejects_viewer_before_writes(client):
 
     _idempotency_cache._data.clear()
     mock_db = MagicMock()
+    _mock_live_user(mock_db, "viewer@example.com", "viewer")
     session = {
         "_id": "viewer-confirm-capture",
         "curator_id": "viewer@example.com",
@@ -272,6 +285,17 @@ def test_confirm_capture_rejects_foreign_owner(client, test_db):
     from datetime import datetime, timezone
     from app.core.security import create_access_token
 
+    test_db.users.delete_many({"email": "bob@x.com"})
+    test_db.users.insert_one(
+        {
+            "_id": "test-user-bob",
+            "email": "bob@x.com",
+            "google_id": "test-google-bob",
+            "name": "Bob",
+            "authorized": True,
+            "role": "curator",
+        }
+    )
     # sessão do dono A
     test_db["capture_sessions"].insert_one(
         {
@@ -285,13 +309,15 @@ def test_confirm_capture_rejects_foreign_owner(client, test_db):
         }
     )
 
-    token_b = create_access_token(data={"sub": "bob@x.com", "role": "curator"})
-    r = client.post(
-        "/api/v3/capture/test_cap_own/confirm",
-        json={"entity_id": "ent_x", "idempotency_key": "k_own_test"},
-        headers={"Authorization": f"Bearer {token_b}"},
-    )
-    assert r.status_code == 403
-    assert "does not belong" in r.json()["detail"]
-
-    test_db["capture_sessions"].delete_one({"_id": "test_cap_own"})
+    try:
+        token_b = create_access_token(data={"sub": "bob@x.com", "role": "curator"})
+        r = client.post(
+            "/api/v3/capture/test_cap_own/confirm",
+            json={"entity_id": "ent_x", "idempotency_key": "k_own_test"},
+            headers={"Authorization": f"Bearer {token_b}"},
+        )
+        assert r.status_code == 403
+        assert "does not belong" in r.json()["detail"]
+    finally:
+        test_db["capture_sessions"].delete_one({"_id": "test_cap_own"})
+        test_db.users.delete_many({"email": "bob@x.com"})
