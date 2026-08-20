@@ -201,13 +201,12 @@ async def orchestrate(
         if isinstance(e.__cause__, BadRequestError) or isinstance(e, BadRequestError):
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail=f"Invalid request: {str(e)}",
+                detail="Invalid AI request",
             )
 
-        # Generic 500 error for other exceptions
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Orchestration failed: {str(e)}",
+            detail="AI orchestration failed",
         )
 
 
@@ -230,7 +229,10 @@ async def extract_restaurant_name(
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
     except Exception as e:
+        import logging
+
+        logging.getLogger(__name__).error("Restaurant name extraction failed: %s", e, exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=f"Restaurant name extraction failed: {str(e)}",
+            detail="Restaurant name extraction failed",
         )
