@@ -67,7 +67,7 @@ class OrchestrateResponse(BaseModel):
 class RestaurantNameExtractionRequest(BaseModel):
     """Request model for restaurant name extraction from text"""
 
-    text: str = Field(..., description="Text to analyze")
+    text: str = Field(..., min_length=1, max_length=20_000, description="Text to analyze")
 
 
 class RestaurantNameExtractionResponse(BaseModel):
@@ -212,8 +212,10 @@ async def orchestrate(
 
 
 @router.post("/extract-restaurant-name", response_model=RestaurantNameExtractionResponse)
+@limiter.limit("20/minute", key_func=auth_header_key)
 async def extract_restaurant_name(
-    request: RestaurantNameExtractionRequest,
+    request: Request,
+    payload: RestaurantNameExtractionRequest,
     openai_service: OpenAIService = Depends(get_openai_service),
     auth: dict = Depends(verify_auth),
 ):
@@ -223,7 +225,7 @@ async def extract_restaurant_name(
     **Authentication Required:** Include `Authorization: Bearer <token>` OR `X-API-Key: <key>` header
     """
     try:
-        result = await openai_service.extract_restaurant_name_from_text(request.text, save_to_cache=False)
+        result = await openai_service.extract_restaurant_name_from_text(payload.text, save_to_cache=False)
         return result
     except ValueError as e:
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
