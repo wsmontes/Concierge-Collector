@@ -173,6 +173,98 @@ def test_confirm_handles_entity_duplicate_key_race():
     _idempotency_cache._data.clear()
 
 
+def _override_database(client, database):
+    """Temporarily replace FastAPI's DB dependency for endpoint-level unit tests."""
+    from app.core.database import get_database
+
+    sentinel = object()
+    previous = client.app.dependency_overrides.get(get_database, sentinel)
+    client.app.dependency_overrides[get_database] = lambda: database
+
+    def restore():
+        if previous is sentinel:
+            client.app.dependency_overrides.pop(get_database, None)
+        else:
+            client.app.dependency_overrides[get_database] = previous
+
+    return restore
+
+
+def test_capture_rejects_viewer_before_processing(client):
+    """Viewer is read-only even when curator_id matches the JWT subject."""
+    from app.api.capture import _idempotency_cache
+    from app.core.security import create_access_token
+
+    _idempotency_cache._data.clear()
+    mock_db = MagicMock()
+    restore = _override_database(client, mock_db)
+    token = create_access_token(data={"sub": "viewer@example.com", "role": "viewer"})
+    try:
+        with (
+            patch("app.api.capture._transcribe", return_value="test") as transcribe,
+            patch("app.api.capture._extract_restaurant_name", return_value=None),
+            patch("app.api.capture._extract_concepts", return_value={}),
+        ):
+            response = client.post(
+                "/api/v3/capture",
+                json={
+                    "audio": "AA==",
+                    "idempotency_key": "viewer-capture-key",
+                    "curator_id": "viewer@example.com",
+                },
+                headers={"Authorization": f"Bearer {token}"},
+            )
+    finally:
+        restore()
+        _idempotency_cache._data.clear()
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Requires curator role"
+    transcribe.assert_not_called()
+
+
+def test_confirm_capture_rejects_viewer_before_writes(client):
+    """Viewer cannot confirm an owned capture and create catalog data."""
+    from app.api.capture import _idempotency_cache
+    from app.core.security import create_access_token
+
+    _idempotency_cache._data.clear()
+    mock_db = MagicMock()
+    session = {
+        "_id": "viewer-confirm-capture",
+        "curator_id": "viewer@example.com",
+        "transcription": "test",
+        "restaurant_name": "Test Place",
+        "entities": [
+            {
+                "entity_id": "ent_001",
+                "name": "Test Place",
+                "type": "restaurant",
+                "location": {},
+                "source": "mongo",
+            }
+        ],
+        "concepts": {},
+    }
+    mock_db.__getitem__.return_value.find_one.return_value = session
+    mock_db.entities.find_one.return_value = {"_id": "ent_001", "name": "Test Place", "data": {}}
+    restore = _override_database(client, mock_db)
+    token = create_access_token(data={"sub": "viewer@example.com", "role": "viewer"})
+    try:
+        response = client.post(
+            "/api/v3/capture/viewer-confirm-capture/confirm",
+            json={"entity_id": "ent_001", "idempotency_key": "viewer-confirm-key"},
+            headers={"Authorization": f"Bearer {token}"},
+        )
+    finally:
+        restore()
+        _idempotency_cache._data.clear()
+
+    assert response.status_code == 403
+    assert response.json()["detail"] == "Requires curator role"
+    mock_db.curations.insert_one.assert_not_called()
+
+
 @pytest.mark.mongo
 def test_confirm_capture_rejects_foreign_owner(client, test_db):
     """Só o dono da sessão (ou admin) confirma — curator B não confirma a

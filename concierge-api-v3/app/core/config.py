@@ -4,6 +4,7 @@ Loads from environment variables and .env file
 Automatically detects localhost vs production environment
 """
 
+from pydantic import Field
 from pydantic_settings import BaseSettings
 from typing import List
 import json
@@ -19,6 +20,26 @@ class Settings(BaseSettings):
     # MongoDB
     mongodb_url: str
     mongodb_db_name: str = "concierge-collector"
+    # Collections usa um banco lógico isolado, mas pode compartilhar o mesmo
+    # cluster/URI operacional. A API o acessa somente para a projeção pública.
+    cms_mongodb_db_name: str = "concierge-cms"
+    # URI de leitura segregada para distribuição a consumidores. Em produção
+    # esse usuário recebe apenas find no banco CMS; a API nunca é dona de
+    # mutations nem de índices desse namespace.
+    cms_mongodb_read_url: str = ""
+    # CMS de teste — lido SOMENTE por fixtures de teste (nunca por código de
+    # produção). O fixture cms_writer exige nome terminando em "-test" e a
+    # URL só é usada sob opt-in, espelhando MONGODB_TEST_URL.
+    cms_mongodb_test_url: str = ""
+    cms_mongodb_test_db_name: str = "concierge-cms-test"
+    distribution_cursor_secret: str = ""
+    # Distinct HMAC key for internal CMS catalog scans. It is unrelated to
+    # JWTs, service authentication and consumer distribution cursors.
+    catalog_cursor_secret: str = ""
+    # Cap for `format=json` dumps: above this selected count the API refuses
+    # to materialize the dump as JSON (413 with the NDJSON equivalent URL).
+    # NDJSON streaming is never bounded by this cap.
+    distribution_json_max_selected: int = Field(default=5000, ge=1)
 
     # API
     api_v3_host: str = "0.0.0.0"
@@ -63,6 +84,17 @@ class Settings(BaseSettings):
 
     # OAuth callback URL allowlist (JSON list of trusted frontend origins)
     trusted_callback_origins: str = "[]"
+
+    # CMS / Payload handoff. These credentials are deliberately distinct from
+    # both JWT signing and X-API-Key authorization.
+    cms_admin_origin: str = ""
+    cms_admin_callback_url: str = ""
+    cms_service_key: str = ""
+    cms_handoff_ttl_seconds: int = 120
+
+    # Métricas são uma superfície operacional separada. Nunca reutilizar uma
+    # API key, JWT ou credencial de serviço para expô-las.
+    metrics_key: str = ""
 
     # JWT Token Settings
     access_token_expire_minutes: int = 60  # 1 hour
@@ -127,6 +159,37 @@ class Settings(BaseSettings):
             )
             return self.api_secret_key
         raise RuntimeError("JWT_SIGNING_SECRET não configurado em produção — configure no dashboard do Render")
+
+    def _required_cms_setting(self, value: str, setting_name: str) -> str:
+        if value:
+            return value
+        if self.environment == "production":
+            raise RuntimeError(f"{setting_name} não configurado em produção")
+        return value
+
+    @property
+    def cms_admin_origin_value(self) -> str:
+        return self._required_cms_setting(self.cms_admin_origin, "CMS_ADMIN_ORIGIN")
+
+    @property
+    def cms_admin_callback_url_value(self) -> str:
+        return self._required_cms_setting(self.cms_admin_callback_url, "CMS_ADMIN_CALLBACK_URL")
+
+    @property
+    def cms_service_key_value(self) -> str:
+        return self._required_cms_setting(self.cms_service_key, "CMS_SERVICE_KEY")
+
+    @property
+    def cms_mongodb_read_url_value(self) -> str:
+        return self._required_cms_setting(self.cms_mongodb_read_url, "CMS_MONGODB_READ_URL")
+
+    @property
+    def catalog_cursor_secret_value(self) -> str:
+        return self._required_cms_setting(self.catalog_cursor_secret, "CATALOG_CURSOR_SECRET")
+
+    @property
+    def metrics_key_value(self) -> str:
+        return self._required_cms_setting(self.metrics_key, "METRICS_KEY")
 
     @property
     def admin_api_key_list(self) -> List[str]:

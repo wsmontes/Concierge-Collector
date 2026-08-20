@@ -4,9 +4,20 @@ individual. Incidente 2026-08-12: o primeiro índice único que falhava
 (duplicatas de externalId) abortava TODA a criação sob um try/except único —
 em produção entities ficou com 4 de 10 índices e curations só com _id_.
 Sem MongoDB — get_database() é monkeypatched.
+
+Contagens são DERIVADAS de INDEX_SPECS (fonte única, 30 specs): números mágicos
+hardcoded já envelheceram duas vezes (catalog_sequence, cms_auth_codes,
+consumer_rate_limit_windows). FakeDb cobre TODAS as collections referenciadas.
 """
 
+from collections import Counter
+
 from app.core import database as dbmod
+from app.core.index_specs import INDEX_SPECS
+
+# Specs que o _ensure_indexes realmente processa (o TTL de capture_sessions
+# fica no lifespan.py) e quanto se espera por coleção.
+_SPEC_COUNTS = Counter(s[0] for s in INDEX_SPECS if s[0] != "capture_sessions")
 
 
 class FakeCol:
@@ -35,11 +46,13 @@ class FakeCol:
 
 
 class FakeDb:
+    """Fake mínimo de pymongo.database para _ensure_indexes — coleções
+    derivadas dinamicamente de INDEX_SPECS (nunca divergir da fonte)."""
+
     def __init__(self):
-        self.entities = FakeCol("entities", fail_keys={"externalId"})
-        self.curations = FakeCol("curations")
-        self.capture_sessions = FakeCol("capture_sessions")
-        self.auth_sessions = FakeCol("auth_sessions")
+        for coll_name in {s[0] for s in INDEX_SPECS}:
+            setattr(self, coll_name, FakeCol(coll_name))
+        self.entities.fail_keys = {"externalId"}
 
 
 def test_ensure_indexes_continues_after_index_failure(monkeypatch, caplog):
@@ -50,11 +63,10 @@ def test_ensure_indexes_continues_after_index_failure(monkeypatch, caplog):
 
     # o índice que falhou NÃO foi criado...
     assert "externalId" not in [k for k, _ in fake.entities.created]
-    # ...mas todos os demais de entities, todos os de curations e os de
-    # auth_sessions (TTL expiresAt + lookup jti) foram
-    assert len(fake.entities.created) == 9
-    assert len(fake.curations.created) == 10
-    assert len(fake.auth_sessions.created) == 2
+    # ...mas todos os demais, em TODAS as coleções da spec, foram
+    assert len(fake.entities.created) == _SPEC_COUNTS["entities"] - 1
+    for coll in ("curations", "auth_sessions", "cms_auth_codes", "consumer_rate_limit_windows"):
+        assert len(getattr(fake, coll).created) == _SPEC_COUNTS[coll]
     # e a falha foi registrada explicitamente no log
     assert any("externalId" in r.getMessage() for r in caplog.records)
 
@@ -66,20 +78,67 @@ def test_ensure_indexes_all_success_when_no_duplicates(monkeypatch):
 
     dbmod._ensure_indexes()
 
-    assert len(fake.entities.created) == 10
-    assert len(fake.curations.created) == 10
-    assert len(fake.auth_sessions.created) == 2
+    for coll, expected in _SPEC_COUNTS.items():
+        assert len(getattr(fake, coll).created) == expected
 
 
 def test_index_specs_come_from_the_shared_module():
     """database.py usa a MESMA lista de specs que db_rebuild (app/core/
-    index_specs.py) — uma mudança de índice não pode derivar entre árvores."""
+    index_specs.py) — uma mudança de índice não pode derivar entre árvores.
+    Asserção estrutural (coleções/índices esperados presentes), não número
+    mágico de contagem."""
     from app.core.index_specs import INDEX_SPECS
 
     assert dbmod.INDEX_SPECS is INDEX_SPECS
-    assert len(INDEX_SPECS) == 23
+    # 30 specs (2026-08-20): 10 entities + 12 curations + 1 capture_sessions
+    # + 2 auth_sessions + 2 cms_auth_codes + 2 consumer_rate_limit_windows
+    # + 1 consumer_credential_usage
+    assert {s[0] for s in INDEX_SPECS} == {
+        "entities",
+        "curations",
+        "capture_sessions",
+        "auth_sessions",
+        "cms_auth_codes",
+        "consumer_rate_limit_windows",
+        "consumer_credential_usage",
+    }
     assert sum(1 for s in INDEX_SPECS if s[0] == "capture_sessions") == 1
     assert ("auth_sessions", "jti", {"unique": True}) in INDEX_SPECS
+    assert ("cms_auth_codes", [("code_hash", 1)], {"unique": True, "name": "cms_code_hash_unique"}) in INDEX_SPECS
+    assert (
+        "cms_auth_codes",
+        [("expires_at", 1)],
+        {"expireAfterSeconds": 0, "name": "cms_code_expiry_ttl"},
+    ) in INDEX_SPECS
+    # índices novos do roadmap Collections/Payload (catalog_sequence ×2)
+    assert (
+        "curations",
+        [("catalog_sequence", 1)],
+        {
+            "unique": True,
+            "partialFilterExpression": {"catalog_sequence": {"$exists": True}},
+            "name": "catalog_sequence_unique",
+        },
+    ) in INDEX_SPECS
+    assert (
+        "curations",
+        [("catalog_sequence", 1), ("curation_id", 1)],
+        {"name": "catalog_sequence_curation_scan"},
+    ) in INDEX_SPECS
+    # quota de consumo (fase 05): chave atômica + TTL
+    assert (
+        "consumer_rate_limit_windows",
+        [("credentialId", 1), ("minuteWindow", 1)],
+        {"unique": True, "name": "consumer_rate_limit_window_unique"},
+    ) in INDEX_SPECS
+    assert (
+        "consumer_rate_limit_windows",
+        "expiresAt",
+        {"expireAfterSeconds": 0, "name": "consumer_rate_limit_expiry_ttl"},
+    ) in INDEX_SPECS
+    # sync de last use (fase 05): page key (updatedAt,_id), SEM TTL — é a
+    # fonte do job Payload, não uma janela transitória
+    assert ("consumer_credential_usage", [("updatedAt", 1), ("_id", 1)], {}) in INDEX_SPECS
 
 
 def test_ensure_indexes_records_state_and_logs_error(monkeypatch, caplog):
@@ -96,6 +155,7 @@ def test_ensure_indexes_records_state_and_logs_error(monkeypatch, caplog):
 
     state = dbmod.get_index_state()
     assert state["failed"] == 1
-    assert state["created"] == 21  # 9 entities + 10 curations + 2 auth_sessions (22 specs - capture_sessions)
+    # todas as specs processadas (capture_sessions fica fora) menos a que falhou
+    assert state["created"] == sum(_SPEC_COUNTS.values()) - 1
     assert any("externalId" in str(d["keys"]) for d in state["failed_details"])
     assert any("externalId" in r.getMessage() for r in caplog.records)

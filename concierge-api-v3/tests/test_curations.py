@@ -868,8 +868,10 @@ def test_create_curation_placeholder_identity_allows_curator():
     mock_db = MagicMock()
     # find_curation probeia: _id string (None → livre) e, como o id não é
     # ObjectId válido, pula o probe ObjectId e tenta curation_id (None).
-    # A 3ª chamada (pós-insert) é o doc de response.
+    # Após o guard há uma leitura do máximo de catalog_sequence; a última
+    # chamada (pós-insert) é o doc de response.
     mock_db.curations.find_one.side_effect = [
+        None,
         None,
         None,
         {
@@ -882,6 +884,7 @@ def test_create_curation_placeholder_identity_allows_curator():
             "version": 1,
         },
     ]
+    mock_db.counters.find_one_and_update.return_value = {"value": 1}
     curation = CurationCreate(
         curation_id="cur_idor_002",
         entity_id=None,
@@ -1329,6 +1332,7 @@ def test_hybrid_search_escapes_location_regex(location):
             os.environ["OPENAI_API_KEY"] = old_key
 
 
+@pytest.mark.mongo
 def test_create_curation_denormalizes_city_type(client, test_db, clean_test_entities, clean_test_curations):
     test_db.entities.insert_one(
         {

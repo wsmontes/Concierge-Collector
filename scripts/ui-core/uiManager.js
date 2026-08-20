@@ -2399,6 +2399,12 @@ if (typeof window.UIManager === 'undefined') {
                             <span class="material-icons" aria-hidden="true">edit</span>
                             <span>Edit</span>
                         </button>
+                        ${window.AppConfig?.app?.features?.collectionsModal ? `
+                        <button class="btn-collections card-link-btn card-collections-btn" title="Manage Collections" aria-label="Manage Collections">
+                            <span class="material-icons" aria-hidden="true">collections_bookmark</span>
+                            <span>Collections</span>
+                        </button>
+                        ` : ''}
                         <button class="btn-more-curation" title="More actions" aria-label="More actions" aria-haspopup="menu">
                             <span class="material-icons" aria-hidden="true">more_horiz</span>
                         </button>
@@ -2435,6 +2441,12 @@ if (typeof window.UIManager === 'undefined') {
             card.querySelector('.btn-edit-curation')?.addEventListener('click', (e) => {
                 e.stopPropagation();
                 this.navigateToCurationEdit(curation);
+            });
+
+            card.querySelector('.btn-collections')?.addEventListener('click', (e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                window.CollectionsModal?.open(curation);
             });
 
             card.querySelector('.btn-link-entity')?.addEventListener('click', (e) => {

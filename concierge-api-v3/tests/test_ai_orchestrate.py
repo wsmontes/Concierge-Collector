@@ -105,6 +105,28 @@ class TestAIOrchestrate:
         assert "authorization" in data["detail"].lower() or "token" in data["detail"].lower()
 
     @pytest.mark.asyncio
+    async def test_orchestrate_does_not_construct_orchestrator_before_authentication(self, async_client):
+        """No auth should short-circuit before building the AI orchestrator."""
+        from app.api.ai import get_ai_orchestrator
+        from main import app
+
+        request_data = {"text": "Test restaurant", "entity_type": "restaurant"}
+        calls = []
+
+        def fake_get_ai_orchestrator():
+            calls.append("orchestrator")
+            return MagicMock()
+
+        app.dependency_overrides[get_ai_orchestrator] = fake_get_ai_orchestrator
+        try:
+            response = await async_client.post("/api/v3/ai/orchestrate", json=request_data)
+        finally:
+            app.dependency_overrides.pop(get_ai_orchestrator, None)
+
+        assert response.status_code == 401, f"Expected 401 without auth, got {response.status_code}"
+        assert calls == [], "AI orchestrator was constructed before authentication"
+
+    @pytest.mark.asyncio
     async def test_orchestrate_workflow_detection(self, async_client, auth_headers):
         """Test that workflow is correctly detected based on inputs"""
         test_cases = [
@@ -214,6 +236,7 @@ class TestOutputHandler:
         services de domínio (fronteira única de escrita por agregado)."""
         assert not hasattr(OutputHandler, "save_results")
 
+    @pytest.mark.mongo
     @pytest.mark.asyncio
     async def test_save_via_domain_derives_curator_from_auth(self, test_db):
         """_save_results_via_domain persiste via entity/curation services e

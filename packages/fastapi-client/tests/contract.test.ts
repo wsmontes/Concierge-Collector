@@ -1,0 +1,92 @@
+import { describe, expect, it, vi } from "vitest";
+
+import { FastApiAdminClient } from "../src/index";
+
+describe("FastApiAdminClient", () => {
+  it("sends the service credential and a typed exchange payload", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
+      new Response(
+        JSON.stringify({
+          user_id: "curator-1",
+          email: "admin@example.com",
+          name: "Admin",
+          picture: null,
+          role: "admin",
+          authorized: true,
+          authz_revision: "revision-1",
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      ),
+    );
+    const client = new FastApiAdminClient({
+      baseUrl: "https://api.concierge-collector.com/",
+      serviceKey: "service-key",
+      fetch,
+    });
+
+    const authorization = await client.exchange({
+      code: "opaque-code",
+      state: "state",
+      target_origin: "https://admin.concierge-collector.com",
+    });
+
+    expect(authorization).toMatchObject({ user_id: "curator-1", role: "admin", authorized: true });
+    expect(fetch).toHaveBeenCalledWith(
+      "https://api.concierge-collector.com/api/v3/auth/cms/exchange",
+      expect.objectContaining({
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          "x-cms-service-key": "service-key",
+        },
+        body: JSON.stringify({
+          code: "opaque-code",
+          state: "state",
+          target_origin: "https://admin.concierge-collector.com",
+        }),
+      }),
+    );
+  });
+
+  it("resolves bounded selections with the authoritative CMS actor", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ eligible_ids: ["c1"], rejected: [] }), { status: 200 }),
+    );
+    const client = new FastApiAdminClient({ baseUrl: "https://api.example.test", serviceKey: "service-key", fetch });
+
+    await expect(client.resolveCurations({ curation_ids: ["c1"] }, "admin-1"))
+      .resolves.toEqual({ eligible_ids: ["c1"], rejected: [] });
+    expect(fetch).toHaveBeenCalledWith(
+      "https://api.example.test/api/v3/catalog/curations/resolve",
+      expect.objectContaining({ headers: expect.objectContaining({ "x-cms-actor-id": "admin-1" }) }),
+    );
+  });
+
+  it("searches the allowlisted catalog with the authoritative CMS actor", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ items: [], next_cursor: null, total: null }), { status: 200 }),
+    );
+    const client = new FastApiAdminClient({ baseUrl: "https://api.example.test", serviceKey: "service-key", fetch });
+
+    await expect(client.searchCurations({ q: "sushi", status: ["active"], limit: 50 }, "admin-1"))
+      .resolves.toEqual({ items: [], next_cursor: null, total: null });
+    expect(fetch).toHaveBeenCalledWith(
+      "https://api.example.test/api/v3/catalog/curations?q=sushi&status=active&limit=50",
+      expect.objectContaining({ headers: expect.objectContaining({ "x-cms-actor-id": "admin-1" }) }),
+    );
+  });
+
+  it("starts and advances a high-water scan using the service-only boundary", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>()
+      .mockResolvedValueOnce(new Response(JSON.stringify({ scan_token: "scan-token", max_catalog_sequence: 42 }), { status: 200 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ items: [], next_cursor: null }), { status: 200 }));
+    const client = new FastApiAdminClient({ baseUrl: "https://api.example.test", serviceKey: "service-key", fetch });
+
+    await expect(client.startCatalogScan({ q: "sushi" }, "admin-1")).resolves.toMatchObject({ scan_token: "scan-token" });
+    await expect(client.scanCatalogPage({ scan_token: "scan-token", cursor: null, limit: 500 }, "admin-1"))
+      .resolves.toEqual({ items: [], next_cursor: null });
+    expect(fetch).toHaveBeenNthCalledWith(2, "https://api.example.test/api/v3/catalog/curations/scan/page", expect.objectContaining({
+      headers: expect.objectContaining({ "x-cms-actor-id": "admin-1" }),
+    }));
+  });
+});

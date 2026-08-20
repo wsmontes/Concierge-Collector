@@ -7,7 +7,7 @@
 import { readFileSync } from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import { describe, test, expect, afterEach } from 'vitest';
+import { describe, test, expect, afterEach, vi } from 'vitest';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const src = readFileSync(
@@ -31,6 +31,8 @@ afterEach(() => {
   document.body.innerHTML = '';
   window.__pwned = undefined;
   window.SourceUtils = undefined;
+  window.AppConfig = undefined;
+  window.CollectionsModal = undefined;
 });
 
 describe('CardFactory — XSS via dados de entity/curation', () => {
@@ -99,6 +101,23 @@ describe('CardFactory — XSS via dados de entity/curation', () => {
     // chip de conflito continua presente, agora com listener real
     expect(card.querySelector('.sync-conflict-chip')).toBeTruthy();
     expect(window.__pwned).toBeUndefined();
+  });
+
+  test('oferece Collections em toda curation card e não deixa o clique vazar para o card', () => {
+    const factory = loadCardFactory();
+    window.AppConfig = { app: { features: { collectionsModal: true } } };
+    window.CollectionsModal = { open: vi.fn() };
+    window.SourceUtils = { detectSource: () => ({ icon: 'public', label: 'Manual' }) };
+    const entity = { entity_id: 'entity-1', name: 'Bistro', type: 'restaurant', status: 'active', data: {} };
+    const curation = { curation_id: 'curation-1', entity_id: 'entity-1', status: 'draft', sync: { status: 'synced' } };
+    const onClick = vi.fn();
+
+    const card = factory.createCurationCard(entity, curation, { onClick });
+    card.querySelector('.btn-collections').click();
+
+    expect(card.querySelector('.btn-collections.card-collections-btn')).toBeTruthy();
+    expect(window.CollectionsModal.open).toHaveBeenCalledWith(curation);
+    expect(onClick).not.toHaveBeenCalled();
   });
 
   test('escapa título/mensagem/action do empty state', () => {

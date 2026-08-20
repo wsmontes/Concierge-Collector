@@ -1,0 +1,30 @@
+FROM node:22.18.0-bookworm-slim AS build
+
+WORKDIR /app
+COPY package.json package-lock.json ./
+COPY apps/admin/package.json apps/admin/package.json
+COPY packages/fastapi-client/package.json packages/fastapi-client/package.json
+RUN npm ci --include=dev --legacy-peer-deps
+COPY . ./
+
+# Payload config is evaluated by next build. These non-secret placeholders are
+# only for compilation; Render replaces every operational value at runtime.
+ENV CMS_MONGODB_URL=mongodb://placeholder.invalid:27017 \
+    CMS_MONGODB_DB_NAME=concierge-cms \
+    CMS_SERVICE_KEY=build-only-cms-service-key \
+    CMS_PUBLIC_SERVER_URL=https://admin.concierge-collector.com \
+    FASTAPI_BASE_URL=https://api.concierge-collector.com \
+    METRICS_KEY=build-only-metrics-key \
+    PAYLOAD_SECRET=build-only-payload-secret-at-least-32-chars
+RUN npm run build --workspace=@concierge/admin
+
+FROM node:22.18.0-bookworm-slim AS runtime
+ENV NODE_ENV=production
+WORKDIR /app
+COPY --from=build /app/package.json /app/package-lock.json ./
+COPY --from=build /app/node_modules ./node_modules
+COPY --from=build /app/apps/admin ./apps/admin
+COPY --from=build /app/packages ./packages
+
+EXPOSE 10000
+CMD ["sh", "-c", "npm run start:admin -- --port ${PORT:-10000}"]

@@ -14,6 +14,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from app.core.config import settings
 from app.core.lifespan import lifespan
 from app.core.rate_limit import limiter
+from app.core.observability import install_log_redaction, request_context_middleware
 from app.api import (
     entities,
     curations,
@@ -22,11 +23,18 @@ from app.api import (
     ai,
     concepts,
     auth,
+    cms_auth,
     llm_gateway,
     openai_compat,
     capture,
+    catalog,
+    internal_curations,
+    internal_consumer_usage,
     curators,
     og_image,
+    metrics,
+    collection_associations,
+    distribution,
 )
 
 # Create FastAPI application
@@ -45,6 +53,8 @@ app = FastAPI(
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
+install_log_redaction()
+app.middleware("http")(request_context_middleware)
 
 
 def _cors_origins_safe(origins=None):
@@ -57,7 +67,13 @@ def _cors_origins_safe(origins=None):
     `origins` é injetável nos testes; em runtime usa settings.cors_origins_list.
     """
     if origins is None:
-        origins = settings.cors_origins_list
+        origins = list(settings.cors_origins_list)
+        # O Admin é uma origem conhecida/configurada, não um wildcard ou uma
+        # reflection do header Origin. Em produção a property é fail-closed se
+        # CMS_ADMIN_ORIGIN estiver ausente.
+        admin_origin = settings.cms_admin_origin_value
+        if admin_origin and admin_origin not in origins:
+            origins.append(admin_origin)
     if "*" in origins:
         raise RuntimeError(
             "CORS_ORIGINS contém '*' — inseguro com allow_credentials=True; "
@@ -98,6 +114,13 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 # Include routers with /api/v3 prefix
 app.include_router(system.router, prefix="/api/v3")
+app.include_router(metrics.router, prefix="/api/v3")
+app.include_router(cms_auth.router, prefix="/api/v3")
+app.include_router(collection_associations.router, prefix="/api/v3")
+app.include_router(distribution.router, prefix="/api/v3")
+app.include_router(catalog.router, prefix="/api/v3")
+app.include_router(internal_curations.router, prefix="/api/v3")
+app.include_router(internal_consumer_usage.router, prefix="/api/v3")
 app.include_router(auth.router, prefix="/api/v3")
 app.include_router(entities.router, prefix="/api/v3")
 app.include_router(curations.router, prefix="/api/v3")

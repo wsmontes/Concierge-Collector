@@ -245,6 +245,7 @@ class Curation(CurationBase):
     createdAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     updatedAt: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
     version: int = Field(default=1)
+    catalog_sequence: Optional[int] = Field(default=None, ge=1)
 
     model_config = ConfigDict(populate_by_name=True)
 

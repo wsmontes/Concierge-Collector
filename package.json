@@ -3,13 +3,35 @@
   "version": "3.0.0",
   "description": "Restaurant curation and collection tool for concierges",
   "type": "module",
+  "private": true,
+  "packageManager": "npm@10.9.2",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
   "scripts": {
     "test": "vitest run",
+    "test:collector": "vitest run",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "test:ui": "vitest --ui",
     "lint": "eslint scripts/ tests/ eslint.config.mjs",
-    "lint:fix": "eslint scripts/ tests/ eslint.config.mjs --fix"
+    "lint:collector": "eslint scripts/ tests/ eslint.config.mjs",
+    "lint:fix": "eslint scripts/ tests/ eslint.config.mjs --fix",
+    "build:collector": "node scripts/build-collector.mjs",
+    "build:collector:check": "node scripts/build-collector.mjs --check",
+    "dev:admin": "npm run dev --workspace=@concierge/admin",
+    "build:admin": "npm run build --workspace=@concierge/admin",
+    "start:admin": "npm run start --workspace=@concierge/admin",
+    "start:admin-worker": "npm run start:worker --workspace=@concierge/admin",
+    "migrate:cms:locked": "node scripts/release/migrate-cms-locked.mjs",
+    "test:admin": "npm run test --workspace=@concierge/admin",
+    "test:admin:integration": "npm run test:integration --workspace=@concierge/admin",
+    "test:e2e": "npm run test:e2e --workspace=@concierge/admin",
+    "lint:admin": "npm run lint --workspace=@concierge/admin",
+    "typecheck:admin": "npm run typecheck --workspace=@concierge/admin",
+    "generate:contracts": "cd concierge-api-v3 && venv/bin/python scripts/export_admin_openapi.py && cd .. && npm run generate --workspace=@concierge/fastapi-client",
+    "check:contracts": "cd concierge-api-v3 && venv/bin/python scripts/export_admin_openapi.py --check && cd .. && npm run check --workspace=@concierge/fastapi-client"
   },
   "devDependencies": {
     "@vitest/coverage-v8": "^1.6.1",
@@ -23,7 +45,8 @@
     "vitest": "^1.0.4"
   },
   "engines": {
-    "node": ">=18.0.0"
+    "node": ">=22.12 <23",
+    "npm": ">=10 <11"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.22.0"

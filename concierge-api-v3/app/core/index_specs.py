@@ -55,6 +55,18 @@ INDEX_SPECS = [
     ("curations", [("curator.id", 1), ("status", 1)], {}),
     # Supports: stable cursor-based pagination on large collections
     ("curations", [("updatedAt", -1), ("_id", 1)], {}),
+    # Server-owned watermark used by the CMS Explorer scan.  The unique
+    # partial index permits legacy documents only during the backfill window.
+    (
+        "curations",
+        [("catalog_sequence", 1)],
+        {
+            "unique": True,
+            "partialFilterExpression": {"catalog_sequence": {"$exists": True}},
+            "name": "catalog_sequence_unique",
+        },
+    ),
+    ("curations", [("catalog_sequence", 1), ("curation_id", 1)], {"name": "catalog_sequence_curation_scan"}),
     # ── capture_sessions ───────────────────────────────────────────────────
     # TTL 48h (auto-delete de sessões de captura) — criado pelo lifespan.py
     ("capture_sessions", "createdAt", {"expireAfterSeconds": 172800}),
@@ -67,4 +79,21 @@ INDEX_SPECS = [
     # com o TTL de 30d). Unique: jti é gerado pelo servidor (JWT) e a
     # varredura 2026-08-18 confirmou zero duplicatas.
     ("auth_sessions", "jti", {"unique": True}),
+    # ── cms_auth_codes ────────────────────────────────────────────────────
+    # Handoff codes are stored hash-only and may be consumed exactly once.
+    ("cms_auth_codes", [("code_hash", 1)], {"unique": True, "name": "cms_code_hash_unique"}),
+    ("cms_auth_codes", [("expires_at", 1)], {"expireAfterSeconds": 0, "name": "cms_code_expiry_ttl"}),
+    # Consumer quota windows are operational, not CMS state. A short TTL
+    # bounds storage while the fixed minute key guarantees atomic increments.
+    (
+        "consumer_rate_limit_windows",
+        [("credentialId", 1), ("minuteWindow", 1)],
+        {"unique": True, "name": "consumer_rate_limit_window_unique"},
+    ),
+    ("consumer_rate_limit_windows", "expiresAt", {"expireAfterSeconds": 0, "name": "consumer_rate_limit_expiry_ttl"}),
+    # ── consumer_credential_usage ──────────────────────────────────────────
+    # Operational aggregation read by the Payload last-use sync job, paged
+    # strictly by (updatedAt, _id). NO TTL: this collection is the source of
+    # the CMS last-used sync, not a transient window.
+    ("consumer_credential_usage", [("updatedAt", 1), ("_id", 1)], {}),
 ]

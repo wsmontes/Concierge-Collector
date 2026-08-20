@@ -7,7 +7,7 @@ import os
 import secrets
 from typing import Optional
 from datetime import datetime, timedelta, timezone
-from fastapi import Security, HTTPException, status, Depends, Request
+from fastapi import Security, HTTPException, status, Depends, Request, Header
 from fastapi.security import APIKeyHeader, HTTPBearer, HTTPAuthorizationCredentials
 from jose import JWTError, jwt
 
@@ -412,6 +412,21 @@ def verify_auth(
     raise HTTPException(status_code=401, detail="Missing authorization token")
 
 
+def verify_cms_service(x_cms_service_key: Optional[str] = Header(None, alias="X-CMS-Service-Key")) -> None:
+    """Require the separate, server-to-server credential used by Payload.
+
+    This dependency intentionally does not accept ``X-API-Key`` and does not
+    grant a human role. It is only valid for the narrow CMS exchange and
+    introspection endpoints.
+    """
+    expected = settings.cms_service_key_value
+    if not x_cms_service_key or not secrets.compare_digest(x_cms_service_key, expected):
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Invalid CMS service credential",
+        )
+
+
 def is_admin_auth(auth: dict) -> bool:
     """True se a autenticação é admin: API key (scripts de bulk) ou JWT com
     role=admin. Usado nas regras de ownership (IDOR): admin pode atuar em
@@ -447,5 +462,6 @@ __all__ = [
     "generate_api_key",
     "api_key_header",
     "verify_auth",
+    "verify_cms_service",
     "is_admin_auth",
 ]

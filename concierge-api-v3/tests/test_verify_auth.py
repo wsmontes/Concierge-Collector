@@ -181,7 +181,7 @@ class TestJwtHelpers:
         payload = await verify_access_token(credentials=None)
         assert payload["email"] == "test@example.com"
 
-    async def test_verify_refresh_token_roundtrip(self, test_db):
+    async def test_verify_refresh_token_roundtrip(self, in_memory_db):
         from app.core.security import ALGORITHM, create_refresh_token, get_jwt_secret, verify_refresh_token
         from app.services.session_service import register_session
         from jose import jwt
@@ -190,11 +190,11 @@ class TestJwtHelpers:
         # Token novo carrega jti → exige sessão registrada em auth_sessions
         # (rotação 2026-08-15). Sem sessão o verify é fail-closed 401.
         jti = jwt.decode(token, get_jwt_secret(), algorithms=[ALGORITHM])["jti"]
-        register_session(test_db, jti, "refresh@example.com")
+        register_session(in_memory_db, jti, "refresh@example.com")
         try:
-            payload = await verify_refresh_token(token, db=test_db)
+            payload = await verify_refresh_token(token, db=in_memory_db)
         finally:
-            test_db.auth_sessions.delete_many({"jti": jti})
+            in_memory_db.auth_sessions.delete_many({"jti": jti})
         assert payload["sub"] == "refresh@example.com"
         assert payload["type"] == "refresh"
 

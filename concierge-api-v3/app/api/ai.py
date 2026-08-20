@@ -107,8 +107,8 @@ def get_ai_orchestrator(db=Depends(get_database), openai_service=Depends(get_ope
 async def orchestrate(
     request: Request,
     payload: OrchestrateRequest,
-    orchestrator: AIOrchestrator = Depends(get_ai_orchestrator),
     auth: dict = Depends(verify_auth),  # Support both API key and JWT
+    orchestrator: AIOrchestrator = Depends(get_ai_orchestrator),
 ):
     """
     Intelligent AI workflow orchestration.

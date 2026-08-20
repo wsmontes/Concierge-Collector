@@ -328,6 +328,12 @@ const ApiServiceClass = ModuleWrapper.defineClass('ApiServiceClass', class {
         return await response.json();
     }
 
+    async getCurationCollections(curationId) {
+        const endpoint = `${AppConfig.api.backend.endpoints.curations}/${encodeURIComponent(curationId)}/collections`;
+        const response = await this.request('GET', endpoint);
+        return await response.json();
+    }
+
     async listCurations(filters = {}) {
         const params = new URLSearchParams();
         if (filters.entity_id) params.append('entity_id', filters.entity_id);

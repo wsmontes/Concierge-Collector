@@ -39,3 +39,16 @@ def test_cors_lista_vazia_aceita():
     from main import _cors_origins_safe
 
     assert _cors_origins_safe([]) == []
+
+
+def test_cors_includes_the_fixed_admin_origin_when_loading_runtime_config(monkeypatch):
+    """O origin do Admin entra explicitamente; não há reflection/wildcard."""
+    from main import _cors_origins_safe
+
+    monkeypatch.setattr("main.settings.cors_origins", '["https://collector.example"]')
+    monkeypatch.setattr("main.settings.cms_admin_origin", "https://admin.concierge-collector.com")
+
+    assert _cors_origins_safe() == [
+        "https://collector.example",
+        "https://admin.concierge-collector.com",
+    ]

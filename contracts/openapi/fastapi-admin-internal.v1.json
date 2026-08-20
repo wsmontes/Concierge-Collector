@@ -1,0 +1,1314 @@
+{
+  "components": {
+    "schemas": {
+      "AdminCurationRow": {
+        "properties": {
+          "catalog_sequence": {
+            "minimum": 1.0,
+            "title": "Catalog Sequence",
+            "type": "integer"
+          },
+          "city": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "curation_id": {
+            "title": "Curation Id",
+            "type": "string"
+          },
+          "curator_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Curator Id"
+          },
+          "entity_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Type"
+          },
+          "restaurant_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Restaurant Name"
+          },
+          "status": {
+            "title": "Status",
+            "type": "string"
+          },
+          "updated_at": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated At"
+          }
+        },
+        "required": [
+          "curation_id",
+          "catalog_sequence",
+          "status"
+        ],
+        "title": "AdminCurationRow",
+        "type": "object"
+      },
+      "CatalogFilters": {
+        "properties": {
+          "city": {
+            "anyOf": [
+              {
+                "maxLength": 120,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "City"
+          },
+          "curator_id": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Curator Id"
+          },
+          "entity_type": {
+            "anyOf": [
+              {
+                "maxLength": 80,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entity Type"
+          },
+          "q": {
+            "anyOf": [
+              {
+                "maxLength": 200,
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Q"
+          },
+          "status": {
+            "items": {
+              "enum": [
+                "draft",
+                "linked",
+                "active",
+                "deleted",
+                "archived"
+              ],
+              "type": "string"
+            },
+            "title": "Status",
+            "type": "array"
+          },
+          "updated_from": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated From"
+          },
+          "updated_to": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Updated To"
+          }
+        },
+        "title": "CatalogFilters",
+        "type": "object"
+      },
+      "CatalogScanPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AdminCurationRow"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "CatalogScanPage",
+        "type": "object"
+      },
+      "CatalogScanPageRequest": {
+        "properties": {
+          "cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cursor"
+          },
+          "limit": {
+            "default": 100,
+            "maximum": 500.0,
+            "minimum": 1.0,
+            "title": "Limit",
+            "type": "integer"
+          },
+          "scan_token": {
+            "minLength": 1,
+            "title": "Scan Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scan_token"
+        ],
+        "title": "CatalogScanPageRequest",
+        "type": "object"
+      },
+      "CatalogScanStart": {
+        "properties": {
+          "max_catalog_sequence": {
+            "minimum": 0.0,
+            "title": "Max Catalog Sequence",
+            "type": "integer"
+          },
+          "scan_token": {
+            "title": "Scan Token",
+            "type": "string"
+          }
+        },
+        "required": [
+          "scan_token",
+          "max_catalog_sequence"
+        ],
+        "title": "CatalogScanStart",
+        "type": "object"
+      },
+      "CatalogScanStartRequest": {
+        "properties": {
+          "filters": {
+            "$ref": "#/components/schemas/CatalogFilters"
+          }
+        },
+        "title": "CatalogScanStartRequest",
+        "type": "object"
+      },
+      "CatalogSearchPage": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/AdminCurationRow"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "next_cursor": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Next Cursor"
+          },
+          "total": {
+            "anyOf": [
+              {
+                "minimum": 0.0,
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Total"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "CatalogSearchPage",
+        "type": "object"
+      },
+      "CmsAuthorization": {
+        "description": "The current operational authorization for a CMS administrator.",
+        "properties": {
+          "authorized": {
+            "title": "Authorized",
+            "type": "boolean"
+          },
+          "authz_revision": {
+            "title": "Authz Revision",
+            "type": "string"
+          },
+          "email": {
+            "format": "email",
+            "title": "Email",
+            "type": "string"
+          },
+          "name": {
+            "title": "Name",
+            "type": "string"
+          },
+          "picture": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Picture"
+          },
+          "role": {
+            "enum": [
+              "admin",
+              "curator",
+              "viewer"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "user_id": {
+            "title": "User Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "user_id",
+          "email",
+          "name",
+          "role",
+          "authorized",
+          "authz_revision"
+        ],
+        "title": "CmsAuthorization",
+        "type": "object"
+      },
+      "CmsExchangeRequest": {
+        "description": "Payload accepted by the server-to-server one-shot exchange endpoint.",
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "target_origin": {
+            "title": "Target Origin",
+            "type": "string"
+          }
+        },
+        "required": [
+          "code",
+          "state",
+          "target_origin"
+        ],
+        "title": "CmsExchangeRequest",
+        "type": "object"
+      },
+      "CmsIntrospectionRequest": {
+        "description": "Payload accepted by the CMS introspection endpoint.",
+        "properties": {
+          "subject": {
+            "title": "Subject",
+            "type": "string"
+          }
+        },
+        "required": [
+          "subject"
+        ],
+        "title": "CmsIntrospectionRequest",
+        "type": "object"
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "title": "Detail",
+            "type": "array"
+          }
+        },
+        "title": "HTTPValidationError",
+        "type": "object"
+      },
+      "HydrateCurationsRequest": {
+        "properties": {
+          "curation_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Curation Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "curation_ids"
+        ],
+        "title": "HydrateCurationsRequest",
+        "type": "object"
+      },
+      "HydrateCurationsResponse": {
+        "properties": {
+          "available_count": {
+            "minimum": 0.0,
+            "title": "Available Count",
+            "type": "integer"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PublicCurationItem"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "selected_count": {
+            "minimum": 0.0,
+            "title": "Selected Count",
+            "type": "integer"
+          },
+          "unavailable": {
+            "items": {
+              "$ref": "#/components/schemas/UnavailableItem"
+            },
+            "title": "Unavailable",
+            "type": "array"
+          },
+          "unavailable_count": {
+            "minimum": 0.0,
+            "title": "Unavailable Count",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "items",
+          "unavailable",
+          "selected_count",
+          "available_count",
+          "unavailable_count"
+        ],
+        "title": "HydrateCurationsResponse",
+        "type": "object"
+      },
+      "PublicCurationItem": {
+        "description": "The only Curation/Entity fields permitted across the CMS boundary.",
+        "properties": {
+          "curation_id": {
+            "minLength": 1,
+            "title": "Curation Id",
+            "type": "string"
+          },
+          "curation_note": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Curation Note"
+          },
+          "entity_id": {
+            "minLength": 1,
+            "title": "Entity Id",
+            "type": "string"
+          },
+          "name": {
+            "minLength": 1,
+            "title": "Name",
+            "type": "string"
+          }
+        },
+        "required": [
+          "curation_id",
+          "entity_id",
+          "name"
+        ],
+        "title": "PublicCurationItem",
+        "type": "object"
+      },
+      "PublishedCollectionAssociation": {
+        "properties": {
+          "collection_id": {
+            "minLength": 1,
+            "title": "Collection Id",
+            "type": "string"
+          },
+          "current_published_version": {
+            "minimum": 1.0,
+            "title": "Current Published Version",
+            "type": "integer"
+          },
+          "slug": {
+            "title": "Slug",
+            "type": "string"
+          },
+          "title": {
+            "title": "Title",
+            "type": "string"
+          }
+        },
+        "required": [
+          "collection_id",
+          "slug",
+          "title",
+          "current_published_version"
+        ],
+        "title": "PublishedCollectionAssociation",
+        "type": "object"
+      },
+      "PublishedCollectionAssociationResponse": {
+        "properties": {
+          "items": {
+            "items": {
+              "$ref": "#/components/schemas/PublishedCollectionAssociation"
+            },
+            "title": "Items",
+            "type": "array"
+          }
+        },
+        "required": [
+          "items"
+        ],
+        "title": "PublishedCollectionAssociationResponse",
+        "type": "object"
+      },
+      "RejectedCuration": {
+        "properties": {
+          "curation_id": {
+            "title": "Curation Id",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "not_found",
+              "ineligible_status"
+            ],
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "curation_id",
+          "reason"
+        ],
+        "title": "RejectedCuration",
+        "type": "object"
+      },
+      "ResolveCurationsRequest": {
+        "description": "A bounded, explicitly chosen set of Curations to resolve.",
+        "properties": {
+          "curation_ids": {
+            "items": {
+              "type": "string"
+            },
+            "maxItems": 500,
+            "minItems": 1,
+            "title": "Curation Ids",
+            "type": "array"
+          }
+        },
+        "required": [
+          "curation_ids"
+        ],
+        "title": "ResolveCurationsRequest",
+        "type": "object"
+      },
+      "ResolveCurationsResponse": {
+        "properties": {
+          "eligible_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Eligible Ids",
+            "type": "array"
+          },
+          "rejected": {
+            "items": {
+              "$ref": "#/components/schemas/RejectedCuration"
+            },
+            "title": "Rejected",
+            "type": "array"
+          }
+        },
+        "required": [
+          "eligible_ids",
+          "rejected"
+        ],
+        "title": "ResolveCurationsResponse",
+        "type": "object"
+      },
+      "UnavailableItem": {
+        "properties": {
+          "curation_id": {
+            "title": "Curation Id",
+            "type": "string"
+          },
+          "reason": {
+            "enum": [
+              "curation_missing",
+              "curation_not_public",
+              "missing_entity",
+              "entity_not_public",
+              "schema_invalid"
+            ],
+            "title": "Reason",
+            "type": "string"
+          }
+        },
+        "required": [
+          "curation_id",
+          "reason"
+        ],
+        "title": "UnavailableItem",
+        "type": "object"
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "title": "Location",
+            "type": "array"
+          },
+          "msg": {
+            "title": "Message",
+            "type": "string"
+          },
+          "type": {
+            "title": "Error Type",
+            "type": "string"
+          }
+        },
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError",
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "CmsServiceKey": {
+        "in": "header",
+        "name": "X-CMS-Service-Key",
+        "type": "apiKey"
+      },
+      "FastApiAccessCookie": {
+        "in": "cookie",
+        "name": "access_token",
+        "type": "apiKey"
+      },
+      "HTTPBearer": {
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "description": "Professional async API with MongoDB support for entity and curation management",
+    "title": "Concierge Collector API V3",
+    "version": "3.0.0"
+  },
+  "openapi": "3.1.0",
+  "paths": {
+    "/api/v3/auth/cms/authorize": {
+      "get": {
+        "description": "Issue a one-shot code for a current admin and redirect to the fixed CMS callback.",
+        "operationId": "authorize_api_v3_auth_cms_authorize_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "state",
+            "required": true,
+            "schema": {
+              "maxLength": 2048,
+              "minLength": 1,
+              "title": "State",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "307": {
+            "content": {
+              "application/json": {
+                "schema": {}
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "FastApiAccessCookie": []
+          }
+        ],
+        "summary": "Authorize",
+        "tags": [
+          "cms-auth"
+        ]
+      }
+    },
+    "/api/v3/auth/cms/exchange": {
+      "post": {
+        "description": "Atomically consume a one-shot code on behalf of the CMS server.",
+        "operationId": "exchange_api_v3_auth_cms_exchange_post",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CmsExchangeRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CmsAuthorization"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "CmsServiceKey": []
+          }
+        ],
+        "summary": "Exchange",
+        "tags": [
+          "cms-auth"
+        ]
+      }
+    },
+    "/api/v3/auth/cms/introspect": {
+      "post": {
+        "description": "Return the live authorization for an already-authenticated CMS subject.",
+        "operationId": "introspect_api_v3_auth_cms_introspect_post",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CmsIntrospectionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CmsAuthorization"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "CmsServiceKey": []
+          }
+        ],
+        "summary": "Introspect",
+        "tags": [
+          "cms-auth"
+        ]
+      }
+    },
+    "/api/v3/auth/cms/introspect-bearer": {
+      "post": {
+        "description": "Revalidate a Collector Bearer for the narrow CMS bridge.\n\nThis is not a general token exchange: it accepts only an interactive\nsession and only returns a currently authorized admin identity.",
+        "operationId": "introspect_bearer_api_v3_auth_cms_introspect_bearer_post",
+        "parameters": [],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CmsAuthorization"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "CmsServiceKey": [],
+            "HTTPBearer": []
+          },
+          {
+            "CmsServiceKey": [],
+            "FastApiAccessCookie": []
+          }
+        ],
+        "summary": "Introspect Bearer",
+        "tags": [
+          "cms-auth"
+        ]
+      }
+    },
+    "/api/v3/catalog/curations": {
+      "get": {
+        "operationId": "search_curations_api_v3_catalog_curations_get",
+        "parameters": [
+          {
+            "in": "query",
+            "name": "q",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Q"
+            }
+          },
+          {
+            "in": "query",
+            "name": "status",
+            "required": false,
+            "schema": {
+              "default": [],
+              "items": {
+                "type": "string"
+              },
+              "title": "Status",
+              "type": "array"
+            }
+          },
+          {
+            "in": "query",
+            "name": "city",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 120,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "City"
+            }
+          },
+          {
+            "in": "query",
+            "name": "entity_type",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 80,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Entity Type"
+            }
+          },
+          {
+            "in": "query",
+            "name": "curator_id",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "maxLength": 200,
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Curator Id"
+            }
+          },
+          {
+            "in": "query",
+            "name": "cursor",
+            "required": false,
+            "schema": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "title": "Cursor"
+            }
+          },
+          {
+            "in": "query",
+            "name": "limit",
+            "required": false,
+            "schema": {
+              "default": 100,
+              "maximum": 500,
+              "minimum": 1,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          {
+            "in": "header",
+            "name": "X-CMS-Actor-Id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogSearchPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "CmsServiceKey": []
+          }
+        ],
+        "summary": "Search Curations",
+        "tags": [
+          "cms-catalog"
+        ]
+      }
+    },
+    "/api/v3/catalog/curations/resolve": {
+      "post": {
+        "description": "Resolve an explicit selection for a currently authorized CMS admin.",
+        "operationId": "resolve_curation_selection_api_v3_catalog_curations_resolve_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-CMS-Actor-Id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveCurationsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResolveCurationsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "CmsServiceKey": []
+          }
+        ],
+        "summary": "Resolve Curation Selection",
+        "tags": [
+          "cms-catalog"
+        ]
+      }
+    },
+    "/api/v3/catalog/curations/scan/page": {
+      "post": {
+        "operationId": "scan_page_api_v3_catalog_curations_scan_page_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-CMS-Actor-Id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CatalogScanPageRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogScanPage"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "CmsServiceKey": []
+          }
+        ],
+        "summary": "Scan Page",
+        "tags": [
+          "cms-catalog"
+        ]
+      }
+    },
+    "/api/v3/catalog/curations/scan/start": {
+      "post": {
+        "operationId": "start_scan_api_v3_catalog_curations_scan_start_post",
+        "parameters": [
+          {
+            "in": "header",
+            "name": "X-CMS-Actor-Id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CatalogScanStartRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CatalogScanStart"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "CmsServiceKey": []
+          }
+        ],
+        "summary": "Start Scan",
+        "tags": [
+          "cms-catalog"
+        ]
+      }
+    },
+    "/api/v3/curations/{curation_id}/collections": {
+      "get": {
+        "description": "List only the currently published associations of a Curation.\n\nThe curation must still exist, while association visibility is solely\ngoverned by the version interval and the Collection publication state.",
+        "operationId": "published_associations_api_v3_curations__curation_id__collections_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "curation_id",
+            "required": true,
+            "schema": {
+              "title": "Curation Id",
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PublishedCollectionAssociationResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "HTTPBearer": []
+          },
+          {
+            "FastApiAccessCookie": []
+          }
+        ],
+        "summary": "Published Associations",
+        "tags": [
+          "collections"
+        ]
+      }
+    },
+    "/api/v3/internal/curations/hydrate": {
+      "post": {
+        "operationId": "hydrate_curations_api_v3_internal_curations_hydrate_post",
+        "parameters": [],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/HydrateCurationsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HydrateCurationsResponse"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "security": [
+          {
+            "CmsServiceKey": []
+          }
+        ],
+        "summary": "Hydrate Curations",
+        "tags": [
+          "cms-distribution"
+        ]
+      }
+    }
+  }
+}

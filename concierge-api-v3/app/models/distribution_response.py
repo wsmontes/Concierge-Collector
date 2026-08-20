@@ -1,0 +1,43 @@
+from __future__ import annotations
+
+from pydantic import BaseModel, ConfigDict, Field
+
+from app.models.distribution import UnavailableItem
+from app.models.distribution_api import PublicCurationItemV1
+
+
+class DistributionCollectionInfo(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    slug: str
+    version: int
+    selected_count: int = Field(ge=0)
+
+
+class CollectionDistributionEnvelopeV1(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+    schema_version: int = 1
+    collection: DistributionCollectionInfo
+    items: list[PublicCurationItemV1]
+    unavailable: list[UnavailableItem]
+    available_count: int = Field(ge=0)
+    unavailable_count: int = Field(ge=0)
+    next_cursor: str | None = None
+
+
+class DistributionVersionInfo(BaseModel):
+    """Immutable publication metadata safe to disclose to a consumer."""
+
+    model_config = ConfigDict(extra="forbid")
+    version: int = Field(ge=1)
+    selected_count: int = Field(ge=0)
+    published_at: str | None = None
+
+
+class CollectionVersionHistoryEnvelopeV1(BaseModel):
+    """A page of published Collection versions, newest first."""
+
+    model_config = ConfigDict(extra="forbid")
+    schema_version: int = 1
+    collection: DistributionCollectionInfo
+    versions: list[DistributionVersionInfo]
+    next_cursor: str | None = None

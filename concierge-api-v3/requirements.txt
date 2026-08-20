@@ -22,6 +22,7 @@ passlib[bcrypt]==1.7.4
 
 # Rate Limiting
 slowapi==0.1.9
+prometheus-client==0.22.1
 
 # Environment
 python-dotenv==1.0.1
