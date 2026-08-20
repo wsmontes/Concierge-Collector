@@ -137,8 +137,8 @@ async def global_exception_handler(request: Request, exc: Exception):
 
 
 # Provider-backed/internal-data routers get a live authorization gate at the
-# mount boundary. Endpoint-level dependencies still enforce stronger roles for
-# writes, but stale/revoked JWTs cannot reach handlers that incur provider cost.
+# mount boundary where every route is already authenticated/internal. The LLM
+# Gateway keeps its public /health path and applies live auth per endpoint.
 _live_viewer = [Depends(require_role("viewer"))]
 
 # Include routers with /api/v3 prefix
@@ -156,7 +156,7 @@ app.include_router(curations.router, prefix="/api/v3", dependencies=_live_viewer
 app.include_router(places.router, prefix="/api/v3", dependencies=_live_viewer)
 app.include_router(ai.router, prefix="/api/v3")
 app.include_router(concepts.router, prefix="/api/v3")
-app.include_router(llm_gateway.router, prefix="/api/v3", dependencies=_live_viewer)
+app.include_router(llm_gateway.router, prefix="/api/v3")
 app.include_router(openai_compat.router, prefix="/api/v3", dependencies=_live_viewer)
 app.include_router(capture.router, prefix="/api/v3")
 app.include_router(curators.router, prefix="/api/v3")
