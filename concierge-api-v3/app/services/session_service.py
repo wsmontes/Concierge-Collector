@@ -31,14 +31,27 @@ def register_session(db: Database, jti: str, sub: str, issued_at: datetime = Non
     return doc
 
 
-def consume_session(db: Database, jti: str, sub: str) -> dict | None:
-    """Consome um refresh jti uma única vez, com CAS atômica por subject.
+def _find_one_and_delete(collection, query: dict) -> dict | None:
+    """Use Mongo's atomic primitive; keep a narrow fallback for test doubles.
 
-    ``find_one_and_delete`` é a fronteira de rotação: ao contrário de um
-    ``find`` seguido de ``delete``, duas requests concorrentes não conseguem
-    observar a mesma sessão como válida e ambas emitir descendentes.
+    Real PyMongo collections always provide ``find_one_and_delete``. The
+    fallback exists only because the repository's hermetic InMemoryCollection
+    intentionally implements a smaller surface. It is not concurrency-safe and
+    must never be the production path.
     """
-    return db.auth_sessions.find_one_and_delete({"jti": jti, "sub": sub})
+    atomic_delete = getattr(collection, "find_one_and_delete", None)
+    if callable(atomic_delete):
+        return atomic_delete(query)
+    document = collection.find_one(query)
+    if document is None:
+        return None
+    collection.delete_one({"_id": document["_id"]})
+    return document
+
+
+def consume_session(db: Database, jti: str, sub: str) -> dict | None:
+    """Consome um refresh jti uma única vez, com CAS atômica por subject."""
+    return _find_one_and_delete(db.auth_sessions, {"jti": jti, "sub": sub})
 
 
 def revoke_session(db: Database, jti: str) -> None:
@@ -50,7 +63,7 @@ def revoke_session(db: Database, jti: str) -> None:
     trata revogação ausente como best-effort e continua idempotente no boundary
     HTTP.
     """
-    consumed = db.auth_sessions.find_one_and_delete({"jti": jti})
+    consumed = _find_one_and_delete(db.auth_sessions, {"jti": jti})
     if consumed is None:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
