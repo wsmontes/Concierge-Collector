@@ -91,7 +91,10 @@ livePublish('creates v1, drafts v2, proves v1 stable, publishes v2, archives and
   })
   await page.goto('/auth/start?return_to=/admin')
   const callback = await callbackResponse
-  expect(callback.ok(), 'CMS handoff callback failed — is FastAPI CMS_ADMIN_* configured?').toBe(true)
+  // /auth/callback answers with a redirect (307), which Response.ok() reports
+  // as false — only assert it is not an error status; the CMS session cookie
+  // below is the real proof the handoff completed.
+  expect(callback.status(), 'CMS handoff callback failed — is FastAPI CMS_ADMIN_* configured?').toBeLessThan(400)
   await page.waitForURL(`${new URL(baseURL).origin}/admin**`)
   const sessionCookie = (await page.context().cookies()).find((cookie) => cookie.name === 'cms_session')
   expect(sessionCookie).toMatchObject({
