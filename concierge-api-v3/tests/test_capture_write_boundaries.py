@@ -40,10 +40,21 @@ def test_confirm_new_entity_uses_canonical_entity_contract(client, in_memory_db)
     curation_id = _curation_id_for_capture(capture_id)
 
     _idempotency_cache._data.clear()
+    in_memory_db.users.delete_many({"email": curator_id})
     in_memory_db.capture_sessions.delete_many({"_id": capture_id})
     in_memory_db.entities.delete_many({"_id": entity_id})
     in_memory_db.curations.delete_many({"_id": curation_id})
     in_memory_db.counters.delete_many({"_id": "curations_catalog_sequence"})
+    in_memory_db.users.insert_one(
+        {
+            "_id": "capture-writer-user",
+            "email": curator_id,
+            "google_id": "capture-writer-google",
+            "name": "Capture Writer",
+            "authorized": True,
+            "role": "curator",
+        }
+    )
     in_memory_db.capture_sessions.insert_one(
         {
             "_id": capture_id,
@@ -92,6 +103,7 @@ def test_confirm_new_entity_uses_canonical_entity_contract(client, in_memory_db)
         assert curation["version"] == 1
         assert isinstance(curation.get("catalog_sequence"), int)
     finally:
+        in_memory_db.users.delete_many({"email": curator_id})
         in_memory_db.capture_sessions.delete_many({"_id": capture_id})
         in_memory_db.entities.delete_many({"_id": entity_id})
         in_memory_db.curations.delete_many({"_id": curation_id})
