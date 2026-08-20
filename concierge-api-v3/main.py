@@ -3,7 +3,8 @@ Concierge Collector API V3 - Professional FastAPI Implementation
 Main application entry point with PyMongo (sync) support
 """
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
@@ -90,6 +91,28 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+@app.exception_handler(HTTPException)
+async def sanitized_http_exception_handler(request: Request, exc: HTTPException):
+    """Preserve client/domain 4xx details while redacting every server 5xx."""
+    if exc.status_code < 500:
+        return await http_exception_handler(request, exc)
+
+    from fastapi.responses import JSONResponse
+    import logging
+
+    logger = logging.getLogger(__name__)
+    logger.error(
+        "[HTTP Exception] Redacted server error status=%s path=%s",
+        exc.status_code,
+        request.url.path,
+    )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": "Internal server error"},
+        headers=exc.headers,
+    )
 
 
 # Global exception handler: log the exception, return a generic 500 message.
