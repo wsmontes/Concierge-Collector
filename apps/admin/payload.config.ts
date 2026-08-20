@@ -11,6 +11,7 @@ import { publishingEndpoints } from './src/payload/endpoints/publishing'
 import { collectionReadEndpoints } from './src/payload/endpoints/collection-reads'
 import { collectorCollectionEndpoints } from './src/payload/endpoints/collector-collections'
 import { applicationEndpoints } from './src/payload/endpoints/applications'
+import { credentialEndpoints } from './src/payload/endpoints/credentials'
 import { explorerEndpoints } from './src/payload/endpoints/explorer'
 import { selectionEndpoints } from './src/payload/endpoints/selections'
 import { exportEndpoints } from './src/payload/endpoints/exports'
@@ -98,7 +99,7 @@ export default buildConfig({
     ConsumerCredentials,
     SavedCurationViews,
   ],
-  endpoints: [...collectionEndpoints(), ...collectionReadEndpoints(), ...collectorCollectionEndpoints(), ...operationEndpoints(), ...publishingEndpoints(), ...applicationEndpoints(), ...explorerEndpoints(), ...selectionEndpoints(), ...exportEndpoints()],
+  endpoints: [...collectionEndpoints(), ...collectionReadEndpoints(), ...collectorCollectionEndpoints(), ...operationEndpoints(), ...publishingEndpoints(), ...applicationEndpoints(), ...credentialEndpoints(), ...explorerEndpoints(), ...selectionEndpoints(), ...exportEndpoints()],
   jobs: {
     access: {
       cancel: () => false,

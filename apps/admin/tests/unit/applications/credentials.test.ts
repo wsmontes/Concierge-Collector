@@ -1,45 +1,11 @@
 import { describe, expect, test } from 'vitest'
-import { issueCredential, revokeCredential, type CredentialRepository } from '../../../src/applications/credentials'
-import type { ConsumerCredentialRecord } from '../../../src/applications/types'
-
-function fixedRandom(bytes: number): (size: number) => Buffer {
-  return (size) => Buffer.alloc(size, bytes)
-}
-
-function repository(seed?: Partial<ConsumerCredentialRecord>): CredentialRepository & { created?: ConsumerCredentialRecord; audit: Array<{ type: string; credentialId: string }> } {
-  const credentials = new Map<string, ConsumerCredentialRecord>()
-  const apps = new Map([['app-1', { id: 'app-1', status: 'active' as const, credentialsRevision: 2 }]])
-  if (seed?.id) credentials.set(seed.id, {
-    id: seed.id, applicationId: seed.applicationId ?? 'app-1', name: seed.name ?? 'production', prefix: seed.prefix ?? 'prefix',
-    secretHash: seed.secretHash ?? 'a'.repeat(64), issueIdempotencyKey: seed.issueIdempotencyKey ?? 'key-1', scopes: seed.scopes ?? ['collections:read'], status: seed.status ?? 'active',
-    createdAt: seed.createdAt ?? new Date('2026-08-20T00:00:00Z'), createdBy: seed.createdBy ?? 'admin-1',
-    expiresAt: seed.expiresAt ?? null, revokedAt: seed.revokedAt ?? null, revokedBy: seed.revokedBy ?? null,
-  })
-  const audit: Array<{ type: string; credentialId: string }> = []
-  return {
-    audit,
-    newCredentialId: () => 'credential-new',
-    async activeApplication(id) { return apps.get(id) ?? null },
-    async issueCredential(value) { credentials.set(value.id, value); this.created = value; audit.push({ type: 'credential.issued', credentialId: value.id }) },
-    async findCredential(id) { return credentials.get(id) ?? null },
-    async revokeCredential(id, actorId, now) {
-      const current = credentials.get(id)
-      if (!current) return null
-      if (current.status === 'revoked') return { credential: current, changed: false }
-      const updated = { ...current, status: 'revoked' as const, revokedAt: now, revokedBy: actorId }
-      credentials.set(id, updated)
-      apps.set(current.applicationId, { ...apps.get(current.applicationId)!, credentialsRevision: apps.get(current.applicationId)!.credentialsRevision + 1 })
-      audit.push({ type: 'credential.revoked', credentialId: id })
-      return { credential: updated, changed: true }
-    },
-    async applicationRevision(id) { return apps.get(id)?.credentialsRevision ?? -1 },
-  }
-}
+import { issueCredential, revokeCredential, rotateCredential } from '../../../src/applications/credentials'
+import { actor, fakeCredentialRepository, fixedRandom } from '../../support/consumerCredentials'
 
 describe('consumer credentials', () => {
-  test('issues a show-once secret while the repository receives only its hash', async () => {
-    const repo = repository()
-    const result = await issueCredential({ applicationId: 'app-1', name: 'production', scopes: ['collections:read'], expiresAt: null, actorId: 'admin-1', idempotencyKey: 'key-1' }, repo, fixedRandom(7))
+  test('issue returns a show-once secret while the repository receives only its hash', async () => {
+    const repo = fakeCredentialRepository()
+    const result = await issueCredential({ applicationId: 'app-1', name: 'production', scopes: ['collections:read'], expiresAt: null, actorId: actor.user_id, idempotencyKey: 'key-1' }, repo, fixedRandom(7))
 
     expect(result.secretOnce).toMatch(/^cck_[a-f0-9]{12}_[A-Za-z0-9_-]+$/)
     expect(repo.created?.secretHash).toMatch(/^[a-f0-9]{64}$/)
@@ -48,15 +14,52 @@ describe('consumer credentials', () => {
   })
 
   test('revoke is idempotent and increments the application revision once', async () => {
-    const repo = repository({ id: 'cred-1' })
+    const repo = fakeCredentialRepository({ id: 'cred-1' })
     const before = await repo.applicationRevision('app-1')
-    const first = await revokeCredential('cred-1', 'admin-1', repo, new Date('2026-08-20T01:00:00Z'))
+    const first = await revokeCredential('cred-1', actor.user_id, repo, new Date('2026-08-20T01:00:00Z'))
     const afterFirst = await repo.applicationRevision('app-1')
-    const retry = await revokeCredential('cred-1', 'admin-1', repo, new Date('2026-08-20T02:00:00Z'))
+    const retry = await revokeCredential('cred-1', actor.user_id, repo, new Date('2026-08-20T02:00:00Z'))
 
     expect(first.revokedAt).toEqual(retry.revokedAt)
     expect(afterFirst).toBe(before + 1)
     expect(await repo.applicationRevision('app-1')).toBe(afterFirst)
     expect(repo.audit).toEqual([{ type: 'credential.revoked', credentialId: 'cred-1' }])
+  })
+
+  test('rotate issues a new show-once secret and keeps the old credential valid until overlapUntil', async () => {
+    const repo = fakeCredentialRepository({ id: 'cred-1', expiresAt: new Date('2026-08-25T00:00:00Z') })
+    const before = await repo.applicationRevision('app-1')
+    const overlapUntil = new Date('2026-08-21T00:00:00Z')
+    const result = await rotateCredential('cred-1', { actorId: actor.user_id, idempotencyKey: 'rotate-1', overlapUntil }, repo, fixedRandom(9), new Date('2026-08-20T01:00:00Z'))
+
+    expect(result.secretOnce).toMatch(/^cck_[a-f0-9]{12}_[A-Za-z0-9_-]+$/)
+    expect(result.credential.id).toBe('credential-new')
+    const old = await repo.findCredential('cred-1')
+    expect(old?.status).toBe('active')
+    expect(old?.expiresAt).toEqual(overlapUntil)
+    // The application revision advances once for the whole rotation.
+    expect(await repo.applicationRevision('app-1')).toBe(before + 1)
+    expect(repo.audit).toEqual([{ type: 'credential.rotated', credentialId: 'cred-1' }])
+  })
+
+  test('rotate clamps the old expiry to the overlap window when it is sooner', async () => {
+    const repo = fakeCredentialRepository({ id: 'cred-1', expiresAt: new Date('2026-08-20T12:00:00Z') })
+    const overlapUntil = new Date('2026-08-21T00:00:00Z')
+    await rotateCredential('cred-1', { actorId: actor.user_id, idempotencyKey: 'rotate-2', overlapUntil }, repo, fixedRandom(9), new Date('2026-08-20T01:00:00Z'))
+
+    const old = await repo.findCredential('cred-1')
+    expect(old?.expiresAt).toEqual(new Date('2026-08-20T12:00:00Z'))
+  })
+
+  test('rotate rejects an already revoked credential', async () => {
+    const repo = fakeCredentialRepository({ id: 'cred-1', status: 'revoked' })
+    await expect(rotateCredential('cred-1', { actorId: actor.user_id, idempotencyKey: 'rotate-3', overlapUntil: new Date('2026-08-21T00:00:00Z') }, repo, fixedRandom(9))).rejects.toMatchObject({ status: 409, code: 'conflict' })
+    expect(repo.audit).toEqual([])
+  })
+
+  test('rotate rejects an overlap window in the past', async () => {
+    const repo = fakeCredentialRepository({ id: 'cred-1' })
+    await expect(rotateCredential('cred-1', { actorId: actor.user_id, idempotencyKey: 'rotate-4', overlapUntil: new Date('2026-08-19T00:00:00Z') }, repo, fixedRandom(9), new Date('2026-08-20T01:00:00Z'))).rejects.toMatchObject({ status: 400, code: 'invalid_request' })
+    expect(repo.audit).toEqual([])
   })
 })

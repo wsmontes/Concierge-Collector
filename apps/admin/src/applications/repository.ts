@@ -105,6 +105,38 @@ export class PayloadCredentialRepository implements CredentialRepository {
     })
   }
 
+  async rotateCredential(
+    id: string,
+    clampedExpiry: Date,
+    now: Date,
+    actorId: string,
+    replacement: ConsumerCredentialRecord,
+  ): Promise<{ rotated: ConsumerCredentialRecord; changed: boolean } | null> {
+    if (!Types.ObjectId.isValid(id)) return null
+    return this.inTransaction(async (session) => {
+      const changed = await this.credentials.findOneAndUpdate(
+        { _id: id, status: 'active' },
+        { $set: { expiresAt: clampedExpiry, updatedAt: now } },
+        { new: true, session },
+      ).lean()
+      if (!changed) {
+        const existing = await this.credentials.findById(id).session(session).lean()
+        return existing ? { rotated: this.toCredential(existing), changed: false } : null
+      }
+      const rotated = this.toCredential(changed)
+      await this.credentials.create([{ _id: replacement.id, ...replacement, updatedAt: now }], { session })
+      await this.applications.updateOne(
+        { _id: rotated.applicationId }, { $inc: { credentialsRevision: 1 }, $set: { updatedAt: now } }, { session },
+      )
+      await appendAuditEvent(this.audits, {
+        actorId, requestId: this.requestId, eventKey: `credential:${rotated.id}:rotated`, eventType: 'credential.rotated',
+        applicationId: rotated.applicationId, credentialId: rotated.id,
+        metadata: { prefix: rotated.prefix, replacementPrefix: replacement.prefix, overlapUntil: clampedExpiry.toISOString() },
+      }, session)
+      return { rotated, changed: true }
+    })
+  }
+
   async applicationRevision(applicationId: string): Promise<number> {
     const document = await this.applications.findById(applicationId).lean()
     return document ? Number(document.credentialsRevision ?? 0) : -1

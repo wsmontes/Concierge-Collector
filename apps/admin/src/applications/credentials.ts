@@ -17,7 +17,31 @@ export interface CredentialRepository {
   findCredential(id: string): Promise<ConsumerCredentialRecord | null>
   /** Atomically marks an active credential revoked and increments its app revision. */
   revokeCredential(id: string, actorId: string, now: Date): Promise<{ credential: ConsumerCredentialRecord; changed: boolean } | null>
+  /**
+   * Rotates one credential in a single transaction: the replacement becomes
+   * active, the old credential stays active only until `clampedExpiry`
+   * (the caller already clamped it to the overlap window) and the
+   * application revision advances once.
+   */
+  rotateCredential(
+    id: string,
+    clampedExpiry: Date,
+    now: Date,
+    actorId: string,
+    replacement: ConsumerCredentialRecord,
+  ): Promise<{ rotated: ConsumerCredentialRecord; changed: boolean } | null>
   applicationRevision(applicationId: string): Promise<number>
+}
+
+export interface RotateCredentialCommand {
+  credentialId: string
+  actorId: string
+  idempotencyKey: string
+  /** The old credential remains valid until this instant, never beyond. */
+  overlapUntil: Date
+  name?: string
+  scopes?: ConsumerCredentialScope[]
+  expiresAt?: Date | null
 }
 
 export interface GeneratedCredential {
@@ -85,4 +109,58 @@ export async function revokeCredential(
   if (!result) throw new AdminHttpError(404, 'not_found')
   // A concurrent winner returns changed:false and owns the single audit.
   return publicCredential(result.credential)
+}
+
+function validateRotate(command: RotateCredentialCommand, now: Date): RotateCredentialCommand {
+  const name = command.name?.trim()
+  const scopes = command.scopes ? [...new Set(command.scopes)] : undefined
+  if (!command.credentialId || !command.actorId || !command.idempotencyKey) {
+    throw new AdminHttpError(400, 'invalid_request')
+  }
+  if (!command.overlapUntil || !Number.isFinite(command.overlapUntil.getTime()) || command.overlapUntil <= now) {
+    throw new AdminHttpError(400, 'invalid_request')
+  }
+  if (name !== undefined && (!name || name.length > 120)) throw new AdminHttpError(400, 'invalid_request')
+  if (scopes !== undefined && (scopes.length === 0 || scopes.some((scope) => !VALID_SCOPE.has(scope)))) {
+    throw new AdminHttpError(400, 'invalid_request')
+  }
+  if (command.expiresAt && (!Number.isFinite(command.expiresAt.getTime()) || command.expiresAt <= now)) {
+    throw new AdminHttpError(400, 'invalid_request')
+  }
+  return { ...command, ...(name === undefined ? {} : { name }), ...(scopes === undefined ? {} : { scopes }) }
+}
+
+/**
+ * Rotates a credential with an explicit overlap window.
+ *
+ * A brand-new secret is issued show-once; the old credential keeps status
+ * `active` only until `overlapUntil` (clamped to its own expiry), so
+ * consumers can switch without a cutover. The single repository transaction
+ * persists replacement, clamp and revision bump together.
+ */
+export async function rotateCredential(
+  credentialId: string,
+  command: RotateCredentialCommand,
+  repository: CredentialRepository,
+  randomBytes: (size: number) => Buffer = secureRandomBytes,
+  now = new Date(),
+): Promise<IssueCredentialResult> {
+  const input = validateRotate({ ...command, credentialId }, now)
+  const current = await repository.findCredential(credentialId)
+  if (!current) throw new AdminHttpError(404, 'not_found')
+  if (current.status !== 'active') throw new AdminHttpError(409, 'conflict')
+  const application = await repository.activeApplication(current.applicationId)
+  if (!application) throw new AdminHttpError(404, 'not_found')
+
+  const generated = createOpaqueCredential(randomBytes)
+  const replacement: ConsumerCredentialRecord = {
+    id: repository.newCredentialId(), applicationId: current.applicationId, name: input.name ?? current.name,
+    prefix: generated.prefix, secretHash: generated.hash, issueIdempotencyKey: input.idempotencyKey,
+    scopes: input.scopes ?? current.scopes, status: 'active', createdAt: now, createdBy: input.actorId,
+    expiresAt: input.expiresAt !== undefined ? input.expiresAt : current.expiresAt, revokedAt: null, revokedBy: null,
+  }
+  const clampedExpiry = current.expiresAt && current.expiresAt < input.overlapUntil ? current.expiresAt : input.overlapUntil
+  const result = await repository.rotateCredential(current.id, clampedExpiry, now, input.actorId, replacement)
+  if (!result) throw new AdminHttpError(404, 'not_found')
+  return { credential: publicCredential(replacement), secretOnce: generated.raw }
 }

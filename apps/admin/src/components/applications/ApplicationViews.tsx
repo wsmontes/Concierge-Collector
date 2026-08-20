@@ -31,6 +31,17 @@ function requestId() {
   return globalThis.crypto?.randomUUID?.() ?? `admin-${Date.now()}-${Math.random().toString(16).slice(2)}`
 }
 
+/** Hours the rotated-away secret keeps working, so consumers can switch without a cutover. */
+const ROTATE_OVERLAP_HOURS = 24
+
+/**
+ * Overlap deadline sent to the rotate endpoint. Module scope keeps the
+ * impure clock read out of the component body.
+ */
+function rotateOverlapUntil() {
+  return new Date(Date.now() + ROTATE_OVERLAP_HOURS * 60 * 60 * 1000).toISOString()
+}
+
 async function api<T>(path: string, init: RequestInit = {}): Promise<T> {
   const response = await fetch(path, {
     ...init,
@@ -155,6 +166,24 @@ export function ApplicationViews() {
     }
   }
 
+  async function rotate(applicationId: string, credential: CredentialRecord) {
+    if (credential.status !== 'active' || !window.confirm(`Rotate ${credential.name}? A new secret is issued and the current one stays valid for ${ROTATE_OVERLAP_HOURS} hours.`)) return
+    try {
+      const result = await api<CredentialResponse>(`/api/admin/v1/credentials/${credential.id}/rotate`, {
+        method: 'POST',
+        headers: { 'Idempotency-Key': requestId(), 'X-Request-Id': requestId() },
+        body: JSON.stringify({ overlapUntil: rotateOverlapUntil() }),
+      })
+      setRevealed(result)
+      // Refresh without toggling the list open/closed state.
+      const refreshed = await api<{ items: CredentialRecord[] }>(`/api/admin/v1/applications/${applicationId}/credentials`)
+      setCredentials((current) => ({ ...current, [applicationId]: refreshed.items }))
+      setError(null)
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'request_failed')
+    }
+  }
+
   return (
     <main className="application-views">
       <header>
@@ -195,6 +224,7 @@ export function ApplicationViews() {
                     {credentials[application.id].length === 0 ? <li>No credentials issued.</li> : credentials[application.id].map((credential) => (
                       <li key={credential.id}>
                         <span>{credential.name} ({credential.prefix}) · {credential.status} · last use {credential.lastUsedAt ?? 'never'}</span>
+                        <button type="button" disabled={credential.status !== 'active'} onClick={() => void rotate(application.id, credential)}>Rotate</button>
                         <button type="button" disabled={credential.status !== 'active'} onClick={() => void revoke(application.id, credential)}>Revoke</button>
                       </li>
                     ))}

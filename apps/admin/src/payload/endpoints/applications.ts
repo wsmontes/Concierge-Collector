@@ -1,9 +1,6 @@
 import type { Endpoint, PayloadRequest } from 'payload'
 import { Types } from 'mongoose'
-import { issueCredential, revokeCredential } from '../../applications/credentials'
-import { PayloadCredentialRepository } from '../../applications/repository'
 import { ConsumerApplicationService, type ConsumerApplicationInput } from '../../applications/service'
-import type { ConsumerCredentialScope, IssueCredentialCommand } from '../../applications/types'
 import { AdminHttpError } from '../../http/errors'
 import { withAdmin } from '../../http/with-admin'
 
@@ -50,18 +47,6 @@ function applicationInput(value: Record<string, unknown>): ConsumerApplicationIn
   return value as ConsumerApplicationInput
 }
 
-function issueInput(value: Record<string, unknown>, applicationId: string, actorId: string, idempotencyKey: string): IssueCredentialCommand {
-  const permitted = new Set(['name', 'scopes', 'expiresAt'])
-  if (Object.keys(value).some((key) => !permitted.has(key)) || typeof value.name !== 'string' || !Array.isArray(value.scopes) || value.scopes.some((scope) => scope !== 'collections:read')) throw new AdminHttpError(400, 'invalid_request')
-  let expiresAt: Date | null = null
-  if (value.expiresAt !== undefined && value.expiresAt !== null) {
-    if (typeof value.expiresAt !== 'string') throw new AdminHttpError(400, 'invalid_request')
-    expiresAt = new Date(value.expiresAt)
-    if (!Number.isFinite(expiresAt.getTime())) throw new AdminHttpError(400, 'invalid_request')
-  }
-  return { applicationId, actorId, idempotencyKey, name: value.name, scopes: value.scopes as ConsumerCredentialScope[], expiresAt }
-}
-
 function credentialPublic(value: Record<string, unknown>) {
   return {
     id: String(value._id),
@@ -77,7 +62,12 @@ function credentialPublic(value: Record<string, unknown>) {
   }
 }
 
-/** Admin-only application and show-once credential command surface. */
+/**
+ * Admin-only application surface. Credential issue/rotate/revoke routes
+ * live in `payload/endpoints/credentials.ts` (moved without behavior
+ * changes); only the read-only credential listing stays here because it
+ * is scoped to an application.
+ */
 export function applicationEndpoints(): Endpoint[] {
   return [
     { method: 'get', path: '/admin/v1/applications', handler: guarded(async (request) => Response.json({ items: await new ConsumerApplicationService(request.payload).list() })) },
@@ -101,23 +91,6 @@ export function applicationEndpoints(): Endpoint[] {
     { method: 'patch', path: '/admin/v1/applications/:id', handler: guarded(async (request, actorId) => {
       const context = commandContext(request.headers, actorId)
       return Response.json(await new ConsumerApplicationService(request.payload).patch(routeId(request), ifMatch(request.headers), applicationInput(await body(request as unknown as Request)), context))
-    }) },
-    { method: 'post', path: '/admin/v1/applications/:id/credentials', handler: guarded(async (request, actorId) => {
-      const context = commandContext(request.headers, actorId)
-      const applicationId = routeId(request)
-      const existing = request.payload.db.collections['consumer-credentials']
-      if (!existing) throw new Error('Missing CMS collection model: consumer-credentials')
-      const duplicate = await (existing as { findOne(query: Record<string, unknown>): { lean(): Promise<unknown> } }).findOne({ applicationId, issueIdempotencyKey: context.idempotencyKey }).lean()
-      // The raw secret can never be replayed. A repeated request must be
-      // resolved by issuing a new credential deliberately, not silently.
-      if (duplicate) throw new AdminHttpError(409, 'unavailable_confirmation_required')
-      const result = await issueCredential(issueInput(await body(request as unknown as Request), applicationId, actorId, context.idempotencyKey), new PayloadCredentialRepository(request.payload, actorId, context.requestId))
-      return Response.json({ credential: result.credential, secret_once: result.secretOnce }, { status: 201, headers: { 'Cache-Control': 'private, no-store' } })
-    }) },
-    { method: 'post', path: '/admin/v1/credentials/:id/revoke', handler: guarded(async (request, actorId) => {
-      const requestId = request.headers.get('x-request-id')?.trim()
-      if (!requestId) throw new AdminHttpError(400, 'invalid_request')
-      return Response.json(await revokeCredential(routeId(request), actorId, new PayloadCredentialRepository(request.payload, actorId, requestId)))
     }) },
   ]
 }
