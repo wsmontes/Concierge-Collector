@@ -60,7 +60,15 @@ export function createOpaqueCredential(randomBytes: (size: number) => Buffer = s
 }
 
 function publicCredential(credential: ConsumerCredentialRecord): ConsumerCredentialPublic {
-  const { secretHash: _secretHash, issueIdempotencyKey: _issueIdempotencyKey, createdBy: _createdBy, revokedBy: _revokedBy, ...safe } = credential
+  const {
+    secretHash: _secretHash,
+    issueIdempotencyKey: _issueIdempotencyKey,
+    createdBy: _createdBy,
+    revokedBy: _revokedBy,
+    rotatedAt: _rotatedAt,
+    rotatedToCredentialId: _rotatedToCredentialId,
+    ...safe
+  } = credential
   return safe
 }
 
@@ -89,7 +97,7 @@ export async function issueCredential(
   const credential: ConsumerCredentialRecord = {
     id: repository.newCredentialId(), applicationId: input.applicationId, name: input.name, prefix: generated.prefix,
     secretHash: generated.hash, issueIdempotencyKey: input.idempotencyKey, scopes: input.scopes, status: 'active', createdAt: now, createdBy: input.actorId,
-    expiresAt: input.expiresAt, revokedAt: null, revokedBy: null,
+    expiresAt: input.expiresAt, revokedAt: null, revokedBy: null, rotatedAt: null, rotatedToCredentialId: null,
   }
   await repository.issueCredential(credential)
   return { credential: publicCredential(credential), secretOnce: generated.raw }
@@ -148,7 +156,7 @@ export async function rotateCredential(
   const input = validateRotate({ ...command, credentialId }, now)
   const current = await repository.findCredential(credentialId)
   if (!current) throw new AdminHttpError(404, 'not_found')
-  if (current.status !== 'active') throw new AdminHttpError(409, 'conflict')
+  if (current.status !== 'active' || current.rotatedToCredentialId) throw new AdminHttpError(409, 'conflict')
   const application = await repository.activeApplication(current.applicationId)
   if (!application) throw new AdminHttpError(404, 'not_found')
 
@@ -158,9 +166,13 @@ export async function rotateCredential(
     prefix: generated.prefix, secretHash: generated.hash, issueIdempotencyKey: input.idempotencyKey,
     scopes: input.scopes ?? current.scopes, status: 'active', createdAt: now, createdBy: input.actorId,
     expiresAt: input.expiresAt !== undefined ? input.expiresAt : current.expiresAt, revokedAt: null, revokedBy: null,
+    rotatedAt: null, rotatedToCredentialId: null,
   }
   const clampedExpiry = current.expiresAt && current.expiresAt < input.overlapUntil ? current.expiresAt : input.overlapUntil
   const result = await repository.rotateCredential(current.id, clampedExpiry, now, input.actorId, replacement)
   if (!result) throw new AdminHttpError(404, 'not_found')
+  // A concurrent caller may have observed the same active source before the
+  // first transaction committed. Only the CAS winner owns a persisted secret.
+  if (!result.changed) throw new AdminHttpError(409, 'conflict')
   return { credential: publicCredential(replacement), secretOnce: generated.raw }
 }
