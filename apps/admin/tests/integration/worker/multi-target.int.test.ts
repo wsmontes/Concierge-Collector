@@ -119,6 +119,30 @@ integrationSuite('multi-target draft operations', () => {
     expect(progress.processed).toBe(3)
   })
 
+  test('dois parents distintos coexistem sem colisão no índice parcial de child', async () => {
+    // Blind spot do índice `child_parent_unique` (006): o filtro parcial
+    // `{parentOperationId: {$exists: true}}` também casa parents (que gravam
+    // `parentOperationId: null` explícito), então todos os parents indexavam
+    // `(null, <collectionId ausente>)` e o segundo parent de qualquer sessão
+    // colidia com E11000. A migration 007 troca o filtro por `$type: 'string'`.
+    const { readySelection, collectionA, collectionB, enqueueMultiTarget, childrenOf } = await createOperationHarness()
+    const first = await enqueueMultiTarget({
+      selectionId: readySelection.id,
+      collectionIds: [collectionA.id], action: 'add',
+      idempotencyKey: 'bulk-two-parents-a-1',
+    })
+    const second = await enqueueMultiTarget({
+      selectionId: readySelection.id,
+      collectionIds: [collectionB.id], action: 'add',
+      idempotencyKey: 'bulk-two-parents-b-1',
+    })
+    expect(first.id).not.toBe(second.id)
+    expect(await childrenOf(first.id)).toHaveLength(1)
+    expect(await childrenOf(second.id)).toHaveLength(1)
+    expect(String((await childrenOf(first.id))[0]?.collectionId)).toBe(collectionA.id)
+    expect(String((await childrenOf(second.id))[0]?.collectionId)).toBe(collectionB.id)
+  })
+
   test('request hash da variante selection incorpora o selectionHash', async () => {
     const { readySelection, collectionA, enqueueMultiTarget, childrenOf } = await createOperationHarness()
     const parent = await enqueueMultiTarget({

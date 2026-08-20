@@ -28,7 +28,15 @@ export async function up({ payload, session }: MigrateUpArgs): Promise<void> {
   for (const [slug, fields, options] of indexes) {
     const model = adapter.collections[slug]
     if (!model) throw new Error(`Missing CMS collection model: ${slug}`)
-    await model.collection.createIndex(fields, options)
+    try {
+      await model.collection.createIndex(fields, options)
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error)
+      // A later migration (20260822_007) redefined `operation_job_unique` with
+      // a partial filter that excludes parents. Re-running this older up()
+      // against that state must keep the newer definition — never clobber it.
+      if (!message.includes('same name as the requested index')) throw error
+    }
   }
 }
 
