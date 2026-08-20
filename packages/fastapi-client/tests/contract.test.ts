@@ -61,4 +61,18 @@ describe("FastApiAdminClient", () => {
       expect.objectContaining({ headers: expect.objectContaining({ "x-cms-actor-id": "admin-1" }) }),
     );
   });
+
+  it("searches the allowlisted catalog with the authoritative CMS actor", async () => {
+    const fetch = vi.fn<typeof globalThis.fetch>().mockResolvedValue(
+      new Response(JSON.stringify({ items: [], next_cursor: null, total: null }), { status: 200 }),
+    );
+    const client = new FastApiAdminClient({ baseUrl: "https://api.example.test", serviceKey: "service-key", fetch });
+
+    await expect(client.searchCurations({ q: "sushi", status: ["active"], limit: 50 }, "admin-1"))
+      .resolves.toEqual({ items: [], next_cursor: null, total: null });
+    expect(fetch).toHaveBeenCalledWith(
+      "https://api.example.test/api/v3/catalog/curations?q=sushi&status=active&limit=50",
+      expect.objectContaining({ headers: expect.objectContaining({ "x-cms-actor-id": "admin-1" }) }),
+    );
+  });
 });

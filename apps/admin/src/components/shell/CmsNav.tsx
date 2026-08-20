@@ -19,7 +19,7 @@ export const CMS_NAV_GROUPS: readonly CmsNavGroup[] = [
   },
   {
     label: 'Content',
-    items: [{ href: '/admin/collections', label: 'Collections' }],
+    items: [{ href: '/admin/collections', label: 'Collections' }, { href: '/admin/explorer', label: 'Curation Explorer' }],
     emptyState: 'Content tools will appear here when available.',
   },
   {

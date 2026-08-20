@@ -7,6 +7,8 @@ export type CmsExchangeRequest = components["schemas"]["CmsExchangeRequest"];
 export type CmsIntrospectionRequest = components["schemas"]["CmsIntrospectionRequest"];
 export type ResolveCurationsRequest = components["schemas"]["ResolveCurationsRequest"];
 export type ResolveCurationsResponse = components["schemas"]["ResolveCurationsResponse"];
+export type CatalogSearchPage = components["schemas"]["CatalogSearchPage"];
+export type CatalogSearchQuery = NonNullable<paths["/api/v3/catalog/curations"]["get"]["parameters"]["query"]>;
 
 type ExchangeResponse = paths["/api/v3/auth/cms/exchange"]["post"] extends {
   responses: { 200: { content: { "application/json": infer Response } } };
@@ -21,6 +23,12 @@ type IntrospectionResponse = paths["/api/v3/auth/cms/introspect"]["post"] extend
   : never;
 
 type ResolveCurationsResponseContract = paths["/api/v3/catalog/curations/resolve"]["post"] extends {
+  responses: { 200: { content: { "application/json": infer Response } } };
+}
+  ? Response
+  : never;
+
+type CatalogSearchResponse = paths["/api/v3/catalog/curations"]["get"] extends {
   responses: { 200: { content: { "application/json": infer Response } } };
 }
   ? Response
@@ -69,6 +77,17 @@ export class FastApiAdminClient {
     return this.post("/api/v3/catalog/curations/resolve", payload, { "x-cms-actor-id": actorId });
   }
 
+  searchCurations(query: CatalogSearchQuery, actorId: string): Promise<CatalogSearchResponse> {
+    const params = new URLSearchParams();
+    for (const [key, value] of Object.entries(query)) {
+      if (value === undefined || value === null) continue;
+      if (Array.isArray(value)) value.forEach((item) => params.append(key, item));
+      else params.set(key, String(value));
+    }
+    const suffix = params.size ? `?${params.toString()}` : "";
+    return this.get(`/api/v3/catalog/curations${suffix}`, { "x-cms-actor-id": actorId });
+  }
+
   private async post<Request, Response>(path: string, payload: Request, extraHeaders: Record<string, string> = {}): Promise<Response> {
     const response = await this.fetch(`${this.baseUrl}${path}`, {
       method: "POST",
@@ -84,6 +103,17 @@ export class FastApiAdminClient {
       throw new FastApiClientError(response.status, await response.text());
     }
 
+    return (await response.json()) as unknown as Response;
+  }
+
+  private async get<Response>(path: string, extraHeaders: Record<string, string> = {}): Promise<Response> {
+    const response = await this.fetch(`${this.baseUrl}${path}`, {
+      headers: {
+        "x-cms-service-key": this.serviceKey,
+        ...extraHeaders,
+      },
+    });
+    if (!response.ok) throw new FastApiClientError(response.status, await response.text());
     return (await response.json()) as unknown as Response;
   }
 }

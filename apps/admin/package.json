@@ -20,8 +20,10 @@
     "generate:importmap": "payload generate:importmap"
   },
   "dependencies": {
+    "@concierge/fastapi-client": "0.1.0",
     "@payloadcms/db-mongodb": "3.86.0",
     "@payloadcms/next": "3.86.0",
+    "@tanstack/react-virtual": "3.14.9",
     "mongodb": "6.20.0",
     "next": "16.2.12",
     "payload": "3.86.0",

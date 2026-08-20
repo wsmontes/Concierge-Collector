@@ -11,6 +11,7 @@ import { publishingEndpoints } from './src/payload/endpoints/publishing'
 import { collectionReadEndpoints } from './src/payload/endpoints/collection-reads'
 import { collectorCollectionEndpoints } from './src/payload/endpoints/collector-collections'
 import { applicationEndpoints } from './src/payload/endpoints/applications'
+import { explorerEndpoints } from './src/payload/endpoints/explorer'
 import {
   AuditEvents,
   CollectionDraftChanges,
@@ -84,7 +85,7 @@ export default buildConfig({
     ConsumerApplications,
     ConsumerCredentials,
   ],
-  endpoints: [...collectionEndpoints(), ...collectionReadEndpoints(), ...collectorCollectionEndpoints(), ...operationEndpoints(), ...publishingEndpoints(), ...applicationEndpoints()],
+  endpoints: [...collectionEndpoints(), ...collectionReadEndpoints(), ...collectorCollectionEndpoints(), ...operationEndpoints(), ...publishingEndpoints(), ...applicationEndpoints(), ...explorerEndpoints()],
   jobs: {
     access: {
       cancel: () => false,
