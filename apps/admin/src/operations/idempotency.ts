@@ -32,3 +32,21 @@ export function draftOperationRequestHash(input: {
     mode: 'explicit',
   })
 }
+
+/**
+ * Request hash for a selection-driven child: the manifest hash binds the
+ * operation to one immutable materialization, so a different manifest with the
+ * same idempotency key is a conflict, never a silent retry.
+ */
+export function hashRequest(input: {
+  collectionId: string
+  action: DraftOperationAction
+  selectionHash: string
+}): string {
+  return collectionCommandHash({
+    action: input.action,
+    collectionId: input.collectionId,
+    mode: 'selection',
+    selectionHash: input.selectionHash,
+  })
+}

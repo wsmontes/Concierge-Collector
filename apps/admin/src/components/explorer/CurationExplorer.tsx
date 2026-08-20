@@ -1,8 +1,10 @@
 'use client'
 
-import { useCallback, useEffect, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 import { normalizeCurationFilters } from '../../explorer/normalize-filters'
 import type { CurationFilters, CurationSearchPage, SelectionState } from '../../explorer/types'
+import { BulkActionDialog } from '../operations/BulkActionDialog'
+import { JobDrawer } from '../operations/JobDrawer'
 import { SelectionToolbar } from './SelectionToolbar'
 import { VirtualCurationTable } from './VirtualCurationTable'
 
@@ -20,6 +22,13 @@ async function browserLoadPage({ cursor, filters }: { cursor: string | null; fil
   return await response.json() as CurationSearchPage
 }
 
+const SELECTION_READY_POLL_MS = 1_000
+const SELECTION_READY_TIMEOUT_MS = 30_000
+
+function newId(): string {
+  return typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : `${Date.now()}-${Math.random().toString(36).slice(2)}`
+}
+
 /** Gmail-like selection intent over pages; it never expands all-matching into browser IDs. */
 export function CurationExplorer({ loadPage = browserLoadPage }: { loadPage?: LoadPage }) {
   const [filters, setFilters] = useState<CurationFilters>({})
@@ -28,6 +37,13 @@ export function CurationExplorer({ loadPage = browserLoadPage }: { loadPage?: Lo
   const [selection, setSelection] = useState<SelectionState>({ mode: 'explicit', selected: new Set() })
   const [error, setError] = useState<string | null>(null)
   const [lastSelectedIndex, setLastSelectedIndex] = useState<number | null>(null)
+  const [applying, setApplying] = useState(false)
+  const [applyError, setApplyError] = useState<string | null>(null)
+  const [applySelection, setApplySelection] = useState<string | null>(null)
+  const [showJobs, setShowJobs] = useState(false)
+  const pollController = useRef<AbortController | null>(null)
+
+  useEffect(() => () => pollController.current?.abort(), [])
 
   const load = useCallback(async (nextFilters: CurationFilters, cursor: string | null = null) => {
     try {
@@ -100,6 +116,49 @@ export function CurationExplorer({ loadPage = browserLoadPage }: { loadPage?: Lo
     }
   }
 
+  /** Creates the server-side selection and polls until the manifest is ready. */
+  const handleApplyToCollections = useCallback(async () => {
+    if (applying) return
+    setApplying(true)
+    setApplyError(null)
+    const controller = new AbortController()
+    pollController.current = controller
+    try {
+      const body = selection.mode === 'explicit'
+        ? { mode: 'explicit', curation_ids: [...selection.selected] }
+        : { mode: 'all_matching', filters: selection.filters, excluded_ids: [...selection.excluded] }
+      const response = await fetch('/api/admin/v1/selections', {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'content-type': 'application/json', 'idempotency-key': newId(), 'x-request-id': newId() },
+        body: JSON.stringify(body),
+      })
+      const created = await response.json() as { id?: string }
+      if (!response.ok || !created.id) throw new Error('unable_to_create_selection')
+      const deadline = Date.now() + SELECTION_READY_TIMEOUT_MS
+      while (Date.now() < deadline) {
+        await new Promise((resolve) => window.setTimeout(resolve, SELECTION_READY_POLL_MS))
+        if (controller.signal.aborted) return
+        const pollResponse = await fetch(`/api/admin/v1/selections/${created.id}`, { credentials: 'same-origin', signal: controller.signal })
+        if (pollResponse.status === 410) throw new Error('selection_expired')
+        if (!pollResponse.ok) throw new Error('unable_to_create_selection')
+        const selectionRecord = await pollResponse.json() as { status?: string }
+        if (selectionRecord.status === 'ready') {
+          setApplySelection(created.id)
+          return
+        }
+      }
+      throw new Error('selection_timeout')
+    } catch (cause) {
+      if (controller.signal.aborted) return
+      setApplyError(cause instanceof Error && cause.message === 'selection_timeout'
+        ? 'The selection is taking too long to materialize. Try again shortly.'
+        : 'Unable to create the selection. Explicit selections are limited to 500 Curations — use "Select all matching" for more.')
+    } finally {
+      setApplying(false)
+    }
+  }, [applying, selection])
+
   const selected = (id: string) => selection.mode === 'all_matching' ? !selection.excluded.has(id) : selection.selected.has(id)
 
   return (
@@ -115,10 +174,13 @@ export function CurationExplorer({ loadPage = browserLoadPage }: { loadPage?: Lo
         <button type="submit">Search</button>
       </form>
       <SelectionToolbar
+        applying={applying}
+        onApplyToCollections={() => void handleApplyToCollections()}
         onSelectAllMatching={() => setSelection({ mode: 'all_matching', filters: normalizeCurationFilters(filters), excluded: new Set(), previewCount: page.total })}
         selection={selection}
         total={page.total}
       />
+      {applyError && <p role="alert">{applyError}</p>}
       {error && <p role="alert">{error}</p>}
       <VirtualCurationTable
         height={600}
@@ -130,6 +192,14 @@ export function CurationExplorer({ loadPage = browserLoadPage }: { loadPage?: Lo
         selectAllDisabled={selection.mode === 'all_matching'}
       />
       {page.next_cursor && <button onClick={() => void load(filters, page.next_cursor)} type="button">Next page</button>}
+      {applySelection && (
+        <BulkActionDialog
+          onClose={() => setApplySelection(null)}
+          onPosted={() => { setApplySelection(null); setShowJobs(true) }}
+          selectionId={applySelection}
+        />
+      )}
+      {showJobs && <JobDrawer onClose={() => setShowJobs(false)} />}
     </section>
   )
 }

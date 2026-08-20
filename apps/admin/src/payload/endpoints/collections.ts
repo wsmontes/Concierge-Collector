@@ -82,6 +82,24 @@ export function collectionEndpoints(
 ): Endpoint[] {
   return [
     {
+      method: 'get',
+      path: '/admin/v1/collections',
+      handler: guarded(async (request) => {
+        const model = request.payload.db.collections['collections']
+        if (!model) throw new Error('Missing collections model')
+        const rows = await (model as { find(query: Record<string, unknown>): { sort(sort: Record<string, 1 | -1>): { lean(): Promise<unknown[]> } } })
+          .find({ lifecycle: { $ne: 'archived' } }).sort({ title: 1 }).lean()
+        return Response.json({ items: rows.map((row) => {
+          const value = row as Record<string, unknown>
+          return {
+            id: String(value.id ?? value._id), slug: value.slug, title: value.title, description: value.description ?? null,
+            lifecycle: value.lifecycle, draftRevision: value.draftRevision, draftState: value.draftState,
+            draftSelectedCount: value.draftSelectedCount ?? 0,
+          }
+        }) })
+      }),
+    },
+    {
       method: 'post',
       path: '/admin/v1/collections',
       handler: guarded(async (request, actor) => {
