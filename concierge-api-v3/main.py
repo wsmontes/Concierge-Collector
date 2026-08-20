@@ -3,7 +3,7 @@ Concierge Collector API V3 - Professional FastAPI Implementation
 Main application entry point with PyMongo (sync) support
 """
 
-from fastapi import FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.exception_handlers import http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -15,6 +15,7 @@ from slowapi.middleware import SlowAPIMiddleware
 from app.core.config import settings
 from app.core.lifespan import lifespan
 from app.core.rate_limit import limiter
+from app.core.security import require_role
 from app.core.observability import install_log_redaction, request_context_middleware
 from app.api import (
     entities,
@@ -135,6 +136,11 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
+# Provider-backed/internal-data routers get a live authorization gate at the
+# mount boundary. Endpoint-level dependencies still enforce stronger roles for
+# writes, but stale/revoked JWTs cannot reach handlers that incur provider cost.
+_live_viewer = [Depends(require_role("viewer"))]
+
 # Include routers with /api/v3 prefix
 app.include_router(system.router, prefix="/api/v3")
 app.include_router(metrics.router, prefix="/api/v3")
@@ -146,12 +152,12 @@ app.include_router(internal_curations.router, prefix="/api/v3")
 app.include_router(internal_consumer_usage.router, prefix="/api/v3")
 app.include_router(auth.router, prefix="/api/v3")
 app.include_router(entities.router, prefix="/api/v3")
-app.include_router(curations.router, prefix="/api/v3")
-app.include_router(places.router, prefix="/api/v3")
+app.include_router(curations.router, prefix="/api/v3", dependencies=_live_viewer)
+app.include_router(places.router, prefix="/api/v3", dependencies=_live_viewer)
 app.include_router(ai.router, prefix="/api/v3")
 app.include_router(concepts.router, prefix="/api/v3")
-app.include_router(llm_gateway.router, prefix="/api/v3")
-app.include_router(openai_compat.router, prefix="/api/v3")
+app.include_router(llm_gateway.router, prefix="/api/v3", dependencies=_live_viewer)
+app.include_router(openai_compat.router, prefix="/api/v3", dependencies=_live_viewer)
 app.include_router(capture.router, prefix="/api/v3")
 app.include_router(curators.router, prefix="/api/v3")
 app.include_router(og_image.router, prefix="/api/v3")
