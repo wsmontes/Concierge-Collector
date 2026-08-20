@@ -1,41 +1,46 @@
 """
-Authentication Router - Google OAuth 2.0 with PKCE
-Implements secure OAuth flow following best practices:
-- Authorization Code Flow with PKCE
-- State parameter for CSRF protection
-- JWT tokens for session management
-- User authorization via MongoDB
+Authentication Router - Google OAuth 2.0 with PKCE.
+
+Security boundaries:
+- Authorization Code Flow with PKCE.
+- OAuth state is browser-bound and one-shot; the PKCE verifier stays server-side.
+- Collector access/refresh JWTs are distinct from Google OAuth credentials.
+- User authorization remains authoritative in MongoDB.
 """
 
-from fastapi import APIRouter, HTTPException, Depends, status, Request
-from fastapi.responses import RedirectResponse, Response
-from pymongo.database import Database
 from datetime import datetime, timedelta, timezone
-import httpx
-from jose import jwt
-import secrets
-import hashlib
 import base64
-from typing import Optional
+import hashlib
 import logging
 import os
+import secrets
+from typing import Optional
+from urllib.parse import quote, urlencode
+
+from fastapi import APIRouter, Depends, HTTPException, Request, Response, status
+from fastapi.responses import RedirectResponse
+import httpx
+from jose import jwt
+from pymongo.database import Database
 
 from app.core.config import settings
 from app.core.database import get_database
 from app.core.security import create_access_token, verify_auth
-from app.models.user import (
-    User,
-    UserInDB,
-    UserAuthResponse,
+from app.models.user import User, UserAuthResponse, UserInDB
+from app.services.oauth_state_service import (
+    OAUTH_STATE_TTL_SECONDS,
+    consume_oauth_state,
+    issue_oauth_state,
 )
 
-# Setup logging
 logger = logging.getLogger(__name__)
+router = APIRouter(prefix="/auth", tags=["authentication"])
+
+_OAUTH_BINDING_COOKIE = "oauth_state_binding"
+_OAUTH_COOKIE_PATH = "/api/v3/auth"
 
 
 def _set_access_cookie(response: Response, access_token: str) -> None:
-    """Cookie HttpOnly com o access token (aditivo — o Bearer continua o
-    caminho principal). Pendência da auditoria de segurança, ago/2026."""
     response.set_cookie(
         key="access_token",
         value=access_token,
@@ -48,10 +53,6 @@ def _set_access_cookie(response: Response, access_token: str) -> None:
 
 
 def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
-    """Cookie HttpOnly com o refresh token (2026-08-15) — tira o refresh do
-    localStorage/URL no deploy same-site. SameSite=Lax é suficiente: Render
-    web → Render API é same-site; o legado GitHub Pages (cross-site) segue
-    no caminho Bearer/body."""
     response.set_cookie(
         key="refresh_token",
         value=refresh_token,
@@ -63,16 +64,37 @@ def _set_refresh_cookie(response: Response, refresh_token: str) -> None:
     )
 
 
-def _is_same_site(url_a: str, url_b: str) -> bool:
-    """Compara o SITE (scheme + registrable domain) de duas URLs — a mesma
-    regra que o SameSite=Lax do browser usa para enviar o cookie.
+def _set_oauth_binding_cookie(response: Response, browser_binding: str) -> None:
+    """Bind the Google callback to the browser that initiated the flow."""
+    response.set_cookie(
+        key=_OAUTH_BINDING_COOKIE,
+        value=browser_binding,
+        httponly=True,
+        samesite="lax",
+        secure=settings.environment == "production",
+        max_age=OAUTH_STATE_TTL_SECONDS,
+        path=_OAUTH_COOKIE_PATH,
+    )
 
-    IPs e hostnames locais (localhost vs 127.0.0.1) valem por igualdade
-    exata: são sites diferentes para cookie — o caminho legado (tokens na
-    URL) segue cobrindo dev e GitHub Pages.
+
+def _clear_oauth_binding_cookie(response: Response) -> None:
+    response.delete_cookie(_OAUTH_BINDING_COOKIE, path=_OAUTH_COOKIE_PATH)
+
+
+def _default_frontend_url() -> str:
+    if settings.environment == "production":
+        return settings.frontend_url_production
+    return settings.frontend_url
+
+
+def _is_same_site(url_a: str, url_b: str) -> bool:
+    """Compare scheme + approximate registrable domain for SameSite routing.
+
+    Local IPs/hostnames require exact host identity. The helper remains a
+    compatibility heuristic for the legacy cross-site frontend; authorization
+    never depends on it.
     """
     import re
-
     from urllib.parse import urlparse
 
     a, b = urlparse(url_a), urlparse(url_b)
@@ -84,7 +106,7 @@ def _is_same_site(url_a: str, url_b: str) -> bool:
 
     def site(host: str) -> str:
         if re.match(r"^\d+\.\d+\.\d+\.\d+$", host):
-            return host  # IP: identidade exata
+            return host
         parts = host.split(".")
         return ".".join(parts[-2:]) if len(parts) >= 2 else host
 
@@ -99,32 +121,27 @@ def _build_auth_redirect_url(
     user_name: str,
     same_site: bool,
 ) -> str:
-    """Redirect pós-login.
+    """Build the post-login redirect.
 
-    Same-site: cookies HttpOnly seguem setadas (browsers que as armazenam),
-    e o FRAGMENT leva os tokens como caminho alternativo — iOS Safari
-    descarta Set-Cookie vindo de redirect iniciado em outro site (Google →
-    API), então cookie-sozinho deixa o login em loop no iPhone. Fragment não
-    vaza via query/Referer/logs de request. `?session=1` mantém o fallback
-    de cookie para quem chega sem tokens.
-
-    Cross-site legado (GitHub Pages) → tokens TAMBÉM no fragment (achado #8
-    da auditoria 2026-08-18: a query vazava tokens via Referer/histórico/logs
-    de request; o auth.js lê o fragment nos dois casos)."""
+    Tokens remain in the URL *fragment* for the current Safari/cross-site
+    compatibility path; they never enter query parameters or request logs.
+    HttpOnly cookies are set in parallel. Removing fragment credentials
+    entirely requires a separate one-shot frontend handoff and is intentionally
+    not mixed into the OAuth-state fix.
+    """
     base = f"{frontend_url.rstrip('/')}/"
-    legacy_params = (
+    fragment = (
         f"token={access_token}"
         f"&refresh_token={refresh_token}"
         f"&expires_in={settings.access_token_expire_minutes * 60}"
-        f"&user_email={user_email}"
-        f"&user_name={user_name}"
+        f"&user_email={quote(user_email)}"
+        f"&user_name={quote(user_name)}"
     )
-    return f"{base}?session=1#{legacy_params}"
+    return f"{base}?session=1#{fragment}"
 
 
 def _issue_refresh(db: Database, email: str) -> str:
-    """Emite refresh token e REGISTRA a sessão (jti) em auth_sessions —
-    rotação/revogação 2026-08-15."""
+    """Issue an app refresh JWT and register its server-side jti."""
     from app.core.security import ALGORITHM, create_refresh_token, get_jwt_secret
     from app.services.session_service import register_session
 
@@ -134,90 +151,15 @@ def _issue_refresh(db: Database, email: str) -> str:
     return token
 
 
-router = APIRouter(prefix="/auth", tags=["authentication"])
-
-# OAuth state storage removed in favor of stateless JWT-based state
-
-
 def generate_pkce_pair() -> tuple[str, str]:
-    """
-    Generate PKCE code_verifier and code_challenge
-
-    Returns:
-        tuple: (code_verifier, code_challenge)
-    """
-    # Generate random code_verifier (43-128 characters)
+    """Generate RFC 7636 code_verifier and S256 code_challenge."""
     code_verifier = base64.urlsafe_b64encode(secrets.token_bytes(32)).decode("utf-8").rstrip("=")
-
-    # Create code_challenge (SHA256 hash of verifier)
     challenge_bytes = hashlib.sha256(code_verifier.encode("utf-8")).digest()
     code_challenge = base64.urlsafe_b64encode(challenge_bytes).decode("utf-8").rstrip("=")
-
     return code_verifier, code_challenge
 
 
-def generate_state(state_data: str) -> str:
-    """
-    Generate signed state parameter for CSRF protection (Stateless)
-
-    Args:
-        state_data: Data to sign (code_verifier|frontend_url)
-
-    Returns:
-        str: JWT signed state
-    """
-    from app.core.security import ALGORITHM
-
-    expires = datetime.now(timezone.utc) + timedelta(minutes=10)
-    payload = {
-        "sd": state_data,
-        "exp": expires,
-        "iat": datetime.now(timezone.utc),
-        "type": "oauth_state",
-    }
-
-    # JWT_SIGNING_SECRET (separação de segredos 2026-08-15)
-    from app.core.security import get_jwt_secret
-
-    secret_key = get_jwt_secret()
-    state = jwt.encode(payload, secret_key, algorithm=ALGORITHM)
-
-    logger.info(f"[OAuth] Generated stateless state (expires: {expires})")
-    return state
-
-
-def verify_state(state: str) -> Optional[str]:
-    """
-    Verify signed state parameter
-
-    Args:
-        state: JWT signed state from callback
-
-    Returns:
-        str: code_verifier data if valid, None if invalid/expired
-    """
-    from app.core.security import ALGORITHM, get_jwt_secret, JWTError
-
-    try:
-        secret_key = get_jwt_secret()
-        payload = jwt.decode(state, secret_key, algorithms=[ALGORITHM])
-
-        # Verify it's an OAuth state token
-        if payload.get("type") != "oauth_state":
-            logger.warning("[OAuth] Invalid state token type")
-            return None
-
-        state_data = payload.get("sd")
-        logger.info("[OAuth] Stateless state verified")
-        return state_data
-
-    except JWTError as e:
-        logger.error(f"[OAuth] State validation failed: {str(e)}")
-        return None
-
-
 def get_user_by_google_id(db: Database, google_id: str) -> Optional[UserInDB]:
-    """Get user from database by Google ID"""
     user_doc = db.users.find_one({"google_id": google_id})
     if user_doc:
         user_doc["_id"] = str(user_doc["_id"])
@@ -226,7 +168,6 @@ def get_user_by_google_id(db: Database, google_id: str) -> Optional[UserInDB]:
 
 
 def get_user_by_email(db: Database, email: str) -> Optional[UserInDB]:
-    """Get user from database by email"""
     user_doc = db.users.find_one({"email": email})
     if user_doc:
         user_doc["_id"] = str(user_doc["_id"])
@@ -235,101 +176,74 @@ def get_user_by_email(db: Database, email: str) -> Optional[UserInDB]:
 
 
 def create_or_update_user(db: Database, user_data: dict) -> UserInDB:
-    """
-    Create new user or update existing user's last login and refresh token.
-    Emails da allowlist ADMIN_EMAILS (legado: domínio @lotier.com) são
-    auto-autorizados com role=admin. Separação de segredos/boundary
-    explícita (2026-08-15).
-    New non-admin users start as unauthorized with role=curator.
-    """
-    is_lotier = settings.is_admin_email(user_data["email"])
+    """Create/update the operational user without persisting Google tokens."""
+    is_admin = settings.is_admin_email(user_data["email"])
     existing_user = get_user_by_google_id(db, user_data["google_id"])
 
     if existing_user:
+        now = datetime.now(timezone.utc)
         update_data = {
             "name": user_data["name"],
             "picture": user_data.get("picture"),
-            "last_login": datetime.now(timezone.utc),
+            "last_login": now,
         }
-
-        # Auto-authorize Lotier users and promote to admin if not already
-        if is_lotier:
+        if is_admin:
             if not existing_user.authorized:
                 update_data["authorized"] = True
                 existing_user.authorized = True
-                logger.info(f"[OAuth] Auto-authorized existing user from domain: {user_data['email']}")
+                logger.info("[OAuth] Auto-authorized configured admin %s", user_data["email"])
             if getattr(existing_user, "role", "curator") != "admin":
                 update_data["role"] = "admin"
-                logger.info(f"[OAuth] Promoted {user_data['email']} to admin")
-
-        if user_data.get("refresh_token"):
-            update_data["refresh_token"] = user_data["refresh_token"]
+                existing_user.role = "admin"
+                logger.info("[OAuth] Promoted configured admin %s", user_data["email"])
 
         db.users.update_one({"google_id": user_data["google_id"]}, {"$set": update_data})
-
         existing_user.name = user_data["name"]
         existing_user.picture = user_data.get("picture")
-        existing_user.last_login = datetime.now(timezone.utc)
-        if user_data.get("refresh_token"):
-            existing_user.refresh_token = user_data["refresh_token"]
-        logger.info(f"[OAuth] Updated existing user: {existing_user.email} (name, picture, last_login)")
+        existing_user.last_login = now
+        logger.info("[OAuth] Updated existing user: %s", existing_user.email)
         return existing_user
-    else:
-        new_user = User(
-            email=user_data["email"],
-            google_id=user_data["google_id"],
-            name=user_data["name"],
-            picture=user_data.get("picture"),
-            authorized=is_lotier,
-            role="admin" if is_lotier else "curator",
-            created_at=datetime.now(timezone.utc),
-            last_login=datetime.now(timezone.utc),
-            refresh_token=user_data.get("refresh_token"),
-        )
-        result = db.users.insert_one(new_user.dict())
-        user_dict = new_user.dict()
-        user_dict["_id"] = str(result.inserted_id)
 
-        auth_status = "True (Auto-authorized, admin)" if is_lotier else "False (curator)"
-        logger.info(f"[OAuth] Created new user: {new_user.email} (authorized={auth_status})")
-        return UserInDB(**user_dict)
+    new_user = User(
+        email=user_data["email"],
+        google_id=user_data["google_id"],
+        name=user_data["name"],
+        picture=user_data.get("picture"),
+        authorized=is_admin,
+        role="admin" if is_admin else "curator",
+        created_at=datetime.now(timezone.utc),
+        last_login=datetime.now(timezone.utc),
+        # Google refresh credentials are deliberately not persisted. Collector
+        # persistence uses its own refresh JWT/session store.
+        refresh_token=None,
+    )
+    result = db.users.insert_one(new_user.dict())
+    user_dict = new_user.dict()
+    user_dict["_id"] = str(result.inserted_id)
+    logger.info("[OAuth] Created new user: %s", new_user.email)
+    return UserInDB(**user_dict)
 
 
 @router.get("/google")
-def google_oauth_init(callback_url: Optional[str] = None, request: Request = None):
-    """
-    Initiate Google OAuth 2.0 flow with PKCE
-
-    Flow:
-    1. Determine frontend URL (from parameter, referer, or default)
-    2. Generate PKCE code_verifier and code_challenge
-    3. Generate state for CSRF protection (includes frontend URL)
-    4. Redirect to Google OAuth consent screen
-
-    Args:
-        callback_url: Optional frontend URL to redirect after OAuth
-        request: FastAPI request object to extract referer
-
-    Returns:
-        RedirectResponse: Redirect to Google OAuth URL
-    """
-    # Validate configuration
+def google_oauth_init(
+    callback_url: Optional[str] = None,
+    request: Request = None,
+    db: Database = Depends(get_database),
+):
+    """Initiate Google OAuth with browser-bound, server-backed PKCE state."""
     if not settings.google_oauth_client_id:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="OAuth not configured. Missing GOOGLE_OAUTH_CLIENT_ID",
         )
-
     if not settings.google_oauth_redirect_uri:
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail="OAuth not configured. Missing GOOGLE_OAUTH_REDIRECT_URI",
         )
 
-    # Determine frontend URL for final redirect
     frontend_redirect_url = callback_url
     if not frontend_redirect_url and request:
-        # Extract origin from Referer header (works for any domain: Render, localhost, custom)
         referer = request.headers.get("referer", "")
         if referer:
             try:
@@ -338,15 +252,11 @@ def google_oauth_init(callback_url: Optional[str] = None, request: Request = Non
                 parsed = urlparse(referer)
                 frontend_redirect_url = f"{parsed.scheme}://{parsed.netloc}"
             except Exception:
-                pass
+                frontend_redirect_url = None
     if not frontend_redirect_url:
-        frontend_redirect_url = settings.frontend_url
+        frontend_redirect_url = _default_frontend_url()
 
-    # Validate frontend_redirect_url against config-driven trusted origins
     trusted_origins = set(settings.trusted_callback_origins_list)
-    # Also accept localhost dev URLs — SÓ em development (achado #6 da
-    # auditoria 2026-08-18: em produção, um processo local na porta 3000/5500
-    # da máquina da vítima podia receber os tokens do login).
     if settings.environment == "development":
         trusted_origins.update(
             {
@@ -358,39 +268,47 @@ def google_oauth_init(callback_url: Optional[str] = None, request: Request = Non
             }
         )
     if frontend_redirect_url not in trusted_origins:
-        logger.warning(f"[OAuth] Untrusted callback_url rejected: {frontend_redirect_url}")
+        logger.warning("[OAuth] Untrusted callback_url rejected: %s", frontend_redirect_url)
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail=f"Untrusted callback URL: {frontend_redirect_url}",
         )
 
-    # Generate PKCE pair
     code_verifier, code_challenge = generate_pkce_pair()
+    state_value, browser_binding = issue_oauth_state(
+        db,
+        code_verifier=code_verifier,
+        frontend_url=frontend_redirect_url,
+    )
 
-    # Generate state and store code_verifier + frontend URL
-    state_data = f"{code_verifier}|{frontend_redirect_url}"
-    state = generate_state(state_data)
-
-    logger.info("[OAuth] Initiating flow")
-    logger.info(f"[OAuth] redirect_uri: {settings.google_oauth_redirect_uri}")
-    logger.info(f"[OAuth] frontend_redirect_url: {frontend_redirect_url}")
-    logger.info("[OAuth] PKCE challenge generated")
-
-    # Build Google OAuth URL
     google_oauth_url = (
         "https://accounts.google.com/o/oauth2/v2/auth"
         f"?client_id={settings.google_oauth_client_id}"
         f"&redirect_uri={settings.google_oauth_redirect_uri}"
         "&response_type=code"
         "&scope=openid email profile"
-        "&access_type=offline"  # Request refresh token
-        "&prompt=consent"  # Force consent screen to get refresh token
-        f"&state={state}"
+        f"&state={state_value}"
         f"&code_challenge={code_challenge}"
         "&code_challenge_method=S256"
     )
+    response = RedirectResponse(url=google_oauth_url)
+    _set_oauth_binding_cookie(response, browser_binding)
+    logger.info("[OAuth] Initiating browser-bound PKCE flow to %s", frontend_redirect_url)
+    return response
 
-    return RedirectResponse(url=google_oauth_url)
+
+def _consume_callback_state(
+    db: Database,
+    *,
+    state_value: str,
+    request: Request | None,
+) -> dict:
+    browser_binding = request.cookies.get(_OAUTH_BINDING_COOKIE) if request else ""
+    return consume_oauth_state(
+        db,
+        state=state_value,
+        browser_binding=browser_binding,
+    )
 
 
 @router.get("/callback")
@@ -401,86 +319,35 @@ def google_oauth_callback(
     db: Database = Depends(get_database),
     request: Request = None,
 ):
-    """
-    Handle OAuth callback from Google
-
-    Flow:
-    1. Verify state (CSRF protection)
-    2. Exchange authorization code for tokens
-    3. Get user info from Google
-    4. Create/update user in MongoDB
-    5. Generate JWT for app session
-    6. Redirect to frontend with tokens
-
-    Args:
-        code: Authorization code from Google
-        state: State parameter for CSRF validation
-        error: Error from Google (if user cancelled)
-
-    Returns:
-        RedirectResponse: Redirect to frontend with tokens or error
-    """
-    logger.info("=" * 60)
-    logger.info("[OAuth] ⚡ CALLBACK ENDPOINT HIT")
-    logger.info("=" * 60)
-    logger.info("[OAuth] Callback received")
-    logger.info(f"[OAuth]   code: {'present' if code else 'MISSING'}")
-    logger.info(f"[OAuth]   state: {'present' if state else 'MISSING'}")
-    logger.info(f"[OAuth]   error: {error if error else 'none'}")
-
-    # Handle user cancellation or Google errors
+    """Consume the one-shot OAuth state, exchange the code and create a session."""
+    # Cancellation/error is not an authorization path. If it belongs to a
+    # valid browser-bound flow, consume it to recover the trusted target; if
+    # not, use a fixed configured target and never echo attacker input.
     if error:
-        # SÓ erros conhecidos do Google viram mensagem — o valor volta ao
-        # frontend via redirect e é renderizado na tela de login: ecoar o
-        # query param cru permitiria XSS no origin do collector (anti-XSS).
         error_msg = "Login cancelled by user" if error == "access_denied" else "Login failed"
-        logger.warning(f"[OAuth] Error in callback: {error}")
-        # Try to extract frontend URL from state, fall back to default
-        error_redirect_url = settings.frontend_url
+        error_redirect_url = _default_frontend_url()
         if state:
             try:
-                state_data = verify_state(state)
-                if state_data:
-                    parts = state_data.split("|", 1)
-                    if len(parts) > 1:
-                        error_redirect_url = parts[1]
-            except Exception:
+                flow = _consume_callback_state(db, state_value=state, request=request)
+                error_redirect_url = flow["frontend_url"]
+            except HTTPException:
                 pass
-        from urllib.parse import quote
+        response = RedirectResponse(url=f"{error_redirect_url.rstrip('/')}/?auth_error={quote(error_msg)}")
+        _clear_oauth_binding_cookie(response)
+        return response
 
-        return RedirectResponse(url=f"{error_redirect_url}/?auth_error={quote(error_msg)}")
-
-    # Validate required parameters
     if not code or not state:
-        logger.error("[OAuth] Missing code or state parameter")
         raise HTTPException(
             status_code=status.HTTP_400_BAD_REQUEST,
             detail="Missing code or state parameter",
         )
 
-    # Verify state and get code_verifier + frontend URL (CSRF protection)
-    state_data = verify_state(state)
-    if not state_data:
-        logger.error("[OAuth] Invalid or expired state parameter")
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Invalid or expired state parameter (CSRF check failed)",
-        )
+    flow = _consume_callback_state(db, state_value=state, request=request)
+    code_verifier = flow["code_verifier"]
+    frontend_redirect_url = flow["frontend_url"]
 
-    # Extract code_verifier and frontend_redirect_url from state
-    parts = state_data.split("|", 1)
-    code_verifier = parts[0]
-    frontend_redirect_url = parts[1] if len(parts) > 1 else settings.frontend_url
-
-    logger.info(f"[OAuth] Frontend redirect URL from state: {frontend_redirect_url}")
-
-    # Exchange authorization code for tokens
     try:
-        logger.info("[OAuth] Exchanging code for tokens...")
-        logger.info(f"[OAuth]   redirect_uri: {settings.google_oauth_redirect_uri}")
-        logger.info("[OAuth]   using PKCE code_verifier")
-
-        with httpx.Client() as client:
+        with httpx.Client(timeout=20.0) as client:
             token_response = client.post(
                 "https://oauth2.googleapis.com/token",
                 data={
@@ -493,50 +360,36 @@ def google_oauth_callback(
                 },
                 headers={"Content-Type": "application/x-www-form-urlencoded"},
             )
-
             if token_response.status_code != 200:
-                error_data = token_response.json()
-                error_desc = error_data.get("error_description", error_data.get("error", "Unknown error"))
-                logger.error(f"[OAuth] Token exchange failed: {error_desc}")
-                logger.error(f"[OAuth] Response: {error_data}")
+                try:
+                    error_data = token_response.json()
+                except Exception:
+                    error_data = {"status_code": token_response.status_code}
+                logger.error("[OAuth] Token exchange failed: %s", error_data)
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=f"Failed to exchange authorization code: {error_desc}",
+                    detail="Failed to exchange authorization code",
                 )
 
             token_data = token_response.json()
-            logger.info("[OAuth] ✓ Tokens received from Google")
-
-            # Get user info from Google
-            logger.info("[OAuth] Fetching user info...")
             userinfo_response = client.get(
                 "https://www.googleapis.com/oauth2/v2/userinfo",
                 headers={"Authorization": f"Bearer {token_data['access_token']}"},
             )
-
             if userinfo_response.status_code != 200:
-                logger.error(f"[OAuth] Failed to get user info: {userinfo_response.status_code}")
+                logger.error("[OAuth] Failed to get user info: %s", userinfo_response.status_code)
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Failed to get user info from Google",
                 )
-
             user_info = userinfo_response.json()
-            logger.info(f"[OAuth] ✓ User info retrieved: {user_info.get('email')}")
-
-            # Store Google refresh token if available
-            google_refresh_token = token_data.get("refresh_token")
-            if google_refresh_token:
-                logger.info("[OAuth] ✓ Refresh token received from Google")
-
-    except httpx.RequestError as e:
-        logger.error(f"[OAuth] HTTP request failed: {str(e)}")
+    except httpx.RequestError as exc:
+        logger.error("[OAuth] Google request failed: %s", exc)
         raise HTTPException(
             status_code=status.HTTP_502_BAD_GATEWAY,
-            detail=f"Failed to communicate with Google: {str(e)}",
+            detail="Failed to communicate with Google",
         )
 
-    # Create or update user in database (include refresh token)
     user = create_or_update_user(
         db,
         {
@@ -544,25 +397,18 @@ def google_oauth_callback(
             "google_id": user_info["id"],
             "name": user_info["name"],
             "picture": user_info.get("picture"),
-            "refresh_token": google_refresh_token,
         },
     )
 
-    logger.info(f"[OAuth] User: {user.email}")
-    logger.info(f"[OAuth]   authorized: {user.authorized}")
-
-    # Create/update curator profile automatically
     if user.authorized:
         curator_data = {
-            "curator_id": user.email,  # Use email as curator ID
+            "curator_id": user.email,
             "name": user.name,
             "email": user.email,
             "picture": user.picture,
             "google_id": user.google_id,
             "updatedAt": datetime.now(timezone.utc),
         }
-
-        # Upsert curator in curators collection
         db.curators.update_one(
             {"curator_id": user.email},
             {
@@ -571,18 +417,13 @@ def google_oauth_callback(
             },
             upsert=True,
         )
-        logger.info(f"[OAuth] ✓ Curator profile created/updated for {user.email}")
 
-    # Check if user is authorized
     if not user.authorized:
-        logger.warning(f"[OAuth] User {user.email} is NOT authorized")
-        # Redirect to frontend with error parameter
-        redirect_url = f"{frontend_redirect_url}/?auth_error=not_authorized&user_email={user.email}"
-        logger.info(f"[OAuth] Redirecting unauthorized user to: {redirect_url}")
-        return RedirectResponse(url=redirect_url)
+        params = urlencode({"auth_error": "not_authorized", "user_email": user.email})
+        response = RedirectResponse(url=f"{frontend_redirect_url.rstrip('/')}/?{params}")
+        _clear_oauth_binding_cookie(response)
+        return response
 
-    # User is authorized - create JWT tokens for app session
-    logger.info("[OAuth] Creating JWT tokens...")
     access_token = create_access_token(
         data={
             "sub": user.email,
@@ -591,19 +432,11 @@ def google_oauth_callback(
         },
         expires_delta=timedelta(minutes=settings.access_token_expire_minutes),
     )
-
-    # Create refresh token for persistent login (+ sessão server-side)
     refresh_token = _issue_refresh(db, user.email)
 
-    logger.info("[OAuth] ✓ JWT tokens created")
-
-    # Same-site (Render→Render): o cookie HttpOnly é o portador — SEM tokens
-    # na URL (vazam via Referer/histórico/logs). Cross-site legado (GitHub
-    # Pages): mantém tokens na URL (o cookie Lax não é enviado lá).
     same_site = False
     if request is not None:
         same_site = _is_same_site(frontend_redirect_url, str(request.url))
-
     redirect_url = _build_auth_redirect_url(
         frontend_url=frontend_redirect_url,
         access_token=access_token,
@@ -613,9 +446,8 @@ def google_oauth_callback(
         same_site=same_site,
     )
 
-    logger.info(f"[OAuth] ✓ Redirecting to frontend: {frontend_redirect_url} (same_site={same_site})")
-
     response = RedirectResponse(url=redirect_url)
+    _clear_oauth_binding_cookie(response)
     _set_access_cookie(response, access_token)
     _set_refresh_cookie(response, refresh_token)
     return response
@@ -626,15 +458,7 @@ def verify_token(
     auth: dict = Depends(verify_auth),
     db: Database = Depends(get_database),
 ):
-    """
-    Verify JWT access token and return user data
-
-    Aceita Bearer OU cookie HttpOnly (migração 2026-08-15). API key não tem
-    identidade de usuário — recusada.
-
-    Returns:
-        UserAuthResponse: User data if token is valid and user is authorized
-    """
+    """Verify the current app access session and reload the live user."""
     if auth.get("method") == "api_key":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="API key has no user identity")
 
@@ -648,11 +472,8 @@ def verify_token(
     user = get_user_by_email(db, email)
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-
     if not user.authorized:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User not authorized")
-
-    logger.info(f"[OAuth] Token verified for user: {user.email}")
 
     return UserAuthResponse(
         email=user.email,
@@ -669,20 +490,8 @@ async def refresh_access_token(
     response: Response,
     db: Database = Depends(get_database),
 ):
-    """
-    Refresh access token — ROTAÇÃO (2026-08-15).
-
-    Aceita o refresh token de três fontes (prioridade):
-      1. cookie HttpOnly `refresh_token` (caminho principal same-site);
-      2. body JSON `refresh_token` (compat legado cross-site);
-      3. header Authorization Bearer.
-
-    Cada uso REVOGA o jti antigo e emite par novo (replay detectável).
-    """
-    from app.core.security import (
-        verify_refresh_token,
-        create_access_token,
-    )
+    """Rotate the Collector refresh token and its server-side session."""
+    from app.core.security import create_access_token, verify_refresh_token
     from app.services.session_service import revoke_session
 
     refresh_token = request.cookies.get("refresh_token")
@@ -705,9 +514,7 @@ async def refresh_access_token(
             detail="Missing refresh token",
         )
 
-    # Verify refresh token (com sessão server-side quando houver jti)
     token_data = await verify_refresh_token(refresh_token, db=db)
-
     email = token_data.get("sub")
     if not email:
         raise HTTPException(
@@ -715,31 +522,27 @@ async def refresh_access_token(
             detail="Invalid refresh token: missing subject",
         )
 
-    # Get user from database
     user = get_user_by_email(db, email)
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found")
-
     if not user.authorized:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User not authorized")
 
-    # ROTAÇÃO: o jti usado morre aqui — um replay do token antigo bate em
-    # sessão inexistente no verify_refresh_token
+    # revoke_session is a strict find_one_and_delete CAS. Even if two requests
+    # validated the old jti concurrently, only one reaches token issuance.
     if token_data.get("jti"):
         revoke_session(db, token_data["jti"])
 
-    # Create new tokens
-    new_access_token = create_access_token(data={"sub": user.email, "role": getattr(user, "role", "curator")})
+    new_access_token = create_access_token(
+        data={"sub": user.email, "role": getattr(user, "role", "curator")}
+    )
     new_refresh_token = _issue_refresh(db, user.email)
-
-    logger.info(f"[OAuth] Token refreshed for user: {user.email}")
-
     _set_access_cookie(response, new_access_token)
     _set_refresh_cookie(response, new_refresh_token)
     return {
         "access_token": new_access_token,
         "refresh_token": new_refresh_token,
-        "expires_in": settings.access_token_expire_minutes * 60,  # Return expiry time in seconds
+        "expires_in": settings.access_token_expire_minutes * 60,
         "token_type": "bearer",
         "user": UserAuthResponse(
             email=user.email,
@@ -758,21 +561,12 @@ def logout(
     db: Database = Depends(get_database),
     auth: dict = Depends(verify_auth),
 ):
-    """
-    Logout — revoga a sessão de refresh server-side (2026-08-15).
-
-    Antes: só apagava o cookie client-side; um refresh token roubado seguia
-    válido até expirar (30 dias). Agora o jti do refresh (cookie > Bearer) é
-    revogado na coleção auth_sessions.
-    """
+    """Best-effort server-side refresh revocation plus cookie clearing."""
     from app.core.security import ALGORITHM, get_jwt_secret
     from app.services.session_service import revoke_session
 
     if auth.get("method") == "api_key":
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="API key has no session to revoke")
-
-    email = auth.get("user")
-    logger.info(f"[OAuth] User logged out: {email}")
 
     refresh_token = request.cookies.get("refresh_token")
     if not refresh_token:
@@ -782,11 +576,10 @@ def logout(
     if refresh_token:
         try:
             payload = jwt.decode(refresh_token, get_jwt_secret(), algorithms=[ALGORITHM])
-            if payload.get("jti"):
+            if payload.get("type") == "refresh" and payload.get("jti"):
                 revoke_session(db, payload["jti"])
-                logger.info(f"[OAuth] Refresh session revoked: {payload['jti']}")
-        except Exception as e:
-            logger.warning(f"[OAuth] Falha ao revogar refresh no logout: {e}")
+        except Exception as exc:
+            logger.warning("[OAuth] Refresh revoke during logout was best-effort: %s", exc)
 
     response.delete_cookie("access_token", path="/")
     response.delete_cookie("refresh_token", path="/")
@@ -795,39 +588,19 @@ def logout(
 
 @router.get("/dev-login")
 def dev_login(response: Response, db: Database = Depends(get_database)):
-    """
-    Development-only login — bypass Google OAuth for local debugging.
-
-    Creates or retrieves a test admin user and returns valid JWT tokens.
-    Only works when ENVIRONMENT=development. Returns 403 in production.
-
-    Returns:
-        dict: access_token, refresh_token, expires_in, user_email, user_name
-    """
-    from app.core.security import create_access_token
-    from datetime import timedelta
-
-    # 🔒 CRITICAL: Only available in development. Defesa em profundidade
-    # (achado #4 da auditoria 2026-08-18): mesmo com ENVIRONMENT=development,
-    # o Render injeta RENDER_SERVICE_NAME em todo serviço — um deploy com a
-    # env errada NÃO pode virar backdoor de admin público.
+    """Development-only login for local debugging."""
     if settings.environment != "development" or os.getenv("RENDER_SERVICE_NAME"):
-        logger.warning(f"[DevLogin] ⛔ Blocked (ENVIRONMENT={settings.environment})")
+        logger.warning("[DevLogin] Blocked (ENVIRONMENT=%s)", settings.environment)
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail="Dev login only available in development environment",
         )
 
-    logger.info("[DevLogin] 🔧 Development login requested")
-
     dev_email = "dev@collectordev.com"
     dev_name = "Dev User"
-
-    # Check if dev user already exists
     user = get_user_by_email(db, dev_email)
 
     if not user:
-        # Create dev user directly in MongoDB (skip OAuth fields)
         import uuid
 
         dev_user = {
@@ -841,11 +614,7 @@ def dev_login(response: Response, db: Database = Depends(get_database)):
             "last_login": datetime.now(timezone.utc),
             "refresh_token": None,
         }
-        result = db.users.insert_one(dev_user)
-        dev_user["_id"] = str(result.inserted_id)
-        logger.info(f"[DevLogin] ✓ Created dev user: {dev_email}")
-
-        # Also create curator profile
+        db.users.insert_one(dev_user)
         db.curators.update_one(
             {"curator_id": dev_email},
             {
@@ -861,19 +630,16 @@ def dev_login(response: Response, db: Database = Depends(get_database)):
             upsert=True,
         )
     else:
-        # Update last_login
-        db.users.update_one({"email": dev_email}, {"$set": {"last_login": datetime.now(timezone.utc)}})
-        logger.info(f"[DevLogin] ✓ Using existing dev user: {dev_email}")
+        db.users.update_one(
+            {"email": dev_email},
+            {"$set": {"last_login": datetime.now(timezone.utc)}},
+        )
 
-    # Generate real JWT tokens — refresh com sessão registrada (rotação 2026-08-15)
     access_token = create_access_token(
         data={"sub": dev_email, "google_id": f"dev-{dev_email}", "role": "admin"},
         expires_delta=timedelta(minutes=settings.access_token_expire_minutes),
     )
     refresh_token = _issue_refresh(db, dev_email)
-
-    logger.info(f"[DevLogin] ✓ Tokens generated (expires in {settings.access_token_expire_minutes}m)")
-
     _set_access_cookie(response, access_token)
     _set_refresh_cookie(response, refresh_token)
     return {
