@@ -50,7 +50,7 @@ def test_ai_orchestrate_hides_unexpected_exception_detail(client, auth_headers):
         restore()
 
     assert response.status_code == 500
-    assert response.json()["detail"] == "AI orchestration failed"
+    assert response.json()["detail"] == "Internal server error"
     assert "secret" not in response.text.lower()
 
 
@@ -68,7 +68,7 @@ def test_ai_name_extraction_hides_unexpected_exception_detail(client, auth_heade
         restore()
 
     assert response.status_code == 500
-    assert response.json()["detail"] == "Restaurant name extraction failed"
+    assert response.json()["detail"] == "Internal server error"
     assert "secret" not in response.text.lower()
 
 
@@ -96,11 +96,11 @@ def test_llm_gateway_hides_unexpected_service_details(client, auth_headers):
         restore()
 
     assert search.status_code == 500
-    assert search.json()["detail"] == "Restaurant search failed"
+    assert search.json()["detail"] == "Internal server error"
     assert snapshot.status_code == 500
-    assert snapshot.json()["detail"] == "Restaurant snapshot failed"
+    assert snapshot.json()["detail"] == "Internal server error"
     assert availability.status_code == 500
-    assert availability.json()["detail"] == "Restaurant availability failed"
+    assert availability.json()["detail"] == "Internal server error"
     combined = search.text + snapshot.text + availability.text
     assert "secret" not in combined.lower()
     assert "private-provider" not in combined.lower()
