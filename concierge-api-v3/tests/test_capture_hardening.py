@@ -90,6 +90,52 @@ def test_capture_reuses_persisted_scoped_session_before_ai(client):
     transcribe.assert_not_called()
 
 
+def test_capture_processing_session_returns_conflict_before_paid_ai(client, in_memory_db):
+    """A duplicate request must not start a second Whisper/GPT pipeline."""
+    from app.api.capture import _capture_session_id, _idempotency_cache
+    from app.core.security import create_access_token
+
+    _idempotency_cache._data.clear()
+    curator_id = "alice@example.com"
+    idempotency_key = "processing-key"
+    capture_id = _capture_session_id(curator_id, idempotency_key)
+    now = datetime.now(timezone.utc)
+    in_memory_db.capture_sessions.delete_many({"_id": capture_id})
+    in_memory_db.capture_sessions.insert_one(
+        {
+            "_id": capture_id,
+            "capture_id": capture_id,
+            "curator_id": curator_id,
+            "idempotency_key": idempotency_key,
+            "status": "processing",
+            "processing_token": "worker-one",
+            "processing_expires_at": now + timedelta(minutes=5),
+            "createdAt": now,
+        }
+    )
+    restore = _override_database(client, in_memory_db)
+    token = create_access_token(data={"sub": curator_id, "role": "curator"})
+    try:
+        with patch("app.api.capture._transcribe", return_value="must not run") as transcribe:
+            response = client.post(
+                "/api/v3/capture",
+                json={
+                    "audio": "AA==",
+                    "idempotency_key": idempotency_key,
+                    "curator_id": curator_id,
+                },
+                headers={"Authorization": f"Bearer {token}"},
+            )
+    finally:
+        restore()
+        in_memory_db.capture_sessions.delete_many({"_id": capture_id})
+        _idempotency_cache._data.clear()
+
+    assert response.status_code == 409
+    assert response.headers.get("Retry-After") == "2"
+    transcribe.assert_not_called()
+
+
 def test_confirm_validates_owner_before_returning_cached_result(client):
     from app.api.capture import _confirm_cache_key, _idempotency_cache
     from app.core.security import create_access_token
