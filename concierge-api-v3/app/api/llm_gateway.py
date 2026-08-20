@@ -89,8 +89,8 @@ def search_restaurants(
         )
 
     except Exception as e:
-        logger.error(f"Error in search-restaurants: {e}")
-        raise HTTPException(status_code=500, detail=f"Search error: {str(e)}")
+        logger.error("Error in search-restaurants: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Restaurant search failed")
 
 
 @router.post("/get-restaurant-snapshot", response_model=LLMGetRestaurantSnapshotResponse)
@@ -164,8 +164,8 @@ def get_restaurant_snapshot(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error in get-restaurant-snapshot: {e}")
-        raise HTTPException(status_code=500, detail=f"Snapshot error: {str(e)}")
+        logger.error("Error in get-restaurant-snapshot: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Restaurant snapshot failed")
 
 
 @router.post("/get-restaurant-availability", response_model=LLMGetRestaurantAvailabilityResponse)
@@ -225,8 +225,8 @@ def get_restaurant_availability(
     except HTTPException:
         raise
     except Exception as e:
-        logger.error(f"Error in get-restaurant-availability: {e}")
-        raise HTTPException(status_code=500, detail=f"Availability error: {str(e)}")
+        logger.error("Error in get-restaurant-availability: %s", e, exc_info=True)
+        raise HTTPException(status_code=500, detail="Restaurant availability failed")
 
 
 @router.get("/health")
