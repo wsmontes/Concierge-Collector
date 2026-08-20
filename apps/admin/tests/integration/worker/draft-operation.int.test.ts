@@ -274,9 +274,10 @@ integrationSuite('draft operation worker', () => {
     await payload.jobs.runByID({ id: operation.jobId, overrideAccess: true, silent: true })
 
     await expect(operations.findById(operation.id).lean()).resolves.toMatchObject({ status: 'committed' })
-    await expect(jobs.findById(operation.jobId).lean()).resolves.toMatchObject({
-      completedAt: expect.anything(), processing: false, totalTried: 2,
-    })
+    // Payload deletes successfully completed jobs by default
+    // (`jobs.deleteJobOnComplete: true` in payload 3.86 defaults) — the
+    // committed operation is the durable evidence that the retry landed.
+    await expect(jobs.findById(operation.jobId).lean()).resolves.toBeNull()
   })
 
   test('forward migration marks pre-staging deltas committed before workers filter them', async () => {
