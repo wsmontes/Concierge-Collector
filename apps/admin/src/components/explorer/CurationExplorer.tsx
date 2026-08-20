@@ -75,10 +75,35 @@ export function CurationExplorer({ loadPage = browserLoadPage }: { loadPage?: Lo
     setLastSelectedIndex(index)
   }
 
+  function toggleAllLoaded(selectAll: boolean) {
+    setSelection((current) => {
+      if (current.mode === 'all_matching') return current
+      const selected = new Set(current.selected)
+      for (const row of page.items) {
+        if (selectAll) selected.add(row.curation_id)
+        else selected.delete(row.curation_id)
+      }
+      return { mode: 'explicit', selected }
+    })
+  }
+
+  /** Shortcuts must never fire while the user is typing in an editable target. */
+  function isEditableTarget(target: EventTarget | null): boolean {
+    return target instanceof HTMLElement && Boolean(target.closest('input, textarea, [contenteditable="true"]'))
+  }
+
+  function handleKeyDown(event: React.KeyboardEvent<HTMLElement>) {
+    if (isEditableTarget(event.target)) return
+    if (event.key.toLowerCase() === 'a' && selection.mode === 'explicit') {
+      event.preventDefault()
+      setSelection({ mode: 'all_matching', filters: normalizeCurationFilters(filters), excluded: new Set(), previewCount: page.total })
+    }
+  }
+
   const selected = (id: string) => selection.mode === 'all_matching' ? !selection.excluded.has(id) : selection.selected.has(id)
 
   return (
-    <section className="curation-explorer" aria-labelledby="curation-explorer-title">
+    <section className="curation-explorer" aria-labelledby="curation-explorer-title" onKeyDown={handleKeyDown}>
       <header>
         <p className="collection-views__eyebrow">Content</p>
         <h1 id="curation-explorer-title">Curation Explorer</h1>
@@ -99,8 +124,10 @@ export function CurationExplorer({ loadPage = browserLoadPage }: { loadPage?: Lo
         height={600}
         isSelected={(row) => selected(row.curation_id)}
         onToggle={(row, index, shiftKey) => toggle(row.curation_id, index, shiftKey)}
+        onToggleAllLoaded={toggleAllLoaded}
         rowHeight={44}
         rows={page.items}
+        selectAllDisabled={selection.mode === 'all_matching'}
       />
       {page.next_cursor && <button onClick={() => void load(filters, page.next_cursor)} type="button">Next page</button>}
     </section>
