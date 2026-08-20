@@ -17,6 +17,7 @@ from typing import Any
 from fastapi import HTTPException, status
 from pymongo import ReturnDocument
 from pymongo.database import Database
+from pymongo.errors import DuplicateKeyError
 
 CAPTURE_PROCESSING_LEASE_SECONDS = 300
 
@@ -40,6 +41,13 @@ def _processing_conflict() -> HTTPException:
     )
 
 
+def _completed_session(collection, capture_id: str, curator_id: str) -> dict[str, Any] | None:
+    existing = collection.find_one({"_id": capture_id, "curator_id": curator_id})
+    if existing and existing.get("status") in {"pending_confirmation", "confirmed"}:
+        return existing
+    return None
+
+
 def claim_capture_session(
     db: Database,
     *,
@@ -52,24 +60,36 @@ def claim_capture_session(
     claimed_at = now or _utc_now()
     processing_token = secrets.token_urlsafe(24)
     processing_expires_at = claimed_at + timedelta(seconds=CAPTURE_PROCESSING_LEASE_SECONDS)
-    collection = db.capture_sessions
+    collection = db["capture_sessions"]
 
-    result = collection.update_one(
-        {"_id": capture_id},
-        {
-            "$setOnInsert": {
-                "capture_id": capture_id,
-                "curator_id": curator_id,
-                "idempotency_key": idempotency_key,
-                "status": "processing",
-                "processing_token": processing_token,
-                "processing_expires_at": processing_expires_at,
-                "createdAt": claimed_at,
-            }
-        },
-        upsert=True,
-    )
-    if result.upserted_id is not None:
+    # Fast durable retry path. This read is not the concurrency primitive; it
+    # only avoids a no-op upsert for captures that are already complete.
+    completed = _completed_session(collection, capture_id, curator_id)
+    if completed is not None:
+        return CaptureSessionClaim(acquired=False, existing_session=completed)
+
+    try:
+        result = collection.update_one(
+            {"_id": capture_id},
+            {
+                "$setOnInsert": {
+                    "capture_id": capture_id,
+                    "curator_id": curator_id,
+                    "idempotency_key": idempotency_key,
+                    "status": "processing",
+                    "processing_token": processing_token,
+                    "processing_expires_at": processing_expires_at,
+                    "createdAt": claimed_at,
+                }
+            },
+            upsert=True,
+        )
+    except DuplicateKeyError:
+        # Two absent-session upserts can race on the unique _id. The loser
+        # observes the winner below and is treated exactly like any duplicate.
+        result = None
+
+    if result is not None and result.upserted_id is not None:
         return CaptureSessionClaim(acquired=True, processing_token=processing_token)
 
     existing = collection.find_one({"_id": capture_id, "curator_id": curator_id})
@@ -130,7 +150,8 @@ def complete_capture_session(
             "processing_expires_at": None,
         }
     )
-    result = db.capture_sessions.update_one(
+    collection = db["capture_sessions"]
+    result = collection.update_one(
         {
             "_id": capture_id,
             "curator_id": curator_id,
@@ -144,7 +165,7 @@ def complete_capture_session(
             status_code=status.HTTP_409_CONFLICT,
             detail="Capture processing lease was lost",
         )
-    return db.capture_sessions.find_one({"_id": capture_id, "curator_id": curator_id})
+    return collection.find_one({"_id": capture_id, "curator_id": curator_id})
 
 
 def abandon_capture_session(
@@ -155,7 +176,7 @@ def abandon_capture_session(
     processing_token: str,
 ) -> None:
     """Release only this worker's unfinished claim so a retry can start."""
-    db.capture_sessions.delete_one(
+    db["capture_sessions"].delete_one(
         {
             "_id": capture_id,
             "curator_id": curator_id,
