@@ -17,12 +17,13 @@ import time
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from pymongo.database import Database
 from pymongo.errors import DuplicateKeyError
 
 from app.core.database import get_database
+from app.core.rate_limit import limiter, auth_header_key
 from app.core.security import require_role, is_admin_auth
 from app.models.schemas import CurationCreate, EntityCreate
 from app.services.capture_session_service import (
@@ -373,8 +374,10 @@ def _extract_city(place: Dict[str, Any]) -> str:
 
 
 @router.post("", response_model=CaptureResponse)
+@limiter.limit("10/minute", key_func=auth_header_key)
 async def capture(
-    request: CaptureRequest,
+    request: Request,
+    payload: CaptureRequest,
     db: Database = Depends(get_database),
     auth: dict = Depends(require_role("curator")),
 ):
@@ -393,13 +396,13 @@ async def capture(
     # ── IDOR: o curator_id do corpo vira o dono da curadoria criada no
     # confirm — só o próprio usuário autenticado (ou admin via API key/role)
     # pode capturar em seu nome.
-    if not is_admin_auth(auth) and request.curator_id != auth.get("user"):
+    if not is_admin_auth(auth) and payload.curator_id != auth.get("user"):
         raise HTTPException(
             status_code=403,
             detail="curator_id must match the authenticated user",
         )
 
-    capture_id = _capture_session_id(request.curator_id, request.idempotency_key)
+    capture_id = _capture_session_id(payload.curator_id, payload.idempotency_key)
     cache_key = _capture_cache_key(capture_id)
 
     # Fast in-process retry path, scoped by the server-owned capture identity.
@@ -415,8 +418,8 @@ async def capture(
         claim = claim_capture_session(
             db,
             capture_id=capture_id,
-            curator_id=request.curator_id,
-            idempotency_key=request.idempotency_key,
+            curator_id=payload.curator_id,
+            idempotency_key=payload.idempotency_key,
         )
     except HTTPException:
         raise
@@ -430,7 +433,7 @@ async def capture(
     if not claim.acquired:
         result = _response_from_session(claim.existing_session or {})
         cache_entry = result.model_dump()
-        cache_entry["curator_id"] = request.curator_id
+        cache_entry["curator_id"] = payload.curator_id
         _idempotency_cache.set(cache_key, cache_entry)
         logger.info("Capture idempotency persistent hit: %s", capture_id)
         return result
@@ -441,8 +444,8 @@ async def capture(
 
     try:
         # ── 1. Transcribe ──
-        logger.info(f"Transcribing audio ({len(request.audio)} chars base64)...")
-        transcription = await asyncio.to_thread(_transcribe, request.audio, request.language)
+        logger.info(f"Transcribing audio ({len(payload.audio)} chars base64)...")
+        transcription = await asyncio.to_thread(_transcribe, payload.audio, payload.language)
         if not transcription:
             raise HTTPException(status_code=422, detail="Could not transcribe audio")
 
@@ -464,7 +467,7 @@ async def capture(
         completed_session = complete_capture_session(
             db,
             capture_id=capture_id,
-            curator_id=request.curator_id,
+            curator_id=payload.curator_id,
             processing_token=processing_token,
             result_fields={
                 "transcription": transcription,
@@ -477,7 +480,7 @@ async def capture(
         abandon_capture_session(
             db,
             capture_id=capture_id,
-            curator_id=request.curator_id,
+            curator_id=payload.curator_id,
             processing_token=processing_token,
         )
         raise
@@ -485,7 +488,7 @@ async def capture(
         abandon_capture_session(
             db,
             capture_id=capture_id,
-            curator_id=request.curator_id,
+            curator_id=payload.curator_id,
             processing_token=processing_token,
         )
         logger.error("Capture processing failed: %s", e)
@@ -495,7 +498,7 @@ async def capture(
 
     # Now that MongoDB succeeded, populate the scoped idempotency cache.
     cache_entry = result.model_dump()
-    cache_entry["curator_id"] = request.curator_id
+    cache_entry["curator_id"] = payload.curator_id
     _idempotency_cache.set(cache_key, cache_entry)
 
     elapsed_ms = int((time.time() - t0) * 1000)
@@ -504,9 +507,11 @@ async def capture(
 
 
 @router.post("/{capture_id}/confirm", response_model=CaptureConfirmResponse)
+@limiter.limit("20/minute", key_func=auth_header_key)
 async def confirm_capture(
+    request: Request,
     capture_id: str,
-    request: CaptureConfirmRequest,
+    payload: CaptureConfirmRequest,
     db: Database = Depends(get_database),
     auth: dict = Depends(require_role("curator")),
 ):
@@ -535,7 +540,7 @@ async def confirm_capture(
         if not _is_placeholder_identity(session_owner) and session_owner != auth.get("user"):
             raise HTTPException(status_code=403, detail="capture session does not belong to the authenticated user")
 
-    confirm_key = _confirm_cache_key(capture_id, request.idempotency_key)
+    confirm_key = _confirm_cache_key(capture_id, payload.idempotency_key)
     cached_confirm = _idempotency_cache.get(confirm_key)
     if cached_confirm:
         return cached_confirm
@@ -545,11 +550,11 @@ async def confirm_capture(
     concepts = session.get("concepts", {})
     curator_id = session.get("curator_id", "unknown")
 
-    matched_entity = next((e for e in entities if e.get("entity_id") == request.entity_id), None)
+    matched_entity = next((e for e in entities if e.get("entity_id") == payload.entity_id), None)
     if not matched_entity:
         raise HTTPException(status_code=422, detail="Entity not in capture matches")
 
-    entity_doc = db.entities.find_one({"_id": request.entity_id})
+    entity_doc = db.entities.find_one({"_id": payload.entity_id})
     if not entity_doc:
         if matched_entity.get("source") == "google_places" and matched_entity.get("place_id"):
             entity_doc = await asyncio.to_thread(_create_entity_from_place, matched_entity, db)
@@ -565,7 +570,7 @@ async def confirm_capture(
                 entity = upsert_entity(
                     db,
                     EntityCreate(
-                        entity_id=request.entity_id,
+                        entity_id=payload.entity_id,
                         name=matched_entity.get("name", "Unknown"),
                         type=matched_entity.get("type", "restaurant"),
                         data={"location": matched_entity.get("location", {})},
@@ -575,10 +580,10 @@ async def confirm_capture(
                 )
                 entity_doc = db.entities.find_one({"_id": entity.id})
             except DuplicateKeyError:
-                entity_doc = db.entities.find_one({"_id": request.entity_id})
+                entity_doc = db.entities.find_one({"_id": payload.entity_id})
                 if not entity_doc:
                     raise
-                logger.info("Entity %s already exists (race), reusing", request.entity_id)
+                logger.info("Entity %s already exists (race), reusing", payload.entity_id)
 
     now = datetime.now(timezone.utc)
     curation_id = _curation_id_for_capture(capture_id)
@@ -591,7 +596,7 @@ async def confirm_capture(
 
     curation = CurationCreate(
         curation_id=curation_id,
-        entity_id=request.entity_id,
+        entity_id=payload.entity_id,
         curator_id=curator_id,
         curator=curator,
         status="linked",
@@ -605,14 +610,14 @@ async def confirm_capture(
 
     try:
         created = create_curation_doc(db, curation, auth)
-        confirmed_entity_id = created.entity_id or request.entity_id
+        confirmed_entity_id = created.entity_id or payload.entity_id
     except HTTPException as exc:
         if exc.status_code != 409:
             raise
         existing = find_curation(db, curation_id)
         if not existing:
             raise
-        confirmed_entity_id = existing.get("entity_id") or request.entity_id
+        confirmed_entity_id = existing.get("entity_id") or payload.entity_id
         logger.info("Curation %s already exists; preserving stored version", curation_id)
 
     try:
