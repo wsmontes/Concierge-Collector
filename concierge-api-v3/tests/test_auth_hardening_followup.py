@@ -158,3 +158,40 @@ def test_oauth_callback_rejects_valid_state_without_browser_binding_before_googl
 
     assert response.status_code == 400
     google_client.assert_not_called()
+
+
+def test_existing_google_refresh_token_is_cleared_on_next_login(in_memory_db):
+    """Legacy plaintext Google credentials must not survive a later login."""
+    from app.api.auth import create_or_update_user
+
+    email = "legacy-google-token@example.com"
+    google_id = "legacy-google-id"
+    in_memory_db.users.delete_many({"google_id": google_id})
+    in_memory_db.users.insert_one(
+        {
+            "_id": "legacy-google-user",
+            "email": email,
+            "google_id": google_id,
+            "name": "Legacy User",
+            "picture": None,
+            "authorized": True,
+            "role": "curator",
+            "created_at": datetime.now(timezone.utc),
+            "last_login": datetime.now(timezone.utc),
+            "refresh_token": "plaintext-google-refresh-secret",
+        }
+    )
+
+    create_or_update_user(
+        in_memory_db,
+        {
+            "email": email,
+            "google_id": google_id,
+            "name": "Legacy User Updated",
+            "picture": None,
+            "refresh_token": "new-google-secret-that-must-be-ignored",
+        },
+    )
+
+    stored = in_memory_db.users.find_one({"google_id": google_id})
+    assert stored["refresh_token"] is None
