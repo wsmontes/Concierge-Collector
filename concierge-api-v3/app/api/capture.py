@@ -7,6 +7,7 @@ POST /capture/{id}/confirm  Confirm the match, create the curation.
 
 import asyncio
 import base64
+import hashlib
 import json
 import logging
 import os
@@ -42,7 +43,7 @@ class CaptureRequest(BaseModel):
         max_length=35_000_000,
         description="Base64-encoded audio (webm/mp3), up to ~25 MiB",
     )
-    idempotency_key: str = Field(..., description="Client-generated UUID for dedup")
+    idempotency_key: str = Field(..., max_length=128, description="Client-generated UUID for dedup")
     curator_id: str = Field(..., description="Curator ID")
     language: str = Field("pt-BR", description="Language for transcription")
 
@@ -66,7 +67,7 @@ class CaptureResponse(BaseModel):
 
 class CaptureConfirmRequest(BaseModel):
     entity_id: str = Field(..., description="Entity ID to link the curation to")
-    idempotency_key: str = Field(..., description="Client-generated UUID for dedup")
+    idempotency_key: str = Field(..., max_length=128, description="Client-generated UUID for dedup")
 
 
 class CaptureConfirmResponse(BaseModel):
@@ -104,6 +105,38 @@ _idempotency_cache = _LRUDict(maxsize=2000)
 def _capture_collection(db: Database):
     """Get the capture_sessions collection."""
     return db["capture_sessions"]
+
+
+def _capture_session_id(curator_id: str, idempotency_key: str) -> str:
+    """Stable, owner-scoped server identity for one client capture command."""
+    digest = hashlib.sha256(f"{curator_id}\0{idempotency_key}".encode("utf-8")).hexdigest()
+    return f"cap_{digest}"
+
+
+def _capture_cache_key(capture_id: str) -> str:
+    return f"capture:{capture_id}"
+
+
+def _confirm_cache_key(capture_id: str, idempotency_key: str) -> str:
+    return f"confirm:{capture_id}:{idempotency_key}"
+
+
+def _curation_id_for_capture(capture_id: str) -> str:
+    """Keep retries stable while preserving IDs created by legacy captures."""
+    if not capture_id.startswith("cap_"):
+        return f"cur_{capture_id[:16]}"
+    digest = hashlib.sha256(capture_id.encode("utf-8")).hexdigest()
+    return f"cur_{digest[:24]}"
+
+
+def _response_from_session(session: Dict[str, Any]) -> CaptureResponse:
+    return CaptureResponse(
+        capture_id=str(session.get("capture_id") or session.get("_id")),
+        transcription=session.get("transcription", ""),
+        restaurant_name=session.get("restaurant_name"),
+        entities=session.get("entities", []),
+        concepts=session.get("concepts", {}),
+    )
 
 
 # ── AI helpers ───────────────────────────────────────────────────────────────
@@ -360,11 +393,33 @@ async def capture(
             detail="curator_id must match the authenticated user",
         )
 
-    # ── Idempotency check ──
-    cached = _idempotency_cache.get(request.idempotency_key)
+    capture_id = _capture_session_id(request.curator_id, request.idempotency_key)
+    cache_key = _capture_cache_key(capture_id)
+
+    # Fast in-process retry path, scoped by the server-owned capture identity.
+    cached = _idempotency_cache.get(cache_key)
     if cached:
-        logger.info(f"Capture idempotency hit: {request.idempotency_key}")
+        logger.info("Capture idempotency cache hit: %s", capture_id)
         return cached
+
+    # Durable retry path before any paid AI work. This survives process restarts
+    # and prevents one curator's client key from colliding with another's.
+    col = _capture_collection(db)
+    try:
+        existing = col.find_one({"_id": capture_id, "curator_id": request.curator_id})
+    except Exception as e:
+        logger.error(f"Failed to check persisted capture session: {e}")
+        raise HTTPException(
+            status_code=503,
+            detail="Failed to check capture session. Please try again.",
+        )
+    if existing:
+        result = _response_from_session(existing)
+        cache_entry = result.model_dump()
+        cache_entry["curator_id"] = request.curator_id
+        _idempotency_cache.set(cache_key, cache_entry)
+        logger.info("Capture idempotency persistent hit: %s", capture_id)
+        return result
 
     # ── 1. Transcribe ──
     logger.info(f"Transcribing audio ({len(request.audio)} chars base64)...")
@@ -397,10 +452,10 @@ async def capture(
     # ── 5. Store capture session ──
     # Persist to MongoDB FIRST, then cache on success.
     # If MongoDB is down, we return 503 without polluting the cache.
-    col = _capture_collection(db)
     session_doc = {
-        "_id": request.idempotency_key,
-        "capture_id": request.idempotency_key,
+        "_id": capture_id,
+        "capture_id": capture_id,
+        "idempotency_key": request.idempotency_key,
         "transcription": transcription,
         "restaurant_name": restaurant_name,
         "entities": entities,
@@ -410,7 +465,7 @@ async def capture(
         "createdAt": datetime.now(timezone.utc),
     }
     try:
-        col.replace_one({"_id": request.idempotency_key}, session_doc, upsert=True)
+        col.replace_one({"_id": capture_id, "curator_id": request.curator_id}, session_doc, upsert=True)
     except Exception as e:
         logger.error(f"Failed to persist capture session: {e}")
         raise HTTPException(
@@ -419,21 +474,20 @@ async def capture(
         )
 
     result = CaptureResponse(
-        capture_id=request.idempotency_key,
+        capture_id=capture_id,
         transcription=transcription,
         restaurant_name=restaurant_name,
         entities=entities,
         concepts=concepts,
     )
 
-    # Now that MongoDB succeeded, populate the idempotency cache
-    # Include curator_id so cache fallback in confirm preserves provenance
+    # Now that MongoDB succeeded, populate the scoped idempotency cache.
     cache_entry = result.model_dump()
     cache_entry["curator_id"] = request.curator_id
-    _idempotency_cache.set(request.idempotency_key, cache_entry)
+    _idempotency_cache.set(cache_key, cache_entry)
 
     elapsed_ms = int((time.time() - t0) * 1000)
-    logger.info(f"Capture {request.idempotency_key} completed in {elapsed_ms}ms")
+    logger.info(f"Capture {capture_id} completed in {elapsed_ms}ms")
     return result
 
 
@@ -451,13 +505,8 @@ async def confirm_capture(
     chosen entity (creates if from Google Places), creates the curation, and
     returns the curation ID.
     """
-    # ── Idempotency check ──
-    confirm_key = f"confirm:{request.idempotency_key}"
-    cached_confirm = _idempotency_cache.get(confirm_key)
-    if cached_confirm:
-        return cached_confirm
-
-    # ── Retrieve capture session ──
+    # Retrieve the session and validate ownership BEFORE consulting the
+    # confirmation cache, so a guessed key can never bypass the IDOR boundary.
     col = _capture_collection(db)
     try:
         session = col.find_one({"_id": capture_id})
@@ -465,21 +514,24 @@ async def confirm_capture(
         logger.warning(f"MongoDB unavailable during confirm, trying cache: {e}")
         session = None
     if not session:
-        # Try cache fallback
-        cached = _idempotency_cache.get(capture_id)
-        if cached:
-            session = cached
-        else:
+        # Scoped cache for current captures; raw-key fallback only supports
+        # legacy in-process sessions created before the scoped-key rollout.
+        session = _idempotency_cache.get(_capture_cache_key(capture_id)) or _idempotency_cache.get(capture_id)
+        if not session:
             raise HTTPException(status_code=404, detail="Capture session not found")
 
-    # ── IDOR (auditoria ago/2026): só o dono da sessão (ou admin) confirma.
-    # A criação já valida curator_id == auth.user; o confirm NÃO fazia.
+    # ── IDOR: só o dono da sessão (ou admin) confirma.
     if not is_admin_auth(auth):
         from app.services.curation_service import _is_placeholder_identity
 
         session_owner = session.get("curator_id") or (session.get("curator") or {}).get("id")
         if not _is_placeholder_identity(session_owner) and session_owner != auth.get("user"):
             raise HTTPException(status_code=403, detail="capture session does not belong to the authenticated user")
+
+    confirm_key = _confirm_cache_key(capture_id, request.idempotency_key)
+    cached_confirm = _idempotency_cache.get(confirm_key)
+    if cached_confirm:
+        return cached_confirm
 
     transcription = session.get("transcription", "")
     entities = session.get("entities", [])
@@ -534,7 +586,7 @@ async def confirm_capture(
 
     # ── Create curation ──
     now = datetime.now(timezone.utc)
-    curation_id = f"cur_{capture_id[:16]}"
+    curation_id = _curation_id_for_capture(capture_id)
 
     curation_doc = {
         "_id": curation_id,
@@ -583,7 +635,10 @@ async def confirm_capture(
 
     # ── Mark session as done ──
     try:
-        col.update_one({"_id": capture_id}, {"$set": {"status": "confirmed"}})
+        col.update_one(
+            {"_id": capture_id},
+            {"$set": {"status": "confirmed", "curation_id": curation_id}},
+        )
     except Exception as e:
         # Curation already created — don't fail the request over status update
         logger.warning(f"Failed to update session status to confirmed: {e}")
