@@ -112,6 +112,16 @@ def normalize_selected_operations(paths: dict[str, Any]) -> dict[str, Any]:
     associations = normalized.get("/api/v3/curations/{curation_id}/collections", {}).get("get")
     if associations is not None:
         associations["security"] = HUMAN_SESSION_SECURITY
+    search = normalized.get("/api/v3/catalog/curations", {}).get("get")
+    if search is not None:
+        search["security"] = CMS_SERVICE_SECURITY
+        search["parameters"] = [
+            parameter for parameter in search.get("parameters", []) if parameter.get("name") != "X-CMS-Service-Key"
+        ]
+        for parameter in search["parameters"]:
+            if parameter.get("name") == "X-CMS-Actor-Id":
+                parameter["required"] = True
+                parameter["schema"] = {"type": "string"}
     for path in (
         "/api/v3/auth/cms/exchange",
         "/api/v3/auth/cms/introspect",
@@ -138,7 +148,9 @@ def normalize_selected_operations(paths: dict[str, Any]) -> dict[str, Any]:
     if collector_bearer is not None:
         collector_bearer["security"] = COLLECTOR_BEARER_SECURITY
         collector_bearer["parameters"] = [
-            parameter for parameter in collector_bearer.get("parameters", []) if parameter.get("name") != "X-CMS-Service-Key"
+            parameter
+            for parameter in collector_bearer.get("parameters", [])
+            if parameter.get("name") != "X-CMS-Service-Key"
         ]
     return normalized
 

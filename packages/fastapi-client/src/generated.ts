@@ -82,6 +82,23 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/api/v3/catalog/curations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Search Curations */
+        get: operations["search_curations_api_v3_catalog_curations_get"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/api/v3/catalog/curations/resolve": {
         parameters: {
             query?: never;
@@ -245,6 +262,15 @@ export interface components {
         /** CatalogScanStartRequest */
         CatalogScanStartRequest: {
             filters?: components["schemas"]["CatalogFilters"];
+        };
+        /** CatalogSearchPage */
+        CatalogSearchPage: {
+            /** Items */
+            items: components["schemas"]["AdminCurationRow"][];
+            /** Next Cursor */
+            next_cursor?: string | null;
+            /** Total */
+            total?: number | null;
         };
         /**
          * CmsAuthorization
@@ -511,6 +537,45 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["CmsAuthorization"];
+                };
+            };
+            /** @description Validation Error */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["HTTPValidationError"];
+                };
+            };
+        };
+    };
+    search_curations_api_v3_catalog_curations_get: {
+        parameters: {
+            query?: {
+                q?: string | null;
+                status?: string[];
+                city?: string | null;
+                entity_type?: string | null;
+                curator_id?: string | null;
+                cursor?: string | null;
+                limit?: number;
+            };
+            header: {
+                "X-CMS-Actor-Id": string;
+            };
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Successful Response */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["CatalogSearchPage"];
                 };
             };
             /** @description Validation Error */

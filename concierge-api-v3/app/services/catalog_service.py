@@ -204,6 +204,90 @@ def catalog_scan_page(
     return {"items": items, "next_cursor": next_cursor}
 
 
+def catalog_search_page(
+    db: Database, actor_id: str, filters: dict, cursor: str | None, limit: int, secret: str
+) -> dict:
+    """Page through the live Explorer catalog with a cursor bound to its filters.
+
+    This is deliberately a narrow projection: the Admin can discover Curations
+    at scale, but never receives the capture transcript or embedding payloads.
+    """
+
+    require_current_cms_admin(db, actor_id)
+    normalized = _normalized_filters(filters)
+    last_sequence = last_id = None
+    if cursor:
+        position = _decode_token(cursor, secret)
+        if (
+            position.get("kind") != "catalog-search"
+            or position.get("actor") != actor_id
+            or position.get("filters") != normalized
+            or not isinstance(position.get("sequence"), int)
+            or not isinstance(position.get("curation_id"), str)
+        ):
+            raise CatalogCursorError("invalid cursor")
+        last_sequence, last_id = position["sequence"], position["curation_id"]
+
+    clauses: list[dict] = [_filter_query(normalized), {"catalog_sequence": {"$type": "number"}}]
+    if last_sequence is not None:
+        clauses.append(
+            {
+                "$or": [
+                    {"catalog_sequence": {"$gt": last_sequence}},
+                    {"catalog_sequence": last_sequence, "curation_id": {"$gt": last_id}},
+                ]
+            }
+        )
+    rows = list(
+        db.curations.find(
+            {"$and": clauses},
+            {
+                "_id": 0,
+                "curation_id": 1,
+                "catalog_sequence": 1,
+                "status": 1,
+                "restaurant_name": 1,
+                "city": 1,
+                "type": 1,
+                "curator_id": 1,
+                "updatedAt": 1,
+            },
+        )
+        .sort([("catalog_sequence", 1), ("curation_id", 1)])
+        .limit(limit + 1)
+    )
+    page, more = rows[:limit], len(rows) > limit
+    items = [
+        {
+            "curation_id": str(row["curation_id"]),
+            "catalog_sequence": int(row["catalog_sequence"]),
+            "status": str(row.get("status") or "draft"),
+            "restaurant_name": row.get("restaurant_name"),
+            "city": row.get("city"),
+            "entity_type": row.get("type"),
+            "curator_id": row.get("curator_id"),
+            "updated_at": row.get("updatedAt"),
+        }
+        for row in page
+        if isinstance(row.get("curation_id"), str) and isinstance(row.get("catalog_sequence"), int)
+    ]
+    next_cursor = None
+    if more and items:
+        tail = items[-1]
+        next_cursor = _encode_token(
+            {
+                "kind": "catalog-search",
+                "actor": actor_id,
+                "filters": normalized,
+                "exp": int((datetime.now(timezone.utc) + timedelta(minutes=15)).timestamp()),
+                "sequence": tail["catalog_sequence"],
+                "curation_id": tail["curation_id"],
+            },
+            secret,
+        )
+    return {"items": items, "next_cursor": next_cursor}
+
+
 def _distinct_in_order(curation_ids: list[str]) -> list[str]:
     seen: set[str] = set()
     result: list[str] = []

@@ -19,6 +19,7 @@ def test_admin_contract_contains_only_approved_cms_boundary():
         "/api/v3/auth/cms/exchange",
         "/api/v3/auth/cms/introspect",
         "/api/v3/auth/cms/introspect-bearer",
+        "/api/v3/catalog/curations",
         "/api/v3/catalog/curations/resolve",
         "/api/v3/catalog/curations/scan/start",
         "/api/v3/catalog/curations/scan/page",
@@ -41,6 +42,7 @@ def test_admin_contract_contains_only_approved_cms_boundary():
         "ResolveCurationsRequest",
         "ResolveCurationsResponse",
         "CatalogFilters",
+        "CatalogSearchPage",
         "CatalogScanStartRequest",
         "CatalogScanStart",
         "CatalogScanPageRequest",
@@ -61,12 +63,13 @@ def test_admin_contract_contains_only_approved_cms_boundary():
         assert operation["security"] == [{"CmsServiceKey": []}]
         assert all(parameter["name"] != "X-CMS-Service-Key" for parameter in operation.get("parameters", []))
     for path in (
+        "/api/v3/catalog/curations",
         "/api/v3/catalog/curations/resolve",
         "/api/v3/catalog/curations/scan/start",
         "/api/v3/catalog/curations/scan/page",
         "/api/v3/internal/curations/hydrate",
     ):
-        operation = document["paths"][path]["post"]
+        operation = document["paths"][path]["get" if path == "/api/v3/catalog/curations" else "post"]
         assert operation["security"] == [{"CmsServiceKey": []}]
         assert all(parameter["name"] != "X-CMS-Service-Key" for parameter in operation.get("parameters", []))
     assert document["paths"]["/api/v3/auth/cms/introspect-bearer"]["post"]["security"] == [
