@@ -1,6 +1,6 @@
 """Unexpected provider/internal errors must never be reflected to API clients."""
 
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 
 _SENTINEL = "mongodb://internal-user:super-secret@private-host/concierge"
