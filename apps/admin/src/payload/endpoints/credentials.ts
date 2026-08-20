@@ -83,6 +83,10 @@ function credentialsModel(request: PayloadRequest) {
   return model
 }
 
+type LeanFinder = {
+  findOne(query: Record<string, unknown>): { lean(): Promise<Record<string, unknown> | null> }
+}
+
 /** Credential issue/rotate/revoke surface, each guarded and audited. */
 export function credentialEndpoints(): Endpoint[] {
   return [
@@ -90,7 +94,7 @@ export function credentialEndpoints(): Endpoint[] {
       const context = commandContext(request.headers, actorId)
       const applicationId = routeId(request)
       const existing = credentialsModel(request)
-      const duplicate = await (existing as { findOne(query: Record<string, unknown>): { lean(): Promise<unknown> } }).findOne({ applicationId, issueIdempotencyKey: context.idempotencyKey }).lean()
+      const duplicate = await (existing as LeanFinder).findOne({ applicationId, issueIdempotencyKey: context.idempotencyKey }).lean()
       // The raw secret can never be replayed. A repeated request must be
       // resolved by issuing a new credential deliberately, not silently.
       if (duplicate) throw new AdminHttpError(409, 'unavailable_confirmation_required')
@@ -100,8 +104,15 @@ export function credentialEndpoints(): Endpoint[] {
     { method: 'post', path: '/admin/v1/credentials/:id/rotate', handler: guarded(async (request, actorId) => {
       const context = commandContext(request.headers, actorId)
       const credentialId = routeId(request)
-      const existing = credentialsModel(request)
-      const duplicate = await (existing as { findOne(query: Record<string, unknown>): { lean(): Promise<unknown> } }).findOne({ issueIdempotencyKey: context.idempotencyKey }).lean()
+      const existing = credentialsModel(request) as LeanFinder
+      const source = await existing.findOne({ _id: credentialId }).lean()
+      if (!source) throw new AdminHttpError(404, 'not_found')
+      const applicationId = typeof source.applicationId === 'string' ? source.applicationId : String(source.applicationId ?? '')
+      if (!applicationId) throw new AdminHttpError(404, 'not_found')
+      // Idempotency is scoped exactly like the unique database contract:
+      // (applicationId, issueIdempotencyKey). Reusing a key in another
+      // application must not block an unrelated rotation.
+      const duplicate = await existing.findOne({ applicationId, issueIdempotencyKey: context.idempotencyKey }).lean()
       if (duplicate) throw new AdminHttpError(409, 'unavailable_confirmation_required')
       const result = await rotateCredential(credentialId, rotateInput(await body(request as unknown as Request), credentialId, actorId, context.idempotencyKey), new PayloadCredentialRepository(request.payload, actorId, context.requestId))
       return Response.json({ credential: result.credential, secret_once: result.secretOnce }, { status: 201, headers: { 'Cache-Control': 'private, no-store' } })
