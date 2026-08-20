@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 from typing import Optional, Dict, Any
 
 from app.core.database import get_database
-from app.core.security import verify_auth, is_admin_auth
+from app.core.security import is_admin_auth, require_role
 from app.models.user import has_role
 from app.services.openai_service import OpenAIService
 from app.services.ai_orchestrator import AIOrchestrator
@@ -107,7 +107,7 @@ def get_ai_orchestrator(db=Depends(get_database), openai_service=Depends(get_ope
 async def orchestrate(
     request: Request,
     payload: OrchestrateRequest,
-    auth: dict = Depends(verify_auth),  # Support both API key and JWT
+    auth: dict = Depends(require_role("viewer")),
     orchestrator: AIOrchestrator = Depends(get_ai_orchestrator),
 ):
     """
@@ -115,6 +115,9 @@ async def orchestrate(
 
     **Authentication Required:** Include `Authorization: Bearer <token>` OR `X-API-Key: <key>` header
     **⚠️  Costs Money:** Uses OpenAI API - monitor usage
+
+    Human authorization is reloaded from Mongo before any paid work. A viewer
+    may preview AI output, but saving still requires the live curator role.
 
     Combines multiple AI services (transcription, concept extraction, image analysis)
     in smart workflows with flexible output control.
@@ -162,8 +165,7 @@ async def orchestrate(
         # Convert Pydantic model to dict
         request_dict = payload.model_dump(exclude_none=True)
 
-        # ── RBAC (P0, auditoria ago/2026): salvar é ESCRITA — viewer não
-        # escreve. O gate é ANTES do orchestrate (que custa OpenAI), não depois.
+        # Saving is a write: check the live role returned by require_role.
         wants_save = bool(request_dict.get("output", {}).get("save_to_db"))
         if wants_save and not is_admin_auth(auth) and not has_role(auth.get("role", "viewer"), "curator"):
             raise HTTPException(
@@ -171,12 +173,11 @@ async def orchestrate(
                 detail="Viewer role cannot save orchestrator results",
             )
 
-        # Curator derivado do AUTH (sub do JWT) — o curator_id do corpo é
-        # IGNORADO na escrita (o domínio exige ownership do usuário logado)
+        # Curator derived from the authenticated identity; body curator_id is
+        # ignored for human writes to preserve ownership.
         if auth.get("method") == "jwt":
             request_dict["curator_id"] = auth.get("user")
 
-        # Orchestrate (MUST await async method)
         logger.info("[AI Orchestrate] Starting orchestration...")
         result = await orchestrator.orchestrate(request_dict, auth=auth)
 
@@ -184,10 +185,10 @@ async def orchestrate(
         logger.info("=" * 60)
         return result
 
+    except HTTPException:
+        raise
     except ValueError as e:
         logger.error(f"[AI Orchestrate] ✗ ValueError: {str(e)}")
-        # Workflow que depende de Places SEM o serviço injetado é capability
-        # estruturalmente indisponível — o contrato não pode anunciá-la
         if "Places service not configured" in str(e):
             raise HTTPException(status_code=status.HTTP_501_NOT_IMPLEMENTED, detail=str(e))
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
@@ -195,7 +196,6 @@ async def orchestrate(
         logger.error(f"[AI Orchestrate] ✗ Exception: {str(e)}", exc_info=True)
         logger.error("=" * 60)
 
-        # Check if it's an OpenAI BadRequestError (400)
         from openai import BadRequestError
 
         if isinstance(e.__cause__, BadRequestError) or isinstance(e, BadRequestError):
@@ -216,12 +216,13 @@ async def extract_restaurant_name(
     request: Request,
     payload: RestaurantNameExtractionRequest,
     openai_service: OpenAIService = Depends(get_openai_service),
-    auth: dict = Depends(verify_auth),
+    auth: dict = Depends(require_role("viewer")),
 ):
     """
     Extract restaurant name from text using dedicated OpenAI MongoDB configuration.
 
-    **Authentication Required:** Include `Authorization: Bearer <token>` OR `X-API-Key: <key>` header
+    **Authentication Required:** Include `Authorization: Bearer <token>` OR `X-API-Key: <key>` header.
+    Human authorization is reloaded from Mongo before the provider is called.
     """
     try:
         result = await openai_service.extract_restaurant_name_from_text(payload.text, save_to_cache=False)
