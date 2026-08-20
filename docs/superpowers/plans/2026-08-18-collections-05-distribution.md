@@ -52,7 +52,7 @@
 
 `apps/admin/tests/support/consumerCredentials.ts` exports `fakeCredentialRepository(seed?: Partial<Credential>) -> FakeCredentialRepository`, `fixedRandom(size: number) -> (n: number) => Buffer`, and `actor: AdminActor`; the credential tests construct `const repo = fakeCredentialRepository()` before every revoke assertion. This prevents helpers in the test sketch from becoming undeclared globals.
 
-- [ ] **Step 1: Escrever teste de segredo hash-only e revogação**
+- [x] **Step 1: Escrever teste de segredo hash-only e revogação**
 
 ```typescript
 test('issue retorna segredo uma vez e repository recebe apenas hash', async () => {
@@ -79,13 +79,13 @@ test('revoke é idempotente e incrementa credentialsRevision', async () => {
 })
 ```
 
-- [ ] **Step 2: Rodar e confirmar módulos ausentes**
+- [x] **Step 2: Rodar e confirmar módulos ausentes**
 
 Run: `npm run test:admin -- --run tests/unit/applications/credentials.test.ts`
 
 Expected: FAIL.
 
-- [ ] **Step 3: Implementar models e endpoints**
+- [x] **Step 3: Implementar models e endpoints**
 
 Application: `name`, `owner`, `status active|suspended`, `allowedCollectionIds`, `defaultRequestsPerMinute`, `credentialsRevision`, audit fields. Credential separada: `applicationId`, `name`, `prefix`, `secretHash`, `scopes`, `status`, `createdAt/By`, `expiresAt`, `revokedAt/By`, `lastUsedAt`; nunca campo de segredo raw.
 
@@ -102,7 +102,7 @@ Endpoints admin revalidam role e auditam: create/list/update application, issue,
 
 `syncConsumerUsage.ts` é job agendado do Payload, registrado em `payload.config.ts` para rodar a cada cinco minutos. Ele lê o checkpoint CMS `consumer_usage_sync_state`, chama `GET {FASTAPI_BASE_URL}/api/v3/internal/consumer-usage?after=<cursor>&limit=500` com `X-CMS-Service-Key: ${CMS_SERVICE_KEY}`, aplica `$max: {lastUsedAt}` por credential e só então avança o checkpoint. Retry da mesma página é seguro por `$max`; 401 ou erro de rede não avança checkpoint nem revoga credencial.
 
-- [ ] **Step 4: Rodar unit/integration e inspeção de DB**
+- [x] **Step 4: Rodar unit/integration e inspeção de DB**
 
 Run:
 
@@ -115,7 +115,7 @@ npm run test:admin -- --run tests/unit/jobs/syncConsumerUsage.test.ts
 
 Expected: PASS; busca textual no banco de teste não encontra `secretOnce`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/admin
@@ -149,7 +149,7 @@ git commit -m "feat(distribution): administrar consumer credentials"
 **Interfaces:**
 - Produces: `get_cms_database`; `authenticate_consumer(cms_db,bearer)->ConsumerPrincipal`; `authorize_collection`; Mongo fixed-window quota e uso agregado no banco operacional; `GET /internal/consumer-usage` exclusivo do job Payload.
 
-- [ ] **Step 1: Escrever testes de read-only/revoke/allowlist/quota**
+- [x] **Step 1: Escrever testes de read-only/revoke/allowlist/quota**
 
 ```python
 def test_revoked_credential_is_rejected_without_cache(cms_db, seeded_consumer_credential):
@@ -219,13 +219,13 @@ Fixtures de suporte são concretos e compartilhados somente pelo `conftest.py`:
 
 `DistributionClient` has the concrete test-only signatures `get(path: str, *, headers: dict[str, str] | None = None) -> Response` and `request_case(case: Literal["missing_key", "bad_key", "out_of_scope", "missing_slug", "archived", "foreign_cursor"]) -> Response`; it seeds the matching CMS/operational records through `cms_writer`/`operational_db`, then makes an HTTP request through `client`.
 
-- [ ] **Step 2: Rodar e confirmar imports ausentes**
+- [x] **Step 2: Rodar e confirmar imports ausentes**
 
 Run: `cd concierge-api-v3 && venv/bin/pytest tests/test_cms_database.py tests/test_consumer_auth.py tests/test_consumer_rate_limit.py -v`
 
 Expected: FAIL.
 
-- [ ] **Step 3: Implementar segundo client e rate limit distribuído**
+- [x] **Step 3: Implementar segundo client e rate limit distribuído**
 
 `cms_database.py` tem `_cms_client` separado, usa `CMS_MONGODB_READ_URL` e `CMS_MONGODB_DB_NAME`, testa `ping`, expõe `get_cms_database() -> CmsReadOnlyDatabase` e `close_cms_mongo_connection()` e nunca chama `_ensure_indexes`. `CmsReadOnlyDatabase.collection(name)` aceita somente a allowlist `collections`, `collection_versions`, `collection_memberships`, `consumer_applications`, `consumer_credentials`; devolve `CmsReadOnlyCollection` sem `insert_one`, `update_one`, `delete_one`, `bulk_write` ou `create_index`, delegando só `find_one`, `find` e `aggregate`. O usuário Mongo dessa URL recebe apenas `find`; portanto há prova por API, teste e privilégio de banco de que FastAPI não escreve CMS nem lê jobs/audit fora do boundary. Lifespan conecta/fecha ambos independentemente e readiness reporta cada dependência.
 
@@ -253,7 +253,7 @@ Após autenticar com sucesso, `consumer_usage_service.record_consumer_usage(oper
 
 Adicionar ao `Settings` e a `.env.example`: `CMS_MONGODB_READ_URL`, `CMS_MONGODB_DB_NAME=concierge-cms`, `CMS_MONGODB_TEST_URL`, `CMS_MONGODB_TEST_DB_NAME=concierge-cms-test` e `DISTRIBUTION_JSON_MAX_SELECTED=5000` (positivo, fail-closed quando ausente/inválido em production). `CMS_SERVICE_KEY` já foi criado na fase 02 e é reutilizado, não duplicado. Não registrar URL CMS de teste fora do perfil de teste.
 
-- [ ] **Step 4: Rodar testes e readiness**
+- [x] **Step 4: Rodar testes e readiness**
 
 Run:
 
@@ -264,7 +264,7 @@ venv/bin/pytest tests/test_cms_database.py tests/test_consumer_auth.py tests/tes
 
 Expected: PASS; mock comprova nenhuma chamada write no CMS; quota funciona entre duas instâncias de service.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add concierge-api-v3/app concierge-api-v3/tests concierge-api-v3/.env.example
@@ -288,7 +288,7 @@ git commit -m "feat(distribution): autenticar consumers pela projecao CMS"
 **Interfaces:**
 - Produces: `PublicCurationItemV1`, `hydrate_public_batch(db, ids) -> HydrationBatch`, schema JSON determinístico; mesmo DTO para page/dump/admin export.
 
-- [ ] **Step 1: Escrever teste allowlist por dados proibidos sentinela**
+- [x] **Step 1: Escrever teste allowlist por dados proibidos sentinela**
 
 ```python
 def test_public_dto_never_leaks_private_fields():
@@ -305,7 +305,7 @@ def test_public_dto_never_leaks_private_fields():
         assert sentinel not in serialized
 ```
 
-- [ ] **Step 2: Rodar e confirmar DTO incompleto**
+- [x] **Step 2: Rodar e confirmar DTO incompleto**
 
 Run:
 
@@ -316,7 +316,7 @@ venv/bin/pytest tests/test_distribution_dto.py tests/test_distribution_hydration
 
 Expected: FAIL porque DTO v1 completo/export de schema não existem.
 
-- [ ] **Step 3: Implementar allowlist e batch resolver**
+- [x] **Step 3: Implementar allowlist e batch resolver**
 
 Declarar Pydantic models `PublicAddress`, `PublicCoordinates`, `PublicContact`, `PublicHours`, `PublicMedia`, `PublicEntity`, `PublicCuration`, `PublicCurationItemV1` com `extra='forbid'`. Mapear explicitamente IDs, nome/tipo, address/geo/contact/hours/media, conceitos/categories, description/strength/public notes e timestamps/revisions públicos. Não usar `Curation.model_dump()` nem spread de `data` Mongo.
 
@@ -340,7 +340,7 @@ class PublicCurationItemV1(BaseModel):
 
 `hydrate_public_batch` aceita até 500 IDs, faz duas queries `$in`, preserva ordem técnica dos IDs, chama predicado único e retorna items/reasons. `export_distribution_schema.py` usa `model_json_schema`, sort keys + newline e `--check`.
 
-- [ ] **Step 4: Rodar todos reason codes e schema check**
+- [x] **Step 4: Rodar todos reason codes e schema check**
 
 Run:
 
@@ -353,7 +353,7 @@ venv/bin/python scripts/export_distribution_schema.py --check
 
 Expected: PASS para cada reason code e falha transitória; nenhum sentinel no JSON/schema.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add concierge-api-v3/app concierge-api-v3/scripts concierge-api-v3/tests contracts
@@ -388,7 +388,7 @@ GET /api/v3/distribution/collections/{slug}/versions/{version}/dump # dump intei
 
 `GET current` não aceita `version`; na primeira página fixa a versão current resolvida no cursor. `GET exact` exige inteiro positivo no path e rejeita cursor cuja `publishedVersion` não seja exatamente o path. `GET /versions` usa `version_cursor` com `purpose="version-list"`, `lastVersion` e não aceita `item_cursor`; as rotas de items usam `cursor` com `purpose="collection-items"` e nunca aceitam `version_cursor`. Dumps não aceitam cursor: percorrem a membership completa da versão resolvida. Cursor de application, collection, versão, filtros, purpose ou schema diferentes retorna 409.
 
-- [ ] **Step 1: Escrever matriz 401/404/410/409 e cursor binding**
+- [x] **Step 1: Escrever matriz 401/404/410/409 e cursor binding**
 
 ```python
 @pytest.mark.parametrize("case,status", [
@@ -407,13 +407,13 @@ def test_exact_version_keeps_membership_but_hydrates_live(distribution_client, o
     assert after["items"][0]["curation"]["description"] == "new live"
 ```
 
-- [ ] **Step 2: Rodar e confirmar 404/router ausente**
+- [x] **Step 2: Rodar e confirmar 404/router ausente**
 
 Run: `cd concierge-api-v3 && venv/bin/pytest tests/test_distribution_api.py tests/test_distribution_cursor.py -v`
 
 Expected: FAIL.
 
-- [ ] **Step 3: Implementar membership scan, counts e cursor**
+- [x] **Step 3: Implementar membership scan, counts e cursor**
 
 Resolver Collection/version metadata no CMS. Query de membership em batches por interval:
 
@@ -427,7 +427,7 @@ Ordenar `curationId`, nunca posição. Para cada page, caminhar memberships apó
 
 Cursor usa segredo `DISTRIBUTION_CURSOR_SECRET`, TTL 15 minutos e payload `{purpose,applicationId,collectionId,publishedVersion,schemaVersion,filtersHash,lastCurationId,exp}`; para histórico substitui `publishedVersion/lastCurationId` por `lastVersion`. HMAC/tamper/expiry/mismatch retorna 409. Todas responses incluem no-store e os headers de quota definidos na Task 2.
 
-- [ ] **Step 4: Rodar APIs, cursor e arquivo/restore**
+- [x] **Step 4: Rodar APIs, cursor e arquivo/restore**
 
 Run:
 
@@ -438,7 +438,7 @@ venv/bin/pytest tests/test_distribution_api.py tests/test_distribution_cursor.py
 
 Expected: PASS; archived current/exact/versions retorna 410, restore expõe a mesma current version; out-of-scope continua 404.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add concierge-api-v3/app concierge-api-v3/tests
@@ -463,7 +463,7 @@ git commit -m "feat(distribution): paginar Collections publicadas"
 - Consumes: page DTO/hydration e application endpoints.
 - Produces: NDJSON manifest/item/footer, gzip negotiation, JSON cap `DISTRIBUTION_JSON_MAX_SELECTED=5000`, UI create/show-once/rotate/revoke.
 
-- [ ] **Step 1: Escrever teste de footer e stream interrompido**
+- [x] **Step 1: Escrever teste de footer e stream interrompido**
 
 ```python
 def test_ndjson_has_manifest_items_and_valid_footer(client, consumer_headers):
@@ -481,13 +481,13 @@ def test_transient_failure_ends_without_footer(client, consumer_headers, monkeyp
     assert not any(record.get("record_type") == "footer" for record in records)
 ```
 
-- [ ] **Step 2: Rodar e confirmar dump ausente/incompleto**
+- [x] **Step 2: Rodar e confirmar dump ausente/incompleto**
 
 Run: `cd concierge-api-v3 && venv/bin/pytest tests/test_distribution_dump.py -v`
 
 Expected: FAIL.
 
-- [ ] **Step 3: Implementar stream bounded-memory e UI show-once**
+- [x] **Step 3: Implementar stream bounded-memory e UI show-once**
 
 `iter_ndjson_dump` emite manifest com generated_at/version/selection hash, cada item compact JSON e footer com selected/available/unavailable/reason counts/SHA-256 dos records lógicos. Usa batches 500 e `StreamingResponse(application/x-ndjson)`. Para `Accept-Encoding:gzip`, envolver iterator com `zlib.compressobj(wbits=31)` e flush final; nunca montar o dump inteiro.
 
@@ -514,7 +514,7 @@ def gzip_iter(chunks: Iterator[bytes]) -> Iterator[bytes]:
 
 `format=json` só funciona quando `selected_count <= settings.distribution_json_max_selected`; configurar `DISTRIBUTION_JSON_MAX_SELECTED=5000` em `.env.example`, com default 5000 e validação `ge=1` no `Settings`. Acima retorna 413 com URL equivalente `format=ndjson`. Admin UI copia/download secret somente enquanto dialog de issue está aberto, impede reabertura após close e orienta rotação; application view edita allowlist e rate limit e exibe last use sincronizado, versões autorizadas e exemplos `curl` sem secret real.
 
-- [ ] **Step 4: Rodar dump/E2E credential/revoke imediato**
+- [x] **Step 4: Rodar dump/E2E credential/revoke imediato**
 
 Run:
 
@@ -527,7 +527,7 @@ npm run test:e2e --workspace=@concierge/admin -- tests/e2e/credentials/lifecycle
 
 Expected: PASS; revoke faz a próxima request retornar 401; stream interrompido não tem footer; gzip descomprime para o mesmo SHA lógico.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add concierge-api-v3/app concierge-api-v3/tests apps/admin
@@ -547,3 +547,11 @@ npm run check:contracts
 ```
 
 Expected: exit 0; nenhum campo proibido aparece em page/dump/export; archive/revoke têm efeito imediato.
+
+Status do gate (2026-08-20): pytest de distribution, `npm run test:admin`,
+`npm run test:integration --workspace=@concierge/admin`, `typecheck:admin`,
+`lint:admin` e `npm run check:contracts` passam localmente. O suite
+`tests/e2e/credentials` continua gated por `CMS_E2E_CREDENTIALS=1` e NÃO foi
+executado: o `.env` local do FastAPI não define as variáveis `CMS_*` e aponta
+`MONGODB_DB_NAME` para o banco de produção, então rodá-lo exige antes uma
+stack dedicada com bancos `-test` em ambos os lados.
