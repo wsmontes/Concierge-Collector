@@ -333,7 +333,10 @@ const AuthService = (function() {
             return 'offline';
         }
 
-        // 2) Fallback legado: body com refresh do localStorage (cross-site)
+        // 2) Fallback legado: body com refresh do localStorage (cross-site).
+        // Omit cookies deliberately: a cookie-first attempt just failed, and
+        // the backend prioritizes a refresh cookie over the explicit body. A
+        // stale cookie must not shadow a still-valid cross-site local token.
         if (!refreshToken) {
             console.log('[AuthService] No refresh token available (cookie failed)');
             return false;
@@ -347,7 +350,7 @@ const AuthService = (function() {
                 headers: {
                     'Content-Type': 'application/json'
                 },
-                credentials: 'include',
+                credentials: 'omit',
                 body: JSON.stringify({ refresh_token: refreshToken })
             });
 
