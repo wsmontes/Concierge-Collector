@@ -544,18 +544,25 @@ const AuthService = (function() {
             // Notify backend to revoke tokens/session (2026-08-15: o backend
             // revoga o jti do refresh server-side). Bearer quando existe;
             // credentials inclui o cookie para os dois cenários (same-site).
+            // No caminho cross-site legado, o refresh local é enviado no body
+            // para que o servidor consiga revogar o jti correto.
             const baseUrl = AppConfig.api.backend.baseUrl;
             const logoutUrl = `${baseUrl}${ENDPOINTS.logout}`;
             const headers = {};
             const token = getToken();
+            const refreshToken = getRefreshToken();
             if (token) {
                 headers['Authorization'] = `Bearer ${token}`;
+            }
+            if (refreshToken) {
+                headers['Content-Type'] = 'application/json';
             }
 
             await fetch(logoutUrl, {
                 method: 'POST',
                 headers,
-                credentials: 'include'
+                credentials: 'include',
+                ...(refreshToken ? { body: JSON.stringify({ refresh_token: refreshToken }) } : {})
             });
         } catch (error) {
             console.error('[AuthService] Logout request failed:', error);
@@ -606,7 +613,13 @@ const AuthService = (function() {
         console.log('[AuthService] ========================================');
         console.log('[AuthService] Initializing...');
         console.log('[AuthService] ========================================');
-        console.log(`[AuthService] URL: ${window.location.href}`);
+        // Query e fragment podem carregar access/refresh token no caminho
+        // legado. Nunca serializar href/search/hash em logs.
+        console.log('[AuthService] Location:', {
+            path: window.location.pathname,
+            hasQuery: !!window.location.search,
+            hasFragment: !!window.location.hash
+        });
 
         // Step 1: Check for tokens in URL (OAuth callback)
         const urlTokens = extractTokensFromURL();
@@ -665,8 +678,8 @@ const AuthService = (function() {
         const keys = getStorageKeys();
         console.log(`[AuthService]   Storage keys:`, keys);
         console.log(`[AuthService]   localStorage content:`, {
-            oauthToken: localStorage.getItem(keys.oauthToken),
-            oauthRefreshToken: localStorage.getItem(keys.oauthRefreshToken),
+            oauthToken: localStorage.getItem(keys.oauthToken) ? 'present' : 'MISSING',
+            oauthRefreshToken: localStorage.getItem(keys.oauthRefreshToken) ? 'present' : 'MISSING',
             oauthExpiry: localStorage.getItem(keys.oauthExpiry)
         });
         const hasToken = getToken() !== null;
