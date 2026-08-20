@@ -1,7 +1,7 @@
 import type { ClientSession, Model } from 'mongoose'
 import type { Payload } from 'payload'
 import { appendAuditEvent } from '../audit/append-event'
-import { convergeDraftDelta } from '../collections/draft-delta'
+import { draftDeltaTransition } from '../collections/draft-delta'
 import { AdminHttpError } from '../http/errors'
 import { FastApiCatalogClient } from './catalog-client'
 import type { CatalogResolver, DraftOperationRecord, OperationLease } from './types'
@@ -185,12 +185,13 @@ async function stageSelectionPage(
       stageState: 'committed',
       $or: [{ validUntilDraftRevision: null }, { validUntilDraftRevision: { $gte: Number(collection.draftRevision) } }],
     }).sort({ targetDraftRevision: -1 }).lean()
-    const desired = convergeDraftDelta(Boolean(membership), (existing?.desiredState as 'add' | 'remove' | undefined) ?? null, operation.action)
-    if (desired) {
+    const currentDelta = (existing?.desiredState as 'add' | 'remove' | undefined) ?? null
+    const transition = draftDeltaTransition(Boolean(membership), currentDelta, operation.action)
+    if (transition.changed && transition.desired) {
       await changes.updateOne(
         { operationId: operation.id, curationId, stageState: 'staged' },
         { $set: {
-          collectionId: operation.collectionId, curationId, desiredState: desired, basePublishedVersion: collection.currentPublishedVersion ?? null,
+          collectionId: operation.collectionId, curationId, desiredState: transition.desired, basePublishedVersion: collection.currentPublishedVersion ?? null,
           draftEpoch: collection.draftEpoch, baseDraftRevision: Number(collection.draftRevision), targetDraftRevision, operationId: operation.id,
           operationSequence: operation.operationSequence, stageState: 'staged', validUntilDraftRevision: null, updatedAt: new Date(),
         }, $setOnInsert: { createdAt: new Date() } },
@@ -201,7 +202,9 @@ async function stageSelectionPage(
     }
     await items.updateOne(
       { operationId: operation.id, curationId, status: 'pending' },
-      { $set: desired ? { status: 'applied', targetDraftRevision } : { status: 'skipped', reasonCode: 'no_op', targetDraftRevision } },
+      { $set: transition.changed
+        ? { status: 'applied', targetDraftRevision }
+        : { status: 'skipped', reasonCode: 'no_op', targetDraftRevision } },
     )
   }
 }
@@ -315,6 +318,7 @@ async function commitDraftTransaction(
     if (!current) throw new TerminalOperationError('conflicted', 'draft_revision_changed')
     const applied = await items.find({ operationId: operation.id, status: 'applied' }).session(session).lean()
     const curationIds = applied.map((item) => String(item.curationId))
+    const selectedCountDelta = operation.action === 'add' ? curationIds.length : -curationIds.length
     const advanced = await collections.updateOne(
       {
         _id: operation.collectionId,
@@ -323,12 +327,10 @@ async function commitDraftTransaction(
         draftState: { $ne: 'publishing' },
         lifecycle: { $ne: 'archived' },
       },
-      operation.mode === 'selection'
-        ? {
-          $set: { draftState: 'dirty', updatedAt: new Date() },
-          $inc: { draftRevision: 1, draftSelectedCount: operation.action === 'add' ? curationIds.length : -curationIds.length },
-        }
-        : { $set: { draftState: 'dirty', updatedAt: new Date() }, $inc: { draftRevision: 1 } },
+      {
+        $set: { draftState: 'dirty', updatedAt: new Date() },
+        $inc: { draftRevision: 1, draftSelectedCount: selectedCountDelta },
+      },
       { session },
     )
     if (advanced.modifiedCount !== 1) throw new TerminalOperationError('conflicted', 'draft_revision_changed')
@@ -435,12 +437,13 @@ export async function applyDraftOperation(
         stageState: 'committed',
         $or: [{ validUntilDraftRevision: null }, { validUntilDraftRevision: { $gte: Number(collection.draftRevision) } }],
       }).sort({ targetDraftRevision: -1 }).lean()
-      const desired = convergeDraftDelta(Boolean(membership), (existing?.desiredState as 'add' | 'remove' | undefined) ?? null, operation.action)
-      if (desired) {
+      const currentDelta = (existing?.desiredState as 'add' | 'remove' | undefined) ?? null
+      const transition = draftDeltaTransition(Boolean(membership), currentDelta, operation.action)
+      if (transition.changed && transition.desired) {
         await changes.updateOne(
           { operationId, curationId, stageState: 'staged' },
           { $set: {
-            collectionId: operation.collectionId, curationId, desiredState: desired, basePublishedVersion: collection.currentPublishedVersion ?? null,
+            collectionId: operation.collectionId, curationId, desiredState: transition.desired, basePublishedVersion: collection.currentPublishedVersion ?? null,
             draftEpoch: collection.draftEpoch, baseDraftRevision: Number(collection.draftRevision), targetDraftRevision, operationId,
             operationSequence: operation.operationSequence, stageState: 'staged', validUntilDraftRevision: null, updatedAt: new Date(),
           }, $setOnInsert: { createdAt: new Date() } },
@@ -449,8 +452,25 @@ export async function applyDraftOperation(
       } else {
         await changes.deleteOne({ operationId, curationId, stageState: 'staged' })
       }
-      await items.updateOne({ operationId, curationId, status: 'pending' }, { $set: { status: 'applied', targetDraftRevision } })
+      await items.updateOne(
+        { operationId, curationId, status: 'pending' },
+        { $set: transition.changed
+          ? { status: 'applied', targetDraftRevision }
+          : { status: 'skipped', reasonCode: 'no_op', targetDraftRevision } },
+      )
     }
+
+    const appliedCount = await items.countDocuments({ operationId, status: 'applied' })
+    if (appliedCount === 0) {
+      const completed = await operations.updateOne(
+        { ...ownedFence(operation, lease), status: { $in: CANCELLABLE } },
+        { $set: { status: 'completed_with_skips', checkpoint: 'no_eligible_items', leaseExpiresAt: null, updatedAt: new Date() } },
+      )
+      if (completed.modifiedCount !== 1) throw new AdminHttpError(409, 'conflict')
+      await reconcileParent(payload, operation.parentOperationId)
+      return asOperation(await operations.findById(operationId).lean())
+    }
+
     await resolver.introspectAdmin(operation.actorId)
     await assertFence(operations, operation, lease)
     await hooks.beforeCommitting?.()
