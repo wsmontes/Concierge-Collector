@@ -2,9 +2,11 @@
 
 from datetime import datetime, timezone
 from unittest.mock import patch
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 from fastapi import HTTPException
+from jose import jwt
 
 
 def test_production_callback_origins_do_not_inherit_development_frontend():
@@ -95,3 +97,64 @@ def test_oauth_state_requires_browser_binding_and_is_one_shot(in_memory_db):
             now=now,
         )
     assert replay.value.status_code == 400
+
+
+def test_oauth_init_sets_binding_cookie_and_state_excludes_pkce(client, in_memory_db):
+    """The HTTP authorization URL must expose no PKCE verifier."""
+    from app.core.config import settings
+    from app.core.security import ALGORITHM, get_jwt_secret
+
+    in_memory_db.oauth_login_states.delete_many({})
+    trusted = "http://127.0.0.1:5500"
+    with (
+        patch.object(settings, "environment", "development"),
+        patch.object(settings, "frontend_url", trusted),
+        patch.object(settings, "trusted_callback_origins", "[]"),
+        patch.object(settings, "google_oauth_client_id", "test-google-client"),
+        patch.object(settings, "google_oauth_redirect_uri", "http://localhost:8000/api/v3/auth/callback"),
+    ):
+        response = client.get(
+            f"/api/v3/auth/google?callback_url={trusted}",
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 307
+    location = response.headers["location"]
+    state = parse_qs(urlparse(location).query)["state"][0]
+    state_payload = jwt.decode(state, get_jwt_secret(), algorithms=[ALGORITHM])
+    stored = in_memory_db.oauth_login_states.find_one({})
+
+    assert stored is not None
+    assert state_payload["sd"] == trusted
+    assert stored["code_verifier"] not in state
+    assert "code_verifier" not in state_payload
+    assert "oauth_state_binding=" in response.headers.get("set-cookie", "")
+    assert "HttpOnly" in response.headers.get("set-cookie", "")
+
+
+def test_oauth_callback_rejects_valid_state_without_browser_binding_before_google(client, in_memory_db):
+    """A stolen state URL alone is insufficient to complete the login."""
+    from app.core.config import settings
+    from app.services.oauth_state_service import issue_oauth_state
+
+    in_memory_db.oauth_login_states.delete_many({})
+    state, _browser_binding = issue_oauth_state(
+        in_memory_db,
+        code_verifier="server-verifier",
+        frontend_url="http://127.0.0.1:5500",
+        now=datetime.now(timezone.utc),
+    )
+    client.cookies.clear()
+
+    with (
+        patch.object(settings, "google_oauth_client_id", "test-google-client"),
+        patch.object(settings, "google_oauth_client_secret", "test-google-secret"),
+        patch("app.api.auth.httpx.Client") as google_client,
+    ):
+        response = client.get(
+            f"/api/v3/auth/callback?code=stolen-code&state={state}",
+            follow_redirects=False,
+        )
+
+    assert response.status_code == 400
+    google_client.assert_not_called()
