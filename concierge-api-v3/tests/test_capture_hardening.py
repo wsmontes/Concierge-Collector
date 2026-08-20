@@ -23,6 +23,17 @@ def _override_database(client, database):
     return restore
 
 
+def _live_user(email: str, role: str = "curator") -> dict:
+    return {
+        "_id": f"user-{email}",
+        "email": email,
+        "google_id": f"google-{email}",
+        "name": email,
+        "authorized": True,
+        "role": role,
+    }
+
+
 def test_capture_session_id_scopes_same_client_key_by_curator():
     from app.api.capture import _capture_session_id
 
@@ -67,6 +78,7 @@ def test_capture_reuses_persisted_scoped_session_before_ai(client):
     }
     db = MagicMock()
     db.__getitem__.return_value.find_one.return_value = persisted
+    db.users.find_one.return_value = _live_user("alice@example.com")
     restore = _override_database(client, db)
     token = create_access_token(data={"sub": "alice@example.com", "role": "curator"})
     try:
@@ -100,6 +112,8 @@ def test_capture_processing_session_returns_conflict_before_paid_ai(client, in_m
     idempotency_key = "processing-key"
     capture_id = _capture_session_id(curator_id, idempotency_key)
     now = datetime.now(timezone.utc)
+    in_memory_db.users.delete_many({"email": curator_id})
+    in_memory_db.users.insert_one(_live_user(curator_id))
     in_memory_db.capture_sessions.delete_many({"_id": capture_id})
     in_memory_db.capture_sessions.insert_one(
         {
@@ -128,6 +142,7 @@ def test_capture_processing_session_returns_conflict_before_paid_ai(client, in_m
             )
     finally:
         restore()
+        in_memory_db.users.delete_many({"email": curator_id})
         in_memory_db.capture_sessions.delete_many({"_id": capture_id})
         _idempotency_cache._data.clear()
 
@@ -155,6 +170,7 @@ def test_confirm_validates_owner_before_returning_cached_result(client):
         "entities": [],
         "concepts": {},
     }
+    db.users.find_one.return_value = _live_user("bob@example.com")
     restore = _override_database(client, db)
     token = create_access_token(data={"sub": "bob@example.com", "role": "curator"})
     try:
