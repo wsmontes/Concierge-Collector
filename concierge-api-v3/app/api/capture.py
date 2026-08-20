@@ -452,8 +452,8 @@ async def capture(
         restaurant_name = await asyncio.to_thread(_extract_restaurant_name, transcription)
         logger.info(f"Extracted name: {restaurant_name}")
 
-        # ── 3. Match entities ──
-        entities = _match_entities(db, restaurant_name)
+        # ── 3. Match entities (Mongo + optional Google Places) ──
+        entities = await asyncio.to_thread(_match_entities, db, restaurant_name)
         logger.info(f"Found {len(entities)} entity matches")
 
         # ── 4. Extract concepts (OpenAI síncrono → thread) ──
@@ -552,7 +552,7 @@ async def confirm_capture(
     entity_doc = db.entities.find_one({"_id": request.entity_id})
     if not entity_doc:
         if matched_entity.get("source") == "google_places" and matched_entity.get("place_id"):
-            entity_doc = _create_entity_from_place(matched_entity, db)
+            entity_doc = await asyncio.to_thread(_create_entity_from_place, matched_entity, db)
             if not entity_doc:
                 logger.warning(
                     "Google Places enrichment failed for %s (place_id=%s); creating skeleton entity",
