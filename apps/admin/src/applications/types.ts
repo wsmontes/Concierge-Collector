@@ -22,6 +22,9 @@ export interface ConsumerCredentialRecord {
   expiresAt: Date | null
   revokedAt: Date | null
   revokedBy: string | null
+  /** Internal lineage marker: one source credential may mint one successor. */
+  rotatedAt: Date | null
+  rotatedToCredentialId: string | null
 }
 
 export interface ConsumerCredentialPublic {
