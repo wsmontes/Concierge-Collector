@@ -1,6 +1,10 @@
 """Regression tests for Capture authorization and idempotency boundaries."""
 
+from datetime import datetime, timedelta, timezone
 from unittest.mock import MagicMock, patch
+
+import pytest
+from fastapi import HTTPException
 
 
 def _override_database(client, database):
@@ -119,3 +123,99 @@ def test_confirm_validates_owner_before_returning_cached_result(client):
 
     assert response.status_code == 403
     assert "does not belong" in response.json()["detail"]
+
+
+def test_capture_processing_claim_allows_only_one_active_worker(in_memory_db):
+    """The same capture cannot start two paid AI pipelines concurrently."""
+    from app.services.capture_session_service import claim_capture_session
+
+    collection = in_memory_db.capture_sessions
+    collection.delete_many({})
+    now = datetime.now(timezone.utc)
+    first = claim_capture_session(
+        in_memory_db,
+        capture_id="cap_atomic",
+        curator_id="alice@example.com",
+        idempotency_key="same-key",
+        now=now,
+    )
+
+    assert first.acquired is True
+    assert first.processing_token
+
+    with pytest.raises(HTTPException) as duplicate:
+        claim_capture_session(
+            in_memory_db,
+            capture_id="cap_atomic",
+            curator_id="alice@example.com",
+            idempotency_key="same-key",
+            now=now,
+        )
+    assert duplicate.value.status_code == 409
+
+
+def test_capture_processing_claim_can_take_over_expired_worker(in_memory_db):
+    from app.services.capture_session_service import claim_capture_session
+
+    collection = in_memory_db.capture_sessions
+    collection.delete_many({})
+    now = datetime.now(timezone.utc)
+    collection.insert_one(
+        {
+            "_id": "cap_expired",
+            "capture_id": "cap_expired",
+            "curator_id": "alice@example.com",
+            "idempotency_key": "same-key",
+            "status": "processing",
+            "processing_token": "dead-worker",
+            "processing_expires_at": now - timedelta(seconds=1),
+            "createdAt": now - timedelta(minutes=10),
+        }
+    )
+
+    takeover = claim_capture_session(
+        in_memory_db,
+        capture_id="cap_expired",
+        curator_id="alice@example.com",
+        idempotency_key="same-key",
+        now=now,
+    )
+
+    assert takeover.acquired is True
+    assert takeover.processing_token != "dead-worker"
+    stored = collection.find_one({"_id": "cap_expired"})
+    assert stored["processing_token"] == takeover.processing_token
+    assert stored["processing_expires_at"] > now
+
+
+def test_completed_capture_claim_returns_existing_session(in_memory_db):
+    from app.services.capture_session_service import claim_capture_session
+
+    collection = in_memory_db.capture_sessions
+    collection.delete_many({})
+    now = datetime.now(timezone.utc)
+    collection.insert_one(
+        {
+            "_id": "cap_done",
+            "capture_id": "cap_done",
+            "curator_id": "alice@example.com",
+            "idempotency_key": "same-key",
+            "status": "pending_confirmation",
+            "transcription": "already paid for",
+            "restaurant_name": "Existing",
+            "entities": [],
+            "concepts": {},
+            "createdAt": now,
+        }
+    )
+
+    claim = claim_capture_session(
+        in_memory_db,
+        capture_id="cap_done",
+        curator_id="alice@example.com",
+        idempotency_key="same-key",
+        now=now,
+    )
+
+    assert claim.acquired is False
+    assert claim.existing_session["transcription"] == "already paid for"
