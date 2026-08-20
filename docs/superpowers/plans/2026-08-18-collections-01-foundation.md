@@ -1,6 +1,6 @@
 # Fundação do Monorepo e Payload CMS — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Adicionar um Admin Payload/Next e um worker separado ao repositório sem mover nem regressar o Collector vanilla ou o FastAPI existentes.
 
@@ -37,7 +37,7 @@
 - Consumes: scripts legados `test`, `test:watch`, `test:coverage`, `lint` e `lint:fix`.
 - Produces: workspaces `apps/*` e `packages/*`; comandos `test:collector`, `lint:collector`, `dev:admin`, `build:admin`, `test:admin`, `typecheck:admin`, `start:admin-worker`.
 
-- [ ] **Step 1: Escrever o teste de configuração que falha**
+- [x] **Step 1: Escrever o teste de configuração que falha**
 
 Criar `tests/test_workspace_config.test.js`:
 
@@ -59,13 +59,13 @@ describe('workspace root', () => {
 })
 ```
 
-- [ ] **Step 2: Rodar e confirmar a falha**
+- [x] **Step 2: Rodar e confirmar a falha**
 
 Run: `npx vitest run tests/test_workspace_config.test.js`
 
 Expected: FAIL em `private`/`workspaces` porque a raiz ainda é um pacote único Node 18+.
 
-- [ ] **Step 3: Aplicar a configuração mínima**
+- [x] **Step 3: Aplicar a configuração mínima**
 
 Em `package.json`, preservar dependências e substituir/estender somente os campos abaixo:
 
@@ -106,7 +106,7 @@ Criar `.nvmrc` com uma única linha `22`. Acrescentar ao `.gitignore`:
 
 Com Node 22/npm 10.9.2 ativo, rodar `npm install --package-lock-only` na raiz.
 
-- [ ] **Step 4: Verificar workspace e regressão do Collector**
+- [x] **Step 4: Verificar workspace e regressão do Collector**
 
 Run:
 
@@ -120,7 +120,7 @@ npm run test:collector
 
 Expected: Node começa com `v22.`, npm com `10.9.2`, teste novo PASS e suíte Collector permanece verde.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add .nvmrc .gitignore package.json package-lock.json tests/test_workspace_config.test.js
@@ -157,7 +157,7 @@ git commit -m "build: preparar npm workspace em Node 22"
 - Consumes: workspace `@concierge/admin`, `CMS_MONGODB_URL`, `CMS_MONGODB_DB_NAME`, `PAYLOAD_SECRET`, `CMS_PUBLIC_SERVER_URL`.
 - Produces: `GET /health -> {status:'ok', service:'concierge-admin'}`; `env` validado no boot; Admin em `/admin`; API Payload em `/api/*`.
 
-- [ ] **Step 1: Criar package/config e o teste de env que falha**
+- [x] **Step 1: Criar package/config e o teste de env que falha**
 
 Criar `apps/admin/package.json`:
 
@@ -209,7 +209,7 @@ describe('readEnv', () => {
 })
 ```
 
-- [ ] **Step 2: Instalar pins e confirmar a falha**
+- [x] **Step 2: Instalar pins e confirmar a falha**
 
 Run na raiz:
 
@@ -221,7 +221,7 @@ npm run test:admin -- --run tests/unit/env.test.ts
 
 Expected: FAIL com `Cannot find module '../../src/env'`.
 
-- [ ] **Step 3: Implementar env, Payload e rotas Next mínimas**
+- [x] **Step 3: Implementar env, Payload e rotas Next mínimas**
 
 Criar `apps/admin/src/env.ts`:
 
@@ -382,7 +382,7 @@ PAYLOAD_SECRET=replace-with-at-least-32-random-characters
 CMS_PUBLIC_SERVER_URL=http://localhost:3000
 ```
 
-- [ ] **Step 4: Rodar unit, tipos e build**
+- [x] **Step 4: Rodar unit, tipos e build**
 
 Run:
 
@@ -397,7 +397,7 @@ npm run test:collector
 
 Expected: todos PASS; build expõe `/admin`, `/api/[...slug]` e `/health`; Collector continua verde.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/admin package.json package-lock.json
@@ -423,7 +423,7 @@ git commit -m "feat(cms): criar app Payload isolado"
 - Consumes: `req.user` futuro com `role`, `authorized`; Payload Admin config.
 - Produces: collection slug `cms-users`/db `cms_users`; `isAuthenticated`, `isAuthorizedAdmin`; grupos Overview, Content, Distribution, Operations, Administration.
 
-- [ ] **Step 1: Escrever os testes de access e navegação**
+- [x] **Step 1: Escrever os testes de access e navegação**
 
 ```typescript
 import { describe, expect, test } from 'vitest'
@@ -447,13 +447,13 @@ describe('CMS foundation access', () => {
 })
 ```
 
-- [ ] **Step 2: Rodar e confirmar a falha**
+- [x] **Step 2: Rodar e confirmar a falha**
 
 Run: `npm run test:admin -- --run tests/unit/auth/access.test.ts tests/unit/payload/navigation.test.ts`
 
 Expected: FAIL porque `access.ts` e `CmsNav.tsx` ainda não existem.
 
-- [ ] **Step 3: Implementar access, user mirror e shell**
+- [x] **Step 3: Implementar access, user mirror e shell**
 
 Criar `apps/admin/src/auth/access.ts`:
 
@@ -468,7 +468,7 @@ Criar `CmsUsers.ts` com `auth.disableLocalStrategy=true`, `admin.useAsTitle='ema
 
 Em `payload.config.ts`, registrar `CmsUsers`, definir `admin.user='cms-users'`, `admin.meta.titleSuffix='— Concierge'`, logo/ícone e CSS customizado. Em `admin.css`, mapear limestone/olive para variáveis Payload e manter contraste WCAG AA, `:focus-visible` de 2px e touch target mínimo de 40px.
 
-- [ ] **Step 4: Verificar access, tipos e build**
+- [x] **Step 4: Verificar access, tipos e build**
 
 Run:
 
@@ -480,7 +480,7 @@ npm run build:admin
 
 Expected: PASS; não existe login local por senha e nenhum módulo legado aparece na nav.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/admin/src apps/admin/payload.config.ts apps/admin/app
@@ -504,7 +504,7 @@ git commit -m "feat(cms): adicionar shell e identidade deny-by-default"
 - Consumes: Payload Local API `payload.jobs.queue()`/`payload.jobs.runByID()` e banco CMS de teste.
 - Produces: task slug `record-worker-heartbeat`, queue `maintenance`, collection oculta `worker-heartbeats`, `GET /health/worker`; comando `npm run start:worker --workspace=@concierge/admin`.
 
-- [ ] **Step 1: Escrever o teste de job persistido**
+- [x] **Step 1: Escrever o teste de job persistido**
 
 ```typescript
 import { afterAll, beforeAll, describe, expect, test } from 'vitest'
@@ -535,13 +535,13 @@ describe('worker heartbeat', () => {
 
 O teste de integração deve validar a configuração antes de importar `payload.config`: exige `CMS_MONGODB_URL` e `CMS_MONGODB_DB_NAME` terminado em `-test`, mais `PAYLOAD_SECRET` e `CMS_PUBLIC_SERVER_URL` efêmeros. Sem essa configuração, deve falhar com mensagem explícita; `CMS_SKIP_MONGO_INTEGRATION=1` é o único skip permitido, para ambientes que deliberadamente não forneçam Mongo. Nunca conectar a um banco sem o sufixo `-test`.
 
-- [ ] **Step 2: Rodar e confirmar a falha**
+- [x] **Step 2: Rodar e confirmar a falha**
 
 Run: `npm run test:integration --workspace=@concierge/admin -- tests/integration/worker/heartbeat.int.test.ts`
 
 Expected: FAIL porque o script/config/task `record-worker-heartbeat` não existe.
 
-- [ ] **Step 3: Implementar collection, task e processo oficial**
+- [x] **Step 3: Implementar collection, task e processo oficial**
 
 Criar `recordWorkerHeartbeat.ts`:
 
@@ -578,7 +578,7 @@ Adicionar scripts:
 
 `GET /health/worker` consulta o último heartbeat; retorna 200 quando tem menos de 180 segundos e 503 caso contrário, sem iniciar jobs no processo web.
 
-- [ ] **Step 4: Rodar integração e regressão completa da fase**
+- [x] **Step 4: Rodar integração e regressão completa da fase**
 
 Run:
 
@@ -592,7 +592,7 @@ npm run test:collector
 
 Expected: todos PASS; o teste usa `concierge-cms-test`; nenhum job conecta no banco operacional.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/admin package.json package-lock.json

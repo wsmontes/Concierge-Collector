@@ -1,6 +1,6 @@
 # Identidade CMS e Contratos FastAPI — Implementation Plan
 
-> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [x]`) syntax for tracking.
 
 **Goal:** Autenticar admins no Payload por handoff one-shot do FastAPI e estabelecer contratos gerados, versionados e testados entre os serviços.
 
@@ -38,7 +38,7 @@
 - Consumes: `users` operacional, `UserRole`, `settings.cms_admin_callback_url`, `settings.cms_service_key`.
 - Produces: `load_cms_authorization(db: Database, subject: str) -> CmsAuthorization`; `issue_handoff_code(db: Database, *, subject: str, state: str, target_origin: str, now: datetime) -> str`; `consume_handoff_code(db: Database, *, code: str, state: str, target_origin: str, now: datetime | None = None) -> CmsAuthorization`; TTL index `cms_auth_codes.expires_at`.
 
-- [ ] **Step 1: Escrever os testes de uso único e downgrade**
+- [x] **Step 1: Escrever os testes de uso único e downgrade**
 
 ```python
 from datetime import datetime, timedelta, timezone
@@ -84,13 +84,13 @@ def test_exchange_rejects_role_downgrade_before_consumption():
     assert error.value.status_code == 403
 ```
 
-- [ ] **Step 2: Rodar e confirmar a falha**
+- [x] **Step 2: Rodar e confirmar a falha**
 
 Run: `cd concierge-api-v3 && venv/bin/pytest tests/test_cms_auth_service.py -v`
 
 Expected: FAIL com `ModuleNotFoundError: app.services.cms_auth_service`.
 
-- [ ] **Step 3: Implementar modelos e operação atômica**
+- [x] **Step 3: Implementar modelos e operação atômica**
 
 Em `app/models/cms_auth.py`:
 
@@ -127,7 +127,7 @@ Adicionar ao `INDEX_SPECS`:
 
 Adicionar settings `cms_admin_origin`, `cms_admin_callback_url`, `cms_service_key`, `cms_handoff_ttl_seconds=120`; em produção, propriedades de acesso lançam `RuntimeError` quando vazias.
 
-- [ ] **Step 4: Rodar testes do serviço e índices**
+- [x] **Step 4: Rodar testes do serviço e índices**
 
 Run:
 
@@ -138,7 +138,7 @@ venv/bin/pytest tests/test_cms_auth_service.py tests/test_database_indexes.py -v
 
 Expected: PASS; replay faz `find_one_and_update` retornar `None` e produz 401; downgrade produz 403.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add concierge-api-v3/app concierge-api-v3/tests/test_cms_auth_service.py concierge-api-v3/.env.example
@@ -161,7 +161,7 @@ git commit -m "feat(auth): persistir handoff CMS one-shot"
 - Consumes: Task 1, `verify_auth`, `X-CMS-Service-Key`.
 - Produces: `GET /api/v3/auth/cms/authorize?state=...`; `POST /api/v3/auth/cms/exchange`; `POST /api/v3/auth/cms/introspect`; dependency `verify_cms_service(request) -> None`.
 
-- [ ] **Step 1: Escrever testes HTTP negativos e felizes**
+- [x] **Step 1: Escrever testes HTTP negativos e felizes**
 
 ```python
 @pytest.fixture
@@ -218,13 +218,13 @@ def test_cms_authorize_rejects_curator(client, curator_auth_headers):
 
 Antes de importar `main`/`settings`, `tests/conftest.py` também fixa `CMS_SERVICE_KEY=test-cms-key`, `CMS_ADMIN_ORIGIN=https://admin.concierge-collector.com` e o callback exato de teste. Os fixtures acima removem seus users no teardown e nunca dependem de uma credencial produtiva.
 
-- [ ] **Step 2: Rodar e confirmar 404/falhas**
+- [x] **Step 2: Rodar e confirmar 404/falhas**
 
 Run: `cd concierge-api-v3 && venv/bin/pytest tests/test_cms_auth_api.py -v`
 
 Expected: FAIL/404 porque o router ainda não está registrado.
 
-- [ ] **Step 3: Implementar router e service-key dependency**
+- [x] **Step 3: Implementar router e service-key dependency**
 
 Criar router `APIRouter(prefix='/auth/cms', tags=['cms-auth'])`. `authorize` usa `Depends(verify_auth)`, aceita somente `method in {'jwt','cookie'}` com subject presente (API key administrativa não cria sessão humana), recarrega o user com `load_cms_authorization`, emite código e constrói a URL somente a partir de `settings.cms_admin_callback_url`. `exchange` e `introspect` usam:
 
@@ -237,7 +237,7 @@ def verify_cms_service(x_cms_service_key: str | None = Header(None)) -> None:
 
 `introspect` recebe `CmsIntrospectionRequest`, relê o user e devolve `CmsAuthorization`; nunca aceita role/email enviados pelo CMS como autoridade. Registrar `cms_auth.router` antes de `auth.router` em `main.py`. Incluir a origem Admin explicitamente em `CORS_ORIGINS`; nenhum wildcard.
 
-- [ ] **Step 4: Rodar auth/CORS/unit completo**
+- [x] **Step 4: Rodar auth/CORS/unit completo**
 
 Run:
 
@@ -249,7 +249,7 @@ venv/bin/pytest -m "not integration and not external_api and not mongo and not o
 
 Expected: todos PASS; callback arbitrário nunca é refletido; service key não aparece em responses/logs.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add concierge-api-v3/app concierge-api-v3/main.py concierge-api-v3/tests
@@ -283,7 +283,7 @@ git commit -m "feat(api): expor handoff e introspeccao CMS"
 - Consumes: FastAPI routes da Task 2; cookie `cms_login_state`; collection `cms-users`.
 - Produces: cookie `cms_session`; `FastApiAuthzClient.exchangeCmsCode()`; `introspectSubject()`; `cmsSessionStrategy`; `requireCurrentAdmin(headers) -> Promise<CmsIdentity>`.
 
-- [ ] **Step 1: Escrever testes de cookie/state/replay**
+- [x] **Step 1: Escrever testes de cookie/state/replay**
 
 ```typescript
 import { describe, expect, test, vi } from 'vitest'
@@ -313,13 +313,13 @@ describe('CMS session', () => {
 })
 ```
 
-- [ ] **Step 2: Rodar e confirmar a falha**
+- [x] **Step 2: Rodar e confirmar a falha**
 
 Run: `npm run test:admin -- --run tests/unit/auth/session.test.ts`
 
 Expected: FAIL com módulo de sessão ausente.
 
-- [ ] **Step 3: Implementar handoff e strategy**
+- [x] **Step 3: Implementar handoff e strategy**
 
 `/auth/start` valida `return_to` por `/^\/admin(?:\/|$)/`, gera 32 bytes, grava somente SHA-256 com expiração de 10 minutos em `cms-login-states`, seta cookie transient e redireciona para `FASTAPI_BASE_URL/api/v3/auth/cms/authorize?state=...`.
 
@@ -372,7 +372,7 @@ Registrar em `CmsUsers.auth.strategies`, mantendo `disableLocalStrategy: true`. 
 
 `CmsLoginView.tsx` substitui a view de login Payload por título Concierge, explicação curta e link server-controlled `/auth/start?return_to=/admin`; nenhum campo de email/senha. Registrar a view em `admin.components.views.login.Component`. A migration cria unique em `stateHash`/`sessionHash` e TTL absoluto nos respectivos `expiresAt`; `CmsSessions` nunca expõe token raw.
 
-- [ ] **Step 4: Verificar fluxo completo e casos negativos**
+- [x] **Step 4: Verificar fluxo completo e casos negativos**
 
 Run:
 
@@ -385,7 +385,7 @@ npm run build:admin
 
 Expected: PASS para sucesso; testes cobrem replay, state ausente/trocado, expiry, callback/return path adulterado e role downgrade entre emissão/troca.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/admin
@@ -412,7 +412,7 @@ git commit -m "feat(cms): autenticar Admin por handoff FastAPI"
 - Consumes: FastAPI `app.openapi()` e somente paths `/auth/cms/*`, `/catalog/*`, `/internal/curations/hydrate`, `/curations/{curation_id}/collections`.
 - Produces: package `@concierge/fastapi-client`; `FastApiAdminClient`; comando root `generate:contracts`; snapshot OpenAPI canônico.
 
-- [ ] **Step 1: Escrever o teste que exige paths e schemas**
+- [x] **Step 1: Escrever o teste que exige paths e schemas**
 
 ```python
 import json
@@ -428,13 +428,13 @@ def test_admin_contract_contains_auth_boundary():
     assert not any("distribution" in path for path in doc["paths"])
 ```
 
-- [ ] **Step 2: Rodar e confirmar arquivo ausente**
+- [x] **Step 2: Rodar e confirmar arquivo ausente**
 
 Run: `cd concierge-api-v3 && venv/bin/pytest tests/test_admin_openapi_contract.py -v`
 
 Expected: FAIL com `FileNotFoundError`.
 
-- [ ] **Step 3: Implementar export determinístico e package gerado**
+- [x] **Step 3: Implementar export determinístico e package gerado**
 
 `export_admin_openapi.py` importa `main.app.openapi()`, filtra allowlist de prefixes exata, mantém apenas schemas alcançáveis, ordena chaves e grava JSON com indent 2 + newline. O script aceita `--check`: gera em memória e retorna exit 1 se divergir do arquivo versionado.
 
@@ -468,7 +468,7 @@ Na raiz:
 }
 ```
 
-- [ ] **Step 4: Gerar duas vezes e verificar diff zero**
+- [x] **Step 4: Gerar duas vezes e verificar diff zero**
 
 Run:
 
@@ -482,7 +482,7 @@ cd concierge-api-v3 && venv/bin/pytest tests/test_admin_openapi_contract.py -v
 
 Expected: geração determinística; pytest PASS; segundo run não altera bytes.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add contracts packages/fastapi-client concierge-api-v3/scripts concierge-api-v3/tests package.json package-lock.json
@@ -505,7 +505,7 @@ git commit -m "build(contracts): gerar client FastAPI versionado"
 - Consumes: `requireCurrentAdmin(headers)` e `ActorAuthorization`.
 - Produces: `withAdmin(handler)` para todo endpoint `/api/admin/v1`; mapping único 401/403/409/412/423/503; `request.actor` autoritativo.
 
-- [ ] **Step 1: Escrever o teste de downgrade por request**
+- [x] **Step 1: Escrever o teste de downgrade por request**
 
 ```typescript
 import { describe, expect, test, vi } from 'vitest'
@@ -522,13 +522,13 @@ test('não chama handler quando introspection revoga admin', async () => {
 })
 ```
 
-- [ ] **Step 2: Rodar e confirmar a falha**
+- [x] **Step 2: Rodar e confirmar a falha**
 
 Run: `npm run test:admin -- --run tests/unit/http/with-admin.test.ts`
 
 Expected: FAIL porque `withAdmin` não existe.
 
-- [ ] **Step 3: Implementar wrapper e access comum**
+- [x] **Step 3: Implementar wrapper e access comum**
 
 ```typescript
 export function withAdmin(
@@ -548,7 +548,7 @@ export function withAdmin(
 
 Todas as access functions Payload chamam `req.user` somente para esconder/mostrar UI; operações sensíveis usam `withAdmin` e revalidação server-side. Configurar `csrf`/`cors` exclusivamente para o próprio Admin e origins Collector aprovadas; mutações futuras do Collector usam Bearer introspectado, não cookie CMS.
 
-- [ ] **Step 4: Rodar unit, E2E auth e gates de contrato**
+- [x] **Step 4: Rodar unit, E2E auth e gates de contrato**
 
 Run:
 
@@ -562,7 +562,7 @@ cd concierge-api-v3 && venv/bin/pytest tests/test_cms_auth_api.py tests/test_cms
 
 Expected: todos PASS; DevTools E2E não encontra JWT em URL/localStorage; cookies não têm atributo `Domain`.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/admin contracts packages/fastapi-client
