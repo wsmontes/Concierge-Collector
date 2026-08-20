@@ -24,13 +24,14 @@ from pymongo.errors import DuplicateKeyError
 
 from app.core.database import get_database
 from app.core.security import require_role, is_admin_auth
-from app.services.curation_denorm import denormalize_curation_location
-from app.services.catalog_service import ensure_catalog_sequence
+from app.models.schemas import CurationCreate, EntityCreate
 from app.services.capture_session_service import (
     abandon_capture_session,
     claim_capture_session,
     complete_capture_session,
 )
+from app.services.curation_service import create_curation_doc, find_curation
+from app.services.entity_service import upsert_entity
 
 logger = logging.getLogger(__name__)
 
@@ -513,11 +514,9 @@ async def confirm_capture(
     Confirm a capture session and create the curation.
 
     Retrieves the stored capture state (transcription + concepts), resolves the
-    chosen entity (creates if from Google Places), creates the curation, and
-    returns the curation ID.
+    chosen entity, creates it through the canonical Entity writer when needed,
+    then creates the Curation through the canonical Curation writer.
     """
-    # Retrieve the session and validate ownership BEFORE consulting the
-    # confirmation cache, so a guessed key can never bypass the IDOR boundary.
     col = _capture_collection(db)
     try:
         session = col.find_one({"_id": capture_id})
@@ -525,13 +524,10 @@ async def confirm_capture(
         logger.warning(f"MongoDB unavailable during confirm, trying cache: {e}")
         session = None
     if not session:
-        # Scoped cache for current captures; raw-key fallback only supports
-        # legacy in-process sessions created before the scoped-key rollout.
         session = _idempotency_cache.get(_capture_cache_key(capture_id)) or _idempotency_cache.get(capture_id)
         if not session:
             raise HTTPException(status_code=404, detail="Capture session not found")
 
-    # ── IDOR: só o dono da sessão (ou admin) confirma.
     if not is_admin_auth(auth):
         from app.services.curation_service import _is_placeholder_identity
 
@@ -549,114 +545,87 @@ async def confirm_capture(
     concepts = session.get("concepts", {})
     curator_id = session.get("curator_id", "unknown")
 
-    # ── Resolve entity ──
-    matched_entity = None
-    for e in entities:
-        if e.get("entity_id") == request.entity_id:
-            matched_entity = e
-            break
-
+    matched_entity = next((e for e in entities if e.get("entity_id") == request.entity_id), None)
     if not matched_entity:
         raise HTTPException(status_code=422, detail="Entity not in capture matches")
 
-    # Ensure entity exists in the entities collection
     entity_doc = db.entities.find_one({"_id": request.entity_id})
     if not entity_doc:
-        # Create from Google Places match
         if matched_entity.get("source") == "google_places" and matched_entity.get("place_id"):
-            # Fetch full place details from Google
-            new_entity = _create_entity_from_place(matched_entity, db)
-            if new_entity:
-                entity_doc = new_entity
-            else:
+            entity_doc = _create_entity_from_place(matched_entity, db)
+            if not entity_doc:
                 logger.warning(
-                    f"Google Places enrichment failed for {matched_entity.get('name')} "
-                    f"(place_id={matched_entity.get('place_id')}), "
-                    f"creating skeleton entity with minimal data"
+                    "Google Places enrichment failed for %s (place_id=%s); creating skeleton entity",
+                    matched_entity.get("name"),
+                    matched_entity.get("place_id"),
                 )
 
         if not entity_doc:
-            # Last resort: create a minimal entity
-            entity_doc = {
-                "_id": request.entity_id,
-                "entity_id": request.entity_id,
-                "name": matched_entity.get("name", "Unknown"),
-                "type": matched_entity.get("type", "restaurant"),
-                "data": {"location": matched_entity.get("location", {})},
-                "status": "active",
-                "createdBy": curator_id,
-                "createdAt": datetime.now(timezone.utc),
-                "updatedAt": datetime.now(timezone.utc),
-            }
             try:
-                db.entities.insert_one(entity_doc)
+                entity = upsert_entity(
+                    db,
+                    EntityCreate(
+                        entity_id=request.entity_id,
+                        name=matched_entity.get("name", "Unknown"),
+                        type=matched_entity.get("type", "restaurant"),
+                        data={"location": matched_entity.get("location", {})},
+                        status="active",
+                        createdBy=curator_id,
+                    ),
+                )
+                entity_doc = db.entities.find_one({"_id": entity.id})
             except DuplicateKeyError:
-                # Another parallel confirm already created this entity
                 entity_doc = db.entities.find_one({"_id": request.entity_id})
-                logger.info(f"Entity {request.entity_id} already exists (race), reusing")
+                if not entity_doc:
+                    raise
+                logger.info("Entity %s already exists (race), reusing", request.entity_id)
 
-    # ── Create curation ──
     now = datetime.now(timezone.utc)
     curation_id = _curation_id_for_capture(capture_id)
+    session_curator = session.get("curator") if isinstance(session.get("curator"), dict) else None
+    curator = session_curator or {"id": curator_id, "name": curator_id}
+    if not curator.get("id"):
+        curator["id"] = curator_id
+    if not curator.get("name"):
+        curator["name"] = curator_id
 
-    curation_doc = {
-        "_id": curation_id,
-        "curation_id": curation_id,
-        "entity_id": request.entity_id,
-        "curator_id": curator_id,
-        "curator": {"id": curator_id, "name": curator_id},
-        "status": "linked",
-        "restaurant_name": matched_entity.get("name") or session.get("restaurant_name"),
-        "categories": concepts if isinstance(concepts, dict) else {},
-        "notes": {"public": transcription},
-        "transcript": transcription,
-        "sources": {"audio": [{"created_at": now.isoformat()}]},
-        "createdBy": curator_id,
-        "updatedBy": curator_id,
-        "createdAt": now,
-        "updatedAt": now,
-        "version": 1,
-    }
-
-    # Denormalize city/type
-    denorm = denormalize_curation_location(entity_doc)
-    curation_doc.update(denorm)
-    ensure_catalog_sequence(db, curation_doc)
+    curation = CurationCreate(
+        curation_id=curation_id,
+        entity_id=request.entity_id,
+        curator_id=curator_id,
+        curator=curator,
+        status="linked",
+        restaurant_name=matched_entity.get("name") or session.get("restaurant_name"),
+        categories=concepts if isinstance(concepts, dict) else {},
+        notes={"public": transcription},
+        transcript=transcription,
+        sources={"audio": [{"created_at": now.isoformat()}]},
+        createdBy=curator_id,
+    )
 
     try:
-        db.curations.insert_one(curation_doc)
-    except DuplicateKeyError:
-        # A curadoria JÁ EXISTE — pode ser retry de um confirm que sucedeu
-        # (cache de idempotência é em memória e evicta em restart): NÃO
-        # sobrescrever com o snapshot cru. Um $set aqui clobberaria edições
-        # do curator feitas desde o confirm original e resetaria version=1
-        # (409 em cascata para outros devices).
-        existing = db.curations.find_one({"_id": curation_id})
-        if existing and existing.get("version", 1) > 1:
-            logger.warning(
-                f"Curation {curation_id} already exists with version "
-                f"{existing['version']} (retry de confirm) — preservando edições"
-            )
-        elif existing is None:
-            # corrida real: outro confirm inseriu entre o check e o insert
-            db.curations.update_one(
-                {"_id": curation_id},
-                {"$set": {k: v for k, v in curation_doc.items() if k not in ("_id", "createdAt")}},
-            )
+        created = create_curation_doc(db, curation, auth)
+        confirmed_entity_id = created.entity_id or request.entity_id
+    except HTTPException as exc:
+        if exc.status_code != 409:
+            raise
+        existing = find_curation(db, curation_id)
+        if not existing:
+            raise
+        confirmed_entity_id = existing.get("entity_id") or request.entity_id
+        logger.info("Curation %s already exists; preserving stored version", curation_id)
 
-    # ── Mark session as done ──
     try:
         col.update_one(
             {"_id": capture_id},
             {"$set": {"status": "confirmed", "curation_id": curation_id}},
         )
     except Exception as e:
-        # Curation already created — don't fail the request over status update
         logger.warning(f"Failed to update session status to confirmed: {e}")
 
     result = CaptureConfirmResponse(
         curation_id=curation_id,
-        entity_id=request.entity_id,
+        entity_id=confirmed_entity_id,
         status="created",
     )
 
@@ -667,7 +636,7 @@ async def confirm_capture(
 
 
 def _create_entity_from_place(match: Dict[str, Any], db: Database) -> Optional[Dict[str, Any]]:
-    """Fetch full place details from Google and create an entity."""
+    """Fetch Google details, then delegate the mutation to entity_service."""
     import googlemaps
 
     api_key = os.getenv("GOOGLE_PLACES_API_KEY")
@@ -678,38 +647,38 @@ def _create_entity_from_place(match: Dict[str, Any], db: Database) -> Optional[D
         gmaps = googlemaps.Client(key=api_key)
         details = gmaps.place(match["place_id"], language="pt-BR")
         place = details.get("result", {})
-
         entity_id = match["entity_id"]
-        entity_doc = {
-            "_id": entity_id,
-            "entity_id": entity_id,
-            "name": place.get("name") or match.get("name", "Unknown"),
-            "type": _guess_entity_type(place.get("types", [])),
-            "data": {
-                "place_id": match["place_id"],
-                "location": {
-                    "address": place.get("formatted_address", ""),
-                    "city": _extract_city(place),
-                    "latitude": place.get("geometry", {}).get("location", {}).get("lat"),
-                    "longitude": place.get("geometry", {}).get("location", {}).get("lng"),
+        entity = upsert_entity(
+            db,
+            EntityCreate(
+                entity_id=entity_id,
+                name=place.get("name") or match.get("name", "Unknown"),
+                type=_guess_entity_type(place.get("types", [])),
+                data={
+                    "place_id": match["place_id"],
+                    "location": {
+                        "address": place.get("formatted_address", ""),
+                        "city": _extract_city(place),
+                        "latitude": place.get("geometry", {}).get("location", {}).get("lat"),
+                        "longitude": place.get("geometry", {}).get("location", {}).get("lng"),
+                    },
+                    "contact": {
+                        "phone": place.get("formatted_phone_number", ""),
+                        "website": place.get("website", ""),
+                    },
+                    "rating": place.get("rating"),
                 },
-                "contact": {
-                    "phone": place.get("formatted_phone_number", ""),
-                    "website": place.get("website", ""),
-                },
-                "rating": place.get("rating"),
-            },
-            "status": "active",
-            "createdAt": datetime.now(timezone.utc),
-            "updatedAt": datetime.now(timezone.utc),
-        }
-        try:
-            db.entities.insert_one(entity_doc)
-        except DuplicateKeyError:
-            logger.info(f"Entity {entity_id} already exists (race), reusing existing")
-            entity_doc = db.entities.find_one({"_id": entity_id})
-        logger.info(f"Created entity from Google Places: {entity_id}")
-        return entity_doc
+                status="active",
+            ),
+        )
+        logger.info("Created entity from Google Places through entity_service: %s", entity_id)
+        return db.entities.find_one({"_id": entity.id})
+    except DuplicateKeyError:
+        entity_doc = db.entities.find_one({"_id": match.get("entity_id")})
+        if entity_doc:
+            logger.info("Entity %s already exists (race), reusing", match.get("entity_id"))
+            return entity_doc
+        raise
     except Exception as e:
         logger.warning(f"Failed to create entity from place: {e}")
         return None
