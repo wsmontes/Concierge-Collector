@@ -1,4 +1,5 @@
 # Curation Explorer e Operações em Massa — Implementation Plan
+> **Status: CLOSED em 2026-08-20** — gate da fase verde; desvios registrados no commit history.
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
@@ -70,7 +71,7 @@ The integration harnesses use the isolated CMS database and a typed `FastApiAdmi
 - Consumes: collection operacional `curations` e nova `counters`.
 - Produces: `reserve_catalog_sequences(db, count) -> range`; `ensure_catalog_sequence(db, document) -> int`; script idempotente com `--dry-run`, `--batch-size`, `--resume-after`.
 
-- [ ] **Step 1: Escrever testes concorrentes e de todas as fronteiras**
+- [x] **Step 1: Escrever testes concorrentes e de todas as fronteiras**
 
 ```python
 def test_reservations_do_not_overlap(test_db):
@@ -94,13 +95,13 @@ def test_every_writer_assigns_server_sequence(writer, client, auth_headers):
     assert spoofed["catalog_sequence"] != 1
 ```
 
-- [ ] **Step 2: Rodar e confirmar ausência do campo**
+- [x] **Step 2: Rodar e confirmar ausência do campo**
 
 Run: `cd concierge-api-v3 && venv/bin/pytest tests/test_catalog_sequence.py tests/test_catalog_sequence_writes.py -v`
 
 Expected: FAIL porque allocator/campo não existem.
 
-- [ ] **Step 3: Implementar allocator, enforcement, backfill e índice**
+- [x] **Step 3: Implementar allocator, enforcement, backfill e índice**
 
 ```python
 COUNTER_ID = "curations_catalog_sequence"
@@ -152,7 +153,7 @@ scan `(catalog_sequence, curation_id)`.
  {"name": "catalog_sequence_curation_scan"}),
 ```
 
-- [ ] **Step 4: Verificar backfill duas vezes e escrita concorrente**
+- [x] **Step 4: Verificar backfill duas vezes e escrita concorrente**
 
 Run:
 
@@ -166,7 +167,7 @@ venv/bin/python scripts/backfill_catalog_sequence.py --batch-size 500
 
 Expected: segundo run altera zero docs; testes provam uniqueness com writers concorrentes e spoof ignorado.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add concierge-api-v3/app concierge-api-v3/scripts/backfill_catalog_sequence.py concierge-api-v3/tests
@@ -193,7 +194,7 @@ git commit -m "feat(catalog): atribuir sequence monotônica às Curations"
 - Consumes: `POST /api/v3/catalog/curations/resolve` criado na fase 03, Task 4, para a seleção explícita; esta fase não duplica essa porta.
 - Produces: `GET /api/v3/catalog/curations`; `POST /scan/start`; `POST /scan/page`; `normalize_catalog_filters`; cursor HMAC ligado a actor/scope/query/high-water/last tuple/expiry.
 
-- [ ] **Step 1: Escrever teste do ID lexical menor após high-water**
+- [x] **Step 1: Escrever teste do ID lexical menor após high-water**
 
 ```python
 def test_scan_excludes_new_smaller_id_after_high_water(test_db, admin_client):
@@ -220,13 +221,13 @@ def test_scan_page_rechecks_service_actor_after_role_downgrade(test_db, admin_cl
     assert response.status_code == 403
 ```
 
-- [ ] **Step 2: Rodar e confirmar 404**
+- [x] **Step 2: Rodar e confirmar 404**
 
 Run: `cd concierge-api-v3 && venv/bin/pytest tests/test_catalog_scan.py tests/test_catalog_search.py -v`
 
 Expected: FAIL/404 somente nos paths de search/scan, porque o router base já existe desde a fase 03 com `resolve`.
 
-- [ ] **Step 3: Implementar filtro normalizado e tokens separados do JWT**
+- [x] **Step 3: Implementar filtro normalizado e tokens separados do JWT**
 
 Modelar `CatalogFilters` (`q`, status, city, entityType, curatorId, updatedFrom/To), `CatalogSearchPage`, `CatalogScanStart`, `CatalogScanPage`. Normalização faz trim, lowercase de enums, sort/dedup arrays e JSON canônico para `query_hash`.
 
@@ -262,7 +263,7 @@ service-key + actor por request e marcar documentos inválidos/skipped com
 reason. Search usa cursor próprio e devolve `AdminCurationRow` allowlisted;
 não inclui transcript/private notes/sources/embeddings.
 
-- [ ] **Step 4: Rodar scan mutável/retry e regenerar contrato**
+- [x] **Step 4: Rodar scan mutável/retry e regenerar contrato**
 
 Run:
 
@@ -280,7 +281,7 @@ cursor, token de outro actor/query, downgrade entre páginas e documento sem
 sequence. A geração atualiza snapshot e client; `--check` e o diff garantem
 que nada gerado ficou sem versionar.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add concierge-api-v3/app concierge-api-v3/tests contracts packages/fastapi-client
@@ -313,7 +314,7 @@ git commit -m "feat(catalog): expor search e scan high-water"
 - Consumes: `FastApiAdminClient` catalog routes.
 - Produces: `normalizeCurationFilters`, Resource Explorer read-only, selection explicit/page/shift/all-matching intent, private saved views.
 
-- [ ] **Step 1: Escrever testes de filtro e DOM bounded**
+- [x] **Step 1: Escrever testes de filtro e DOM bounded**
 
 ```typescript
 test('normalização produz hash estável', async () => {
@@ -329,7 +330,7 @@ test('50k rows mantém menos de 100 linhas no DOM', () => {
 })
 ```
 
-- [ ] **Step 2: Instalar libs e confirmar imports ausentes**
+- [x] **Step 2: Instalar libs e confirmar imports ausentes**
 
 Run:
 
@@ -340,7 +341,7 @@ npm run test:admin -- --run tests/unit/explorer
 
 Expected: FAIL porque componentes/normalizador não existem.
 
-- [ ] **Step 3: Implementar Explorer e seleção acessível**
+- [x] **Step 3: Implementar Explorer e seleção acessível**
 
 ```tsx
 // apps/admin/src/components/explorer/CurationExplorer.tsx
@@ -370,7 +371,7 @@ export type SelectionState =
 
 `CurationExplorer` carrega lotes cursor-paginados via BFF `/api/admin/v1/curations`, mantém apenas rows carregadas e nunca expande all-matching em IDs no browser. Checkbox suporta indeterminate, Shift seleciona somente o intervalo carregado, atalhos retornam sem agir para `isEditableTarget(event.target)`, toolbar tem equivalentes visuais e status `aria-live`. Saved views persistem owner, name, normalizedFilters, sort e visibleColumns; access restringe owner.
 
-- [ ] **Step 4: Rodar unit, teclado e a11y**
+- [x] **Step 4: Rodar unit, teclado e a11y**
 
 Run:
 
@@ -382,7 +383,7 @@ npm run typecheck:admin
 
 Expected: PASS; axe não reporta critical/serious; DOM bounded e seleção persiste por paginação.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/admin package.json package-lock.json
@@ -410,7 +411,7 @@ git commit -m "feat(cms): adicionar Curation Explorer virtualizado"
 **Interfaces:**
 - Produces: `CreateSelectionCommand`, `SelectionManifestRecord`, `materializeSelection(selectionId, lease)`; POST/GET selections; unique item e TTL.
 
-- [ ] **Step 1: Escrever teste de retry e count/hash exatos**
+- [x] **Step 1: Escrever teste de retry e count/hash exatos**
 
 ```typescript
 test('retry da mesma página não duplica manifest item', async () => {
@@ -425,13 +426,13 @@ test('retry da mesma página não duplica manifest item', async () => {
 })
 ```
 
-- [ ] **Step 2: Rodar e confirmar collection/job ausentes**
+- [x] **Step 2: Rodar e confirmar collection/job ausentes**
 
 Run: `npm run test:integration --workspace=@concierge/admin -- tests/integration/worker/selection-manifest.int.test.ts`
 
 Expected: FAIL.
 
-- [ ] **Step 3: Implementar materialização retomável**
+- [x] **Step 3: Implementar materialização retomável**
 
 ```typescript
 // apps/admin/src/selections/materialize-selection.ts
@@ -477,7 +478,7 @@ POST aceita `mode='explicit'` com no máximo 500 IDs ou `mode='all_matching'` co
 
 Manifest states: `queued|materializing|ready|failed|expired`; unused items have a 24-hour TTL and used items receive operation `retainedUntil`. Every checkpoint revalidates actor/fence. Migration creates unique/lookup/TTL indexes.
 
-- [ ] **Step 4: Rodar materialização/restart/expiry**
+- [x] **Step 4: Rodar materialização/restart/expiry**
 
 Run:
 
@@ -488,7 +489,7 @@ npm run test:integration --workspace=@concierge/admin -- tests/integration/worke
 
 Expected: PASS; `processed+skipped=candidates`; restart retoma cursor; expired GET retorna 410.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/admin
@@ -516,7 +517,7 @@ git commit -m "feat(cms): materializar selection manifests"
 - Produces: parent operation + child por Collection; job drawer server-backed; bulk add/remove/cancel.
 - Reads: `GET /api/admin/v1/operations?actor=current&active=true` e `GET /api/admin/v1/operations/:id`, ambos cursor-paginados/guarded por admin atual.
 
-- [ ] **Step 1: Escrever teste de atomicidade independente**
+- [x] **Step 1: Escrever teste de atomicidade independente**
 
 ```typescript
 test('multi-target expõe sucesso e falha por Collection', async () => {
@@ -534,13 +535,13 @@ test('multi-target expõe sucesso e falha por Collection', async () => {
 })
 ```
 
-- [ ] **Step 2: Rodar e confirmar mode não suportado**
+- [x] **Step 2: Rodar e confirmar mode não suportado**
 
 Run: `npm run test:integration --workspace=@concierge/admin -- tests/integration/worker/multi-target.int.test.ts`
 
 Expected: FAIL/422 porque `mode='selection'` ainda não é aceito.
 
-- [ ] **Step 3: Implementar children e drawer persistente**
+- [x] **Step 3: Implementar children e drawer persistente**
 
 ```typescript
 // apps/admin/src/operations/enqueue.ts
@@ -572,7 +573,7 @@ Parent não tem atomicidade entre targets; cada child tem sequence/revision pró
 
 `useActiveOperations` é implementado no próprio `JobDrawer.tsx` com `useEffect`, `AbortController`, cleanup e backoff, sem dependência implícita de React Query. O drawer relê estado server-side, reconstrói após reload e mostra progress monotônico, retries, skips, failures e cancel antes de `committing`; a UI nunca trata 202 como sucesso.
 
-- [ ] **Step 4: Rodar integração e E2E 50k**
+- [x] **Step 4: Rodar integração e E2E 50k**
 
 Run:
 
@@ -583,7 +584,7 @@ npm run test:e2e --workspace=@concierge/admin -- tests/e2e/explorer/bulk-to-draf
 
 Expected: PASS; operação 50k não envia array de IDs no request do browser; sair/voltar preserva job.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/admin
@@ -614,7 +615,7 @@ git commit -m "feat(cms): aplicar bulk multi-target por manifest"
 - `ArtifactPutRequest` contém `key`, `contentType`, `expiresAt` e `body: AsyncIterable<Uint8Array>`; `StoredArtifact` acrescenta o `sha256` calculado durante o upload concluído.
 - Routes: `POST /api/admin/v1/selections/:selectionId/exports`; `GET /api/admin/v1/exports/:exportId` (status e presigned URL curta somente após complete).
 
-- [ ] **Step 1: Escrever teste de stream e URL privada**
+- [x] **Step 1: Escrever teste de stream e URL privada**
 
 ```typescript
 test('export streams allowlisted records and stores private artifact', async () => {
@@ -628,7 +629,7 @@ test('export streams allowlisted records and stores private artifact', async () 
 })
 ```
 
-- [ ] **Step 2: Instalar SDK e confirmar implementação ausente**
+- [x] **Step 2: Instalar SDK e confirmar implementação ausente**
 
 Run:
 
@@ -639,7 +640,7 @@ npm run test:integration --workspace=@concierge/admin -- tests/integration/worke
 
 Expected: FAIL por task/store ausentes.
 
-- [ ] **Step 3: Implementar adapter S3 e export bounded-memory**
+- [x] **Step 3: Implementar adapter S3 e export bounded-memory**
 
 Use the SDK installed in Step 2 and validate storage configuration at boot with no bucket or credential defaults:
 ```typescript
@@ -693,7 +694,7 @@ As deployment vars são exatamente `S3_ENDPOINT`, `S3_REGION`, `S3_BUCKET`, `S3_
 
 `explorer-selection.mjs` generates a 50k dataset in the test database, measures search/scan/materialize/apply, worker RSS, and DOM rows through Playwright, then writes JSON for the template with dataset, indexes, p50/p95/p99, throughput, retries, and memory peak.
 
-- [ ] **Step 4: Rodar export e benchmark local controlado**
+- [x] **Step 4: Rodar export e benchmark local controlado**
 
 Run:
 
@@ -704,7 +705,7 @@ node apps/admin/tests/load/explorer-selection.mjs --items 50000 --output /tmp/co
 
 Expected: export PASS; benchmark termina sem array de 50k no browser, RSS bounded por batches e JSON contém todas as métricas requeridas.
 
-- [ ] **Step 5: Commit**
+- [x] **Step 5: Commit**
 
 ```bash
 git add apps/admin docs/benchmarks package.json package-lock.json
