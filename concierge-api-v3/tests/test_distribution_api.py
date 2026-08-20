@@ -1,11 +1,32 @@
-from datetime import datetime, timezone
 import json
+
+import pytest
 
 from app.api import distribution
 from app.core.cms_database import get_cms_read_database
 from app.core.database import get_database
 from app.services.consumer_rate_limit import RateLimitResult
 from tests.factories import active_curation, active_entity
+
+
+@pytest.fixture(autouse=True)
+def _restore_db_overrides(client):
+    """O client é session-scoped: os overrides de banco setados aqui vazavam
+    para a suíte inteira (test_system, test_entity_reads_auth e
+    test_integration recebiam os fakes Operational/Collection e quebravam).
+    Snapshot + restore na mesma linha de test_cms_auth_api.py."""
+    sentinel = object()
+    previous_db = client.app.dependency_overrides.get(get_database, sentinel)
+    previous_cms = client.app.dependency_overrides.get(get_cms_read_database, sentinel)
+    yield
+    if previous_db is sentinel:
+        client.app.dependency_overrides.pop(get_database, None)
+    else:
+        client.app.dependency_overrides[get_database] = previous_db
+    if previous_cms is sentinel:
+        client.app.dependency_overrides.pop(get_cms_read_database, None)
+    else:
+        client.app.dependency_overrides[get_cms_read_database] = previous_cms
 
 
 class Cursor(list):
