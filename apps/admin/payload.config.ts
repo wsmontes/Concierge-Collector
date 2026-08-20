@@ -16,6 +16,7 @@ import { selectionEndpoints } from './src/payload/endpoints/selections'
 import { exportEndpoints } from './src/payload/endpoints/exports'
 import { materializeSelectionTask } from './src/jobs/materializeSelectionTask'
 import { exportSelectionTask } from './src/jobs/exportSelectionTask'
+import { syncConsumerUsageTask } from './src/jobs/syncConsumerUsage'
 import {
   AuditEvents,
   CollectionDraftChanges,
@@ -105,7 +106,7 @@ export default buildConfig({
       run: () => false,
     },
     processingOrder: 'createdAt',
-    tasks: [recordWorkerHeartbeat, applyDraftOperationTask, publishCollectionTask, materializeSelectionTask, exportSelectionTask],
+    tasks: [recordWorkerHeartbeat, applyDraftOperationTask, publishCollectionTask, materializeSelectionTask, exportSelectionTask, syncConsumerUsageTask],
   },
   typescript: {
     outputFile: './src/payload/generated/payload-types.ts',

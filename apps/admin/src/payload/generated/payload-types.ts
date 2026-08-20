@@ -139,6 +139,7 @@ export interface Config {
       'publish-collection': TaskPublishCollection;
       'materialize-selection': TaskMaterializeSelection;
       'export-selection': TaskExportSelection;
+      'sync-consumer-usage': TaskSyncConsumerUsage;
       inline: {
         input: unknown;
         output: unknown;
@@ -691,7 +692,8 @@ export interface PayloadJob {
           | 'apply-draft-operation'
           | 'publish-collection'
           | 'materialize-selection'
-          | 'export-selection';
+          | 'export-selection'
+          | 'sync-consumer-usage';
         taskID: string;
         input?:
           | {
@@ -732,6 +734,7 @@ export interface PayloadJob {
         | 'publish-collection'
         | 'materialize-selection'
         | 'export-selection'
+        | 'sync-consumer-usage'
       )
     | null;
   queue?: string | null;
@@ -1369,6 +1372,16 @@ export interface TaskExportSelection {
     selectionId: string;
     exportId: string;
   };
+  output: {
+    status: string;
+  };
+}
+/**
+ * This interface was referenced by `Config`'s JSON-Schema
+ * via the `definition` "TaskSync-consumer-usage".
+ */
+export interface TaskSyncConsumerUsage {
+  input?: unknown;
   output: {
     status: string;
   };
