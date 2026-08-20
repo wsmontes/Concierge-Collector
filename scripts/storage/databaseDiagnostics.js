@@ -270,7 +270,7 @@ const DatabaseDiagnostics = ModuleWrapper.defineClass('DatabaseDiagnostics', cla
                 curator: c.curator?.name,
                 categories: c.categories?.join(', '),
                 'sync.status': c.sync?.status
-            }));
+            })));
             
             return curations;
         } catch (error) {
