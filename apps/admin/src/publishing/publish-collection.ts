@@ -4,9 +4,13 @@ import type { Payload } from 'payload'
 import { appendAuditEvent } from '../audit/append-event'
 import { computeCanonicalMembershipHash } from '../collections/canonical-membership-hash'
 import { AdminHttpError } from '../http/errors'
+import { applyDraftOperation } from '../operations/apply-draft-operation'
+import { enqueueDraftOperation } from '../operations/enqueue'
+import { FastApiCatalogClient } from '../operations/catalog-client'
+import type { CatalogResolver } from '../operations/types'
 import { FastApiPublishAvailabilityClient } from './availability-client'
-import { inspectAvailability, streamDraftMembershipIds, streamMembershipAtVersion } from './membership-stream'
-import type { EnqueuePublishCommand, PublishAvailabilityClient, PublishJobRecord, PublishLease } from './types'
+import { diffMembershipAtVersions, inspectAvailability, streamDraftMembershipIds, streamMembershipAtVersion } from './membership-stream'
+import type { EnqueuePublishCommand, PublishAvailabilityClient, PublishJobRecord, PublishLease, RestoreVersionAsDraftCommand, RestoreVersionAsDraftResult } from './types'
 
 type DocumentModel = Model<Record<string, unknown>>
 // Superset of terminal publish and draft-operation states: publish enqueue
@@ -211,7 +215,7 @@ async function applyIntervals(payload: Payload, job: PublishJobRecord, lease: Pu
     if (change.desiredState === 'add') {
       await memberships.updateOne(
         { collectionId: job.collectionId, curationId, addedInVersion: job.targetVersion },
-        { $setOnInsert: { collectionId: job.collectionId, curationId, addedInVersion: job.targetVersion, removedInVersion: null, createdBy: job.actorId, createdAt: new Date(), updatedAt: new Date() } },
+        { $setOnInsert: { collectionId: job.collectionId, curationId, addedInVersion: job.targetVersion, removedInVersion: null, createdBy: job.actorId, createdAt: new Date() } },
         { upsert: true },
       )
     } else {
@@ -256,7 +260,7 @@ export async function runPublishJob(
     await assertFence(jobs, job, lease)
     await versions.updateOne(
       { collectionId: job.collectionId, version: job.targetVersion },
-      { $setOnInsert: { collectionId: job.collectionId, version: job.targetVersion, metadataSnapshot: metadataSnapshot(collection), selectedCount: availability.selectedCount, membershipHash, publicationJobId: job.id, schemaVersion: 1, status: 'ready', createdAt: new Date(), updatedAt: new Date() } },
+      { $setOnInsert: { collectionId: job.collectionId, version: job.targetVersion, metadataSnapshot: metadataSnapshot(collection), selectedCount: availability.selectedCount, membershipHash, publicationJobId: job.id, schemaVersion: 1, status: 'ready', createdAt: new Date() } },
       { upsert: true },
     )
     await jobs.updateOne({ ...ownedFence(job, lease), status: 'running' }, { $set: { status: 'committing', checkpoint: 'validated', selectedCount: availability.selectedCount, membershipHash, updatedAt: new Date() } })
@@ -304,6 +308,133 @@ export async function runPublishJob(
   }
   const complete = await jobs.findById(job.id).lean()
   return complete ? record(complete) : null
+}
+
+export interface RestoreVersionAsDraftDependencies {
+  resolve: CatalogResolver
+}
+
+const RESTORE_BATCH_SIZE = 500
+
+/**
+ * Recreates a historical published version as a pending draft change set.
+ *
+ * The historical version is merge-diffed against the currently published
+ * pointer in cursor/batches (never materialized), and each delta batch is
+ * enqueued and applied through the regular draft-operation engine, so the
+ * user can review the diff and publish it as a NEW monotonic version. The
+ * published pointer is never moved here.
+ *
+ * Retries converge: the diff is a pure function of (version, baseVersion), so
+ * re-running the same restore re-enqueues the same deltas against the draft
+ * revision that now exists (idempotent at the delta level), and the audit
+ * event is upserted by a stable key instead of appended.
+ */
+export async function restoreVersionAsDraft(
+  payload: Payload,
+  command: RestoreVersionAsDraftCommand,
+  dependencies: Partial<RestoreVersionAsDraftDependencies> = {},
+): Promise<RestoreVersionAsDraftResult> {
+  assertObjectId(command.collectionId)
+  if (!Number.isInteger(command.version) || command.version < 1) throw new AdminHttpError(400, 'invalid_request')
+  const collections = modelFor(payload, 'collections')
+  const versions = modelFor(payload, 'collection-versions')
+  const memberships = modelFor(payload, 'collection-memberships')
+  const audit = modelFor(payload, 'audit-events')
+
+  const collection = await collections.findById(command.collectionId).lean() as Record<string, unknown> | null
+  if (!collection) throw new AdminHttpError(404, 'not_found')
+  if (collection.lifecycle === 'archived') throw new AdminHttpError(409, 'conflict')
+  if (collection.draftState === 'publishing') throw new AdminHttpError(423, 'draft_locked')
+  const baseVersion = typeof collection.currentPublishedVersion === 'number' ? collection.currentPublishedVersion : null
+  // Without a published pointer there is nothing to diff the historical
+  // version against: the draft engine only expresses deltas relative to base.
+  if (baseVersion === null) throw new AdminHttpError(409, 'conflict')
+  const historical = await versions.findOne({ collectionId: command.collectionId, version: command.version, status: 'published' }).lean()
+  if (!historical) throw new AdminHttpError(404, 'not_found')
+
+  const resolver = dependencies.resolve ?? new FastApiCatalogClient()
+  const owner = `restore-worker-${command.requestId}`
+  const operationIds: string[] = []
+  let addedCount = 0
+  let removedCount = 0
+  let adds: string[] = []
+  let removes: string[] = []
+
+  const flush = async (action: 'add' | 'remove', curationIds: string[]) => {
+    if (!curationIds.length) return
+    // The draft moves under the operator: re-read it for a fresh base
+    // revision so the enqueue CAS validates against the current draft state,
+    // and refuse to continue if the published base moved mid-restore.
+    const fresh = await collections.findById(command.collectionId).lean() as Record<string, unknown> | null
+    if (!fresh) throw new AdminHttpError(404, 'not_found')
+    if (fresh.lifecycle === 'archived') throw new AdminHttpError(409, 'conflict')
+    if (fresh.draftState === 'publishing') throw new AdminHttpError(423, 'draft_locked')
+    if (typeof fresh.currentPublishedVersion !== 'number' || fresh.currentPublishedVersion !== baseVersion) {
+      throw new AdminHttpError(409, 'conflict')
+    }
+    const freshDraftRevision = Number(fresh.draftRevision)
+    const operation = await enqueueDraftOperation(payload, {
+      collectionId: command.collectionId,
+      action,
+      baseDraftRevision: freshDraftRevision,
+      curationIds,
+      idempotencyKey: `restore:${command.collectionId}:${command.version}:${action}:${baseVersion}:${freshDraftRevision}`,
+      actorId: command.actorId,
+      requestId: command.requestId,
+    }, { resolve: resolver })
+    await applyDraftOperation(payload, operation.id, owner, resolver)
+    operationIds.push(operation.id)
+  }
+
+  for await (const delta of diffMembershipAtVersions({ memberships, collectionId: command.collectionId, version: command.version, baseVersion })) {
+    if (delta.action === 'add') {
+      addedCount += 1
+      adds.push(delta.curationId)
+      if (adds.length === RESTORE_BATCH_SIZE) {
+        await flush('add', adds)
+        adds = []
+      }
+    } else {
+      removedCount += 1
+      removes.push(delta.curationId)
+      if (removes.length === RESTORE_BATCH_SIZE) {
+        await flush('remove', removes)
+        removes = []
+      }
+    }
+  }
+  await flush('add', adds)
+  await flush('remove', removes)
+
+  // Upsert by a stable key: a retried restore converges without duplicating
+  // the audit record. `updatedAt` is omitted because mongoose auto-timestamps
+  // already $set it, which would conflict with an explicit $setOnInsert.
+  const now = new Date()
+  await audit.updateOne(
+    { eventKey: `collection.historical_version_restored_to_draft:${command.collectionId}:${command.version}` },
+    {
+      $setOnInsert: {
+        eventKey: `collection.historical_version_restored_to_draft:${command.collectionId}:${command.version}`,
+        eventType: 'collection.historical_version_restored_to_draft',
+        actorId: command.actorId,
+        requestId: command.requestId,
+        collectionId: command.collectionId,
+        metadata: { version: command.version, baseVersion, addedCount, removedCount },
+        createdAt: now,
+      },
+    },
+    { upsert: true },
+  )
+
+  return {
+    collectionId: command.collectionId,
+    restoredVersion: command.version,
+    baseVersion,
+    addedCount,
+    removedCount,
+    operationIds,
+  }
 }
 
 /** Releases a job only after Payload exhausted its configured transient retries. */

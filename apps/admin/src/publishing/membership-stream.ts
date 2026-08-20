@@ -48,7 +48,7 @@ export async function* streamDraftMembershipIds(input: {
   while (!member.done || !change.done) {
     const memberId = member.done ? undefined : String(member.value.curationId)
     const changeId = change.done ? undefined : String(change.value.curationId)
-    if (changeId === previousChangeId) {
+    if (changeId !== undefined && changeId === previousChangeId) {
       change = await next(changeIterator)
       continue
     }
@@ -82,6 +82,61 @@ export async function* streamMembershipAtVersion(input: {
     $or: [{ removedInVersion: null }, { removedInVersion: { $gt: input.version } }],
   }).sort({ curationId: 1 }).cursor())
   for await (const document of cursor) yield String(document.curationId)
+}
+
+export interface MembershipDelta {
+  curationId: string
+  action: 'add' | 'remove'
+}
+
+/**
+ * Merge-diffs the membership frozen at two versions without materializing
+ * either set in memory. Both streams are sorted by curationId, so a single
+ * cursor walk yields the symmetric difference: ids present in the historical
+ * version but absent from the base become 'add' deltas, ids present in the
+ * base but absent from the historical become 'remove' deltas.
+ */
+export async function* diffMembershipAtVersions(input: {
+  memberships: DocumentModel
+  collectionId: string
+  version: number
+  baseVersion: number
+}): AsyncGenerator<MembershipDelta> {
+  const historical = streamMembershipAtVersion({ memberships: input.memberships, collectionId: input.collectionId, version: input.version })[Symbol.asyncIterator]()
+  const base = streamMembershipAtVersion({ memberships: input.memberships, collectionId: input.collectionId, version: input.baseVersion })[Symbol.asyncIterator]()
+  let left = await next(historical)
+  let right = await next(base)
+  let previousLeft: string | undefined
+  let previousRight: string | undefined
+  while (!left.done || !right.done) {
+    const leftId = left.done ? undefined : String(left.value)
+    const rightId = right.done ? undefined : String(right.value)
+    if (leftId !== undefined && leftId === previousLeft) {
+      left = await next(historical)
+      continue
+    }
+    if (rightId !== undefined && rightId === previousRight) {
+      right = await next(base)
+      continue
+    }
+    if (leftId !== undefined && (rightId === undefined || leftId < rightId)) {
+      yield { curationId: leftId, action: 'add' }
+      previousLeft = leftId
+      left = await next(historical)
+      continue
+    }
+    if (rightId !== undefined && (leftId === undefined || rightId < leftId)) {
+      yield { curationId: rightId, action: 'remove' }
+      previousRight = rightId
+      right = await next(base)
+      continue
+    }
+    // Present in both versions: no delta.
+    previousLeft = leftId
+    previousRight = rightId
+    left = await next(historical)
+    right = await next(base)
+  }
 }
 
 export async function inspectAvailability(

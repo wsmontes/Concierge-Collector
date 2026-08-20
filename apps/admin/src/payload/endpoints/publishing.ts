@@ -2,7 +2,7 @@ import type { Endpoint, PayloadRequest } from 'payload'
 import type { CmsIdentity } from '../../auth/fastapi-authz-client'
 import { AdminHttpError } from '../../http/errors'
 import { withAdmin } from '../../http/with-admin'
-import { enqueuePublish } from '../../publishing/publish-collection'
+import { enqueuePublish, restoreVersionAsDraft } from '../../publishing/publish-collection'
 
 function collectionId(request: PayloadRequest): string {
   const id = request.routeParams?.id
@@ -54,5 +54,19 @@ export function publishingEndpoints(): Endpoint[] {
       })
       return Response.json(job, { status: 202 })
     }),
-  }]
+  },
+  {
+    method: 'post', path: '/admin/v1/collections/:id/versions/:version/restore-as-draft',
+      handler: guard(async (request, actor) => {
+        const requestId = request.headers.get('x-request-id')?.trim()
+        const rawVersion = request.routeParams?.version
+        const version = typeof rawVersion === 'string' && /^\d+$/.test(rawVersion) ? Number(rawVersion) : NaN
+        if (!requestId || !Number.isInteger(version) || version < 1) throw new AdminHttpError(400, 'invalid_request')
+        const result = await restoreVersionAsDraft(request.payload, {
+          collectionId: collectionId(request), version, actorId: actor.user_id, requestId,
+        })
+        return Response.json(result, { status: 200 })
+      }),
+    },
+  ]
 }

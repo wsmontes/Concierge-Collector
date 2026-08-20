@@ -51,3 +51,19 @@ export interface PublishLease {
   owner: string
   fencingToken: number
 }
+
+export interface RestoreVersionAsDraftCommand {
+  collectionId: string
+  version: number
+  actorId: string
+  requestId: string
+}
+
+export interface RestoreVersionAsDraftResult {
+  collectionId: string
+  restoredVersion: number
+  baseVersion: number
+  addedCount: number
+  removedCount: number
+  operationIds: string[]
+}
