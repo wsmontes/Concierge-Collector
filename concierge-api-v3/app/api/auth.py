@@ -26,7 +26,7 @@ from pymongo.database import Database
 from app.core.config import settings
 from app.core.database import get_database
 from app.core.security import create_access_token, verify_auth
-from app.models.user import User, UserAuthResponse, UserInDB
+from app.models.user import TokenRefreshRequest, User, UserAuthResponse, UserInDB
 from app.services.oauth_state_service import (
     OAUTH_STATE_TTL_SECONDS,
     consume_oauth_state,
@@ -556,10 +556,17 @@ async def refresh_access_token(
 def logout(
     request: Request,
     response: Response,
+    payload: Optional[TokenRefreshRequest] = None,
     db: Database = Depends(get_database),
     auth: dict = Depends(verify_auth),
 ):
-    """Best-effort server-side refresh revocation plus cookie clearing."""
+    """Revoke this user's refresh session and clear local auth cookies.
+
+    Same-site clients normally send the HttpOnly refresh cookie. Legacy or
+    cross-site clients may send the refresh JWT in the JSON body while using
+    the access JWT for endpoint authentication. A supplied refresh can only
+    revoke a session whose ``sub`` matches the authenticated user.
+    """
     from app.core.security import ALGORITHM, get_jwt_secret
     from app.services.session_service import revoke_session
 
@@ -567,15 +574,21 @@ def logout(
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="API key has no session to revoke")
 
     refresh_token = request.cookies.get("refresh_token")
+    if not refresh_token and payload is not None:
+        refresh_token = payload.refresh_token
     if not refresh_token:
         auth_header = request.headers.get("authorization", "")
         if auth_header.lower().startswith("bearer "):
             refresh_token = auth_header[7:].strip()
+
     if refresh_token:
         try:
-            payload = jwt.decode(refresh_token, get_jwt_secret(), algorithms=[ALGORITHM])
-            if payload.get("type") == "refresh" and payload.get("jti"):
-                revoke_session(db, payload["jti"])
+            token_data = jwt.decode(refresh_token, get_jwt_secret(), algorithms=[ALGORITHM])
+            same_subject = token_data.get("sub") == auth.get("user")
+            if token_data.get("type") == "refresh" and token_data.get("jti") and same_subject:
+                revoke_session(db, token_data["jti"])
+            elif token_data.get("type") == "refresh" and not same_subject:
+                logger.warning("[OAuth] Refused refresh revocation for a different subject")
         except Exception as exc:
             logger.warning("[OAuth] Refresh revoke during logout was best-effort: %s", exc)
 
