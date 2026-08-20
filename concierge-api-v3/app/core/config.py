@@ -225,17 +225,17 @@ class Settings(BaseSettings):
 
     @property
     def trusted_callback_origins_list(self) -> List[str]:
-        """Parse trusted callback origins from JSON string, merge with frontend URLs."""
+        """Parse trusted OAuth callback origins without leaking dev defaults into production."""
         try:
             explicit = json.loads(self.trusted_callback_origins)
         except (json.JSONDecodeError, TypeError):
             explicit = []
-        # Always include the configured frontend URLs
+
         merged = set(explicit)
-        if self.frontend_url:
-            merged.add(self.frontend_url)
         if self.frontend_url_production:
             merged.add(self.frontend_url_production)
+        if self.environment == "development" and self.frontend_url:
+            merged.add(self.frontend_url)
         return sorted(merged)
 
     class Config:
