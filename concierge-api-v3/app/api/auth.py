@@ -186,6 +186,10 @@ def create_or_update_user(db: Database, user_data: dict) -> UserInDB:
             "name": user_data["name"],
             "picture": user_data.get("picture"),
             "last_login": now,
+            # This field historically held a Google OAuth refresh token in
+            # plaintext. Collector sessions do not use it; neutralize legacy
+            # values on every successful login.
+            "refresh_token": None,
         }
         if is_admin:
             if not existing_user.authorized:
@@ -201,6 +205,7 @@ def create_or_update_user(db: Database, user_data: dict) -> UserInDB:
         existing_user.name = user_data["name"]
         existing_user.picture = user_data.get("picture")
         existing_user.last_login = now
+        existing_user.refresh_token = None
         logger.info("[OAuth] Updated existing user: %s", existing_user.email)
         return existing_user
 
@@ -213,8 +218,6 @@ def create_or_update_user(db: Database, user_data: dict) -> UserInDB:
         role="admin" if is_admin else "curator",
         created_at=datetime.now(timezone.utc),
         last_login=datetime.now(timezone.utc),
-        # Google refresh credentials are deliberately not persisted. Collector
-        # persistence uses its own refresh JWT/session store.
         refresh_token=None,
     )
     result = db.users.insert_one(new_user.dict())
@@ -320,9 +323,6 @@ def google_oauth_callback(
     request: Request = None,
 ):
     """Consume the one-shot OAuth state, exchange the code and create a session."""
-    # Cancellation/error is not an authorization path. If it belongs to a
-    # valid browser-bound flow, consume it to recover the trusted target; if
-    # not, use a fixed configured target and never echo attacker input.
     if error:
         error_msg = "Login cancelled by user" if error == "access_denied" else "Login failed"
         error_redirect_url = _default_frontend_url()
@@ -528,8 +528,6 @@ async def refresh_access_token(
     if not user.authorized:
         raise HTTPException(status_code=status.HTTP_403_FORBIDDEN, detail="User not authorized")
 
-    # revoke_session is a strict find_one_and_delete CAS. Even if two requests
-    # validated the old jti concurrently, only one reaches token issuance.
     if token_data.get("jti"):
         revoke_session(db, token_data["jti"])
 
