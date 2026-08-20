@@ -43,8 +43,9 @@ def search_restaurants(
     request: Request,
     body: LLMSearchRestaurantsRequest,
     service: LLMPlaceService = Depends(get_llm_service),
-    # require_role("curator") e não auth só de token: o serviço auto-cria/
-    # atualiza documents em `entities`, então o role atual precisa vir do DB.
+    # require_role("curator") e não verify_auth: o serviço auto-cria/atualiza
+    # documents em `entities` (achado #2 da auditoria 2026-08-18 — viewer
+    # disparava escrita no Mongo). API key segue passando (admin).
     auth: dict = Depends(require_role("curator")),
 ):
     """
@@ -55,6 +56,15 @@ def search_restaurants(
     - Returns basic information suitable for LLM consumption
     - Includes flags for entity existence and Michelin data
     - Optimized for quick disambiguation and selection
+
+    Use this endpoint when the LLM needs to:
+    - Find a restaurant by name
+    - Disambiguate between multiple restaurants with similar names
+    - Get a list of candidates for further detailed queries
+
+    Example use case:
+    User: "Tell me about Dom Manolo restaurant"
+    LLM: Calls this endpoint to find candidates, then calls get-restaurant-snapshot
     """
     try:
         logger.info(f"LLM search-restaurants: query='{body.query}', location=({body.latitude}, {body.longitude})")
@@ -93,8 +103,35 @@ def get_restaurant_snapshot(
     # `entities` (auto-create/update via Google) — exige role >= curator.
     auth: dict = Depends(require_role("curator")),
 ):
-    """Get complete restaurant snapshot with all available data."""
+    """
+    Get complete restaurant snapshot with all available data.
+
+    This is the **primary endpoint** for getting detailed restaurant information.
+
+    It consolidates data from:
+    - Google Places (if enabled)
+    - MongoDB entities (if exists)
+    - Michelin guide
+    - Curations
+
+    The response is optimized for LLM consumption with:
+    - Clear boolean flags (is_open_now, open_on_weekend, etc.)
+    - Structured opening hours by day of week
+    - Consolidated ratings and scores
+    - Optional raw source data for debugging
+
+    Use this endpoint when the LLM needs to:
+    - Provide comprehensive information about a restaurant
+    - Answer questions about hours, ratings, amenities
+    - Generate recommendations with full context
+
+    Example use cases:
+    - "Tell me about this restaurant"
+    - "What are the opening hours?"
+    - "Does it have a Michelin star?"
+    """
     try:
+        # Validate input
         if not body.place_id and not body.entity_id:
             raise HTTPException(status_code=400, detail="Either place_id or entity_id must be provided")
 
@@ -139,8 +176,36 @@ def get_restaurant_availability(
     service: LLMPlaceService = Depends(get_llm_service),
     auth: dict = Depends(require_role("viewer")),
 ):
-    """Get restaurant availability and opening hours information."""
+    """
+    Get restaurant availability and opening hours information.
+
+    This endpoint is optimized for answering availability questions:
+    - "Is it open now?"
+    - "Does it open on weekends?"
+    - "What days is it open?"
+
+    It provides:
+    - Current open/closed status
+    - Weekend availability (configurable weekend days)
+    - Detailed availability by day of week
+    - Human-readable notes about availability
+
+    This is a specialized endpoint that internally uses the snapshot logic
+    but returns only availability-related information in a format optimized
+    for natural language generation.
+
+    Use this endpoint when the LLM needs to:
+    - Answer specific availability questions
+    - Check weekend hours
+    - Verify current open status
+
+    Example use cases:
+    - "Is this restaurant open on Saturday?"
+    - "Does it open for weekend brunch?"
+    - "What are the weekend hours?"
+    """
     try:
+        # Validate input
         if not body.place_id and not body.entity_id:
             raise HTTPException(status_code=400, detail="Either place_id or entity_id must be provided")
 
@@ -166,7 +231,7 @@ def get_restaurant_availability(
 
 @router.get("/health")
 async def health_check():
-    """Public liveness for the LLM Gateway; it performs no provider/database work."""
+    """Health check endpoint for LLM Gateway"""
     return {
         "status": "healthy",
         "service": "llm_gateway",
@@ -182,11 +247,35 @@ async def health_check():
 
 @router.get("/tools")
 def get_tools(auth: dict = Depends(require_role("viewer"))):
-    """Return MCP tool definitions to a currently authorized user."""
+    """
+    Get MCP tool definitions.
+
+    Returns the JSON Schema definitions for all available tools.
+    This endpoint is used by MCP clients to discover available tools.
+
+    Requer auth (achado #9 da auditoria 2026-08-18): o schema das
+    ferramentas expunha a superfície interna do gateway a qualquer um.
+
+    Returns:
+        List of tool schemas in MCP format
+    """
     return {"tools": get_all_tools()}
 
 
 @router.get("/tools-manifest")
 def get_manifest(auth: dict = Depends(require_role("viewer"))):
-    """Return the complete tools manifest to a currently authorized user."""
+    """
+    Get complete MCP tools manifest with metadata.
+
+    Returns comprehensive information about the tools service including:
+    - All tool schemas
+    - Service metadata
+    - API endpoints
+    - Data sources
+
+    Requer auth pelo mesmo motivo de /llm/tools.
+
+    Returns:
+        Complete manifest dictionary
+    """
     return get_tools_manifest()
