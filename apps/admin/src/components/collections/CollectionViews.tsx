@@ -5,6 +5,7 @@ import { ActivityView, type ActivityRow } from './ActivityView'
 import { DraftDiffView, type DraftDiffRow } from './DraftDiffView'
 import { MembersView, type MemberRow } from './MembersView'
 import { VersionsView, type VersionRow } from './VersionsView'
+import { OverviewView } from '../overview/OverviewView'
 
 export interface CollectionViewRecord {
   id: string
@@ -64,7 +65,13 @@ export function CollectionViews({ collection, preview = {} }: { collection: Coll
         ))}
       </div>
       <div role="tabpanel" aria-label={tab} className="collection-views__panel">
-        {tab === 'Overview' && <p>Published version {collection.currentPublishedVersion ?? 'not yet published'} has {count(collection.publishedSelectedCount)} selected.</p>}
+        {tab === 'Overview' && <OverviewView
+          collection={collection}
+          versions={preview.versions ?? []}
+          activity={preview.activity ?? []}
+          diff={preview.diff ?? []}
+          onNavigate={setTab}
+        />}
         {tab === 'Members' && <MembersView items={preview.members ?? []} />}
         {tab === 'Draft Changes' && <DraftDiffView items={preview.diff ?? []} />}
         {tab === 'Versions' && <VersionsView items={preview.versions ?? []} />}
