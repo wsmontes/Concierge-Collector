@@ -13,6 +13,7 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from app.core.config import settings
+from app.core.feature_flags import collection_flag_dependency
 from app.core.lifespan import lifespan
 from app.core.rate_limit import limiter
 from app.core.security import require_role
@@ -98,8 +99,14 @@ app.add_middleware(
 
 @app.exception_handler(HTTPException)
 async def sanitized_http_exception_handler(request: Request, exc: HTTPException):
-    """Preserve client/domain 4xx details while redacting every server 5xx."""
-    if exc.status_code < 500:
+    """Preserve client/domain errors while redacting unexpected server 5xx details."""
+    safe_feature_disabled = (
+        exc.status_code == 503
+        and isinstance(exc.detail, dict)
+        and exc.detail.get("code") == "feature_disabled"
+        and isinstance(exc.detail.get("flag"), str)
+    )
+    if exc.status_code < 500 or safe_feature_disabled:
         return await http_exception_handler(request, exc)
 
     from fastapi.responses import JSONResponse
@@ -142,14 +149,22 @@ async def global_exception_handler(request: Request, exc: Exception):
 # mount boundary where every route is already authenticated/internal. The LLM
 # Gateway keeps its public /health path and applies live auth per endpoint.
 _live_viewer = [Depends(require_role("viewer"))]
+_cms_auth_enabled = [Depends(collection_flag_dependency("cms_auth"))]
+_catalog_scan_enabled = [Depends(collection_flag_dependency("catalog_scan"))]
+_collector_associations_enabled = [Depends(collection_flag_dependency("collector_association_read"))]
+_distribution_enabled = [Depends(collection_flag_dependency("collections_distribution"))]
 
 # Include routers with /api/v3 prefix
 app.include_router(system.router, prefix="/api/v3")
 app.include_router(metrics.router, prefix="/api/v3")
-app.include_router(cms_auth.router, prefix="/api/v3")
-app.include_router(collection_associations.router, prefix="/api/v3")
-app.include_router(distribution.router, prefix="/api/v3")
-app.include_router(catalog.router, prefix="/api/v3")
+app.include_router(cms_auth.router, prefix="/api/v3", dependencies=_cms_auth_enabled)
+app.include_router(
+    collection_associations.router,
+    prefix="/api/v3",
+    dependencies=_collector_associations_enabled,
+)
+app.include_router(distribution.router, prefix="/api/v3", dependencies=_distribution_enabled)
+app.include_router(catalog.router, prefix="/api/v3", dependencies=_catalog_scan_enabled)
 app.include_router(internal_curations.router, prefix="/api/v3")
 app.include_router(internal_consumer_usage.router, prefix="/api/v3")
 app.include_router(auth.router, prefix="/api/v3")
