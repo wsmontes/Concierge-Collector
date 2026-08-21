@@ -15,7 +15,12 @@ describe('Collections feature flags', () => {
     process.env.NODE_ENV = 'production'
     delete process.env.COLLECTIONS_ADMIN_ENABLED
     expect(featureEnabled('collections_admin')).toBe(false)
-    expect(() => requireFeature('collections_admin')).toThrow('feature_disabled:collections_admin')
+    expect(() => requireFeature('collections_admin')).toThrow('feature_disabled')
+    try {
+      requireFeature('collections_admin')
+    } catch (error) {
+      expect(error).toMatchObject({ status: 503, code: 'feature_disabled', details: { flag: 'collections_admin' } })
+    }
   })
 
   test('explicit production override is validated', () => {
