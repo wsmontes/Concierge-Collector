@@ -9,6 +9,7 @@ on:
 permissions:
   contents: read
   packages: write
+  id-token: write
 
 jobs:
   images:
@@ -31,6 +32,8 @@ jobs:
           push: true
           tags: ghcr.io/wsmontes/concierge-api:${{ github.event.workflow_run.head_sha }}
           labels: org.opencontainers.image.revision=${{ github.event.workflow_run.head_sha }}
+          sbom: true
+          provenance: mode=max
       - uses: docker/build-push-action@v6
         with:
           context: .
@@ -39,3 +42,5 @@ jobs:
           push: true
           tags: ghcr.io/wsmontes/concierge-admin:${{ github.event.workflow_run.head_sha }}
           labels: org.opencontainers.image.revision=${{ github.event.workflow_run.head_sha }}
+          sbom: true
+          provenance: mode=max

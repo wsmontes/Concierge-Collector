@@ -4,6 +4,7 @@ import { authzClient } from './cms-strategy'
 import { requireCurrentAdmin } from './require-current-admin'
 import { assertUnsafeCmsSessionOrigin } from './cms-session-request-policy'
 import { readEnv } from '../env'
+import { requireFeature } from '../feature-flags'
 import { AdminHttpError } from '../http/errors'
 
 export interface AdminRequestAuthenticationInput {
@@ -47,6 +48,14 @@ export async function authenticateAdminRequest(
   const origin = request.headers.get('origin')
 
   if (origin && resolved.collectorOrigins.includes(origin)) {
+    // Reads can remain available while mutation is rolled back. Every unsafe
+    // Collector request is independently gated server-side.
+    if (request.method.toUpperCase() === 'GET' || request.method.toUpperCase() === 'HEAD') {
+      requireFeature('collector_association_read')
+    } else {
+      requireFeature('collector_draft_mutation')
+    }
+
     const authorization = request.headers.get('authorization')
     const scopedToOneCuration = input.explicitCurationIds?.length === 1
     if (!input.allowCollectorBearer || (!scopedToOneCuration && !input.allowCollectorOperationRead) || !authorization?.startsWith('Bearer ')) {

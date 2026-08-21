@@ -3,7 +3,8 @@ Concierge Collector API V3 - Professional FastAPI Implementation
 Main application entry point with PyMongo (sync) support
 """
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from pathlib import Path
@@ -12,9 +13,12 @@ from slowapi.errors import RateLimitExceeded
 from slowapi.middleware import SlowAPIMiddleware
 
 from app.core.config import settings
+from app.core.feature_flags import collection_flag_dependency
 from app.core.lifespan import lifespan
 from app.core.rate_limit import limiter
+from app.core.security import require_role
 from app.core.observability import install_log_redaction, request_context_middleware
+from app.core.provider_response_sanitization import places_provider_response_middleware
 from app.api import (
     entities,
     curations,
@@ -55,6 +59,7 @@ app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 app.add_middleware(SlowAPIMiddleware)
 install_log_redaction()
 app.middleware("http")(request_context_middleware)
+app.middleware("http")(places_provider_response_middleware)
 
 
 def _cors_origins_safe(origins=None):
@@ -92,6 +97,34 @@ app.add_middleware(
 )
 
 
+@app.exception_handler(HTTPException)
+async def sanitized_http_exception_handler(request: Request, exc: HTTPException):
+    """Preserve client/domain errors while redacting unexpected server 5xx details."""
+    safe_feature_disabled = (
+        exc.status_code == 503
+        and isinstance(exc.detail, dict)
+        and exc.detail.get("code") == "feature_disabled"
+        and isinstance(exc.detail.get("flag"), str)
+    )
+    if exc.status_code < 500 or safe_feature_disabled:
+        return await http_exception_handler(request, exc)
+
+    from fastapi.responses import JSONResponse
+    import logging
+
+    logger = logging.getLogger(__name__)
+    logger.error(
+        "[HTTP Exception] Redacted server error status=%s path=%s",
+        exc.status_code,
+        request.url.path,
+    )
+    return JSONResponse(
+        status_code=exc.status_code,
+        content={"detail": "Internal server error"},
+        headers=exc.headers,
+    )
+
+
 # Global exception handler: log the exception, return a generic 500 message.
 # No manual CORS headers here — CORSMiddleware already adds them to every
 # response (incl. errors), and manually echoing the Origin header would bypass
@@ -112,23 +145,36 @@ async def global_exception_handler(request: Request, exc: Exception):
     )
 
 
+# Provider-backed/internal-data routers get a live authorization gate at the
+# mount boundary where every route is already authenticated/internal. The LLM
+# Gateway keeps its public /health path and applies live auth per endpoint.
+_live_viewer = [Depends(require_role("viewer"))]
+_cms_auth_enabled = [Depends(collection_flag_dependency("cms_auth"))]
+_catalog_scan_enabled = [Depends(collection_flag_dependency("catalog_scan"))]
+_collector_associations_enabled = [Depends(collection_flag_dependency("collector_association_read"))]
+_distribution_enabled = [Depends(collection_flag_dependency("collections_distribution"))]
+
 # Include routers with /api/v3 prefix
 app.include_router(system.router, prefix="/api/v3")
 app.include_router(metrics.router, prefix="/api/v3")
-app.include_router(cms_auth.router, prefix="/api/v3")
-app.include_router(collection_associations.router, prefix="/api/v3")
-app.include_router(distribution.router, prefix="/api/v3")
-app.include_router(catalog.router, prefix="/api/v3")
+app.include_router(cms_auth.router, prefix="/api/v3", dependencies=_cms_auth_enabled)
+app.include_router(
+    collection_associations.router,
+    prefix="/api/v3",
+    dependencies=_collector_associations_enabled,
+)
+app.include_router(distribution.router, prefix="/api/v3", dependencies=_distribution_enabled)
+app.include_router(catalog.router, prefix="/api/v3", dependencies=_catalog_scan_enabled)
 app.include_router(internal_curations.router, prefix="/api/v3")
 app.include_router(internal_consumer_usage.router, prefix="/api/v3")
 app.include_router(auth.router, prefix="/api/v3")
 app.include_router(entities.router, prefix="/api/v3")
-app.include_router(curations.router, prefix="/api/v3")
-app.include_router(places.router, prefix="/api/v3")
+app.include_router(curations.router, prefix="/api/v3", dependencies=_live_viewer)
+app.include_router(places.router, prefix="/api/v3", dependencies=_live_viewer)
 app.include_router(ai.router, prefix="/api/v3")
 app.include_router(concepts.router, prefix="/api/v3")
 app.include_router(llm_gateway.router, prefix="/api/v3")
-app.include_router(openai_compat.router, prefix="/api/v3")
+app.include_router(openai_compat.router, prefix="/api/v3", dependencies=_live_viewer)
 app.include_router(capture.router, prefix="/api/v3")
 app.include_router(curators.router, prefix="/api/v3")
 app.include_router(og_image.router, prefix="/api/v3")

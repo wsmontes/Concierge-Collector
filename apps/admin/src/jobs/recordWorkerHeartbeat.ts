@@ -1,4 +1,5 @@
 import type { TaskConfig } from 'payload'
+import { readRetentionPolicy } from '../maintenance/retention'
 
 type RecordWorkerHeartbeatTask = {
   input: { workerId: string }
@@ -44,17 +45,20 @@ export const recordWorkerHeartbeat: TaskConfig<RecordWorkerHeartbeatTask> = {
     },
   ],
   handler: async ({ input, req }) => {
-    const observedAt = new Date().toISOString()
+    const observed = new Date()
+    const retentionDays = readRetentionPolicy().heartbeatTtlDays
+    const expiresAt = new Date(observed.getTime() + retentionDays * 86_400_000)
 
     await req.payload.create({
       collection: 'worker-heartbeats',
       data: {
         workerId: input.workerId,
-        observedAt,
+        observedAt: observed.toISOString(),
+        expiresAt: expiresAt.toISOString(),
       },
       overrideAccess: true,
     })
 
-    return { output: { observedAt } }
+    return { output: { observedAt: observed.toISOString() } }
   },
 }

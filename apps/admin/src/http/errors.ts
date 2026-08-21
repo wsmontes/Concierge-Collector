@@ -30,6 +30,7 @@ const ADMIN_ERROR_CODES = {
   locked: 423,
   draft_locked: 423,
   authorization_unavailable: 503,
+  feature_disabled: 503,
   service_unavailable: 503,
 } as const
 

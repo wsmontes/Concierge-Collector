@@ -20,6 +20,7 @@
     "lint:fix": "eslint scripts/ tests/ eslint.config.mjs --fix",
     "build:collector": "node scripts/build-collector.mjs",
     "build:collector:check": "node scripts/build-collector.mjs --check",
+    "quality:local": "bash scripts/quality/run-local-gate.sh",
     "dev:admin": "npm run dev --workspace=@concierge/admin",
     "build:admin": "npm run build --workspace=@concierge/admin",
     "start:admin": "npm run start --workspace=@concierge/admin",

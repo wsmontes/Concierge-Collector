@@ -692,12 +692,14 @@ def update_curation(
         update_data["embeddings_metadata"] = meta_client
 
     # Update — escreve no _id ESPECÍFICO do doc que a versão leu (nunca no
-    # twin por decisão do planner). O filtro de version é CONDICIONAL: doc
-    # sem campo version (legado/restore) nunca casaria com {"version": 1}
-    # no equality match — para esses, o PATCH segue sem optimistic lock.
+    # twin por decisão do planner). Documentos versionados usam CAS por valor;
+    # legados sem version usam CAS por ausência — o primeiro writer converte o
+    # doc para version=2 e qualquer writer concorrente perde o filtro.
     write_filter = {"_id": current["_id"]}
     if "version" in current:
         write_filter["version"] = current_version
+    else:
+        write_filter["version"] = {"$exists": False}
     result = db.curations.find_one_and_update(
         write_filter,
         {"$set": update_data},

@@ -1,0 +1,44 @@
+{
+  "cms_auth": {
+    "owner": "platform-api",
+    "environments": ["staging", "production"],
+    "default": false,
+    "removeAfter": "2026-12-31"
+  },
+  "catalog_scan": {
+    "owner": "cms-admin",
+    "environments": ["staging", "production"],
+    "default": false,
+    "removeAfter": "2026-12-31"
+  },
+  "collections_admin": {
+    "owner": "cms-admin",
+    "environments": ["staging", "production"],
+    "default": false,
+    "removeAfter": "2026-12-31"
+  },
+  "collector_association_read": {
+    "owner": "collector-web",
+    "environments": ["staging", "production"],
+    "default": false,
+    "removeAfter": "2026-12-31"
+  },
+  "collector_draft_mutation": {
+    "owner": "cms-admin",
+    "environments": ["staging", "production"],
+    "default": false,
+    "removeAfter": "2026-12-31"
+  },
+  "consumer_credentials": {
+    "owner": "platform-api",
+    "environments": ["staging", "production"],
+    "default": false,
+    "removeAfter": "2026-12-31"
+  },
+  "collections_distribution": {
+    "owner": "platform-api",
+    "environments": ["staging", "production"],
+    "default": false,
+    "removeAfter": "2026-12-31"
+  }
+}

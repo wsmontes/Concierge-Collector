@@ -13,6 +13,8 @@ pega; sem mock, o teste dispara chamadas reais ao Google Places.
 
 from unittest.mock import patch
 
+import pytest
+
 from app.core.security import create_access_token
 from app.services.llm_place_service import LLMPlaceService
 
@@ -20,6 +22,28 @@ from app.services.llm_place_service import LLMPlaceService
 def _bearer(role: str) -> dict:
     token = create_access_token(data={"sub": f"{role}@example.com", "role": role})
     return {"Authorization": f"Bearer {token}"}
+
+
+@pytest.fixture(autouse=True)
+def _live_role_users(in_memory_db):
+    """Role-protected writes now revalidate the operational user in Mongo."""
+    for role in ("curator", "viewer"):
+        email = f"{role}@example.com"
+        in_memory_db.users.delete_many({"email": email})
+        in_memory_db.users.insert_one(
+            {
+                "_id": f"llm-{role}",
+                "email": email,
+                "google_id": f"google-{role}",
+                "name": role.title(),
+                "authorized": True,
+                "role": role,
+            }
+        )
+    try:
+        yield
+    finally:
+        in_memory_db.users.delete_many({"email": {"$in": ["curator@example.com", "viewer@example.com"]}})
 
 
 SNAPSHOT_OK = (

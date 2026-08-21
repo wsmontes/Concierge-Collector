@@ -31,5 +31,10 @@ export const WorkerHeartbeats: CollectionConfig = {
       type: 'date',
       required: true,
     },
+    {
+      name: 'expiresAt',
+      type: 'date',
+      required: true,
+    },
   ],
 }

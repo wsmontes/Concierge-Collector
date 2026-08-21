@@ -17,15 +17,24 @@ import time
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, List
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel, Field
 from pymongo.database import Database
 from pymongo.errors import DuplicateKeyError
 
 from app.core.database import get_database
+from app.core.rate_limit import limiter, auth_header_key
 from app.core.security import require_role, is_admin_auth
-from app.services.curation_denorm import denormalize_curation_location
-from app.services.catalog_service import ensure_catalog_sequence
+from app.models.schemas import CurationCreate, EntityCreate
+from app.services.capture_session_service import (
+    CAPTURE_LEASE_HEARTBEAT_SECONDS,
+    abandon_capture_session,
+    claim_capture_session,
+    complete_capture_session,
+    renew_capture_session,
+)
+from app.services.curation_service import create_curation_doc, find_curation
+from app.services.entity_service import upsert_entity
 
 logger = logging.getLogger(__name__)
 
@@ -137,6 +146,43 @@ def _response_from_session(session: Dict[str, Any]) -> CaptureResponse:
         entities=session.get("entities", []),
         concepts=session.get("concepts", {}),
     )
+
+
+async def _capture_lease_heartbeat(
+    db: Database,
+    *,
+    capture_id: str,
+    curator_id: str,
+    processing_token: str,
+    stop: asyncio.Event,
+    errors: list[Exception],
+) -> None:
+    """Renew a processing lease while provider calls run in worker threads."""
+    while not stop.is_set():
+        try:
+            await asyncio.wait_for(stop.wait(), timeout=CAPTURE_LEASE_HEARTBEAT_SECONDS)
+            return
+        except asyncio.TimeoutError:
+            try:
+                await asyncio.to_thread(
+                    renew_capture_session,
+                    db,
+                    capture_id=capture_id,
+                    curator_id=curator_id,
+                    processing_token=processing_token,
+                )
+            except Exception as exc:
+                errors.append(exc)
+                return
+
+
+def _raise_capture_heartbeat_error(errors: list[Exception]) -> None:
+    if not errors:
+        return
+    error = errors[0]
+    if isinstance(error, HTTPException):
+        raise error
+    raise HTTPException(status_code=503, detail="Capture processing lease renewal failed")
 
 
 # ── AI helpers ───────────────────────────────────────────────────────────────
@@ -367,8 +413,10 @@ def _extract_city(place: Dict[str, Any]) -> str:
 
 
 @router.post("", response_model=CaptureResponse)
+@limiter.limit("10/minute", key_func=auth_header_key)
 async def capture(
-    request: CaptureRequest,
+    request: Request,
+    payload: CaptureRequest,
     db: Database = Depends(get_database),
     auth: dict = Depends(require_role("curator")),
 ):
@@ -387,13 +435,13 @@ async def capture(
     # ── IDOR: o curator_id do corpo vira o dono da curadoria criada no
     # confirm — só o próprio usuário autenticado (ou admin via API key/role)
     # pode capturar em seu nome.
-    if not is_admin_auth(auth) and request.curator_id != auth.get("user"):
+    if not is_admin_auth(auth) and payload.curator_id != auth.get("user"):
         raise HTTPException(
             status_code=403,
             detail="curator_id must match the authenticated user",
         )
 
-    capture_id = _capture_session_id(request.curator_id, request.idempotency_key)
+    capture_id = _capture_session_id(payload.curator_id, payload.idempotency_key)
     cache_key = _capture_cache_key(capture_id)
 
     # Fast in-process retry path, scoped by the server-owned capture identity.
@@ -402,88 +450,121 @@ async def capture(
         logger.info("Capture idempotency cache hit: %s", capture_id)
         return cached
 
-    # Durable retry path before any paid AI work. This survives process restarts
-    # and prevents one curator's client key from colliding with another's.
-    col = _capture_collection(db)
+    # Durable claim BEFORE Whisper/GPT/Places. Completed retries are returned
+    # from Mongo; an active worker produces 409 + Retry-After instead of a
+    # second paid pipeline.
     try:
-        existing = col.find_one({"_id": capture_id, "curator_id": request.curator_id})
+        claim = claim_capture_session(
+            db,
+            capture_id=capture_id,
+            curator_id=payload.curator_id,
+            idempotency_key=payload.idempotency_key,
+        )
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Failed to check persisted capture session: {e}")
+        logger.error("Failed to claim capture session: %s", e)
         raise HTTPException(
             status_code=503,
-            detail="Failed to check capture session. Please try again.",
+            detail="Failed to claim capture session. Please try again.",
         )
-    if existing:
-        result = _response_from_session(existing)
+
+    if not claim.acquired:
+        result = _response_from_session(claim.existing_session or {})
         cache_entry = result.model_dump()
-        cache_entry["curator_id"] = request.curator_id
+        cache_entry["curator_id"] = payload.curator_id
         _idempotency_cache.set(cache_key, cache_entry)
         logger.info("Capture idempotency persistent hit: %s", capture_id)
         return result
 
-    # ── 1. Transcribe ──
-    logger.info(f"Transcribing audio ({len(request.audio)} chars base64)...")
+    processing_token = claim.processing_token
+    if not processing_token:
+        raise HTTPException(status_code=503, detail="Capture processing claim unavailable")
+
+    heartbeat_stop = asyncio.Event()
+    heartbeat_errors: list[Exception] = []
+    heartbeat_task = asyncio.create_task(
+        _capture_lease_heartbeat(
+            db,
+            capture_id=capture_id,
+            curator_id=payload.curator_id,
+            processing_token=processing_token,
+            stop=heartbeat_stop,
+            errors=heartbeat_errors,
+        )
+    )
+
     try:
-        # _transcribe é síncrono (SDK OpenAI bloqueante) — thread para não
-        # travar o event loop (1 worker no Render atende todos os requests).
-        transcription = await asyncio.to_thread(_transcribe, request.audio, request.language)
+        # ── 1. Transcribe ──
+        logger.info(f"Transcribing audio ({len(payload.audio)} chars base64)...")
+        transcription = await asyncio.to_thread(_transcribe, payload.audio, payload.language)
+        _raise_capture_heartbeat_error(heartbeat_errors)
         if not transcription:
             raise HTTPException(status_code=422, detail="Could not transcribe audio")
+
+        logger.info("Transcription completed (%d chars)", len(transcription))
+
+        # ── 2. Extract restaurant name (OpenAI síncrono → thread) ──
+        restaurant_name = await asyncio.to_thread(_extract_restaurant_name, transcription)
+        _raise_capture_heartbeat_error(heartbeat_errors)
+        logger.info(f"Extracted name: {restaurant_name}")
+
+        # ── 3. Match entities (Mongo + optional Google Places) ──
+        entities = await asyncio.to_thread(_match_entities, db, restaurant_name)
+        _raise_capture_heartbeat_error(heartbeat_errors)
+        logger.info(f"Found {len(entities)} entity matches")
+
+        # ── 4. Extract concepts (OpenAI síncrono → thread) ──
+        concepts = await asyncio.to_thread(_extract_concepts, transcription, restaurant_name)
+        _raise_capture_heartbeat_error(heartbeat_errors)
+        logger.info(f"Extracted concepts: {list(concepts.keys())}")
+
+        # Stop renewal before the terminal CAS so a post-completion heartbeat
+        # cannot mistake the cleared processing token for a lost lease.
+        heartbeat_stop.set()
+        await heartbeat_task
+        _raise_capture_heartbeat_error(heartbeat_errors)
+
+        # ── 5. Persist only while this request still owns the lease ──
+        completed_session = complete_capture_session(
+            db,
+            capture_id=capture_id,
+            curator_id=payload.curator_id,
+            processing_token=processing_token,
+            result_fields={
+                "transcription": transcription,
+                "restaurant_name": restaurant_name,
+                "entities": entities,
+                "concepts": concepts,
+            },
+        )
     except HTTPException:
+        abandon_capture_session(
+            db,
+            capture_id=capture_id,
+            curator_id=payload.curator_id,
+            processing_token=processing_token,
+        )
         raise
     except Exception as e:
-        logger.error(f"Transcription failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
-
-    logger.info("Transcription completed (%d chars)", len(transcription))
-
-    # ── 2. Extract restaurant name (OpenAI síncrono → thread) ──
-    restaurant_name = await asyncio.to_thread(_extract_restaurant_name, transcription)
-    logger.info(f"Extracted name: {restaurant_name}")
-
-    # ── 3. Match entities ──
-    entities = _match_entities(db, restaurant_name)
-    logger.info(f"Found {len(entities)} entity matches")
-
-    # ── 4. Extract concepts (OpenAI síncrono → thread) ──
-    concepts = await asyncio.to_thread(_extract_concepts, transcription, restaurant_name)
-    logger.info(f"Extracted concepts: {list(concepts.keys())}")
-
-    # ── 5. Store capture session ──
-    # Persist to MongoDB FIRST, then cache on success.
-    # If MongoDB is down, we return 503 without polluting the cache.
-    session_doc = {
-        "_id": capture_id,
-        "capture_id": capture_id,
-        "idempotency_key": request.idempotency_key,
-        "transcription": transcription,
-        "restaurant_name": restaurant_name,
-        "entities": entities,
-        "concepts": concepts,
-        "curator_id": request.curator_id,
-        "status": "pending_confirmation",
-        "createdAt": datetime.now(timezone.utc),
-    }
-    try:
-        col.replace_one({"_id": capture_id, "curator_id": request.curator_id}, session_doc, upsert=True)
-    except Exception as e:
-        logger.error(f"Failed to persist capture session: {e}")
-        raise HTTPException(
-            status_code=503,
-            detail="Failed to persist capture session. Please try again.",
+        abandon_capture_session(
+            db,
+            capture_id=capture_id,
+            curator_id=payload.curator_id,
+            processing_token=processing_token,
         )
+        logger.error("Capture processing failed: %s", e)
+        raise HTTPException(status_code=500, detail="Capture processing failed")
+    finally:
+        heartbeat_stop.set()
+        if not heartbeat_task.done():
+            await heartbeat_task
 
-    result = CaptureResponse(
-        capture_id=capture_id,
-        transcription=transcription,
-        restaurant_name=restaurant_name,
-        entities=entities,
-        concepts=concepts,
-    )
+    result = _response_from_session(completed_session)
 
     # Now that MongoDB succeeded, populate the scoped idempotency cache.
     cache_entry = result.model_dump()
-    cache_entry["curator_id"] = request.curator_id
+    cache_entry["curator_id"] = payload.curator_id
     _idempotency_cache.set(cache_key, cache_entry)
 
     elapsed_ms = int((time.time() - t0) * 1000)
@@ -492,9 +573,11 @@ async def capture(
 
 
 @router.post("/{capture_id}/confirm", response_model=CaptureConfirmResponse)
+@limiter.limit("20/minute", key_func=auth_header_key)
 async def confirm_capture(
+    request: Request,
     capture_id: str,
-    request: CaptureConfirmRequest,
+    payload: CaptureConfirmRequest,
     db: Database = Depends(get_database),
     auth: dict = Depends(require_role("curator")),
 ):
@@ -502,11 +585,9 @@ async def confirm_capture(
     Confirm a capture session and create the curation.
 
     Retrieves the stored capture state (transcription + concepts), resolves the
-    chosen entity (creates if from Google Places), creates the curation, and
-    returns the curation ID.
+    chosen entity, creates it through the canonical Entity writer when needed,
+    then creates the Curation through the canonical Curation writer.
     """
-    # Retrieve the session and validate ownership BEFORE consulting the
-    # confirmation cache, so a guessed key can never bypass the IDOR boundary.
     col = _capture_collection(db)
     try:
         session = col.find_one({"_id": capture_id})
@@ -514,13 +595,10 @@ async def confirm_capture(
         logger.warning(f"MongoDB unavailable during confirm, trying cache: {e}")
         session = None
     if not session:
-        # Scoped cache for current captures; raw-key fallback only supports
-        # legacy in-process sessions created before the scoped-key rollout.
         session = _idempotency_cache.get(_capture_cache_key(capture_id)) or _idempotency_cache.get(capture_id)
         if not session:
             raise HTTPException(status_code=404, detail="Capture session not found")
 
-    # ── IDOR: só o dono da sessão (ou admin) confirma.
     if not is_admin_auth(auth):
         from app.services.curation_service import _is_placeholder_identity
 
@@ -528,7 +606,7 @@ async def confirm_capture(
         if not _is_placeholder_identity(session_owner) and session_owner != auth.get("user"):
             raise HTTPException(status_code=403, detail="capture session does not belong to the authenticated user")
 
-    confirm_key = _confirm_cache_key(capture_id, request.idempotency_key)
+    confirm_key = _confirm_cache_key(capture_id, payload.idempotency_key)
     cached_confirm = _idempotency_cache.get(confirm_key)
     if cached_confirm:
         return cached_confirm
@@ -538,114 +616,87 @@ async def confirm_capture(
     concepts = session.get("concepts", {})
     curator_id = session.get("curator_id", "unknown")
 
-    # ── Resolve entity ──
-    matched_entity = None
-    for e in entities:
-        if e.get("entity_id") == request.entity_id:
-            matched_entity = e
-            break
-
+    matched_entity = next((e for e in entities if e.get("entity_id") == payload.entity_id), None)
     if not matched_entity:
         raise HTTPException(status_code=422, detail="Entity not in capture matches")
 
-    # Ensure entity exists in the entities collection
-    entity_doc = db.entities.find_one({"_id": request.entity_id})
+    entity_doc = db.entities.find_one({"_id": payload.entity_id})
     if not entity_doc:
-        # Create from Google Places match
         if matched_entity.get("source") == "google_places" and matched_entity.get("place_id"):
-            # Fetch full place details from Google
-            new_entity = _create_entity_from_place(matched_entity, db)
-            if new_entity:
-                entity_doc = new_entity
-            else:
+            entity_doc = await asyncio.to_thread(_create_entity_from_place, matched_entity, db)
+            if not entity_doc:
                 logger.warning(
-                    f"Google Places enrichment failed for {matched_entity.get('name')} "
-                    f"(place_id={matched_entity.get('place_id')}), "
-                    f"creating skeleton entity with minimal data"
+                    "Google Places enrichment failed for %s (place_id=%s); creating skeleton entity",
+                    matched_entity.get("name"),
+                    matched_entity.get("place_id"),
                 )
 
         if not entity_doc:
-            # Last resort: create a minimal entity
-            entity_doc = {
-                "_id": request.entity_id,
-                "entity_id": request.entity_id,
-                "name": matched_entity.get("name", "Unknown"),
-                "type": matched_entity.get("type", "restaurant"),
-                "data": {"location": matched_entity.get("location", {})},
-                "status": "active",
-                "createdBy": curator_id,
-                "createdAt": datetime.now(timezone.utc),
-                "updatedAt": datetime.now(timezone.utc),
-            }
             try:
-                db.entities.insert_one(entity_doc)
+                entity = upsert_entity(
+                    db,
+                    EntityCreate(
+                        entity_id=payload.entity_id,
+                        name=matched_entity.get("name", "Unknown"),
+                        type=matched_entity.get("type", "restaurant"),
+                        data={"location": matched_entity.get("location", {})},
+                        status="active",
+                        createdBy=curator_id,
+                    ),
+                )
+                entity_doc = db.entities.find_one({"_id": entity.id})
             except DuplicateKeyError:
-                # Another parallel confirm already created this entity
-                entity_doc = db.entities.find_one({"_id": request.entity_id})
-                logger.info(f"Entity {request.entity_id} already exists (race), reusing")
+                entity_doc = db.entities.find_one({"_id": payload.entity_id})
+                if not entity_doc:
+                    raise
+                logger.info("Entity %s already exists (race), reusing", payload.entity_id)
 
-    # ── Create curation ──
     now = datetime.now(timezone.utc)
     curation_id = _curation_id_for_capture(capture_id)
+    session_curator = session.get("curator") if isinstance(session.get("curator"), dict) else None
+    curator = session_curator or {"id": curator_id, "name": curator_id}
+    if not curator.get("id"):
+        curator["id"] = curator_id
+    if not curator.get("name"):
+        curator["name"] = curator_id
 
-    curation_doc = {
-        "_id": curation_id,
-        "curation_id": curation_id,
-        "entity_id": request.entity_id,
-        "curator_id": curator_id,
-        "curator": {"id": curator_id, "name": curator_id},
-        "status": "linked",
-        "restaurant_name": matched_entity.get("name") or session.get("restaurant_name"),
-        "categories": concepts if isinstance(concepts, dict) else {},
-        "notes": {"public": transcription},
-        "transcript": transcription,
-        "sources": {"audio": [{"created_at": now.isoformat()}]},
-        "createdBy": curator_id,
-        "updatedBy": curator_id,
-        "createdAt": now,
-        "updatedAt": now,
-        "version": 1,
-    }
-
-    # Denormalize city/type
-    denorm = denormalize_curation_location(entity_doc)
-    curation_doc.update(denorm)
-    ensure_catalog_sequence(db, curation_doc)
+    curation = CurationCreate(
+        curation_id=curation_id,
+        entity_id=payload.entity_id,
+        curator_id=curator_id,
+        curator=curator,
+        status="linked",
+        restaurant_name=matched_entity.get("name") or session.get("restaurant_name"),
+        categories=concepts if isinstance(concepts, dict) else {},
+        notes={"public": transcription},
+        transcript=transcription,
+        sources={"audio": [{"created_at": now.isoformat()}]},
+        createdBy=curator_id,
+    )
 
     try:
-        db.curations.insert_one(curation_doc)
-    except DuplicateKeyError:
-        # A curadoria JÁ EXISTE — pode ser retry de um confirm que sucedeu
-        # (cache de idempotência é em memória e evicta em restart): NÃO
-        # sobrescrever com o snapshot cru. Um $set aqui clobberaria edições
-        # do curator feitas desde o confirm original e resetaria version=1
-        # (409 em cascata para outros devices).
-        existing = db.curations.find_one({"_id": curation_id})
-        if existing and existing.get("version", 1) > 1:
-            logger.warning(
-                f"Curation {curation_id} already exists with version "
-                f"{existing['version']} (retry de confirm) — preservando edições"
-            )
-        elif existing is None:
-            # corrida real: outro confirm inseriu entre o check e o insert
-            db.curations.update_one(
-                {"_id": curation_id},
-                {"$set": {k: v for k, v in curation_doc.items() if k not in ("_id", "createdAt")}},
-            )
+        created = create_curation_doc(db, curation, auth)
+        confirmed_entity_id = created.entity_id or payload.entity_id
+    except HTTPException as exc:
+        if exc.status_code != 409:
+            raise
+        existing = find_curation(db, curation_id)
+        if not existing:
+            raise
+        confirmed_entity_id = existing.get("entity_id") or payload.entity_id
+        logger.info("Curation %s already exists; preserving stored version", curation_id)
 
-    # ── Mark session as done ──
     try:
         col.update_one(
             {"_id": capture_id},
             {"$set": {"status": "confirmed", "curation_id": curation_id}},
         )
     except Exception as e:
-        # Curation already created — don't fail the request over status update
         logger.warning(f"Failed to update session status to confirmed: {e}")
 
     result = CaptureConfirmResponse(
         curation_id=curation_id,
-        entity_id=request.entity_id,
+        entity_id=confirmed_entity_id,
         status="created",
     )
 
@@ -656,7 +707,7 @@ async def confirm_capture(
 
 
 def _create_entity_from_place(match: Dict[str, Any], db: Database) -> Optional[Dict[str, Any]]:
-    """Fetch full place details from Google and create an entity."""
+    """Fetch Google details, then delegate the mutation to entity_service."""
     import googlemaps
 
     api_key = os.getenv("GOOGLE_PLACES_API_KEY")
@@ -667,38 +718,38 @@ def _create_entity_from_place(match: Dict[str, Any], db: Database) -> Optional[D
         gmaps = googlemaps.Client(key=api_key)
         details = gmaps.place(match["place_id"], language="pt-BR")
         place = details.get("result", {})
-
         entity_id = match["entity_id"]
-        entity_doc = {
-            "_id": entity_id,
-            "entity_id": entity_id,
-            "name": place.get("name") or match.get("name", "Unknown"),
-            "type": _guess_entity_type(place.get("types", [])),
-            "data": {
-                "place_id": match["place_id"],
-                "location": {
-                    "address": place.get("formatted_address", ""),
-                    "city": _extract_city(place),
-                    "latitude": place.get("geometry", {}).get("location", {}).get("lat"),
-                    "longitude": place.get("geometry", {}).get("location", {}).get("lng"),
+        entity = upsert_entity(
+            db,
+            EntityCreate(
+                entity_id=entity_id,
+                name=place.get("name") or match.get("name", "Unknown"),
+                type=_guess_entity_type(place.get("types", [])),
+                data={
+                    "place_id": match["place_id"],
+                    "location": {
+                        "address": place.get("formatted_address", ""),
+                        "city": _extract_city(place),
+                        "latitude": place.get("geometry", {}).get("location", {}).get("lat"),
+                        "longitude": place.get("geometry", {}).get("location", {}).get("lng"),
+                    },
+                    "contact": {
+                        "phone": place.get("formatted_phone_number", ""),
+                        "website": place.get("website", ""),
+                    },
+                    "rating": place.get("rating"),
                 },
-                "contact": {
-                    "phone": place.get("formatted_phone_number", ""),
-                    "website": place.get("website", ""),
-                },
-                "rating": place.get("rating"),
-            },
-            "status": "active",
-            "createdAt": datetime.now(timezone.utc),
-            "updatedAt": datetime.now(timezone.utc),
-        }
-        try:
-            db.entities.insert_one(entity_doc)
-        except DuplicateKeyError:
-            logger.info(f"Entity {entity_id} already exists (race), reusing existing")
-            entity_doc = db.entities.find_one({"_id": entity_id})
-        logger.info(f"Created entity from Google Places: {entity_id}")
-        return entity_doc
+                status="active",
+            ),
+        )
+        logger.info("Created entity from Google Places through entity_service: %s", entity_id)
+        return db.entities.find_one({"_id": entity.id})
+    except DuplicateKeyError:
+        entity_doc = db.entities.find_one({"_id": match.get("entity_id")})
+        if entity_doc:
+            logger.info("Entity %s already exists (race), reusing", match.get("entity_id"))
+            return entity_doc
+        raise
     except Exception as e:
         logger.warning(f"Failed to create entity from place: {e}")
         return None
