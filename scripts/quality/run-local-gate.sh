@@ -26,10 +26,12 @@ npm run lint:collector
 npm run test:collector
 npm run test:coverage
 
+export NODE_ENV="${NODE_ENV:-test}"
 export CMS_MONGODB_URL="${CMS_MONGODB_URL:-mongodb://127.0.0.1:27017}"
 export CMS_MONGODB_DB_NAME="${CMS_MONGODB_DB_NAME:-concierge-cms-test}"
 export CMS_SERVICE_KEY="${CMS_SERVICE_KEY:-test-cms-service-key}"
 export CMS_PUBLIC_SERVER_URL="${CMS_PUBLIC_SERVER_URL:-https://admin.example.test}"
+export CMS_COLLECTOR_ORIGINS="${CMS_COLLECTOR_ORIGINS:-https://collector.example.test}"
 export FASTAPI_BASE_URL="${FASTAPI_BASE_URL:-https://api.example.test}"
 export METRICS_KEY="${METRICS_KEY:-test-metrics-key}"
 export PAYLOAD_SECRET="${PAYLOAD_SECRET:-test-payload-secret-with-at-least-32-chars}"
