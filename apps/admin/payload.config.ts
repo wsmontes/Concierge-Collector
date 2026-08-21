@@ -2,6 +2,7 @@ import { mongooseAdapter } from '@payloadcms/db-mongodb'
 import { buildConfig } from 'payload'
 import { readEnv } from './src/env'
 import { approvedBrowserOrigins } from './src/auth/access'
+import { guardFeatureEndpoints } from './src/feature-flags'
 import { recordWorkerHeartbeat } from './src/jobs/recordWorkerHeartbeat'
 import { applyDraftOperationTask } from './src/jobs/applyDraftOperationTask'
 import { publishCollectionTask } from './src/jobs/publishCollectionTask'
@@ -45,6 +46,22 @@ import {
 
 const env = readEnv()
 const browserOrigins = approvedBrowserOrigins(env.publicServerUrl, env.collectorOrigins)
+
+const collectionsAdminEndpoints = guardFeatureEndpoints('collections_admin', [
+  ...collectionEndpoints(),
+  ...collectionReadEndpoints(),
+  ...collectorCollectionEndpoints(),
+  ...operationEndpoints(),
+  ...publishingEndpoints(),
+  ...explorerEndpoints(),
+  ...selectionEndpoints(),
+  ...exportEndpoints(),
+])
+
+const consumerCredentialEndpoints = guardFeatureEndpoints('consumer_credentials', [
+  ...applicationEndpoints(),
+  ...credentialEndpoints(),
+])
 
 export default buildConfig({
   serverURL: env.publicServerUrl,
@@ -104,7 +121,7 @@ export default buildConfig({
     ConsumerCredentials,
     SavedCurationViews,
   ],
-  endpoints: [...collectionEndpoints(), ...collectionReadEndpoints(), ...collectorCollectionEndpoints(), ...operationEndpoints(), ...publishingEndpoints(), ...applicationEndpoints(), ...credentialEndpoints(), ...explorerEndpoints(), ...selectionEndpoints(), ...exportEndpoints()],
+  endpoints: [...collectionsAdminEndpoints, ...consumerCredentialEndpoints],
   jobs: {
     access: {
       cancel: () => false,
