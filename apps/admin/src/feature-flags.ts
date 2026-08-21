@@ -1,3 +1,4 @@
+import type { Endpoint, PayloadRequest } from 'payload'
 import { AdminHttpError } from './http/errors'
 
 export type CollectionsFeatureFlag =
@@ -37,4 +38,18 @@ export function requireFeature(name: CollectionsFeatureFlag): void {
   if (!featureEnabled(name)) {
     throw new AdminHttpError(503, 'feature_disabled', { flag: name })
   }
+}
+
+/** Wrap Payload custom endpoints without trusting the client/UI flag state. */
+export function guardFeatureEndpoints(name: CollectionsFeatureFlag, endpoints: Endpoint[]): Endpoint[] {
+  return endpoints.map((endpoint) => {
+    const handler = endpoint.handler
+    return {
+      ...endpoint,
+      handler: async (request: PayloadRequest) => {
+        requireFeature(name)
+        return handler(request)
+      },
+    }
+  })
 }
