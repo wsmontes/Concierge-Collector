@@ -16,20 +16,20 @@ describe('production rollout wiring', () => {
 
   test('one local command reproduces the important quality gates', () => {
     const pkg = JSON.parse(text('package.json'))
-    expect(pkg.scripts['quality:local']).toBe('bash scripts/quality/local-quality-gate.sh')
-    const gate = text('scripts/quality/local-quality-gate.sh')
+    expect(pkg.scripts['quality:local']).toBe('bash scripts/quality/run-local-gate.sh')
+    const gate = text('scripts/quality/run-local-gate.sh')
     for (const command of [
       'npm run build:collector:check',
       'npm run lint:collector',
       'npm run test:collector',
       'npm run test:admin',
-      'npm run test:integration --workspace=@concierge/admin',
+      'npm run test:admin:integration',
       'npm run typecheck:admin',
       'npm run build:admin',
       'npm run check:contracts',
-      'venv/bin/pytest',
-      'venv/bin/black --check app tests',
-      'venv/bin/flake8 app tests',
+      '-m pytest',
+      '-m black --check app tests',
+      '-m flake8 app tests',
     ]) expect(gate).toContain(command)
   })
 
