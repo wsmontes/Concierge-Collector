@@ -18,6 +18,9 @@ import { exportEndpoints } from './src/payload/endpoints/exports'
 import { materializeSelectionTask } from './src/jobs/materializeSelectionTask'
 import { exportSelectionTask } from './src/jobs/exportSelectionTask'
 import { syncConsumerUsageTask } from './src/jobs/syncConsumerUsage'
+import { reconcileLeasesTask } from './src/jobs/reconcileLeasesTask'
+import { purgeExpiredArtifactsTask } from './src/jobs/purgeExpiredArtifactsTask'
+import { archiveAuditEventsTask } from './src/jobs/archiveAuditEventsTask'
 import {
   AuditEvents,
   CollectionDraftChanges,
@@ -37,6 +40,7 @@ import {
   SelectionManifestItems,
   CollectionExports,
   SavedCurationViews,
+  RetentionArchiveManifests,
 } from './src/payload/collections'
 
 const env = readEnv()
@@ -95,6 +99,7 @@ export default buildConfig({
     CollectionOperationItems,
     CollectionPublishJobs,
     AuditEvents,
+    RetentionArchiveManifests,
     ConsumerApplications,
     ConsumerCredentials,
     SavedCurationViews,
@@ -107,7 +112,17 @@ export default buildConfig({
       run: () => false,
     },
     processingOrder: 'createdAt',
-    tasks: [recordWorkerHeartbeat, applyDraftOperationTask, publishCollectionTask, materializeSelectionTask, exportSelectionTask, syncConsumerUsageTask],
+    tasks: [
+      recordWorkerHeartbeat,
+      applyDraftOperationTask,
+      publishCollectionTask,
+      materializeSelectionTask,
+      exportSelectionTask,
+      syncConsumerUsageTask,
+      reconcileLeasesTask,
+      purgeExpiredArtifactsTask,
+      archiveAuditEventsTask,
+    ],
   },
   typescript: {
     outputFile: './src/payload/generated/payload-types.ts',
