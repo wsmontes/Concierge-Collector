@@ -53,7 +53,9 @@ Na primeira fase não haverá migração de schema. O campo existente continuar�
 
 ### Curadoria sintética
 
-`curator_type = synthetic` representa material automatizado de partida, não uma autoria equivalente à humana. O backend já implementa takeover: quando um humano edita uma Curation sintética, ela passa a humana e a origem é preservada em `createdBy`.
+`curator_type = synthetic` representa material automatizado de partida, não uma autoria equivalente à humana. O backend já implementa takeover: quando um humano persiste uma edição em uma Curation sintética, ela passa a humana e a origem é preservada em `createdBy`.
+
+**Abrir, visualizar ou revisar a Curation sintética sem salvar mudança não deve provocar takeover.** O takeover ocorre no caminho de escrita humana já existente no backend.
 
 A UX deve tratar Curation sintética como **draft para enriquecimento humano**, não como uma Curation humana final.
 
@@ -73,7 +75,7 @@ O curador não deve precisar entender Entity, denormalização, taxonomia, prove
 
 ## Princípios de UX
 
-1. **Input first.** Áudio, fotos e notas são as superfícies primárias.
+1. **Input first.** Áudio, fotos e opinião escrita são as superfícies primárias.
 2. **Automation first.** Novo input dispara transcrição/análise/extração/categorização automaticamente sempre que possível.
 3. **Review before manual structure.** Concepts são primeiro leitura/revisão; edição manual é escape hatch.
 4. **Entity as context in Curation.** Na edição de Curation linkada, Entity é contexto factual read-only, não formulário embutido.
@@ -136,10 +138,10 @@ Exibe contexto da Entity como no estado 2 e um banner editorial:
 - `AI-generated curation`;
 - "This is an automated starting point.";
 - CTA principal `Record your expert review`;
-- fotos/notas como inputs complementares;
+- fotos/opinião escrita como inputs complementares;
 - Concepts sintéticos ficam visíveis como material de partida, não como tarefa principal.
 
-Salvar conteúdo humano usa o takeover já implementado pelo backend.
+Salvar conteúdo humano usa o takeover já implementado pelo backend; apenas visualizar não transfere autoria.
 
 ### Estado 4 — Orphan synthetic curation
 
@@ -197,21 +199,23 @@ A tela de Curation não expõe mais `Entity Type`, `Phone`, `Address`, `City`, `
 
 ### Ação primária
 
-`Record your review` para Curation sem áudio recente, ou `Record more` para Curation com material existente.
+`Record your review` para Curation ainda sem contribuição de áudio, ou `Record more` quando já houver material.
 
 É um único componente/pipeline de gravação. O conceito de `Record Additional Review` deixa de existir na UX e progressivamente no código.
 
 ### Ações complementares
 
 - `Add photos`;
-- `Write a note` / entrada textual livre quando aplicável.
+- `Write a note`.
 
-Essas ações representam **fontes de conhecimento**, não manutenção de estrutura.
+Na primeira implementação, `Write a note` **não cria um novo schema de source textual**. A ação leva/foca o curador nos campos editoriais já persistidos (`notes.public`, `notes.private` e description quando aplicável). Audio e image continuam sendo as fontes brutas processáveis já suportadas.
+
+Essas ações representam contribuição de conhecimento, não manutenção de metadata.
 
 ### Pipeline automática
 
 ```text
-audio / image / text
+audio / image
         ↓
 source persisted safely
         ↓
@@ -226,7 +230,9 @@ curation content refresh
 reviewable result
 ```
 
-Novo input deve disparar análise automaticamente quando a infraestrutura existente permitir. Ação manual `Analyze again` fica em Advanced para exceções.
+**Áudio e imagem adicionados pelo novo workspace devem tentar o processamento automaticamente usando as pipelines existentes.** Se o app estiver offline, a API de análise estiver indisponível ou o processamento falhar depois de a fonte ter sido salva, a fonte permanece persistida e ganha estado `pending/error` compatível com a infraestrutura atual; o trabalho do curador não é descartado. `Analyze again` em Advanced oferece recuperação manual.
+
+Não introduzir uma segunda fila/persistência só para o workspace: reutilizar pending audio, DataStore, sync e filas de análise existentes.
 
 ## 3. Your curation
 
@@ -449,8 +455,9 @@ Objetivo: distinguir regressão causada pelo redesign de comportamento legado j�
 
 - unificar Record/Record More;
 - mover photo input;
-- integrar note input;
-- automático pós-input;
+- `Write a note` foca/expande os campos editoriais existentes sem novo schema;
+- integrar processamento automático pós-input;
+- preservar source quando processamento estiver pending/error;
 - manter compatibilidade com pending audio/drafts.
 
 ### Onda 4 — Review-first Concepts + Sources
@@ -469,7 +476,7 @@ Objetivo: distinguir regressão causada pelo redesign de comportamento legado j�
 ### Onda 6 — Synthetic UX e Entity handoff
 
 - banner/CTA específico para synthetic;
-- takeover end-to-end;
+- takeover somente na escrita humana, end-to-end;
 - navegação limpa `View/Edit Entity` para superfície separada;
 - confirmar que Entity edits aparecem atualizados ao reabrir Curations.
 
@@ -500,9 +507,12 @@ Objetivo: distinguir regressão causada pelo redesign de comportamento legado j�
 - orphan create → save → link → reopen linked;
 - linked → Entity edit → reopen Curation mostra Entity atual;
 - linked → unlink → working name continua identificável;
-- synthetic → human edit → takeover;
-- audio → transcription → concepts refresh;
-- image → analysis → concepts refresh;
+- synthetic open sem mudança → sem takeover;
+- synthetic → human edit + save → takeover;
+- audio → source persisted → transcription → concepts refresh;
+- audio processing failure → source preservada + retry disponível;
+- image → source persisted → analysis → concepts refresh;
+- image processing failure → source preservada + retry disponível;
 - manual concept correction não quebra reprocessamento;
 - offline draft/restore.
 
@@ -534,12 +544,12 @@ Desktop e mobile:
 5. `Record your review` / `Record more` fica no topo, imediatamente após o contexto.
 6. Não existe mais uma experiência separada chamada `Record Additional Review`.
 7. Fotos ficam junto das ferramentas de input.
-8. Novo input inicia processamento automático quando possível.
+8. Áudio/imagem recém-adicionados tentam processamento automático; falha de processamento não descarta a fonte.
 9. Concepts são revisão secundária; edição manual exige ação explícita.
 10. Transcript fica secundário em `Sources & History`.
 11. `Analyze again`, clone/export/unlink ficam em Advanced.
 12. Synthetic curation comunica claramente que é material de partida e promove contribuição humana.
-13. O takeover synthetic → human continua correto.
+13. Abrir synthetic sem mudança não transfere autoria; save humano com mudança mantém o takeover existente.
 14. Duas Curations humanas da mesma Entity continuam coexistindo.
 15. Collections continuam operando sobre Curation IDs.
 16. Edição de Entity reflete nas Curations via hidratação/contexto, sem exigir edição manual de cada Curation.
@@ -553,6 +563,7 @@ Desktop e mobile:
 - migração/rename de `restaurant_name` no schema/banco;
 - remoção imediata de todas as compatibilidades legacy `restaurant*`;
 - redefinição da taxonomia de Concepts;
+- novo schema para note/source textual;
 - redesenho de Collections/Admin;
 - novas regras de permissão;
 - propagação massiva Entity → Curations;
@@ -580,6 +591,10 @@ O novo `CurationEditorModule` deve usar os mesmos DataStore/Draft/Sync contracts
 ### Entity cache stale/missing
 
 Resolver via API quando cache local não satisfizer o contexto. A tela deve degradar com aviso claro caso a Entity esteja realmente indisponível, sem permitir que `restaurant_name` passe silenciosamente a parecer a fonte canônica.
+
+### Processamento indisponível
+
+Persistência da contribuição precede o processamento derivado. Se transcription/análise falhar, mostrar estado recuperável e preservar o source; jamais obrigar o curador a repetir uma gravação/foto por falha da automação.
 
 ## Definição de pronto
 
