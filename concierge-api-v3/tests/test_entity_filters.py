@@ -201,6 +201,32 @@ def test_list_entities_escapes_name_regex():
     assert chain.last_query["name"] == {"$regex": "\\(", "$options": "i"}
 
 
+def test_list_entities_city_filter_covers_all_shapes():
+    """city cobre top-level city, data.location.city (bulk), data.address.city
+    e data.address.street (v3) — antes só address.*, e o catálogo bulk
+    (~21k) ficava invisível ao filtro de cidade."""
+    db, chain = _db_with_chain([_entity_doc("a")])
+    list_entities(
+        status=None,
+        type=None,
+        name=None,
+        city="sao paulo",
+        since=None,
+        limit=50,
+        offset=0,
+        after_id=None,
+        db=db,
+    )
+    clauses = chain.last_query["$or"]
+    assert len(clauses) == 4
+    keys = [next(iter(c)) for c in clauses]
+    assert keys == ["city", "data.location.city", "data.address.city", "data.address.street"]
+    # acento-insensível: 'sao paulo' vira classe de caracteres e casa 'São Paulo'
+    assert "[aàáâãä]" in clauses[0]["city"]["$regex"]
+    for clause in clauses:
+        assert next(iter(clause.values()))["$options"] == "i"
+
+
 def test_list_entities_string_cursor_transitions_to_objectid_segment():
     """O segmento de strings termina em página vazia — a transição entra no
     segmento ObjectId (471 entities reais ficavam invisíveis)."""

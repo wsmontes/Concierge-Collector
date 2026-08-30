@@ -29,6 +29,7 @@ from app.models.llm_models import (
 )
 from app.core.database import get_database
 from app.core.config import settings
+from app.services.curation_denorm import city_from_address_string
 import httpx
 
 logger = logging.getLogger(__name__)
@@ -36,6 +37,33 @@ logger = logging.getLogger(__name__)
 # Google Places API URLs
 PLACES_API_TEXT_SEARCH_URL = "https://places.googleapis.com/v1/places:searchText"
 PLACES_API_DETAILS_URL = "https://places.googleapis.com/v1/places"
+
+# Field mask do Place Details — addressComponents alimenta a extração de
+# cidade estruturada (data.location.city), mantendo o shape consistente com
+# o bulk import (ver _extract_city_from_google_data).
+PLACES_DETAILS_FIELD_MASK = (
+    "id,displayName,formattedAddress,location,rating,types,priceLevel,"
+    "nationalPhoneNumber,websiteUri,regularOpeningHours,addressComponents"
+)
+
+
+def _extract_city_from_google_data(google_data: Dict[str, Any]) -> Optional[str]:
+    """Extrai cidade estruturada dos dados do Google Places (Places API nova).
+
+    Prioridade: addressComponents (locality → administrative_area_level_2) →
+    parse do formattedAddress ("…, Cidade - UF"). Retorna None quando não há
+    sinal confiável. Campos vazios contam como ausentes.
+    """
+    for component in google_data.get("addressComponents") or []:
+        if not isinstance(component, dict):
+            continue
+        types = component.get("types") or []
+        if "locality" in types or "administrative_area_level_2" in types:
+            for key in ("longText", "shortText"):
+                value = (component.get(key) or "").strip()
+                if value:
+                    return value
+    return city_from_address_string(google_data.get("formattedAddress"))
 
 
 class LLMPlaceService:
@@ -76,10 +104,7 @@ class LLMPlaceService:
             headers = {
                 "Content-Type": "application/json",
                 "X-Goog-Api-Key": settings.google_places_api_key,
-                "X-Goog-FieldMask": (
-                    "id,displayName,formattedAddress,location,rating,types,priceLevel,"
-                    "nationalPhoneNumber,websiteUri,regularOpeningHours"
-                ),
+                "X-Goog-FieldMask": PLACES_DETAILS_FIELD_MASK,
             }
 
             params = {}
@@ -308,6 +333,13 @@ class LLMPlaceService:
             if location.get("longitude") and location.get("latitude"):
                 coordinates = [location["longitude"], location["latitude"]]
 
+            # Extract structured city (addressComponents → formattedAddress)
+            city = _extract_city_from_google_data(google_data)
+            formatted_address = google_data.get("formattedAddress")
+            data_location = dict(location) if isinstance(location, dict) else {}
+            if city:
+                data_location["city"] = city
+
             # Build entity document
             now = datetime.utcnow()
             entity_doc = {
@@ -315,13 +347,13 @@ class LLMPlaceService:
                 "externalId": place_id,
                 "coordinates": coordinates,
                 "location": ({"type": "Point", "coordinates": coordinates} if coordinates else None),
-                "address": google_data.get("formattedAddress"),
+                "address": formatted_address,
                 "data": {
                     "place_id": place_id,
                     "google_place_id": place_id,
                     "google_name": name,
-                    "formatted_address": google_data.get("formattedAddress"),
-                    "location": location,
+                    "formatted_address": formatted_address,
+                    "location": data_location,
                     "rating": google_data.get("rating"),
                     "google_rating": google_data.get("rating"),
                     "types": google_data.get("types", []),
@@ -333,6 +365,9 @@ class LLMPlaceService:
                 "createdAt": now,
                 "updatedAt": now,
             }
+            if formatted_address or city:
+                # shape v3: cidade estruturada também em data.address.city
+                entity_doc["data"]["address"] = {"street": formatted_address or "", "city": city or ""}
 
             # Insert entity
             result = self.db.entities.insert_one(entity_doc)
@@ -406,12 +441,26 @@ class LLMPlaceService:
             if google_data.get("location"):
                 loc = google_data["location"]
                 if force_update or not entity_data.get("location"):
-                    update_fields["data.location"] = loc
+                    # injeta cidade estruturada no mesmo dict (evita $set duplo
+                    # com caminhos conflitantes em data.location)
+                    city = _extract_city_from_google_data(google_data)
+                    new_loc = dict(loc)
+                    if city:
+                        new_loc["city"] = city
+                    update_fields["data.location"] = new_loc
                     if loc.get("latitude") and loc.get("longitude"):
                         update_fields["location"] = {
                             "type": "Point",
                             "coordinates": [loc["longitude"], loc["latitude"]],
                         }
+
+            # Cidade estruturada — corrige entities legadas que só têm o
+            # endereço em string (cidade mora dentro de formatted_address)
+            city = _extract_city_from_google_data(google_data)
+            if city and (force_update or not entity_data.get("city")):
+                update_fields["data.location.city"] = city
+            if city and (force_update or not (entity_data.get("address") or {}).get("city")):
+                update_fields["data.address.city"] = city
 
             # Rating - always update (can change)
             if google_data.get("rating") is not None:

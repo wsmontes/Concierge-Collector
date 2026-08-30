@@ -70,6 +70,24 @@ def _accent_insensitive_pattern(text: str) -> str:
     return re.escape(text).translate(_ACCENT_TRANS)
 
 
+def _city_filter_clauses(pattern: str) -> list:
+    """Cláusulas $or do filtro de cidade — cobre todos os shapes de entity:
+
+    - top-level `city` (canônico, backfill 2026-08)
+    - data.location.city (bulk OSM/Overture)
+    - data.address.city (v3 Places)
+    - data.address.street (legado: cidade dentro da string do endereço)
+
+    Sem índice — scan de ~21k docs, ~100ms, para não custar storage do Atlas.
+    """
+    return [
+        {"city": {"$regex": pattern, "$options": "i"}},
+        {"data.location.city": {"$regex": pattern, "$options": "i"}},
+        {"data.address.city": {"$regex": pattern, "$options": "i"}},
+        {"data.address.street": {"$regex": pattern, "$options": "i"}},
+    ]
+
+
 router = APIRouter(prefix="/entities", tags=["entities"])
 
 
@@ -327,10 +345,9 @@ def list_entities(
     city: Optional[str] = Query(
         None,
         description=(
-            "Regex case-insensitive em data.address.street e data.address.city "
-            "(o bulk import guarda a cidade dentro do street; o campo city só "
-            "existe nas entities v3). Sem índice — scan de ~21k docs, ~100ms, "
-            "para não custar storage do Atlas."
+            "Regex acento/case-insensitive em top-level city, data.location.city "
+            "(bulk), data.address.city e data.address.street (v3). Sem índice — "
+            "scan de ~21k docs, ~100ms, para não custar storage do Atlas."
         ),
     ),
     q: Optional[str] = Query(
@@ -383,10 +400,7 @@ def list_entities(
         query["status"] = status
     if isinstance(city, str) and city.strip():
         pattern = _accent_insensitive_pattern(city.strip()[:100])
-        query["$or"] = [
-            {"data.address.street": {"$regex": pattern, "$options": "i"}},
-            {"data.address.city": {"$regex": pattern, "$options": "i"}},
-        ]
+        query["$or"] = _city_filter_clauses(pattern)
 
     if since:
         try:
