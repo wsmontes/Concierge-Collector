@@ -33,6 +33,8 @@ function loadManager(seed = []) {
 beforeEach(() => {
   delete window.PendingAudioManager;
   delete window.offlineCaptureProcessor;
+  delete window.CuratorProfile;
+  delete window.uiManager;
 });
 
 describe('PendingAudioManager offline durability', () => {
@@ -46,6 +48,30 @@ describe('PendingAudioManager offline durability', () => {
     const old = new Date('2020-01-01T00:00:00Z');
     const { manager, pendingAudio } = loadManager([{ id: 1, timestamp: old, status: 'failed', disposable: false, transcriptPersisted: false }, { id: 2, timestamp: old, status: 'completed', disposable: true, transcriptPersisted: true }]);
     await manager.prune({ maxCount: 1, maxAgeDays: 0 }); expect(await pendingAudio.get(1)).toBeTruthy(); expect(await pendingAudio.get(2)).toBeUndefined();
+  });
+
+  test('stores cheap provenance metadata with the ephemeral raw capture', async () => {
+    window.CuratorProfile = { getCurrentCurator: () => ({ curator_id: 'profile@example.com' }) };
+    const { manager, pendingAudio } = loadManager();
+    const capturedAt = new Date('2026-08-30T18:31:02.000Z');
+    const id = await manager.saveAudio(new Blob(['voice']), {
+      sourceId: 'src_capture_1',
+      capturedAt,
+      language: 'pt-BR',
+      durationSeconds: 64.2,
+      transcriptionModel: 'whisper-test'
+    });
+
+    expect(await pendingAudio.get(id)).toMatchObject({
+      sourceId: 'src_capture_1',
+      curatorId: 'profile@example.com',
+      capturedAt,
+      language: 'pt-BR',
+      durationSeconds: 64.2,
+      transcriptionModel: 'whisper-test',
+      disposable: false,
+      transcriptPersisted: false
+    });
   });
 
   test('assigns and persists a stable sourceId when claiming a legacy raw row', async () => {
@@ -64,6 +90,22 @@ describe('PendingAudioManager offline durability', () => {
     const { manager, pendingAudio } = loadManager([{ id: 1, draftId: 10, curationId: null, disposable: false }, { id: 2, draftId: 10, curationId: null, disposable: false }, { id: 3, draftId: 11, curationId: null, disposable: false }]);
     const count = await manager.associateWithCuration({ draftId: 10 }, 'cur_saved');
     expect(count).toBe(2); expect(await pendingAudio.get(1)).toMatchObject({ curationId: 'cur_saved' }); expect(await pendingAudio.get(2)).toMatchObject({ curationId: 'cur_saved' }); expect(await pendingAudio.get(3)).toMatchObject({ curationId: null }); expect(await pendingAudio.count()).toBe(3);
+  });
+
+  test('falls back to in-memory filtering when a legacy schema lacks curationId index', async () => {
+    const { manager, pendingAudio } = loadManager([
+      { id: 1, curationId: 'cur_a', status: 'pending' },
+      { id: 2, curationId: 'cur_b', status: 'pending' },
+      { id: 3, curationId: 'cur_a', status: 'failed' }
+    ]);
+    const originalWhere = pendingAudio.where.bind(pendingAudio);
+    pendingAudio.where = (field) => {
+      if (field === 'curationId') throw new Error('KeyPath curationId is not indexed');
+      return originalWhere(field);
+    };
+
+    const rows = await manager.getAudios({ curationId: 'cur_a' });
+    expect(rows.map((row) => row.id)).toEqual([1, 3]);
   });
 
   test('legacy timer retry delegates to OfflineCaptureProcessor when the durable processor is available', async () => {
