@@ -50,12 +50,7 @@ def find_env_file() -> Path:
 
 
 def _api_v3_base() -> str:
-    """Base URL SEMPRE terminando em /api/v3 — exatamente uma ocorrência.
-
-    Convenção única do pipeline (2026-08): API_V3_URL (chave histórica do
-    .env local) ou API_BASE_URL, com ou sem o sufixo — o normalize garante o
-    sufixo uma vez só (sem ele, um valor já com /api/v3 somado ao "/api/v3"
-    do chamador vira ".../api/v3/api/v3/..." e 404a tudo)."""
+    """Base URL SEMPRE terminando em /api/v3 — exatamente uma ocorrência."""
     raw = (
         os.getenv('API_V3_URL')
         or os.getenv('API_BASE_URL')
@@ -119,6 +114,7 @@ def extract_categories_from_legacy(raw: Dict[str, Any]) -> Dict[str, List[str]]:
         '_id',
         'curator_id',
         'curator',
+        'curator_type',
         'status',
         'notes',
         'sources',
@@ -302,11 +298,28 @@ def resolve_curation_id(raw: Dict[str, Any], restaurant_name: Any) -> str:
     raise ValueError('Missing curation_id/_id and restaurant name for ID generation')
 
 
-def normalize_curation(raw: Dict[str, Any], default_curator_id: str, keep_entity_id: bool = False) -> Dict[str, Any]:
-    """Normalize raw curation document into API v3 create contract."""
+def normalize_curation(
+    raw: Dict[str, Any],
+    default_curator_id: str,
+    keep_entity_id: bool = False,
+    default_curator_type: str = 'synthetic',
+) -> Dict[str, Any]:
+    """Normalize raw curation document into API v3 create contract.
+
+    Authorship is explicit domain data. A curator ID never proves whether the
+    author is human or synthetic. Explicit payload curator_type wins; otherwise
+    the importer uses the pipeline-level default supplied by the operator.
+    """
+    if default_curator_type not in ('human', 'synthetic'):
+        raise ValueError("default_curator_type must be 'human' or 'synthetic'")
+
     curator = raw.get('curator') if isinstance(raw.get('curator'), dict) else {}
     curator_id = raw.get('curator_id') or curator.get('id') or default_curator_id
     curator_name = curator.get('name') or 'Import Script'
+    explicit_curator_type = raw.get('curator_type')
+    if explicit_curator_type is not None and explicit_curator_type not in ('human', 'synthetic'):
+        raise ValueError("curator_type must be 'human' or 'synthetic'")
+    curator_type = explicit_curator_type or default_curator_type
 
     restaurant_name = resolve_restaurant_name(raw)
     curation_id = resolve_curation_id(raw, restaurant_name)
@@ -329,9 +342,7 @@ def normalize_curation(raw: Dict[str, Any], default_curator_id: str, keep_entity
             'name': curator_name,
             'email': curator.get('email'),
         },
-        # curador sintético quando cai no default do script; curador real do
-        # payload (ex.: email de curador humano) continua humano
-        'curator_type': 'synthetic' if curator_id == default_curator_id else 'human',
+        'curator_type': curator_type,
         'status': 'draft',
         'notes': notes,
         'categories': categories,
@@ -417,7 +428,7 @@ def post_curations_bulk(
                 for err in result['errors']:
                     print(f"    [item {err.get('index', '?')}] {err.get('error', 'unknown error')}")
         except ApiAuthError:
-            raise  # fail-fast: 401/403 NÃO é erro transiente de chunk
+            raise
         except Exception as exc:
             totals['errors'] += len(chunk)
             print(f"FAILED: {exc}")
@@ -433,6 +444,12 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument('--apply', action='store_true', help='Apply changes (default is dry-run)')
     parser.add_argument('--limit', type=int, default=0, help='Limit number of records processed (0 = all)')
     parser.add_argument('--default-curator-id', default='curator-import-script', help='Fallback curator_id')
+    parser.add_argument(
+        '--curator-type',
+        choices=('human', 'synthetic'),
+        default='synthetic',
+        help='Fallback authorship nature for records without explicit curator_type',
+    )
     parser.add_argument('--keep-entity-id', action='store_true', help='Preserve entity_id from input (default: disabled)')
     parser.add_argument('--no-bulk', action='store_true', help='Use one-by-one POST instead of bulk endpoint')
     parser.add_argument('--chunk-size', type=int, default=200, help='Items per bulk request (default: 200)')
@@ -465,9 +482,13 @@ def main() -> int:
 
     use_bulk = not args.no_bulk
     print(f"Loaded {len(raw_items)} raw item(s) from {args.input}")
-    print(f"Mode: {'APPLY' if args.apply else 'DRY-RUN'} | Transport: {'bulk' if use_bulk else 'one-by-one'}")
+    print(
+        f"Mode: {'APPLY' if args.apply else 'DRY-RUN'} | "
+        f"Transport: {'bulk' if use_bulk else 'one-by-one'} | "
+        f"curator-type={args.curator_type}"
+    )
 
-    api_curations_url = f'{api_base_url}/curations'  # base já inclui /api/v3
+    api_curations_url = f'{api_base_url}/curations'
     api_bulk_url = f'{api_base_url}/curations/bulk'
 
     stats = {
@@ -479,11 +500,15 @@ def main() -> int:
         'skipped_invalid': 0,
     }
 
-    # ── Normalize all items first ────────────────────────────────────────────
     normalized_items: List[Dict[str, Any]] = []
     for index, raw_item in enumerate(raw_items, start=1):
         try:
-            normalized = normalize_curation(raw_item, args.default_curator_id, args.keep_entity_id)
+            normalized = normalize_curation(
+                raw_item,
+                args.default_curator_id,
+                keep_entity_id=args.keep_entity_id,
+                default_curator_type=args.curator_type,
+            )
             stats['valid'] += 1
             normalized_items.append(normalized)
         except Exception as error:
@@ -495,7 +520,6 @@ def main() -> int:
             print(f"  {Colors.OKGREEN}DRY-RUN{Colors.ENDC} {normalized['curation_id']}")
         print(f"\n{Colors.WARNING}Dry-run only. Use --apply to create curations.{Colors.ENDC}")
     elif use_bulk:
-        # ── Bulk path ────────────────────────────────────────────────────────
         print(f"\nSending {len(normalized_items)} curations in bulk (chunk size={args.chunk_size})…")
         try:
             totals = post_curations_bulk(api_bulk_url, api_key, normalized_items, args.chunk_size)
@@ -506,7 +530,6 @@ def main() -> int:
         stats['updated'] = totals['updated']
         stats['failed'] = totals['errors']
     else:
-        # ── One-by-one path (fallback) ────────────────────────────────────────
         try:
             for index, normalized in enumerate(normalized_items, start=1):
                 curation_id = normalized['curation_id']
