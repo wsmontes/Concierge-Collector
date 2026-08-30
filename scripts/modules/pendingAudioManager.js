@@ -113,8 +113,32 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
         if (retryCount >= this.maxAutoRetries) { await this.updateAudio(id, { status: 'failed' }); return; }
         const delay = this.retryDelays[retryCount] || this.retryDelays[this.retryDelays.length - 1];
         setTimeout(async () => {
-            try { const latest = await this.getAudio(id); if (!latest || latest.disposable === true) return; await retryCallback(id, latest); }
-            catch (error) { await this.incrementRetryCount(id, error.message); const updated = await this.getAudio(id); if (updated && updated.retryCount < this.maxAutoRetries) await this.scheduleAutoRetry(id, retryCallback); }
+            const latest = await this.getAudio(id).catch(() => null);
+            if (!latest || latest.disposable === true) return;
+
+            // Part 2 owns restart/reconnect processing. Delegate timer retries
+            // to the same single-flight processor so one capture cannot be
+            // transcribed concurrently by the legacy callback and reconnect.
+            if (typeof window !== 'undefined' && window.offlineCaptureProcessor?.processPending) {
+                await window.offlineCaptureProcessor.processPending().catch((error) => {
+                    this.log.warn('Durable audio retry failed:', error);
+                });
+                const updated = await this.getAudio(id).catch(() => null);
+                if (updated && updated.disposable !== true && updated.retryCount < this.maxAutoRetries) {
+                    await this.scheduleAutoRetry(id, retryCallback);
+                }
+                return;
+            }
+
+            try {
+                await retryCallback(id, latest);
+            } catch (error) {
+                await this.incrementRetryCount(id, error.message);
+                const updated = await this.getAudio(id);
+                if (updated && updated.retryCount < this.maxAutoRetries) {
+                    await this.scheduleAutoRetry(id, retryCallback);
+                }
+            }
         }, delay);
     }
 
