@@ -20,6 +20,7 @@ describe('Offline Part 2 production wiring', () => {
     expect(part2).toContain("'OfflinePhotoProcessor'");
     expect(part2).toContain("'OfflineSourceIdentityBridge'");
     expect(part2).toContain("'OfflineKnownLinkageGuard'");
+    expect(part2).toContain("'OfflineExplicitDiscardGuard'");
     expect(part2).toContain("'OfflineLinkingModule'");
     expect(part2).toContain("'OfflineOwnershipModule'");
     expect(part2).toContain("'SyncSemanticPolicy'");
