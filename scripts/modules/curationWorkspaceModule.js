@@ -296,8 +296,14 @@ class CurationWorkspaceModule {
 
     updateEditorLanguage() {
         const isEntityEdit = Boolean(this.uiManager?.isEditingEntity);
+        const currentCuration = this.currentCuration || this.uiManager?.restaurantModule?.currentCuration || null;
+        const hasPersistedCuration = Boolean(currentCuration?.curation_id);
         const toolbarTitle = document.querySelector('#restaurant-edit-toolbar .toolbar-info-title');
-        if (toolbarTitle) toolbarTitle.textContent = isEntityEdit ? 'Edit Entity' : 'Edit Curation';
+        if (toolbarTitle) {
+            toolbarTitle.textContent = isEntityEdit
+                ? 'Edit Entity'
+                : (hasPersistedCuration ? 'Edit Curation' : 'New Curation');
+        }
         const save = document.getElementById('save-restaurant');
         const saveLabel = save?.querySelector('span:last-child');
         if (saveLabel) saveLabel.textContent = isEntityEdit ? 'Save Entity' : 'Save Curation';
