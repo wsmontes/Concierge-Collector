@@ -5,7 +5,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from app.services.openai_service import OpenAIService
+from app.services.canonical_english_openai_service import CanonicalEnglishOpenAIService
 
 
 class _FakeConfigService:
@@ -16,6 +16,8 @@ class _FakeConfigService:
             "config": {
                 "temperature": 0,
                 "response_format": "verbose_json",
+                # Legacy config/input-language hints must never leak into the
+                # translation request that defines canonical DB text.
                 "language": "pt",
             },
         }
@@ -31,8 +33,21 @@ class _Recorder:
         return self.response
 
 
+def _service(translations, transcriptions):
+    service = CanonicalEnglishOpenAIService.__new__(CanonicalEnglishOpenAIService)
+    service.config_service = _FakeConfigService()
+    service.client = SimpleNamespace(
+        audio=SimpleNamespace(
+            translations=translations,
+            transcriptions=transcriptions,
+        )
+    )
+    return service
+
+
 @pytest.mark.asyncio
-async def test_english_contract_uses_audio_translation_not_fake_english_transcription():
+@pytest.mark.parametrize("legacy_language", ["en", "pt-BR", "fr", None])
+async def test_every_audio_language_materializes_as_english_translation(legacy_language):
     translation_response = SimpleNamespace(
         text="I loved the risotto and the room was very calm.",
         duration=64.2,
@@ -40,20 +55,16 @@ async def test_english_contract_uses_audio_translation_not_fake_english_transcri
     )
     translations = _Recorder(translation_response)
     transcriptions = _Recorder(SimpleNamespace(text="should not be used"))
-
-    service = OpenAIService.__new__(OpenAIService)
-    service.config_service = _FakeConfigService()
-    service.client = SimpleNamespace(
-        audio=SimpleNamespace(
-            translations=translations,
-            transcriptions=transcriptions,
-        )
-    )
+    service = _service(translations, transcriptions)
 
     audio = io.BytesIO(b"fake-audio")
     audio.name = "review.webm"
 
-    result = await service.transcribe_audio(audio, language="en", save_to_cache=False)
+    result = await service.transcribe_audio(
+        audio,
+        language=legacy_language,
+        save_to_cache=False,
+    )
 
     assert len(translations.calls) == 1
     assert transcriptions.calls == []
@@ -61,30 +72,22 @@ async def test_english_contract_uses_audio_translation_not_fake_english_transcri
     assert "language" not in translations.calls[0]
     assert result["text"] == "I loved the risotto and the room was very calm."
     assert result["language"] == "en"
+    assert result["translated_to_english"] is True
     assert result["model"] == "whisper-1"
     assert result["duration"] == 64.2
 
 
 @pytest.mark.asyncio
-async def test_non_english_transcription_mode_remains_available_for_noncanonical_callers():
-    transcriptions = _Recorder(SimpleNamespace(text="Adorei o risoto.", duration=12.0))
-    translations = _Recorder(SimpleNamespace(text="should not be used"))
-
-    service = OpenAIService.__new__(OpenAIService)
-    service.config_service = _FakeConfigService()
-    service.client = SimpleNamespace(
-        audio=SimpleNamespace(
-            translations=translations,
-            transcriptions=transcriptions,
-        )
-    )
+async def test_translation_filters_transcription_only_config_parameters():
+    translations = _Recorder(SimpleNamespace(text="English text", duration=None))
+    transcriptions = _Recorder(SimpleNamespace(text="should not be used"))
+    service = _service(translations, transcriptions)
 
     audio = io.BytesIO(b"fake-audio")
     audio.name = "review.webm"
+    await service.transcribe_audio(audio, language="en", save_to_cache=False)
 
-    result = await service.transcribe_audio(audio, language="pt-BR", save_to_cache=False)
-
-    assert translations.calls == []
-    assert len(transcriptions.calls) == 1
-    assert transcriptions.calls[0]["language"] == "pt"
-    assert result["language"] == "pt"
+    call = translations.calls[0]
+    assert call["temperature"] == 0
+    assert call["response_format"] == "verbose_json"
+    assert "language" not in call
