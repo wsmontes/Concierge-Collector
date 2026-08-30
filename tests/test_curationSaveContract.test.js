@@ -6,6 +6,7 @@ import { describe, test, expect, beforeEach, afterEach, vi } from 'vitest';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const conceptSrc = readFileSync(path.resolve(__dirname, '../scripts/modules/conceptModule.js'), 'utf8');
 const workspaceSrc = readFileSync(path.resolve(__dirname, '../scripts/modules/curationWorkspaceModule.js'), 'utf8');
+const linkageGuardSrc = readFileSync(path.resolve(__dirname, '../scripts/modules/offlineKnownLinkageGuard.js'), 'utf8');
 
 const logger = { debug: vi.fn(), info: vi.fn(), warn: vi.fn(), error: vi.fn() };
 const Logger = { module: () => logger };
@@ -32,6 +33,16 @@ function loadWorkspaceModule() {
     `${workspaceSrc}\nreturn window.CurationWorkspaceModule;`
   );
   return factory(window, document, MutationObserver);
+}
+
+function installKnownLinkageGuard(uiManager) {
+  window.uiManager = uiManager;
+  // eslint-disable-next-line no-new-func
+  const factory = new Function('window', `${linkageGuardSrc}\nreturn window.OfflineKnownLinkageGuard;`);
+  const Guard = factory(window);
+  const guard = window.offlineKnownLinkageGuard || new Guard(window);
+  expect(guard.install()).toBe(true);
+  return guard;
 }
 
 function editorDom({ name = 'Working place', transcript = 'A human review with enough useful material.' } = {}) {
@@ -115,7 +126,8 @@ afterEach(() => {
     'AuthService', 'CuratorProfile', 'SourceUtils', 'DataStore', 'dataStore',
     'SyncManager', 'PendingAudioManager', 'DraftRestaurantManager',
     'entityModule', 'navigationManager', '__CURATION_WORKSPACE_AUTO_INIT__',
-    'CurationWorkspaceModule'
+    'CurationWorkspaceModule', 'OfflineKnownLinkageGuard',
+    'offlineKnownLinkageGuard', 'uiManager'
   ]) delete window[key];
 });
 
@@ -167,6 +179,7 @@ describe('Curation save contract — source first', () => {
     });
     const module = new ConceptModule(uiManager);
     installWorkspaceSavePolicy(uiManager, module);
+    installKnownLinkageGuard(uiManager);
 
     const saved = await module.saveRestaurant();
 
@@ -175,5 +188,6 @@ describe('Curation save contract — source first', () => {
     expect(persisted.entity_id).toBe('ent-relation-only');
     expect(persisted.status).toBe('draft');
     expect(window.DataStore.db.entities.put).not.toHaveBeenCalled();
+    expect(window.dataStore.addToSyncQueue.mock.calls[0][4].entity_id).toBe('ent-relation-only');
   });
 });
