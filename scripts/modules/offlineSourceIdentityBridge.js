@@ -56,18 +56,24 @@
                         hasAudio: true,
                         audioSourceId: active.sourceId,
                         transcriptionId: null,
-                        transcript: active.transcriptText
+                        transcript: active.transcriptText,
+                        curatorId: active.curatorId || context.curatorId || null,
+                        capturedAt: active.capturedAt || context.capturedAt || null,
+                        language: active.language || context.language || null,
+                        durationSeconds: active.durationSeconds ?? context.durationSeconds ?? null,
+                        transcriptionModel: active.transcriptionModel || context.transcriptionModel || context.model || null
                     });
                 }
 
                 // Raw capture exists but there is no durable textual source
                 // yet. Preserve existing provenance, but do not invent audio
-                // provenance from an aggregate/legacy transcript.
+                // OR manual provenance from an aggregate/legacy transcript.
                 return originalBuild({
                     ...context,
                     hasAudio: false,
                     audioSourceId: null,
-                    transcriptionId: null
+                    transcriptionId: null,
+                    suppressManualFallback: true
                 });
             };
             this._sourceUtilsInstalled = true;
@@ -126,7 +132,12 @@
                 if (audio && sourceId) {
                     bridge.runtime.__offlineSourceIdentityContext = {
                         sourceId,
-                        transcriptText
+                        transcriptText,
+                        curatorId: audio.curatorId || null,
+                        capturedAt: audio.capturedAt || audio.timestamp || null,
+                        language: audio.language || null,
+                        durationSeconds: audio.durationSeconds ?? null,
+                        transcriptionModel: audio.transcriptionModel || audio.model || null
                     };
                     recording.currentAudioSourceId = sourceId;
                     recording.currentAudioTranscript = transcriptText;
