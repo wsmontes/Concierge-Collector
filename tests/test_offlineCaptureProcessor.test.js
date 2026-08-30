@@ -53,7 +53,16 @@ function loadProcessor({ audioRows = [], curations = [], drafts = [], transcribe
     ApiService: {
       async transcribeAudio(_blob, language) {
         transcribeCalls.push({ language });
-        return transcriptionResult || { results: { transcription: { text: transcribeText }, concepts: { concepts: [] } } };
+        return transcriptionResult || {
+          results: {
+            transcription: {
+              text: transcribeText,
+              language: 'en',
+              model: 'whisper-1'
+            },
+            concepts: { concepts: [] }
+          }
+        };
       }
     },
     PendingAudioManager: {
@@ -102,18 +111,26 @@ describe('OfflineCaptureProcessor — durable reconnect', () => {
         source_id: 'src-stable-7',
         type: 'voice_transcript',
         text: 'new spoken text',
-        transcript: 'new spoken text'
+        transcript: 'new spoken text',
+        language: 'en'
       })
     ]);
     expect(curation.sources.audio[0].source_id).not.toBe(7);
     expect(raw.disposable).toBe(true);
   });
 
-  test('uses capture language on reconnect and carries cheap metadata into the textual source', async () => {
+  test('Portuguese-origin audio still requests and persists canonical English text', async () => {
     const { processor, curationTable, pendingAudio, transcribeCalls } = loadProcessor({
       transcriptionResult: {
-        results: { transcription: { text: 'ótimo risoto', language: 'pt-BR' }, concepts: { concepts: [] } },
-        model: 'whisper-reconnect'
+        results: {
+          transcription: {
+            text: 'Great risotto and a very calm room.',
+            language: 'en',
+            model: 'whisper-1',
+            duration: 64.2
+          },
+          concepts: { concepts: [] }
+        }
       },
       audioRows: [{
         id: 12,
@@ -121,7 +138,7 @@ describe('OfflineCaptureProcessor — durable reconnect', () => {
         curationId: 'cur-pt',
         curatorId: 'wagner@example.com',
         capturedAt: '2026-08-30T18:31:02.000Z',
-        language: 'pt-BR',
+        sourceLanguage: 'pt-BR',
         durationSeconds: 64.2,
         audioBlob: new Blob(['voice']),
         status: 'pending',
@@ -134,29 +151,30 @@ describe('OfflineCaptureProcessor — durable reconnect', () => {
     const source = (await curationTable.get('cur-pt')).sources.audio[0];
     const raw = await pendingAudio.get(12);
 
-    expect(transcribeCalls).toEqual([{ language: 'pt-BR' }]);
+    expect(transcribeCalls).toEqual([{ language: 'en' }]);
     expect(source).toMatchObject({
       source_id: 'src-pt',
       type: 'voice_transcript',
-      text: 'ótimo risoto',
+      text: 'Great risotto and a very calm room.',
       curator_id: 'wagner@example.com',
       captured_at: '2026-08-30T18:31:02.000Z',
-      language: 'pt-BR',
+      language: 'en',
+      source_language: 'pt-BR',
       duration_seconds: 64.2,
-      transcription_model: 'whisper-reconnect'
+      transcription_model: 'whisper-1'
     });
-    expect(raw.language).toBe('pt-BR');
-    expect(raw.transcriptionModel).toBe('whisper-reconnect');
+    expect(raw.language).toBe('en');
+    expect(raw.transcriptionModel).toBe('whisper-1');
   });
 
-  test('does not force English when capture language is unknown', async () => {
+  test('reconnect always asks for canonical English even when source language is unknown', async () => {
     const { processor, transcribeCalls } = loadProcessor({
       audioRows: [{ id: 13, sourceId: 'src-auto-lang', curationId: 'cur-auto', audioBlob: new Blob(['voice']), status: 'pending', disposable: false }],
       curations: [{ curation_id: 'cur-auto', transcript: null, sources: {}, sync: { status: 'pending' } }]
     });
 
     await processor.processPending();
-    expect(transcribeCalls).toEqual([{ language: undefined }]);
+    expect(transcribeCalls).toEqual([{ language: 'en' }]);
   });
 
   test('replaying the same sourceId is idempotent for source history and aggregate transcript', async () => {
@@ -219,7 +237,7 @@ describe('OfflineCaptureProcessor — durable reconnect', () => {
     const draft = await draftTable.get(3);
     const metadata = JSON.parse(draft.metadata);
 
-    expect(metadata.voiceSources).toEqual([expect.objectContaining({ source_id: 'src-draft', transcript: 'new spoken text' })]);
+    expect(metadata.voiceSources).toEqual([expect.objectContaining({ source_id: 'src-draft', transcript: 'new spoken text', language: 'en' })]);
     expect(draft.transcription).toBe('new spoken text');
     expect((await pendingAudio.get(11)).disposable).toBe(true);
   });
