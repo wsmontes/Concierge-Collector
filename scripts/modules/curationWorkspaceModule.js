@@ -570,12 +570,17 @@ class CurationWorkspaceModule {
         const legacyCopy = recorder.querySelector(':scope > p');
         legacyHeading?.classList.add('hidden');
         legacyCopy?.classList.add('hidden');
-        document.getElementById('additional-record-start')?.classList.add('curation-workspace-recorder__legacy-start');
+        const legacyStart = document.getElementById('additional-record-start');
+        legacyStart?.classList.add('curation-workspace-recorder__legacy-start');
+        if (legacyStart) {
+            legacyStart.tabIndex = -1;
+            legacyStart.setAttribute('aria-hidden', 'true');
+        }
         captureBody.appendChild(recorder);
     }
 
     startRecording() {
-        if (this.uiManager?.isEditingEntity) return;
+        if (this.uiManager?.isEditingEntity || this.uiManager?.isRecordingAdditional) return;
         this.syncRecorderIntoCapture();
         const conceptModule = this.uiManager?.conceptModule;
         if (conceptModule?.startAdditionalRecording) {
@@ -647,9 +652,6 @@ class CurationWorkspaceModule {
         conceptModule.__curationWorkspaceOriginalSaveRestaurant = originalSave;
 
         conceptModule.saveRestaurant = async (...args) => {
-            // Entity editing is a separate workflow. Do not apply Curation
-            // compatibility rules (concept sentinel, linkage normalization or
-            // provenance fallback) to Entity writes.
             if (this.uiManager?.isEditingEntity) {
                 return originalSave(...args);
             }
@@ -668,19 +670,10 @@ class CurationWorkspaceModule {
             const takeoverName = activeCurator?.name || authUser?.name || takeoverOwner;
             const takeoverEmail = activeCurator?.email || authUser?.email || takeoverOwner;
 
-            // Legacy ConceptModule still blocks save on zero concepts. The new
-            // contract is source-first: accepted audio/photo/text is valuable
-            // even when AI extraction is unavailable. A zero-value sentinel
-            // satisfies only that old precondition; convertConceptsToCategories
-            // deliberately skips empty values, so nothing synthetic is stored.
             if (hasNoConcepts) {
                 uiManager.currentConcepts = [{ category: '__workspace_internal__', value: '' }];
             }
 
-            // The hidden legacy input is populated from Entity before Curation.
-            // Never let the current canonical Entity name overwrite the captured
-            // working name/provenance of an existing linked Curation. New linked
-            // Curations may seed their working name from the canonical Entity.
             if (nameInput && linkedEntity) {
                 const saveWorkingName = existingCuration?.restaurant_name || linkedEntity.name || nameInput.value || '';
                 if (saveWorkingName && nameInput.value !== saveWorkingName) {
@@ -693,17 +686,10 @@ class CurationWorkspaceModule {
             const originalPut = curationTable?.put;
             if (curationTable && typeof originalPut === 'function') {
                 curationTable.put = async (curation, ...putArgs) => {
-                    // Linkage is entity_id, never workflow status. Normalize the
-                    // legacy client value before both local persistence and the
-                    // subsequent sync queue receive the same object reference.
                     if (curation?.status === 'linked') {
                         curation.status = 'draft';
                     }
 
-                    // Human expertise replaces a synthetic seed at SAVE time,
-                    // not when the item is merely opened. Mirror the server
-                    // takeover rule locally so offline IndexedDB is immediately
-                    // truthful while createdBy keeps the synthetic provenance.
                     if (existingCuration?.curator_type === 'synthetic' && takeoverOwner) {
                         curation.curator_id = takeoverOwner;
                         curation.curator_type = 'human';
