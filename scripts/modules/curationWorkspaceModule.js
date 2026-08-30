@@ -659,6 +659,7 @@ class CurationWorkspaceModule {
             const hasNoConcepts = !Array.isArray(originalConcepts) || originalConcepts.length === 0;
             const nameInput = document.getElementById('restaurant-name');
             const originalName = nameInput?.value ?? '';
+            let restoreNameAfterSave = false;
             const linkedEntity = uiManager.importedEntityData || uiManager.restaurantModule?.currentEntity || null;
             const existingCuration = uiManager.restaurantModule?.currentCuration || null;
             const activeCurator = window.CuratorProfile?.getCurrentCurator?.() || null;
@@ -676,11 +677,16 @@ class CurationWorkspaceModule {
                 uiManager.currentConcepts = [{ category: '__workspace_internal__', value: '' }];
             }
 
-            // A linked curation does not require an editable working-name field.
-            // Keep provenance when available; otherwise use canonical Entity name
-            // only as the legacy storage fallback expected by the current client.
-            if (nameInput && !nameInput.value.trim() && linkedEntity) {
-                nameInput.value = existingCuration?.restaurant_name || linkedEntity.name || '';
+            // The hidden legacy input is populated from Entity before Curation.
+            // Never let the current canonical Entity name overwrite the captured
+            // working name/provenance of an existing linked Curation. New linked
+            // Curations may seed their working name from the canonical Entity.
+            if (nameInput && linkedEntity) {
+                const saveWorkingName = existingCuration?.restaurant_name || linkedEntity.name || nameInput.value || '';
+                if (saveWorkingName && nameInput.value !== saveWorkingName) {
+                    nameInput.value = saveWorkingName;
+                    restoreNameAfterSave = true;
+                }
             }
 
             const curationTable = window.DataStore?.db?.curations;
@@ -727,7 +733,7 @@ class CurationWorkspaceModule {
                 if (hasNoConcepts) {
                     uiManager.currentConcepts = Array.isArray(originalConcepts) ? originalConcepts : [];
                 }
-                if (nameInput && !originalName && nameInput.value) {
+                if (restoreNameAfterSave && nameInput) {
                     nameInput.value = originalName;
                 }
             }
