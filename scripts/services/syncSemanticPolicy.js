@@ -10,7 +10,9 @@
 
     class SyncSemanticPolicy {
         static normalizeStatus(status, { defaultDraft = true } = {}) {
-            if (status === undefined || status === null || status === '') return defaultDraft ? 'draft' : undefined;
+            if (status === undefined || status === null || status === '') {
+                return defaultDraft ? 'draft' : undefined;
+            }
             const value = String(status).toLowerCase();
             return value === 'linked' ? 'draft' : status;
         }
@@ -18,7 +20,11 @@
         static createdAt(curation) {
             const value = curation?.created_at || curation?.createdAt || null;
             if (!value) return null;
-            try { return new Date(value).toISOString(); } catch (_) { return null; }
+            try {
+                return new Date(value).toISOString();
+            } catch (_) {
+                return null;
+            }
         }
 
         static normalizeSources(curation = {}) {
@@ -43,7 +49,9 @@
                 if (current.includes('google_places')) mapped.google_places = [{ created_at: createdAt }];
                 if (current.includes('import')) mapped.import = [{ created_at: createdAt }];
                 if (current.includes('web_research')) mapped.web_research = [];
-                if (current.includes('manual') || Object.keys(mapped).length === 0) mapped.manual = [{ created_at: createdAt }];
+                if (current.includes('manual') || Object.keys(mapped).length === 0) {
+                    mapped.manual = [{ created_at: createdAt }];
+                }
                 return mapped;
             }
 
@@ -80,8 +88,12 @@
 
         static sanitizePatch(payload = {}) {
             const sanitized = { ...payload };
-            for (const key of ['id', 'sync', '_lastSyncedState', 'etag', 'version']) delete sanitized[key];
-            if (!sanitized.curator_id && sanitized.curator?.id) sanitized.curator_id = sanitized.curator.id;
+            for (const key of ['id', 'sync', '_lastSyncedState', 'etag', 'version']) {
+                delete sanitized[key];
+            }
+            if (!sanitized.curator_id && sanitized.curator?.id) {
+                sanitized.curator_id = sanitized.curator.id;
+            }
             if (Object.prototype.hasOwnProperty.call(sanitized, 'status')) {
                 sanitized.status = this.normalizeStatus(sanitized.status, { defaultDraft: false });
                 if (sanitized.status === undefined) delete sanitized.status;
@@ -95,7 +107,9 @@
         static installSyncManagerGuards(runtime = global) {
             const Klass = runtime.SyncManagerV3;
             const proto = Klass?.prototype;
-            if (!proto || proto.__syncSemanticPolicyInstalled) return false;
+            if (!proto || proto.__syncSemanticPolicyInstalled) {
+                return Boolean(proto?.__syncSemanticPolicyInstalled);
+            }
             proto.__syncSemanticPolicyInstalled = true;
 
             proto.cleanCurationForSync = function (curation) {
@@ -119,8 +133,20 @@
             }
             return true;
         }
+
+        static startInstall(runtime = global, attempt = 0) {
+            if (this.installSyncManagerGuards(runtime)) return true;
+            if (attempt >= 300 || !runtime.document) return false;
+            runtime.setTimeout?.(
+                () => this.startInstall(runtime, attempt + 1),
+                100
+            );
+            return false;
+        }
     }
 
     global.SyncSemanticPolicy = SyncSemanticPolicy;
-    SyncSemanticPolicy.installSyncManagerGuards(global);
+    if (global.document) {
+        SyncSemanticPolicy.startInstall(global);
+    }
 })(window);
