@@ -27,17 +27,51 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
 
     _newSourceId() {
         try { if (typeof crypto !== 'undefined' && crypto.randomUUID) return crypto.randomUUID(); } catch (_) {}
-        return `audio_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+        return `src_voice_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    }
+
+    _currentCuratorId(options = {}) {
+        const explicit = options.curatorId || options.curator_id;
+        if (explicit) return String(explicit);
+        try {
+            const profile = typeof window !== 'undefined' ? window.CuratorProfile?.getCurrentCurator?.() : null;
+            if (profile?.curator_id) return String(profile.curator_id);
+        } catch (_) {}
+        try {
+            const resolved = typeof window !== 'undefined' ? window.uiManager?.conceptModule?.resolveCuratorId?.() : null;
+            if (resolved) return String(resolved);
+        } catch (_) {}
+        const current = typeof window !== 'undefined' ? window.uiManager?.currentCurator : null;
+        const legacy = current?.id || current?.curator_id || current?.email || null;
+        return legacy ? String(legacy) : null;
     }
 
     async saveAudio(audioBlob, options = {}) {
         let blob = audioBlob; let opts = options;
         if (audioBlob && !(audioBlob instanceof Blob) && audioBlob.audioBlob) { blob = audioBlob.audioBlob; opts = audioBlob; }
+        const capturedAt = opts.capturedAt instanceof Date
+            ? opts.capturedAt
+            : (opts.capturedAt ? new Date(opts.capturedAt) : new Date());
         const row = {
-            sourceId: opts.sourceId || this._newSourceId(), audioBlob: blob,
-            restaurantId: opts.restaurantId || null, draftId: opts.draftId || null, curationId: opts.curationId || null,
-            timestamp: new Date(), retryCount: 0, lastError: null, status: 'pending', isAdditional: opts.isAdditional || false,
-            transcriptText: opts.transcriptText || null, transcriptPersisted: false, disposable: false
+            sourceId: opts.sourceId || this._newSourceId(),
+            audioBlob: blob,
+            restaurantId: opts.restaurantId || null,
+            draftId: opts.draftId || null,
+            curationId: opts.curationId || null,
+            curatorId: this._currentCuratorId(opts),
+            capturedAt,
+            // timestamp is retained for legacy ordering/prune callers.
+            timestamp: capturedAt,
+            language: opts.language || null,
+            durationSeconds: opts.durationSeconds ?? opts.duration_seconds ?? null,
+            transcriptionModel: opts.transcriptionModel || opts.transcription_model || opts.model || null,
+            retryCount: 0,
+            lastError: null,
+            status: 'pending',
+            isAdditional: opts.isAdditional || false,
+            transcriptText: opts.transcriptText || null,
+            transcriptPersisted: false,
+            disposable: false
         };
         const id = await this.dataStorage.db.pendingAudio.add(row); this.prune().catch(() => {}); return id;
     }
@@ -59,15 +93,36 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
         return await this.getBySourceId(idOrSourceId);
     }
 
+    _matchesFilter(audio, filter = {}) {
+        if (filter.restaurantId && audio?.restaurantId !== filter.restaurantId) return false;
+        if (filter.draftId && audio?.draftId !== filter.draftId) return false;
+        if (filter.curationId && audio?.curationId !== filter.curationId) return false;
+        if (filter.status && audio?.status !== filter.status) return false;
+        return true;
+    }
+
     async getAudios(filter = {}) {
+        const table = this.dataStorage.db.pendingAudio;
         try {
-            let query = this.dataStorage.db.pendingAudio;
+            let query = table;
             if (filter.restaurantId) query = query.where('restaurantId').equals(filter.restaurantId);
             else if (filter.draftId) query = query.where('draftId').equals(filter.draftId);
             else if (filter.curationId) query = query.where('curationId').equals(filter.curationId);
             else if (filter.status) query = query.where('status').equals(filter.status);
             return await query.toArray();
-        } catch (error) { this.log.error('Error retrieving pending audios:', error); return []; }
+        } catch (error) {
+            // Profiles created by the old manual DataStore fallback may not
+            // have the new authoring indexes yet. Never turn that into an
+            // empty result: scan the small pending-audio table in memory.
+            this.log.warn('Pending audio index unavailable; falling back to scan:', error?.message || error);
+            try {
+                const rows = await table.toArray();
+                return rows.filter((audio) => this._matchesFilter(audio, filter));
+            } catch (fallbackError) {
+                this.log.error('Error retrieving pending audios:', fallbackError);
+                return [];
+            }
+        }
     }
 
     async updateAudio(id, updates) { await this.dataStorage.db.pendingAudio.update(id, updates); }
@@ -76,8 +131,17 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
         const audio = await this.resolveAudio(idOrSourceId);
         if (!audio?.audioBlob || audio.id == null || audio.disposable === true) return null;
         const sourceId = audio.sourceId || this._newSourceId();
-        await this.updateAudio(audio.id, { sourceId, status: 'processing', processingStartedAt: new Date(), lastError: null });
-        return { ...audio, sourceId, status: 'processing' };
+        const capturedAt = audio.capturedAt || audio.timestamp || new Date();
+        const curatorId = audio.curatorId || this._currentCuratorId();
+        await this.updateAudio(audio.id, {
+            sourceId,
+            capturedAt,
+            curatorId,
+            status: 'processing',
+            processingStartedAt: new Date(),
+            lastError: null
+        });
+        return { ...audio, sourceId, capturedAt, curatorId, status: 'processing' };
     }
 
     async markProcessingFailed(idOrSourceId, errorMessage) {
@@ -85,10 +149,19 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
         await this.updateAudio(audio.id, { retryCount: (audio.retryCount || 0) + 1, status: 'failed', lastError: String(errorMessage?.message || errorMessage || 'Processing failed'), processingStartedAt: null }); return true;
     }
 
-    async storeTranscript(idOrSourceId, transcriptText) {
+    async storeTranscript(idOrSourceId, transcriptText, metadata = {}) {
         const audio = await this.resolveAudio(idOrSourceId); if (!audio || audio.id == null) throw new Error(`Pending audio ${idOrSourceId} not found`);
-        await this.updateAudio(audio.id, { transcriptText: transcriptText || null, status: transcriptText ? 'transcribed' : audio.status, transcriptPersisted: false, disposable: false, lastError: null });
-        return { ...audio, transcriptText: transcriptText || null };
+        await this.updateAudio(audio.id, {
+            transcriptText: transcriptText || null,
+            status: transcriptText ? 'transcribed' : audio.status,
+            transcriptPersisted: false,
+            disposable: false,
+            lastError: null,
+            ...(metadata.language ? { language: metadata.language } : {}),
+            ...(metadata.durationSeconds !== undefined ? { durationSeconds: metadata.durationSeconds } : {}),
+            ...((metadata.transcriptionModel || metadata.model) ? { transcriptionModel: metadata.transcriptionModel || metadata.model } : {})
+        });
+        return { ...audio, transcriptText: transcriptText || null, ...metadata };
     }
 
     async associateWithCuration(filter, curationId) {
