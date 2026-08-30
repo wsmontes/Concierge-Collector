@@ -48,6 +48,48 @@ def _is_placeholder_identity(value):
     return value is None or str(value).strip().lower() in ("", "unknown")
 
 
+def stored_owner_identity(doc: dict):
+    """Identidade REAL armazenada para ownership.
+
+    O id embutido real prevalece sobre top-level placeholder (legado
+    envenenado: {'curator_id': 'unknown'} com curator.id real — o reparo de
+    identidade considera o embutido o dono). Sem identidade real, retorna o
+    placeholder (None/'unknown') para o takeover assumir.
+    """
+    top_id = doc.get("curator_id")
+    emb_id = (doc.get("curator") or {}).get("id")
+    if _is_placeholder_identity(top_id) and not _is_placeholder_identity(emb_id):
+        return emb_id
+    return top_id if top_id is not None else emb_id
+
+
+def resolve_ownership_action(stored_owner, curator_type, auth: dict) -> str:
+    """Decide a ação de ownership para editar uma curadoria EXISTENTE.
+
+    Retorna 'forbidden' | 'transfer' | 'ok'. Regras (2026-08-29):
+    - curadoria SINTÉTICA (curator_type='synthetic') + editor humano (JWT):
+      'transfer' — a curadoria vira humana e o editor assume a autoria
+      (createdBy preserva a origem). Curador sintético nunca está no mesmo
+      nível de um curador humano.
+    - identidade placeholder (legado sem dono): 'transfer' (qualquer curator
+      logado assume).
+    - admin (API key ou JWT role=admin) em curadoria HUMANA: 'ok' — operação
+      administrativa, sem transferência.
+    - dono == editor: 'ok'.
+    - humano dono != editor não-admin: 'forbidden' (o caminho é duplicar).
+    """
+    if _is_placeholder_identity(stored_owner):
+        return "transfer"
+    if curator_type == "synthetic":
+        # máquina (API key) não transfere; humano assume
+        return "transfer" if auth.get("user") else "ok"
+    if is_admin_auth(auth):
+        return "ok"
+    if stored_owner != auth.get("user"):
+        return "forbidden"
+    return "ok"
+
+
 def _clean_created_by(curation, doc):
     """createdBy sem o placeholder 'unknown' (case-insensitive) — cai para o
     curator_id normalizado; sem nada, None."""

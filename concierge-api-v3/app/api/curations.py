@@ -45,6 +45,8 @@ from app.services.curation_service import (
     CURATION_RESPONSE_PROJECTION,
     create_curation_doc,
     find_curation,
+    resolve_ownership_action,
+    stored_owner_identity,
     _normalize_curator_id,
     _is_placeholder_identity,
     _clean_created_by,
@@ -563,17 +565,17 @@ def update_curation(
         except ValueError:
             raise HTTPException(status_code=400, detail="Invalid If-Match header format")
 
-    # ── IDOR (ownership): só o dono (ou admin via API key/role) edita a
-    # curadoria. DEPOIS do If-Match — 404/409/400 têm prioridade. O dono é a
-    # identidade ARMAZENADA; placeholder (legado sem dono) é editável por
-    # qualquer curator logado.
-    stored_owner = current.get("curator_id") or (current.get("curator") or {}).get("id")
-    if not is_admin_auth(auth) and not _is_placeholder_identity(stored_owner):
-        if stored_owner != auth.get("user"):
-            raise HTTPException(
-                status_code=403,
-                detail="Cannot modify another curator's curation",
-            )
+    # ── IDOR (ownership): regra central em resolve_ownership_action — humana
+    # de terceiro = 403 (caminho é duplicar); sintética/placeholder editada
+    # por humano = transfer (assume a autoria); admin em humana = ok sem
+    # transferência. DEPOIS do If-Match — 404/409/400 têm prioridade.
+    stored_owner = stored_owner_identity(current)
+    ownership_action = resolve_ownership_action(stored_owner, current.get("curator_type"), auth)
+    if ownership_action == "forbidden":
+        raise HTTPException(
+            status_code=403,
+            detail="Cannot modify another curator's curation",
+        )
 
     # Prepare update
     update_data = {k: v for k, v in updates.model_dump(exclude_unset=True).items() if v is not None}
@@ -656,6 +658,19 @@ def update_curation(
     # armazenado e id embutido placeholder não envenena top-level real
     _normalize_curator_id(update_data)
     _repair_curator_identity(update_data, current)
+
+    # ── Takeover: curadoria sintética/placeholder editada por humano vira
+    # humana e o editor assume a autoria (createdBy preserva a origem).
+    if ownership_action == "transfer" and auth.get("user"):
+        takeover_owner = auth.get("user")
+        owner_profile = db.users.find_one({"email": takeover_owner}) or {}
+        update_data["curator_id"] = takeover_owner
+        update_data["curator"] = {
+            "id": takeover_owner,
+            "name": owner_profile.get("name") or takeover_owner,
+            "email": takeover_owner,
+        }
+        update_data["curator_type"] = "human"
 
     # ── IDOR (atribuição): a identidade REAL final escrita só pode ser a do
     # próprio usuário (ou admin); placeholder (sync offline) passa. Sem chaves
@@ -1311,19 +1326,20 @@ def bulk_upsert_curations(
                 entity_for_denorm = by_id.get(curation.entity_id) or by_slug.get(curation.entity_id)
 
             if existing:
-                # ── OWNERSHIP (auditoria ago/2026): curator comum só atualiza
-                # a PRÓPRIA curation; admin (API key/role) age em qualquer uma
-                if not is_admin_auth(auth):
-                    stored_owner = existing.get("curator_id") or (existing.get("curator") or {}).get("id")
-                    if not _is_placeholder_identity(stored_owner) and stored_owner != auth.get("user"):
-                        errors.append(
-                            BulkItemError(
-                                index=idx,
-                                id=curation.curation_id,
-                                error="ownership violation: curator_id does not match authenticated user",
-                            )
+                # ── OWNERSHIP: regra central (resolve_ownership_action) — o
+                # sync offline do editor pode empurrar uma curadoria sintética
+                # que ele editou: vira humana e assume a autoria.
+                stored_owner = stored_owner_identity(existing)
+                ownership_action = resolve_ownership_action(stored_owner, existing.get("curator_type"), auth)
+                if ownership_action == "forbidden":
+                    errors.append(
+                        BulkItemError(
+                            index=idx,
+                            id=curation.curation_id,
+                            error="ownership violation: curator_id does not match authenticated user",
                         )
-                        continue
+                    )
+                    continue
 
                 # ── CAS (auditoria ago/2026): com expected_version, o update
                 # só aplica se a versão do servidor bate — stale client vira
@@ -1353,6 +1369,18 @@ def bulk_upsert_curations(
                 doc["version"] = existing.get("version", 1) + 1
                 _normalize_curator_id(doc)  # embutida real sincroniza top-level ANTES do reparo
                 _repair_curator_identity(doc, existing)
+                # ── Takeover (mesma regra do PATCH individual): sintética/
+                # placeholder editada por humano vira humana do editor.
+                if ownership_action == "transfer" and auth.get("user"):
+                    takeover_owner = auth.get("user")
+                    owner_profile = db.users.find_one({"email": takeover_owner}) or {}
+                    doc["curator_id"] = takeover_owner
+                    doc["curator"] = {
+                        "id": takeover_owner,
+                        "name": owner_profile.get("name") or takeover_owner,
+                        "email": takeover_owner,
+                    }
+                    doc["curator_type"] = "human"
                 # DEPOIS do reparo: placeholder nunca persiste no updatedBy
                 doc["updatedBy"] = doc.get("curator_id") or auth.get("user")
                 if entity_for_denorm:

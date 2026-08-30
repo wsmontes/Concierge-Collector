@@ -251,6 +251,8 @@ def build_curation(
         "status": "draft",
         "curator_id": curator_id,
         "curator": {"id": curator_id, "name": curator_name},
+        # curador sintético: edição humana assume a curadoria (takeover)
+        "curator_type": "synthetic",
         "categories": categories,
         "sources": {"web_research": urls},
         "transcript": research_block,

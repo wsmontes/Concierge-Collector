@@ -329,6 +329,9 @@ def normalize_curation(raw: Dict[str, Any], default_curator_id: str, keep_entity
             'name': curator_name,
             'email': curator.get('email'),
         },
+        # curador sintético quando cai no default do script; curador real do
+        # payload (ex.: email de curador humano) continua humano
+        'curator_type': 'synthetic' if curator_id == default_curator_id else 'human',
         'status': 'draft',
         'notes': notes,
         'categories': categories,

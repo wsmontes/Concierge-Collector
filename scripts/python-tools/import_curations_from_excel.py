@@ -27,12 +27,15 @@ import requests
 from openpyxl import load_workbook
 
 
+DEFAULT_CURATOR_ID = "curator-import-excel"
+
+
 def parse_args() -> argparse.Namespace:
     default_input = Path(__file__).resolve().parents[2] / "data" / "aiconciergerevisorestaurantessopaulomaro2023"
     parser = argparse.ArgumentParser(description="Import curations from Excel files via API v3 bulk endpoint")
     parser.add_argument("--input-dir", type=Path, default=default_input, help="Folder containing .xlsx files")
     parser.add_argument("--apply", action="store_true", help="Send to API (default is dry-run)")
-    parser.add_argument("--default-curator-id", default="curator-import-excel", help="Curator ID for imported curations")
+    parser.add_argument("--default-curator-id", default=DEFAULT_CURATOR_ID, help="Curator ID for imported curations")
     parser.add_argument("--default-curator-name", default="Excel Import Script", help="Curator name for imported curations")
     parser.add_argument("--chunk-size", type=int, default=200, help="Curations per bulk request (default: 200)")
     return parser.parse_args()
@@ -169,7 +172,10 @@ def build_curation_document(
             "id": curator_id,
             "name": curator_name,
             "email": None
-        }
+        },
+        # curador sintético quando cai no default do script; curador real
+        # (email de curador humano passado via --curator-id) continua humano
+        "curator_type": "synthetic" if curator_id == DEFAULT_CURATOR_ID else "human"
     }
 
 

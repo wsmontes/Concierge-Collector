@@ -130,6 +130,11 @@ class CurationCategories(BaseModel):
 
 CurationStatus = Literal["draft", "linked", "active", "deleted", "archived"]
 
+CuratorType = Literal["human", "synthetic"]
+# synthetic = curador de automação (pipeline de pesquisa IA, imports bulk).
+# Curadorias sintéticas editadas por um humano viram humanas (takeover) —
+# o curador sintético nunca está no mesmo nível de um curador humano.
+
 
 class CurationBase(BaseModel):
     """Base Curation model"""
@@ -190,6 +195,14 @@ class CurationCreate(CurationBase):
     entity_id: Optional[str] = Field(None, description="Entity this curation is about (null for orphaned curations)")
     curator_id: str = Field(..., description="Curator ID for filtering")
     curator: CuratorInfo
+    curator_type: CuratorType = Field(
+        default="human",
+        description=(
+            "Natureza do curador: human (pessoa) ou synthetic (pipeline IA/imports). "
+            "Pipelines de automação devem declarar 'synthetic'. Em PATCH o valor é "
+            "gerido pelo servidor (takeover de curadoria sintética por humano)."
+        ),
+    )
     createdBy: Optional[str] = Field(None, description="Curator ID who originally created this curation")
     expected_version: Optional[int] = Field(
         None,
@@ -238,6 +251,14 @@ class Curation(CurationBase):
     entity_id: Optional[str] = None
     curator_id: Optional[str] = None
     curator: CuratorInfo
+    curator_type: CuratorType = Field(
+        default="human",
+        description=(
+            "human = curadoria de pessoa; synthetic = gerada por pipeline IA/import "
+            "(curador não está no mesmo nível de um humano; edição humana assume a "
+            "curadoria). Ausente em docs legados = human."
+        ),
+    )
     createdBy: Optional[str] = None
     updatedBy: Optional[str] = None
     embeddings: Optional[List[Dict]] = None
