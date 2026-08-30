@@ -22,7 +22,7 @@ const SourceUtils = (() => {
         [SCOPES.AUDIO]: {
             label: 'Voice Note',
             icon: 'mic',
-            className: 'chip chip--accent' // padrão único de chips
+            className: 'chip chip--accent'
         },
         [SCOPES.IMAGE]: {
             label: 'Photo',
@@ -65,15 +65,10 @@ const SourceUtils = (() => {
      * research material in the transcript field. Transcript-as-audio therefore
      * exists only as a compatibility fallback for legacy records that have no
      * explicit source provenance at all.
-     * 
-     * @param {Object} curation - The curation object
-     * @param {Object} entity - The associated entity object (optional)
-     * @returns {Object} UI configuration object { label, icon, className }
      */
     function detectSource(curation, entity) {
         const sources = curation.sources || [];
 
-        // Check explicit sources first (supports both legacy array and structured object)
         if (Array.isArray(sources) && sources.length > 0) {
             if (sources.includes(SCOPES.AUDIO)) return UI_CONFIG[SCOPES.AUDIO];
             if (sources.includes(SCOPES.IMAGE)) return UI_CONFIG[SCOPES.IMAGE];
@@ -94,13 +89,10 @@ const SourceUtils = (() => {
             if (Array.isArray(sources.web_research) && sources.web_research.length > 0) return UI_CONFIG[SCOPES.WEB_RESEARCH];
             if (Array.isArray(sources.manual) && sources.manual.length > 0) return UI_CONFIG[SCOPES.MANUAL];
 
-            // A non-empty structured source object is explicit provenance even
-            // when it contains a source type this older UI does not understand.
-            // Never reinterpret its text body as a voice recording.
             if (Object.keys(sources).length > 0) return UI_CONFIG[SCOPES.MANUAL];
         }
 
-        // Heuristic fallback for legacy data with NO explicit provenance.
+        // Compatibility fallback only for truly unstructured legacy records.
         if ((curation.transcript || curation.unstructured_text || curation.transcription || '').trim().length > 0) {
             return UI_CONFIG[SCOPES.AUDIO];
         }
@@ -109,18 +101,13 @@ const SourceUtils = (() => {
             return UI_CONFIG[SCOPES.IMAGE];
         }
 
-        if (entity?.data?.place_id || entity?.place_id || curation.googlePlaceId) {
+        if (entity?.data?.place_id || entity?.data?.google_place_id || entity?.place_id || curation.googlePlaceId) {
             return UI_CONFIG[SCOPES.GOOGLE];
         }
 
         return UI_CONFIG[SCOPES.MANUAL];
     }
 
-    /**
-     * Gets the full source list for saving to backend
-     * @param {Object} context - Current editing context (hasAudio, hasPhotos, etc.)
-     * @returns {Array<string>} Array of source strings
-     */
     function determineSourcesFromContext(context) {
         const sources = [];
         if (context.hasAudio) sources.push(SCOPES.AUDIO);
@@ -129,19 +116,13 @@ const SourceUtils = (() => {
         if (context.isImport) sources.push(SCOPES.IMPORT);
 
         if (sources.length === 0) sources.push(SCOPES.MANUAL);
-
         return sources;
     }
 
     /**
      * Build structured source payload for curation persistence.
-     *
-     * Output shape example:
-     * {
-     *   audio: [{ source_id, transcript, language, model, duration_seconds, created_at }],
-     *   image: [{ created_at }],
-     *   google_places: [{ created_at }]
-     * }
+     * Existing provenance is immutable history: new capture events append;
+     * saving text never reconstructs provenance from the transcript body.
      */
     function buildSourcesPayloadFromContext(context) {
         const now = new Date().toISOString();
@@ -152,14 +133,24 @@ const SourceUtils = (() => {
         const sources = { ...existing };
 
         if (context.hasAudio) {
-            sources.audio = [{
-                source_id: context.transcriptionId || null,
-                transcript: context.transcript || null,
-                language: context.language || null,
-                model: context.model || null,
-                duration_seconds: context.durationSeconds || null,
-                created_at: now
-            }];
+            const currentAudio = Array.isArray(sources.audio) ? [...sources.audio] : [];
+            const sourceId = context.audioSourceId ?? context.transcriptionId ?? null;
+            const alreadyRecorded = sourceId != null && currentAudio.some((entry) => {
+                if (!entry || typeof entry !== 'object') return false;
+                return String(entry.source_id ?? '') === String(sourceId);
+            });
+
+            if (!alreadyRecorded) {
+                currentAudio.push({
+                    source_id: sourceId,
+                    transcript: context.transcript || null,
+                    language: context.language || null,
+                    model: context.model || null,
+                    duration_seconds: context.durationSeconds || null,
+                    created_at: now
+                });
+            }
+            sources.audio = currentAudio;
         }
 
         if (context.hasPhotos) {
@@ -195,5 +186,4 @@ const SourceUtils = (() => {
     };
 })();
 
-// Expose to window for global access
 window.SourceUtils = SourceUtils;
