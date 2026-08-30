@@ -39,19 +39,21 @@ function makeTable(rows = [], key = 'id') {
   };
 }
 
-function loadProcessor({ audioRows = [], curations = [], drafts = [], transcribeText = 'new spoken text' } = {}) {
+function loadProcessor({ audioRows = [], curations = [], drafts = [], transcribeText = 'new spoken text', transcriptionResult = null } = {}) {
   const src = readFileSync(processorPath, 'utf8');
   const pendingAudio = makeTable(audioRows, 'id');
   const curationTable = makeTable(curations, 'curation_id');
   const draftTable = makeTable(drafts, 'id');
+  const transcribeCalls = [];
   const fakeWindow = {
     navigator: { onLine: true },
     addEventListener() {},
     dispatchEvent() {},
     DataStore: { db: { pendingAudio, curations: curationTable, draftRestaurants: draftTable } },
     ApiService: {
-      async transcribeAudio() {
-        return { results: { transcription: { text: transcribeText }, concepts: { concepts: [] } } };
+      async transcribeAudio(_blob, language) {
+        transcribeCalls.push({ language });
+        return transcriptionResult || { results: { transcription: { text: transcribeText }, concepts: { concepts: [] } } };
       }
     },
     PendingAudioManager: {
@@ -61,6 +63,12 @@ function loadProcessor({ audioRows = [], curations = [], drafts = [], transcribe
         if (!row || row.disposable === true || !row.audioBlob) return null;
         await pendingAudio.update(id, { status: 'processing' });
         return { ...row, status: 'processing' };
+      },
+      async storeTranscript(idOrSourceId, text, metadata = {}) {
+        let row = await pendingAudio.get(idOrSourceId);
+        if (!row) row = (await pendingAudio.toArray()).find((item) => item.sourceId === idOrSourceId);
+        if (!row) throw new Error('missing raw audio');
+        await pendingAudio.update(row.id, { transcriptText: text, ...metadata, status: 'transcribed' });
       },
       async markProcessingFailed(id, error) { return pendingAudio.update(id, { status: 'failed', lastError: String(error) }); },
       async markTranscriptPersisted(idOrSourceId, options = {}) {
@@ -74,7 +82,7 @@ function loadProcessor({ audioRows = [], curations = [], drafts = [], transcribe
   // eslint-disable-next-line no-new-func
   const fn = new Function('window', `${src}\nreturn window.OfflineCaptureProcessor;`);
   const Processor = fn(fakeWindow);
-  return { processor: new Processor(fakeWindow), fakeWindow, pendingAudio, curationTable, draftTable };
+  return { processor: new Processor(fakeWindow), fakeWindow, pendingAudio, curationTable, draftTable, transcribeCalls };
 }
 
 describe('OfflineCaptureProcessor — durable reconnect', () => {
@@ -90,10 +98,65 @@ describe('OfflineCaptureProcessor — durable reconnect', () => {
 
     expect(result.processed).toBe(1);
     expect(curation.sources.audio).toEqual([
-      expect.objectContaining({ source_id: 'src-stable-7', transcript: 'new spoken text' })
+      expect.objectContaining({
+        source_id: 'src-stable-7',
+        type: 'voice_transcript',
+        text: 'new spoken text',
+        transcript: 'new spoken text'
+      })
     ]);
     expect(curation.sources.audio[0].source_id).not.toBe(7);
     expect(raw.disposable).toBe(true);
+  });
+
+  test('uses capture language on reconnect and carries cheap metadata into the textual source', async () => {
+    const { processor, curationTable, pendingAudio, transcribeCalls } = loadProcessor({
+      transcriptionResult: {
+        results: { transcription: { text: 'ótimo risoto', language: 'pt-BR' }, concepts: { concepts: [] } },
+        model: 'whisper-reconnect'
+      },
+      audioRows: [{
+        id: 12,
+        sourceId: 'src-pt',
+        curationId: 'cur-pt',
+        curatorId: 'wagner@example.com',
+        capturedAt: '2026-08-30T18:31:02.000Z',
+        language: 'pt-BR',
+        durationSeconds: 64.2,
+        audioBlob: new Blob(['voice']),
+        status: 'pending',
+        disposable: false
+      }],
+      curations: [{ curation_id: 'cur-pt', transcript: null, sources: {}, sync: { status: 'pending' } }]
+    });
+
+    await processor.processPending();
+    const source = (await curationTable.get('cur-pt')).sources.audio[0];
+    const raw = await pendingAudio.get(12);
+
+    expect(transcribeCalls).toEqual([{ language: 'pt-BR' }]);
+    expect(source).toMatchObject({
+      source_id: 'src-pt',
+      type: 'voice_transcript',
+      text: 'ótimo risoto',
+      curator_id: 'wagner@example.com',
+      captured_at: '2026-08-30T18:31:02.000Z',
+      language: 'pt-BR',
+      duration_seconds: 64.2,
+      transcription_model: 'whisper-reconnect'
+    });
+    expect(raw.language).toBe('pt-BR');
+    expect(raw.transcriptionModel).toBe('whisper-reconnect');
+  });
+
+  test('does not force English when capture language is unknown', async () => {
+    const { processor, transcribeCalls } = loadProcessor({
+      audioRows: [{ id: 13, sourceId: 'src-auto-lang', curationId: 'cur-auto', audioBlob: new Blob(['voice']), status: 'pending', disposable: false }],
+      curations: [{ curation_id: 'cur-auto', transcript: null, sources: {}, sync: { status: 'pending' } }]
+    });
+
+    await processor.processPending();
+    expect(transcribeCalls).toEqual([{ language: undefined }]);
   });
 
   test('replaying the same sourceId is idempotent for source history and aggregate transcript', async () => {
