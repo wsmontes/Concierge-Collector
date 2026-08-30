@@ -24,6 +24,19 @@ const SourceUtils = (() => {
         return value !== null && value !== undefined && String(value).trim() !== '';
     }
 
+    function hasMeaningfulText(value) {
+        return value !== null && value !== undefined && String(value).trim() !== '';
+    }
+
+    function toIsoTimestamp(value, fallback) {
+        if (!value) return fallback;
+        try {
+            const date = value instanceof Date ? value : new Date(value);
+            if (!Number.isNaN(date.getTime())) return date.toISOString();
+        } catch (_) {}
+        return fallback;
+    }
+
     function isLinkedCuration(curation) { return hasMeaningfulId(curation?.entity_id); }
     function getCuratorType(curation) { return curation?.curator_type === 'synthetic' ? 'synthetic' : 'human'; }
     function getCuratorIcon(curation) { return getCuratorType(curation) === 'synthetic' ? 'smart_toy' : 'person'; }
@@ -72,15 +85,34 @@ const SourceUtils = (() => {
         if (context.audioSourceId !== undefined && context.audioSourceId !== null) return context.audioSourceId;
         if (context.transcriptionId !== undefined && context.transcriptionId !== null) return context.transcriptionId;
         const recorder = window.uiManager?.recordingModule;
-        // Stable provenance id wins. Numeric currentAudioId remains a legacy
-        // local blob locator fallback for pre-Part-2 runtimes/tests.
         const stableSourceId = recorder?.currentAudioSourceId;
         if (stableSourceId !== undefined && stableSourceId !== null) return stableSourceId;
         const runtimeAudioId = recorder?.currentAudioId;
         return runtimeAudioId !== undefined && runtimeAudioId !== null ? runtimeAudioId : null;
     }
 
-    function buildSourcesPayloadFromContext(context) {
+    function resolveCuratorId(context = {}) {
+        if (hasMeaningfulId(context.curatorId)) return String(context.curatorId);
+        try {
+            const profile = window.CuratorProfile?.getCurrentCurator?.();
+            if (hasMeaningfulId(profile?.curator_id)) return String(profile.curator_id);
+        } catch (_) {}
+        try {
+            const resolved = window.uiManager?.conceptModule?.resolveCuratorId?.();
+            if (hasMeaningfulId(resolved)) return String(resolved);
+        } catch (_) {}
+        const current = window.uiManager?.currentCurator || null;
+        const legacy = current?.id || current?.curator_id || current?.email || null;
+        return hasMeaningfulId(legacy) ? String(legacy) : null;
+    }
+
+    /**
+     * Build explicit provenance. `sources.audio[]` is intentionally retained as
+     * the compatibility bucket name, but every new entry represents durable
+     * VOICE-ORIGINATED TEXTUAL EVIDENCE. The raw audio Blob is ephemeral and
+     * is never referenced from the persisted Curation.
+     */
+    function buildSourcesPayloadFromContext(context = {}) {
         const now = new Date().toISOString();
         const existing = (context.existingSources && typeof context.existingSources === 'object' && !Array.isArray(context.existingSources))
             ? { ...context.existingSources }
@@ -89,17 +121,33 @@ const SourceUtils = (() => {
 
         if (context.hasAudio) {
             const sourceId = resolveAudioSourceId(context);
-            if (sourceId !== null) {
+            const transcriptText = hasMeaningfulText(context.transcript) ? String(context.transcript).trim() : null;
+            // A raw recording is NOT a durable source. Persist voice provenance
+            // only once the atomic transcript for this capture exists.
+            if (sourceId !== null && transcriptText) {
                 const currentAudio = Array.isArray(sources.audio) ? [...sources.audio] : [];
                 const alreadyRecorded = currentAudio.some((entry) => String(entry?.source_id ?? '') === String(sourceId));
                 if (!alreadyRecorded) {
+                    const capturedAt = toIsoTimestamp(
+                        context.capturedAt || context.timestamp || context.createdAt,
+                        now
+                    );
+                    const curatorId = resolveCuratorId(context);
+                    const transcriptionModel = context.transcriptionModel || context.model || null;
                     currentAudio.push({
                         source_id: sourceId,
-                        transcript: context.transcript || null,
+                        type: 'voice_transcript',
+                        text: transcriptText,
+                        // Compatibility aliases retained while older readers
+                        // still consume transcript/model/created_at.
+                        transcript: transcriptText,
+                        curator_id: curatorId,
+                        captured_at: capturedAt,
+                        created_at: capturedAt,
                         language: context.language || null,
-                        model: context.model || null,
-                        duration_seconds: context.durationSeconds || null,
-                        created_at: now
+                        duration_seconds: context.durationSeconds ?? null,
+                        transcription_model: transcriptionModel,
+                        model: transcriptionModel
                     });
                 }
                 sources.audio = currentAudio;
@@ -108,8 +156,30 @@ const SourceUtils = (() => {
         if (context.hasPhotos) sources.image = Array.isArray(sources.image) && sources.image.length ? sources.image : [{ created_at: now }];
         if (context.hasPlaceId) sources.google_places = Array.isArray(sources.google_places) && sources.google_places.length ? sources.google_places : [{ created_at: now }];
         if (context.isImport) sources.import = Array.isArray(sources.import) && sources.import.length ? sources.import : [{ created_at: now }];
-        if (!Object.keys(sources).length) sources.manual = [{ created_at: now }];
+        if (!Object.keys(sources).length && context.suppressManualFallback !== true) sources.manual = [{ created_at: now }];
         return sources;
+    }
+
+    function normalizeWorkflowStatus(status) {
+        if (status === undefined || status === null || status === '') return 'draft';
+        return String(status).toLowerCase() === 'linked' ? 'draft' : status;
+    }
+
+    /**
+     * Compatibility boundary for the legacy DataStore implementation, whose
+     * createCuration historically derived status=linked from entity_id.
+     * Linkage truth lives only in entity_id; workflow status remains editorial.
+     */
+    function patchDataStoreCreateCuration() {
+        const store = window.DataStore || window.dataStore;
+        if (!store?.createCuration || store.__semanticTruthCreateCurationInstalled) return;
+        const original = store.createCuration.bind(store);
+        store.__semanticTruthCreateCurationInstalled = true;
+        store.__semanticTruthOriginalCreateCuration = original;
+        store.createCuration = (curationData = {}) => original({
+            ...curationData,
+            status: normalizeWorkflowStatus(curationData.status)
+        });
     }
 
     function patchCardFactory() {
@@ -165,7 +235,11 @@ const SourceUtils = (() => {
         };
     }
 
-    function installSemanticTruthGuards() { patchCardFactory(); patchWorkspaceState(); }
+    function installSemanticTruthGuards() {
+        patchDataStoreCreateCuration();
+        patchCardFactory();
+        patchWorkspaceState();
+    }
 
     return {
         SCOPES, detectSource, determineSourcesFromContext, buildSourcesPayloadFromContext,
