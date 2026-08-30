@@ -69,9 +69,11 @@ def _cors_origins_safe(origins=None):
     if origins is None:
         origins = list(settings.cors_origins_list)
         # O Admin é uma origem conhecida/configurada, não um wildcard ou uma
-        # reflection do header Origin. Em produção a property é fail-closed se
-        # CMS_ADMIN_ORIGIN estiver ausente.
-        admin_origin = settings.cms_admin_origin_value
+        # reflection do header Origin. Inclusão CONDICIONAL no CORS: o CMS
+        # ainda não é deployado em produção — o boot da API não pode depender
+        # dele. Os endpoints do CMS continuam fail-closed via as properties
+        # estritas (cms_admin_origin_value etc. exigem a config quando usados).
+        admin_origin = (settings.cms_admin_origin or "").strip()
         if admin_origin and admin_origin not in origins:
             origins.append(admin_origin)
     if "*" in origins:
