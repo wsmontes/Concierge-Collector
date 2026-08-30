@@ -119,6 +119,17 @@ const SourceUtils = (() => {
         return sources;
     }
 
+    function resolveAudioSourceId(context) {
+        if (context.audioSourceId !== undefined && context.audioSourceId !== null) {
+            return context.audioSourceId;
+        }
+        if (context.transcriptionId !== undefined && context.transcriptionId !== null) {
+            return context.transcriptionId;
+        }
+        const runtimeAudioId = window.uiManager?.recordingModule?.currentAudioId;
+        return runtimeAudioId !== undefined && runtimeAudioId !== null ? runtimeAudioId : null;
+    }
+
     /**
      * Build structured source payload for curation persistence.
      * Existing provenance is immutable history: new capture events append;
@@ -133,24 +144,30 @@ const SourceUtils = (() => {
         const sources = { ...existing };
 
         if (context.hasAudio) {
-            const currentAudio = Array.isArray(sources.audio) ? [...sources.audio] : [];
-            const sourceId = context.audioSourceId ?? context.transcriptionId ?? null;
-            const alreadyRecorded = sourceId != null && currentAudio.some((entry) => {
-                if (!entry || typeof entry !== 'object') return false;
-                return String(entry.source_id ?? '') === String(sourceId);
-            });
-
-            if (!alreadyRecorded) {
-                currentAudio.push({
-                    source_id: sourceId,
-                    transcript: context.transcript || null,
-                    language: context.language || null,
-                    model: context.model || null,
-                    duration_seconds: context.durationSeconds || null,
-                    created_at: now
+            const sourceId = resolveAudioSourceId(context);
+            // `hasAudio` is still passed by some legacy callers based on the
+            // presence of transcript text. A source id is the minimum proof
+            // that an actual recording was persisted. Without it, preserve
+            // existing provenance and do not invent sources.audio.
+            if (sourceId !== null) {
+                const currentAudio = Array.isArray(sources.audio) ? [...sources.audio] : [];
+                const alreadyRecorded = currentAudio.some((entry) => {
+                    if (!entry || typeof entry !== 'object') return false;
+                    return String(entry.source_id ?? '') === String(sourceId);
                 });
+
+                if (!alreadyRecorded) {
+                    currentAudio.push({
+                        source_id: sourceId,
+                        transcript: context.transcript || null,
+                        language: context.language || null,
+                        model: context.model || null,
+                        duration_seconds: context.durationSeconds || null,
+                        created_at: now
+                    });
+                }
+                sources.audio = currentAudio;
             }
-            sources.audio = currentAudio;
         }
 
         if (context.hasPhotos) {
