@@ -61,11 +61,17 @@ function makeRuntime(audio) {
 }
 
 describe('OfflineSourceIdentityBridge', () => {
-  test('Save uses stable sourceId and source-local transcript instead of Dexie id and aggregate text', async () => {
+  test('Save uses stable sourceId, atomic transcript and capture metadata instead of Dexie id/aggregate text', async () => {
+    const capturedAt = new Date('2026-08-30T18:31:02.000Z');
     const { runtime, seen, conceptModule } = makeRuntime({
       id: 7,
       sourceId: 'source-stable-7',
       transcriptText: 'NEW SOURCE TEXT',
+      curatorId: 'wagner@example.com',
+      timestamp: capturedAt,
+      language: 'pt-BR',
+      durationSeconds: 64.2,
+      transcriptionModel: 'whisper-test',
       disposable: false
     });
     const Bridge = loadBridge(runtime);
@@ -77,22 +83,33 @@ describe('OfflineSourceIdentityBridge', () => {
     expect(result).toMatchObject({
       hasAudio: true,
       audioSourceId: 'source-stable-7',
-      transcript: 'NEW SOURCE TEXT'
+      transcript: 'NEW SOURCE TEXT',
+      curatorId: 'wagner@example.com',
+      capturedAt,
+      language: 'pt-BR',
+      durationSeconds: 64.2,
+      transcriptionModel: 'whisper-test'
     });
     expect(seen).toHaveLength(1);
     expect(seen[0]).toMatchObject({
       hasAudio: true,
       audioSourceId: 'source-stable-7',
       transcriptionId: null,
-      transcript: 'NEW SOURCE TEXT'
+      transcript: 'NEW SOURCE TEXT',
+      curatorId: 'wagner@example.com',
+      capturedAt,
+      language: 'pt-BR',
+      durationSeconds: 64.2,
+      transcriptionModel: 'whisper-test'
     });
   });
 
-  test('Save with raw audio but no transcript does not invent audio provenance', async () => {
+  test('Save with raw audio but no transcript does not invent audio or manual provenance', async () => {
     const { runtime, seen, conceptModule } = makeRuntime({
       id: 8,
       sourceId: 'source-offline-8',
       transcriptText: null,
+      curatorId: 'wagner@example.com',
       disposable: false
     });
     const Bridge = loadBridge(runtime);
@@ -101,12 +118,17 @@ describe('OfflineSourceIdentityBridge', () => {
 
     const result = await conceptModule.saveRestaurant();
 
-    expect(result).toMatchObject({ hasAudio: false, audioSourceId: null });
+    expect(result).toMatchObject({
+      hasAudio: false,
+      audioSourceId: null,
+      suppressManualFallback: true
+    });
     expect(seen).toHaveLength(1);
     expect(seen[0]).toMatchObject({
       hasAudio: false,
       audioSourceId: null,
-      transcriptionId: null
+      transcriptionId: null,
+      suppressManualFallback: true
     });
   });
 
