@@ -22,36 +22,16 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
         this.retryDelays = [5000, 15000]; // 5s, 15s
     }
 
-    /**
-     * Initialize the pending audio manager
-     * @param {Object} dataStorage - DataStorage instance
-     */
     init(dataStorage) {
         this.dataStorage = dataStorage;
         this.log.debug('PendingAudioManager initialized');
-        // Safe maintenance: prune() is allowed to reclaim only rows that
-        // have already been made disposable by an explicit durability step.
         this.prune().catch((error) => this.log.warn('prune no init falhou:', error));
     }
 
-    /**
-     * Central deletion predicate for AUTOMATIC cleanup.
-     * Age, count and a status such as "completed" are not proof that the
-     * transcript/source representation survived a Curation save.
-     * @param {Object} audio
-     * @returns {boolean}
-     */
     canDeleteAudio(audio) {
         return Boolean(audio && audio.disposable === true);
     }
 
-    /**
-     * Safe local retention. Limits apply only to recordings that are already
-     * disposable. Required raw recordings are never deleted due to age/count.
-     * @param {Object} options
-     * @param {number} options.maxCount - Preferred maximum retained rows
-     * @param {number} options.maxAgeDays - Preferred maximum age in days
-     */
     async prune({ maxCount = 30, maxAgeDays = 7 } = {}) {
         try {
             const audios = await this.getAudios();
@@ -89,16 +69,8 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
         return `audio_${Date.now()}_${Math.random().toString(36).slice(2)}`;
     }
 
-    /**
-     * Save audio recording to pending storage.
-     * Raw audio is non-disposable by default.
-     * @param {Blob} audioBlob - The audio blob
-     * @param {Object} options - Additional options
-     * @returns {Promise<number>} - Pending audio ID
-     */
     async saveAudio(audioBlob, options = {}) {
         try {
-            // Support both: saveAudio(blob, opts) and legacy saveAudio({audioBlob, ...})
             let blob = audioBlob;
             let opts = options;
             if (audioBlob && !(audioBlob instanceof Blob) && audioBlob.audioBlob) {
@@ -123,10 +95,7 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
 
             const id = await this.dataStorage.db.pendingAudio.add(audioData);
             this.log.debug(`Pending audio saved with ID: ${id}`);
-
-            // Safe fire-and-forget maintenance. Non-disposable rows survive.
             this.prune().catch((error) => this.log.warn('prune pós-save falhou:', error));
-
             return id;
         } catch (error) {
             this.log.error('Error saving pending audio:', error);
@@ -134,11 +103,6 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
         }
     }
 
-    /**
-     * Get pending audio by ID
-     * @param {number} id - Pending audio ID
-     * @returns {Promise<Object>} - Pending audio data
-     */
     async getAudio(id) {
         try {
             return await this.dataStorage.db.pendingAudio.get(id);
@@ -148,9 +112,6 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
         }
     }
 
-    /**
-     * Get all pending audios, optionally filtered.
-     */
     async getAudios(filter = {}) {
         try {
             let query = this.dataStorage.db.pendingAudio;
@@ -172,9 +133,6 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
         }
     }
 
-    /**
-     * Update pending audio record
-     */
     async updateAudio(id, updates) {
         try {
             await this.dataStorage.db.pendingAudio.update(id, updates);
@@ -185,13 +143,6 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
         }
     }
 
-    /**
-     * Associate existing raw sources with the durable Curation produced by a
-     * Save. Association is deliberately non-destructive.
-     * @param {Object} filter - draftId/restaurantId/curationId filter
-     * @param {string} curationId
-     * @returns {Promise<number>}
-     */
     async associateWithCuration(filter, curationId) {
         if (!curationId) return 0;
         const audios = await this.getAudios(filter || {});
@@ -204,14 +155,6 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
         return updated;
     }
 
-    /**
-     * Confirm that the transcript represented by this raw audio has been
-     * durably persisted. This is the ONLY automatic path that makes raw audio
-     * disposable.
-     * @param {number} id
-     * @param {Object} options
-     * @param {string|null} options.curationId
-     */
     async markTranscriptPersisted(id, { curationId = null } = {}) {
         const audio = await this.getAudio(id);
         if (!audio) {
@@ -226,9 +169,6 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
         });
     }
 
-    /**
-     * Increment retry count and update last error
-     */
     async incrementRetryCount(id, errorMessage) {
         try {
             const audio = await this.getAudio(id);
@@ -251,9 +191,6 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
         }
     }
 
-    /**
-     * Schedule automatic retry for failed transcription
-     */
     async scheduleAutoRetry(id, retryCallback) {
         try {
             const audio = await this.getAudio(id);
@@ -292,9 +229,6 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
         }
     }
 
-    /**
-     * Check if audio can be automatically retried
-     */
     async canAutoRetry(id) {
         try {
             const audio = await this.getAudio(id);
@@ -306,10 +240,6 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
         }
     }
 
-    /**
-     * Explicit user deletion. Unlike automatic cleanup, this intentionally
-     * does not require disposable=true.
-     */
     async deleteAudio(id) {
         try {
             await this.dataStorage.db.pendingAudio.delete(id);
@@ -320,9 +250,6 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
         }
     }
 
-    /**
-     * Explicit bulk deletion by filter (used by user-driven management UI).
-     */
     async deleteAudios(filter = {}) {
         try {
             const audios = await this.getAudios(filter);
@@ -337,10 +264,6 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
         }
     }
 
-    /**
-     * Legacy compatibility marker. Transcription success alone does NOT make
-     * raw audio disposable because the transcript may still live only in DOM.
-     */
     async markAsTranscribed(id) {
         try {
             await this.updateAudio(id, {
@@ -402,9 +325,6 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
         }
     }
 
-    /**
-     * Clean up old processed audios only after they are disposable.
-     */
     async cleanupOldTranscribed(daysOld = 7) {
         try {
             const cutoffDate = new Date();
@@ -426,9 +346,6 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
         }
     }
 
-    /**
-     * Purge processed audio that has explicitly become disposable.
-     */
     async purgeProcessedAudio() {
         try {
             const processedAudios = await this.dataStorage.db.pendingAudio
@@ -450,4 +367,16 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
 
 if (typeof window !== 'undefined') {
     window.PendingAudioManager = new PendingAudioManager();
+
+    // Transitional bootstrap: keep the offline durability subsystem in its
+    // own file while the legacy script-only app still has no module loader.
+    // Loading here guarantees it is present before authoring starts without
+    // requiring a large, unrelated index.html rewrite.
+    if (typeof document !== 'undefined' && !document.querySelector('script[data-offline-durability]')) {
+        const script = document.createElement('script');
+        script.src = 'scripts/modules/offlineDurabilityModule.js?v=20260830-1';
+        script.async = false;
+        script.dataset.offlineDurability = 'true';
+        document.head.appendChild(script);
+    }
 }
