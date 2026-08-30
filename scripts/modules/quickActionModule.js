@@ -55,7 +55,7 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
                 }
             }, {}, 'QuickActionModule');
         } else {
-            this.log.warn('QuickActionModule: Close modal button element not found');
+            this.log.warn('QuickActionModule: Close quick modal button element not found');
         }
         
         // Close modal when clicking outside
@@ -141,6 +141,13 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
             SafetyUtils.elementClassSafely(this.uiManager.quickActionModal, 'add', 'hidden', 'QuickActionModule');
         }
 
+        // "Record Review" starts a NEW Curation. Clear any Entity/Curation
+        // edit context before entering the recording route so the resulting
+        // transcript can never be persisted onto the previously edited item.
+        if (window.curationWorkspace && typeof window.curationWorkspace.prepareNewCurationState === 'function') {
+            window.curationWorkspace.prepareNewCurationState();
+        }
+
         // Route-first (M4 da spec F1): o handler de /new/record mostra a
         // section — a URL e a tela descrevem o mesmo estado; replace como
         // no showRecordingSection canônico (back volta para antes do fluxo);
@@ -187,6 +194,13 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
                     timestamp: new Date()
                 };
             }
+
+            // Clear stale edit context, but keep the location that was just
+            // captured as the first source of the new Curation. Marking it
+            // dirty also prevents draft restore from overwriting this input.
+            if (window.curationWorkspace && typeof window.curationWorkspace.prepareNewCurationState === 'function') {
+                window.curationWorkspace.prepareNewCurationState({ preserveLocation: true });
+            }
             
             SafetyUtils.hideLoading();
             SafetyUtils.showNotification('Location saved successfully');
@@ -227,6 +241,10 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
         // Hide the quick action modal if it exists
         if (this.uiManager.quickActionModal) {
             SafetyUtils.elementClassSafely(this.uiManager.quickActionModal, 'add', 'hidden', 'QuickActionModule');
+        }
+
+        if (window.curationWorkspace && typeof window.curationWorkspace.prepareNewCurationState === 'function') {
+            window.curationWorkspace.prepareNewCurationState();
         }
 
         // Entrada de nova curadoria centralizada no uiManager (M4 da
@@ -289,6 +307,10 @@ const QuickActionModule = ModuleWrapper.defineClass('QuickActionModule', class {
         // Hide the quick action modal if it exists
         if (this.uiManager.quickActionModal) {
             SafetyUtils.elementClassSafely(this.uiManager.quickActionModal, 'add', 'hidden', 'QuickActionModule');
+        }
+
+        if (window.curationWorkspace && typeof window.curationWorkspace.prepareNewCurationState === 'function') {
+            window.curationWorkspace.prepareNewCurationState();
         }
 
         // Entrada de nova curadoria centralizada no uiManager (M4 da
