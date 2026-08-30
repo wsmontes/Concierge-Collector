@@ -157,4 +157,23 @@ describe('Curation save contract — source first', () => {
     expect(persisted.status).toBe('draft');
     expect(persisted.status).not.toBe('linked');
   });
+
+  test('known entity_id remains linked even when canonical Entity data is not cached locally', async () => {
+    const ConceptModule = loadConceptModule();
+    const uiManager = buildUiManager({
+      importedEntityId: 'ent-relation-only',
+      importedEntityData: null,
+      currentConcepts: [{ category: 'Cuisine', value: 'French' }]
+    });
+    const module = new ConceptModule(uiManager);
+    installWorkspaceSavePolicy(uiManager, module);
+
+    const saved = await module.saveRestaurant();
+
+    expect(saved).toBe(true);
+    const persisted = window.DataStore.db.curations.put.mock.calls[0][0];
+    expect(persisted.entity_id).toBe('ent-relation-only');
+    expect(persisted.status).toBe('draft');
+    expect(window.DataStore.db.entities.put).not.toHaveBeenCalled();
+  });
 });
