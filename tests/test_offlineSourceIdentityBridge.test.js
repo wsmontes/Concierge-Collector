@@ -72,8 +72,13 @@ describe('OfflineSourceIdentityBridge', () => {
     const bridge = new Bridge(runtime);
     expect(bridge.install()).toBe(true);
 
-    await conceptModule.saveRestaurant();
+    const result = await conceptModule.saveRestaurant();
 
+    expect(result).toMatchObject({
+      hasAudio: true,
+      audioSourceId: 'source-stable-7',
+      transcript: 'NEW SOURCE TEXT'
+    });
     expect(seen).toHaveLength(1);
     expect(seen[0]).toMatchObject({
       hasAudio: true,
@@ -94,13 +99,28 @@ describe('OfflineSourceIdentityBridge', () => {
     const bridge = new Bridge(runtime);
     expect(bridge.install()).toBe(true);
 
-    await conceptModule.saveRestaurant();
+    const result = await conceptModule.saveRestaurant();
 
+    expect(result).toMatchObject({ hasAudio: false, audioSourceId: null });
     expect(seen).toHaveLength(1);
     expect(seen[0]).toMatchObject({
       hasAudio: false,
       audioSourceId: null,
       transcriptionId: null
+    });
+  });
+
+  test('Save without a current audio row preserves the original Save return value', async () => {
+    const { runtime, conceptModule } = makeRuntime(null);
+    const Bridge = loadBridge(runtime);
+    const bridge = new Bridge(runtime);
+    expect(bridge.install()).toBe(true);
+
+    const result = await conceptModule.saveRestaurant();
+
+    expect(result).toMatchObject({
+      hasAudio: true,
+      transcriptionId: 'legacy-transcription-id'
     });
   });
 });
