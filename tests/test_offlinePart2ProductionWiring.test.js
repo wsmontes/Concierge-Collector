@@ -8,12 +8,14 @@ const root = path.resolve(__dirname, '..');
 const serviceWorker = readFileSync(path.join(root, 'service-worker.js'), 'utf8');
 const pendingAudio = readFileSync(path.join(root, 'scripts/modules/pendingAudioManager.js'), 'utf8');
 const durability = readFileSync(path.join(root, 'scripts/modules/offlineDurabilityModule.js'), 'utf8');
+const storageDurability = readFileSync(path.join(root, 'scripts/storage/storageDurability.js'), 'utf8');
 const part2 = readFileSync(path.join(root, 'scripts/modules/offlinePart2Bootstrap.js'), 'utf8');
 
 describe('Offline Part 2 production wiring', () => {
   test('boots Part 2 through the existing durable capture chain', () => {
     expect(pendingAudio).toContain('offlineDurabilityModule.js?v=20260830-');
-    expect(durability).toContain('offlinePart2Bootstrap.js?v=20260830-');
+    expect(durability).toContain('storageDurability.js?v=20260830-');
+    expect(storageDurability).toContain('offlinePart2Bootstrap.js?v=20260830-');
     expect(part2).toContain("'OfflineCaptureProcessor'");
     expect(part2).toContain("'OfflineSourceIdentityBridge'");
     expect(part2).toContain("'SyncSemanticPolicy'");
