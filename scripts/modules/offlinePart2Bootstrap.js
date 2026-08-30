@@ -13,6 +13,7 @@
 
     const dependencies = [
         ['SyncSemanticPolicy', 'scripts/services/syncSemanticPolicy.js?v=20260830-1'],
+        ['SyncOwnershipFailureGuard', 'scripts/services/syncOwnershipFailureGuard.js?v=20260830-1'],
         ['LocalEntitySearch', 'scripts/services/localEntitySearch.js?v=20260830-1'],
         ['CurationOwnershipPolicy', 'scripts/services/curationOwnershipPolicy.js?v=20260830-1'],
         ['OfflineLinkingModule', 'scripts/modules/offlineLinkingModule.js?v=20260830-1'],
