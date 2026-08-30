@@ -112,14 +112,12 @@
             const confirmed = await this.confirmCreateOwn(curation, decision);
             if (!confirmed) return false;
 
-            const entity = curation?.entity_id ? await this.resolveLocalEntity(curation.entity_id) : null;
-            if (curation?.entity_id && !entity) {
-                this.notify(
-                    'The linked Entity is not cached on this device. Connect once to load it, or create an unlinked Curation from New Curation.',
-                    'warning'
-                );
-                return false;
-            }
+            // `curation.entity_id` is itself durable linkage truth. The Entity
+            // document is useful context but is NOT required to author offline.
+            // If it is not cached, preserve the known relation and use the
+            // Curation's working name until canonical Entity facts are available.
+            const intendedEntityId = curation?.entity_id || null;
+            const entity = intendedEntityId ? await this.resolveLocalEntity(intendedEntityId) : null;
 
             const workspace = global.curationWorkspace;
             if (!workspace?.prepareNewCurationState) {
@@ -130,31 +128,30 @@
             // Important: no write to the original Curation occurs here.
             workspace.prepareNewCurationState();
 
-            if (entity) {
-                uiManager.importedEntityId = entity.entity_id;
-                uiManager.importedEntityData = entity;
-                if (uiManager.restaurantModule) {
-                    uiManager.restaurantModule.currentEntity = entity;
-                    uiManager.restaurantModule.currentCuration = null;
-                }
+            if (intendedEntityId) {
+                uiManager.importedEntityId = intendedEntityId;
+                uiManager.importedEntityData = entity || null;
+            }
+            if (uiManager.restaurantModule) {
+                uiManager.restaurantModule.currentEntity = entity || null;
+                uiManager.restaurantModule.currentCuration = null;
             }
 
+            const workingName = entity?.name || curation?.restaurant_name || curation?.name || '';
             const nameInput = global.document?.getElementById('restaurant-name');
-            if (nameInput) {
-                nameInput.value = entity?.name || curation?.restaurant_name || curation?.name || '';
-            }
+            if (nameInput) nameInput.value = workingName;
 
-            await workspace.refresh?.({ curation: null, entity });
+            await workspace.refresh?.({ curation: null, entity: entity || null });
             uiManager.formIsDirty = true;
             await uiManager.conceptModule?.autoSaveDraft?.();
 
             this.notify(
-                entity
-                    ? `New Curation started for ${entity.name}`
+                workingName
+                    ? `New Curation started for ${workingName}`
                     : 'New independent Curation started',
                 'info'
             );
-            return { action: 'create-own', entityId: entity?.entity_id || null };
+            return { action: 'create-own', entityId: intendedEntityId };
         }
     }
 
