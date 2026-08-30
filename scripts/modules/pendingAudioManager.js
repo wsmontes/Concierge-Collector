@@ -1,22 +1,20 @@
 /**
  * Pending Audio Manager Module
- * 
+ *
  * Purpose: Manages audio recordings that are waiting for transcription or have failed transcription.
  * Handles storage, retrieval, retry logic, and cleanup of pending audio data.
- * 
- * Main Responsibilities:
- * - Store audio blobs in IndexedDB with metadata
- * - Implement automatic retry logic (2 attempts with exponential backoff)
- * - Provide manual retry functionality
- * - Track transcription status and error states
- * - Clean up audio after successful transcription and restaurant save
- * 
+ *
+ * Offline-first durability rule (2026-08-30): raw audio is the user's source
+ * material and MUST NOT be reclaimed by age/count/status alone. A row becomes
+ * automatically deletable only after a durable processed representation has
+ * explicitly been persisted (`disposable === true`). Explicit user deletion
+ * remains allowed through deleteAudio/deleteAudios.
+ *
  * Dependencies: dataStorage (window.dataStorage)
  */
 
 const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', class {
     constructor() {
-        // Create module logger instance
         this.log = Logger.module('PendingAudioManager');
 
         this.dataStorage = null;
@@ -31,17 +29,28 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
     init(dataStorage) {
         this.dataStorage = dataStorage;
         this.log.debug('PendingAudioManager initialized');
-        // Retenção local (ago/2026): o IndexedDB não pode crescer
-        // indefinidamente com áudio bruto — poda antigas no boot
+        // Safe maintenance: prune() is allowed to reclaim only rows that
+        // have already been made disposable by an explicit durability step.
         this.prune().catch((error) => this.log.warn('prune no init falhou:', error));
     }
 
     /**
-     * Retenção local: mantém as gravações mais recentes dentro de um
-     * limite razoável de TEMPO (7 dias) e NÚMERO (30) — o áudio bruto
-     * no IndexedDB é o maior consumidor de espaço local.
-     * @param {number} options.maxCount - Número máximo de gravações
-     * @param {number} options.maxAgeDays - Idade máxima em dias
+     * Central deletion predicate for AUTOMATIC cleanup.
+     * Age, count and a status such as "completed" are not proof that the
+     * transcript/source representation survived a Curation save.
+     * @param {Object} audio
+     * @returns {boolean}
+     */
+    canDeleteAudio(audio) {
+        return Boolean(audio && audio.disposable === true);
+    }
+
+    /**
+     * Safe local retention. Limits apply only to recordings that are already
+     * disposable. Required raw recordings are never deleted due to age/count.
+     * @param {Object} options
+     * @param {number} options.maxCount - Preferred maximum retained rows
+     * @param {number} options.maxAgeDays - Preferred maximum age in days
      */
     async prune({ maxCount = 30, maxAgeDays = 7 } = {}) {
         try {
@@ -51,30 +60,40 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
                 .filter((audio) => audio && audio.id != null)
                 .sort((a, b) => new Date(b.timestamp || 0).getTime() - new Date(a.timestamp || 0).getTime());
             const toDelete = [];
+
             sorted.forEach((audio, index) => {
+                if (!this.canDeleteAudio(audio)) return;
                 const age = new Date(audio.timestamp || 0).getTime();
                 if (age < cutoff || index >= maxCount) {
                     toDelete.push(audio.id);
                 }
             });
+
             for (const id of toDelete) {
                 await this.deleteAudio(id).catch(() => {});
             }
             if (toDelete.length) {
-                this.log.debug(`Retenção de áudio: ${toDelete.length} gravações antigas removidas`);
+                this.log.debug(`Retenção de áudio: ${toDelete.length} gravações descartáveis removidas`);
             }
         } catch (error) {
             this.log.error('Prune de áudios pendentes falhou:', error);
         }
     }
 
+    _newSourceId() {
+        try {
+            if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+                return crypto.randomUUID();
+            }
+        } catch (_) {}
+        return `audio_${Date.now()}_${Math.random().toString(36).slice(2)}`;
+    }
+
     /**
-     * Save audio recording to pending storage
+     * Save audio recording to pending storage.
+     * Raw audio is non-disposable by default.
      * @param {Blob} audioBlob - The audio blob
      * @param {Object} options - Additional options
-     * @param {number} options.restaurantId - Restaurant ID (optional)
-     * @param {number} options.draftId - Draft restaurant ID (optional)
-     * @param {boolean} options.isAdditional - Is this an additional recording?
      * @returns {Promise<number>} - Pending audio ID
      */
     async saveAudio(audioBlob, options = {}) {
@@ -83,27 +102,29 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
             let blob = audioBlob;
             let opts = options;
             if (audioBlob && !(audioBlob instanceof Blob) && audioBlob.audioBlob) {
-                // Legacy call: saveAudio({ audioBlob, restaurantId, ... })
                 blob = audioBlob.audioBlob;
                 opts = audioBlob;
             }
 
             const audioData = {
+                sourceId: opts.sourceId || this._newSourceId(),
                 audioBlob: blob,
                 restaurantId: opts.restaurantId || null,
                 draftId: opts.draftId || null,
+                curationId: opts.curationId || null,
                 timestamp: new Date(),
                 retryCount: 0,
                 lastError: null,
                 status: 'pending',
-                isAdditional: opts.isAdditional || false
+                isAdditional: opts.isAdditional || false,
+                transcriptPersisted: false,
+                disposable: false
             };
 
             const id = await this.dataStorage.db.pendingAudio.add(audioData);
             this.log.debug(`Pending audio saved with ID: ${id}`);
 
-            // Poda pós-save (fire-and-forget): toda gravação nova passa
-            // pela retenção de tempo/número
+            // Safe fire-and-forget maintenance. Non-disposable rows survive.
             this.prune().catch((error) => this.log.warn('prune pós-save falhou:', error));
 
             return id;
@@ -120,8 +141,7 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
      */
     async getAudio(id) {
         try {
-            const audio = await this.dataStorage.db.pendingAudio.get(id);
-            return audio;
+            return await this.dataStorage.db.pendingAudio.get(id);
         } catch (error) {
             this.log.error('Error retrieving pending audio:', error);
             throw error;
@@ -129,12 +149,7 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
     }
 
     /**
-     * Get all pending audios, optionally filtered
-     * @param {Object} filter - Filter options
-     * @param {number} filter.restaurantId - Filter by restaurant ID
-     * @param {number} filter.draftId - Filter by draft ID
-     * @param {string} filter.status - Filter by status
-     * @returns {Promise<Array>} - Array of pending audio records
+     * Get all pending audios, optionally filtered.
      */
     async getAudios(filter = {}) {
         try {
@@ -144,12 +159,13 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
                 query = query.where('restaurantId').equals(filter.restaurantId);
             } else if (filter.draftId) {
                 query = query.where('draftId').equals(filter.draftId);
+            } else if (filter.curationId) {
+                query = query.where('curationId').equals(filter.curationId);
             } else if (filter.status) {
                 query = query.where('status').equals(filter.status);
             }
 
-            const audios = await query.toArray();
-            return audios;
+            return await query.toArray();
         } catch (error) {
             this.log.error('Error retrieving pending audios:', error);
             return [];
@@ -158,9 +174,6 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
 
     /**
      * Update pending audio record
-     * @param {number} id - Pending audio ID
-     * @param {Object} updates - Data to update
-     * @returns {Promise<void>}
      */
     async updateAudio(id, updates) {
         try {
@@ -173,10 +186,48 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
     }
 
     /**
+     * Associate existing raw sources with the durable Curation produced by a
+     * Save. Association is deliberately non-destructive.
+     * @param {Object} filter - draftId/restaurantId/curationId filter
+     * @param {string} curationId
+     * @returns {Promise<number>}
+     */
+    async associateWithCuration(filter, curationId) {
+        if (!curationId) return 0;
+        const audios = await this.getAudios(filter || {});
+        let updated = 0;
+        for (const audio of audios) {
+            if (!audio || audio.id == null) continue;
+            await this.updateAudio(audio.id, { curationId });
+            updated++;
+        }
+        return updated;
+    }
+
+    /**
+     * Confirm that the transcript represented by this raw audio has been
+     * durably persisted. This is the ONLY automatic path that makes raw audio
+     * disposable.
+     * @param {number} id
+     * @param {Object} options
+     * @param {string|null} options.curationId
+     */
+    async markTranscriptPersisted(id, { curationId = null } = {}) {
+        const audio = await this.getAudio(id);
+        if (!audio) {
+            throw new Error(`Pending audio ${id} not found`);
+        }
+        await this.updateAudio(id, {
+            ...(curationId ? { curationId } : {}),
+            transcriptPersisted: true,
+            disposable: true,
+            status: 'completed',
+            lastError: null
+        });
+    }
+
+    /**
      * Increment retry count and update last error
-     * @param {number} id - Pending audio ID
-     * @param {string} errorMessage - Error message
-     * @returns {Promise<number>} - New retry count
      */
     async incrementRetryCount(id, errorMessage) {
         try {
@@ -202,9 +253,6 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
 
     /**
      * Schedule automatic retry for failed transcription
-     * @param {number} id - Pending audio ID
-     * @param {Function} retryCallback - Function to call for retry
-     * @returns {Promise<void>}
      */
     async scheduleAutoRetry(id, retryCallback) {
         try {
@@ -223,7 +271,6 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
             }
 
             const delay = this.retryDelays[retryCount] || this.retryDelays[this.retryDelays.length - 1];
-
             this.log.debug(`Scheduling retry ${retryCount + 1} for pending audio ${id} in ${delay}ms`);
 
             setTimeout(async () => {
@@ -234,7 +281,6 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
                     this.log.error(`Retry ${retryCount + 1} failed for pending audio ${id}:`, error);
                     await this.incrementRetryCount(id, error.message);
 
-                    // Schedule next retry if not maxed out
                     const updatedAudio = await this.getAudio(id);
                     if (updatedAudio && updatedAudio.retryCount < this.maxAutoRetries) {
                         await this.scheduleAutoRetry(id, retryCallback);
@@ -248,15 +294,11 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
 
     /**
      * Check if audio can be automatically retried
-     * @param {number} id - Pending audio ID
-     * @returns {Promise<boolean>} - True if can retry
      */
     async canAutoRetry(id) {
         try {
             const audio = await this.getAudio(id);
             if (!audio) return false;
-
-            // Can retry if status is failed and retry count is below max
             return audio.status === 'failed' && audio.retryCount < this.maxAutoRetries;
         } catch (error) {
             this.log.error('Error checking auto retry eligibility:', error);
@@ -265,9 +307,8 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
     }
 
     /**
-     * Delete pending audio record
-     * @param {number} id - Pending audio ID
-     * @returns {Promise<void>}
+     * Explicit user deletion. Unlike automatic cleanup, this intentionally
+     * does not require disposable=true.
      */
     async deleteAudio(id) {
         try {
@@ -280,9 +321,7 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
     }
 
     /**
-     * Delete multiple pending audios by filter
-     * @param {Object} filter - Filter options (restaurantId, draftId, etc.)
-     * @returns {Promise<number>} - Number of deleted records
+     * Explicit bulk deletion by filter (used by user-driven management UI).
      */
     async deleteAudios(filter = {}) {
         try {
@@ -299,45 +338,36 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
     }
 
     /**
-     * Mark audio as successfully transcribed
-     * @param {number} id - Pending audio ID
-     * @returns {Promise<void>}
+     * Legacy compatibility marker. Transcription success alone does NOT make
+     * raw audio disposable because the transcript may still live only in DOM.
      */
     async markAsTranscribed(id) {
         try {
             await this.updateAudio(id, {
                 status: 'transcribed',
-                lastError: null
+                lastError: null,
+                transcriptPersisted: false,
+                disposable: false
             });
-            this.log.debug(`Pending audio ${id} marked as transcribed`);
+            this.log.debug(`Pending audio ${id} marked as transcribed (raw retained)`);
         } catch (error) {
             this.log.error('Error marking audio as transcribed:', error);
             throw error;
         }
     }
 
-    /**
-     * Get count of pending audios by status
-     * @param {string} status - Status filter (optional)
-     * @returns {Promise<number>} - Count of matching records
-     */
     async getCount(status = null) {
         try {
             if (status) {
                 return await this.dataStorage.db.pendingAudio.where('status').equals(status).count();
-            } else {
-                return await this.dataStorage.db.pendingAudio.count();
             }
+            return await this.dataStorage.db.pendingAudio.count();
         } catch (error) {
             this.log.error('Error getting pending audio count:', error);
             return 0;
         }
     }
 
-    /**
-     * Get counts of pending audios by all statuses
-     * @returns {Promise<Object>} - Object with counts by status
-     */
     async getAudioCounts() {
         try {
             const [pending, processing, failed, retrying, transcribed, completed] = await Promise.all([
@@ -366,31 +396,29 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
                 failed: 0,
                 retrying: 0,
                 transcribed: 0,
+                completed: 0,
                 total: 0
             };
         }
     }
 
     /**
-     * Clean up old transcribed audios (for maintenance)
-     * @param {number} daysOld - Days old to consider for cleanup
-     * @returns {Promise<number>} - Number of cleaned up records
+     * Clean up old processed audios only after they are disposable.
      */
     async cleanupOldTranscribed(daysOld = 7) {
         try {
             const cutoffDate = new Date();
             cutoffDate.setDate(cutoffDate.getDate() - daysOld);
 
-            // Clean up both 'transcribed' and 'completed' audios
             const oldAudios = await this.dataStorage.db.pendingAudio
                 .where('status').anyOf(['transcribed', 'completed'])
-                .and(audio => new Date(audio.timestamp) < cutoffDate)
+                .and(audio => this.canDeleteAudio(audio) && new Date(audio.timestamp) < cutoffDate)
                 .toArray();
 
             const deletePromises = oldAudios.map(audio => this.deleteAudio(audio.id));
             await Promise.all(deletePromises);
 
-            this.log.debug(`Cleaned up ${oldAudios.length} old processed audios`);
+            this.log.debug(`Cleaned up ${oldAudios.length} disposable processed audios`);
             return oldAudios.length;
         } catch (error) {
             this.log.error('Error cleaning up old processed audios:', error);
@@ -399,20 +427,20 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
     }
 
     /**
-     * Purges all processed audio to free up space
-     * @returns {Promise<number>} - Number of deleted records
+     * Purge processed audio that has explicitly become disposable.
      */
     async purgeProcessedAudio() {
         try {
             const processedAudios = await this.dataStorage.db.pendingAudio
                 .where('status').anyOf(['transcribed', 'completed'])
                 .toArray();
+            const disposable = processedAudios.filter(audio => this.canDeleteAudio(audio));
 
-            const deletePromises = processedAudios.map(audio => this.deleteAudio(audio.id));
+            const deletePromises = disposable.map(audio => this.deleteAudio(audio.id));
             await Promise.all(deletePromises);
 
-            this.log.info(`Purged ${processedAudios.length} processed audio records to free up space`);
-            return processedAudios.length;
+            this.log.info(`Purged ${disposable.length} disposable processed audio records`);
+            return disposable.length;
         } catch (error) {
             this.log.error('Error purging processed audio:', error);
             return 0;
@@ -420,7 +448,6 @@ const PendingAudioManager = ModuleWrapper.defineClass('PendingAudioManager', cla
     }
 });
 
-// Create and expose global instance
 if (typeof window !== 'undefined') {
     window.PendingAudioManager = new PendingAudioManager();
 }
