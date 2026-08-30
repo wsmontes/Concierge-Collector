@@ -337,6 +337,57 @@ class CurationWorkspaceModule {
         this.suppressLegacyLinkedIndicator();
     }
 
+    prepareNewCurationState({ preserveLocation = false } = {}) {
+        const uiManager = this.uiManager;
+        if (!uiManager) return;
+
+        const preservedLocation = preserveLocation ? uiManager.currentLocation : null;
+        const restaurantModule = uiManager.restaurantModule || null;
+
+        uiManager.isEditingRestaurant = false;
+        uiManager.isEditingEntity = false;
+        uiManager.editingRestaurantId = null;
+        uiManager.importedEntityId = null;
+        uiManager.importedEntityData = null;
+        uiManager.currentConcepts = [];
+        uiManager.currentPhotos = [];
+        uiManager.currentLocation = preservedLocation;
+        uiManager.formIsDirty = Boolean(preserveLocation && preservedLocation);
+
+        if (restaurantModule) {
+            restaurantModule.currentCuration = null;
+            restaurantModule.currentEntity = null;
+            restaurantModule.isEditMode = false;
+            restaurantModule.updateCloneButtonVisibility?.(false);
+            restaurantModule.updateExportButtonVisibility?.(false);
+            restaurantModule.updateCurationEditFooterVisibility?.(false);
+        }
+
+        this.currentCuration = null;
+        this.currentEntity = null;
+        this.state = CurationWorkspaceModule.deriveState(null, null);
+
+        for (const id of [
+            'restaurant-name',
+            'restaurant-description',
+            'restaurant-transcription',
+            'curation-notes-public',
+            'curation-notes-private'
+        ]) {
+            const field = document.getElementById(id);
+            if (field && 'value' in field) field.value = '';
+        }
+
+        const locationDisplay = document.getElementById('location-display');
+        if (locationDisplay) locationDisplay.textContent = '';
+        const photosPreview = document.getElementById('photos-preview');
+        if (photosPreview) photosPreview.innerHTML = '';
+        document.getElementById('linked-entity-indicator')?.classList.add('hidden');
+
+        uiManager.conceptModule?.resetTranscriptionPending?.();
+        uiManager.conceptModule?.updateDescriptionWordCount?.();
+    }
+
     async resolveEntity(entityId, suppliedEntity = null) {
         if (!entityId) return null;
         if (suppliedEntity && (suppliedEntity.entity_id === entityId || suppliedEntity.id === entityId)) {
