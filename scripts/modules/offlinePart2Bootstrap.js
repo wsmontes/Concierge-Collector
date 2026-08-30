@@ -22,7 +22,8 @@
         ['OfflinePhotoProcessor', 'scripts/services/offlinePhotoProcessor.js?v=20260830-1'],
         ['OfflineSourceIdentityBridge', 'scripts/modules/offlineSourceIdentityBridge.js?v=20260830-1'],
         ['OfflineKnownLinkageGuard', 'scripts/modules/offlineKnownLinkageGuard.js?v=20260830-1'],
-        ['OfflineExplicitDiscardGuard', 'scripts/modules/offlineExplicitDiscardGuard.js?v=20260830-1']
+        ['OfflineExplicitDiscardGuard', 'scripts/modules/offlineExplicitDiscardGuard.js?v=20260830-1'],
+        ['OfflineCuratorIdentityGuard', 'scripts/modules/offlineCuratorIdentityGuard.js?v=20260830-1']
     ];
 
     function loadScript(globalName, src) {
