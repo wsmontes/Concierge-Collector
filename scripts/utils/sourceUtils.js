@@ -13,6 +13,7 @@ const SourceUtils = (() => {
         TEXT: 'text',
         GOOGLE: 'google_places',
         IMPORT: 'import',
+        WEB_RESEARCH: 'web_research',
         MANUAL: 'manual'
     };
 
@@ -43,6 +44,11 @@ const SourceUtils = (() => {
             icon: 'file_upload',
             className: 'chip chip--warning'
         },
+        [SCOPES.WEB_RESEARCH]: {
+            label: 'Web Research',
+            icon: 'travel_explore',
+            className: 'chip chip--info'
+        },
         [SCOPES.MANUAL]: {
             label: 'Manual Entry',
             icon: 'edit',
@@ -51,8 +57,14 @@ const SourceUtils = (() => {
     };
 
     /**
-     * Detects the primary source of a curation based on its data fields.
-     * Priority: Audio > Image > Text > Google > Import > Manual
+     * Detects the primary source of a curation based on its provenance.
+     * Explicit source metadata always wins over content heuristics.
+     * Priority: Audio > Image > Text > Google > Import > Web Research > Manual.
+     *
+     * A transcript is not proof of audio: synthetic web research also stores
+     * research material in the transcript field. Transcript-as-audio therefore
+     * exists only as a compatibility fallback for legacy records that have no
+     * explicit source provenance at all.
      * 
      * @param {Object} curation - The curation object
      * @param {Object} entity - The associated entity object (optional)
@@ -68,6 +80,7 @@ const SourceUtils = (() => {
             if (sources.includes(SCOPES.TEXT)) return UI_CONFIG[SCOPES.TEXT];
             if (sources.includes(SCOPES.GOOGLE)) return UI_CONFIG[SCOPES.GOOGLE];
             if (sources.includes(SCOPES.IMPORT)) return UI_CONFIG[SCOPES.IMPORT];
+            if (sources.includes(SCOPES.WEB_RESEARCH)) return UI_CONFIG[SCOPES.WEB_RESEARCH];
             if (sources.includes(SCOPES.MANUAL)) return UI_CONFIG[SCOPES.MANUAL];
             return UI_CONFIG[SCOPES.MANUAL];
         }
@@ -78,10 +91,16 @@ const SourceUtils = (() => {
             if (Array.isArray(sources.text) && sources.text.length > 0) return UI_CONFIG[SCOPES.TEXT];
             if (Array.isArray(sources.google_places) && sources.google_places.length > 0) return UI_CONFIG[SCOPES.GOOGLE];
             if (Array.isArray(sources.import) && sources.import.length > 0) return UI_CONFIG[SCOPES.IMPORT];
+            if (Array.isArray(sources.web_research) && sources.web_research.length > 0) return UI_CONFIG[SCOPES.WEB_RESEARCH];
             if (Array.isArray(sources.manual) && sources.manual.length > 0) return UI_CONFIG[SCOPES.MANUAL];
+
+            // A non-empty structured source object is explicit provenance even
+            // when it contains a source type this older UI does not understand.
+            // Never reinterpret its text body as a voice recording.
+            if (Object.keys(sources).length > 0) return UI_CONFIG[SCOPES.MANUAL];
         }
 
-        // Heuristic fallback for legacy data (smart detection)
+        // Heuristic fallback for legacy data with NO explicit provenance.
         if ((curation.transcript || curation.unstructured_text || curation.transcription || '').trim().length > 0) {
             return UI_CONFIG[SCOPES.AUDIO];
         }
