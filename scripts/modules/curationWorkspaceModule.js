@@ -582,7 +582,12 @@ class CurationWorkspaceModule {
             const nameInput = document.getElementById('restaurant-name');
             const originalName = nameInput?.value ?? '';
             const linkedEntity = uiManager.importedEntityData || uiManager.restaurantModule?.currentEntity || null;
-            const linkedCuration = uiManager.restaurantModule?.currentCuration || null;
+            const existingCuration = uiManager.restaurantModule?.currentCuration || null;
+            const activeCurator = window.CuratorProfile?.getCurrentCurator?.() || null;
+            const authUser = window.AuthService?.getCurrentUser?.() || null;
+            const takeoverOwner = activeCurator?.curator_id || authUser?.email || null;
+            const takeoverName = activeCurator?.name || authUser?.name || takeoverOwner;
+            const takeoverEmail = activeCurator?.email || authUser?.email || takeoverOwner;
 
             // Legacy ConceptModule still blocks save on zero concepts. The new
             // contract is source-first: accepted audio/photo/text is valuable
@@ -597,7 +602,7 @@ class CurationWorkspaceModule {
             // Keep provenance when available; otherwise use canonical Entity name
             // only as the legacy storage fallback expected by the current client.
             if (nameInput && !nameInput.value.trim() && linkedEntity) {
-                nameInput.value = linkedCuration?.restaurant_name || linkedEntity.name || '';
+                nameInput.value = existingCuration?.restaurant_name || linkedEntity.name || '';
             }
 
             const curationTable = window.DataStore?.db?.curations;
@@ -609,6 +614,27 @@ class CurationWorkspaceModule {
                     // subsequent sync queue receive the same object reference.
                     if (curation?.status === 'linked') {
                         curation.status = 'draft';
+                    }
+
+                    // Human expertise replaces a synthetic seed at SAVE time,
+                    // not when the item is merely opened. Mirror the server
+                    // takeover rule locally so offline IndexedDB is immediately
+                    // truthful while createdBy keeps the synthetic provenance.
+                    if (existingCuration?.curator_type === 'synthetic' && takeoverOwner) {
+                        curation.curator_id = takeoverOwner;
+                        curation.curator_type = 'human';
+                        curation.curator = {
+                            id: takeoverOwner,
+                            name: takeoverName || takeoverOwner,
+                            email: takeoverEmail || takeoverOwner
+                        };
+                        curation.updatedBy = takeoverOwner;
+                        if (!curation.createdBy) {
+                            curation.createdBy = existingCuration.createdBy ||
+                                existingCuration.curator_id ||
+                                existingCuration.curator?.id ||
+                                null;
+                        }
                     }
                     return originalPut.call(curationTable, curation, ...putArgs);
                 };
