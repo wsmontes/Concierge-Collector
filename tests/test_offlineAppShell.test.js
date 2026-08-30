@@ -7,7 +7,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
 const swPath = path.join(root, 'service-worker.js');
 const buildSource = readFileSync(path.join(root, 'scripts/build-collector.mjs'), 'utf8');
-const durabilitySource = readFileSync(path.join(root, 'scripts/modules/offlineDurabilityModule.js'), 'utf8');
+const bootstrapSource = readFileSync(path.join(root, 'scripts/storage/storageDurability.js'), 'utf8');
 
 describe('Collector offline app shell', () => {
   test('ships a versioned Service Worker as a build artifact', () => {
@@ -43,9 +43,9 @@ describe('Collector offline app shell', () => {
     expect(sw).toContain('lamejs@1.2.1');
   });
 
-  test('registers the Service Worker from the focused durability bootstrap', () => {
-    expect(durabilitySource).toContain('registerOfflineShell');
-    expect(durabilitySource).toContain("navigator.serviceWorker.register('./service-worker.js')");
-    expect(durabilitySource).toContain('navigator.serviceWorker.ready');
+  test('registers the Service Worker from a focused durability bootstrap', () => {
+    expect(bootstrapSource).toContain('registerOfflineShell');
+    expect(bootstrapSource).toContain("navigator.serviceWorker.register('./service-worker.js')");
+    expect(bootstrapSource).toContain('navigator.serviceWorker.ready');
   });
 });
