@@ -14,13 +14,19 @@ describe('Collector offline app shell', () => {
     expect(existsSync(swPath)).toBe(true);
     expect(buildSource).toContain("'service-worker.js'");
     const sw = readFileSync(swPath, 'utf8');
-    expect(sw).toContain('concierge-collector-shell-v1');
+    expect(sw).toContain('concierge-collector-shell-v2');
   });
 
   test('precaches the deterministic build manifest instead of a hand-maintained partial local list', () => {
     const sw = readFileSync(swPath, 'utf8');
     expect(sw).toContain('.manifest.json');
     expect(sw).toContain('cache.addAll');
+  });
+
+  test('serves cache-busted same-origin assets from bare manifest entries while offline', () => {
+    const sw = readFileSync(swPath, 'utf8');
+    expect(sw).toContain('ignoreSearch: true');
+    expect(sw).toContain('url.origin === self.location.origin');
   });
 
   test('keeps API and mutation traffic network-only', () => {
