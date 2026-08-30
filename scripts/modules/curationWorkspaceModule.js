@@ -333,6 +333,7 @@ class CurationWorkspaceModule {
 
         document.getElementById('curation-linked-entity-card')?.remove();
         document.getElementById('curation-synthetic-banner')?.remove();
+        aboutBody.querySelectorAll('.curation-orphan-helper').forEach((node) => node.remove());
 
         const nameBlock = this.getNameBlock();
         const locationBlock = this.getLocationBlock();
@@ -535,6 +536,71 @@ class CurationWorkspaceModule {
         this._conceptObserver.observe(container, { childList: true, subtree: true });
     }
 
+    installSaveCompatibility() {
+        const conceptModule = this.uiManager?.conceptModule;
+        if (!conceptModule?.saveRestaurant || conceptModule.__curationWorkspaceSaveCompatibilityInstalled) {
+            return;
+        }
+
+        const originalSave = conceptModule.saveRestaurant.bind(conceptModule);
+        conceptModule.__curationWorkspaceSaveCompatibilityInstalled = true;
+        conceptModule.__curationWorkspaceOriginalSaveRestaurant = originalSave;
+
+        conceptModule.saveRestaurant = async (...args) => {
+            const uiManager = this.uiManager;
+            const originalConcepts = uiManager.currentConcepts;
+            const hasNoConcepts = !Array.isArray(originalConcepts) || originalConcepts.length === 0;
+            const nameInput = document.getElementById('restaurant-name');
+            const originalName = nameInput?.value ?? '';
+            const linkedEntity = uiManager.importedEntityData || uiManager.restaurantModule?.currentEntity || null;
+            const linkedCuration = uiManager.restaurantModule?.currentCuration || null;
+
+            // Legacy ConceptModule still blocks save on zero concepts. The new
+            // contract is source-first: accepted audio/photo/text is valuable
+            // even when AI extraction is unavailable. A zero-value sentinel
+            // satisfies only that old precondition; convertConceptsToCategories
+            // deliberately skips empty values, so nothing synthetic is stored.
+            if (hasNoConcepts) {
+                uiManager.currentConcepts = [{ category: '__workspace_internal__', value: '' }];
+            }
+
+            // A linked curation does not require an editable working-name field.
+            // Keep provenance when available; otherwise use canonical Entity name
+            // only as the legacy storage fallback expected by the current client.
+            if (nameInput && !nameInput.value.trim() && linkedEntity) {
+                nameInput.value = linkedCuration?.restaurant_name || linkedEntity.name || '';
+            }
+
+            const curationTable = window.DataStore?.db?.curations;
+            const originalPut = curationTable?.put;
+            if (curationTable && typeof originalPut === 'function') {
+                curationTable.put = async (curation, ...putArgs) => {
+                    // Linkage is entity_id, never workflow status. Normalize the
+                    // legacy client value before both local persistence and the
+                    // subsequent sync queue receive the same object reference.
+                    if (curation?.status === 'linked') {
+                        curation.status = 'draft';
+                    }
+                    return originalPut.call(curationTable, curation, ...putArgs);
+                };
+            }
+
+            try {
+                return await originalSave(...args);
+            } finally {
+                if (curationTable && typeof originalPut === 'function') {
+                    curationTable.put = originalPut;
+                }
+                if (hasNoConcepts) {
+                    uiManager.currentConcepts = Array.isArray(originalConcepts) ? originalConcepts : [];
+                }
+                if (nameInput && !originalName && nameInput.value) {
+                    nameInput.value = originalName;
+                }
+            }
+        };
+    }
+
     async refresh({ curation = null, entity = null } = {}) {
         if (!this.root) this.compose();
         const entityId = curation?.entity_id || entity?.entity_id || null;
@@ -564,6 +630,7 @@ class CurationWorkspaceModule {
         if (this._installed) return this;
         this._installed = true;
         this.compose();
+        this.installSaveCompatibility();
 
         const host = document.getElementById('concepts-section');
         if (host && typeof MutationObserver !== 'undefined') {
