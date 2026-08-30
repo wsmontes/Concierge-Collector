@@ -127,6 +127,7 @@ class CurationWorkspaceModule {
         this.composeConcepts();
         this.composeSources();
         this.composeAdvanced();
+        this.renderMode();
         this.updateEditorLanguage();
         this.observeConcepts();
 
@@ -282,13 +283,25 @@ class CurationWorkspaceModule {
         }
     }
 
+    renderMode() {
+        const isEntityEdit = Boolean(this.uiManager?.isEditingEntity);
+        this.sections.about?.classList.remove('hidden');
+        for (const key of ['capture', 'content', 'concepts', 'sources', 'advanced']) {
+            this.sections[key]?.classList.toggle('hidden', isEntityEdit);
+        }
+
+        const aboutTitle = this.sections.about?.querySelector('.curation-workspace__heading h3');
+        if (aboutTitle) aboutTitle.textContent = isEntityEdit ? 'Entity details' : 'About';
+    }
+
     updateEditorLanguage() {
+        const isEntityEdit = Boolean(this.uiManager?.isEditingEntity);
         const toolbarTitle = document.querySelector('#restaurant-edit-toolbar .toolbar-info-title');
-        if (toolbarTitle) toolbarTitle.textContent = 'Edit Curation';
+        if (toolbarTitle) toolbarTitle.textContent = isEntityEdit ? 'Edit Entity' : 'Edit Curation';
         const save = document.getElementById('save-restaurant');
         const saveLabel = save?.querySelector('span:last-child');
-        if (saveLabel) saveLabel.textContent = 'Save Curation';
-        if (save) save.setAttribute('aria-label', 'Save curation');
+        if (saveLabel) saveLabel.textContent = isEntityEdit ? 'Save Entity' : 'Save Curation';
+        if (save) save.setAttribute('aria-label', isEntityEdit ? 'Save entity' : 'Save curation');
     }
 
     async resolveEntity(entityId, suppliedEntity = null) {
@@ -347,6 +360,7 @@ class CurationWorkspaceModule {
             locationBlock?.classList.remove('hidden');
             metadata?.classList.remove('hidden');
             places?.classList.remove('hidden');
+            if (nameLabel) nameLabel.textContent = 'Entity Name';
             return;
         }
 
@@ -456,6 +470,7 @@ class CurationWorkspaceModule {
     }
 
     syncRecorderIntoCapture() {
+        if (this.uiManager?.isEditingEntity) return;
         const captureBody = this.sections.capture?.querySelector('.curation-workspace__body');
         if (!captureBody) return;
 
@@ -476,6 +491,7 @@ class CurationWorkspaceModule {
     }
 
     startRecording() {
+        if (this.uiManager?.isEditingEntity) return;
         this.syncRecorderIntoCapture();
         const conceptModule = this.uiManager?.conceptModule;
         if (conceptModule?.startAdditionalRecording) {
@@ -547,6 +563,13 @@ class CurationWorkspaceModule {
         conceptModule.__curationWorkspaceOriginalSaveRestaurant = originalSave;
 
         conceptModule.saveRestaurant = async (...args) => {
+            // Entity editing is a separate workflow. Do not apply Curation
+            // compatibility rules (concept sentinel, linkage normalization or
+            // provenance fallback) to Entity writes.
+            if (this.uiManager?.isEditingEntity) {
+                return originalSave(...args);
+            }
+
             const uiManager = this.uiManager;
             const originalConcepts = uiManager.currentConcepts;
             const hasNoConcepts = !Array.isArray(originalConcepts) || originalConcepts.length === 0;
@@ -609,13 +632,19 @@ class CurationWorkspaceModule {
         this.currentEntity = resolvedEntity || entity || null;
         this.state = CurationWorkspaceModule.deriveState(curation, this.currentEntity);
 
+        this.renderMode();
         this.renderAbout();
-        this.renderCaptureState();
-        this.syncRecorderIntoCapture();
-        this.updateConceptSummary();
+        if (!this.uiManager?.isEditingEntity) {
+            this.renderCaptureState();
+            this.syncRecorderIntoCapture();
+            this.updateConceptSummary();
+        }
         this.updateEditorLanguage();
 
-        if (this.root) this.root.dataset.curationState = this.state.key;
+        if (this.root) {
+            this.root.dataset.curationState = this.state.key;
+            this.root.dataset.editorMode = this.uiManager?.isEditingEntity ? 'entity' : 'curation';
+        }
         return this.state;
     }
 
