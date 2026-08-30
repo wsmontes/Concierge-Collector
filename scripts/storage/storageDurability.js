@@ -87,8 +87,8 @@
     }
 
     /**
-     * Integrates the policy with the existing script-based Collector without
-     * making ordinary text editing/saving depend on quota checks.
+     * Integrates storage/app-shell durability with the existing script-based
+     * Collector without making ordinary text editing/saving depend on quota.
      */
     class StorageDurabilityIntegration {
         constructor(policy = new StorageDurability()) {
@@ -97,14 +97,39 @@
             this._dataStoreInstalled = false;
             this._captureGuardsInstalled = false;
             this._audioWriteGuardInstalled = false;
+            this._swRegistrationStarted = false;
             this._pollTimer = null;
         }
 
         start() {
             if (this._started) return this;
             this._started = true;
+            this.registerOfflineShell();
             this._poll();
             return this;
+        }
+
+        async registerOfflineShell() {
+            if (this._swRegistrationStarted) return;
+            const navigator = global.navigator;
+            if (!navigator?.serviceWorker || !global.location) return;
+            if (global.location.protocol !== 'https:' && global.location.hostname !== 'localhost' && global.location.hostname !== '127.0.0.1') {
+                return;
+            }
+            this._swRegistrationStarted = true;
+
+            try {
+                await navigator.serviceWorker.register('./service-worker.js');
+                await navigator.serviceWorker.ready;
+                if (global.document?.documentElement) {
+                    global.document.documentElement.dataset.offlineReady = 'true';
+                }
+                global.dispatchEvent?.(new CustomEvent('concierge:offline-ready'));
+            } catch (error) {
+                // Offline install is progressive enhancement on first load.
+                // Failure never blocks the already-loaded editor.
+                console.warn('[StorageDurability] Offline shell registration failed:', error);
+            }
         }
 
         _poll(attempt = 0) {
@@ -143,10 +168,6 @@
             }
         }
 
-        /**
-         * Preflight only LARGE new captures. Text fields and Curation Save are
-         * deliberately absent here and remain available even at 95% quota.
-         */
         installCaptureCapacityGuards(uiManager) {
             if (this._captureGuardsInstalled) return;
             const recordingModule = uiManager?.recordingModule;
