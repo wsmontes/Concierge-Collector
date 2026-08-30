@@ -72,4 +72,9 @@ describe('OfflineLinkingModule integration', () => {
     expect(src).toContain('google_place_id');
     expect(src).toContain('place_id');
   });
+
+  test('clears prior remote results before a fresh online lookup so a network failure cannot resurrect stale places', () => {
+    const src = readFileSync(linkingPath, 'utf8');
+    expect(src).toMatch(/modal\.currentResults\s*=\s*\[\][\s\S]{0,500}originalPerformSearch/);
+  });
 });
