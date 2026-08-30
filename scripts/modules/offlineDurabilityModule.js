@@ -20,6 +20,7 @@
             this._draftAutosaveInstalled = false;
             this._editRestoreInstalled = false;
             this._newSessionBoundaryInstalled = false;
+            this._storageScriptRequested = false;
             this._draftResolvePromise = null;
             this._pollTimer = null;
         }
@@ -27,6 +28,7 @@
         start() {
             if (this._started) return this;
             this._started = true;
+            this.ensureStorageDurability();
             this.installDatabaseDestructionGuard();
             this.installExplicitResetAuthorization();
             this.installLifecycleFlush();
@@ -35,7 +37,23 @@
             return this;
         }
 
+        ensureStorageDurability() {
+            if (global.StorageDurability || this._storageScriptRequested || typeof document === 'undefined') return;
+            this._storageScriptRequested = true;
+            if (document.querySelector('script[data-storage-durability]')) return;
+            const script = document.createElement('script');
+            script.src = 'scripts/storage/storageDurability.js?v=20260830-1';
+            script.async = false;
+            script.dataset.storageDurability = 'true';
+            script.addEventListener('error', () => {
+                this._storageScriptRequested = false;
+                this.log.warn('Storage durability policy failed to load');
+            });
+            document.head.appendChild(script);
+        }
+
         _pollForAuthoringRuntime(attempt = 0) {
+            this.ensureStorageDurability();
             this.installExplicitResetAuthorization();
             const uiManager = global.uiManager || null;
             const conceptModule = uiManager?.conceptModule || null;
@@ -105,11 +123,6 @@
             } catch (_) {}
         }
 
-        /**
-         * There were two destructive authorities: DatabaseManager (guarded)
-         * and legacy main.js helpers (unguarded). Put a hard boundary at
-         * IDBFactory.deleteDatabase so direct calls cannot bypass preservation.
-         */
         installDatabaseDestructionGuard() {
             if (this._dbDestructionGuardInstalled || !global.indexedDB?.deleteDatabase) return;
             if (global.indexedDB.__collectorDurabilityDeleteGuardInstalled) {
@@ -215,10 +228,6 @@
             };
         }
 
-        /**
-         * Replace the legacy create-only autosave. Existing Curation edits,
-         * notes, photos and field-clears are first-class draft state too.
-         */
         installDurableDraftAutosave(uiManager) {
             const conceptModule = uiManager?.conceptModule;
             if (!conceptModule || this._draftAutosaveInstalled || conceptModule.__offlineDurabilityDraftAutosaveInstalled) {
@@ -278,8 +287,6 @@
                     );
                     if (!meaningful) return;
 
-                    // Serialize draft resolution: two input events before the
-                    // first IndexedDB add resolves must not create two sessions.
                     const resolveDraft = async () => draftManager.getOrCreateCurrentDraft(curatorId, {
                         sessionId,
                         targetCurationId,
@@ -302,10 +309,6 @@
             }
         }
 
-        /**
-         * Existing-Curation drafts are deterministic (`curation:<id>`), so a
-         * reload can recover unsaved edits without guessing from curator recency.
-         */
         installEditDraftRestore(uiManager) {
             if (!uiManager?.editCuration || this._editRestoreInstalled || uiManager.__offlineDurabilityEditRestoreInstalled) {
                 return;
@@ -368,10 +371,6 @@
             return true;
         }
 
-        /**
-         * Starting an explicit new Curation creates a new session without
-         * destroying the previous unfinished draft.
-         */
         installNewCurationSessionBoundary(uiManager) {
             const workspace = global.curationWorkspace;
             if (!workspace?.prepareNewCurationState || this._newSessionBoundaryInstalled || workspace.__offlineDurabilitySessionBoundaryInstalled) {
@@ -484,9 +483,6 @@
                         await this.preserveDraftAfterSave(draftId, curationId, draftSnapshot);
                     }
 
-                    // A new saved item must not make the next New Curation
-                    // reuse its old authoring session. A photo-preserved draft
-                    // remains addressable by id but is no longer current.
                     if (!targetBeforeSave) {
                         await this._clearNewAuthoringSession(curatorId, uiManager);
                     }
