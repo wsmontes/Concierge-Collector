@@ -119,6 +119,12 @@ describe('OfflineDurability draft integration', () => {
     expect(durabilitySrc).toContain('curation-notes-private');
   });
 
+  test('restores an edit draft by target curation identity instead of curator recency', () => {
+    expect(durabilitySrc).toContain('installEditDraftRestore');
+    expect(durabilitySrc).toContain('restoreDraftForTarget');
+    expect(durabilitySrc).toContain('`curation:${targetCurationId}`');
+  });
+
   test('flushes on visibilitychange and pagehide', () => {
     expect(durabilitySrc).toContain('visibilitychange');
     expect(durabilitySrc).toContain('pagehide');
