@@ -57,3 +57,60 @@ describe('SourceUtils — provenance-aware source detection', () => {
     expect(SourceUtils.detectSource({ sources: { external_archive: ['legacy'] }, transcript: 'Text body' }, null).label).not.toBe('Voice Note');
   });
 });
+
+describe('SourceUtils — source persistence', () => {
+  test('does not invent audio for transcript text when no real recording was captured', () => {
+    const SourceUtils = loadSourceUtils();
+    const existingSources = {
+      web_research: ['https://example.com/review']
+    };
+
+    const sources = SourceUtils.buildSourcesPayloadFromContext({
+      existingSources,
+      hasAudio: false,
+      transcript: 'Research text that happens to live in transcript.'
+    });
+
+    expect(sources.web_research).toEqual(existingSources.web_research);
+    expect(sources.audio).toBeUndefined();
+  });
+
+  test('appends a newly captured recording without replacing previous audio history', () => {
+    const SourceUtils = loadSourceUtils();
+    const existingAudio = [
+      { source_id: 'audio-1', transcript: 'First recording', created_at: '2026-08-01T00:00:00Z' },
+      { source_id: 'audio-2', transcript: 'Second recording', created_at: '2026-08-02T00:00:00Z' }
+    ];
+
+    const sources = SourceUtils.buildSourcesPayloadFromContext({
+      existingSources: { audio: existingAudio },
+      hasAudio: true,
+      audioSourceId: 'audio-3',
+      transcript: 'Third recording'
+    });
+
+    expect(sources.audio).toHaveLength(3);
+    expect(sources.audio.slice(0, 2)).toEqual(existingAudio);
+    expect(sources.audio[2]).toMatchObject({
+      source_id: 'audio-3',
+      transcript: 'Third recording'
+    });
+  });
+
+  test('does not duplicate an audio source when the same recording is saved again', () => {
+    const SourceUtils = loadSourceUtils();
+    const existingAudio = [
+      { source_id: 'audio-1', transcript: 'Existing recording' }
+    ];
+
+    const sources = SourceUtils.buildSourcesPayloadFromContext({
+      existingSources: { audio: existingAudio },
+      hasAudio: true,
+      audioSourceId: 'audio-1',
+      transcript: 'Existing recording'
+    });
+
+    expect(sources.audio).toHaveLength(1);
+    expect(sources.audio[0]).toEqual(existingAudio[0]);
+  });
+});
