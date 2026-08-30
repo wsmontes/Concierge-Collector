@@ -145,20 +145,19 @@
                         recording.currentAudioId = previousId;
                         recording.currentAudioSourceId = previousSourceId;
                         recording.currentAudioTranscript = previousTranscript;
-                        return;
-                    }
-
-                    const retained = manager.getBySourceId
-                        ? await manager.getBySourceId(sourceId).catch(() => null)
-                        : null;
-                    if (retained) {
-                        recording.currentAudioId = previousId;
-                        recording.currentAudioSourceId = sourceId;
-                        recording.currentAudioTranscript = transcriptText;
                     } else {
-                        recording.currentAudioId = null;
-                        recording.currentAudioSourceId = null;
-                        recording.currentAudioTranscript = null;
+                        const retained = manager.getBySourceId
+                            ? await manager.getBySourceId(sourceId).catch(() => null)
+                            : null;
+                        if (retained) {
+                            recording.currentAudioId = previousId;
+                            recording.currentAudioSourceId = sourceId;
+                            recording.currentAudioTranscript = transcriptText;
+                        } else {
+                            recording.currentAudioId = null;
+                            recording.currentAudioSourceId = null;
+                            recording.currentAudioTranscript = null;
+                        }
                     }
                 }
             };
